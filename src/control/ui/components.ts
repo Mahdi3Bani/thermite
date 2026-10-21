@@ -75,6 +75,9 @@ export const icon = {
   pause: svg('<path d="M9 5v14M15 5v14"/>', 14),
   play: svg('<path d="m7 4 13 8-13 8z"/>', 14),
   send: svg('<path d="M12 19V5M5 12l7-7 7 7"/>', 16),
+  copy: svg(
+    '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
+  ),
   dots: svg('<path d="M5 12h.01M12 12h.01M19 12h.01"/>', 16),
   chip: svg(
     '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',

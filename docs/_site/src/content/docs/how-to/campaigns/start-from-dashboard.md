@@ -171,7 +171,7 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 
 - After **Start the campaign** or **Try the kit first**, the campaign's page opens. Until the rig reports the run, it says, for example, `Starting rig-1/sort-speed-1.`, also for a campaign that has runs already. Wait a minute and press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves. Once the rig reports the run, the page shows the run's own page instead, with the tabs **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**. On **Campaigns** in the sidebar, the run also shows under **At work now**, and the campaign in the list below it.
 - A try's run is named like `sort-speed-try-1`, and its page says **A try of the kit.** Its results look right when the starting point builds and runs every case, and **History** has no `The judge's job (…) failed` line: see [Read the dry run](test-a-kit.md#3-read-the-dry-run). Then press **start the campaign** in that note: the **Start a run** panel opens. Keep **Agents** on **On**, and press **Start the run**. A rig runs one run at a time, so the new run pauses the try.
-- After **Save without starting**, the page says `Saved on control, with no run yet.` and offers **Start a run**.
+- After **Save without starting**, the page says `Saved on control, with no run yet.` and offers **Start a run of** and the campaign's name, such as **Start a run of sort-speed**.
 - If the page says `Saved.` and that the rig takes a model, nothing started yet: see the next section.
 - If the page comes back at **Review and start** with **Not started: fix these first.**, fix each item in the list. Everything you typed is kept. A kit described here or uploaded is checked against the campaign here, before anything is saved. The items about the agents' model are:
   - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".`
@@ -261,30 +261,47 @@ It prints the new run and its command:
 
 To compare two models on the same campaign, give each model a campaign of its own: a copy. Two runs of one campaign share its folder in [Thermite's knowledge base](../../reference/knowledge-base.md). Each new run starts with what the campaign's earlier runs recorded, and while both work, each reads the other's records every few minutes. So the second model would not start from zero. A copy has the same contract and kit under another name, its own empty folder, no [grants](../../reference/knowledge-base.md#grants) and no runs.
 
-You need a campaign that control keeps, a rig for each model (or one rig, with the runs one after the other), and the owner's token file. The dashboard has no copy button yet ([goal 069](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/069-copy-a-campaign.goal)): copy over the command line, the REST API or MCP.
+You need a campaign that control keeps (one saved on the **New campaign** page, or one assigned before over the command line, the REST API or MCP), and a rig for each model, or one rig with the runs one after the other.
 
-1. Copy the campaign once for each model. If the campaign has no runs yet, you can run it as it is for the first model, and copy it for the second.
+1. Open **Campaigns** in the sidebar, then the campaign. Press **Copy**, beside **Start a run** at the top of its page. A panel opens, headed **Copy sort-speed**. It says why to copy: the copy gets its own empty folder, so its runs read nothing that the runs of `sort-speed` recorded.
+2. Under **Name of the copy**, keep the free name the panel gives, such as `sort-speed-b`, or type another, such as `sort-speed-model-b`. The panel checks it as you type, with the **New campaign** page's rules, and says `✓ Free. Its runs are named sort-speed-model-b-1, sort-speed-model-b-2, and so on.` For a name it refuses, see [When the panel refuses](#when-the-panel-refuses). **Copy** stays off until the name is free.
+3. Look at **MCP servers for its agents**, the tools from outside Thermite that the copy's agents can call:
+   - **A research campaign.** The panel lists the servers in **Settings › MCP servers**, ticked as the campaign has them. Leave them so to compare the models alone. To give the copy's agents another server, tick it, then **Workers**, **Advisors** or both; open **Advanced: its tools for each kind of agent** under a server to untick tools. The line under the list says what each kind of agent gets, such as `The workers get 4 tools from gbrain (4 of 6); the advisors get 6 tools from gbrain.`, then `✓ The same as sort-speed.` or, when the list differs, `Not as sort-speed.`: the copy's contract then names its own servers, so its hash is its own. **Use the servers of sort-speed again** puts the campaign's list back.
+   - **A hill-climb or goal campaign.** The panel shows its kit's servers, read only, such as `gbrain for the workers` and `All its 31 tools.`: they are in the kit's kit.json, which a copy does not change.
 
-   ```sh
-   npx thermite campaign copy sort-speed sort-speed-model-a \
-     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
-   npx thermite campaign copy sort-speed sort-speed-model-b \
-     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
-   ```
-
-   Each prints the copy, such as `{"campaign":"sort-speed-model-a","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`. Over REST it is `POST /v1/campaigns/sort-speed/copy` with `{"name": "sort-speed-model-a"}`. Over MCP it is [`copy_campaign`](../../reference/mcp-tools.md#copy_campaign) with `{"from": "sort-speed", "name": "sort-speed-model-a"}`, which an operator's token may call too.
-2. Give each rig its model, on its **Edit rig** page, or with `--provider` and `--model` in the next step: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
-3. Start a run of each copy, each on its own rig:
-
-   ```sh
-   npx thermite run start sort-speed-model-a --rig rig-1 \
-     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
-   npx thermite run start sort-speed-model-b --rig rig-2 \
-     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
-   ```
-
-   **Start a run** on each copy's page does the same.
+   Under **The same over REST, MCP and the command line**, the panel shows the same request for a script or an agent: see [Copy from a script or an agent](#copy-from-a-script-or-an-agent).
+4. Press **Copy**. The copy's page opens, with `Copied sort-speed version 2 as sort-speed-model-b.` at the top, then `Copied from sort-speed version 2 by you, just now. Its folder in the knowledge base started empty.` and `Saved on control, with no run yet.` A copy of a research campaign whose servers differ adds `Its agents use other MCP servers than its source's:` and the list.
+5. For the other model, go back to the campaign and copy it again, such as to `sort-speed-model-a`. If the campaign has no runs yet, you can also run it as it is for the first model.
+6. Give each rig its model, on its **Edit rig** page, or under **The agents' model** in the next step: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
+7. On each copy's page, press **Start a run of sort-speed-model-b** (or **Start a run** at the top), choose the copy's own rig under **Where it runs**, and press **Start the run**, as [Start a run later](#start-a-run-later) says.
 
 Don't let one copy read the other's folder: leave **Can read from** empty on each copy's page.
 
-To tell it worked, open each copy's page under **Campaigns**. It says where the copy came from, such as `Copied from sort-speed version 2 by owner:api, 5m ago. Its folder in the knowledge base started empty.`, or `Copied from sort-speed as assigned for sort-speed-1 on rig-1 by …` for a campaign that was only assigned before. Its **Knowledge** section counts only its own run's records, and **Can read from** says `None: its agents read only this campaign's folder.` Then compare the two runs' results on their pages.
+To tell it worked, open each copy's page: on **Campaigns** once its run reports, or at its address, `/ui/campaigns/sort-speed-model-b`. It says where the copy came from, such as `Copied from sort-speed version 2 by you, 5m ago. Its folder in the knowledge base started empty.`, or `Copied from sort-speed as assigned for sort-speed-1 on rig-1 by you, …` for a campaign that was only assigned before. A copy made with the operator's token over MCP says `by the operator`. Its **Knowledge** section counts only its own run's records, and **Can read from** says `None: its agents read only this campaign's folder.` Then compare the two runs' results on their pages.
+
+### When the panel refuses
+
+The panel says why under the name, or under the servers, and **Copy** stays off:
+
+| The panel says | What to do |
+| --- | --- |
+| `There is a campaign named sort-speed-b already. Choose another name.` | Type another name. A name is taken when control keeps a campaign by it, a rig reported a run of it, or the knowledge base has a folder or a grant by it. For a name only the knowledge base has, the panel adds `It has no runs now, but its folder is in the knowledge base.` |
+| `A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.` | Press the button beside it, such as **Use sort-speed-b**, for a valid name made from yours, or type another |
+| `A name that starts with rig-check- is for rig checks. Choose another name.` | Type another name: [rig checks](../../reference/rig-checks.md) use these names |
+| `Choose the agents that get paper-search, or untick it.` | A research copy: tick **Workers** or **Advisors** for the server, or untick the server |
+| `The workers get no tool of paper-search: give them one, or untick workers.` | A research copy: tick a tool for them under **Advanced**, or untick **Workers** for that server |
+
+Control checks the copy again when you press **Copy**, with the same words. If it refuses, for example because another copy took the name after the panel opened, the panel opens again with **Not copied.** and the reason, and control saves nothing. Without the page's script, the panel posts all the same and shows control's answer the same way.
+
+### Copy from a script or an agent
+
+**Copy** has twins on the command line, the REST API and MCP, which take the owner's token (MCP also an operator's) and give the same refusals:
+
+```sh
+npx thermite campaign copy sort-speed sort-speed-model-a \
+  --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
+npx thermite run start sort-speed-model-a --rig rig-1 \
+  --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
+```
+
+The first command prints the copy, such as `{"campaign":"sort-speed-model-a","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`; the second starts a run of it. Over REST it is `POST /v1/campaigns/sort-speed/copy` with `{"name": "sort-speed-model-a"}`. Over MCP it is [`copy_campaign`](../../reference/mcp-tools.md#copy_campaign) with `{"from": "sort-speed", "name": "sort-speed-model-a"}`. A research copy's other servers are `mcp_servers` there, or `--mcp-servers-json` on the command line: see [`campaign copy`](../../reference/command-line.md#campaign-copy).

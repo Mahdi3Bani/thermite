@@ -245,7 +245,11 @@ export function campaignMcpServers(store: ControlStore, campaign: string): McpUs
   const v = store.campaignVersions(campaign)[0];
   if (v) {
     const contract = v.contract as { mode?: string; mcp_servers?: unknown };
-    const raw = contract.mode === "research" ? contract.mcp_servers : v.sources.mcp_servers;
+    // A copy of a campaign known only by an assignment keeps that assignment's (goal 069).
+    const raw =
+      contract.mode === "research"
+        ? contract.mcp_servers
+        : (v.sources.mcp_servers ?? v.sources.assignment?.mcp_servers);
     return McpUses.safeParse(raw ?? []).data ?? [];
   }
   const past = store.latestAssignments().get(campaign);

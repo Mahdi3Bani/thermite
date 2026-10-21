@@ -60,7 +60,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [066](goals/066-direction-rules.goal) Rules name directions, picked with `:direction:` · `VERIFIED`
 - [067](goals/067-assign-queue-from.goal) `thermite assign` can copy a past run's untried experiments · `VERIFIED`
 - [068](goals/068-mcp-servers-for-agents.goal) MCP servers for a campaign's agents, named by its kit · `VERIFIED`
-- [069](goals/069-copy-a-campaign.goal) Copy a campaign · `IN_PROGRESS`
+- [069](goals/069-copy-a-campaign.goal) Copy a campaign · `VERIFIED`
 - [056](goals/056-codex-harness.goal) A Codex CLI harness · `VERIFIED`
 - [070](goals/070-model-context-cap.goal) Cap the context window of a rig's model · `IN_PROGRESS`
 

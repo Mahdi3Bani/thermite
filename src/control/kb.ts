@@ -501,6 +501,15 @@ export class KnowledgeBase {
     ).map((r) => str(r.campaign));
   }
 
+  /** Every campaign a grant names, on either side: names a copy of a campaign may not take. */
+  grantNames(): string[] {
+    return (
+      this.db
+        .prepare("select campaign as name from kb_read union select reads from kb_read order by 1")
+        .all() as Row[]
+    ).map((r) => str(r.name));
+  }
+
   /**
    * Lets a campaign read another folder. Its runs at work receive the folder's items at their
    * next sync, with seqs given now. False: nothing changed (already granted, or its own folder).

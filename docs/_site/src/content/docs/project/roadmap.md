@@ -23,7 +23,8 @@ Thermite's core is built: the judge, control and its dashboard, the agents, and 
 - one experiment queue for each run, which the planner coordinates. It is done ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal));
 - journals and a research corpus from every campaign: the agents' field notes, research in every mode, and Thermite's own knowledge base, with a folder for each campaign that holds everything its runs produce and that later runs' workers, planner and advisors search. It is done ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal));
 - rules for the planner that name the run's directions, in plain words or picked as `:name:` on the run's **Planner** tab. It is done ([goal 066](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/066-direction-rules.goal); [Make a rule: tell the planner](../how-to/campaigns/choose-what-runs-next.md#make-a-rule-tell-the-planner));
-- MCP servers for a campaign's agents, named by its kit. It is done ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal); [Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)).
+- MCP servers for a campaign's agents, named by its kit. It is done ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal); [Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md));
+- copying a campaign under a new name, with its own empty folder in the knowledge base, to give a second model the same campaign from zero: **Copy** on the campaign's page, and its twins over REST, MCP and the command line. It is done ([goal 069](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/069-copy-a-campaign.goal); [Compare two models from zero](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero)).
 
 Also built:
 
@@ -36,7 +37,6 @@ Also built:
 
 In progress:
 
-- copying a campaign, to give a second model the same campaign from zero ([goal 069](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/069-copy-a-campaign.goal); [Compare two models from zero](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero)). It works over REST, MCP and the command line; a **Copy** button on the campaign's page is still to come;
 - a research folder that research-mode workers search with ordinary tools and write to. It is built, and its first real research runs are under way ([goal 062](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/062-research-folder.goal));
 - a cap on the context window of a rig's model. It works over REST and MCP; a field for it on **Edit rig** is still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
 

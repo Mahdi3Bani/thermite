@@ -611,6 +611,21 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .mcp-adv { margin-top: 8px; }
 .mcp-tools td input { height: auto; width: auto; margin: 0; }
 .mcp-tools td:not(:first-child):not(:nth-child(2)), .mcp-tools th:not(:first-child):not(:nth-child(2)) { text-align: center; width: 1%; }
+/* Copy a campaign (goal 069): a panel like Start a run's */
+#copy [hidden] { display: none !important; }
+.cp-why { margin: 0; font-size: 14px; line-height: 1.55; }
+.cp-say { font-size: 12.5px; line-height: 1.5; color: var(--muted-foreground); }
+.cp-say.ok { color: var(--success-foreground); } .cp-say.bad { color: var(--error-foreground); }
+.cp-say button { margin-left: 4px; vertical-align: baseline; height: 24px; font-size: 12px; padding: 0 8px; }
+.sfd input.bad { border-color: var(--error); }
+.cp-mcp-sum { font-size: 13px; line-height: 1.55; margin: 2px 0 0; display: grid; gap: 4px; }
+.cp-req { white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 600px) {
+  /* Copy and Start a run don't fit beside a long name: the buttons go under it. */
+  .topbar:has([data-open="#copy"]) { flex-wrap: wrap; row-gap: 6px; padding-top: 8px; padding-bottom: 8px; }
+  .drawer .mcp-pick .sopt { grid-template-columns: 18px minmax(0, 1fr); }
+  .drawer .mcp-pick .sopt > .sr { display: none; }
+}
 /* Live, one run at a time: the stream gets the room */
 .lwrap { display: grid; grid-template-columns: 230px minmax(0, 1fr); width: 100%; min-height: 0; position: relative; }
 .lwrap.closed { grid-template-columns: minmax(0, 1fr); } .lwrap.closed .lruns { display: none; }

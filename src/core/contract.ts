@@ -10,7 +10,9 @@ import { McpUses } from "./mcp.ts";
  * one of three shapes (hill climb, goal, research); the shared fields come first.
  */
 
-export const IdSchema = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/, "lowercase id");
+/** A campaign's (or a kit's, a case's) name; the dashboard's Copy panel checks names with it too. */
+export const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+export const IdSchema = z.string().regex(ID_PATTERN, "lowercase id");
 export const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/, "sha256 hex");
 /** A full commit id (SHA-1 or SHA-256). Abbreviations are refused: they can be ground. */
 export const CommitSchema = z

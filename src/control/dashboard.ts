@@ -12,7 +12,7 @@ import {
   CommandPayloads,
 } from "../core/commands.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
-import { McpUses } from "../core/mcp.ts";
+import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
@@ -38,7 +38,13 @@ import {
   clusterRigObjects,
   rigResources,
 } from "./clusters/manifests.ts";
-import { copiedFromWords, copiedMcpWords, copyCampaign } from "./copy-campaign.ts";
+import {
+  type CopyCampaignOutcome,
+  type CopyCampaignRequest,
+  copiedFromWords,
+  copiedMcpWords,
+  copyCampaign,
+} from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
@@ -93,7 +99,7 @@ import {
   openSsh,
   USER,
 } from "./machines/ssh.ts";
-import { McpServers } from "./mcp-servers.ts";
+import { campaignMcpServers, McpServers } from "./mcp-servers.ts";
 import { mcpSettingsBlocks, mountMcpUi } from "./mcp-ui.ts";
 import { type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
 import {
@@ -183,6 +189,8 @@ import {
   shell,
   stackBar,
 } from "./ui/components.ts";
+import { copyDrawer, postedUses, suggestCopyName } from "./ui/copy-campaign.ts";
+import { COPY_JS } from "./ui/copy-campaign-client.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
@@ -267,6 +275,12 @@ const CSP =
 // biome-ignore lint/suspicious/noExplicitAny: any route's context
 type Ctx = Context<any, any, any>;
 type RunViewName = RunTab;
+/** A try of the Copy panel that control refused (goal 069): what it sent, and why not. */
+interface CopyTry {
+  name: string;
+  picked?: McpUse[] | undefined;
+  error: string;
+}
 
 export interface DashboardOptions {
   /** The owner's credential (the dashboard signs in with its token). */
@@ -986,6 +1000,13 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       "cache-control": "no-cache",
     }),
   );
+  // The Copy panel's script, on a campaign's page (goal 069).
+  app.get("/ui/assets/copy.js", (c) =>
+    c.body(COPY_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
   const newCampaignPage = (
     c: Ctx,
     extra: { draft?: Record<string, unknown>; errors?: string[] } = {},
@@ -1567,17 +1588,122 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     };
   };
   if (opts.actions) opts.actions.startRun = startARun;
-  // Copy a campaign (goal 069): REST, MCP and the command line; the page shows where it came from.
-  if (opts.actions)
-    opts.actions.copyCampaign = (req, by) =>
-      copyCampaign(store, req, by, campaignModes(store, views()));
+  // Copy a campaign (goal 069): the Copy panel on its page, REST, MCP and the command line.
+  const copyACampaign = (req: CopyCampaignRequest, by: string) =>
+    copyCampaign(store, req, by, campaignModes(store, views()));
+  if (opts.actions) opts.actions.copyCampaign = copyACampaign;
+  /** Who copied a campaign, as its page says it: the dashboard is the owner's, so "you". */
+  const copiedBy = (by: string) =>
+    by === "owner:operator"
+      ? "the operator"
+      : by === "owner" || by.startsWith("owner:")
+        ? "you"
+        : by;
   /** A copy's line on its page: where it came from, who copied it and when. */
   const copiedLine = (name: string): string => {
     const first = store.campaignVersions(name).at(-1);
     const f = first?.copied_from;
     if (!first || !f) return "";
-    return `<div class="card" style="margin-bottom:16px"><span class="muted">Copied from</span> <a href="${campaignHref(f.campaign)}">${esc(copiedFromWords(f))}</a> <span class="muted">by ${esc(first.created_by)}, ${esc(ago(first.created_at, Date.now()))} ago. Its folder in the knowledge base started empty.${f.other_mcp_servers ? ` ${esc(copiedMcpWords(first.contract))}` : ""}</span></div>`;
+    const now = Date.now();
+    const when =
+      now - Date.parse(first.created_at) < 60_000
+        ? "just now"
+        : `${ago(first.created_at, now)} ago`;
+    return `<div class="card" style="margin-bottom:16px"><span class="muted">Copied from</span> <a href="${campaignHref(f.campaign)}">${esc(copiedFromWords(f))}</a> <span class="muted">by ${esc(copiedBy(first.created_by))}, ${esc(when)}. Its folder in the knowledge base started empty.${f.other_mcp_servers ? ` ${esc(copiedMcpWords(first.contract))}` : ""}</span></div>`;
   };
+  /**
+   * What a copy of a campaign takes, as copyCampaign takes it: whether it is research, what it
+   * copies in words, and the servers its agents use. Undefined: control can't copy it.
+   */
+  const copySource = (name: string) => {
+    if (isRigCheck(name)) return undefined;
+    const saved = store.campaignVersions(name)[0];
+    const assigned = saved ? undefined : store.latestAssignments().get(name);
+    if (!saved && !assigned) return undefined;
+    const contract = (saved?.contract ?? assigned?.payload.contract) as
+      | { mode?: unknown }
+      | undefined;
+    return {
+      research: contract?.mode === "research",
+      what: saved
+        ? `version ${saved.version} of ${name}`
+        : copiedFromWords({ campaign: name, rig: assigned?.rig, run: assigned?.run }),
+      servers: campaignMcpServers(store, name) ?? [],
+    };
+  };
+  /**
+   * The names a copy may not take (every campaign control knows, and each a grant names), and
+   * of those, the ones only the knowledge base knows, which the panel names as such.
+   */
+  const copyNames = (vs: RigView[]) => {
+    const taken = [
+      ...new Set([...campaignModes(store, vs).keys(), ...store.kb().grantNames()]),
+    ].sort();
+    const ran = new Set([
+      ...campaignViews(vs).map((k) => k.name),
+      ...store.campaignVersions().map((v) => v.campaign),
+      ...store.latestAssignments().keys(),
+    ]);
+    return { taken, folderOnly: taken.filter((n) => !ran.has(n)) };
+  };
+  /** The Copy panel of a campaign's page, or "" for a campaign control can't copy. */
+  const copyPanel = (c: Ctx, name: string, vs: RigView[], tried?: CopyTry) => {
+    const src = copySource(name);
+    if (!src) return "";
+    const names = copyNames(vs);
+    return copyDrawer({
+      campaign: name,
+      research: src.research,
+      what: src.what,
+      csrf: csrf(c),
+      open: tried !== undefined || c.req.query("copy") === "1",
+      name: tried?.name ?? suggestCopyName(name, new Set(names.taken)),
+      taken: names.taken,
+      folderOnly: names.folderOnly,
+      servers: mcpServers.list(),
+      source: src.servers,
+      picked: tried?.picked,
+      error: tried?.error,
+    });
+  };
+  /** A campaign's buttons at the top of its page: Copy, then Start a run, as control can. */
+  const campaignActions = (name: string) =>
+    `${copySource(name) ? `<a class="btn" href="${campaignHref(name)}?copy=1" data-open="#copy">${icon.copy}Copy</a>` : ""}${startFrom(name) ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>` : ""}` ||
+    undefined;
+  // The Copy panel's form: the copy's page, or the panel again with control's words.
+  app.post("/ui/campaigns/:campaign/copy", async (c) => {
+    const from = c.req.param("campaign");
+    const src = copySource(from);
+    const f = await c.req.parseBody({ all: true });
+    const one = (k: string) => {
+      const v = [f[k] ?? []].flat()[0];
+      return typeof v === "string" ? v.trim() : "";
+    };
+    const name = one("name");
+    let picked: McpUse[] | undefined;
+    let mcp: McpUse[] | undefined;
+    let problems: string[] = [];
+    // A research copy's servers, as ticked: sent to control only when they are not the source's.
+    if (src?.research && one("mcp") === "1") {
+      const tools = new Map(
+        mcpServers.list().map((s) => [s.name, s.tools ? s.tools.map((t) => t.name) : null]),
+      );
+      const p = postedUses(f, tools, src.servers);
+      picked = p.uses;
+      problems = p.problems;
+      if (!sameUses(p.uses, src.servers)) mcp = p.uses;
+    }
+    const out: CopyCampaignOutcome = problems.length
+      ? { state: "refused", error: problems.join(" "), status: 400 }
+      : copyACampaign({ from, name, mcp_servers: mcp }, "owner:ui");
+    if (out.state === "copied")
+      return c.redirect(
+        `${campaignHref(out.campaign)}?ok=${encodeURIComponent(`Copied ${copiedFromWords(out.from)} as ${out.campaign}.`)}`,
+        303,
+      );
+    if (!src) return c.text(out.error, out.status);
+    return campaignPage(c, { name, picked, error: out.error });
+  });
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();
     const campaign = c.req.param("campaign");
@@ -1697,10 +1823,15 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     });
   };
 
-  app.get("/ui/campaigns/:campaign", (c) => {
+  /**
+   * A campaign's page: what it is for, its runs, its Knowledge section, and the Start a run and
+   * Copy panels; or one run's page. `tried`: a Copy that control refused, to show in the panel.
+   */
+  const campaignPage = (c: Ctx, tried?: CopyTry) => {
     const now = Date.now();
     const vs = views();
-    const name = c.req.param("campaign");
+    // Its own route's, or the Copy panel's form's (/ui/campaigns/:campaign/copy).
+    const name = String(c.req.param("campaign") ?? "");
     const k = campaignViews(vs).find((x) => x.name === name);
     // A refused grant shows in the Knowledge section, not as a run that did not start.
     const kbFailed = c.req.query("on") === "kb" ? c.req.query("error") : undefined;
@@ -1712,10 +1843,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
         : "";
     const canStart = Boolean(startFrom(name));
-    const startBtn = canStart
-      ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>`
-      : undefined;
-    const drawer = startPanel(c, name, vs, c.req.query("start") === "1");
+    const buttons = campaignActions(name);
+    const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1")}${copyPanel(c, name, vs, tried)}`;
     // A run just started (Start a run sends here with ?run=), until its rig reports it.
     const startingCard = (key: string) =>
       `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(key)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`;
@@ -1741,12 +1870,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
           summary: esc(aboutOf(name)),
           active: "campaigns",
-          actions: startBtn,
+          actions: buttons,
         },
         `${note}${copiedLine(name)}${
           waiting
             ? startingCard(waiting)
-            : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."} <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
+            : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>`
         }${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
@@ -1843,7 +1972,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
         summary: `${esc(isRigCheck(k.name) ? "rig check" : modeName(k.mode))} · ${k.runs.length} run${k.runs.length === 1 ? "" : "s"}${running.length ? ` · ${running.length} at work` : ""} · ${esc(h.value)} ${esc(h.sub)}${k.mode === "hill_climb" ? ` · <a href="/ui/leaderboard">leaderboard</a>` : ""}`,
         active: "campaigns",
-        actions: startBtn,
+        actions: buttons,
       },
       `${note}${starting}${copiedLine(k.name)}${
         about || goals
@@ -1886,7 +2015,8 @@ ${
 }${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
       vs,
     );
-  });
+  };
+  app.get("/ui/campaigns/:campaign", (c) => campaignPage(c));
 
   // The folders a campaign's agents may read besides its own (goal 065): the owner's, any time.
   const grantBack = (c: Ctx, campaign: string, k: "ok" | "error", m: string) =>
