@@ -270,6 +270,35 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
     say("family_added", "planner:planner", { family: "split-k", description: "split k" }),
     "The run has a new direction, :split-k: (split k).",
   );
+  // The planner converts an old rule in words: one line, from its directive_converted event; the
+  // new rule's own directive event (its author's, as the old one's was) says nothing more.
+  assert.equal(
+    say("directive_converted", "planner", {
+      id: 3,
+      to: 9,
+      kind: "avoid",
+      family: "shared-memory",
+      words: "shared memory",
+    }),
+    "The planner converted rule 3, an old rule in words (“shared memory”), to rule 9: avoid :shared-memory:.",
+  );
+  assert.equal(
+    sentence(u, {
+      kind: "directive",
+      subject: "r-1",
+      actor: "control:owner:ui",
+      at: "2026-10-20T00:00:00Z",
+      body: {
+        id: 9,
+        body: {
+          kind: "avoid",
+          family: "shared-memory",
+          converted_from: { rule: 3, words: "shared memory" },
+        },
+      },
+    } as never),
+    null,
+  );
   assert.equal(
     say("directives_left_out", "supervisor", {
       rules: [{ kind: "avoid", family: "blogs" }],

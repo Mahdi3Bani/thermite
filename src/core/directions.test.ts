@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { CommandPayloads, StructuredDirective } from "./commands.ts";
 import {
+  CONVERT_PER_ROUND,
+  convertedRule,
   directionName,
   directionOf,
   directionParts,
@@ -10,6 +12,7 @@ import {
   isLegacyRule,
   notADirection,
   researchDirectionRefusal,
+  rulesToConvert,
 } from "./directions.ts";
 
 describe("directions, written as plain words or :name: (goal 066)", () => {
@@ -137,5 +140,42 @@ describe("directions, written as plain words or :name: (goal 066)", () => {
       researchDirectionRefusal(["blogs"]),
       /^A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. It has no planner to design a new direction, so a rule for :blogs: would do nothing\. Name a task kind\.$/,
     );
+  });
+
+  test("an old rule in words converts to a rule on a direction: the same kind, why and source, and its words", () => {
+    const rules = [
+      { id: 1, body: { kind: "avoid", family: "tiling", rationale: "a" } },
+      { id: 4, body: { kind: "mandate", match: "anything with vector loads", rationale: "b" } },
+      { id: 6, body: { kind: "note", value: "x", rationale: "c" } },
+    ];
+    assert.deepEqual(rulesToConvert(rules), [
+      { rule: 4, kind: "mandate", words: "anything with vector loads", rationale: "b" },
+    ]);
+    // A round converts at most CONVERT_PER_ROUND, the oldest first; the rest wait.
+    const many = Array.from({ length: CONVERT_PER_ROUND + 3 }, (_, i) => ({
+      id: i + 1,
+      body: { kind: "avoid", match: `words ${i + 1}`, rationale: "r" },
+    }));
+    assert.deepEqual(
+      rulesToConvert(many).map((r) => r.rule),
+      Array.from({ length: CONVERT_PER_ROUND }, (_, i) => i + 1),
+    );
+    const old = {
+      kind: "avoid",
+      match: "anything that uses shared memory",
+      rationale: "slow on this GPU",
+      citations: ["run 3"],
+      from_message: 2,
+    };
+    const next = convertedRule(7, old, "shared-memory");
+    assert.deepEqual(next, {
+      kind: "avoid",
+      family: "shared-memory",
+      rationale: "slow on this GPU",
+      citations: ["run 3"],
+      from_message: 2,
+      converted_from: { rule: 7, words: "anything that uses shared memory" },
+    });
+    assert.ok(!isLegacyRule(next), "the new rule names a direction: code keeps it");
   });
 });

@@ -797,10 +797,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 })(),
                 figures: diagnostics,
                 propagate,
-                // Name a direction on an old rule in words: its message fills Tell the planner.
-                fix: Number.isInteger(Number(c.req.query("fix")))
-                  ? Number(c.req.query("fix"))
-                  : undefined,
+                // No model for the planner: an old rule in words waits to be converted (goal 066).
+                noModel: !store.roleModels(u.id).planner && u.model?.source === "none",
                 // A message to the planner that control or the rig refused.
                 refused:
                   c.req.query("msgerror") ||

@@ -92,7 +92,7 @@ describe("planner", () => {
           id: 7,
           body: { kind: "try", family: "split-k", rationale: "won elsewhere", citations: [] },
         },
-        // An old rule in words: the model's alone, never designed.
+        // An old rule in words: never designed, but converted (below).
         { id: 8, body: { kind: "avoid", match: "anything slow", rationale: "x", citations: [] } },
       ],
       ownerMessages: [
@@ -131,6 +131,7 @@ describe("planner", () => {
       "rules: :timer-code: is not one of the run's directions: to make a rule for a new direction, design it in new_families too",
       "rules: a rule names its direction in family: a rule no longer takes match",
       "rules: message 5 is not one of the owner's messages given to you",
+      'rule 8 is an old rule in words ("anything slow"): convert it, in convert, to the direction its words mean: one in directions, or a new one you design in new_families',
     ]);
     // Designed in the answer: the rules stand, by name, from the owner's plain words or :name:.
     const good = validatePlan(
@@ -144,10 +145,12 @@ describe("planner", () => {
           { kind: "avoid", family: ":tiling:", rationale: "you said so", from_message: 1 },
           { kind: "avoid", family: "timer code", rationale: "asked", from_message: 2 },
         ],
+        convert: [{ rule: 8, family: ":unroll:" }],
       },
       input,
     );
     assert.deepEqual(good.errors, []);
+    assert.deepEqual(good.plan?.convert, [{ rule: 8, family: "unroll" }]);
     assert.deepEqual(
       good.plan?.newFamilies.map((f) => f.id),
       ["split-k", "timer-code"],
@@ -158,6 +161,108 @@ describe("planner", () => {
         ["avoid", "tiling", 1],
         ["avoid", "timer-code", 2],
       ],
+    );
+  });
+
+  test("each old rule in words is converted: to the run's direction its words mean, or a new one designed in the answer", () => {
+    const input: PlannerInput = {
+      ...base,
+      directions: ["tiling", "unroll"],
+      directives: [
+        { id: 3, body: { kind: "try", family: "tiling", rationale: "won", citations: [] } },
+        {
+          id: 4,
+          body: {
+            kind: "avoid",
+            match: "anything that uses shared memory",
+            rationale: "slow on this GPU",
+            citations: [],
+          },
+        },
+        {
+          id: 5,
+          body: { kind: "mandate", match: "loop unrolling", rationale: "r", citations: [] },
+        },
+      ],
+    };
+    const assignments = [
+      { lane: "lane-1", title: "unroll by 4", family: "unroll", why: "w" },
+      { lane: "lane-2", title: "tile it", family: "tiling", why: "w" },
+    ];
+    // The model reads each one to convert, with its kind, words and why.
+    const context = JSON.parse(plannerContext(input)) as Record<string, unknown>;
+    assert.deepEqual(context.to_convert, [
+      {
+        rule: 4,
+        kind: "avoid",
+        words: "anything that uses shared memory",
+        rationale: "slow on this GPU",
+      },
+      { rule: 5, kind: "mandate", words: "loop unrolling", rationale: "r" },
+    ]);
+    // Left out, a rule that is not one, twice, a new direction not designed, a kind of rule, or
+    // text that is no direction: each refused with what to do.
+    const bad = validatePlan(
+      {
+        assignments,
+        convert: [
+          { rule: 4, family: "shared memory" },
+          { rule: 3, family: "tiling" },
+          { rule: 9, family: "tiling" },
+          { rule: 4, family: "tiling" },
+        ],
+      },
+      input,
+    );
+    assert.deepEqual(bad.errors, [
+      "convert: rule 4: :shared-memory: is not one of the run's directions: to convert it to a new direction, design it in new_families too",
+      "convert: rule 3 is not an old rule in words in to_convert",
+      "convert: rule 9 is not an old rule in words in to_convert",
+      "convert: rule 4 is converted twice: give it one direction",
+      'rule 5 is an old rule in words ("loop unrolling"): convert it, in convert, to the direction its words mean: one in directions, or a new one you design in new_families',
+    ]);
+    assert.deepEqual(
+      validatePlan(
+        {
+          assignments,
+          convert: [
+            { rule: 4, family: "avoid" },
+            { rule: 5, family: "loop $unrolling" },
+          ],
+        },
+        input,
+      ).errors.map((e) =>
+        e.replace(/ is a kind of rule .*/, "").replace(/ is not a direction.*/, ""),
+      ),
+      ['convert: rule 4: "avoid"', 'convert: rule 5: "loop $unrolling"'],
+    );
+    // One the run has, or one designed in the same answer: both stand, by name.
+    const good = validatePlan(
+      {
+        assignments,
+        new_families: [
+          { id: "Shared memory", description: "kernels that stage data in shared memory" },
+        ],
+        convert: [
+          { rule: 4, family: ":shared memory:" },
+          { rule: 5, family: "unroll" },
+        ],
+      },
+      input,
+    );
+    assert.deepEqual(good.errors, []);
+    assert.deepEqual(good.plan?.convert, [
+      { rule: 4, family: "shared-memory" },
+      { rule: 5, family: "unroll" },
+    ]);
+    // With no old rule in words, nothing to convert.
+    assert.equal(
+      (JSON.parse(plannerContext(base)) as Record<string, unknown>).to_convert,
+      undefined,
+    );
+    assert.deepEqual(
+      validatePlan({ assignments }, { ...base, directions: ["tiling", "unroll"] }).errors,
+      [],
     );
   });
 

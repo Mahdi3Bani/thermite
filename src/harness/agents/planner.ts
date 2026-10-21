@@ -5,12 +5,14 @@ import { canonicalJson } from "../../core/canonical.ts";
 import { DIRECTIVE_KINDS, QueuePosition, type StoredRule } from "../../core/commands.ts";
 import {
   asToken,
+  CONVERT_PER_ROUND,
   DirectionRef,
   directionName,
   directionsToDesign,
   directionTokens,
   isLegacyRule,
   notADirection,
+  rulesToConvert,
 } from "../../core/directions.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../../core/journal.ts";
 import { NOTES_ARE_DATA, type notesData } from "../journal.ts";
@@ -40,11 +42,13 @@ import type { Assignment, Evidence, FamilyView } from "./registry.ts";
  * dropped or finished experiment is never given out, AVOID families are never given out and
  * every MANDATE family is. A rule names a direction (goal 066): one the run has, or a new one the
  * planner designs (new_families, its name and what it means, in its words); a rule in force for a
- * direction the run doesn't have yet must be designed in the answer. An old rule in words
- * (legacy) is the model's alone. An answer that
- * fails the checks gets one retry with the errors, then the fallback: lanes take queued
- * experiments in order (the scheduler does that), and the fixed plan below only fills an empty
- * queue. Planner trouble never pauses research.
+ * direction the run doesn't have yet must be designed in the answer. Each old rule in words
+ * (legacy) in force must be converted in the answer: the model names the direction its words mean
+ * (convert), one the run has or one it designs, and code replaces the rule with one on that
+ * direction. An answer that fails the checks gets one retry with the errors, then the fallback:
+ * lanes take queued experiments in order (the scheduler does that), and the fixed plan below only
+ * fills an empty queue; an old rule in words then waits for a later round. Planner trouble never
+ * pauses research.
  */
 
 export interface PlannerInput {
@@ -129,6 +133,11 @@ export interface QueuePlan {
   drop: { id: string; why: string }[];
   accept: { id: string; why: string; position?: QueuePosition | undefined }[];
   rules: PlannerRule[];
+  /**
+   * The old rules in words in force (legacy), each with the direction its words mean: one the run
+   * has, or one designed in the same answer. Code replaces each with a rule on that direction.
+   */
+  convert: { rule: number; family: string }[];
   /** Each lane's experiment (a queued or proposed id, or an added one's ref) and why. */
   handout: { lane: string; experiment: string; parent: "champion" | "lane_best"; why: string }[];
 }
@@ -155,10 +164,13 @@ export interface PlanResult {
 
 const Why = z.string().trim().min(1).max(2000);
 const PlanSchema = z.object({
-  /** New directions: the name (plain words or :name:, kept as its name) and what it means. */
+  /**
+   * New directions: the name (plain words or :name:, kept as its name) and what it means. Room
+   * for one more for each old rule in words the round converts, so each can get a new one.
+   */
   new_families: z
     .array(z.object({ id: DirectionRef, description: z.string().trim().min(3).max(300) }))
-    .max(8)
+    .max(8 + CONVERT_PER_ROUND)
     .default([]),
   add: z
     .array(
@@ -200,6 +212,17 @@ const PlanSchema = z.object({
       }),
     )
     .max(5)
+    .default([]),
+  /** Old rules in words, each with the direction its words mean (goal 066). */
+  convert: z
+    .array(
+      z.object({
+        rule: z.coerce.number().int().positive(),
+        /** The direction, as its name or :name:; checked against the run's and the answer's. */
+        family: z.string().trim().max(200),
+      }),
+    )
+    .max(CONVERT_PER_ROUND)
     .default([]),
   assignments: z.array(
     z.object({
@@ -246,6 +269,14 @@ const directiveWord = (family: string | undefined) =>
  */
 export function toDesign(input: Pick<PlannerInput, "directions" | "directives">) {
   return input.directions ? directionsToDesign(input.directives, input.directions) : [];
+}
+
+/**
+ * The old rules in words in force that this round converts (goal 066): each one the answer must
+ * give a direction for.
+ */
+export function toConvert(input: Pick<PlannerInput, "directives">) {
+  return rulesToConvert(input.directives);
 }
 
 /** Checks a raw plan; returns the errors (empty when valid) and the checked plan. */
@@ -404,6 +435,43 @@ export function validatePlan(
     }
     rules.push({ kind: r.kind, family, rationale: r.rationale, from_message: r.from_message });
   }
+  // Old rules in words (goal 066): the answer gives each the direction its words mean, one the
+  // run has or one it designs here; code then replaces the rule. One left out is refused.
+  const words = new Map(toConvert(input).map((r) => [r.rule, r]));
+  const convert: QueuePlan["convert"] = [];
+  const seen = new Set<number>();
+  for (const c of p.convert) {
+    if (!words.has(c.rule)) {
+      errors.push(`convert: rule ${c.rule} is not an old rule in words in to_convert`);
+      continue;
+    }
+    if (seen.has(c.rule)) {
+      errors.push(`convert: rule ${c.rule} is converted twice: give it one direction`);
+      continue;
+    }
+    seen.add(c.rule);
+    const family = directionName(c.family);
+    if (!family) {
+      errors.push(`convert: rule ${c.rule}: ${notADirection(c.family)}`);
+      continue;
+    }
+    if (directiveWord(family)) {
+      errors.push(`convert: rule ${c.rule}: "${c.family}" ${NOT_A_DIRECTION}`);
+      continue;
+    }
+    if (known && !known.includes(family) && !designed.has(family)) {
+      errors.push(
+        `convert: rule ${c.rule}: ${asToken(family)} is not one of the run's directions: to convert it to a new direction, design it in new_families too`,
+      );
+      continue;
+    }
+    convert.push({ rule: c.rule, family });
+  }
+  for (const [id, r] of words)
+    if (!p.convert.some((c) => c.rule === id))
+      errors.push(
+        `rule ${id} is an old rule in words ("${clip(r.words, 120)}"): convert it, in convert, to the direction its words mean: one in directions, or a new one you design in new_families`,
+      );
   return {
     errors,
     plan: {
@@ -412,6 +480,7 @@ export function validatePlan(
       drop: p.drop,
       accept: p.accept,
       rules,
+      convert,
       handout,
       newFamilies: p.new_families,
       notes: p.notes,
@@ -498,8 +567,11 @@ move or drop queued ones, and accept proposed ideas into up next or drop them. O
 directives (the rules for the plan): never give out an experiment whose family an AVOID
 directive names, give at least one lane an experiment of every MANDATE family (add one if the
 queue has none), and prefer TRY families. A directive marked legacy is an old rule in the
-owner's own words (match), from before rules named directions: code does not keep it, so weigh
-it yourself (do not give out what it avoids; prefer what it asks for). directions lists the
+owner's own words (match), from before rules named directions; to_convert lists them. Convert
+each one: add it to convert, with its id in rule and, in family, the direction its words mean:
+one in directions, or a new one you design in new_families. Code then replaces it with a rule
+of the same kind on that direction, and keeps that rule. Until then code does not keep it, so
+weigh it yourself (do not give out what it avoids; prefer what it asks for). directions lists the
 run's directions by name. to_design lists the directions that rules name but the run doesn't
 have yet: design each one, by adding it to new_families with its name and what it means, in your
 words, and add experiments in it when its rule asks for it (try, mandate). Messages in
@@ -522,7 +594,7 @@ ${NOTES_GUIDE} Put yours in journal, for example a key decision of this round an
 const SYSTEM = `${TASK} Answer only by calling submit_plan once.`;
 
 /** Through another harness (OpenCode), it answers with the plan as JSON text and no tools. */
-const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "a direction's name", "rationale": "...", "from_message": 1}], "new_families": [{"id": "a new direction's name", "description": "what it means, in your words"}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. Use no tools.`;
+const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "a direction's name", "rationale": "...", "from_message": 1}], "convert": [{"rule": 4, "family": "the direction the old rule's words mean"}], "new_families": [{"id": "a new direction's name", "description": "what it means, in your words"}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. Use no tools.`;
 
 /**
  * A planner call through another harness (OpenCode, Claude Code, Codex): the prompt in, the model's
@@ -559,7 +631,8 @@ export function plannerContext(input: PlannerInput): string {
     evidence: input.evidence,
     queue: input.queue ?? { up_next: [], proposed: [], in_progress: [], tried: [] },
     ...(input.laneState ? { lane_state: input.laneState } : {}),
-    // An old rule in words is marked legacy: code does not keep it (goal 066).
+    // An old rule in words is marked legacy: code does not keep it until it is converted, and
+    // to_convert lists those this round converts (goal 066).
     directives: input.directives.map((d) => ({
       id: d.id,
       ...d.body,
@@ -567,6 +640,7 @@ export function plannerContext(input: PlannerInput): string {
     })),
     ...(input.directions ? { directions: input.directions } : {}),
     ...(toDesign(input).length ? { to_design: toDesign(input) } : {}),
+    ...(toConvert(input).length ? { to_convert: toConvert(input) } : {}),
     lane_bests: input.laneBests,
     ...(input.campaignNotes ? { campaign_notes: input.campaignNotes } : {}),
     // Each message with the directions it names exactly, as :name:.
@@ -832,6 +906,18 @@ async function callPlanner(
                 }),
               ),
             ),
+            convert: Type.Optional(
+              Type.Array(
+                Type.Object({
+                  rule: Type.Number({ description: "An old rule in words, by its id" }),
+                  family: Type.String({
+                    description:
+                      "The direction its words mean: one in directions, or a new one you design in new_families",
+                  }),
+                }),
+                { description: "Each old rule in words in to_convert, with its direction" },
+              ),
+            ),
             new_families: Type.Optional(
               Type.Array(
                 Type.Object({
@@ -840,7 +926,7 @@ async function callPlanner(
                 }),
                 {
                   description:
-                    "New directions you design: each one in to_design, and any a rule of yours names",
+                    "New directions you design: each one in to_design, and any a rule or a conversion of yours names",
                 },
               ),
             ),

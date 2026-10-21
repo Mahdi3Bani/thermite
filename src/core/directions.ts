@@ -11,8 +11,8 @@ import { z } from "zod";
  * and dashes don't matter: `:Shared memory tiling:` and `shared-memory-tiling` are the same
  * direction, whose name is its words in lowercase joined by dashes (directionKey). A rule may name
  * a direction the run doesn't have yet: the planner designs it, in its own words, at its next
- * round. Rules in words that name no direction (`match`) are no longer made; old ones stay in
- * force for the planner's model only, as legacy.
+ * round. Rules in words that name no direction (`match`) are no longer made; an old one stays in
+ * force, as legacy, until the planner's next round converts it to a rule on a named direction.
  */
 
 /** A direction's name: 2 to 41 lowercase letters, digits and dashes, not starting with a dash. */
@@ -136,12 +136,51 @@ export const DirectionRef = z
   });
 
 /**
- * An old rule in words (`match`, from before rules named directions): kept in force, but only
+ * An old rule in words (`match`, from before rules named directions): kept in force until the
+ * planner's next round with its model converts it to a rule on a named direction. Until then only
  * the planner's model reads it, and code never keeps it.
  */
 export function isLegacyRule(body: unknown): boolean {
   const b = (body ?? {}) as { match?: unknown; family?: unknown };
   return typeof b.match === "string" && !b.family;
+}
+
+/** How many old rules in words one planner's round converts; the rest wait for the next round. */
+export const CONVERT_PER_ROUND = 5;
+
+/**
+ * The old rules in words in force that the planner's next round converts (goal 066): the first
+ * CONVERT_PER_ROUND by id, each with its kind, its words and why.
+ */
+export function rulesToConvert(
+  rules: readonly { id: number; body: unknown }[],
+): { rule: number; kind: string; words: string; rationale: string }[] {
+  return rules
+    .filter((r) => isLegacyRule(r.body))
+    .slice(0, CONVERT_PER_ROUND)
+    .map((r) => {
+      const b = r.body as { kind?: unknown; match?: unknown; rationale?: unknown };
+      return {
+        rule: r.id,
+        kind: String(b.kind ?? ""),
+        words: String(b.match),
+        rationale: String(b.rationale ?? ""),
+      };
+    });
+}
+
+/**
+ * An old rule in words as a rule on a named direction: the same kind, why, citations and source
+ * (the owner's message it came from), the direction in place of the words, and the rule and the
+ * words it was converted from.
+ */
+export function convertedRule(
+  id: number,
+  body: Record<string, unknown>,
+  family: string,
+): Record<string, unknown> {
+  const { match, ...rest } = body;
+  return { ...rest, family, converted_from: { rule: id, words: String(match) } };
 }
 
 /**

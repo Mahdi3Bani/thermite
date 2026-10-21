@@ -19,7 +19,10 @@ import type { Assignment, Registry } from "./registry.ts";
 /** Who gives out work and changes the queue for the coordinator, in the record. */
 export const PLANNER = "planner";
 
-/** A rule in force. One in words (legacy, goal 066) has no family: code never keeps it. */
+/**
+ * A rule in force. One in words (legacy, goal 066) has no family: code never keeps it, until the
+ * planner's round converts it to a rule on a named direction.
+ */
 export type Directive = { id: number; body: StoredRule };
 
 /** A lane's work for its next trial: the experiment and why the lane got it. */
@@ -179,10 +182,11 @@ export class Coordinator {
 
   /**
    * Applies a model's checked answer: accepted ideas and drops, new experiments (their refs
-   * become ids), moves, and the rules from the owner's messages. A change the queue no longer
-   * allows (the owner moved first) is skipped and said. Returns each lane's hand-out (a lane
-   * whose experiment can no longer be given out gets none, and takes one by the fixed rules), and
-   * the ids the added experiments got, by their refs.
+   * become ids), moves, the rules from the owner's messages, and the old rules in words it
+   * converted to named directions. A change the queue or the rules no longer allow (the owner
+   * moved first, or removed the old rule while the planner planned) is skipped and said. Returns
+   * each lane's hand-out (a lane whose experiment can no longer be given out gets none, and takes
+   * one by the fixed rules), and the ids the added experiments got, by their refs.
    */
   apply(
     run: string,
@@ -240,6 +244,11 @@ export class Coordinator {
         })),
         false,
       );
+    // Each old rule in words becomes a rule on the direction the model named (goal 066).
+    for (const c of plan.convert)
+      tryIt(`convert rule ${c.rule}`, () => {
+        this.ledger.convertRule(run, c.rule, c.family, PLANNER);
+      });
     const handout: (Handout & { parent: "champion" | "lane_best" })[] = [];
     for (const h of plan.handout) {
       const id = refs.get(h.experiment) ?? h.experiment;

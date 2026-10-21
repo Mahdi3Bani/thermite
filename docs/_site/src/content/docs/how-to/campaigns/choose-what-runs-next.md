@@ -127,9 +127,20 @@ When the model plans, code still refuses an answer that gives a lane an **Avoid*
 
 ### Old rules in words
 
-Before rules named directions, a rule could be in your own words, such as "anything that uses shared memory". Such a rule stays in force, marked `words` and drawn dashed, with `An old rule in words, from before rules named directions. Code can't keep it. Only the planner's model reads it, and a round planned without the model ignores it. Tell the planner to name a direction for it, then remove this one.` Thermite never removes it by itself. A new rule in words can't be made.
+Before rules named directions, a rule could be in your own words, such as "anything that uses shared memory". A new rule in words can't be made. An old one is converted to a rule on a named direction at the planner's next round; you have nothing to do.
 
-To give it a direction, press **Name a direction** beside it. The box in **Tell the planner** fills with a message made from the rule, such as `avoid anything that uses shared memory: Shared memory is slow on this GPU.` Change it if you want, then press **Send to the planner**. When the planner's answer shows its new rule, press **Remove** on the old one. On a research run, or with the planner off, the old rule has only **Remove**, and its note ends `Remove it.`
+Until then it stays in force, marked `words` and drawn dashed, with **Remove** only. Its note says what it waits for:
+
+| When | The note after `An old rule in words, from before rules named directions.` |
+| --- | --- |
+| The planner can convert it | `It converts at the planner's next round: round 4. The planner names its direction, and code keeps the new rule. Until then, only the planner's model reads it.` |
+| The rig has no model for the planner | `Code can't keep it. It converts at the planner's next round with a model, and this rig has no model for the planner now. Give the planner a model in Edit rig, or remove it.` |
+| The planner is off on **Edit rig** | `Code can't keep it. It converts at the planner's next round, and the planner is off on this rig. Switch the planner on in Edit rig, or remove it.` |
+| A research run | `Code can't keep it, and a research run has no planner to convert it to a direction. Remove it. To steer the run, send a rule for a task kind.` |
+
+At its next round with its model, the planner must convert every old rule in words in force, at most 5 a round, the oldest first. For each, it names the direction the words mean: one of the run's, or a new one it designs, as for a new direction in a message. An answer that leaves one unconverted is refused, and the planner tries again. A round planned without the model leaves the rule as it is, for a later round.
+
+The conversion replaces the old rule with a new rule on that direction. The new rule keeps the old one's kind, who set it, why, its sources and the message it came from, so it shows in **Rules** as a normal rule, such as **Avoid** `:shared-memory:` set by you, with `converted from: “anything that uses shared memory”` under its why. From then on, code keeps it. The old rule leaves force as converted, and stays in the run's record. **What the planner did** shows `Converted the old rule in words “anything that uses shared memory” (rule 4) to Avoid :shared-memory: (rule 9)`, and **History** says `The planner converted rule 4, an old rule in words (“anything that uses shared memory”), to rule 9: avoid :shared-memory:.` A direction the planner designed for it shows as `Designed the direction :shared-memory: for rule 4`. Thermite never drops an old rule in words without a rule in its place: only you remove one, with **Remove**.
 
 ### Remove a rule
 
