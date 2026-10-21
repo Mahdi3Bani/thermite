@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -19,6 +19,7 @@ import {
   oneContainerTargets,
   PROBE,
   type Probe,
+  platformInit,
   runpodCheck,
   setIdCheck,
   supervisorGpuCheck,
@@ -310,6 +311,33 @@ describe("the one-container image's checks of the container", () => {
       { pid: 11, ppid: 10, env: { RUNPOD_API_KEY: "made-up" } },
     ]);
     assert.equal(runpodCheck(leaked), "FOUND RUNPOD_API_KEY (pid 11)");
+  });
+
+  test("a platform's own init at PID 1 keeps RunPod's variables; the rig's processes don't", () => {
+    // RunPod runs an init of its own as PID 1; the image's entry point is its child.
+    const onRunpod = fakeProc([
+      { pid: 1, ppid: 0, env: { RUNPOD_API_KEY: "made-up", RUNPOD_POD_ID: "pod-1" } },
+      { pid: 10, ppid: 1, env: { THERMITE_TUNNEL_POD: "pod-1" } },
+      { pid: 11, ppid: 10, env: { PATH: "/bin" } },
+    ]);
+    symlinkSync("/sbin/docker-init", join(onRunpod, "1", "exe"));
+    assert.equal(platformInit(onRunpod), "/sbin/docker-init");
+    assert.equal(
+      runpodCheck(onRunpod),
+      "none (read 2 of 2 processes); PID 1 is the platform's own init (/sbin/docker-init), not the rig's, and keeps the container's first environment",
+    );
+    // A process the entry point started still counts.
+    const leaked = fakeProc([
+      { pid: 1, ppid: 0, env: { RUNPOD_API_KEY: "made-up" } },
+      { pid: 10, ppid: 1, env: { RUNPOD_API_KEY: "made-up" } },
+    ]);
+    symlinkSync("/sbin/docker-init", join(leaked, "1", "exe"));
+    assert.equal(runpodCheck(leaked), "FOUND RUNPOD_API_KEY (pid 10)");
+    // PID 1 as the image's own tini is the rig's: its variables count.
+    const ownInit = fakeProc([{ pid: 1, ppid: 0, env: { RUNPOD_API_KEY: "made-up" } }]);
+    symlinkSync("/usr/bin/tini", join(ownInit, "1", "exe"));
+    assert.equal(platformInit(ownInit), undefined);
+    assert.equal(runpodCheck(ownInit), "FOUND RUNPOD_API_KEY (pid 1)");
   });
 
   test("all of them together, as the selftest reports them", async () => {

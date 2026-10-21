@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   type Stats,
   statSync,
@@ -380,19 +381,43 @@ function rigProcesses(procDir: string): { pid: number; uid: number; environ?: st
   });
 }
 
+/** The image's own PID 1: tini, which the images' entry points run last. */
+const OWN_INIT = "/usr/bin/tini";
+
+/**
+ * PID 1's program when it is not the image's own tini: an init the platform runs, which starts the
+ * image's entry point as its child and keeps the environment the platform gave the container
+ * (RunPod does this). Undefined when PID 1 is the image's tini, or when this process can't tell.
+ */
+export function platformInit(procDir = "/proc"): string | undefined {
+  try {
+    const exe = readlinkSync(join(procDir, "1", "exe"));
+    return exe === OWN_INIT ? undefined : exe;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * RunPod's variables in the rig's processes (rigProcesses), as far as this process may read
- * their environments. "none (read N of M processes)" or "FOUND".
+ * their environments. "none (read N of M processes)" or "FOUND". A platform's own init at PID 1
+ * (platformInit) is not the rig's: the entry point took the variables out of everything it
+ * started, and the roles' pid1-environ probes show that no role can read PID 1's. The answer
+ * then says so.
  */
 export function runpodCheck(procDir = "/proc"): string {
-  const procs = rigProcesses(procDir);
+  const init = platformInit(procDir);
+  const procs = rigProcesses(procDir).filter((p) => !(init && p.pid === 1));
   const found = procs.flatMap((p) =>
     (p.environ ?? [])
       .filter((kv) => kv.startsWith("RUNPOD_"))
       .map((kv) => `${kv.split("=")[0]} (pid ${p.pid})`),
   );
   if (found.length) return `FOUND ${found.slice(0, 8).join(", ")}`;
-  return `none (read ${procs.filter((p) => p.environ).length} of ${procs.length} processes)`;
+  const read = `none (read ${procs.filter((p) => p.environ).length} of ${procs.length} processes)`;
+  return init
+    ? `${read}; PID 1 is the platform's own init (${init}), not the rig's, and keeps the container's first environment`
+    : read;
 }
 
 /**
