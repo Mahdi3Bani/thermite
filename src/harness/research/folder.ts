@@ -47,8 +47,13 @@ export function folderRootOf(scratchRoot: string, run: string): string {
   return join(scratchRoot, run);
 }
 
-/** Writes a file whole or not at all: readers never see half of it. */
-function writeAtomic(path: string, data: string | Buffer): void {
+/**
+ * Writes a file of the folder whole or not at all: readers never see half of it. The file and any
+ * folder it needs take their modes from the controller's umask (022), so every role reads them
+ * and only the controller's user changes them (the isolation selftest writes its research probe
+ * with it).
+ */
+export function writeAtomic(path: string, data: string | Buffer): void {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.tmp-${randomUUID().slice(0, 8)}`;
   writeFileSync(tmp, data);

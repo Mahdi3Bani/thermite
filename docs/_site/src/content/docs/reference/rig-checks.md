@@ -114,6 +114,7 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `secret:<file>` | Read | Each secret file: the supervisor token, the proposer token and the model key files. The rig check also tries the stored model route. Where the harness shares its container with a supervisor in [pull mode](../explanation/trust.md#rigs-in-pull-mode) (`THERMITE_TUNNEL_DIR` set), also the pod's own keys, `keys.json` |
 | `build-overwrite` | Write | A file of a stored build. Skipped before any build exists |
 | `run-kit-write`, `run-kit-create` | Write, create a file | A run's read-only copy of kit files, made the way the judge makes it |
+| `research-write`, `research-create` | Write, create a file | A claim's file in a run's [research folder](../explanation/campaign-modes.md#research), and its `claims/` folder, written the way the harness writes them |
 | `controller-environ` | Read | The environment of the harness's controller process |
 | `pid1-environ` | Read | The environment of the container's first process, which holds what the container was started with |
 | `device:<node>` | Open | Each GPU device node, for roles that must not use the device |
@@ -135,6 +136,7 @@ In the [one-container rig image](harness-image.md#the-one-container-rig-image), 
 | Probe | Who | What |
 | --- | --- | --- |
 | `run-kit-read` | The timing users (`run`, `run-<i>`) | Read the run's copy of kit files |
+| `research-read` | The workers' users (`lane-1`, `agent-1`) and the planner's (`planner`) | Read the claim's file in that research folder |
 | `device:<own card>` and the control nodes | Each role with a GPU of its own (dedicated GPUs only) | Open its own card and the shared control nodes |
 | `visible-gpus` | Each role with a GPU of its own | `nvidia-smi -L` lists exactly that role's card |
 

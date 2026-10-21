@@ -34,6 +34,7 @@ import {
 import { listProcesses, type Proc } from "./broker/process.ts";
 import { IDS, type Role, roleIds, walk } from "./broker/runner.ts";
 import { copyForRun } from "./judge/measure.ts";
+import { writeAtomic } from "./research/folder.ts";
 
 /**
  * Isolation self-test, run as root inside the harness container (`thermite selftest
@@ -185,6 +186,29 @@ export function deviceProbes(
     ...others.map((c) => refuse(c.node)),
     { name: "visible-gpus", op: "gpus", path: "nvidia-smi", expect: own.uuid },
   ];
+}
+
+/**
+ * A research folder for the selftest, written as the harness writes a run's (goal 062): its
+ * index and one claim, under the controller's umask (main.ts) whoever runs the selftest. The
+ * claim's file and its folder: no role may change the one or add to the other.
+ */
+export function researchProbeFolder(dir: string): { claim: string; claims: string } {
+  removeOwnTree(dir);
+  const claim = join(dir, "claims", "c-selftest.md");
+  const umask = process.umask(0o022);
+  try {
+    writeAtomic(join(dir, "INDEX.md"), "# Isolation selftest\n");
+    writeAtomic(claim, "# Claim c-selftest: verified\n\nThe isolation selftest wrote it.\n");
+  } finally {
+    process.umask(umask);
+  }
+  return { claim, claims: dirname(claim) };
+}
+
+/** The roles that read a run's research folder: the workers' users and the planner's. */
+export function readsResearch(role: Role): boolean {
+  return /^(lane-\d+|agent-\d+|planner)$/.test(role);
 }
 
 /** The processes running a script of Thermite's (`node <...>/<script>`), other than this one. */
@@ -687,6 +711,15 @@ export async function isolationSelftest(opts: {
     { name: "run-kit-write", op: "write", path: driver },
     { name: "run-kit-create", op: "create", path: join(runKit, "kit", "run") },
   );
+  // A run's research folder, written as the harness writes one and owned by the controller's
+  // user: no role may change a record or add one; the workers and the planner read it.
+  const researchDir = join(opts.scratchDir, "thermite", "selftest-research");
+  const research = researchProbeFolder(researchDir);
+  walk(researchDir, (p) => chownSync(p, IDS.thermite.uid, IDS.thermite.gid));
+  probes.push(
+    { name: "research-write", op: "write", path: research.claim },
+    { name: "research-create", op: "create", path: research.claims },
+  );
   const pid = opts.controllerPid ?? controllerPid();
   if (pid) probes.push({ name: "controller-environ", op: "read", path: `/proc/${pid}/environ` });
   else skipped.push("controller-environ (controller not found)");
@@ -744,6 +777,8 @@ export async function isolationSelftest(opts: {
       const mine = [...probes, ...deviceProbes(nodes, deviceSide(role, gpu), card.layout, n)];
       if (judgeCardOf(role) !== undefined)
         mine.push({ name: "run-kit-read", op: "readable", path: driver });
+      if (readsResearch(role))
+        mine.push({ name: "research-read", op: "readable", path: research.claim });
       const r = await client.run({
         role,
         argv: [process.execPath, "-e", PROBE, JSON.stringify(mine)],
@@ -764,6 +799,7 @@ export async function isolationSelftest(opts: {
   } finally {
     client.close();
     removeOwnTree(runKit);
+    removeOwnTree(researchDir);
   }
   return report;
 }

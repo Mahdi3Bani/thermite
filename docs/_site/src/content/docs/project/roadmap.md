@@ -19,6 +19,7 @@ Thermite has not had a release yet. The work now is toward **v0.1.0**, its first
 
 Thermite's core is built: the judge, control and its dashboard, the agents, and the advisors that supervise them. This site describes what is built today, including these goals of this release:
 
+- a research folder for each research run, which its workers search with ordinary tools and add to, and which a finished campaign exports with its report. It is done ([goal 062](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/062-research-folder.goal); [Research](../explanation/campaign-modes.md#research));
 - the dashboard's new campaign, run and live views, with steering as one message box. It is done ([goal 063](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/063-scan-and-steer.goal));
 - one experiment queue for each run, which the planner coordinates. It is done ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal));
 - journals and a research corpus from every campaign: the agents' field notes, research in every mode, and Thermite's own knowledge base, with a folder for each campaign that holds everything its runs produce and that later runs' workers, planner and advisors search. It is done ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal));
@@ -37,7 +38,6 @@ Also built:
 
 In progress:
 
-- a research folder that research-mode workers search with ordinary tools and write to. It is built, and its first real research runs are under way ([goal 062](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/062-research-folder.goal));
 - a cap on the context window of a rig's model, and compaction near it: a trial's conversation is kept, summarized and goes on, in every harness. Both work over REST and MCP; fields for them on **Edit rig** are still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
 
 Still to come in v0.1.0:

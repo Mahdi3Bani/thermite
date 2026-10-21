@@ -9,7 +9,9 @@
 //   - no lane process outlives its trial;
 //   - control's model check reaches the model through the rig's route with a correct tool call;
 //   - under OpenCode, a hill-climb trial submits with thermite-trial, and a research run's trial
-//     runs the research tools as `thermite-trial research` commands.
+//     runs the research tools as `thermite-trial research` commands;
+//   - that trial reads and searches its run's research folder, is refused changing the harness's
+//     part of it, and the file it writes in its working area is saved when it ends.
 // Usage: COMPOSE="podman compose" node scripts/agents-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -47,6 +49,8 @@ const textOf = (c) =>
 /**
  * The OpenCode research trial: each research tool as a shell command, in turn. Its fetch names
  * this machine's scripted model, a private address, which the harness's fetcher must refuse.
+ * From its working area, where the shell starts, it reads and searches the run's research
+ * folder, tries to change the harness's part of it, and writes a file of its own.
  */
 function researchSteps() {
   const shell = (command) => ({ name: "shell", args: { command, timeout: 0 } });
@@ -56,6 +60,14 @@ function researchSteps() {
     shell(
       `thermite-trial research update_section - <<'EOF'\n{"name": "opencode", "body": "Written with thermite-trial in OpenCode."}\nEOF`,
     ),
+    // The folder's index, and the note just recorded, found by searching all of the folder.
+    shell("head -n 1 ../../INDEX.md; grep -rl 'opencode research note' ../.. 2>/dev/null"),
+    // Two of the harness's files and two new ones in its folders: each must be refused. The
+    // words of each answer are put together in the shell, so the command itself holds neither.
+    shell(
+      'a=ALLOWED; r=REFUSED; for f in INDEX.md REPORT.md claims/c-forged.md lanes/forged.md; do if (echo forged >> "../../$f") 2>/dev/null; then echo "FOLDER-WRITE-$a $f"; else echo "FOLDER-WRITE-$r $f"; fi; done',
+    ),
+    shell("printf 'Read next: the sources on quotes.\\n' > synthesis.md && ls synthesis.md"),
     shell("thermite-trial research progress"),
   ];
 }
@@ -231,6 +243,13 @@ const model = await scriptedModel(script, {
         if (/"note":\s*\d+/.test(out)) researchSeen.note = true;
         if (/"section":\s*"opencode"/.test(out)) researchSeen.section = true;
         if (/"questions":\s*\[/.test(out)) researchSeen.progress = true;
+        // The research folder, as the trial's shell saw it.
+        if (/# Research through OpenCode/.test(out)) researchSeen.index = true;
+        if (/notes\/note-\d{5}\.md/.test(out)) researchSeen.searched = true;
+        for (const hit of out.matchAll(/FOLDER-WRITE-(ALLOWED|REFUSED) (\S+)/g)) {
+          researchSeen.writes ??= {};
+          researchSeen.writes[hit[2]] = hit[1];
+        }
       }
       for (const hit of JSON.stringify(m.content ?? "").matchAll(/SETID-(BEFORE|AFTER) (\S+)/g))
         setid[hit[1]] = hit[2];
@@ -488,6 +507,34 @@ try {
       seen: researchSeen,
       refusal: refusal?.body.reason,
       note: note?.body,
+    },
+  );
+  // The run's research folder, as the lane's own user saw it from OpenCode's shell: the harness's
+  // index and records to read and search, none of them to change, and a working area whose
+  // files the harness saved and recorded when the trial ended.
+  const saved = researchEvents.find(
+    (e) => e.kind === "research_files_saved" && e.body.trial === researchTrial.body.trial,
+  );
+  const doc = researchEvents.find(
+    (e) => e.kind === "research_doc" && e.body.path === "synthesis.md",
+  );
+  const writes = researchSeen.writes ?? {};
+  check(
+    "a research trial under OpenCode reads and searches its run's research folder, cannot change the harness's part, and its own files are saved when it ends",
+    researchSeen.index === true &&
+      researchSeen.searched === true &&
+      Object.keys(writes).length === 4 &&
+      Object.values(writes).every((w) => w === "REFUSED") &&
+      Number(saved?.body.written) >= 1 &&
+      doc?.body.trial === researchTrial.body.trial &&
+      doc?.body.change === "written" &&
+      /Read next: the sources on quotes\./.test(String(doc?.body.text)),
+    {
+      index: researchSeen.index ?? false,
+      searched: researchSeen.searched ?? false,
+      writes,
+      saved: saved?.body,
+      doc: doc && { trial: doc.body.trial, path: doc.body.path, bytes: doc.body.bytes },
     },
   );
   check(
