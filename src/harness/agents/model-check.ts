@@ -6,6 +6,8 @@ import { buildModel, type ModelConfig } from "./model.ts";
 export interface RigCheckReport {
   ok: boolean;
   summary: string;
+  /** A note on a check that passed with a caveat (the smoke check on a machine with noisy timing). */
+  note?: string | undefined;
   detail?: Record<string, unknown> | undefined;
 }
 

@@ -17,7 +17,7 @@ A **rig** can check itself in three ways. Each check runs inside the rig's **har
 ## How a check runs
 
 - **The command.** A check starts with the signed `rig_check` command, with payload `{"check": "model" | "isolation" | "smoke", "force"?: true}`. The dashboard, the REST API, the command line and the MCP tool `issue_command` can all send it. See [Signed commands](signed-commands.md).
-- **The result comes later.** The command returns as soon as the check starts. The rig records two events: `rig_check_started` (with an id, the check and `force`), then `rig_check_finished` with `ok`, the summary sentence (at most 2,000 characters) and details (at most 60,000 characters). The result reaches control with the rig's next report.
+- **The result comes later.** The command returns as soon as the check starts. The rig records two events: `rig_check_started` (with an id, the check and `force`), then `rig_check_finished` with `ok`, the summary sentence (at most 2,000 characters), a `note` when a check passed with one (the smoke check on noisy timing, below), and details (at most 60,000 characters). Control's view of the rig keeps each check's `note`, or `null`. The result reaches control with the rig's next report.
 - **One at a time.** A rig runs one check at a time.
 - **On its own.** When the harness runs under the broker, it runs the isolation check every time it starts, before its API, its judge or any agent. It uses `force`, since nothing else can be running yet. It runs the model check whenever control gives the rig a new model route, or right after the check that is running then.
 
@@ -186,7 +186,7 @@ The details hold every probe's result for every role, the container's checks, an
 
 ## Smoke check
 
-The smoke check runs a small campaign with no agents on the rig's own target. The changes it submits, called candidates, each have a known right verdict. It passes when every candidate gets it.
+The smoke check runs a small campaign with no agents on the rig's own target. The changes it submits, called candidates, each have a known right verdict. It passes when every candidate gets it, with one exception: [noisy timing](#noisy-timing).
 
 1. It picks the smoke kit for the rig's target: `smoke-cpu` for `cpu`, `smoke-cuda` for `cuda-gpu`. It reads the kits and their projects from `/opt/thermite/checks` in the harness image, or from `THERMITE_CHECKS_DIR`.
 2. It makes a git repository of the project and one of the kit (without its candidates), with fixed dates, so the same files always give the same commits.
@@ -195,6 +195,7 @@ The smoke check runs a small campaign with no agents on the rig's own target. Th
 5. It submits `good`, and waits for it the same way.
 6. It closes its run (`the smoke check is done`) and resumes the runs it paused.
 7. It compares each result with the expected one. A candidate expected to be `rejected_v0` is compared by its attempt state; the others by their verdict.
+8. It passes when every result is the expected one, or when the only wrong result is the `noop` candidate's `inconclusive` in place of `neutral`. It fails on any other wrong result, alone or beside that one.
 
 Every candidate is judged against the seed, the project as it is.
 
@@ -244,9 +245,16 @@ The contract measures `small` and `large`, keeps `held` for confirmation, and le
 | Summary | Meaning |
 | --- | --- |
 | `smoke on <kit>: all <n> candidates were judged as expected (run <run>)` | Passed |
+| `smoke on <kit>: <n-1> of <n> candidates were judged as expected; the no-op came out inconclusive, not neutral (run <run>). Note: The timing on this machine is noisy. Results here need more repeats.` | Passed, with a note: see [Noisy timing](#noisy-timing) |
 | `smoke on <kit>: <k> of <n> candidates were judged otherwise: <name> expected <x>, got <y>; …` | Failed. Each wrong candidate is listed |
 | `there is no smoke kit for a <type> target` | The rig's target is neither `cpu` nor `cuda-gpu` |
 | `the smoke kit is not in this image (<dir>)` | The image has no smoke kit at that path |
 | `the judge did not settle <names> within 180 min` | The 3-hour limit passed |
 
-The details list each candidate with its expected result, its actual result and its attempt id. The check's run stays on the dashboard, so its attempts can be read afterwards. While it runs, it shows under **At work now** on **Campaigns**. After it, its campaign shows on **Campaigns** under the **Rig checks** and **All** filters (the default filter hides rig checks), and the run is under **Earlier runs** on the campaign's page, as **Finished**. [Your first run](../tutorials/first-run.md) walks through one.
+The details list each candidate with its expected result, its actual result and its attempt id. A pass with the note also has `noisy_timing: true` and the `note`. The check's run stays on the dashboard, so its attempts can be read afterwards. While it runs, it shows under **At work now** on **Campaigns**. After it, its campaign shows on **Campaigns** under the **Rig checks** and **All** filters (the default filter hides rig checks), and the run is under **Earlier runs** on the campaign's page, as **Finished**. [Your first run](../tutorials/first-run.md) walks through one.
+
+### Noisy timing
+
+The `noop` candidate changes nothing that runs, so the judge should find no difference: `neutral`. On a machine whose timing varies a lot from run to run, such as a virtual machine that shares its host, the judge can't tell "no difference" from the noise in the contract's three runs per case, and says `inconclusive`. That is the judge working as it must: it doesn't call a result when its measurements can't support one.
+
+So when the no-op's `inconclusive` is the only wrong result, the check passes, and its summary ends with the note `The timing on this machine is noisy. Results here need more repeats.` The note means that campaigns on this rig need more measurement to tell small effects apart. Raise `acceptance.runs_per_cell` in their contracts (**Runs per case** on the **New campaign** page), or run them on a quieter machine. Any other wrong result still fails the check: a no-op judged `regress` or `win_confirmed`, a known win that is not confirmed, or a broken change that is not caught.

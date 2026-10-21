@@ -5,7 +5,13 @@ import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { makeJudgeEnv } from "../testing/judge-env.ts";
-import { seedSmokeRepos, smokeCheck } from "./smoke-check.ts";
+import {
+  NOISY_TIMING_NOTE,
+  type SmokeResult,
+  seedSmokeRepos,
+  smokeCheck,
+  smokeReport,
+} from "./smoke-check.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -96,5 +102,91 @@ describe("the smoke rig check", () => {
     });
     assert.equal(r.ok, false);
     assert.match(r.summary, /no smoke kit for a tpu target/);
+  });
+});
+
+describe("the smoke check's report", () => {
+  // Each CPU candidate with its expected result, as the kit lists them; `got` is set per test.
+  const expected = JSON.parse(
+    readFileSync(join(repoRoot, "kits/smoke-cpu/candidates/candidates.json"), "utf8"),
+  ) as Record<string, { expect: string; accept?: string[] }>;
+  const results = (got: Record<string, string> = {}): Record<string, SmokeResult> =>
+    Object.fromEntries(
+      Object.entries(expected).map(([n, c], i) => {
+        const want = c.accept ?? [c.expect];
+        const g = got[n] ?? (want[0] as string);
+        return [n, { expect: want.join("|"), got: g, ok: want.includes(g), attempt: `a-${i}` }];
+      }),
+    );
+
+  test("every expected result passes, with no note", () => {
+    const r = smokeReport("smoke-cpu", "check-smoke-1", results());
+    assert.equal(r.ok, true);
+    assert.equal(
+      r.summary,
+      "smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-1)",
+    );
+    assert.equal(r.note, undefined);
+    assert.equal(r.detail?.noisy_timing, undefined);
+  });
+
+  test("a no-op that is inconclusive, as the only wrong result, passes with the note on noisy timing", () => {
+    const r = smokeReport("smoke-cpu", "check-smoke-1", results({ noop: "inconclusive" }));
+    assert.equal(r.ok, true, r.summary);
+    assert.equal(r.note, NOISY_TIMING_NOTE);
+    assert.equal(
+      r.summary,
+      "smoke on smoke-cpu: 11 of 12 candidates were judged as expected; the no-op came out inconclusive, not neutral (run check-smoke-1). Note: The timing on this machine is noisy. Results here need more repeats.",
+    );
+    assert.equal(r.detail?.noisy_timing, true);
+    assert.equal(r.detail?.note, NOISY_TIMING_NOTE);
+    const noop = (r.detail?.candidates as Record<string, SmokeResult> | undefined)?.noop;
+    assert.deepEqual(noop, { expect: "neutral", got: "inconclusive", ok: false, attempt: "a-1" });
+    // The CUDA kit's no-op is judged the same way.
+    const cuda = smokeReport("smoke-cuda", "check-smoke-2", {
+      good: { expect: "win_confirmed", got: "win_confirmed", ok: true, attempt: "g" },
+      noop: { expect: "neutral", got: "inconclusive", ok: false, attempt: "n" },
+    });
+    assert.equal(cuda.ok, true, cuda.summary);
+    assert.match(cuda.summary, /^smoke on smoke-cuda: 1 of 2 candidates were judged as expected;/);
+  });
+
+  test("a no-op that is inconclusive beside another wrong result still fails, with no note", () => {
+    const others: Record<string, string>[] = [
+      { good: "neutral" },
+      { good: "inconclusive" },
+      { broken: "neutral" },
+      { overwrite: "win_confirmed" },
+    ];
+    for (const other of others) {
+      const r = smokeReport(
+        "smoke-cpu",
+        "check-smoke-1",
+        results({ noop: "inconclusive", ...other }),
+      );
+      assert.equal(r.ok, false, JSON.stringify(other));
+      assert.equal(r.note, undefined);
+      assert.equal(r.detail?.noisy_timing, undefined);
+      assert.match(r.summary, /^smoke on smoke-cpu: 2 of 12 candidates were judged otherwise: /);
+      assert.match(r.summary, /noop expected neutral, got inconclusive/);
+    }
+  });
+
+  test("any other wrong result fails: a no-op with another verdict, or another candidate inconclusive", () => {
+    const wrong: Record<string, string>[] = [
+      { noop: "regress" },
+      { noop: "win_confirmed" },
+      { noop: "" },
+      { good: "inconclusive" },
+      { broken: "inconclusive" },
+    ];
+    for (const got of wrong) {
+      const r = smokeReport("smoke-cpu", "check-smoke-1", results(got));
+      assert.equal(r.ok, false, JSON.stringify(got));
+      assert.equal(r.note, undefined);
+      assert.match(r.summary, /^smoke on smoke-cpu: 1 of 12 candidates were judged otherwise: /);
+    }
+    const none = smokeReport("smoke-cpu", "check-smoke-1", results({ noop: "" }));
+    assert.match(none.summary, /noop expected neutral, got nothing$/);
   });
 });

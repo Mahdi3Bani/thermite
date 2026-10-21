@@ -1112,6 +1112,7 @@ export class HarnessService {
         check: p.check,
         ok: r.ok,
         summary: r.summary.slice(0, 2000),
+        ...(r.note ? { note: r.note } : {}),
         ...(detail
           ? { detail: detail.length > 60_000 ? `${detail.slice(0, 60_000)}…` : r.detail }
           : {}),

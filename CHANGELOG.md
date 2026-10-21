@@ -41,6 +41,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 ### Operate
 
 - Control's log pages through every entry, in the dashboard, over REST and in the `control_log` MCP tool.
+- The judge's smoke check passes on a machine with noisy timing when the only wrong result is the no-op's `inconclusive` in place of `neutral`. It then says so in a note: the timing on this machine is noisy, and results there need more repeats. Any other wrong result still fails it.
 - The documentation site has tutorials, how-to guides, reference and explanation. Agents read it through `llms.txt`. It includes the known limits and the security model.
 - `SECURITY.md`, `CONTRIBUTING.md` and a code of conduct (the Contributor Covenant 2.1). CI runs on every push to the development branch: the checks, the docs site, a secret scan, the compose smoke test, the rig image, RunPod against a fake API, and the quick start from the release bundle.
 

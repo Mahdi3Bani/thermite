@@ -16,6 +16,7 @@ import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { ModelSource } from "./agents/model-source.ts";
 import { createHarnessApi } from "./api.ts";
 import { resolveInbox } from "./imports.ts";
+import { NOISY_TIMING_NOTE, smokeReport } from "./smoke-check.ts";
 
 const tokens = { supervisor: "sup-token-123456", proposer: "prop-token-123456" };
 const auth = (t: string) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
@@ -450,6 +451,28 @@ describe("harness service and API", () => {
     const last = env.service.ledger.eventsAfter(0, 1000).events.at(-1);
     assert.equal(last?.kind, "rig_check_finished");
     assert.match(JSON.stringify(last?.body), /interrupted: the controller restarted/);
+  });
+
+  test("a check that passed with a note records the note in its event", async () => {
+    const env = makeHarnessEnv("rig-a");
+    env.service.rigChecks = {
+      smoke: {
+        run: async () =>
+          smokeReport("smoke-cpu", "check-smoke-1", {
+            noop: { expect: "neutral", got: "inconclusive", ok: false, attempt: "a-1" },
+            timer: { expect: "rejected_v0", got: "rejected_v0", ok: true, attempt: "a-2" },
+          }),
+      },
+    };
+    await env.service.applyCommand(env.sign("rig_check", { check: "smoke" }));
+    await new Promise((r) => setTimeout(r, 20));
+    const done = env.service.ledger
+      .eventsAfter(0, 1000)
+      .events.find((e) => e.kind === "rig_check_finished");
+    const body = done?.body as { ok?: boolean; summary?: string; note?: string };
+    assert.equal(body.ok, true);
+    assert.equal(body.note, NOISY_TIMING_NOTE);
+    assert.match(String(body.summary), /Note: The timing on this machine is noisy\./);
   });
 
   test("the isolation check at start runs forced and is awaited; a route set meanwhile is checked after it", async () => {
