@@ -320,6 +320,16 @@ describe("RunPod test pods", () => {
     const after = await (await api.request("/ui/settings", { headers: { cookie } })).text();
     assert.match(after, /Start a test pod/);
     assert.match(after, new RegExp(`value="${IMAGE}"`), "control's test image fills the form in");
+    // The form and the MCP tool name both images a test pod can run.
+    assert.match(
+      after,
+      /Image<i class="ii" tabindex="0" data-tip="What the pod runs: Thermite's CUDA harness image, or the one-container rig image that a rig on RunPod starts from/,
+    );
+    const tool = (await operator.listTools()).tools.find((t) => t.name === "runpod_test_start");
+    assert.match(
+      String(tool?.description),
+      /one pod of Thermite's CUDA harness image, or of the one-container rig image/,
+    );
     const json = await api.request(`/ui/settings/clouds/runpod/tests/${started.id}.json`, {
       headers: { cookie },
     });

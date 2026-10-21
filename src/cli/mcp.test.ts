@@ -74,4 +74,24 @@ describe("thermite mcp", () => {
       await fake.close();
     }
   });
+
+  test("the usage names every option change takes, --auth among them", async () => {
+    const help = await run(process.execPath, [
+      "--experimental-strip-types",
+      "--no-warnings",
+      CLI,
+      "help",
+    ]);
+    const change = /\n {2}mcp change NAME ([^\n]*\n {10}[^\n]*)/.exec(help.stdout)?.[1] ?? "";
+    for (const option of [
+      "--url URL",
+      "--auth oauth|key|client|none",
+      "--header H",
+      "--secret-file F",
+      "--client-id ID",
+      "--client-secret-file F",
+      "--scope S",
+    ])
+      assert.ok(change.includes(`[${option}]`), `${option} in: ${change}`);
+  });
 });

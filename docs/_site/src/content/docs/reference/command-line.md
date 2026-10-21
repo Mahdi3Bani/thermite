@@ -145,10 +145,10 @@ usage: thermite <command> [options]
                                       seals each secret and reads the server's tools. oauth:
                                       prints the sign-in page's address: open it and allow
                                       Thermite
-  mcp change NAME [--url URL] [--header H] [--secret-file F] [--client-id ID]
-          [--client-secret-file F] [--scope S] --control URL --token-file F
+  mcp change NAME [--url URL] [--auth oauth|key|client|none] [--header H] [--secret-file F]
+          [--client-id ID] [--client-secret-file F] [--scope S] --control URL --token-file F
                                       change a server; a secret left out is kept, except for
-                                      another address, which needs it again
+                                      another address or another --auth, which needs it again
   mcp check NAME --control URL --token-file F
                                       read the server's tools again (it calls none)
   mcp sign-in NAME --control URL --token-file F
@@ -564,7 +564,7 @@ The options of `add` and `change`:
 | Option | Meaning |
 | --- | --- |
 | `--url URL` | The server's MCP address: `https://`, or `http://` for `localhost`, `127.0.0.1` and `[::1]` only |
-| `--auth oauth\|key\|client\|none` | How it signs Thermite in. Required for `add` |
+| `--auth oauth\|key\|client\|none` | How it signs Thermite in. Required for `add`. With `change`, another sign-in needs its secret again |
 | `--header H` | `key`: the header the key goes in. Default `Authorization` |
 | `--secret-file F` | `key`: a file with the header's whole value, such as `Bearer` and the token |
 | `--client-id ID` | `client`, or `oauth` for a server that does not register clients by itself |

@@ -760,7 +760,7 @@ Returns a list of tests, each with `id`, `cloud`, `active`, `created_by`, `phase
 
 **Start a RunPod test pod.** Owner and operator.
 
-> Spends money. Starts one pod of Thermite's CUDA harness image on a GPU cloud from Providers, to check that a rig can run there: root, capabilities, GPU device nodes, RunPod's variables, outbound HTTPS and Thermite's isolation self-test, then (by default) a stop and a start to see it gets its GPU back. Control removes the pod when the test ends; follow it with runpod_tests. One test per cloud at a time. Defaults: the cheapest GPU in stock on Secure cloud, control's test image, a 40 GB disk, no time limit.
+> Spends money. Starts one pod of Thermite's CUDA harness image, or of the one-container rig image that a rig on RunPod starts from (its isolation self-test then also checks the supervisor's places), on a GPU cloud from Providers, to check that a rig can run there: root, capabilities, GPU device nodes, RunPod's variables, outbound HTTPS and Thermite's isolation self-test, then (by default) a stop and a start to see it gets its GPU back. Control removes the pod when the test ends; follow it with runpod_tests. One test per cloud at a time. Defaults: the cheapest GPU in stock on Secure cloud, control's test image, a 40 GB disk, no time limit.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |

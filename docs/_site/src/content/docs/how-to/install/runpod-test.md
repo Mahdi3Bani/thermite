@@ -10,7 +10,7 @@ sidebar:
 A test pod is a real RunPod pod. RunPod bills it by the second from the moment it starts, until control removes it. Control removes it when the test is done, but sets no time limit of its own: set **End it after (minutes)** before you start one, so the pod ends even if something goes wrong.
 :::
 
-A test pod tells you whether a [rig](../../reference/glossary.md) could run on RunPod: whether Thermite's harness gets root and the capabilities it needs there, whether the agents can be kept off the judge's GPU, and whether Thermite's isolation self-test passes. Control starts one pod of the CUDA harness image, or of the one-container rig image, reads its report, and removes it.
+A test pod tells you whether a [rig](../../reference/glossary.md) could run on RunPod: whether Thermite's harness gets root and the capabilities it needs there, whether the agents can be kept off the judge's GPU, and whether Thermite's isolation self-test passes. Control starts one pod of the CUDA harness image, or of the one-container rig image that a [rig on RunPod](runpod-rig.md) starts from, reads its report, and removes it.
 
 A test pod is no rig: it runs no campaign. To run one there, see [Run a rig on RunPod](runpod-rig.md).
 

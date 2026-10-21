@@ -49,6 +49,17 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 /** The Codex CLI's binary: THERMITE_CODEX_BIN, else `codex` on the PATH (read when used). */
 export const codexBin = () => process.env.THERMITE_CODEX_BIN ?? "codex";
 
+/** What to say when the image has no Codex CLI: an image built with an empty CODEX_VERSION. */
+export const NO_CODEX =
+  "this rig's harness image has no Codex CLI: build the image with the Codex option (CODEX_VERSION, which the published images set), or give the rig another harness on Edit rig";
+
+/** Why the Codex CLI exited, in words. A missing program says so, rather than the shell's note. */
+export function codexExitWords(code: number | string | null, note: string): string {
+  if ((code === 126 || code === 127) && /codex: (No such file or directory|not found)/.test(note))
+    return NO_CODEX;
+  return `Codex exited ${code}: ${note}`;
+}
+
 /** The Codex CLI's executable as an absolute path (found on PATH), or undefined if it is not there. */
 export function codexExe(): string | undefined {
   const bin = codexBin();
@@ -565,7 +576,10 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
-      result.error = `Codex exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
+      result.error = codexExitWords(
+        outcome.exitCode ?? outcome.signal,
+        tally.notes.at(-1) ?? "no output",
+      );
       break;
     }
     // Resumed twice to get a submission, and then for as long as the owner's messages wait and
@@ -656,7 +670,7 @@ export async function codexOnce(
       tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
       tally.errors.push(
-        `Codex exited ${r.exitCode ?? r.signal}: ${tally.notes.at(-1) ?? r.stderr.slice(-300)}`,
+        codexExitWords(r.exitCode ?? r.signal, tally.notes.at(-1) ?? r.stderr.slice(-300)),
       );
   } finally {
     o.signal?.removeEventListener("abort", kill);
