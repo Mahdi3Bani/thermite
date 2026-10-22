@@ -5,7 +5,7 @@ status: VERIFIED
 version: "0.1.0"
 depends_on: []
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-22
 ---
 
 # 075 · Model usage for each run, campaign and the whole system
@@ -58,6 +58,7 @@ The owner, 2026-10-21: "overview on a capmaign run doesn't show total tokens use
   - **A run's top.** One line, with an i: its trials, rounds, time and time in calls (`48 trials · 16 rounds · 30 h 0 m · 6 h 34 m in calls`). The run's time is from its start to now, or to its last event once it is closed; paused time counts. Then two cards: **Cost**, as before, and one card with **Tokens in** (and its split), **Tokens out** and **Output speed**. A run with no record yet ends the line with `no model call yet`, and has no cards.
   - **A Stats tab.** The run page had none, so it gets one, the last tab, after Planner (`?view=stats`), where the top shows (a run with agents, records or a pod's spend). On it: **Calls** (the count, "28 a trial", the median time to the first token, and a bar for each round with `round 1` and the latest round under them), then **By agent and model**, as before.
   - **Model prices.** The price fields inside each provider are gone. Under the Providers block, one plain table, **Model prices**: one row for each model of each provider that is not a subscription (Claude or ChatGPT), with Model, Provider, In, Cached in and Out ($ for a million tokens), and **Price from** (`provider's list`, `yours`, `free`, `no price`). A listed price is text, not a field. One **Save prices** posts every row to `POST /ui/settings/prices`, which replaces `POST /ui/settings/providers/<provider>/prices`; each change still goes through `setModelPrice`, audited as `owner:ui`. A refusal names the model and its provider (`small-model of lab: set In and Out, or leave all three empty.`), in the same words from the page's script (`Not yet.`) and from the server (`Not saved.`). The "So far" line under each model is gone, with the store's query for it.
+- 2026-10-22, owner, on the revised mockup `v010-usage`: "Looks better! And model prices bit lookas way better." So the revision is merged as built: Stats the last tab, the run's time counting paused time, and no "So far" cost in the prices table (the mockup's three open choices, as shown).
 
 ## Open questions
 
