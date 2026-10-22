@@ -30,7 +30,7 @@ import {
   opencodeSessionMarkdown,
   readUnder,
 } from "./cli-conversation.ts";
-import { claudePreCompact } from "./compaction-hook.ts";
+import { claudePostCompact, claudePreCompact } from "./compaction-hook.ts";
 import { compactionPlugin, type OpencodeCompaction } from "./opencode-plugin.ts";
 
 /**
@@ -326,7 +326,7 @@ describe("reading what the agent's own user wrote (goal 070)", () => {
 describe("Claude Code's PreCompact hook (goal 070)", () => {
   const line = keptLine({ dir: "/scratch/research/r-1/compactions", stem: "t-1", readable: true });
 
-  test("its settings: one PreCompact hook, Thermite's own program run by Node without a shell", () => {
+  test("its settings: a PreCompact and a PostCompact hook, Thermite's own program run by Node without a shell", () => {
     const s = JSON.parse(
       claudeHookSettings("/area/claude-compactions", {
         dir: "/r/compactions",
@@ -334,11 +334,19 @@ describe("Claude Code's PreCompact hook (goal 070)", () => {
         readable: true,
       }),
     ) as {
-      hooks: { PreCompact: { matcher?: string; hooks: Record<string, unknown>[] }[] };
+      hooks: Record<string, { matcher?: string; hooks: Record<string, unknown>[] }[]>;
     };
     assert.deepEqual(Object.keys(s), ["hooks"]);
-    assert.deepEqual(Object.keys(s.hooks), ["PreCompact"]);
-    assert.deepEqual(s.hooks.PreCompact[0]?.hooks, [
+    assert.deepEqual(Object.keys(s.hooks), ["PreCompact", "PostCompact"]);
+    assert.deepEqual(s.hooks.PostCompact?.[0]?.hooks, [
+      {
+        type: "command",
+        command: process.execPath,
+        args: [CLAUDE_HOOK, "claude-post", "/area/claude-compactions"],
+        timeout: 60,
+      },
+    ]);
+    assert.deepEqual(s.hooks.PreCompact?.[0]?.hooks, [
       {
         type: "command",
         command: process.execPath,
@@ -407,18 +415,47 @@ describe("Claude Code's PreCompact hook (goal 070)", () => {
       /t-1-1\.md/,
     );
     assert.ok(!existsSync(join(drops, "1.jsonl")), "nothing to copy");
+    // With no transcript to count from, the next number follows the hook's own records.
     const bad = spawnSync(process.execPath, [CLAUDE_HOOK, "claude", drops, line], {
       input: "not json",
       encoding: "utf8",
     });
     assert.equal(bad.status, 0);
-    assert.match(bad.stdout, /t-1-1\.md/);
+    assert.match(bad.stdout, /t-1-2\.md/);
     const none = spawnSync(process.execPath, [CLAUDE_HOOK, "other"], {
       input: "{}",
       encoding: "utf8",
     });
     assert.equal(none.status, 0);
     assert.equal(none.stdout, "");
+  });
+
+  test("the PostCompact hook keeps the summary under the last copy's number, and prints nothing", () => {
+    const area = tmp("hook-post");
+    const transcript = join(area, "s-1.jsonl");
+    writeFileSync(transcript, jsonl(CLAUDE));
+    const drops = join(area, "claude-compactions");
+    // Nothing copied yet: nothing to name the summary after.
+    assert.equal(claudePostCompact({ compact_summary: "Early." }, drops), undefined);
+    claudePreCompact({ transcript_path: transcript }, drops, line);
+    const post = spawnSync(process.execPath, [CLAUDE_HOOK, "claude-post", drops], {
+      input: JSON.stringify({
+        session_id: "s-1",
+        transcript_path: transcript,
+        hook_event_name: "PostCompact",
+        trigger: "auto",
+        compact_summary: "Kernel at 12.5 ms. Kept in /r/compactions/t-1-2.md.",
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(post.status, 0);
+    assert.equal(post.stdout, "", "Claude Code would show it to the user only");
+    assert.equal(
+      readFileSync(join(drops, "2.summary.md"), "utf8"),
+      "Kernel at 12.5 ms. Kept in /r/compactions/t-1-2.md.\n",
+    );
+    // An empty summary (one Claude Code made earlier and applies now) keeps nothing.
+    assert.equal(claudePostCompact({ compact_summary: "" }, drops), undefined);
   });
 
   test("the harness reads the hook's copy, else the transcript itself, and the summary Claude Code went on from", () => {
@@ -441,10 +478,12 @@ describe("Claude Code's PreCompact hook (goal 070)", () => {
     assert.doesNotMatch(first?.markdown ?? "", /Going on/);
     assert.match(first?.summary ?? "", /t-1-1\.md/);
     assert.equal(first?.tokensBefore, 160_512);
-    // The hook's copy, when there is one.
+    // The hooks' copies, when there are: the conversation, and the summary the PostCompact hook kept.
     mkdirSync(join(area, "claude-compactions"));
     writeFileSync(join(area, "claude-compactions", "1.jsonl"), jsonl(CLAUDE.slice(0, 1)));
+    writeFileSync(join(area, "claude-compactions", "1.summary.md"), "From the hook.\n");
     assert.doesNotMatch(own(1)?.markdown ?? "", /make bench/);
+    assert.equal(own(1)?.summary, "From the hook.");
     // A compaction neither shows: none.
     assert.equal(own(2), undefined);
     // A session id is never a path.

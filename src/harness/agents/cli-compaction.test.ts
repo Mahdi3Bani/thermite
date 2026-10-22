@@ -235,8 +235,11 @@ describe("each harness's own conversation, kept before its compaction and named 
         runs.push(req);
         if (!req.argv.includes("-p")) return ok;
         // Claude Code, compacting once: its transcript, then its PreCompact hook as its settings
-        // name it, with the hook's input on stdin; the summary names what the hook said.
-        const transcript = join(String(req.env?.HOME), ".claude", "projects", "-w", "s-1.jsonl");
+        // name it, with the hook's input on stdin; the summary names what the hook said, and its
+        // PostCompact hook gets the summary. Claude Code keeps the transcript private to the
+        // agent's user: here it is where the harness does not look, so only the hooks' copies
+        // reach it.
+        const transcript = join(a, "private", "s-1.jsonl");
         mkdirSync(dirname(transcript), { recursive: true });
         writeFileSync(
           transcript,
@@ -261,16 +264,19 @@ describe("each harness's own conversation, kept before its compaction and named 
         );
         const argv = req.argv;
         const settings = JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "{}") as {
-          hooks: { PreCompact: { hooks: { command: string; args: string[] }[] }[] };
+          hooks: Record<string, { hooks: { command: string; args: string[] }[] }[]>;
         };
-        const hook = settings.hooks.PreCompact[0]?.hooks[0] as { command: string; args: string[] };
-        const said = spawnSync(hook.command, hook.args, {
-          input: JSON.stringify({
-            session_id: "s-1",
-            transcript_path: transcript,
-            trigger: "auto",
-          }),
-          encoding: "utf8",
+        const run = (event: string, input: Record<string, unknown>) => {
+          const hook = settings.hooks[event]?.[0]?.hooks[0] as { command: string; args: string[] };
+          return spawnSync(hook.command, hook.args, {
+            input: JSON.stringify({ session_id: "s-1", transcript_path: transcript, ...input }),
+            encoding: "utf8",
+          });
+        };
+        const said = run("PreCompact", { trigger: "auto" });
+        run("PostCompact", {
+          trigger: "auto",
+          compact_summary: `Kernel built. ${said.stdout.trim()}`,
         });
         appendFileSync(
           transcript,

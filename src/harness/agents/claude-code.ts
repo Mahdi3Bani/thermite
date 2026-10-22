@@ -466,27 +466,22 @@ export const CLAUDE_DROPS = "claude-compactions";
 
 /**
  * Claude Code's settings for a run that keeps its conversation before each compaction (goal 070),
- * given with `--settings` (Claude Code reads them whatever `--setting-sources` says): one
- * PreCompact hook, Thermite's own program run by Node without a shell, with the folder for its
- * copies (`drops`, in the run's own area) and the line that tells the summary where Thermite keeps
- * the conversation. Claude Code 2.1.305 appends what a PreCompact hook prints to the compaction's
- * instructions.
+ * given with `--settings` (Claude Code reads them whatever `--setting-sources` says): Thermite's
+ * own hook program (compaction-hook.ts), run by Node without a shell, with the folder for its
+ * copies (`drops`, in the run's own area). As the PreCompact hook, it copies the transcript and
+ * prints the line that tells the summary where Thermite keeps the conversation (Claude Code
+ * 2.1.305 appends a PreCompact hook's output to the compaction's instructions); as the PostCompact
+ * hook, it keeps the summary. Claude Code keeps its transcript private to the agent's user, so
+ * these copies are what the harness reads.
  */
 export function claudeHookSettings(drops: string, at: KeptAt): string {
+  const hook = (args: string[]) => [
+    { hooks: [{ type: "command", command: process.execPath, args, timeout: 60 }] },
+  ];
   return JSON.stringify({
     hooks: {
-      PreCompact: [
-        {
-          hooks: [
-            {
-              type: "command",
-              command: process.execPath,
-              args: [CLAUDE_HOOK, "claude", drops, keptLine(at)],
-              timeout: 60,
-            },
-          ],
-        },
-      ],
+      PreCompact: hook([CLAUDE_HOOK, "claude", drops, keptLine(at)]),
+      PostCompact: hook([CLAUDE_HOOK, "claude-post", drops]),
     },
   });
 }

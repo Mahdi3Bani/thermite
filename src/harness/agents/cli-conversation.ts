@@ -572,7 +572,9 @@ export function claudeTranscript(
 /**
  * Claude Code's own conversation before compaction `n`: the copy its PreCompact hook made in
  * `drops` (compaction-hook.ts), else its transcript up to that compaction; with the summary it
- * went on from, when its transcript has it yet. All under `root`, read with readUnder.
+ * went on from, as its PostCompact hook kept it, else from its transcript. Claude Code keeps its
+ * transcript private to the agent's user, so in a trial only the hooks' copies are readable; an
+ * advisor's runs as the supervisor's own user. All under `root`, read with readUnder.
  */
 export function claudeOwn(o: {
   root: string;
@@ -589,9 +591,10 @@ export function claudeOwn(o: {
         ? claudeBefore(transcript, n)
         : undefined);
     if (before === undefined) return undefined;
+    const kept = readUnder(o.root, [...o.drops, `${n}.summary.md`])?.trim();
     return {
       markdown: claudeTranscriptMarkdown(o.title, n, before),
-      summary: transcript !== undefined ? claudeSummary(transcript, n) : undefined,
+      summary: kept || (transcript !== undefined ? claudeSummary(transcript, n) : undefined),
       tokensBefore: transcript !== undefined ? claudeTokensBefore(transcript, n) : undefined,
     };
   };

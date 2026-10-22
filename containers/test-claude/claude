@@ -61,8 +61,9 @@ const facts = [
   `model=${val("--model")}`,
 ].join(" ");
 // One compaction, as Claude Code makes one (goal 070): its transcript in its home, then the
-// PreCompact hook Thermite's settings name (run without a shell, its input on stdin), then the
-// boundary and the summary, which names what the hook said, and the boundary in its output.
+// PreCompact hook Thermite's settings name (run without a shell, its input on stdin), the
+// PostCompact hook with the summary, which names what the first hook said, then the boundary and
+// the summary in the transcript, and the boundary in its output.
 const compact = () => {
   const settings = val("--settings");
   if (!settings) return "no-settings";
@@ -79,6 +80,12 @@ const compact = () => {
     encoding: "utf8",
   });
   const said = (r.stdout ?? "").trim();
+  const post = JSON.parse(settings).hooks?.PostCompact?.[0]?.hooks?.[0];
+  if (post)
+    require("node:child_process").spawnSync(post.command, post.args ?? [], {
+      input: JSON.stringify({ session_id: session, transcript_path: transcript, cwd: process.cwd(), hook_event_name: "PostCompact", trigger: "auto", compact_summary: `The kernel needs a tidy-up. ${said}` }),
+      encoding: "utf8",
+    });
   fs.appendFileSync(
     transcript,
     line({ type: "system", subtype: "compact_boundary", content: "Conversation compacted", compactMetadata: { trigger: "auto", preTokens: 150000 } }) +
