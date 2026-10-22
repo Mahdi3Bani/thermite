@@ -527,10 +527,10 @@ describe("model use on the screens (goal 075)", () => {
       today,
       /<a class="fchip on" href="\/ui\/metrics\?period=today&amp;tz=America%2FChicago">Today<\/a>/,
     );
-    assert.match(
-      unesc(today),
-      /The bars: calls in each hour of today, from midnight in America\/Chicago\./,
-    );
+    // The bars need two hours of today: in the first hour after that midnight there is one.
+    const bars = /The bars: calls in each hour of today, from midnight in America\/Chicago\./;
+    if (NOW - midnight >= 3_600_000) assert.match(unesc(today), bars);
+    else assert.doesNotMatch(unesc(today), bars);
     const usage = (await (
       await s.api.request(`/v1/usage?period=today&tz=${encodeURIComponent(tz)}&campaign=late`, {
         headers: { authorization: `Bearer ${TOKENS.admin}` },

@@ -1,5 +1,7 @@
 import { canonicalJson, sha256Hex } from "../../core/canonical.ts";
+import { heldOutWords } from "../judge/held-out.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
+import { shownViolations, violationsOf } from "../v0.ts";
 
 /**
  * Agent state in the ledger: the direction registry (approach families and how they fared),
@@ -48,6 +50,48 @@ export interface Evidence {
   lifecycle: string;
   verdict: string | null;
   delta: number | null;
+  /**
+   * A change the static checks refused before building: why, bounded (the first 5), and how
+   * many violations there were in all (goal 082). Left out when it was not refused.
+   */
+  refused?: { violations: string[]; total: number } | undefined;
+  /**
+   * When its confirmation failed on held-out cells: that a held-out check failed, and how, in
+   * fixed words (goal 082). Never which cell, its values or its texts.
+   */
+  held_out?: string | undefined;
+}
+
+/** How many of a refused change's violations the planner's and the teachers' evidence shows. */
+const EVIDENCE_VIOLATIONS = 5;
+
+/**
+ * One attempt's evidence, from its row (id, lane, family, hypothesis, lifecycle and v0): the one
+ * shape the planner's evidence, the teachers' brief and their read_evidence tool share (goals 081
+ * and 082).
+ */
+export function evidenceOf(ledger: Ledger, r: Row): Evidence {
+  const v = ledger.currentVerdict(String(r.id));
+  const d = v
+    ? (ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as Row | undefined)
+        ?.delta
+    : null;
+  const refused = violationsOf(r.v0);
+  const heldOut = ledger.heldOutFailure(String(r.id));
+  return {
+    attempt: String(r.id),
+    lane: r.lane === null || r.lane === undefined ? null : String(r.lane),
+    family: r.family === null || r.family === undefined ? null : String(r.family),
+    hypothesis:
+      r.hypothesis === null || r.hypothesis === undefined
+        ? null
+        : String(r.hypothesis).slice(0, 300),
+    lifecycle: String(r.lifecycle),
+    verdict: v?.verdict ?? null,
+    delta: typeof d === "number" ? d : null,
+    ...(refused.length ? { refused: shownViolations(refused, EVIDENCE_VIOLATIONS) } : {}),
+    ...(heldOut ? { held_out: heldOutWords(heldOut) } : {}),
+  };
 }
 
 export class Registry {
@@ -142,29 +186,17 @@ export class Registry {
   evidence(run: string, limit = 30, lane?: string): Evidence[] {
     const rows = lane
       ? this.all(
-          "select id, lane, family, hypothesis, lifecycle from attempt where run = ? and lane = ? order by created_at desc limit ?",
+          "select id, lane, family, hypothesis, lifecycle, v0 from attempt where run = ? and lane = ? order by created_at desc limit ?",
           run,
           lane,
           limit,
         )
       : this.all(
-          "select id, lane, family, hypothesis, lifecycle from attempt where run = ? order by created_at desc limit ?",
+          "select id, lane, family, hypothesis, lifecycle, v0 from attempt where run = ? order by created_at desc limit ?",
           run,
           limit,
         );
-    return rows.map((r) => {
-      const v = this.ledger.currentVerdict(String(r.id));
-      const d = v ? this.get("select delta from verdict where id = ?", v.id)?.delta : null;
-      return {
-        attempt: String(r.id),
-        lane: r.lane === null ? null : String(r.lane),
-        family: r.family === null ? null : String(r.family),
-        hypothesis: r.hypothesis === null ? null : String(r.hypothesis).slice(0, 300),
-        lifecycle: String(r.lifecycle),
-        verdict: v?.verdict ?? null,
-        delta: typeof d === "number" ? d : null,
-      };
-    });
+    return rows.map((r) => evidenceOf(this.ledger, r));
   }
 
   currentEpoch(run: string): EpochRecord | undefined {

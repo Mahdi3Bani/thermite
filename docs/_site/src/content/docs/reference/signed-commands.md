@@ -55,6 +55,21 @@ Control's key pair is `control-signing.key` and `control-signing.pub` in control
 
 `GET /v1/commands/<id>`, the MCP tool `command_status` and the dashboard's **Commands** page, which lists the newest 200 commands, show a command's status and outcome.
 
+### On the dashboard
+
+A dashboard button that sends a command shows at once that the click took, then follows the command to its outcome. You do not need to refresh the page:
+
+1. The button turns into **Sending…**, which you cannot press again.
+2. When control has queued the command, the button says **Sent**, and a line says `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`
+3. When the rig has applied it (step 5 above), the line says `rig-1 took it at 03:41 UTC. This page shows the change when the rig next reports.`
+4. When the rig's report with it reaches control (step 6), the line says `Done. rig-1 took it at 03:41 UTC.`, and the button comes back.
+
+At each step the page draws again the parts that the command changes: the header with the run's state and its **Pause** or **Resume**, the blocks of the run, the rig or the overview, and the status bar. A part you are typing in, or that has a menu open, waits until you leave it. The line shows under a form, or at the top of the page for a button in the page's header or in a row. A rig's checks show their own state in their rows instead: see [Rig checks](rig-checks.md#where-results-show).
+
+When control refuses the command, the line says why, such as `Not sent: Unknown rig rig-9.`, and the button comes back. When the rig refuses it, the line says `rig-1 refused it:` and the rig's reason. When the rig does not take it in time, the line says `rig-1 did not take it before 04:41 UTC, so it expired.`
+
+The page asks control how the command stands every 2 seconds, and every 5 seconds after two minutes. Without the page's script, the button posts a plain form, and the page it lands on says `Sent to rig-1 at 03:41 UTC.`
+
 ## Statuses
 
 | Status | Meaning | Outcome |
@@ -345,7 +360,7 @@ Control checks every message before it signs it, wherever it comes from: a run's
 
 `panel`, the review panel's old name, is refused for the same reasons.
 
-Over the REST API and `thermite command`, a refusal is `400 {"error":"<message>"}`, written as `refused`. Over MCP, `issue_command` answers `{"error":"<message>"}` with `isError: true`, written as `refused`. On the dashboard it shows as **Not sent.** and the message (below), written as `refused`. A run's **Live** also greys out each recipient that control would refuse, with the same words when you point at it (on a run without agents that includes everyone working and the lanes, and the box starts on the advisors), and its message box asks for words before it sends: "Write a message first."
+Over the REST API and `thermite command`, a refusal is `400 {"error":"<message>"}`, written as `refused`. Over MCP, `issue_command` answers `{"error":"<message>"}` with `isError: true`, written as `refused`. On the dashboard it shows under the message box as `Not sent:` and the message (below), written as `refused`. A run's **Live** also greys out each recipient that control would refuse, with the same words when you point at it (on a run without agents that includes everyone working and the lanes, and the box starts on the advisors), and its message box asks for words before it sends: "Write a message first."
 
 Control refuses `keep` with any other `to` before signing: `bad message_agent payload: keep: only a message to everyone working (all) or to a lane can be kept in force`. The harness checks again when it applies the command. It refuses a message in these cases, and records no message:
 
@@ -364,7 +379,7 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes. A lane within it, but above the number a `lane_count` rule leaves at work, is accepted |
 | `no trial t-… in run <run>` | A trial the run does not have |
 
-The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box, the next time the page loads. The run's **Planner** tab does the same for the newest message to the planner, above **Tell the planner**: **Not sent.** `The rig refused your last message to the planner: <reason>`. A message from the dashboard that control refuses before it signs it shows in the same place at once, as **Not sent.** and control's reason. Control's audit log records that refusal as `refused`, with the page's path and the reason ([Audit log actions](rest-api.md#audit-log-actions)). While the planner is off on **Edit rig**, the **Planner** tab has no form under **Tell the planner**, only "The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules. Switch it on in Edit rig to tell it something.", with **Switch it on in Edit rig** as a link to the rig's **Edit rig** page.
+The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box. The run's **Planner** tab does the same for the newest message to the planner, above **Tell the planner**: **Not sent.** `The rig refused your last message to the planner: <reason>`. A message sent from the page is followed as any command is ([On the dashboard](#on-the-dashboard)): the line under the box says `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, then `Done. rig-1 took it at 03:41 UTC.`, or `rig-1 refused it:` and the reason, with no refresh. On **Live**, the strip above the box then shows the rig's refusal too. A message that control refuses before it signs it shows under the box at once, as `Not sent:` and control's reason, and what you wrote stays in the box. Without the page's script, it shows above the box as **Not sent.** and control's reason. Control's audit log records that refusal as `refused`, with the page's path and the reason ([Audit log actions](rest-api.md#audit-log-actions)). While the planner is off on **Edit rig**, the **Planner** tab has no form under **Tell the planner**, only "The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules. Switch it on in Edit rig to tell it something.", with **Switch it on in Edit rig** as a link to the rig's **Edit rig** page.
 
 The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message. A run's **Live** shows a signed line as **To** the recipient and the text. A line for everyone working, a lane, the planner or the advisors shows so at once, in its own words. A line for a trial shows as a plain line until the run's `agent_message` event, below, reaches control with the rig's report; **Live** then draws it again in place, with the event's words. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel` (the review panel, by the name the rig takes). `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
 
@@ -447,7 +462,7 @@ Drops an experiment that still waits, so no lane tries it. It stays in the run's
 
 ### `queue_accept`
 
-Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea` or Pi's `idea` tool) goes up next. The planner's model also queues or drops ideas as it plans. Under **Ideas from the lanes**, the **Experiments** tab says: "The planner's model queues or drops these at its next hand-out, and you can decide first. Without its model (none set, its answer refused, the planner off, or a research run) they wait for you."
+Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea` or Pi's `idea` tool) goes up next. The planner's model also queues or drops ideas as it plans. Under **Ideas from the lanes**, the **Experiments** tab says: "The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model. In a research run they wait for you."
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |

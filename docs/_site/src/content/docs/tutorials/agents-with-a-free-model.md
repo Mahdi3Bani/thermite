@@ -40,13 +40,13 @@ Find **Harness and model for each rig** at the bottom of the page. The row for `
 2. In its second list, under **opencode (OpenCode harness only)**, choose the first model whose name ends in `-free`. Those are the models OpenCode serves without a key. OpenCode decides which they are, and the list changes over time.
 3. Press **Use**.
 
-A green line says that `local-1` takes your model from `"opencode"` under OpenCode v2 within a minute, and checks it.
+A green line at the top of the page says that `local-1` takes your model from `"opencode"` under OpenCode v2 within a minute, and checks it. The row for `local-1` shows `taking` and your model's name.
 
 ## 3. Check that the model works
 
 The rig checks a new model by itself. It asks the model, through the worker harness, to run one command, and the answer must come back as a correct tool call. That is how agents work: by calling tools.
 
-Wait a minute or two, then press **refresh** in the status bar along the bottom of the page. The row for `local-1` now says that its agents run under OpenCode v2 with your model from `opencode`, and below that:
+Wait a minute or two, and stay on the page: the row follows the rig by itself, with no refresh. Once the rig takes the model, the row says that its agents run under OpenCode v2 with your model from `opencode`. Below that, `Its model check is running ·` and the time so far, then:
 
 `Its model check passed … ago:` your model's name, then `answered with a correct tool call in` some seconds `(OpenCode)`.
 
@@ -76,7 +76,7 @@ The last command prints nothing. Your `thermite-source` folder now holds the fil
 
 ## 5. Name the campaign
 
-In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** at the top right of the page. The page has five steps: **1 Aim**, **2 Project**, **3 How to measure**, **4 Where it runs** and **5 Review and start**. Each field's ⓘ says more about it.
+In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** at the top right of the page. The page has six steps: **1 Aim**, **2 The brief**, **3 Project**, **4 How to measure**, **5 Where it runs** and **6 Review and start**. Each field's ⓘ says more about it.
 
 On **1 Aim**:
 
@@ -85,11 +85,13 @@ On **1 Aim**:
 3. **Title**: `Make the sample's matrix multiply faster`
 4. Press **Next**.
 
+On **2 The brief**, leave every field empty and press **Next**. The brief is optional: it is where you give the agents background, links, ideas and hypotheses.
+
 ## 6. Point it at the sample
 
 The sample is one folder of Thermite's repository. Your rig fetches the whole repository from GitHub, and the run starts from that folder: the agents see only its files.
 
-On **2 Project**:
+On **3 Project**:
 
 1. **Repository**: `https://github.com/iammrduncan/thermite.git`
 2. **Start from**: `v0.1.0`, the release of step 4. The sample then matches your images.
@@ -110,7 +112,7 @@ On **2 Project**:
 
 ## 7. Upload the kit
 
-On **3 How to measure**:
+On **4 How to measure**:
 
 1. Choose the card **Upload a kit**.
 2. Under **Kit archive**, choose the file `matmul-cpu-kit.tar.gz` in your `thermite-source` folder. Control unpacks it and checks it. The page says `matmul-cpu-kit.tar.gz: checked.`, then sums the kit up: `matmul-cpu: measures on cpu, 3 cases, scores flops_per_s.`
@@ -120,7 +122,7 @@ On **3 How to measure**:
 
 ## 8. Start the campaign
 
-On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
+On **5 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
 
 1. **Agents working at once**: `1`. The agent works in a **lane**: a line of search, worked by one agent at a time.
 2. **The agents' model**: keep **the rig's model**.
@@ -128,11 +130,11 @@ On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's har
 
 **When a change is confirmed better** stays at **the rig's default**. On `local-1` that rule is automatic: a change the judge confirms becomes the best version without waiting for you, unless it is held for a second look (see step 10).
 
-On **5 Review and start**, a sentence sums up the campaign. It starts with `matmul-agents will make flops_per_s higher`, names `thermite (the folder examples/matmul-cpu/project)` and `src/kernel/**` as the only files to change, and ends `1 agent works on local-1.`
+On **6 Review and start**, a sentence sums up the campaign. It starts with `matmul-agents will make flops_per_s higher`, names `thermite (the folder examples/matmul-cpu/project)` and `src/kernel/**` as the only files to change, and ends `1 agent works on local-1.`
 
 Press **Start the campaign**. Control keeps the kit, saves the campaign, and sends its first **run** to `local-1`: this campaign at work on that rig.
 
-The campaign's page opens and says `Starting local-1/matmul-agents-1.` The rig fetches Thermite's repository from GitHub and the kit from control, and checks both. Within a minute, press **refresh**. The address names the run, so once the rig reports the run, the same address opens the run's own page. The line at the top reads `Campaigns › matmul-agents › matmul-agents-1`, then `on local-1 · hill climb · Running`.
+The campaign's page opens and says `Starting local-1/matmul-agents-1.`, then `Sent to local-1 at`, the time, and `Waiting for the rig to take it.` The rig fetches Thermite's repository from GitHub and the kit from control, and checks both. Stay on the page: once the rig reports the run, usually within a minute, the page opens the run's own page by itself, at the same address. The line at the top reads `Campaigns › matmul-agents › matmul-agents-1`, then `on local-1 · hill climb · Running`.
 
 Open **Campaigns** in the sidebar. Under **At work now**, a card shows `matmul-agents › matmul-agents-1`, on `local-1`: the campaign, then its run. Under **All campaigns**, the row `matmul-agents` shows your title, `Make the sample's matrix multiply faster`, and `1 at work` under **Runs**.
 
@@ -179,7 +181,7 @@ Choose **Experiments**. It shows the run's queue of experiments. Three of its pa
 - **In progress**: what `lane-1` works on now, while its trial runs.
 - **Tried**: every experiment that has ended, newest first, with its result. For a trial that submitted a change, the result is its attempt and a word for how the judge decided it, as in the table below.
 
-The card **Ideas from the lanes** holds what an agent proposes beyond its own experiment; it is usually empty. You can add, reorder and drop experiments yourself, and queue or drop the lanes' ideas. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
+The card **Ideas from the lanes** holds what an agent proposes beyond its own experiment, such as a follow-up its work suggests; the planner queues the distinct ones when the queue runs low. You can add, reorder and drop experiments yourself, and queue or drop the lanes' ideas. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
 
 The next tab, **Journal**, holds the agents' **field notes**: what they observe, the decisions they make and why, and what they learn, written as they work. Later runs can read them: see [Use past research in a new run](../how-to/campaigns/use-past-research.md).
 
@@ -216,7 +218,7 @@ If after an hour you see only **Lost**, **Unclear** or **Broken**, that is norma
 
 A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `matmul-agents › matmul-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**. A small menu opens. It says that the lanes' running trials stop, and that the run's jobs waiting for the judge wait until you resume. In its field **why (optional)**, type `seen enough for now`, then press **Pause the run**.
 
-A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the line under the run's name ends `· Paused`, and the button says **Resume**. On the run's **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
+The menu closes, and a line at the top of the page says `Sent to local-1 at`, the time, and `Waiting for the rig to take it.` If `lane-1` was in a trial, the trial stops, and its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, the line says `Done.`, the line under the run's name ends `· Paused`, and the button says **Resume**, with no refresh. On the run's **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
 
 The rig keeps its model. [Your own project](your-own-project.md) uses it.
 

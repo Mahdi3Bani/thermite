@@ -241,7 +241,7 @@ export const AGENT_NAMES: Record<AgentPlace, string> = {
 
 /** What one agent of a run works with: its model, window and compaction point. */
 export interface AgentContext {
-  /** The model control gives it; null: the rig's own settings, or the rig default. */
+  /** The model control gives it; null: the rig's own settings, or its advisors file. */
   model: string | null;
   /**
    * Its window in tokens: the lower of the campaign's and its model's (the provider's, or the
@@ -341,7 +341,7 @@ export function contextAppliesWords(c: ContextApplies, rig: string): string {
       a.model ??
       (agent === "workers" || agent === "planner"
         ? `the rig's own settings on ${rig}`
-        : "rig default");
+        : "the rig's advisors file");
     const window =
       a.context_window === null
         ? "the window of its model"

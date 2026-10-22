@@ -1,5 +1,5 @@
 import { createPublicKey, timingSafeEqual } from "node:crypto";
-import { Hono, type MiddlewareHandler } from "hono";
+import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { log, redact } from "../common/env.ts";
@@ -14,6 +14,18 @@ import {
   campaignContextAnswer,
   setCampaignContext,
 } from "./campaign-context.ts";
+import {
+  archiveCampaign,
+  campaignFoldersAnswer,
+  createFolder,
+  deleteFolder,
+  FolderNameBody,
+  MoveBody,
+  moveCampaign,
+  renameFolder,
+  type ShelfOutcome,
+  unarchiveCampaign,
+} from "./campaign-folders.ts";
 import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { CopyCampaignBody, copyCampaignAnswer } from "./copy-campaign.ts";
@@ -39,7 +51,14 @@ import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "./pr
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
-import { neededHarness, RigModelBody, rigModelAnswer, rigModelRequest } from "./rig-model.ts";
+import {
+  AdvisorsFileSchema,
+  neededHarness,
+  RigModelBody,
+  rigModelAnswer,
+  rigModelRequest,
+  rigModelsAnswer,
+} from "./rig-model.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
@@ -225,6 +244,11 @@ const SupervisorStats = z.object({
           panel: Count,
         })
         .optional(),
+      /**
+       * What the rig's advisors file sets up for each role (goal 074): Edit rig says what an
+       * advisor with no model from control uses. A malformed one is dropped, not the report.
+       */
+      file: AdvisorsFileSchema.optional().catch(undefined),
     })
     .nullable()
     .optional(),
@@ -809,7 +833,7 @@ export function createControlApi(
   });
 
   // The advisors' routes, by role, when the owner gave them models (each with its key or a
-  // subscription's token). A role with none keeps the rig default: the supervisor's own
+  // subscription's token). A role with none keeps the rig's advisors file: the supervisor's own
   // configuration. Goal 074: the teachers' one or two models (a second only with a first), their
   // merged by model, the auditor and the review panel. A supervisor of an earlier version reads
   // teachers (the first teacher's model, which it runs as two teachers), combiner and panel.
@@ -1198,25 +1222,31 @@ export function createControlApi(
   });
 
   // Copy a campaign control keeps (goal 069): a new campaign with the same contract and kit
-  // under another name, with its own empty folder in the knowledge base and no runs.
-  app.post("/v1/campaigns/:campaign/copy", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
-    const copy = actions.copyCampaign;
-    if (!copy) return c.json({ error: "this control copies no campaigns" }, 404);
-    const from = c.req.param("campaign");
-    const raw: unknown = await c.req.json().catch(() => undefined);
-    const body = CopyCampaignBody.safeParse(raw);
-    const out = body.success
-      ? copy({ from, ...body.data }, "owner:api")
-      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
-    if (out.state === "refused") {
-      store.audit("owner:api", "refused", {
-        path: `/v1/campaigns/${from}/copy`,
-        why: redact(out.error),
-      });
-      return c.json({ error: out.error }, out.status);
-    }
-    return c.json(copyCampaignAnswer(out), 201);
-  });
+  // under another name, with its own empty folder in the knowledge base and no runs. Its own
+  // brief may come with it (goal 078): room for as much as one command carries to a rig.
+  app.post(
+    "/v1/campaigns/:campaign/copy",
+    admin,
+    bodyLimit({ maxSize: 4 * 1024 * 1024 }),
+    async (c) => {
+      const copy = actions.copyCampaign;
+      if (!copy) return c.json({ error: "this control copies no campaigns" }, 404);
+      const from = c.req.param("campaign");
+      const raw: unknown = await c.req.json().catch(() => undefined);
+      const body = CopyCampaignBody.safeParse(raw);
+      const out = body.success
+        ? copy({ from, ...body.data }, "owner:api")
+        : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+      if (out.state === "refused") {
+        store.audit("owner:api", "refused", {
+          path: `/v1/campaigns/${from}/copy`,
+          why: redact(out.error),
+        });
+        return c.json({ error: out.error }, out.status);
+      }
+      return c.json(copyCampaignAnswer(out), 201);
+    },
+  );
 
   // A campaign's own context window and compaction point for all its runs' agents (goal 070):
   // the twin of MCP's set_campaign_context. A new version of its contract; an empty body removes
@@ -1251,6 +1281,75 @@ export function createControlApi(
     },
   );
 
+  // Archive a campaign, and the left navigation's folders (goal 077): the same functions as the
+  // dashboard and MCP, with their refusals in words. The owner's token.
+  const allViews = () =>
+    store
+      .rigs()
+      .map((u) => rigView(store, u.id, viewOpts))
+      .filter((v): v is NonNullable<typeof v> => v !== undefined);
+  /** A shelf outcome as the answer, a refusal in the audit log as the other routes' are. */
+  const shelf = <T>(c: Context, path: string, out: ShelfOutcome<T>, created = false) => {
+    if (out.ok) return c.json(out.answer, created ? 201 : 200);
+    store.audit("owner:api", "refused", { path, why: redact(out.error) });
+    return c.json({ error: out.error }, out.status);
+  };
+  const refusedBody = (e: z.ZodError) =>
+    ({ ok: false, error: bodyRefusal(e), status: 400 }) as const;
+  const bodyOf = async <T>(c: Context, schema: z.ZodType<T>) => {
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    return schema.safeParse(raw);
+  };
+  app.post("/v1/campaigns/:campaign/archive", admin, (c) => {
+    const campaign = c.req.param("campaign");
+    return shelf(
+      c,
+      `/v1/campaigns/${campaign}/archive`,
+      archiveCampaign(store, allViews(), campaign, "owner:api"),
+    );
+  });
+  app.post("/v1/campaigns/:campaign/unarchive", admin, (c) => {
+    const campaign = c.req.param("campaign");
+    return shelf(
+      c,
+      `/v1/campaigns/${campaign}/unarchive`,
+      unarchiveCampaign(store, allViews(), campaign, "owner:api"),
+    );
+  });
+  app.post("/v1/campaigns/:campaign/folder", admin, bodyLimit({ maxSize: 4 * 1024 }), async (c) => {
+    const campaign = c.req.param("campaign");
+    const path = `/v1/campaigns/${campaign}/folder`;
+    const body = await bodyOf(c, MoveBody);
+    if (!body.success) return shelf(c, path, refusedBody(body.error));
+    return shelf(c, path, moveCampaign(store, allViews(), campaign, body.data.folder, "owner:api"));
+  });
+  app.get("/v1/campaign-folders", admin, (c) => c.json(campaignFoldersAnswer(store)));
+  app.post("/v1/campaign-folders", admin, bodyLimit({ maxSize: 4 * 1024 }), async (c) => {
+    const body = await bodyOf(c, FolderNameBody);
+    if (!body.success) return shelf(c, "/v1/campaign-folders", refusedBody(body.error));
+    return shelf(c, "/v1/campaign-folders", createFolder(store, body.data.name, "owner:api"), true);
+  });
+  app.post(
+    "/v1/campaign-folders/:folder/rename",
+    admin,
+    bodyLimit({ maxSize: 4 * 1024 }),
+    async (c) => {
+      const folder = c.req.param("folder");
+      const path = `/v1/campaign-folders/${folder}/rename`;
+      const body = await bodyOf(c, FolderNameBody);
+      if (!body.success) return shelf(c, path, refusedBody(body.error));
+      return shelf(c, path, renameFolder(store, folder, body.data.name, "owner:api"));
+    },
+  );
+  app.post("/v1/campaign-folders/:folder/delete", admin, (c) => {
+    const folder = c.req.param("folder");
+    return shelf(
+      c,
+      `/v1/campaign-folders/${folder}/delete`,
+      deleteFolder(store, folder, "owner:api"),
+    );
+  });
+
   // Give one of a rig's agents a model, or clear it (goals 029 and 070): the twin of MCP's
   // set_rig_model, through the dashboard's own code (actions.setRigModel), with Edit rig's
   // refusals in words. Each call sets the agent's context window cap and compaction point anew:
@@ -1279,7 +1378,7 @@ export function createControlApi(
     const rig = c.req.param("rig");
     const agents = read(rig);
     if ("error" in agents) return c.json({ error: agents.error }, 404);
-    return c.json({ rig, agents });
+    return c.json(rigModelsAnswer(store, rig, agents));
   });
 
   // A page of the audit log, newest first; older and newer are the cursors for the next pages.

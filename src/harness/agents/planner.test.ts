@@ -421,7 +421,9 @@ describe("planner", () => {
     >;
     assert.equal(a.focus?.maxLength, PLAN_LIMITS.focus);
     assert.equal(a.title?.maxLength, PLAN_LIMITS.title);
-    assert.equal((props.add as { maxItems?: number }).maxItems, PLAN_LIMITS.add);
+    // No count on added experiments (goal 081): the queue's target drives them.
+    assert.equal((props.add as { maxItems?: number }).maxItems, undefined);
+    assert.equal((props.move as { maxItems?: number }).maxItems, PLAN_LIMITS.changes);
     assert.ok(system.includes(PLAN_LIMITS_TEXT.slice(0, 60)), "the prompt states the limits");
     // A focus of 3,000 characters is a plan now: past its title, it goes in details.
     const long = "x".repeat(3000);

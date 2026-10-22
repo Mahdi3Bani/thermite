@@ -302,6 +302,9 @@ export function createHarnessApi(
         // The campaign's own context settings, which the advisors' calls for the run take too
         // (goal 070); null: none.
         agents_context: service.ledger.getContract(i.campaign, i.version)?.agents_context ?? null,
+        // The planner's round left the queue below its target (goal 081): the teachers' round
+        // starts at once, not on the clock. Null: the queue is at its target, or none applies.
+        queue_low: service.queueLow(i.id),
       })),
     }),
   );
@@ -309,6 +312,44 @@ export function createHarnessApi(
   app.get("/v1/brief", supervisor, (c) => {
     const run = z.string().min(1).parse(c.req.query("run"));
     return c.json(service.brief(run) as object);
+  });
+
+  // The teachers' reads of a run's code and evidence (goal 081), read only: the champion's tree,
+  // one of its files by lines, an attempt's diff in parts, and the judge's public findings.
+  // Nothing here reads the kit, a held-out cell or a measurement, and nothing writes: a failed
+  // held-out check is only its kind in fixed words (goal 082).
+  const runOf = (c: { req: { query(k: string): string | undefined } }) =>
+    z.string().min(1).max(100).parse(c.req.query("run"));
+  const numberOf = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
+  app.get("/v1/code/files", supervisor, async (c) =>
+    c.json(await service.codeFiles(runOf(c), c.req.query("path") ?? "")),
+  );
+  app.get("/v1/code/file", supervisor, async (c) => {
+    const q = z
+      .object({
+        path: z.string().min(1).max(500),
+        offset: z.number().int().min(1).optional(),
+        limit: z.number().int().min(1).max(100_000).optional(),
+      })
+      .parse({
+        path: c.req.query("path"),
+        offset: numberOf(c.req.query("offset")),
+        limit: numberOf(c.req.query("limit")),
+      });
+    return c.json(await service.codeFile(runOf(c), q.path, q.offset, q.limit));
+  });
+  app.get("/v1/code/diff", supervisor, async (c) => {
+    const q = z
+      .object({
+        attempt: z.string().min(1).max(64),
+        offset: z.number().int().min(0).optional(),
+      })
+      .parse({ attempt: c.req.query("attempt"), offset: numberOf(c.req.query("offset")) });
+    return c.json(await service.attemptDiff(runOf(c), q.attempt, q.offset));
+  });
+  app.get("/v1/evidence", supervisor, (c) => {
+    const attempt = z.string().min(1).max(64).optional().parse(c.req.query("attempt"));
+    return c.json(service.evidence(runOf(c), attempt) as object);
   });
 
   app.get("/v1/audits/pending", supervisor, async (c) =>
@@ -747,11 +788,14 @@ export function createHarnessApi(
   app.get("/v1/attempts/:id", async (c) => {
     const id = c.req.param("id");
     if (trialToken(c.req.header("authorization"))) {
-      // A worker sees only its own lane's attempts.
+      // A worker reads any attempt of its own campaign on this rig: its lane's, another lane's
+      // (a hand-out may name one), or an earlier run's (the knowledge base shows those). Its
+      // brief still shows only its own lane's (goal 082).
       const { trial } = trialOf(c.req.header("authorization"));
       const a = service.ledger.getAttempt(id);
-      if (!a || String(a.run) !== trial.run || String(a.lane) !== trial.lane)
-        throw new LedgerError("not_found", `no attempt ${id} in this lane`);
+      const campaign = (run: unknown) => service.ledger.getRun(String(run))?.campaign;
+      if (!a || campaign(a.run) !== campaign(trial.run))
+        throw new LedgerError("not_found", `no attempt ${id} in this campaign`);
       return c.json(service.attemptStatus(id) as object);
     }
     if (!allows(tokens, ["supervisor", "proposer"], c.req.header("authorization")))

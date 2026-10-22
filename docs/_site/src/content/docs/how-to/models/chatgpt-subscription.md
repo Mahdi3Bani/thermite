@@ -44,7 +44,7 @@ The page shows `"chatgpt-pro" is signed in: its 6 models run in Pi, OpenCode v2 
 2. Choose the [worker harness](../../reference/glossary.md), the program the agents run in: **Pi**, **OpenCode v2** or **Codex**. Codex is the Codex CLI, OpenAI's own program for agents; see [Run the agents in Codex](#run-the-agents-in-codex). Claude Code does not take a ChatGPT subscription.
 3. Choose a model from the group "chatgpt-pro (ChatGPT subscription: Pi, OpenCode or Codex)", and press **Use**.
 
-After a minute, press **refresh** in the status bar, the line along the bottom of the page. The model check's result shows below the rig's row. To give the planner or an advisor the subscription, use **Edit rig**: see [Give each agent its own model](model-per-agent.md).
+Stay on the page: within a minute or two, the rig's row shows the new model, then the model check's result below it, with no refresh. To give the planner or an advisor the subscription, use **Edit rig**: see [Give each agent its own model](model-per-agent.md).
 
 ## Run the agents in Codex
 

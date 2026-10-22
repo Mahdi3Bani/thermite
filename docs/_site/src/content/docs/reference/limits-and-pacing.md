@@ -97,7 +97,7 @@ Who sets each agent's window and point:
 | --- | --- | --- |
 | Workers | The workers' model on **Edit rig**, or the rig's own settings | The workers' **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the workers' model over MCP or REST, or `THERMITE_MODEL_CONTEXT_WINDOW` and `THERMITE_MODEL_COMPACT_AT` |
 | Planner | Its own model, when it has one; else the workers' | The planner's **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the planner's model |
-| Teachers (each of their one or two models, and their merged by model), auditor, review panel | Each one's own model, when control gives it one; else the rig default, the [advisors file](advisors-file.md) | The line's **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the advisor's model, or the file's `context_window` and `compact_at` |
+| Teachers (each of their one or two models, and their merged by model), auditor, review panel | Each one's own model, when control gives it one; else the [advisors file](advisors-file.md)'s | The line's **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the advisor's model, or the file's `context_window` and `compact_at` |
 | All of a campaign's runs | The campaign's own, over each agent's | The contract's [`agents_context`](contract.md#agents-context): **Agents' context** on the campaign's page, on **New campaign** and in the **Copy** panel; `set_campaign_context`, `POST /v1/campaigns/<campaign>/context`, `thermite campaign context` |
 
 Each harness compacts in its own way. Thermite sets what each one takes:
@@ -270,11 +270,13 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | A place in the queue | `top`, `end`, or an index from 0 to 100,000 among the queued experiments, 0 first. An index past the last puts it last |
 | A lane's idea | One request of at most 64 KiB. No limit on how many |
 | Experiments copied into a new run by **Start a run**, its twins (`thermite run start`, `POST /v1/campaigns/<campaign>/runs`, MCP's `start_run`) or `thermite assign --queue-from` (`assign_campaign`'s `queue`) | 500. Each copies at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, **Start a run** copies none, and its twins and `thermite assign` refuse a run to copy from |
-| The planner's answer | At most 20 experiments added, 40 moves, 40 drops, 40 ideas accepted, 5 rules, 5 old rules in words converted and 13 new directions. A title up to 200 characters; details, and an inline experiment's focus, up to 4,000 (a focus past its title goes into details); a direction up to 80; each why and rationale up to 2,000; a new direction's description 3 to 300; notes up to 2,000. Its tool's schema and its prompt say each of these |
+| The planner's answer | At most 40 moves, 40 drops, 5 rules, 5 old rules in words converted and 13 new directions. No limit on the experiments it adds or the ideas it accepts. A title up to 200 characters; details, and an inline experiment's focus, up to 4,000 (a focus past its title goes into details); a direction up to 80; each why and rationale up to 2,000; a new direction's description 3 to 300; notes up to 2,000. Its tool's schema and its prompt say each of these |
 | Old rules in words converted in one planner's round | 5, the oldest first. The rest convert at the next rounds |
-| A teacher's or the merged by model's answer | Up to 10 experiments and 10 moves, each with a why. One that doesn't fit is left out; a list of more than 50 is ignored. Its review still counts |
+| A teacher's or the merged by model's answer | No limit on the opportunities in its portfolio, or on its plain experiments; up to 10 moves, each with a why. One that doesn't fit is left out. Its review still counts |
 | The auditor's answer | One check |
-| The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves |
+| The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves. The supervisor sends the teachers' portfolio in as many requests as it needs |
+| **Ideas kept ready**, a campaign's target queue depth | A target, not a limit: 0 to 1,000, two for each lane by default. The queue may hold more, and nothing stops when it holds fewer |
+| The teachers' code and evidence reads | One listing: 2,000 files. One read of a file: 400 lines by default, at most 2,000; a file over 8 MiB is not read. One read of a diff: 40,000 characters, then the next part |
 | The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts and how each trial ended in words (`cause`). An experiment up next that came back says how many times and why (`returned`). Details are cut to 600 characters, whys to 400 and causes to 300 |
 | The **Planner** tab's **What the planner did** | The newest 30 entries: hand-outs, the planner's changes to the queue and the rules, and the messages it read. Control keeps the newest 50 hand-outs for each run |
 | The messages under **Tell the planner** | Your newest 10 to the planner or to everyone working. Control keeps the newest 200 messages for each run |
@@ -293,6 +295,8 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | Field notes in the planner's and the teachers' brief | The run's newest 20 |
 | The run page's **Journal** tab | The newest 500 field notes; the rest are in the campaign's folder and the run's export |
 | A briefing (`assign_campaign`'s `briefing`) | Up to 200 items, each 1 to 4,000 characters |
+| A campaign's brief (the contract's `notes`, `links` or a research campaign's `seeds`, `ideas` and `hypotheses`) | No limit of its own: the whole contract goes to a rig in one signed command of at most 3.5 MiB. The planner and the advisors get it whole; each worker's brief carries its first 32,000 characters and says where the rest is (`BRIEF.md` in the run's folder). See [The campaign's brief](contract.md#the-campaigns-brief) |
+| A research question | No limit of its own. A research task in the queue holds its first 4,000 characters, and says the whole question is in the worker's brief |
 | An item of the knowledge base | Title 300 characters, text 20,000 |
 | Search words | The first 8 words of 2 or more characters; at most 300 characters in all |
 | Search results | The **Knowledge** page 100; **Start a run** › **From past research** 40; `kb_search` 1 to 100, default 20 |

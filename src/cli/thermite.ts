@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
 import type { RunpodRigView } from "../control/runpod-rig-view.ts";
+import { briefChange } from "../core/brief.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { agentsContextRefusal } from "../core/compaction.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
@@ -34,6 +35,7 @@ const USAGE = `usage: thermite <command> [options]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
+         [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -51,8 +53,13 @@ const USAGE = `usage: thermite <command> [options]
                                       in the contract sent (its agents_context, over the file's):
                                       every agent's window is the lower of it and its own, and
                                       the point replaces the rig's; the contract's hash changes
-                                      with them. --print shows the payload (for issue_command
-                                      over MCP) instead of issuing it
+                                      with them. --info-file, --link, --idea and --hypothesis
+                                      give the campaign's brief in the contract sent, each in
+                                      place of the file's: its additional information (Markdown,
+                                      from file F), its starting links (a research campaign's
+                                      seeds), its ideas to try (hill climb and goal) and its
+                                      hypotheses, one per option. --print shows the payload (for
+                                      issue_command over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--note TEXT] [--agents off]
@@ -119,7 +126,8 @@ const USAGE = `usage: thermite <command> [options]
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
   campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
-         [--compact-at PERCENT] --control URL --token-file F
+         [--compact-at PERCENT] [--info-file F] [--link URL ...] [--idea TEXT ...]
+         [--hypothesis TEXT ...] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
@@ -127,7 +135,10 @@ const USAGE = `usage: thermite <command> [options]
                                       --mcp-servers-json: for a research campaign, the MCP
                                       servers the copy's agents use instead, as a JSON list
                                       ([] for none). --context-window and --compact-at give the
-                                      copy its own context settings, in place of FROM's
+                                      copy its own context settings, in place of FROM's. The copy
+                                      keeps FROM's brief; --info-file (Markdown; an empty file
+                                      for none), --link, --idea and --hypothesis give its own,
+                                      each in place of FROM's
   campaign context CAMPAIGN [--context-window TOKENS] [--compact-at PERCENT]
          --control URL --token-file F
                                       set a campaign's own context settings for all its runs'
@@ -198,6 +209,35 @@ function contextFromFlags(values: {
   const why = agentsContextRefusal(own);
   if (why) fail(`--context-window and --compact-at: ${why}`);
   return own;
+}
+
+/**
+ * A campaign's brief from --info-file, --idea and --hypothesis (goal 078): the additional
+ * information (the file's Markdown, the contract's notes), the ideas to try and the hypotheses,
+ * one per option. Only what is given: each part replaces the contract's (or the copied
+ * campaign's).
+ */
+function briefFromFlags(values: {
+  "info-file"?: string | undefined;
+  link?: string[] | undefined;
+  idea?: string[] | undefined;
+  hypothesis?: string[] | undefined;
+}): { notes?: string; ideas?: string[]; hypotheses?: string[] } {
+  const file = values["info-file"];
+  let notes: string | undefined;
+  if (file !== undefined) {
+    try {
+      notes = readFileSync(file, "utf8");
+    } catch (err) {
+      fail(`--info-file: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return {
+    ...(notes !== undefined ? { notes } : {}),
+    ...(values.link ? { links: values.link } : {}),
+    ...(values.idea ? { ideas: values.idea } : {}),
+    ...(values.hypothesis ? { hypotheses: values.hypothesis } : {}),
+  };
 }
 
 /**
@@ -449,6 +489,10 @@ async function main(argv: string[]): Promise<void> {
           "mcp-servers": { type: "string" },
           "context-window": { type: "string" },
           "compact-at": { type: "string" },
+          "info-file": { type: "string" },
+          link: { type: "string", multiple: true },
+          idea: { type: "string", multiple: true },
+          hypothesis: { type: "string", multiple: true },
           control: { type: "string" },
           "token-file": { type: "string" },
           rig: { type: "string" },
@@ -490,13 +534,24 @@ async function main(argv: string[]): Promise<void> {
       }
       const fromFile = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
       if (!fromFile.ok) fail(fromFile.errors.join("\n"));
+      // The campaign's brief over the file's (goal 078): each part given replaces the file's.
+      const brief = briefFromFlags(values);
+      if (brief.ideas && fromFile.contract.mode === "research")
+        fail("--idea is for hill-climb and goal campaigns: a research campaign has questions");
+      const withBrief = briefChange(fromFile.contract, brief);
+      if (typeof withBrief === "string") fail(withBrief);
       // The campaign's own context settings over the file's (goal 070): a contract with another hash.
-      const r = ownContext
-        ? parseContract({
-            ...fromFile.contract,
-            agents_context: { ...fromFile.contract.agents_context, ...ownContext },
-          })
-        : fromFile;
+      const r =
+        ownContext || Object.keys(brief).length
+          ? parseContract({
+              ...withBrief,
+              ...(ownContext
+                ? {
+                    agents_context: { ...fromFile.contract.agents_context, ...ownContext },
+                  }
+                : {}),
+            })
+          : fromFile;
       if (!r.ok) fail(r.errors.join("\n"));
       const contract = r.contract;
       const full = (c: string | undefined, what: string) => {
@@ -873,6 +928,10 @@ async function main(argv: string[]): Promise<void> {
           "mcp-servers-json": { type: "string" },
           "context-window": { type: "string" },
           "compact-at": { type: "string" },
+          "info-file": { type: "string" },
+          link: { type: "string", multiple: true },
+          idea: { type: "string", multiple: true },
+          hypothesis: { type: "string", multiple: true },
         },
       });
       if (!values.control || !values["token-file"])
@@ -898,6 +957,8 @@ async function main(argv: string[]): Promise<void> {
           name,
           ...(mcpFile !== undefined ? { mcp_servers: mcpServers } : {}),
           ...(ownContext ? { agents_context: ownContext } : {}),
+          // The copy's own brief (goal 078), each part in place of FROM's.
+          ...briefFromFlags(values),
         },
       );
       process.stdout.write(`${JSON.stringify(out)}\n`);

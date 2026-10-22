@@ -75,7 +75,7 @@ The kit directory, the check and the judge's copy of the parameters are out of t
 
 ## Hidden test cases
 
-The kit defines every cell. The contract chooses which cells count, and which of them are **hidden** (the contract calls them held-out cells). The judge runs hidden cells only to confirm a change that already looks better, never while it screens. Their results go only to the code that decides promotion: they are left out of the reasons agents read, the events and the exports. Agents never see the cells' names, parameters or outcomes, so a change tuned to the visible cells has to work on unseen ones too.
+The kit defines every cell. The contract chooses which cells count, and which of them are **hidden** (the contract calls them held-out cells). The judge runs hidden cells only to confirm a change that already looks better, never while it screens. Their results go to the code that decides promotion and, for the owner, to the dashboard: each hidden cell's name, how it failed and its value against its threshold. The agents see only that a hidden check failed, and its kind, such as "a held-out check timed out": never the cells' names, parameters or outputs, so a change tuned to the visible cells has to work on unseen ones too ([Held-out failures](../reference/verdicts.md#held-out-failures)).
 
 In a goal campaign, a goal's status comes from its visible cells, and its hidden cells are checked before a gain is promoted. A goal that should have a hidden check needs at least one visible cell and one hidden cell in its verifier.
 

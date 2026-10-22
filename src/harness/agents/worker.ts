@@ -375,7 +375,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ),
     tool(
       "status",
-      "Show the lifecycle and verdict of an attempt you submitted earlier.",
+      "Show the lifecycle and verdict of an attempt of this campaign: yours, another lane's or an earlier run's. A change refused before building lists why under violations.",
       Type.Object({ attempt: Type.String() }),
       async (p) => text(JSON.stringify(await deps.status(String(p.attempt)))),
     ),

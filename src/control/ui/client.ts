@@ -133,9 +133,11 @@ export const CLIENT_JS = `
     });
     const fb = $(".lfollow");
     if (fb) fb.addEventListener("click", () => { follow = !follow; fb.classList.toggle("on", follow); fb.setAttribute("aria-pressed", String(follow)); if (follow) tr.scrollTop = tr.scrollHeight; });
-    const nb = $(".lnav-btn");
+    // On the document: the run's header is drawn again when an action's outcome comes (goal 080).
     const wrap = $("#lwrap");
-    if (nb && wrap) nb.addEventListener("click", () => wrap.classList.toggle(matchMedia("(max-width: 1180px)").matches ? "open" : "closed"));
+    if (wrap) document.addEventListener("click", (ev) => {
+      if (ev.target.closest && ev.target.closest(".lnav-btn")) wrap.classList.toggle(matchMedia("(max-width: 1180px)").matches ? "open" : "closed");
+    });
     if (ta) {
       const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, 160) + "px"; };
       ta.addEventListener("input", grow);
@@ -302,34 +304,125 @@ export const CLIENT_JS = `
     if (words) words.addEventListener("input", apply);
   }
 
+  // ------------------------------------------------ the navigation's campaigns and folders (goal 077)
+  // A folder folds and opens, and this browser remembers which are folded. A campaign dragged
+  // onto a folder, or onto "no folder", moves there with the same post as Move to folder on its
+  // page; the row then moves in place. Without this script, every folder shows open.
+  const sc = $("#side-camps");
+  if (sc) {
+    const KEY = "thermite.nav.folded";
+    let folded = [];
+    try { folded = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch {}
+    if (!Array.isArray(folded)) folded = [];
+    sc.querySelectorAll("details.side-folder[data-fold]").forEach((d) => { if (folded.includes(d.dataset.fold)) d.open = false; });
+    sc.addEventListener("toggle", (ev) => {
+      const d = ev.target;
+      if (!(d instanceof Element) || !d.matches("details.side-folder[data-fold]")) return;
+      folded = folded.filter((x) => x !== d.dataset.fold);
+      if (!d.open) folded.push(d.dataset.fold);
+      try { localStorage.setItem(KEY, JSON.stringify(folded)); } catch {}
+    }, true);
+    const say = $("#side-say");
+    const tell = (text, bad) => { if (!say) return; say.textContent = text; say.classList.toggle("bad", !!bad); };
+    let dragged = null;
+    // A folder takes the drop; "no folder", or a campaign in none, takes it out of its folder.
+    const dropAt = (ev) => {
+      const t = ev.target instanceof Element ? ev.target : null;
+      if (!t) return null;
+      const fold = t.closest(".side-fold");
+      if (fold) return fold;
+      if (t.closest(".side-drop") || t.closest(".side-row")) return sc.querySelector(".side-drop");
+      return null;
+    };
+    const unmark = () => sc.querySelectorAll(".drop-over").forEach((x) => x.classList.remove("drop-over"));
+    const done = () => { if (dragged) dragged.classList.remove("dragging"); dragged = null; sc.classList.remove("side-dragging"); unmark(); };
+    const count = (fold) => {
+      const d = fold.querySelector("details.side-folder");
+      const n = d.querySelectorAll(".side-row").length;
+      fold.querySelector("summary .n").textContent = String(n);
+      const empty = d.querySelector(".side-empty");
+      if (n && empty) empty.remove();
+      // A folder that holds only archived campaigns says so, as control draws it.
+      const shelved = Number(d.dataset.archived || "0");
+      if (!n && !empty) { const e = document.createElement("div"); e.className = "side-empty"; e.textContent = shelved ? shelved + " archived " + (shelved === 1 ? "campaign" : "campaigns") + ", not shown." : "Empty. Drag a campaign here."; d.append(e); }
+    };
+    sc.addEventListener("dragstart", (ev) => {
+      const r = ev.target instanceof Element ? ev.target.closest(".side-row[data-campaign]") : null;
+      // With no folder there is nowhere to drop it.
+      if (!r || !sc.querySelector(".side-fold")) return;
+      dragged = r;
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("text/plain", r.dataset.campaign);
+      requestAnimationFrame(() => { if (dragged) { dragged.classList.add("dragging"); sc.classList.add("side-dragging"); } });
+    });
+    sc.addEventListener("dragend", done);
+    sc.addEventListener("dragover", (ev) => {
+      if (!dragged) return;
+      const t = dropAt(ev);
+      if (!t) return;
+      ev.preventDefault();
+      if (!t.classList.contains("drop-over")) { unmark(); t.classList.add("drop-over"); }
+    });
+    sc.addEventListener("drop", async (ev) => {
+      if (!dragged) return;
+      const t = dropAt(ev);
+      if (!t) return;
+      ev.preventDefault();
+      const row = dragged, from = row.closest(".side-fold");
+      done();
+      const folder = t.classList.contains("side-fold") ? t.dataset.folder : "";
+      if ((from ? from.dataset.folder : "") === folder) return;
+      const body = new URLSearchParams({ csrf: sc.dataset.csrf || "", folder });
+      let out = null;
+      try {
+        const res = await fetch("/ui/campaigns/" + encodeURIComponent(row.dataset.campaign) + "/folder", { method: "POST", body, credentials: "same-origin", headers: { accept: "application/json" } });
+        out = res.ok ? await res.json() : null;
+      } catch {}
+      if (!out || out.error) { tell((out && out.error) || "Not moved: control did not answer. Load the page again.", true); return; }
+      if (folder) {
+        const d = t.querySelector("details.side-folder");
+        d.open = true;
+        d.append(row);
+        count(t);
+      } else sc.insertBefore(row, sc.querySelector(".side-drop"));
+      if (from) count(from);
+      tell(out.said || "", false);
+    });
+  }
+
   // ------------------------------------------------ the experiment queue: drag to reorder
   // A dropped experiment's new place goes to the rig as a signed owner command (queue_move),
   // through the same form post as the buttons; the page then shows the rig's order.
-  const ql = $("#qlist");
-  if (ql) {
+  // On the document, so the list works after it is drawn again with the rig's order (goal 080).
+  if ($("#qlist")) {
     let dragged = null;
     const csrfIn = $("form.qadd input[name=csrf]");
+    const qi = (ev) => (ev.target.closest ? ev.target.closest("#qlist .qi") : null);
     const send = (el) => {
+      const ql = $("#qlist");
       const pos = [...ql.querySelectorAll(".qi")].indexOf(el);
       const body = new URLSearchParams({ csrf: csrfIn ? csrfIn.value : "", rig: el.dataset.rig, run: el.dataset.run, kind: "queue_move", id: el.dataset.id, position: String(pos), back: location.pathname + location.search });
-      fetch("/ui/commands", { method: "POST", body, credentials: "same-origin" }).then(() => {
-        ql.querySelectorAll(".qn").forEach((n, i) => (n.textContent = String(i + 1)));
-      });
+      ql.querySelectorAll(".qn").forEach((n, i) => (n.textContent = String(i + 1)));
+      // The move is followed like a button's command, until the list shows the rig's order.
+      fetch("/ui/commands", { method: "POST", body, credentials: "same-origin", headers: { accept: "application/json" } })
+        .then((r) => r.json())
+        .then((a) => document.dispatchEvent(new CustomEvent("fw:follow", { detail: a })))
+        .catch(() => {});
     };
-    ql.querySelectorAll(".qi").forEach((el) => {
-      el.addEventListener("dragstart", () => { dragged = el; el.classList.add("drag"); });
-      el.addEventListener("dragend", () => { el.classList.remove("drag"); ql.querySelectorAll(".over").forEach((x) => x.classList.remove("over")); });
-      el.addEventListener("dragover", (ev) => { ev.preventDefault(); el.classList.add("over"); });
-      el.addEventListener("dragleave", () => el.classList.remove("over"));
-      // Dropped on an item's lower half, it goes after that item (so also below the last one).
-      el.addEventListener("drop", (ev) => {
-        ev.preventDefault();
-        el.classList.remove("over");
-        if (!dragged || dragged === el) return;
-        const box = el.getBoundingClientRect();
-        ql.insertBefore(dragged, ev.clientY > box.top + box.height / 2 ? el.nextSibling : el);
-        send(dragged);
-      });
+    document.addEventListener("dragstart", (ev) => { const el = qi(ev); if (el) { dragged = el; el.classList.add("drag"); } });
+    document.addEventListener("dragend", (ev) => { const el = qi(ev); if (el) { el.classList.remove("drag"); document.querySelectorAll("#qlist .over").forEach((x) => x.classList.remove("over")); } });
+    document.addEventListener("dragover", (ev) => { const el = qi(ev); if (el) { ev.preventDefault(); el.classList.add("over"); } });
+    document.addEventListener("dragleave", (ev) => { const el = qi(ev); if (el) el.classList.remove("over"); });
+    // Dropped on an item's lower half, it goes after that item (so also below the last one).
+    document.addEventListener("drop", (ev) => {
+      const el = qi(ev);
+      if (!el) return;
+      ev.preventDefault();
+      el.classList.remove("over");
+      if (!dragged || dragged === el || !dragged.isConnected) return;
+      const box = el.getBoundingClientRect();
+      el.parentElement.insertBefore(dragged, ev.clientY > box.top + box.height / 2 ? el.nextSibling : el);
+      send(dragged);
     });
   }
   // The Tried table's filters, together: the result (chips), the direction and who added it.

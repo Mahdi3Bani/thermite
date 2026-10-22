@@ -395,6 +395,14 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
             Array.isArray(b.known_flaws) && b.known_flaws.length
               ? `Declared flaws: ${b.known_flaws.map(str).join("; ")}`
               : "",
+            // Why the static checks refused it (goal 082), as its event bounds them.
+            Array.isArray(b.violations) && b.violations.length
+              ? `Refused before building: ${b.violations.map(str).join("; ")}${
+                  typeof b.violations_total === "number" && b.violations_total > b.violations.length
+                    ? `; and ${b.violations_total - b.violations.length} more`
+                    : ""
+                }`
+              : "",
           ]),
           by: str(b.lane) || e.actor,
         },

@@ -238,7 +238,7 @@ In pull mode the supervisor also takes `RUNPOD_API_KEY`, which RunPod puts in a 
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_POLL_SECONDS` | seconds | `60` | no | How often it reports the harness's events to control and pushes new exports to the results repository, or, without one, sends them to control. The pause between the advisors' rounds is the same interval, but at least 30 seconds. On a rig with teachers, a message from the owner to the teachers of a running run ends the pause early: during it, the supervisor looks for one every 5 seconds |
+| `THERMITE_POLL_SECONDS` | seconds | `60` | no | How often it reports the harness's events to control and pushes new exports to the results repository, or, without one, sends them to control. The pause between the advisors' rounds is the same interval, but at least 30 seconds. On a rig with teachers, a message from the owner to the teachers of a running run, or a planner's round that left a running run's queue below its [target](contract.md#lanes), ends the pause early: during it, the supervisor looks for either every 5 seconds |
 | `THERMITE_COMMAND_POLL_SECONDS` | seconds | `5` | no | How often it fetches control's commands. `0`: commands are fetched with each report instead |
 | `THERMITE_LIVE_INTERVAL_MS` | milliseconds | `3000` | no | How often it relays the live view. `0` turns the live view off |
 | `THERMITE_MODEL_ROUTE_POLL_SECONDS` | seconds | `30` | no | How often it asks control for the rig's model and hands a change to the harness. A round that fails is tried once more 5 seconds later (or after this interval, if it is shorter); only a second failure logs `model route error`, once until a round works again. Each round also asks control for the rig's [MCP servers](../how-to/operate/mcp-servers.md#what-a-rig-gets), hands the harness its workers' and planner's share, and keeps the advisors' in memory; a failure logs `MCP servers error` once, and the servers given last stay. `0` turns both off |
@@ -262,7 +262,7 @@ See [Set up the results repository](../how-to/operate/results-repository.md).
 | `THERMITE_INBOX_DIR` | path | `/inbox` | no | The harness's inbox. The supervisor writes imports there, [model files](model-files.md#where-the-file-goes) it downloads among them |
 | `THERMITE_HF_TOKEN_FILE` | path | not set | path to a secret | A Hugging Face token, for [gated model files](model-files.md#gated-models-on-hugging-face). The supervisor reads it when it starts and sends it to Hugging Face only. The harness never gets it |
 | `THERMITE_OUTBOX_DIR` | path | `/outbox` | no | The harness's outbox. The supervisor reads exports from it |
-| `THERMITE_ADVISORS_FILE` | path to a JSON file | not set | path to a secret | The [advisors file](advisors-file.md), the rig default for the advisors: the teachers, their merged by model, the auditor and the review panel. A role given a model on **Edit rig** uses that model instead. Not set, and no role given a model: no advisors run |
+| `THERMITE_ADVISORS_FILE` | path to a JSON file | not set | path to a secret | The [advisors file](advisors-file.md), the advisors' models when control gives them none: the teachers, their merged by model, the auditor and the review panel. A role given a model on **Edit rig** uses that model instead. Not set, and no role given a model: no advisors run |
 | `THERMITE_CLAUDE_BIN` | name or path | `claude` on the `PATH` | no | The Claude Code program, for advisors that run in Claude Code |
 
 ## Command line

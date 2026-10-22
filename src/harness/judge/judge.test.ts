@@ -248,6 +248,33 @@ export function work() {
     assert.equal((event?.body as { reasons?: string } | undefined)?.reasons, reasons);
   });
 
+  test("a cell's own time limit ends a run that the kit's limit would allow", async () => {
+    // small has a 2 s limit of its own; big keeps the kit's 30 s.
+    const env = await setup({
+      kitCells: {
+        small: { params: { n: 20000000, work: 20000000 }, timeout_s: 2 },
+        held: { n: 15000000, work: 15000000 },
+        big: { n: 100000000, work: 100000000 },
+      },
+    });
+    // Correct, but it idles 6 s: past small's own limit, well within the kit's.
+    const slow = `export function work(n) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6000);
+  let s = 0;
+  for (let i = 0; i < n; i++) s += i % 7;
+  return s;
+}
+`;
+    const id = await env.submit(slow, "idle before the work");
+    await env.drain();
+    assert.equal(env.ledger.currentVerdict(id)?.verdict, "crash_candidate", why(env, id));
+    const { reasons } = env.ledger.db
+      .prepare("select reasons from verdict where attempt = ? order by id desc limit 1")
+      .get(id) as { reasons: string };
+    assert.match(reasons, /^killed: timeout/);
+    assert.equal(env.ledger.currentChampion("js-1").seq, 1);
+  });
+
   test("a change that does not build is invalid", async () => {
     const env = await setup();
     const id = await env.submit("export function work( {\n", "syntax error");
@@ -441,17 +468,23 @@ export function work() {
     assert.equal(queued(), 1);
   });
 
-  test("held-out results stay out of events and exports", async () => {
+  test("held-out results stay out of measurements and exports; only the owner's event names a held-out case", async () => {
     const env = await setup({ heldOut: true });
     const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
     await env.drain();
     assert.equal(env.ledger.currentVerdict(id)?.verdict, "win_confirmed", why(env, id));
     const rows = env.ledger.db.prepare("select count(*) as n from held_out").get();
     assert.equal(Number(rows?.n), 1);
-    const leaked = env.ledger
+    // The held-out case is named only in the owner's held_out_checked event (goal 082).
+    const naming = env.ledger
       .eventsAfter(0, 10_000)
-      .events.filter((e) => JSON.stringify(e.body).includes("held"));
-    assert.deepEqual(leaked, []);
+      .events.filter((e) => JSON.stringify(e.body).includes('"held"'))
+      .map((e) => e.kind);
+    assert.deepEqual(naming, ["held_out_checked"]);
+    assert.equal(
+      env.ledger.db.prepare("select count(*) as n from measurement where cell = 'held'").get()?.n,
+      0,
+    );
     const exp = await env.service.export("test");
     const { DatabaseSync } = await import("node:sqlite");
     const snap = new DatabaseSync(`${exp.dir}/ledger.sqlite`);

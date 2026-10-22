@@ -182,6 +182,66 @@ describe("the new-campaign page", () => {
     );
   });
 
+  test("Ideas kept ready (goal 081): a target, explained; in the contract; on the campaign's page", async () => {
+    const s = await stack();
+    const page = await (await s.get("/ui/campaigns/new")).text();
+    const tip =
+      /<span class="lb">Ideas kept ready<i class="ii" tabindex="0" data-tip="([^"]+)">i<\/i><\/span><input name="queue_target" inputmode="numeric" placeholder="2 for each agent">/.exec(
+        page,
+      )?.[1] ?? "";
+    assert.match(tip, /^How many experiments the queue keeps ready for the agents' next tries/);
+    assert.match(tip, /It is a target that drives ideas, not a cap/);
+    assert.match(tip, /Empty: 2 for each agent\. 0: ask for none\./);
+    const script = await (await s.get("/ui/assets/new-campaign.js")).text();
+    assert.match(
+      script,
+      /if \(mode !== "research" && num\("queue_target"\) !== undefined\) d\.queue_target = num\("queue_target"\);/,
+    );
+    // Saved with its own number: the contract's lanes.queue_target.
+    const res = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(draft({ queue_target: 6 })),
+      rig: "rig-a",
+      promotion: "",
+      start_value: "save",
+    });
+    assert.equal(res.status, 303);
+    const [v] = s.store.campaignVersions("matmul-speed");
+    assert.deepEqual((v?.contract as { lanes?: unknown } | undefined)?.lanes, {
+      count: 2,
+      trials_per_epoch: 3,
+      queue_target: 6,
+    });
+    const campaign = await (await s.get("/ui/campaigns/matmul-speed")).text();
+    assert.match(
+      campaign,
+      /<h2>Experiment queue<\/h2>[\s\S]*?Ideas kept ready[\s\S]*?<b>6<\/b> <span class="muted">\(the campaign's own number\)<\/span>/,
+    );
+    // Without a number: two for each lane, said so.
+    const other = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(draft({ campaign: "matmul-two", lanes: 3 })),
+      rig: "rig-a",
+      promotion: "",
+      start_value: "save",
+    });
+    assert.equal(other.status, 303);
+    assert.match(
+      await (await s.get("/ui/campaigns/matmul-two")).text(),
+      /<b>6<\/b> <span class="muted">\(2 for each of 3 lanes\)<\/span>/,
+    );
+    // Out of range: refused in words, nothing saved.
+    const bad = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(draft({ campaign: "matmul-bad", queue_target: -1 })),
+      rig: "rig-a",
+      promotion: "",
+      start_value: "save",
+    });
+    assert.match(await bad.text(), /Ideas kept ready is 0 or more/);
+    assert.equal(s.store.campaignVersions("matmul-bad").length, 0);
+  });
+
   test("past research: the page links to the knowledge base, and a campaign saved without starting offers grants and From past research", async () => {
     const s = await stack();
     const page = await (await s.get("/ui/campaigns/new")).text();

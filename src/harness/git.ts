@@ -323,6 +323,88 @@ export async function deleteRef(mirror: string, ref: string): Promise<void> {
   await git(mirror, ["update-ref", "-d", ref]);
 }
 
+/**
+ * The change between two commits as a person reads it (goal 081): a unified diff without binary
+ * patches (a binary file shows as one line that it differs).
+ */
+export async function readableDiff(
+  mirror: string,
+  parent: string,
+  commit: string,
+): Promise<string> {
+  for (const c of [parent, commit])
+    if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(c)) throw new GitError(`not a commit id: ${c}`);
+  return git(mirror, ["diff", "--no-color", "--no-ext-diff", "--no-renames", parent, commit]);
+}
+
+/** One file of a commit's tree: its path from the top and its size in bytes. */
+export interface TreeFile {
+  path: string;
+  size: number;
+}
+
+/**
+ * The files of a commit's tree, or of one folder of it (goal 081), with their sizes. Paths are
+ * from the tree's top; nothing outside the tree can be named.
+ */
+export async function treeFiles(mirror: string, commit: string, folder = ""): Promise<TreeFile[]> {
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit))
+    throw new GitError(`not a commit id: ${commit}`);
+  const out = await git(mirror, [
+    "ls-tree",
+    "-r",
+    "-l",
+    "-z",
+    "--full-tree",
+    commit,
+    ...(folder ? ["--", folder] : []),
+  ]);
+  const files: TreeFile[] = [];
+  for (const entry of out.split("\0")) {
+    // "<mode> <type> <object> <size>\t<path>"; a submodule has no size.
+    const tab = entry.indexOf("\t");
+    if (tab < 0) continue;
+    const [, type, , size] = entry.slice(0, tab).split(/\s+/);
+    if (type !== "blob") continue;
+    files.push({ path: entry.slice(tab + 1), size: Number(size) || 0 });
+  }
+  return files;
+}
+
+/**
+ * One file of a commit's tree, as bytes (goal 081), or undefined when the tree has no file
+ * there. Larger than `maxBytes`: its size alone.
+ */
+export async function treeFile(
+  mirror: string,
+  commit: string,
+  path: string,
+  maxBytes: number,
+): Promise<{ size: number; bytes?: Buffer } | undefined> {
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit))
+    throw new GitError(`not a commit id: ${commit}`);
+  const spec = `${commit}:${path}`;
+  const type = await git(mirror, ["cat-file", "-t", spec]).then(
+    (t) => t.trim(),
+    () => "",
+  );
+  if (type !== "blob") return undefined;
+  const size = Number((await git(mirror, ["cat-file", "-s", spec])).trim());
+  if (size > maxBytes) return { size };
+  try {
+    const { stdout } = await run("git", [...IDENTITY, "cat-file", "blob", spec], {
+      cwd: mirror,
+      maxBuffer: maxBytes + 1024,
+      encoding: "buffer",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1" },
+    });
+    return { size, bytes: stdout };
+  } catch (err) {
+    const e = err as { stderr?: Buffer; message: string };
+    throw new GitError(`git cat-file failed: ${e.stderr?.toString("utf8").trim() || e.message}`);
+  }
+}
+
 /** The id of a commit's tree: the same content gives the same tree in any repository. */
 /** A file's content at a commit (for example a kit's kit.json). */
 export async function showFile(mirror: string, commit: string, path: string): Promise<string> {

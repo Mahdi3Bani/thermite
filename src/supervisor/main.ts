@@ -15,7 +15,7 @@ import { buildHeaders, buildInfo } from "../core/version.ts";
 import { McpGateway } from "../harness/mcp-gateway.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
-import { AdvisorsConfig } from "./advisors.ts";
+import { AdvisorsConfig, advisorsFileReport } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
@@ -601,6 +601,10 @@ async function main(): Promise<void> {
                 auditor: lastSettings.auditor && Boolean(advisors.auditor),
                 panel: lastSettings.review ? advisors.review_panel.length : 0,
               },
+              // What the rig's advisors file sets up for each role, so that Edit rig can say what
+              // an advisor with no model from control uses (goal 074). No key, token or address.
+              // With no advisor from the file or from control, `advisors` is null: none in it.
+              file: advisorsFileReport(fileAdvisors),
             }
           : null,
       });

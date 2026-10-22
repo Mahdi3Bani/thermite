@@ -126,6 +126,29 @@ export function assignRefusal(payload: unknown): string {
 }
 
 /**
+ * Why a command that would start or resume a run is refused because its campaign is archived
+ * (goal 077), or "". Archiving waits until no run is at work, so an archived campaign has none;
+ * it starts none either until the owner unarchives it.
+ */
+export function archivedRefusal(
+  store: ControlStore,
+  rig: string,
+  kind: CommandKind,
+  payload: unknown,
+): string {
+  if (kind !== "assign_campaign" && kind !== "resume_run") return "";
+  const p = payload as { run?: unknown; contract?: { campaign?: unknown } } | null;
+  const campaign =
+    kind === "assign_campaign"
+      ? p?.contract?.campaign
+      : typeof p?.run === "string"
+        ? (store.assignedCampaigns(rig).get(p.run) ?? store.campaignOfRun(rig, p.run))
+        : undefined;
+  if (typeof campaign !== "string" || !store.campaignArchived(campaign)) return "";
+  return `${campaign} is archived. Unarchive it first.`;
+}
+
+/**
  * Why control refuses a set of rules (redirect) before signing it, or "". A rule may name a
  * direction the run doesn't have yet: the planner designs it (goal 066). A research run has no
  * planner, so there only its task kinds may be named. The rig's harness checks the same.
@@ -276,6 +299,8 @@ export function prepareCommand(
   if (refused) throw new Error(`Control sends no commands to ${input.rig}. ${refused.reason}`);
   const unrunnable = input.kind === "assign_campaign" ? assignRefusal(input.payload) : "";
   if (unrunnable) throw new Error(unrunnable);
+  const shelved = archivedRefusal(store, input.rig, input.kind, input.payload);
+  if (shelved) throw new Error(shelved);
   // A campaign's own context window above what a provider lists for one of the rig's agents'
   // models (goal 070): refused before signing, on every path that starts a run. A try has no agents.
   const assigned = input.payload as { contract?: unknown; agents?: unknown } | null;

@@ -17,7 +17,7 @@ A **rig** can check itself in three ways. Each check runs inside the rig's **har
 ## How a check runs
 
 - **The command.** A check starts with the signed `rig_check` command, with payload `{"check": "model" | "isolation" | "smoke", "force"?: true}`. The dashboard, the REST API, the command line and the MCP tool `issue_command` can all send it. See [Signed commands](signed-commands.md).
-- **The result comes later.** The command returns as soon as the check starts. The rig records two events: `rig_check_started` (with an id, the check and `force`), then `rig_check_finished` with `ok`, the summary sentence (at most 2,000 characters), a `note` when a check passed with one (the smoke check on noisy timing, below), and details (at most 60,000 characters). Control's view of the rig keeps each check's `note`, or `null`. The result reaches control with the rig's next report.
+- **The result comes later.** The command returns as soon as the check starts. The rig records two events: `rig_check_started` (with an id, the check and `force`), then `rig_check_finished` with `ok`, the summary sentence (at most 2,000 characters), a `note` when a check passed with one (the smoke check on noisy timing, below), and details (at most 60,000 characters). Control's view of the rig keeps each check's `note`, or `null`, and the run's `id`, or `null` from a rig that sent none. The result reaches control with the rig's next report.
 - **One at a time.** A rig runs one check at a time.
 - **On its own.** When the harness runs under the broker, it runs the isolation check every time it starts, before its API, its judge or any agent. It uses `force`, since nothing else can be running yet. It runs the model check whenever control gives the rig a new model route, or right after the check that is running then.
 
@@ -38,7 +38,18 @@ When the harness restarts during a check, it records the check as finished with 
 
 ### Where results show
 
-- The rig's page on the dashboard, in its **Checks** block: **not run yet**, **running**, **passed** or **failed**, with when it ran and the summary sentence.
+- The rig's page on the dashboard, in its **Checks** block, one row for each check. The row follows the newest `rig_check` command for the check, and the check's newest run on the rig, and draws itself again when either changes, with no refresh:
+
+  | State | The chip | The line under the check's name | Its button |
+  | --- | --- | --- | --- |
+  | Not run yet | **not run yet** | None | **Run it** |
+  | Sent: control queued the command, and the rig has not taken it | **sent** | `Sent to the rig at 03:41 UTC. It starts when the rig takes it.` | **Sent**, off |
+  | Running: the rig took the command (its answer names the run of the check it started), or reported `rig_check_started` | **running** and the time so far, such as `running · 1 m 12 s`, counted on each second | What the check pauses: `Its running runs are paused for it, and resumed after.` for the smoke check, `Nothing is paused for it.` for the others | **Running…**, off |
+  | Passed or failed | **passed** or **failed**, and how long ago | The summary sentence | **Run it** |
+  | Refused: the rig did not run the command | The last result | `Not run: the rig refused it at 03:41 UTC.` and the rig's reason, such as `Not now: …` | **Run it** |
+  | Expired: the rig did not take the command before its signature ran out | The last result | `Not run: the rig did not take it before 04:41 UTC.` | **Run it** |
+
+  A run of the check that started after the command, or that still runs, shows in place of the command: the rig ran it by itself, or it will refuse the command while it runs. **Providers › Harness and model for each rig** says the same of the model check in its rig's row, such as `Its model check was sent to the rig at 03:41 UTC. It starts when the rig takes it.` or `Its model check is running · 12 s.`, and its **Check** button is off meanwhile.
 - The rig's history, and `checks` in `GET /v1/rigs/<rig>/view` on the [REST API](rest-api.md).
 - The MCP tool `recent_events`. See [MCP tools](mcp-tools.md).
 

@@ -50,6 +50,7 @@ usage: thermite <command> [options]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
+         [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -67,8 +68,13 @@ usage: thermite <command> [options]
                                       in the contract sent (its agents_context, over the file's):
                                       every agent's window is the lower of it and its own, and
                                       the point replaces the rig's; the contract's hash changes
-                                      with them. --print shows the payload (for issue_command
-                                      over MCP) instead of issuing it
+                                      with them. --info-file, --link, --idea and --hypothesis
+                                      give the campaign's brief in the contract sent, each in
+                                      place of the file's: its additional information (Markdown,
+                                      from file F), its starting links (a research campaign's
+                                      seeds), its ideas to try (hill climb and goal) and its
+                                      hypotheses, one per option. --print shows the payload (for
+                                      issue_command over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--note TEXT] [--agents off]
@@ -135,7 +141,8 @@ usage: thermite <command> [options]
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
   campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
-         [--compact-at PERCENT] --control URL --token-file F
+         [--compact-at PERCENT] [--info-file F] [--link URL ...] [--idea TEXT ...]
+         [--hypothesis TEXT ...] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
@@ -143,7 +150,10 @@ usage: thermite <command> [options]
                                       --mcp-servers-json: for a research campaign, the MCP
                                       servers the copy's agents use instead, as a JSON list
                                       ([] for none). --context-window and --compact-at give the
-                                      copy its own context settings, in place of FROM's
+                                      copy its own context settings, in place of FROM's. The copy
+                                      keeps FROM's brief; --info-file (Markdown; an empty file
+                                      for none), --link, --idea and --hypothesis give its own,
+                                      each in place of FROM's
   campaign context CAMPAIGN [--context-window TOKENS] [--compact-at PERCENT]
          --control URL --token-file F
                                       set a campaign's own context settings for all its runs'
@@ -311,11 +321,17 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--mcp-servers JSON\|@file` | When the kit names MCP servers | None | The MCP servers the kit's `kit.json` names, as it names them ([`mcp_servers`](kit-manifest.md#mcp-servers)): the JSON list itself, or `@` and a file that holds it. Sent as the command's `mcp_servers`. Control refuses a server **Settings** lacks, and the rig refuses the run when the list differs from `kit.json`'s. A research contract's own `mcp_servers` are sent without it |
 | `--context-window TOKENS` | No | The contract's | The campaign's own context window for the run's agents: the contract's [`agents_context.context_window`](contract.md#agents-context), over the file's. 4,096 to 100,000,000. Each agent works with the lower of it and its own window. The contract sent, and its hash, change with it |
 | `--compact-at PERCENT` | No | The contract's | The campaign's own compaction point: the contract's `agents_context.compact_at`, over the file's. 50 to 95. It replaces the rig's point for every agent of the run |
+| `--info-file F` | No | The contract's | The campaign's additional information: the contract's [`notes`](contract.md#the-campaigns-brief), in Markdown, read from file `F`, over the file's. No length limit of its own. An empty file removes it. The contract sent, and its hash, change with it |
+| `--link URL` | No, repeatable | The contract's | One starting link, a web address. Together they are the contract's `links` (hill climb and goal), or a research contract's `seeds`, in place of the file's. A research run's harness fetches and archives them when the run starts |
+| `--idea TEXT` | No, repeatable | The contract's | Hill climb and goal: one idea to try. Together they are the contract's `ideas`, in place of the file's. For a research contract the command stops: `--idea is for hill-climb and goal campaigns: a research campaign has questions` (exit 2) |
+| `--hypothesis TEXT` | No, repeatable | The contract's | One hypothesis. Together they are the contract's `hypotheses`, in place of the file's. A research run starts with them as its hypotheses |
 | `--control URL` | To send it | | Control's address |
 | `--token-file F` | To send it | | A file with the owner's token |
 | `--rig R` | To send it | | The rig that runs it |
 | `--ttl MIN` | No | `60` | Minutes before the command expires if the rig has not taken it: a whole number from 1 to 10080 (7 days) |
 | `--print` | Instead of the four above | | Print the payload as indented JSON and send nothing. The output is what the MCP tool `issue_command` takes as `payload` |
+
+`--info-file`, `--link`, `--idea` and `--hypothesis` put the campaign's brief in the contract sent, so you can keep the brief in a Markdown file beside the contract. An `--info-file` that can't be read ends the command with `--info-file:` and why (exit 2).
 
 A `--context-window` or `--compact-at` out of range ends the command before anything is sent, with exit code 2: `--context-window and --compact-at: A context window is a whole number of tokens from 4,096 to 100,000,000.` or `… The compaction point is a whole percent of the context window, from 50 to 95.` Control refuses a window above what a provider lists for one of the rig's agents' models: [Campaigns](rest-api.md#campaigns) has the words.
 
@@ -556,6 +572,10 @@ It prints control's answer on one line, such as `{"campaign":"sort-speed-b","ver
 | `--mcp-servers-json FILE` | No | the source's | A research campaign only: a file with the MCP servers the copy's agents use instead of the source's, as a JSON list, sent as the request's `mcp_servers` ([Copy a campaign](rest-api.md#copy-a-campaign)). `[]` names none |
 | `--context-window TOKENS` | No | the source's | The copy's own context window for its runs' agents, 4,096 to 100,000,000, sent in the request's `agents_context`. With it or `--compact-at`, the copy's context settings are these, in place of the source's |
 | `--compact-at PERCENT` | No | the source's | The copy's own compaction point, 50 to 95, sent in the request's `agents_context` |
+| `--info-file F` | No | the source's | The copy's own additional information, in Markdown, read from file `F` and sent as the request's `notes`. An empty file gives the copy none |
+| `--link URL` | No, repeatable | the source's | The copy's own starting links, sent as the request's `links`: a research copy's seeds |
+| `--idea TEXT` | No, repeatable | the source's | The copy's own ideas to try, sent as the request's `ideas`. A hill-climb or goal campaign only |
+| `--hypothesis TEXT` | No, repeatable | the source's | The copy's own hypotheses, sent as the request's `hypotheses` |
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
 
@@ -664,7 +684,7 @@ It prints the harness's answer on one line: `{"attempt":"<id>","lifecycle":"queu
 
 ### `status`
 
-`thermite status --harness URL --token-file F --attempt ID` prints what the harness knows of an attempt (`GET /v1/attempts/ID`): `attempt`, `run`, `lifecycle`, `commit`, `v0` and `verdict`. The token is the proposer's or the supervisor's.
+`thermite status --harness URL --token-file F --attempt ID` prints what the harness knows of an attempt (`GET /v1/attempts/ID`): `attempt`, `run`, `lane`, `lifecycle`, `commit`, `v0`, `violations`, `verdict` and `held_out`. The token is the proposer's or the supervisor's.
 
 It prints the harness's answer whatever its HTTP status, and exits 0 even when the harness answers with an error such as `no attempt <id>`.
 
@@ -715,7 +735,7 @@ usage:
 | --- | --- | --- |
 | `submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...` | Stages and diffs only the trial's editable paths, then submits the change. The hypothesis and the claim are cut to 2000 characters, each flaw to 1000. Submitting ends the trial | `submitted <attempt>: <lifecycle>. The trial ends with this submission.`, with `; refused: <violations>` before the last sentence when the change broke a rule |
 | `dev-run [--timeout SECONDS] -- COMMAND...` | Runs the command on the measurement device, as a [development run](glossary.md), in the trial's workspace | The run's result as indented JSON |
-| `status ATTEMPT` | Shows one of this lane's attempts | The attempt as indented JSON |
+| `status ATTEMPT` | Shows an attempt of this campaign on the rig: this lane's, another lane's or an earlier run's, with `violations` for a change the static checks refused | The attempt as indented JSON |
 | `idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]` | Proposes another experiment for the run's queue, as the lane's idea: something worth trying that is not the trial's own work. The words after `idea` are its title, cut to 200 characters; `--why` is cut to 2000, `--family` (its direction) to 80 and `--details` to 4000. A repeated option keeps its last value. A title that is one word naming a command (`submit`, `dev-run`, `status`, `idea`, `note`, `research`, `list`, `ls`, `show`, `help`, `-h`, `--help`) is refused, so a slip does not become an idea; a longer title that starts with one is fine. The idea waits until the planner or the campaign's owner queues it or drops it, and the trial goes on. Without the planner's model (none set, its answer refused, the planner off, or a research run), it waits for the owner. No limit is set on how many | `proposed <experiment id>: it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` |
 | `note --kind KIND [--about TYPE:ID] TEXT` | Writes a [field note](knowledge-base.md#field-notes) for the run's journal: an observation, a decision and why, a surprise, a question or a lesson. The words after the options are its text, 1 to 2000 characters. `--kind` is one of the kinds in the usage text, in any case. `--about` names one record of the run it is about, such as `attempt:a-11110003` or `round:12`, or the run itself, as `run:<run>`; a round or a message is named by its number. Without `--about`, the note is about the run. A repeated option keeps its last value. The note is recorded as the lane's, and the trial goes on. No limit is set on how many | `noted (#<id>). Your trial goes on.` |
 | `research TOOL [WORDS...] [--FLAG VALUE]... [-]` | Runs one of a research trial's tools (below) through the harness's research service. The words fill the tool's main field and the flags its others; `-` reads a JSON object of fields from standard input | The tool's answer: text as it is, anything else as JSON, cut at 14,000 characters |

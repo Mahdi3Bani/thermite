@@ -7,8 +7,10 @@ import { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
+import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
 import { MIGRATIONS } from "./schema.ts";
+import { shownViolations, violationsOf } from "./v0.ts";
 
 /**
  * The harness ledger: the authoritative research record for one rig.
@@ -635,6 +637,14 @@ export class Ledger {
         known_flaws: a.knownFlaws ?? [],
         // What changed, bounded: the first 50 files and how many there were in all.
         ...(a.files ? { files: a.files.slice(0, 50), files_total: a.files.length } : {}),
+        // Why the static checks refused it, bounded (goal 082): control, the knowledge base and
+        // the owner see what the submitting trial saw. The record keeps them all.
+        ...(() => {
+          const refused = violationsOf(a.v0);
+          if (!refused.length) return {};
+          const shown = shownViolations(refused);
+          return { violations: shown.violations, violations_total: shown.total };
+        })(),
       });
     });
   }
@@ -921,7 +931,12 @@ export class Ledger {
     }));
   }
 
-  /** Held-out results: for promotion code only, never in events, snapshots or exports. */
+  /**
+   * A held-out record: whether every held-out cell passed, and each cell's name, kind of failure
+   * and value against its threshold (goal 082). It never goes into a snapshot or an export; the
+   * judge's `held_out_checked` event carries the same for the owner, and the agents get only the
+   * kinds (heldOutFailure).
+   */
   recordHeldOut(
     jobId: number,
     fence: number,
@@ -941,6 +956,24 @@ export class Ledger {
         this.now(),
       );
     });
+  }
+
+  /**
+   * What the agents may know of an attempt's newest held-out record (goal 082): undefined when
+   * it has none or it passed; else the kinds of failure it found, each once ([] for a record from
+   * before goal 082, which kept no kinds). Never a cell's name, values or texts.
+   */
+  heldOutFailure(attempt: string): HeldOutKind[] | undefined {
+    const r = this.get<Row>(
+      "select pass, detail from held_out where attempt = ? order by id desc limit 1",
+      attempt,
+    );
+    if (!r || Number(r.pass) === 1) return undefined;
+    try {
+      return heldOutKinds(heldOutCellsOf(JSON.parse(String(r.detail))));
+    } catch {
+      return [];
+    }
   }
 
   heldOutPassed(jobId: number): boolean | undefined {

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { log } from "../common/env.ts";
 import type { McpConnect } from "../common/mcp-client.ts";
+import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
   type AskOwner,
@@ -25,6 +26,7 @@ import { isLegacyRule, researchDirectionRefusal } from "../core/directions.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
+import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
@@ -35,6 +37,14 @@ import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import type { Compactions } from "./compactions.ts";
 import { Conclusions } from "./conclusions.ts";
 import {
+  listChampionFiles,
+  oneAttempt,
+  readAttemptDiff,
+  readChampionFile,
+  recentAttempts,
+  triedCauses,
+} from "./evidence.ts";
+import {
   createAttemptCommit,
   folderCommit,
   GitError,
@@ -44,8 +54,10 @@ import {
   showFile,
   updateRef,
 } from "./git.ts";
+import { goalChecks } from "./goal-checks.ts";
 import { importBundle, importFile } from "./imports.ts";
 import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
+import { heldOutWords } from "./judge/held-out.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
@@ -56,10 +68,11 @@ import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf } from "./research/folder.ts";
+import { startingHypotheses } from "./research/research.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { ModelUsage } from "./usage.ts";
-import { checkV0 } from "./v0.ts";
+import { checkV0, violationsOf } from "./v0.ts";
 
 /** A directive set may not both avoid a direction and ask for it. */
 function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
@@ -1027,6 +1040,7 @@ export class HarnessService {
     // The kit is checked against the contract now, not when the judge first needs it.
     const kitRef = contract.mode !== "research" ? contract.project.kit : undefined;
     let named: McpUse[] = [];
+    let checkedKit: Kit | undefined;
     if (kitRef) {
       const mirror = this.mirrorFor(`kit-${kitRef.repo}`);
       if (!(await hasCommit(mirror, kitRef.commit))) {
@@ -1046,6 +1060,7 @@ export class HarnessService {
       if (problems.length)
         throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
       named = kit.mcp_servers ?? [];
+      checkedKit = kit;
     }
     // The MCP servers the kit names (a research contract's), as the signed command says them:
     // control gives the rig only those servers, so the two must agree.
@@ -1087,10 +1102,22 @@ export class HarnessService {
         briefing: p.briefing?.map((b) => ({ text: b.text, from: b.from })),
         actor: by,
       });
+      // A research run starts with its campaign's hypotheses as its own (goal 078).
+      if (contract.mode === "research" && contract.hypotheses?.length)
+        startingHypotheses(this.ledger, p.run, contract.hypotheses, by);
       // The MCP servers the run's agents use, and which agents get each: what the gateway and
       // the advisors read from now on (goal 068).
       if (named.length)
         this.ledger.appendEvent(by, "mcp_servers", p.run, { servers: canonicalUses(named) });
+      // How each goal is really checked, as this rig's kit runs it (goal 082): control shows it
+      // on the campaign's and the run's pages, also for a kit only the rig has.
+      if (contract.mode === "goal" && checkedKit && kitRef)
+        this.ledger.appendEvent(
+          by,
+          "goal_checks",
+          p.run,
+          goalChecks(contract, { kit: checkedKit, repo: kitRef.repo, commit: kitRef.commit }),
+        );
       // Another run's untried experiments start this run's queue, in order, each with who added
       // it, why, its state and where it came from.
       for (const s of p.queue ?? [])
@@ -1421,10 +1448,15 @@ export class HarnessService {
 
   /** What the supervisor's auditor sees for each open audit: the package and the diff. */
   async auditPackages(): Promise<
-    (AuditPackage & { diff: string; owner_messages: { id: number; at: string; text: string }[] })[]
+    (AuditPackage & {
+      campaign_brief?: BriefData;
+      diff: string;
+      owner_messages: { id: number; at: string; text: string }[];
+    })[]
   > {
     const audits = new Audits(this.ledger);
     const out: (AuditPackage & {
+      campaign_brief?: BriefData;
       diff: string;
       owner_messages: { id: number; at: string; text: string }[];
     })[] = [];
@@ -1441,8 +1473,12 @@ export class HarnessService {
         String(a.parent_commit),
         String(a.commit_sha),
       );
+      // The campaign's brief from its author, whole, before the diff (goal 078): a package too
+      // long for the auditor's window is cut at its end.
+      const brief = briefData(this.contractFor(row.run));
       out.push({
         ...pkg,
+        ...(brief ? { campaign_brief: brief } : {}),
         diff: diff.slice(0, 200_000),
         // The owner's messages the auditor has not read (to it, or to all the advisors).
         owner_messages: this.ownerMessagesFor(row.run, "auditor"),
@@ -1454,13 +1490,20 @@ export class HarnessService {
 
   /** Reviews waiting for the panel, each with the owner's messages the panel has not read. */
   reviewPackages(): (ReviewPackage & {
+    campaign_brief?: BriefData;
     owner_messages: { id: number; at: string; text: string }[];
   })[] {
-    return new Reviews(this.ledger).pending().map((r) => ({
-      ...r,
-      owner_messages: this.ownerMessagesFor(r.run, "panel"),
-      ...this.backgroundFor(r.run),
-    }));
+    return new Reviews(this.ledger).pending().map(({ diff, ...r }) => {
+      // The campaign's brief from its author, whole, before the diff (goal 078).
+      const brief = briefData(this.contractFor(r.run));
+      return {
+        ...r,
+        ...(brief ? { campaign_brief: brief } : {}),
+        diff,
+        owner_messages: this.ownerMessagesFor(r.run, "panel"),
+        ...this.backgroundFor(r.run),
+      };
+    });
   }
 
   /** A run's background from past research, for an advisor's brief or package (when it has one). */
@@ -1544,9 +1587,100 @@ export class HarnessService {
   }
 
   /**
-   * The deterministic snapshot the teachers review: the campaign, the champion,
-   * the direction registry, recent evidence, epochs and the directives in force. Nothing from
-   * held-out cells, and no worker text beyond hypotheses.
+   * A run's target queue depth now (goal 081): the target, the lanes it is counted for (the
+   * current round's, else the contract's), and how many experiments are queued, ready for a lane.
+   */
+  queueState(run: string): { target: number; lanes: number; ready: number } {
+    const contract = this.contractFor(run);
+    const epoch = new Registry(this.ledger).currentEpoch(run);
+    const lanes = epoch?.assignments.length || contract.lanes.count;
+    return {
+      target: queueTarget(contract, lanes),
+      lanes,
+      ready: this.queue.queued(run).length,
+    };
+  }
+
+  /**
+   * The newest time a planner's round left a run's queue below its target (goal 081), while it
+   * still is: the supervisor then starts the teachers' round at once, not on the clock. None for
+   * a run that is not running, has no agents or is a research run, or whose queue is at its
+   * target again.
+   */
+  queueLow(
+    run: string,
+  ): { event: number; at: string; round: number; ready: number; target: number } | null {
+    const inst = this.ledger.getRun(run);
+    if (inst?.status !== "running" || !inst.agents || inst.mode === "research") return null;
+    const e = this.ledger.db
+      .prepare(
+        "select id, at, body from event where kind = 'queue_low' and subject = ? order by id desc limit 1",
+      )
+      .get(run) as { id: number; at: string; body: string } | undefined;
+    if (!e) return null;
+    const now = this.queueState(run);
+    if (now.ready >= now.target) return null;
+    const b = JSON.parse(e.body) as { round?: number };
+    return {
+      event: Number(e.id),
+      at: e.at,
+      round: Number(b.round ?? 0),
+      ready: now.ready,
+      target: now.target,
+    };
+  }
+
+  /** The champion's commit and the run's project mirror, for the teachers' code reads (goal 081). */
+  private championCode(run: string): { mirror: string; commit: string } {
+    const inst = this.requireRun(run);
+    return {
+      mirror: this.mirrorFor(inst.seed_repo),
+      commit: this.ledger.currentChampion(run).commit_sha,
+    };
+  }
+
+  /** The files of the champion's tree under a folder, for the teachers (goal 081). */
+  codeFiles(run: string, folder: string): ReturnType<typeof listChampionFiles> {
+    const c = this.championCode(run);
+    return listChampionFiles(c.mirror, c.commit, folder);
+  }
+
+  /** One file of the champion's tree, by lines, for the teachers (goal 081). */
+  codeFile(
+    run: string,
+    path: string,
+    offset?: number,
+    limit?: number,
+  ): ReturnType<typeof readChampionFile> {
+    const c = this.championCode(run);
+    return readChampionFile(c.mirror, c.commit, path, offset, limit);
+  }
+
+  /** An attempt's diff, in parts, for the teachers (goal 081). */
+  attemptDiff(run: string, attempt: string, offset?: number): ReturnType<typeof readAttemptDiff> {
+    const inst = this.requireRun(run);
+    return readAttemptDiff(this.ledger, this.mirrorFor(inst.seed_repo), run, attempt, offset);
+  }
+
+  /**
+   * The judge's public findings for the teachers (goal 081): one attempt in full, or the newest
+   * attempts and the newest tried experiments, each with its cause. Never held-out results.
+   */
+  evidence(run: string, attempt?: string): unknown {
+    this.requireRun(run);
+    if (attempt) return oneAttempt(this.ledger, run, attempt);
+    return {
+      attempts: recentAttempts(this.ledger, run, { limit: 40, reasonChars: 2000 }),
+      tried: triedCauses(this.ledger, this.queue, run, { limit: 40, causeChars: 1200 }),
+    };
+  }
+
+  /**
+   * The deterministic snapshot the teachers review: the campaign, the champion and its commit,
+   * the direction registry, recent attempts with the judge's public reasons, the causes of the
+   * experiments tried, epochs, the directives in force, the queue and its target, and what the
+   * teachers proposed before (goal 081). Nothing from held-out cells (evidence.ts says how), and
+   * no worker text beyond hypotheses and ideas.
    */
   brief(run: string): unknown {
     const inst = this.requireRun(run);
@@ -1575,6 +1709,7 @@ export class HarnessService {
             status: string;
           }[])
         : undefined;
+    const brief = briefData(contract);
     return {
       rig: this.rig,
       run,
@@ -1592,18 +1727,55 @@ export class HarnessService {
                 required: g.required,
               }))
             : { topic: contract.topic, questions: contract.questions },
+      // The campaign's brief from its author, whole (goal 078): ahead of the long parts, so a
+      // brief cut to the teacher's window loses the evidence first.
+      ...(brief ? { campaign_brief: brief } : {}),
       editable_paths: "editable_paths" in contract ? contract.editable_paths : [],
-      champion: { seq: champion.seq, attempt: champion.attempt },
+      // Its commit: the tree the teachers read with their code tools (goal 081).
+      champion: { seq: champion.seq, attempt: champion.attempt, commit: champion.commit_sha },
       families: registry.families(run),
       // The run's directions (goal 066). A rule may also name a new one: the planner designs it.
       directions: this.queue.directions(run),
-      evidence: registry.evidence(run, 40),
+      // The target the teachers keep the queue at, and how far below it the queue is now
+      // (goal 081). Short, so it comes before the long parts, which a window may cut.
+      queue_target: (() => {
+        const q = this.queueState(run);
+        return { ...q, below: q.ready < q.target, wanted: Math.max(0, q.target - q.ready) };
+      })(),
+      // What the teachers proposed before and what became of it: their portfolio is new since.
+      teacher_ideas: this.queue
+        .all(run)
+        .filter((x) => x.added_by === "teacher")
+        .slice(-30)
+        .reverse()
+        .map((x) => ({
+          id: x.id,
+          title: x.title,
+          state: x.state,
+          ...(x.result ? { result: x.result } : {}),
+          ...(x.dropped_why ? { dropped: x.dropped_why.slice(0, 200) } : {}),
+        })),
+      // The newest attempts: the planner's evidence, with a refused change's violations and a
+      // held-out failure's kind (goal 082), and the judge's public reasons (goal 081); the
+      // teachers read each in full with their tools.
+      evidence: recentAttempts(this.ledger, run, { limit: 20, reasonChars: 400 }),
       epochs,
-      directives: this.ledger
-        .activeDirectives(run)
-        .map((d) => (isLegacyRule(d.body) ? { ...d, legacy: true } : d)),
+      // A teachers' rule that freezes the queue or pins an experiment, set before code refused
+      // them, is marked: it no longer reaches the planner (goal 081).
+      directives: this.ledger.activeDirectives(run).map((d) => {
+        const refused = d.author.startsWith("supervisor")
+          ? ruleRefusal(d.body as StructuredDirective)
+          : undefined;
+        return {
+          ...d,
+          ...(isLegacyRule(d.body) ? { legacy: true } : {}),
+          ...(refused ? { refused: refused.why } : {}),
+        };
+      }),
       // The run's experiment queue: the teachers may add experiments and move queued ones.
       queue: this.queue.brief(run),
+      // Why each experiment tried ended as it did (goal 081).
+      causes: triedCauses(this.ledger, this.queue, run, { limit: 20, causeChars: 400 }),
       ...(goals ? { goals } : {}),
       budget: {
         ...contract.budget,
@@ -1736,7 +1908,8 @@ export class HarnessService {
    * addDirectives, with the rules it left out. A rule may name a direction the run doesn't have
    * yet: the planner designs it (goal 066). A research run has no planner, so there a rule for
    * another direction than a task kind is left out, recorded as a `directives_left_out` event
-   * with why. The rest of the set stands.
+   * with why. A rule that freezes the queue's size or pins an experiment is left out the same
+   * way (goal 081). The rest of the set stands.
    */
   setAdvisorRules(
     run: string,
@@ -1754,23 +1927,47 @@ export class HarnessService {
       throw new LedgerError("invalid", "at most 3 notes per directive set");
     }
     conflictCheck(parsed);
+    type Rule = (typeof parsed)[number];
+    // Rules that freeze the queue's size or pin an experiment (goal 081), each with why.
+    const refused = new Map(
+      parsed.flatMap((d) => {
+        const r = ruleRefusal(d);
+        return r ? [[d, r] as const] : [];
+      }),
+    );
     const research = this.contractFor(run).mode === "research";
     const known = this.queue.directions(run);
     const unknown = research ? unknownIn(parsed, known) : [];
-    const keep = parsed.filter((d) => !d.family || !unknown.includes(d.family));
-    const why = unknown.length ? researchDirectionRefusal(unknown) : "";
+    const unknownWhy = unknown.length ? researchDirectionRefusal(unknown) : "";
+    const isUnknown = (d: Rule) => !!d.family && unknown.includes(d.family);
+    const keep = parsed.filter((d) => !isUnknown(d) && !refused.has(d));
+    const named = (d: Rule) =>
+      `${d.kind}${d.family ? ` ${d.family}` : ""}${typeof d.value === "string" ? ` "${d.value.slice(0, 80)}"` : ""}`;
     return this.ledger.tx(() => {
       if (unknown.length)
         this.ledger.appendEvent(author, "directives_left_out", run, {
-          rules: parsed.filter((d) => !keep.includes(d)),
-          why,
+          rules: parsed.filter(isUnknown),
+          why: unknownWhy,
           reason: "unknown_direction",
         });
+      for (const reason of ["freezes_queue", "pins_experiment"] as const) {
+        const rules = parsed.filter((d) => !isUnknown(d) && refused.get(d)?.reason === reason);
+        const first = rules[0];
+        if (first)
+          this.ledger.appendEvent(author, "directives_left_out", run, {
+            rules,
+            why: refused.get(first)?.why ?? "",
+            reason,
+          });
+      }
       return {
         ids: this.ledger.addDirectiveSet(run, author, keep, true),
         left_out: parsed
           .filter((d) => !keep.includes(d))
-          .map((d) => ({ rule: `${d.kind} ${d.family}`, why })),
+          .map((d) => ({
+            rule: named(d),
+            why: isUnknown(d) ? unknownWhy : (refused.get(d)?.why ?? ""),
+          })),
       };
     });
   }
@@ -1791,8 +1988,31 @@ export class HarnessService {
     this.openRun(p.run);
     const actor = `supervisor:${p.role}`;
     const out = { added: [] as string[], moved: [] as string[], refused: [] as string[] };
-    for (const a of p.add)
-      out.added.push(this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor).id);
+    // A teacher's idea that repeats one waiting in the queue (up next, a lane's idea, or in
+    // progress) is refused, with the one it repeats (goal 081): the portfolio is new ideas.
+    const waiting = new Map(
+      this.queue
+        .all(p.run)
+        .filter((x) => x.state === "queued" || x.state === "proposed" || x.state === "assigned")
+        .map((x) => [ideaWords(x.title), x] as const),
+    );
+    const where: Record<string, string> = {
+      queued: "up next",
+      proposed: "a lane's idea",
+      assigned: "in progress",
+    };
+    for (const a of p.add) {
+      const same = p.role === "teacher" ? waiting.get(ideaWords(a.title)) : undefined;
+      if (same) {
+        out.refused.push(
+          `add "${a.title.slice(0, 120)}": it repeats ${same.id} (${where[same.state] ?? same.state})`,
+        );
+        continue;
+      }
+      const x = this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor);
+      waiting.set(ideaWords(x.title), x);
+      out.added.push(x.id);
+    }
     for (const m of p.move) {
       try {
         this.queue.move(p.run, m.id, { by: p.role, position: m.position, why: m.why }, actor);
@@ -2014,18 +2234,26 @@ export class HarnessService {
     }
   }
 
-  /** What a proposer may see about its own attempt: lifecycle, verdict and V0 findings. */
+  /**
+   * What a proposer may see about an attempt: lifecycle, verdict and V0 findings, with the
+   * violations of a refused change at the top (`violations`, all of them).
+   */
   attemptStatus(id: string): unknown {
     const a = this.ledger.getAttempt(id);
     if (!a) throw new LedgerError("not_found", `no attempt ${id}`);
     const verdict = this.ledger.currentVerdict(id);
+    const heldOut = this.ledger.heldOutFailure(id);
     return {
       attempt: id,
       run: a.run,
+      lane: a.lane ?? null,
       lifecycle: a.lifecycle,
       commit: a.commit_sha,
       v0: a.v0 ? JSON.parse(String(a.v0)) : null,
+      violations: violationsOf(a.v0),
       verdict: verdict ? { verdict: verdict.verdict } : null,
+      // Only that a held-out check failed, and how (goal 082): never which cell, or why.
+      held_out: heldOut ? heldOutWords(heldOut) : null,
     };
   }
 
