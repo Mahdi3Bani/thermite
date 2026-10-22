@@ -659,7 +659,7 @@ It prints the harness's answer on one line: `{"attempt":"<id>","lifecycle":"queu
 
 ### `status`
 
-`thermite status --harness URL --token-file F --attempt ID` prints what the harness knows of an attempt (`GET /v1/attempts/ID`): `attempt`, `run`, `lane`, `lifecycle`, `commit`, `v0`, `violations` and `verdict`. The token is the proposer's or the supervisor's.
+`thermite status --harness URL --token-file F --attempt ID` prints what the harness knows of an attempt (`GET /v1/attempts/ID`): `attempt`, `run`, `lane`, `lifecycle`, `commit`, `v0`, `violations`, `verdict` and `held_out`. The token is the proposer's or the supervisor's.
 
 It prints the harness's answer whatever its HTTP status, and exits 0 even when the harness answers with an error such as `no attempt <id>`.
 

@@ -406,6 +406,12 @@ details.matrix[open] > summary { border-bottom: 1px solid var(--border); }
 .gl:last-child { border-bottom: 0; }
 .gl-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .gl-why { color: var(--muted-foreground); font-size: 12px; } .gl-why.bad { color: var(--error-foreground); }
+details.howcheck > summary { cursor: pointer; font-size: 12px; color: var(--primary); width: fit-content; }
+.howc { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; padding: 8px 10px; border-left: 2px solid var(--border); }
+.howc code { word-break: break-word; }
+table.howc-cells { width: 100%; font-size: 12px; }
+table.howc-cells td, table.howc-cells th { padding: 4px 8px 4px 0; vertical-align: top; }
+.khow { margin-top: 12px; } .khow .gl { padding: 8px 0; }
 details.more > summary { list-style: none; cursor: pointer; } details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary .more-tog::after { content: "more"; color: var(--primary); white-space: nowrap; }
 details.more[open] > summary .more-part { display: none; } details.more[open] > summary .more-tog::after { content: "less"; }

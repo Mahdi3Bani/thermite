@@ -2,6 +2,7 @@ import { directionOf, isLegacyRule, RESEARCH_TASK_KINDS } from "../core/directio
 import { type Hardware, readHardware } from "../core/hardware.ts";
 import { clip } from "../core/kb-index.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
@@ -62,6 +63,66 @@ export interface AttemptView {
    */
   violations: string[];
   violations_total: number;
+  /**
+   * Its newest confirmation's held-out check, for the owner (goal 082): whether every held-out
+   * cell passed, and each cell's name, kind of failure and value against its threshold. Null when
+   * no held-out check ran, or its rig's harness is older.
+   */
+  held_out: HeldOutView | null;
+}
+
+/** One held-out check of an attempt, from the judge's `held_out_checked` event. */
+export interface HeldOutView {
+  at: string;
+  pass: boolean;
+  cells: {
+    cell: string;
+    goal: string | null;
+    verifier: string | null;
+    ok: boolean;
+    kind: string | null;
+    value: number | null;
+    low: number | null;
+    high: number | null;
+    threshold: number | null;
+    op: string | null;
+    measure: string | null;
+    unit: string | null;
+  }[];
+  /** How many cells the check had; the event names at most 50. */
+  cells_total: number;
+}
+
+/** A held-out check from its event's body, each field checked: the rig's report is data. */
+function heldOutView(at: string, b: Record<string, unknown>): HeldOutView {
+  const txt = (v: unknown, n = 200) => (typeof v === "string" ? clip(v, n) : null);
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const cells = (Array.isArray(b.cells) ? b.cells : []).slice(0, 50).flatMap((x) => {
+    const c = (x ?? {}) as Record<string, unknown>;
+    if (typeof c.cell !== "string") return [];
+    return [
+      {
+        cell: clip(c.cell, 200),
+        goal: txt(c.goal),
+        verifier: txt(c.verifier),
+        ok: c.ok === true,
+        kind: txt(c.kind, 40),
+        value: num(c.value),
+        low: num(c.low),
+        high: num(c.high),
+        threshold: num(c.threshold),
+        op: c.op === ">=" || c.op === ">" || c.op === "<=" || c.op === "<" ? c.op : null,
+        measure: txt(c.measure),
+        unit: txt(c.unit, 40),
+      },
+    ];
+  });
+  return {
+    at,
+    pass: b.pass === true,
+    cells,
+    cells_total: typeof b.cells_total === "number" ? b.cells_total : cells.length,
+  };
 }
 
 /** A judge job, from its queued, leased and finished events. */
@@ -129,6 +190,11 @@ export interface RunView {
   /** When the judge last checked the goals, and on which champion. */
   goals_at: string | null;
   goals_seq: number | null;
+  /**
+   * How each goal is really checked, as the rig's kit runs it (goal 082): from the rig's
+   * `goal_checks` event when the run started. Null for a run an older harness started.
+   */
+  goal_checks: GoalChecks | null;
   /** Audits (M5): what is held for one, and how each ended. */
   audits: {
     attempt: string;
@@ -577,6 +643,7 @@ export function rigView(
         goals: [],
         goals_at: null,
         goals_seq: null,
+        goal_checks: null,
         audits: [],
         promotion_waits: {},
         reviews: [],
@@ -704,6 +771,7 @@ export function rigView(
               : Array.isArray(b.violations)
                 ? b.violations.length
                 : 0,
+          held_out: null,
         };
         attempts.set(a.id, a);
         inst(a.run).attempts.push(a);
@@ -738,6 +806,15 @@ export function rigView(
             confirmDelta.set(a.id, b.delta);
           }
         }
+        break;
+      }
+      case "held_out_checked": {
+        const a = attempts.get(String(e.subject));
+        if (a) a.held_out = heldOutView(e.at, b);
+        break;
+      }
+      case "goal_checks": {
+        inst(String(e.subject)).goal_checks = parseGoalChecks(b);
         break;
       }
       case "champion_promoted": {

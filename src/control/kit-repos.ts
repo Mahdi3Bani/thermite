@@ -119,6 +119,31 @@ export class KitRepos {
     }
   }
 
+  /**
+   * A kept kit's kit.json at one of its commits, parsed, for the pages that show how a goal is
+   * checked (goal 082). Undefined when control does not keep that kit or that commit, or the
+   * file is not JSON.
+   */
+  manifest(name: string, commit: string): unknown {
+    if (!NAME.test(name) || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) return undefined;
+    if (!existsSync(join(this.path(name), "HEAD"))) return undefined;
+    try {
+      const text = execFileSync(
+        "git",
+        ["--git-dir", this.path(name), "show", `${commit}:kit.json`],
+        {
+          env: { PATH: process.env.PATH ?? "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1" },
+          stdio: ["ignore", "pipe", "ignore"],
+          maxBuffer: 4 * 1024 * 1024,
+        },
+      );
+      return JSON.parse(text.toString());
+    } catch {
+      // not a commit of this kit, or not JSON: control cannot read it
+      return undefined;
+    }
+  }
+
   /** One file a dumb-HTTP fetch asks for, or undefined when it is not one to serve. */
   file(name: string, rel: string): Buffer | undefined {
     if (!NAME.test(name) || !SERVED.test(rel)) return undefined;

@@ -41,8 +41,10 @@ import {
   showFile,
   updateRef,
 } from "./git.ts";
+import { goalChecks } from "./goal-checks.ts";
 import { importBundle, importFile } from "./imports.ts";
 import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
+import { heldOutWords } from "./judge/held-out.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
@@ -799,6 +801,7 @@ export class HarnessService {
     // The kit is checked against the contract now, not when the judge first needs it.
     const kitRef = contract.mode !== "research" ? contract.project.kit : undefined;
     let named: McpUse[] = [];
+    let checkedKit: Kit | undefined;
     if (kitRef) {
       const mirror = this.mirrorFor(`kit-${kitRef.repo}`);
       if (!(await hasCommit(mirror, kitRef.commit))) {
@@ -818,6 +821,7 @@ export class HarnessService {
       if (problems.length)
         throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
       named = kit.mcp_servers ?? [];
+      checkedKit = kit;
     }
     // The MCP servers the kit names (a research contract's), as the signed command says them:
     // control gives the rig only those servers, so the two must agree.
@@ -862,6 +866,15 @@ export class HarnessService {
       // the advisors read from now on (goal 068).
       if (named.length)
         this.ledger.appendEvent(by, "mcp_servers", p.run, { servers: canonicalUses(named) });
+      // How each goal is really checked, as this rig's kit runs it (goal 082): control shows it
+      // on the campaign's and the run's pages, also for a kit only the rig has.
+      if (contract.mode === "goal" && checkedKit && kitRef)
+        this.ledger.appendEvent(
+          by,
+          "goal_checks",
+          p.run,
+          goalChecks(contract, { kit: checkedKit, repo: kitRef.repo, commit: kitRef.commit }),
+        );
       // Another run's untried experiments start this run's queue, in order, each with who added
       // it, why, its state and where it came from.
       for (const s of p.queue ?? [])
@@ -1775,6 +1788,7 @@ export class HarnessService {
     const a = this.ledger.getAttempt(id);
     if (!a) throw new LedgerError("not_found", `no attempt ${id}`);
     const verdict = this.ledger.currentVerdict(id);
+    const heldOut = this.ledger.heldOutFailure(id);
     return {
       attempt: id,
       run: a.run,
@@ -1784,6 +1798,8 @@ export class HarnessService {
       v0: a.v0 ? JSON.parse(String(a.v0)) : null,
       violations: violationsOf(a.v0),
       verdict: verdict ? { verdict: verdict.verdict } : null,
+      // Only that a held-out check failed, and how (goal 082): never which cell, or why.
+      held_out: heldOut ? heldOutWords(heldOut) : null,
     };
   }
 

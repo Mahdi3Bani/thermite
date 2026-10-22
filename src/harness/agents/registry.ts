@@ -1,4 +1,5 @@
 import { canonicalJson, sha256Hex } from "../../core/canonical.ts";
+import { heldOutWords } from "../judge/held-out.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { shownViolations, violationsOf } from "../v0.ts";
 
@@ -54,6 +55,11 @@ export interface Evidence {
    * many violations there were in all (goal 082). Left out when it was not refused.
    */
   refused?: { violations: string[]; total: number } | undefined;
+  /**
+   * When its confirmation failed on held-out cells: that a held-out check failed, and how, in
+   * fixed words (goal 082). Never which cell, its values or its texts.
+   */
+  held_out?: string | undefined;
 }
 
 /** How many of a refused change's violations the planner's and the teachers' evidence shows. */
@@ -165,6 +171,7 @@ export class Registry {
       const v = this.ledger.currentVerdict(String(r.id));
       const d = v ? this.get("select delta from verdict where id = ?", v.id)?.delta : null;
       const refused = violationsOf(r.v0);
+      const heldOut = this.ledger.heldOutFailure(String(r.id));
       return {
         attempt: String(r.id),
         lane: r.lane === null ? null : String(r.lane),
@@ -174,6 +181,7 @@ export class Registry {
         verdict: v?.verdict ?? null,
         delta: typeof d === "number" ? d : null,
         ...(refused.length ? { refused: shownViolations(refused, EVIDENCE_VIOLATIONS) } : {}),
+        ...(heldOut ? { held_out: heldOutWords(heldOut) } : {}),
       };
     });
   }

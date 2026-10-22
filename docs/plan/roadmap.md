@@ -68,7 +68,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [074](goals/074-one-name-for-each-agent.goal) One name for each agent · `VERIFIED`
 - [075](goals/075-model-usage.goal) Model usage for each run, campaign and the whole system · `VERIFIED`
 - [077](goals/077-archive-and-folders.goal) Archive a campaign; folders in the left navigation; no rigs there · `VERIFIED`
-- [082](goals/082-judge-findings-in-view.goal) The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check · `IN_PROGRESS`
+- [082](goals/082-judge-findings-in-view.goal) The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check · `VERIFIED`
 
 ### Research mode
 

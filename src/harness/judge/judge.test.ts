@@ -468,17 +468,23 @@ export function work() {
     assert.equal(queued(), 1);
   });
 
-  test("held-out results stay out of events and exports", async () => {
+  test("held-out results stay out of measurements and exports; only the owner's event names a held-out case", async () => {
     const env = await setup({ heldOut: true });
     const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
     await env.drain();
     assert.equal(env.ledger.currentVerdict(id)?.verdict, "win_confirmed", why(env, id));
     const rows = env.ledger.db.prepare("select count(*) as n from held_out").get();
     assert.equal(Number(rows?.n), 1);
-    const leaked = env.ledger
+    // The held-out case is named only in the owner's held_out_checked event (goal 082).
+    const naming = env.ledger
       .eventsAfter(0, 10_000)
-      .events.filter((e) => JSON.stringify(e.body).includes("held"));
-    assert.deepEqual(leaked, []);
+      .events.filter((e) => JSON.stringify(e.body).includes('"held"'))
+      .map((e) => e.kind);
+    assert.deepEqual(naming, ["held_out_checked"]);
+    assert.equal(
+      env.ledger.db.prepare("select count(*) as n from measurement where cell = 'held'").get()?.n,
+      0,
+    );
     const exp = await env.service.export("test");
     const { DatabaseSync } = await import("node:sqlite");
     const snap = new DatabaseSync(`${exp.dir}/ledger.sqlite`);

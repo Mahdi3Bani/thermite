@@ -160,7 +160,7 @@ A **candidate** is a change an agent submits. These two fields are checked befor
 | `hard_constraints` | list of constraints (below) | `[]` | Absolute bounds on a metric |
 | `monitor_only` | list of metric names | `[]` | Accepted, not used yet. Not checked against the kit either |
 | `cells` | list of kit cells, at least one | required | The cells (test cases; the dashboard calls them **cases**) measured in every block |
-| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation. Their results are never shown to agents: a failed confirmation says only `confirmation failed`. A candidate must be correct on each, and its primary metric no worse than twice `acceptance.equivalence_band`, on the median of three runs |
+| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation. A candidate must be correct on each, and its primary metric no worse than twice `acceptance.equivalence_band`, on the median of three runs. When one fails, the agents learn only its kind, such as `confirmation failed: a held-out check timed out`, and the owner sees which cell, and its ratio against the threshold ([Held-out failures](verdicts.md#held-out-failures)) |
 | `acceptance` | object | all defaults below | How the judge decides |
 
 A guard:
@@ -212,7 +212,7 @@ A hard constraint is one of:
 | `independence_epochs` | integer ≥ 0 | 2 | Accepted, not used yet |
 | `min_live_families` | integer ≥ 1 | 2 | Accepted, not used yet |
 | `threshold_reps` | integer, 2–20 | 5 | Runs on each cell when a `metric_threshold` goal is checked |
-| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation, for the goals a candidate newly meets. A verifier whose cells are all held out never shows as met in the goal report |
+| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation, for the goals a candidate newly meets. A verifier whose cells are all held out never shows as met in the goal report. A threshold goal whose `cells` mix measured and held-out cells is screened on the measured ones. When a held-out cell fails, the agents learn only its kind ([Held-out failures](verdicts.md#held-out-failures)) |
 
 Each goal:
 

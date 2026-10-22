@@ -31,7 +31,7 @@ An export leaves the harness's outbox only once it is safe: pushed to the result
 
 ## What goes to control
 
-Every file the export's manifest lists, each with the SHA-256 the manifest gives it. The copy of the ledger (`ledger.sqlite`) goes with the first export, then at most once a day, and with every full export: the same rule as the results repository's ledger branch. A ledger copy never holds held-out results.
+Every file the export's manifest lists, each with the SHA-256 the manifest gives it. The copy of the ledger (`ledger.sqlite`) goes with the first export, then at most once a day, and with every full export: the same rule as the results repository's ledger branch. A ledger copy never holds the table of held-out results. Its events, like `events.jsonl`, hold the judge's `held_out_checked` events: each held-out case's name, kind and value, never its inputs or output ([Held-out failures](verdicts.md#held-out-failures)).
 
 ## How an export is sent
 

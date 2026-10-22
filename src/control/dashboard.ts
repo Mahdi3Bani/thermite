@@ -19,10 +19,12 @@ import {
   compactAtRefusal,
   compactAtWords,
 } from "../core/compaction.ts";
-import { FolderSchema, MAX_LANES } from "../core/contract.ts";
+import { FolderSchema, MAX_LANES, parseContract } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { isFree, knownTimeZone, type UsagePeriod } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { type GoalChecks, goalChecks } from "../harness/goal-checks.ts";
+import { KitSchema } from "../harness/kit.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import {
   campaignContract,
@@ -258,6 +260,7 @@ import {
 } from "./ui/edit-rig.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
 import { FOLLOW_JS } from "./ui/follow-client.ts";
+import { type ChecksSource, howChecked, howCheckedDetails } from "./ui/goal-checks.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
   campaignKnowledge,
@@ -756,15 +759,31 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const others = vs.filter((x) => x.id !== u.id);
     const usage = runUsage(u, i, now);
     const decisions = needs(c, [u], now, back).filter((n) => n.run === i.id);
+    // How each goal is really checked (goal 082): as this run's rig reported its kit, else as
+    // control can read the campaign's kit or contract.
+    const how = i.mode === "goal" ? goalChecksFor(i.campaign || i.id, u.id, i) : undefined;
+    const howFor = (goal: string) =>
+      howCheckedDetails(
+        how?.checks.goals.find((x) => x.goal === goal),
+        how?.checks,
+        how?.source,
+      );
     const goals = i.goals.length
       ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${i.goals.filter((g) => g.status === "met").length} of ${i.goals.length} met</span><span class="right">the judge's check of champion #${esc(i.goals_seq ?? "?")}${i.goals_at ? `, ${esc(ago(i.goals_at, now))} ago` : ""}</span></div><div class="card flat">${i.goals
           .map((g) => {
             const st = goalState(g);
-            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${g.status === "met" ? "" : `<div class="gl-why ${st.tone}">${moreText(g.reasons, 400)}</div>`}</span></div>`;
+            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${g.status === "met" ? "" : `<div class="gl-why ${st.tone}">${moreText(g.reasons, 400)}</div>`}${howFor(g.goal)}</span></div>`;
           })
           .join("")}</div></div>`
       : i.mode === "goal"
-        ? `<div class="block"><div class="head"><h2>Goals</h2></div><div class="card"><div class="empty">The judge has not checked the goals yet.</div></div></div>`
+        ? `<div class="block"><div class="head"><h2>Goals</h2></div><div class="card${how?.checks.goals.length ? " flat" : ""}"><div class="empty">The judge has not checked the goals yet.</div>${(
+            how?.checks.goals ?? []
+          )
+            .map(
+              (g) =>
+                `<div class="gl"><span class="gl-mark off">·</span><span class="gl-main"><span><b>${esc(g.goal)}</b></span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${howFor(g.goal)}</span></div>`,
+            )
+            .join("")}</div></div>`
         : "";
     const research = i.research
       ? (() => {
@@ -2116,6 +2135,52 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       waiting,
     );
 
+  /**
+   * How each goal of a goal campaign is really checked (goal 082), and where that comes from: a
+   * run's own rig report first; then the kit control keeps, at the contract's commit; then, for
+   * a campaign's page, the newest run whose rig reported it; else what the contract says. Undefined
+   * when control has no goal contract for the campaign and no rig reported its checks.
+   */
+  const goalChecksFor = (
+    name: string,
+    rig?: string,
+    run?: RunView,
+  ): { checks: GoalChecks; source: ChecksSource } | undefined => {
+    if (rig && run?.goal_checks) return { checks: run.goal_checks, source: { from: "rig", rig } };
+    const v = store.campaignVersions(name)[0];
+    const raw = v?.contract ?? store.latestAssignments().get(name)?.payload.contract;
+    const parsed = raw ? parseContract(raw) : undefined;
+    const contract = parsed?.ok && parsed.contract.mode === "goal" ? parsed.contract : undefined;
+    const ref = contract?.project.kit;
+    const kept = v?.sources.kit !== undefined && "control" in v.sources.kit;
+    if (contract && ref && kept && opts.kits) {
+      const kit = KitSchema.safeParse(opts.kits.manifest(ref.repo, ref.commit));
+      if (kit.success)
+        return {
+          checks: goalChecks(contract, { kit: kit.data, repo: ref.repo, commit: ref.commit }),
+          source: { from: "control" },
+        };
+    }
+    if (!run) {
+      const reported = views()
+        .flatMap((u) => u.runs.map((r) => ({ u, r })))
+        .filter((x) => (x.r.campaign || x.r.id) === name && x.r.goal_checks)
+        .sort((a, b) => (b.r.created_at ?? "").localeCompare(a.r.created_at ?? ""))[0];
+      if (reported?.r.goal_checks)
+        return { checks: reported.r.goal_checks, source: { from: "rig", rig: reported.u.id } };
+    }
+    if (!contract) return undefined;
+    return {
+      checks: goalChecks(contract),
+      source: {
+        from: "contract",
+        why: kept
+          ? "Control can't read its copy of this campaign's kit at the contract's commit, so the cases' parameters and time limits are not shown."
+          : "Control keeps no copy of this campaign's kit, which is in its repository, and no rig has reported its checks yet, so the cases' parameters and time limits are not shown.",
+      },
+    };
+  };
+
   /** What a campaign is for, from its contract on control: its title, topic or objective. */
   const aboutOf = (name: string): string => {
     const contract = (store.campaignVersions(name)[0]?.contract ??
@@ -2319,6 +2384,16 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           vs,
         );
       const waiting = c.req.query("run");
+      // A goal campaign's goals, each with how it is checked (goal 082), before any run.
+      const how = goalChecksFor(name);
+      const savedGoals = how?.checks.goals.length
+        ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${how.checks.goals.length}</span></div><div class="card flat">${how.checks.goals
+            .map(
+              (g) =>
+                `<div class="gl"><span class="gl-mark off">·</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.required ? "" : ` <span class="muted small">optional</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${howCheckedDetails(g, how.checks, how.source)}</span></div>`,
+            )
+            .join("")}</div></div>`
+        : "";
       return page(
         c,
         {
@@ -2332,7 +2407,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           waiting
             ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>`
-        }${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+        }${savedGoals}${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -2415,15 +2490,26 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       .map((x) => ({ ...x, n: waitingFor(x.rig, x.run) }))
       .filter((x) => x.n > 0);
     const bestRun = h.best;
+    // How each goal is really checked (goal 082): from the kit control keeps, else from the
+    // newest run whose rig reported it, else what the contract says.
+    const how = k.mode === "goal" ? goalChecksFor(name) : undefined;
     const goals =
-      k.mode === "goal" && bestRun?.goals.length
+      (k.mode === "goal" && bestRun?.goals.length
         ? `<div class="kgoals">${bestRun.goals
             .map((g) => {
               const s2 = goalState(g);
               return `<span class="kgoal ${s2.tone}" title="${esc(g.goal)}: ${esc(s2.word)}">${s2.tone === "ok" ? "✓ " : ""}${esc(g.goal)}</span>`;
             })
             .join("")}</div>`
-        : "";
+        : "") +
+      (how?.checks.goals.length
+        ? `<details class="howcheck khow" data-k="how-goals"><summary>How each goal is checked</summary>${how.checks.goals
+            .map(
+              (g) =>
+                `<div class="gl"><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.required ? "" : ` <span class="muted small">optional</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${howChecked(g, how.checks, how.source)}</span></div>`,
+            )
+            .join("")}</details>`
+        : "");
     const about = aboutOf(name);
     const rigs = rigList(k);
     const verifiedBy = new Map(

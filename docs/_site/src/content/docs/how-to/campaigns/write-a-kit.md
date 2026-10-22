@@ -159,6 +159,7 @@ A goal campaign checks a goal with a verifier: the cells whose runs must all pas
 - Lower `priority` runs first (100 unless set), so put cheap checks first.
 - A verifier that `requires` another runs only when that one passed. Otherwise its goal is unmet with `not run: it requires load, which did not pass`. Leave independent goals ungated, so they still run and catch regressions.
 - To hold a goal out, give its verifier at least one visible cell and one held-out cell. A verifier whose cells are all held out never counts as met.
+- Once a run starts, **How it is checked** under each goal, in the run's **Goals** block and on the campaign's page, shows the verifier or threshold as your kit runs it: each case's parameters and time limit, and the held-out cases by name. Compare it with the contract's goal text.
 
 ### Optional: name the MCP servers its agents use
 

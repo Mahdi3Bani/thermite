@@ -55,7 +55,7 @@ The judge times the change against the champion in **blocks**: each block runs e
 | `win_confirmed` | Confirmation | On fresh blocks alone, the gain's interval is above zero, no guard is broken or unclear, and the held-out cases pass | "confirmed faster on fresh runs" |
 | `not_confirmed` | Confirmation | The gain did not hold on fresh blocks, a guard stayed unclear, or a held-out case failed | "did not hold up on fresh runs" |
 
-Reasons name the metric with its estimate and interval, for example `flops_per_s 12.40% [8.10%, 16.90%] n=6`, and end with `; vs champion seq <n>`. When the contract has held-out cases, a failed confirmation shows only `confirmation failed`, with no figures, so the agents learn nothing about those cases.
+Reasons name the metric with its estimate and interval, for example `flops_per_s 12.40% [8.10%, 16.90%] n=6`, and end with `; vs champion seq <n>`. A confirmation that held on the measured cases but failed on a held-out case is `not_confirmed` with `confirmation failed: <kinds>; on the measured cells: <their reasons>`, such as `confirmation failed: a held-out check timed out; on the measured cells: confirmed on fresh data; flops_per_s 12.40% [8.10%, 16.90%] n=4`. The figures are the measured cases' only. [Held-out failures](#held-out-failures) lists the kinds, and what the owner sees besides.
 
 ### Goal campaigns
 
@@ -68,7 +68,30 @@ The judge checks the change against each goal and compares the result with what 
 | `regress` | Screen | It fails a goal the champion meets | "worse than the champion" |
 | `inconclusive` | Screen | It could not be checked on a goal the champion meets | "too noisy, or not checkable, to tell" |
 | `goal_progress` | Confirmation | In fresh runs the new goals still hold, none is lost or unclear, and the held-out cases pass | "confirmed: it meets more goals and loses none" |
-| `not_confirmed` | Confirmation | Anything else | "did not hold up on fresh runs" |
+| `not_confirmed` | Confirmation | Anything else. Its reasons say why, after `confirmation failed: `: the [held-out kinds](#held-out-failures), `no longer met: <goals>`, `lost: <goals>`, `could not check: <goals>` | "did not hold up on fresh runs" |
+
+A goal checked by a metric threshold whose `cells` name both measured and held-out cases is screened on its measured cases and confirmed on its held-out ones. The held-out pass checks only the goals the change newly met.
+
+### Held-out failures
+
+A **held-out case** (the contract's `held_out_cells`; the dashboard calls them hidden tests) runs only at confirmation. When one fails, the judge records the case's name and its **kind** of failure, from a closed list, and never the case's inputs, its output or the check's words:
+
+| Kind | When | The agents read |
+| --- | --- | --- |
+| `threshold_missed` | A goal's metric threshold: the case's 95% interval is not wholly on the passing side, or it has one value only. A hill climb: the change's median on the case, over the champion's, is not above `1 / (1 + 2 × equivalence_band)` | `a held-out check missed its threshold` |
+| `timed_out` | A run was stopped at its time limit | `a held-out check timed out` |
+| `crashed` | A run exited with an error, or was stopped at its memory or disk limit | `a held-out check crashed` |
+| `check_failed` | The kit's check failed the run's output, or the output was refused | `a held-out check failed the kit's check` |
+| `non_finite` | The value the threshold needs was missing or not a finite number, or a metric the check reports was not a number above zero | `a held-out check gave no finite value` |
+| `no_cell` | The kit has no case of that name | `a held-out check names a cell the kit does not have` |
+
+A build that fails never reaches the held-out cases: its verdict is `invalid` or `crash_candidate`, with its reason. When the champion fails on a held-out case, the job is an infrastructure failure (`crash_infra`).
+
+**The owner** sees each held-out case of the newest confirmation: its name, what it was checked for (a goal, a kit verifier, or "no worse than the champion" in a hill climb), passed or its kind, and, where the check gives one, the measured value against its threshold. A threshold goal's value is the mean of its runs with its interval, in the metric's unit; a hill climb's is the ratio of the medians. It is on the attempt's page under **Held-out checks**, in the run's **History** (`<attempt> failed its held-out check: big timed out.`), in `held_out` of each attempt in [`get_run`](mcp-tools.md#get_run) and `GET /v1/rigs/<rig>/view`, and in the judge's event `held_out_checked`, whose body is `{run, job, pass, cells, cells_total}`: each cell `{cell, goal?, verifier?, ok, kind?, value?, low?, high?, threshold?, op?, measure?, unit?}`, at most 50, and `cells_total` counts them all. The rig's ledger keeps the whole record in its `held_out` table, which no export holds.
+
+**The agents** read only that a held-out check failed, and its kind, in the words above, each kind once: in the verdict's reasons (which a lane's brief shows), as `held_out` in the planner's and the teachers' evidence, and as `held_out` in a worker's `status` of the attempt. They never get a held-out case's name, its values, its inputs, its output or the check's words, and the `held_out_checked` event reaches control, never an agent: no brief, tool or knowledge base item is built from it.
+
+A kind tells the agents what their change did on a case they cannot see, not what the case is: no text the run or the check printed passes through, only a word from the list. An agent that probes the held-out cases with its changes learns at most a few kinds for each confirmation, the slowest step the judge has.
 
 ### Any mode
 

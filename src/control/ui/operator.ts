@@ -1,3 +1,4 @@
+import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../harness/judge/held-out.ts";
 import { type ControlStore, type Decision, fingerprint } from "../store.ts";
 import {
   type AttemptView,
@@ -1044,7 +1045,8 @@ export interface TimelineRow {
 }
 
 /** Whether a rig event is the judge's (its jobs, measurements and checks) or the runs'. */
-const JUDGE_EVENT = /^(job_|verdict|calibrat|screen|confirm|measure|baseline|rig_check|smoke)/;
+const JUDGE_EVENT =
+  /^(job_|verdict|calibrat|screen|confirm|measure|baseline|rig_check|smoke|held_out)/;
 
 export function timeline(
   items: { u: RigView; e: StoredEvent }[],
@@ -1101,6 +1103,50 @@ function refusedBlock(a: AttemptView): string {
     .join(
       "",
     )}${more > 0 ? `<div class="fw muted small">and ${more} more: the rig's record of the attempt keeps them all</div>` : ""}</div></div>`;
+}
+
+/** A measured value for the owner: four significant figures, or an exponent for a large one. */
+function figure(x: number): string {
+  return Math.abs(x) >= 1e5 ? x.toExponential(3) : String(Number(x.toPrecision(4)));
+}
+
+/**
+ * The newest held-out check of a confirmation, for the owner (goal 082): each held-out case by
+ * name, what it was checked for, how it went, and its value against its threshold where the
+ * check gives one. The agents get only that a held-out check failed, and how.
+ */
+function heldOutBlock(a: AttemptView, now: number): string {
+  const h = a.held_out;
+  if (!h) return "";
+  const failed = h.cells.filter((c) => !c.ok).length;
+  const rows = h.cells
+    .map((c) => {
+      const kind = c.kind as HeldOutKind | null;
+      const result = c.ok
+        ? `<span class="chip ok">passed</span>`
+        : `<span class="chip bad">${esc(kind && kind in HELD_OUT_OWNER_WORDS ? HELD_OUT_OWNER_WORDS[kind] : (c.kind ?? "failed"))}</span>`;
+      const forWhat = c.goal
+        ? `goal <b>${esc(c.goal)}</b>`
+        : c.verifier
+          ? `verifier <b>${esc(c.verifier)}</b>`
+          : "no worse than the champion";
+      const unit = c.unit && c.unit !== "ratio" ? ` ${esc(c.unit)}` : "";
+      const measured =
+        c.value === null
+          ? `<span class="muted">·</span>`
+          : `${esc(figure(c.value))}${unit}${c.low !== null && c.high !== null ? ` <span class="muted small">[${esc(figure(c.low))}, ${esc(figure(c.high))}]</span>` : ""}${c.measure ? `<div class="muted small">${esc(c.measure)}</div>` : ""}`;
+      const threshold =
+        c.threshold === null || c.op === null
+          ? `<span class="muted">·</span>`
+          : `${esc(c.op)} ${esc(figure(c.threshold))}${unit}`;
+      return `<tr><td><code>${esc(c.cell)}</code></td><td>${forWhat}</td><td>${result}</td><td>${measured}</td><td>${threshold}</td></tr>`;
+    })
+    .join("");
+  const more =
+    h.cells_total > h.cells.length
+      ? `<div class="note small">and ${h.cells_total - h.cells.length} more cases: the rig's held_out record keeps them all</div>`
+      : "";
+  return `<div class="block"><div class="head"><h2>Held-out checks</h2><span class="n">${h.pass ? "all passed" : `${failed} failed`}</span><span class="right">${esc(ago(h.at, now))} ago · only you see which case: the agents see only that a held-out check failed, and how</span></div><div class="card flat"><table><thead><tr><th>Case</th><th>Checked for</th><th>Result</th><th>Measured</th><th>Threshold</th></tr></thead><tbody>${rows}</tbody></table>${more}</div></div>`;
 }
 
 /**
@@ -1261,6 +1307,7 @@ ${a.known_flaws.length ? `<div class="block"><div class="head"><h2>Flaws its aut
     now,
     { limit: 100 },
   )}</details></div>
+${heldOutBlock(a, now)}
 ${goals}
 <div class="block"><div class="head"><h2>Files it changes</h2><span class="n">${a.files_total}</span><span class="right">the diff stays on the rig: <code>attempts/${esc(a.id)}.patch</code> in its exports</span></div><div class="card flat">${files}</div></div>
 </div><div class="side">

@@ -43,9 +43,24 @@ export type ArmRun =
       outcome: RunOutcome;
     }
   /** The candidate process failed: crash, non-zero exit, or killed for a limit. */
-  | { kind: "crash"; reason: string; outcome: RunOutcome }
+  | { kind: "crash"; failure: CrashFailure; reason: string; outcome: RunOutcome }
   /** The run completed but its outputs failed the kit's check. */
-  | { kind: "invalid"; reason: string; check: CheckResult; outcome: RunOutcome };
+  | {
+      kind: "invalid";
+      failure: InvalidFailure;
+      reason: string;
+      check: CheckResult;
+      outcome: RunOutcome;
+    };
+
+/**
+ * How a run failed, as the judge saw it, apart from its reason's text: a held-out cell's record
+ * names only this (goal 082). A crash: stopped for time, memory or disk, or it exited with an
+ * error. Invalid: its outputs were refused, the kit's check failed, or a metric the check reports
+ * was not a number above zero.
+ */
+export type CrashFailure = "timeout" | "memory" | "disk" | "exit";
+export type InvalidFailure = "outputs" | "check" | "metric";
 
 export interface MeasureContext {
   runner: Runner;
@@ -166,11 +181,17 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
     });
     await ctx.runner.reclaim(work);
     if (outcome.killedFor) {
-      return { kind: "crash", reason: `killed: ${outcome.killedFor}`, outcome };
+      return {
+        kind: "crash",
+        failure: outcome.killedFor,
+        reason: `killed: ${outcome.killedFor}`,
+        outcome,
+      };
     }
     if (outcome.exitCode !== 0) {
       return {
         kind: "crash",
+        failure: "exit",
         reason: clipReason(`exit ${outcome.exitCode ?? outcome.signal}: ${outcome.stderr}`),
         outcome,
       };
@@ -180,6 +201,7 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
       const check = { pass: false, reasons: problems, details: {} };
       return {
         kind: "invalid",
+        failure: "outputs",
         reason: clipReason(`outputs refused: ${problems.join("; ")}`),
         check,
         outcome,
@@ -197,6 +219,7 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
     if (!check.pass) {
       return {
         kind: "invalid",
+        failure: "check",
         reason: clipReason(check.reasons.join("; ")) || "check failed",
         check,
         outcome,
@@ -211,6 +234,7 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
         if (!Number.isFinite(v) || v <= 0) {
           return {
             kind: "invalid",
+            failure: "metric",
             reason: `the check reported no ${m.field} above zero (got ${JSON.stringify(check.details[m.field] ?? null)})`,
             check,
             outcome,
