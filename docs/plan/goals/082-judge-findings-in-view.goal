@@ -1,0 +1,60 @@
+---
+id: "082"
+title: "The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: []
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 082 · The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+1. **Held-out failures, named safely.** A confirmation that fails on its held-out cells records, for each held-out cell, its name and its kind of failure. The owner sees the cell, the kind and, where the check gives one, the measured value against its threshold: on the attempt's page, over REST and over MCP. The agents (the lanes and the planner) see only that a held-out check failed and its kind, for example "a held-out check timed out". No one gets a held-out cell's inputs, outputs or texts.
+2. **Static-check refusals everywhere they are needed.** The list of violations of a change refused before building (`rejected_v0`) is on the attempt's record and its event, in `get_run` and on the attempt's page, in the knowledge base's attempt item, and in the planner's and the teachers' data. A lane's status of an attempt answers for any attempt of its run, not only its own lane's.
+3. **A time limit per cell.** A kit's cell may set `timeout_s`, which overrides `run.timeout_s` for that cell's runs. The kit check validates it, the judge applies it, and old kits work unchanged.
+4. **Each goal's real check.** On the campaign page and in the run's Goals block, each goal has a "how it is checked" part: its verifier's cells (public and held out; a held-out cell by name only), each public cell's parameters as the kit runs them, the threshold, and each cell's time limit. Where control has no copy of the kit and the rig has not reported it, the part says so.
+
+## Why
+
+From reviews of a goal campaign on a slow GPU:
+
+- **A failed confirmation was invisible.** Its result said only `confirmation failed; vs champion seq N`, with no held-out cell named and no kind of failure. Four of four candidates passed screening and then failed held-out confirmation, and the lanes kept resubmitting the same idea. The detail was only in the rig's `held_out` table, which no one could see.
+- **Refusals were hidden.** The violation list of a refused change (for example, binary files in the diff) went only to the trial that submitted. It was missing from the attempt's event, `get_run`, the knowledge base and the planner's and teachers' view. Lanes spent three trials re-diagnosing one refusal, and a lane's status of an older attempt answered 404.
+- **One run timeout for every cell.** One slow diagnostic cell set the limit for all of them.
+- **The goals' real checks could not be seen.** The campaign page showed only goal names, and neither page showed each goal's verifier: its cells, thresholds and limits. The contract's goal text had drifted from what the kit runs (different flags), and nothing showed it.
+
+## Done when
+
+- [ ] A failed held-out confirmation records each held-out cell's name and kind (hill climb and goal campaigns) in the `held_out` table and in a `held_out_checked` event; the verdict's reasons, a lane's attempt status, the planner's and the teachers' evidence carry only the kinds in words.
+- [ ] The attempt's page, `get_run` and the REST rig view show the held-out cells with their kinds and, where there is one, the measured value against its threshold.
+- [ ] `attempt_recorded` carries the violations; the attempt's page, `get_run`, the knowledge base's attempt item, the planner's and the teachers' evidence show them.
+- [ ] A lane's status of any attempt of its run answers; an attempt of another run answers 404 in words.
+- [ ] `timeout_s` per cell: the kit schema takes it, the judge applies it, old kits parse unchanged.
+- [ ] A goal run's harness reports each goal's check (`goal_checks`); the campaign page and the run's Goals block show it, from control's own copy of the kit when it keeps one, else from the rig's report, else say that control cannot read the kit.
+- [ ] Tests: the held-out record and both views, with no held-out content in events, briefs or REST; violations in each place; per-cell timeouts in the kit check and the judge; the goals' "how it is checked".
+- [ ] The kit manifest reference, Verdicts and states, the judge and goal campaign pages, the REST and MCP references and the changelog match the code.
+
+## Decisions
+
+- 2026-10-21, lead, in the build brief: the owner sees a held-out cell's name, kind and measured value against its threshold; the agents see only that a held-out check failed and its kind; never a held-out cell's inputs, outputs or texts. Expose the judge's findings in the ledger, the events and the attempt's record; the teachers' tools that read them belong to goal 081.
+
+## What a held-out failure reveals, and why it is safe
+
+To be written as the work lands.
+
+## Open questions
+
+None yet.
+
+## Progress
+
+- 2026-10-21: Started.
+
+---
+
+Run with `/goal Complete docs/plan/goals/082-judge-findings-in-view.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
