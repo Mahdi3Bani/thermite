@@ -135,7 +135,7 @@ The [isolation check](rig-checks.md#isolation-check) tests these users, and [Iso
 | Path | What | Owner and mode |
 | --- | --- | --- |
 | `/var/lib/thermite` | State: the ledger, git mirrors, kits, imports, models, builds and the harness's copy of each run's past research, `knowledge/<run>/` (`THERMITE_STATE_DIR`) | `thermite`, 0711. `ledger`, `git`, `kits` and `imports` are 0700; `models` and `builds` 0711, reachable only by exact path |
-| `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder, `thermite/research/<run>/` with its [`knowledge/`](knowledge-base.md#a-runs-knowledge-folder) (`THERMITE_SCRATCH_DIR`). Emptied at every start; the harness puts a run's `knowledge/` back from its state when the run next needs it | root, 0755 |
+| `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder, `thermite/research/<run>/` with its [`knowledge/`](knowledge-base.md#a-runs-knowledge-folder) (`THERMITE_SCRATCH_DIR`). Emptied at every start, except each lane's cache folder, `thermite/lanes/<lane>/cache` ([A lane's cache](ports-volumes-secrets.md#a-lanes-cache)); the harness puts a run's `knowledge/` back from its state when the run next needs it | root, 0755 |
 | `/inbox` | What the supervisor fetched for the harness: project and kit bundles, models (`THERMITE_INBOX_DIR`) | Mounted read-only |
 | `/outbox` | Exports the supervisor pushes (`THERMITE_OUTBOX_DIR`) | `thermite` with the supervisor's group (10010:10001), 2750 |
 | `/keys` | Control's public key, `control-signing.pub` | Mounted read-only |

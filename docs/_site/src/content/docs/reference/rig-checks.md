@@ -66,6 +66,8 @@ The check sends one short request through the rig's model route, the same way it
 
 The details record the model, the time in seconds, whether a tool was called, the tokens in and out, the last error and the reply's text (first 300 characters). With Pi they also record the base URL, the reply's stop reason, whether it held thinking, the context window (the owner's [cap](../how-to/models/connect-a-provider.md#cap-the-models-context-window) when it is lower than the provider's window) and the reply limit. With OpenCode and Codex they also record the base URL, and with Claude Code the subscription's usage.
 
+While the workers' model check fails, no trial or plan of the rig's run starts, and the run shows **Agents stopped** in **Needs you**. The rig checks the model again by itself after a pause that grows to at most 30 minutes, and at once when the model changes or you resume a paused run.
+
 ### Results
 
 | Summary | Meaning |

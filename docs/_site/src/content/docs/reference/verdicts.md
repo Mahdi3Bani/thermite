@@ -168,7 +168,8 @@ Attempt lists show one word for each attempt, in this order of precedence:
 | --- | --- |
 | **Champion #N** | It became champion number N: the current champion or an earlier one. The run's starting point is champion #1, so the first change to win is #2 |
 | **Blocked** | The auditor blocked it |
-| **Needs you** | It waits for an audit or for the owner |
+| **Auditing** | The rig's auditor is checking it |
+| **Needs you** | It waits for the owner, or for an audit on a rig with no auditor |
 | **Declined** | The owner declined it |
 | **Promoted** | Its state is `promoted`, but the run's list of champions does not name it |
 | **Judging** | It is `queued`, `building`, `screening`, `confirming` or `verifying`, or it has only a screening verdict |
@@ -288,8 +289,8 @@ Beside the chips, two lists narrow the rows further: **Every direction** (the **
 | Judge job kind | `validate`, `confirm`, `evaluate`, `calibrate` | Taken lowest priority number first: `validate` 40 (or 60 for a new champion), `confirm` 50, `evaluate` 100, `calibrate` 200 |
 | Goal check | `met`, `unmet`, `inconclusive`, `not_runnable` | One check of one goal. A threshold goal is `met` only when every case's interval is on the passing side |
 | Goal (on the champion) | `untouched`, `verified`, `unmet`, `attempted`, `not_runnable` | The champion's goals: not checked yet, met, unmet, unclear, cannot be checked. The dashboard shows each goal's latest check: "met", "unmet", "inconclusive", "not runnable" or "waiting on another goal" |
-| Audit decision | `clear`, `block`, `needs_owner` | The auditor's answer. The dashboard shows "waiting for the auditor", "waiting for you (no auditor configured)", "blocked by the auditor", "cleared by the auditor" or "passed to you" |
-| Review | review panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by the review panel counts as met only when the owner accepts it |
+| Audit decision | `clear`, `block`, `needs_owner`, `skipped` | The auditor's answer, or `skipped` when the rig has no auditor. The dashboard shows "waiting for the auditor", "waiting for you (no auditor configured)", "blocked by the auditor", "cleared by the auditor", "passed to you" or "skipped" with why, such as "this rig has no auditor"; the change's page says `This rig has no auditor: the audit was skipped` |
+| Review | review panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by the review panel counts as met when the review panel passes it, or, where the run asks the owner about reviews, when the owner accepts it |
 | "Not possible" proposal | `accepted`, `rejected` | Accepting closes the run. Rejecting reopens the approach families it used |
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A quote names its source by its id, or by the address or file name of exactly one archived source ([`add_claim`](command-line.md#thermite-trial)). A draft lists its problems. Workers in every mode may record claims. Each claim is a `claim_added` event, `{claim, verified, question, text, quote, sources, problems, more_problems?}`: `text` and `quote` (its first quote) cut to 500 characters; `sources`, each quote's source id, or what was cited when it names no archived source; `problems`, a draft's problems, `[]` for a verified claim, at most 20, each cut to 300 characters, and `more_problems` counts the rest. The run's **History** says `lane-1 recorded a verified claim: "…".` or `lane-1's claim stays a draft: "…". Why: …`, with its first three problems |

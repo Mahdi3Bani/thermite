@@ -165,7 +165,7 @@ No budget is set unless you set one, and without one a run keeps going. A spent 
 
 | Field | Type | Default | Meaning | Reason shown |
 | --- | --- | --- | --- | --- |
-| `budget.wall_hours` | number > 0 | none | Hours since the run was created, paused time included. It also shapes the search: an epoch's time cap is 6% of it, kept between 30 minutes and 3 hours (3 hours without it), and every lane starts again from the champion at a third and two thirds of it (every 20 epochs without it) | `the wall-time budget is spent` |
+| `budget.wall_hours` | number > 0 | none | Hours since the run was created, paused time included. It also shapes the search: every lane starts again from the champion at a third and two thirds of it (every 20 epochs without it) | `the wall-time budget is spent` |
 | `budget.device_hours` | number > 0 | none | Hours the judge's finished jobs for this run have taken | `the device-hours budget is spent` |
 | `budget.llm_usd` | number ≥ 0 | none | US dollars of model tokens the run's trials have used. Counted only when the rig sets both `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (prices per million tokens); without them, it has no effect | `the model budget is spent ($<amount>)` |
 | `budget.max_open_attempts` | integer ≥ 1 | 4 | Back-pressure, not a budget: no new trial starts while this many of the run's attempts wait for the judge (queued, building, screening, confirming, verifying, waiting for an audit or for approval) | none: lanes wait |
@@ -232,13 +232,13 @@ A hard constraint is one of:
 | `acceptance.confirm_blocks` | integer ≥ 1 | 5 | Fresh blocks for confirmation |
 | `acceptance.runs_per_cell` | integer, 1–9 | 1 | Runs of each arm on each cell in one block. The block uses their median. For a kit described on the **New campaign** page, its **Runs per case** sets it, 3 unless changed |
 | `acceptance.audit.ratio_to_median` | number > 0 | 3 | A confirmed gain more than this many times the median of the run's earlier confirmed gains waits for an audit. It applies once there are three earlier gains |
-| `acceptance.audit.absolute` | number > 0 | 0.15 | A confirmed gain above this fraction waits for an audit, and then for the owner |
+| `acceptance.audit.absolute` | number > 0 | 0.15 | A confirmed gain above this fraction goes to an audit first ([Audits](../how-to/campaigns/decide-what-waits.md#audits)) |
 
 [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) covers audits and approvals.
 
 ## Goal
 
-`"mode": "goal"`: meet a list of goals, each checked by the judge or, for subjective goals, by a review panel and the owner.
+`"mode": "goal"`: meet a list of goals, each checked by the judge or, for subjective goals, by a review panel (and by the owner, when the run asks).
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -248,7 +248,7 @@ A hard constraint is one of:
 | `deliverable` | text | required | What a verified solution is: a commit, an artifact or a report. The review panel gets it |
 | `insufficient` | list of text | `[]` | Outcomes that must never count as success. The auditor and the review panel get the list; code does not check it |
 | `adversarial_checklist` | list of text | `[]` | Failure modes to audit for. When the list is not empty, every promotion waits for an audit, and the auditor gets the list |
-| `infeasibility.allowed` | boolean | `false` | Whether the harness may propose that the goals are not possible. The owner accepts or rejects the proposal |
+| `infeasibility.allowed` | boolean | `false` | Whether the harness may propose that the goals are not possible. The proposal closes the run, unless the run asks the owner (`ask_owner.not_possible`), who then accepts or rejects it |
 | `infeasibility.min_refuted_approaches` | integer ≥ 1 | none | Required when `allowed` is `true`. The proposal comes only after this many approach families each had 3 or more judged attempts and no progress |
 | `independence_epochs` | integer ≥ 0 | 2 | Accepted, not used yet |
 | `min_live_families` | integer ≥ 1 | 2 | Accepted, not used yet |
@@ -272,9 +272,9 @@ Each goal:
 | --- | --- |
 | `{"type": "code", "verifier": "<name>"}` | A verifier in the kit: the goal is met when the kit's check passes on every run of the verifier's cells. A verifier can require others to pass first. See [the kit's verifiers](kit-manifest.md#verifiers) |
 | `{"type": "metric_threshold", "metric": "<m>", "op": ">=", "value": <number>, "cells": ["<cell>"]}` | `<m>` must be a metric in the kit. On each cell, the judge runs the build `threshold_reps` times and works out a 95% interval of the mean. The goal is met when every cell's whole interval passes, unmet when any cell's whole interval fails, and `inconclusive` otherwise. `op` is `>=`, `<=`, `>` or `<`. Without `cells`, every cell of the kit that is not held out is used |
-| `{"type": "review", "criteria": ["<criterion>", ...]}` | A subjective goal, with at least one criterion. The review panel, models that do not see who made the change, reviews each new champion, and the goal is met only when the owner accepts |
+| `{"type": "review", "criteria": ["<criterion>", ...]}` | A subjective goal, with at least one criterion. The review panel, models that do not see who made the change, reviews each new champion, and the goal is met when the review panel passes it, or, when the run asks the owner about reviews, when the owner accepts it |
 
-A goal campaign ends when the success policy is met on two validations of the champion, or when the owner accepts a "not possible" proposal. Its budgets pause it, as in every mode; `min_duration` and `max_duration` have no effect.
+A goal campaign ends when the success policy is met on two validations of the champion, or when a "not possible" proposal is taken: at once, or, when the run asks, once the owner accepts it. Its budgets pause it, as in every mode; `min_duration` and `max_duration` have no effect.
 
 ## Research
 

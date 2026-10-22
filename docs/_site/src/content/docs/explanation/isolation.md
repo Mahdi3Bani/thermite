@@ -45,7 +45,7 @@ flowchart TB
 
 Switching users needs root. So the harness starts a small **broker** as root, and it is the only part that runs as root. It:
 
-- prepares the harness's folders, and clears the scratch area of anything an earlier run left;
+- prepares the harness's folders, and clears the scratch area of anything an earlier run left, except each lane's own cache folder;
 - closes the shared temporary places (`/tmp`, `/var/tmp` and `/dev/shm`) to every role, which each get a temporary folder of their own;
 - reads the rig's secret files, hands their values to the controller alone, and closes their folders. It refuses to start if a secret file can still be read by other users;
 - stops any role process left over from before;

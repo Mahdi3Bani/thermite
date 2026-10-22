@@ -138,6 +138,12 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
 - **Why:** ssh refused the deploy key. On a Mac with Podman, it refuses a key file at mode 644.
 - **Do:** see [Set up the results repository](results-repository.md#3-give-the-supervisor-the-three-settings).
 
+### An image update waits while the rig drains
+
+- **You see:** on the page of a rig on a cluster, after **Update to these images**, the status `draining` and `Draining before its pods restart on control's images:` with the new images.
+- **Why:** the rig was at work. It starts no new trial, plan or judge job, and its pods restart once its running trials and the judge's job end. A trial has no time limit unless someone set one, so this can take a while.
+- **Do:** wait; or press **Update now, without waiting**: its pods restart at once, and the running trials are recorded as interrupted, their experiments back at the top of the queue; or press **Call the update off**, and the rig goes back to work on its images. See [Update to these images](rig-lifecycle.md).
+
 ### A rig on a cluster never reports
 
 - **You see:** in the rig's **Set up by control** block, the step "First report reached control" has ✕ and `no report after 10 minutes: it may not have started`, and the block says `failed`.
@@ -249,7 +255,7 @@ Two causes are common on a laptop:
 
 - **You see:** under **Needs you**, an **Agents stopped** card: `The model provider refuses: no credits left at the provider` (or `the provider refuses the key`, `the provider does not serve this model on this key`, or `The model check of the workers' model fails`), with the provider's own words, such as `404 insufficient_credits_for_paid_model`. The run's **History** says `The agents stopped: no credits left at the provider (…). No trial starts until a model check passes.` No trial or plan starts. A research run's clock stops.
 - **Why:** a trial got that answer from the model provider, or the workers' model check failed. Trying again would get the same answer, so the run's agents stop, instead of starting trial after trial that dies the same way. The judge goes on with the changes it has.
-- **Do:** fix the cause: add credits at the provider; check the provider's key in **Settings › Providers**; or give the rig another model on **Edit rig**. Thermite checks the model again after a minute, then less often, at most every 30 minutes. Press **Check the model now** on the card to check at once, or resume the run. Once a check passes, or the rig has another model, the agents go on: **History** says `The agents go on: a model check passed.`, and the card goes away.
+- **Do:** fix the cause: add credits at the provider; check the provider's key in **Settings › Providers**; or give the rig another model on **Edit rig**. Thermite checks the model again after a minute, then less often, at most every 30 minutes. Press **Check the model now** on the card to check at once; a paused run you resume is checked at once too. Once a check passes, or the rig has another model, the agents go on: **History** says `The agents go on: a model check passed.`, and the card goes away.
 
 ### Trials wait for the provider
 
@@ -275,7 +281,7 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 ### A trial stopped without a "trial ended" line
 
 - **You see:** in a run's **Live**, a lane's trial started, but no "trial ended" line follows it. The lane's next trial may already have started.
-- **Why:** the rig's harness restarted while the trial ran, for example after **Restart them**, **Update now, without waiting**, a restart with your compose tool, or a crash. (**Update to these images** waits for the running trials to end first.) A restart stops the running trials. When the harness starts again, it closes them as `interrupted`, with the turns and tokens their workers last reported, without a "trial ended" line. Control shows a trial as working only while the rig says it is at work, or for 15 minutes after its last line.
+- **Why:** the rig's harness restarted while the trial ran, for example after **Restart them**, **Update now, without waiting**, a restart with your compose tool, or a crash. (**Update to these images** waits for the running trials to end first.) A restart stops the running trials. As it stops, the harness records them as `interrupted`, with the turns and tokens their workers last reported, without a "trial ended" line; after a crash, it does so when it starts again. Control shows a trial as working only while the rig says it is at work, or for 15 minutes after its last line.
 - **Do:** nothing. The lane goes on with a new trial, and a change the trial had already submitted stands. The trial's experiment goes back to the top of the queue: see [An experiment came back at the top of the queue](#an-experiment-came-back-at-the-top-of-the-queue).
 
 ### A trial's conversation was compacted

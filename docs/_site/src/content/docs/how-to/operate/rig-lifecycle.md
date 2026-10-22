@@ -25,14 +25,14 @@ The buttons below are on the rig's page: open **Rigs** in the dashboard's sideba
 
 ## Stop and start
 
-**A rig set up by control** has a **Set up by control** block on its page. Press **Stop its services** (a machine) or **Stop its pods** (a cluster). The block shows `stopped`, and the button becomes **Start its services** or **Start its pods**. Its runs keep their status and their records. A stop ends the trials at work, as a [restart](#restart) does: when the rig starts again, the harness closes them as interrupted, their experiments go back to the top of the queue, and the judge's jobs start again. After three minutes without a report, the rig shows **Stale** on **Rigs**, and **Offline** after 15 minutes, until you start it again.
+**A rig set up by control** has a **Set up by control** block on its page. Press **Stop its services** (a machine) or **Stop its pods** (a cluster). The block shows `stopped`, and the button becomes **Start its services** or **Start its pods**. Its runs keep their status and their records. A stop ends the trials at work, as a [restart](#restart) does: the harness records them as interrupted as it stops, with the counters their workers last reported (after a crash, at its next start), their experiments go back to the top of the queue, and the judge's jobs start again. After three minutes without a report, the rig shows **Stale** on **Rigs**, and **Offline** after 15 minutes, until you start it again.
 
 **On a cluster, a start takes a few minutes.** After **Start its pods**, a line at the top of the page says `Started.`, and the block's status, at the right of its heading, says `starting`. Control waits up to 15 minutes for the rig's pods to run, then up to 10 minutes for a report from the rig. Stay on the page: the block shows each step as it comes, with no refresh:
 
 - Two steps get a ✓, "Its pods run again" and "A report reached control after the start", and the status says `running`.
 - If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). When the rig reports later, its status says `running`, and a ✓ step follows the ✕: "A report reached control after the start · it reported after the wait ended". The block also offers **Try the update again** while the status says `failed`, after a start too: it applies the same images again and waits once more. See [Try again after a failure](#try-again-after-a-failure).
 
-**One change at a time on a cluster.** While the status says `starting` or `updating`, control refuses a start, a restart and an image update. The page shows a card that starts with **Not done.** and the reason, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this. They also end control's wait for the pods and the report, so a rig you stopped or removed during a start or an update doesn't turn `failed` later.
+**One change at a time on a cluster.** While the status says `starting` or `updating`, control refuses a start, a restart and an image update. The page shows a card that starts with **Not done.** and the reason, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this. They also end control's wait for the pods and the report, so a rig you stopped or removed during a start or an update doesn't turn `failed` later. While it says `draining`, **Restart them** and **Stop its pods** still work, without the update: the rig comes back on its old images.
 
 **A rig you joined yourself** has a **You run it yourself** block. Open "Stop, start, restart or remove it: you run these there", and run the **Stop** or **Start** command where the rig runs. Control can't reach that place, so it can't do it for you.
 
@@ -150,8 +150,8 @@ What changes and what stays:
 | | Its place: the cluster, the namespace or slot, the node, the GPUs and the storage |
 
 - **A stopped rig stays stopped.** The page says `rig-1 runs the new images when it starts again.`, the step ends with "at its next start", and control waits for nothing. **Start its pods** then starts it on the new images: the status says `starting`, then `running` once the pods run and the rig reports.
-- **A trial in progress finishes first**, unless you press **Update now, without waiting**. A trial that a restart stops is closed as interrupted when the harness starts again, with the turns and tokens its worker last reported, and the lane goes on with a new one. Its experiment goes back to the top of the run's [experiment queue](../campaigns/choose-what-runs-next.md).
-- **The judge's job under way finishes first**, unless you skip the wait. A job a restart ends starts over: its lease is taken back at the next start, and the lost lease never counts against the change.
+- **A trial in progress finishes first**, unless you press **Update now, without waiting**. A trial that a restart stops is recorded as interrupted as the harness stops (after a crash, when it starts again), with the turns and tokens its worker last reported, and the lane goes on with a new one. Its experiment goes back to the top of the run's [experiment queue](../campaigns/choose-what-runs-next.md).
+- **The judge's job under way finishes first**, unless you skip the wait. A job a restart ends starts over: its lease is taken back at the next start, and that counts as one of the three lost leases after which a job is `blocked`.
 - **Each lane's cache folder stays**: the next trials build from it, not from nothing ([Ports, volumes and secrets](../../reference/ports-volumes-secrets.md)).
 
 :::caution[Going back to older images]
@@ -177,7 +177,7 @@ Over MCP, `update_rig_images` does the same for a rig whose status is `failed`, 
 When you move control to a new address, set `THERMITE_CONTROL_PUBLIC_URL` to it and restart control. A rig keeps reporting to the old address until its supervisor gets the new one. When control's images changed too, **Update to these images** gives the rig the new address as well. When only the address changed:
 
 1. Open the rig's page. Its **Set up by control** block says "Control's address for rigs changed: the rig reports to `https://control-old.example.com`, control is now at `https://control.example.com`."
-2. Press **Give it control's new address**. The rig's pods restart with the new address, on the same images. Its volume, tokens, runs and results stay; a trial in progress stops.
+2. Press **Give it control's new address**. The rig's pods restart with the new address, on the same images. A rig at work drains first, as for an update. Its volume, tokens, runs and results stay.
 
    The page says `rig-1's pods restart with control's new address.`, and the status says `updating`. Control waits for the pods and a report, as after an update. For a stopped rig, the page says `rig-1 gets control's new address when it starts again.` The new step "Its deployments applied with new images" has the detail `control's address for rigs →` and the new address.
 

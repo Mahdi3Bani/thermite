@@ -162,7 +162,7 @@ With the **Planner** switch off on **Edit rig**, when the planner's model can't 
 1. A direction that an **Always** rule names, with nothing queued or in progress in it, gets an experiment at the top of the queue, so that a lane can keep to the rule. When up next is below its target, the lanes' distinct ideas go up next first ([above](#keeping-the-queue-at-its-target)).
 2. Each lane takes the next queued experiment in order, skipping directions that an **Avoid** rule names. Directions that an **Always** rule names come first, then those that a **Try** rule names, then the rest.
 3. Among the next few experiments of that rank (as many as the run has lanes), a lane takes one in its own last direction, if there is one.
-4. Only when the queue has nothing for a lane do the fixed rules add an experiment for it: in an **Always** direction first, then a **Try** direction, then the least-tried one.
+4. Only when the queue has nothing for a lane do the fixed rules add an experiment for it: in an **Always** direction first, then a **Try** direction, then the least-tried one. In a goal campaign, a direction whose goals the champion already meets is skipped, one that names a goal not met yet comes before the least-tried, and with none left each goal not met yet becomes a direction.
 
 A lane prefers its last direction because that is where it has learned the most. Its worker's brief carries the lane's own recent attempts with the judge's reasons, and the lane may build on its own best result, so a next experiment in the same direction can use both. The lane reaches only a few places down the queue for it, so the queue's order mostly holds.
 

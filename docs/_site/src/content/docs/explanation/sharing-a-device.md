@@ -42,7 +42,7 @@ Three rules keep the turns short and fair:
 
 - **A development run on a shared device is limited to 5 minutes**, unless the contract sets another limit, so the judge gets the device back.
 - **One development run at a time.** The runs of all lanes queue for the one device, and a lane has one at a time.
-- **No waiting forever.** A development run that has waited 10 minutes gives up with `the judge kept the device busy; try again later` or `another lane's dev run held the device; try again later`. The trial goes on, and the agent can try again.
+- **No waiting past the trial.** A development run waits until the device is free, with no time limit of its own. When its trial ends first, it gives up with `the trial ended before a device was free`.
 
 On a GPU, nothing a development run starts outlives it. Its output is marked `diagnostic only: this number never counts`: only the judge's measurements decide a verdict.
 
@@ -65,7 +65,7 @@ By default the judge gets half the cards, rounded up, and on a machine control s
 | --- | --- | --- |
 | Hardware | One GPU does everything | You give up the agents' GPUs for measurement |
 | The judge | Waits only for a development run already on the device | Never waits for the agents |
-| The agents | Wait while the judge has work, up to 10 minutes per development run | Never wait for the judge; wait only when all their cards are busy |
+| The agents | Wait while the judge has work, until it is done or their trial ends | Never wait for the judge; wait only when all their cards are busy |
 | Development runs | At most 5 minutes each, unless the contract changes it | No time limit unless the contract sets one |
 | Throughput | One job at a time on the one device | One job at a time on each judge card |
 

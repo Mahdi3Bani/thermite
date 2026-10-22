@@ -6,7 +6,7 @@ sidebar:
   order: 7
 ---
 
-Thermite runs a campaign until its job is done: a hill climb until you stop it, a goal campaign until its goals are met, and a research campaign until its time is up. Nothing else stops it unless you set a limit. [Why Thermite runs until the job is done](../../explanation/runs-until-done.md) says why.
+Thermite runs a campaign until its job is done: a hill climb until you stop it, a goal campaign until its goals are met, and a research campaign until its `max_duration`, or, without one, until you stop it. Nothing else stops it unless you set a limit. [Why Thermite runs until the job is done](../../explanation/runs-until-done.md) says why.
 
 Set a limit when you want one, and always before agents use a paid model key.
 

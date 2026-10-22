@@ -56,7 +56,7 @@ Next to it, **Ask me first about** chooses what else waits for you. All of it is
 | **a review panel's pass of a goal** | A subjective goal the review panel passed: see [Reviews](#reviews) | `reviews` | `"reviews": true` |
 | **ending a goal campaign as not possible** | A "not possible" proposal: see [Not possible endings](#not-possible-endings) | `not-possible` | `"not_possible": true` |
 
-A run keeps the choices it started with. A run that started with **ask me every time** before Thermite was hands-off keeps it, and so does a rig whose **Edit rig** says **Ask me for each change**.
+A run keeps the choices it started with. A run started with **ask me every time** keeps asking, and so does a run with no rule of its own on a rig whose **Edit rig** says **Ask me for each change**.
 
 The run's **Overview** tab shows the rule in force, in the block **The run**, as **Promotion**: `Automatic when the judge confirms, after the auditor's clear when an audit is called for`, `Only with your approval`, or `The rig's default (automatic unless it was set to ask you)`, and then what else it asks you about, such as `. It asks you about a gain above 15%, a change with declared flaws`.
 
@@ -76,9 +76,9 @@ When the rig has an auditor, an audit holds a confirmed change before it becomes
 
 The rig's auditor, one of its [advisors](../operate/advisors.md), answers each audit: it clears the change, blocks it, or sends it to you. Its clear is the last step: the change becomes the champion, also with declared flaws or a gain above `absolute`, unless the run asks you about it (see [Choose what waits](#choose-what-waits)). Its block stops the change, and the **Blocked** row gives the auditor's reasons. An audit the auditor will decide is not in **Needs you**: the change's own page shows it as held for an audit.
 
-A rig with no auditor, or with its **Auditor** switched off on **Edit rig**, has no audits: the change becomes the champion, or waits where the run asks you. Its record says why, with the event `audit_skipped`: `had no audit: this rig has no auditor`. The rig's supervisor tells the harness which advisors it has at each round, and again every minute. Until it first says so after a start, an audit holds the change; once it says the rig has no auditor, the held changes go on by the run's rules. A supervisor from before this change never says it: then an audit waits for you, with `This rig has no auditor, thus you must make the decision.`
+A rig with no auditor, or with its **Auditor** switched off on **Edit rig**, has no audits: the change becomes the champion, or waits where the run asks you. Its record says why, with the event `audit_skipped`: `had no audit: this rig has no auditor`. The rig's supervisor tells the harness which advisors it has at each round, and again every minute. Until it first says so after a start, an audit holds the change; once it says the rig has no auditor, the held changes go on by the run's rules. A supervisor of an earlier version never says it: then an audit waits for you, with `This rig has no auditor, thus you must make the decision.`
 
-An auditor that fails to answer an audit is tried again, at most five times, 30 minutes apart. After the last try, the change waits for you as **Your decision**, with the auditor's error.
+An auditor that fails to answer an audit is tried up to five times in all, 30 minutes apart. After the last try, the change waits for you as **Your decision**, with the auditor's error.
 
 **Make it the champion** decides in place of the auditor. **Overrule the auditor**, on a **Blocked** row, makes a blocked change the champion anyway.
 
@@ -115,6 +115,7 @@ All of these take the owner's token. The examples use the owner's token file of 
 | Accept or reject a review | kind `accept_review`, payload `{"run": …, "review": <n>, "accept": true}` | no |
 | End a campaign as not possible, or keep going | kind `conclude`, payload `{"run": …, "proposal": <n>, "accept": true}` | no |
 | Accept a rig's key | `POST /v1/rigs/<rig>/key/accept?fingerprint=<fingerprint>` | no |
+| Check the model now, for a run whose agents are stopped | `POST /v1/commands`, kind `rig_check`, payload `{"check": "model"}` | `issue_command` |
 
 The `review` and `proposal` numbers are on the run, in `GET /v1/rigs/<rig>/view` or the MCP tool `get_run`: each item of its `reviews` has a `review`, and each item of its `conclusions` a `proposal`. An attempt's id shows at the top of its page on the dashboard, after **attempt**, such as `a-0123456789abcdef`.
 

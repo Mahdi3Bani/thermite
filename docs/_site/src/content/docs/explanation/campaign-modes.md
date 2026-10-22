@@ -12,7 +12,7 @@ A **campaign** is one piece of research: what to improve, reach or find out, and
 | --- | --- | --- | --- |
 | The question | How far can this number go without breaking anything else? | Can the project reach these goals? | What can be learned about this question in this time? |
 | An agent's work | One change to the code, and any sources, claims and notes it records on the way | One change to the code, and any sources, claims and notes it records on the way | Reading sources and recording claims, with quotes, and findings |
-| What checks it | The judge, by timing the change against the champion with statistics | The judge, by each goal's own test; a person accepts goals that need judgement | Code that finds every quote, word for word, in a page the rig archived, and checks each finding against verified claims |
+| What checks it | The judge, by timing the change against the champion with statistics | The judge, by each goal's own test; the review panel passes goals that need judgement (and you, when the run asks you) | Code that finds every quote, word for word, in a page the rig archived, and checks each finding against verified claims |
 | The best result | The champion: the best confirmed version | The champion: the version that meets the most goals | The findings, the verified claims and the report |
 | It ends when | Never on its own: you pause it | Every required goal is met, or the evidence shows that they cannot be (where the contract allows it; you decide, if the run asks you) | Its time window is over |
 | The dashboard's headline | The best gain over the starting point | Goals met | Verified claims |
@@ -74,7 +74,7 @@ The contract also says what the finished work must be, and can list results that
 **When it ends.** In one of two ways:
 
 - **Every required goal is met**, or, if the contract says so, at least a set number of them. Because this ending is final, the judge checks the champion twice, independently, and closes the run only if both checks agree.
-- **You accept that the goals cannot be met.** Thermite proposes this ending, called **"not possible"**, only when the contract allows it, and only with evidence: a number of different approaches, set in the contract, each tried at least three times with no progress. Those approaches are then set aside. You accept the proposal, which closes the run, or reject it, which reopens them; a new proposal then needs more failed approaches than the last one. No agent can propose it.
+- **The evidence shows that the goals cannot be met.** Thermite proposes this ending, called **"not possible"**, only when the contract allows it, and only with evidence: a number of different approaches, set in the contract, each tried at least three times with no progress. Those approaches are then set aside. By default the proposal closes the run. A run that asks you about it waits for you to accept it, which closes the run, or reject it, which reopens them; a new proposal then needs more failed approaches than the last one. No agent can propose it.
 
 A goal campaign has no time limit of its own. Budgets pause it, as in any mode.
 

@@ -6,13 +6,13 @@ sidebar:
   order: 15
 ---
 
-**Nothing ends research by default.** A hill climb runs until someone pauses it. A goal campaign runs until its goals are met or the owner accepts that they are not possible. A research campaign runs until its `max_duration`, or, without one, until someone stops it. Every cap that can stop a campaign, and every cap on a trial, is off until you set it.
+**Nothing ends research by default.** A hill climb runs until someone pauses it. A goal campaign runs until its goals are met or the evidence shows they are not possible (the owner decides that where the run asks). A research campaign runs until its `max_duration`, or, without one, until someone stops it. Every cap that can stop a campaign, and every cap on a trial, is off until you set it.
 
 Thermite's limits are of four kinds. Only a cap can stop a run's work, and only one you set:
 
 | Kind | What it does | What it ends |
 | --- | --- | --- |
-| [Caps](#caps) | Limits you set: budgets, a research window, turns per trial, spending and size limits | Only what that cap names, such as pausing a run when its budget is spent. None is set by default; a research contract must name its own duration |
+| [Caps](#caps) | Limits you set: budgets, a research window, turns per trial, spending and size limits | Only what that cap names, such as pausing a run when its budget is spent. None is set by default |
 | [Pacing](#pacing) | Spaces work out: waits after errors, how often things repeat | Nothing. Work waits, then goes on |
 | [Back-pressure](#back-pressure) | Holds new work until earlier work settles | Nothing. Work waits, then goes on |
 | [Per-process and per-trial limits](#per-process-and-per-trial-limits) | Bound one build, run, command, check or trial | That one process or trial. The lane goes on |
@@ -44,13 +44,13 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 
 ## Pacing
 
-None of these ends research or a trial.
+None of these ends research.
 
 ### Trials and lanes
 
 | What | Default | Set by |
 | --- | --- | --- |
-| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` (1 to 16) |
+| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` (0 to 16; 0: the rig starts no trials) |
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap, when those [caps](#caps) are set. None about the context window: a conversation that grows is compacted (below) | Fixed |
@@ -174,7 +174,7 @@ The dashboard calls an epoch a **round**.
 | Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teachers ends the wait (below) | `THERMITE_POLL_SECONDS` |
 | Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teachers, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
 | A new owner's message to the teachers, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teachers** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
-| An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
+| An audit or review that failed | Tried up to 5 times in all, 30 minutes apart. Then an audit waits for the owner, and a review's goal stays unchecked | Fixed |
 | Past research synced into each running run's `knowledge/` folder | Every 180 s. A run that control says it did not assign, such as a rig check's run, is asked about again 1 hour later, or once it has stopped running and runs again | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off. The hour is fixed |
 | A rig's MCP servers, from control to its supervisor and harness | Every 30 s, with the model route. Control renews an OAuth or client sign-in when less than 5 minutes of its access token are left | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
 | An MCP server's tool list, as the harness and the supervisor keep it | Read again at the first use after 5 minutes, or when the server's sign-in changes | Fixed |
@@ -272,7 +272,7 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | A place in the queue | `top`, `end`, or an index from 0 to 100,000 among the queued experiments, 0 first. An index past the last puts it last |
 | A lane's idea | One request of at most 64 KiB. No limit on how many |
 | Experiments copied into a new run by **Start a run**, its twins (`thermite run start`, `POST /v1/campaigns/<campaign>/runs`, MCP's `start_run`) or `thermite assign --queue-from` (`assign_campaign`'s `queue`) | 500. Each copies at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, **Start a run** copies none, and its twins and `thermite assign` refuse a run to copy from |
-| The planner's answer | At most 40 moves, 40 drops, 5 rules, 5 old rules in words converted and 13 new directions. No limit on the experiments it adds or the ideas it accepts. A title up to 200 characters; details, and an inline experiment's focus, up to 4,000 (a focus past its title goes into details); a direction up to 80; each why and rationale up to 2,000; a new direction's description 3 to 300; notes up to 2,000. Its tool's schema and its prompt say each of these |
+| The planner's answer | At most 40 moves, 40 drops, 5 rules, 5 old rules in words converted and 13 new directions. No limit on the experiments it adds or the ideas it accepts. A title up to 200 characters; details, and an inline experiment's focus, up to 4,000 (a focus past its title goes into details); a direction up to 80; each why and rationale up to 2,000; a new direction's description 3 to 300; notes up to 2,000; a ref that names an added experiment up to 40; an experiment's id up to 64. Its tool's schema and its prompt say each of these |
 | Old rules in words converted in one planner's round | 5, the oldest first. The rest convert at the next rounds |
 | A teacher's or the merged by model's answer | No limit on the opportunities in its portfolio, or on its plain experiments; up to 10 moves, each with a why. One that doesn't fit is left out. Its review still counts |
 | The auditor's answer | One check |

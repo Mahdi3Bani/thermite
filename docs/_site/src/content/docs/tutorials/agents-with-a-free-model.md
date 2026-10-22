@@ -202,7 +202,8 @@ Choose **Attempts**. Each change the agent submitted is an **attempt**, with one
 
 :::tip[Nothing yet after half an hour?]
 - On **Live**, choose **lane-1**. If it has its green dot and new lines keep coming, the agent is still on its experiment: wait.
-- In **What happened**, a line that says `lane-1's trial` … `ended without a submission` gives the reason. A free model is sometimes busy: `Rate limit exceeded. Please try again later.` The next trial tries again. If every trial ends this way, give the rig another model whose name ends in `-free`, as in step 2, or pause the run (step 11) and resume it later.
+- In **What happened**, a line that says `lane-1's trial` … `ended without a submission` gives the reason. If every trial ends this way, give the rig another model whose name ends in `-free`, as in step 2, or pause the run (step 11) and resume it later.
+- On **Live**, under **lane-1**, a line that starts `waiting until` and names `the provider's rate limit` means the free model is busy: the trial waits until that time, then goes on in the same conversation. If it waits again and again, give the rig another model whose name ends in `-free`, as in step 2.
 - If **What happened** says that the planner planned a round `(by the fixed rules: the model gave no usable plan, because` and a reason, the model could not plan that round, often because a free model was busy. The lane then takes the next experiment in the queue, or a new one that the fixed rules add when the queue is empty. The next round asks the model again.
 :::
 

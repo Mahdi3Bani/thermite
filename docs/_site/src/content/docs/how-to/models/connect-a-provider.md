@@ -112,7 +112,7 @@ An agent does the same with [`set_rig_model`](../../reference/mcp-tools.md#set_r
 After a minute, the rig's row under **Harness and model for each rig** says "Its agents run under Pi with my-model from my-litellm. Its context window: 131,072 tokens (capped; the provider allows 204,800)." The model check's details record the window the rig runs with: see [Rig checks](../../reference/rig-checks.md#model-route-check).
 
 :::note
-Agents in Pi keep to the window: each reply is limited to the room left, and near the window the conversation is compacted and the trial goes on (see the next section). OpenCode v2, Codex and Claude Code get the window in their own settings, with limits of their own: Claude Code takes no window below 100,000 tokens, Codex none above what the model takes (272,000 tokens for a model it does not know), and OpenCode's own models keep the window OpenCode knows. To compare models at exactly one window, run both rigs in Pi.
+Agents in Pi keep to the window: when a reply limit is known, each reply is limited to the room left, and near the window the conversation is compacted and the trial goes on (see the next section). OpenCode v2, Codex and Claude Code get the window in their own settings, with limits of their own: Claude Code takes no window below 100,000 tokens, Codex none above what the model takes (272,000 tokens for a model it does not know), and OpenCode's own models keep the window OpenCode knows. To compare models at exactly one window, run both rigs in Pi.
 :::
 
 ## Set when a conversation is compacted

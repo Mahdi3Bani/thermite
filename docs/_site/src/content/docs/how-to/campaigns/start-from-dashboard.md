@@ -140,7 +140,7 @@ The line under the list says what each kind of agent gets, such as `The workers 
 
 ### Time and tools
 
-For research, step 4 is **Time and tools**. It asks for **Run for at least**, such as `8h` or `2d`. The topic, the questions and the starting links are in [the brief](#2-the-brief), on step 2. A run made here ends after that much running time; time while it is paused doesn't count. **MCP servers for the agents** is on this step too, as [above](#mcp-servers-for-the-agents); control writes the servers into the campaign's contract.
+For research, step 4 is **Time and tools**. It asks for **Run for at least**, such as `8h` or `2d`. The topic, the questions and the starting links are in [the brief](#2-the-brief), on step 2. It is a floor, never a stop: a research run made here has no end time, and runs until you stop it. Time while it is paused, or while its agents could not work, doesn't count. **MCP servers for the agents** is on this step too, as [above](#mcp-servers-for-the-agents); control writes the servers into the campaign's contract.
 
 ## 5. Where it runs
 
@@ -179,7 +179,7 @@ Under **Advanced**, at the foot of step 5:
 
 | Field | What it does |
 | --- | --- |
-| **One try lasts (minutes)** | How long an agent works on one idea, in one [trial](../../reference/glossary.md) (not a try of the kit), 1 to 1440. Empty: the rig's default, 20 unless changed |
+| **One try lasts (minutes)** | How long an agent works on one idea, in one [trial](../../reference/glossary.md) (not a try of the kit), 1 to 1440. Empty: the rig's own length, which is none unless someone set one: a trial then lasts until its worker submits or stops |
 | **Memory per agent (MiB)** | 256 to 16384. Empty: 2048 |
 | **Disk per agent (MiB)** | For one trial's copy of the code and its builds, 256 to 65536. Empty: 2048 |
 | **Stop after (hours)** | Empty: no limit. When the time is up, no new trial starts and the run is paused. See [Set a budget or a stop time](budget-and-stop-time.md) |
@@ -244,6 +244,7 @@ Press **Start a run** at the top of the campaign's page. A panel opens, headed *
 | **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why, up to 500. Ticked by default. It shows only with **Agents** **On**, and only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |
 | **From past research** | A search of the folders this campaign may read: its own and those you let it read. It lists the newest 40 experiments, findings, claims, notes and reports, and the box **Search past experiments, findings and notes** searches those folders. Ticked experiments join the new run's queue, after the copied ones; a ticked finding, claim, note or report becomes background in every agent's brief. It shows only with **Agents** **On**: with **Off: a try**, it hides, and nothing ticked in it is sent. See [Start a run from past research](use-past-research.md#start-a-run-from-past-research) |
 | **When a change is confirmed better** | Under **More options**: **the rig's default**, **always keep it** or **ask me every time** |
+| **Ask me first about** | Under **More options**: as on the New campaign page, for this run |
 | **GPUs for the judge** | Under **More options**: as in step 5. Empty: the rig's current split |
 
 The line at the foot sums it up, such as `Starts a new run on rig-1, with agents on <model>.` or `Starts a new run on rig-1, as a try: the judge only.` With **Agents** on **On** and items ticked under **From past research**, it ends with a sentence such as `It starts from 3 items of past research.` Press **Start the run**: the button says **Sending…** at once. The run uses the latest saved version. It is named `<campaign>-<n>`, or `<campaign>-try-<n>` without agents, with the first number not yet used on that rig, such as `sort-speed-2`.
