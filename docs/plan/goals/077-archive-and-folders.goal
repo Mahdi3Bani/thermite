@@ -1,0 +1,65 @@
+---
+id: "077"
+title: "Archive a campaign; folders in the left navigation; no rigs there"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 077 · Archive a campaign; folders in the left navigation; no rigs there
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+The dashboard's left navigation is for campaigns, and the owner keeps it tidy.
+
+- **Archive a campaign.** **Archive**, under **⋯** on the campaign's page, takes the campaign out of the left navigation, **Needs you** and the Overview's lists. Its runs, results, kits and folder in the knowledge base stay. Control refuses it, in words, while a run of the campaign is at work or waits to start: `Pause or close its runs first.` The **Campaigns** page lists archived campaigns under the **Archived** filter, with **Unarchive**. Control starts and resumes no run of an archived campaign until it is unarchived.
+- **Folders in the navigation.** The owner makes a folder, renames it, deletes an empty one, and moves a campaign into it: by drag and drop in the navigation, or with **Move to folder** under **⋯** on the campaign's page (for the keyboard and for phones). A folder folds open and shut, and the browser remembers it. Control keeps the folders. They group campaigns in the navigation only: they are not the campaigns' folders in the knowledge base.
+- **No rigs in the navigation.** The left navigation no longer lists the rigs and their state. **Rigs**, in the main navigation, opens the Rigs page, which does. The status bar still counts them.
+- **Over REST and MCP, and in the audit log.** `POST /v1/campaigns/<campaign>/archive`, `/unarchive` and `/folder`, and `GET` and `POST /v1/campaign-folders` with `/rename` and `/delete`; MCP's `archive_campaign`, `unarchive_campaign`, `campaign_folders`, `create_campaign_folder`, `rename_campaign_folder`, `delete_campaign_folder` and `move_campaign`. Each change is in control's audit log.
+
+## Why
+
+The owner, 2026-10-21: "I need an archive campaign option that removes it from the left nav or drag and drop into folders or something so it can be cleaned up. I also want rigs removed from the left sidebar in listing them out and their status, having their rigs page is good enough."
+
+## Done when
+
+- [x] Archive and Unarchive on the dashboard, over REST and over MCP, with the refusal in words while a run is at work or waits to start, and in the audit log.
+- [x] An archived campaign is out of the navigation, Needs you and the Overview's lists, and listed under **Campaigns › Archived** with **Unarchive**. Control starts and resumes no run of it.
+- [x] Folders: make, rename, delete an empty one, refuse to delete one with campaigns, move a campaign by drag and drop and with **Move to folder**; kept on control, over REST and MCP; a fold remembered in the browser.
+- [x] The left navigation lists no rigs.
+- [x] Tests for each surface.
+- [x] The pages that describe the dashboard, the REST API, the MCP tools, the tokens and the glossary describe it, with a how-to guide.
+- [ ] The owner approves the mockup (`v010-campaign-archive`).
+
+## Decisions
+
+- 2026-10-21, builder, within the owner's request, shown in the mockup for the owner's approval:
+  - **Which campaigns the navigation lists.** Every campaign that is not archived, finished ones too, with its state, so the owner archives what is not wanted there; a rig check's campaign only while it is at work. Before, it listed at most 12 campaigns with a run at work or paused.
+  - **Archive and folders.** Archiving takes a campaign out of its folder; unarchiving puts it back in no folder.
+  - **What "waits" means.** A start or a resume that control sent a rig, and the rig has not taken yet, or an assignment the rig took in the last ten minutes whose run it has not reported yet.
+  - **A run of an archived campaign.** Control refuses `assign_campaign` and `resume_run` for one, in words (`<campaign> is archived. Unarchive it first.`), on every path that signs them. Its page has no **Start a run**; **Copy** stays. Its runs' decisions leave **Needs you**, and stay on the run's own page.
+  - **Folder names.** One line, at most 40 characters, each name once whatever its case. REST and MCP name a folder by its name; the dashboard's forms by its number, so a rename does not break a page left open.
+  - **Tokens.** REST takes the owner's token. Over MCP, the owner and an operator change them; a reader may read `campaign_folders`; an agent's token has none of the tools.
+  - **No command-line twin.** The owner asked for REST and MCP.
+
+## Open questions
+
+The mockup asks the owner:
+
+- The navigation lists every campaign that is not archived, finished ones too (shown). Or only those with a run at work or paused, as before?
+- Archive takes a campaign out of its folder, and Unarchive puts it back in none (shown). Or keep its folder?
+- If folders are too much: Archive alone, with no folders.
+
+## Progress
+
+- 2026-10-21: Goal written from the owner's request. Mockup `v010-campaign-archive` in the v0.1.0 mockups: the navigation with folders, a drag in progress, an archived campaign gone and no rigs; the campaign page's **⋯** with Move to folder and Archive and its refusal; **Campaigns › Archived** with Unarchive.
+- 2026-10-21: Built, waiting for the owner's approval of the mockup before it is merged. `src/control/campaign-folders.ts` archives and keeps the folders, for the dashboard, REST and MCP; the store has `campaign_folder`, `campaign_in_folder` and `campaign_archived`; `issue.ts` refuses a start or resume of an archived campaign. The navigation (`ui/components.ts`), its drag and drop and folds (`ui/client.ts`), the campaign page's **⋯** and the **Archived** filter (`dashboard.ts`, `ui/campaigns.ts`). Tests: `src/control/campaign-folders.test.ts` (archive refused at work and while a start waits, archive and unarchive, no start or resume of an archived campaign, folders made, renamed, refused and deleted, moves, the audit log, MCP's tools for each token, the navigation without rigs, the dashboard's forms and the script's JSON move, Needs you and the Overview without an archived campaign, and **Campaigns › Archived**), and `dashboard.test.ts`. Checked in headless Chrome with the dashboard demo: a folder made, a campaign dragged onto it, a fold kept after a reload, the refusals, and the phone width. Pages: How the parts fit together, Archive campaigns and sort them into folders, the REST API, MCP tools, tokens and glossary references, Let an agent run Thermite over MCP, the changelog.
+
+---
+
+Run with `/goal Complete docs/plan/goals/077-archive-and-folders.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
