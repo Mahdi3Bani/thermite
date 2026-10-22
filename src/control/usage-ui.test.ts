@@ -559,8 +559,10 @@ describe("model use on the screens (goal 075)", () => {
     assert.ok(html.indexOf('id="model-prices"') < html.indexOf("<h2>Add a provider</h2>"));
     assert.doesNotMatch(html, /Prices, \$ for a million tokens|So far:|data-pr-prov/);
     const block = from(html, '<div class="block" id="model-prices">', "</form>");
-    assert.match(block, /<h2>Model prices<\/h2><i class="ii"/);
-    assert.match(block, /\$ for a million tokens/);
+    assert.match(
+      block,
+      /<h2>Model prices<\/h2><span class="right">\$ for a million tokens<\/span>/,
+    );
     for (const label of ["Model", "Provider", "In", "Cached in", "Out", "Price from"])
       assert.match(block, new RegExp(`<span class="lb">${label}<i class="ii"`), label);
     assert.match(block, /<form method="post" action="\/ui\/settings\/prices" data-mp-form>/);

@@ -9,7 +9,7 @@ sidebar:
 The dashboard shows what the agents' model calls used and cost in four places:
 
 - **A run's page**: at the top, above its tabs, so on every tab, one line and two cards of the run's [model use](glossary.md); its **Stats** tab has the calls and the table by agent and model.
-- **A campaign's page**, in its sidebar: the run's figures, summed over all its runs on every rig, with each run.
+- **A campaign's page**, in its sidebar: its model use, summed over all its runs on every rig, with each run.
 - **Metrics**, in the main navigation after **Rigs** (address `/ui/metrics`): the whole system's, by model and by campaign, for today, the last 7 days or all.
 - **Settings › Providers**, under the providers: **Model prices**, each model's price, which the cost uses.
 

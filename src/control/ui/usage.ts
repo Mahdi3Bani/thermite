@@ -592,15 +592,14 @@ export const PRICE_WORDS = {
 const PLAN_TYPES = new Set(["claude", "chatgpt"]);
 
 const MP_TIP = {
-  block:
-    "Each call's cost is its tokens times its model's price. A price you set or change costs the model's earlier calls too. Subscriptions are not here: their calls are on a plan.",
-  model: "Each model of a provider with a model list.",
+  model:
+    "Each model of a provider with a model list. Subscriptions are not here: their calls are on a plan.",
   provider: "The provider that serves it, as in Providers above.",
   in: "Dollars for a million tokens in that the provider did not read from its cache.",
   cached:
     "Dollars for a million tokens in that the provider read from its cache. Empty: the In price.",
   out: "Dollars for a million tokens out, with reasoning.",
-  from: "provider's list: the provider's model list gives it, and control keeps it up to date; it can't be changed here. yours: you set it, here or over REST or MCP. free: the list gives 0. no price: neither, so its calls show “no price”, never $0. To remove yours, empty its three fields.",
+  from: "provider's list: the provider's model list gives it, and control keeps it up to date; it can't be changed here. yours: you set it, here or over REST or MCP. free: the list gives 0. no price: neither, so its calls show “no price”, never $0. A price you set or change costs the model's earlier calls too. To remove yours, empty its three fields.",
 };
 
 /** A price as text or in a field: cents at least (0.60), more places only where it has them. */
@@ -657,7 +656,7 @@ export function modelPricesBlock(o: {
         : "Nothing changed.";
   const th = (t: string, tip: string, cls = "") =>
     `<th${cls ? ` class="${cls}"` : ""}>${infoLabel(t, tip)}</th>`;
-  return `<div class="block" id="model-prices"><div class="head"><h2>Model prices</h2>${ii(MP_TIP.block)}<span class="right">$ for a million tokens</span></div>
+  return `<div class="block" id="model-prices"><div class="head"><h2>Model prices</h2><span class="right">$ for a million tokens</span></div>
 <form method="post" action="/ui/settings/prices" data-mp-form><input type="hidden" name="csrf" value="${esc(o.csrf)}"><div class="card flat"><div class="utw"><table class="ut mp-t"><thead><tr>${th("Model", MP_TIP.model)}${th("Provider", MP_TIP.provider, "u-opt")}${th("In", MP_TIP.in, "num")}${th("Cached in", MP_TIP.cached, "num")}${th("Out", MP_TIP.out, "num")}${th("Price from", MP_TIP.from)}</tr></thead><tbody>${rows}</tbody></table></div></div>
 ${n || flash ? `<div class="pr-act">${n ? `<button class="primary" data-mp-save>Save prices</button>` : ""}<span class="small" data-mp-flash>${flash}</span></div>` : ""}
 </form></div>`;
