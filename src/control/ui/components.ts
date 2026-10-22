@@ -60,6 +60,7 @@ export const icon = {
     '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
   ),
   live: svg('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
+  chart: svg('<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V7"/><path d="M18 17v-8"/>'),
   terminal: svg(
     '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/>',
   ),
@@ -326,6 +327,7 @@ export interface Shell {
     | "overview"
     | "campaigns"
     | "rigs"
+    | "metrics"
     | "live"
     | "knowledge"
     | "commands"
@@ -380,6 +382,7 @@ export function shell(s: Shell, body: string): string {
     ${nav("/ui", "overview", icon.home, "Overview", s.needs ? `<span class="badge">${s.needs}</span>` : "")}
     ${nav("/ui/campaigns", "campaigns", icon.trophy, "Campaigns", `<span class="count">${camps.length}</span>`)}
     ${nav("/ui/rigs", "rigs", icon.rigs, "Rigs", `<span class="count">${s.rigs.length}</span>`)}
+    ${nav("/ui/metrics", "metrics", icon.chart, "Metrics")}
     ${nav("/ui/live", "live", icon.terminal, "Live")}
     ${nav("/ui/knowledge", "knowledge", icon.book, "Knowledge")}
     ${nav("/ui/commands", "commands", icon.list, "Commands")}

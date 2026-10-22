@@ -1,3 +1,30 @@
+import { PRICE_NUMBER } from "./usage.ts";
+
+/**
+ * The price field's line without the page (goal 075): what a model's calls so far cost at the
+ * prices typed, as ui/usage.ts's soFarLine says it, or why the prices do not read. The page's
+ * script runs it as it is, and so do its tests. v: the three fields as typed; s: the calls so far.
+ */
+export const PRICE_CORE_JS = `
+const prNum = ${String(PRICE_NUMBER)};
+const prTok = (n) => n >= 1e8 ? Math.round(n / 1e6) + "M" : n >= 0.9995e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n));
+const prUsd = (x) => x > 0 && x < 0.005 ? "<$0.01" : "$" + x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function prSay(v, s) {
+  const t = {};
+  for (const k of ["in", "cached", "out"]) {
+    const x = String(v[k] ?? "").trim();
+    if (x !== "" && !prNum.test(x)) return ["A price is a number, such as 0.60.", "bad"];
+    t[k] = x === "" ? null : Number(x);
+  }
+  if ((t.in === null) !== (t.out === null) || (t.cached !== null && t.in === null)) return ["Set In and Out, or leave all three empty.", "bad"];
+  const so = s.records ? "So far: " + prTok(s.in) + " in, " + prTok(s.out) + " out" : "No calls yet";
+  if (t.in === null) return [so + " · no price", "none"];
+  if (!s.records) return [so, "set"];
+  if (t.in === 0 && t.out === 0 && !t.cached) return [so + " · free", "set"];
+  return [so + " · " + prUsd(((s.in - s.cached) * t.in + s.cached * (t.cached === null ? t.in : t.cached) + s.out * t.out) / 1e6), "set"];
+}
+`;
+
 /**
  * The Providers page's script, served from control (/ui/assets/providers.js; no inline script
  * runs under the dashboard's CSP). The add form shows only the fields its type uses, and says
@@ -28,6 +55,39 @@ export const PROVIDERS_JS = `
     type.addEventListener("change", show);
     show();
   }
+
+  // ------------------------------------------------ each model's price (goal 075)
+  // Each row says what the model's calls so far cost at the price typed; a price that is not a
+  // number, or In without Out, says why; Save prices waits until a price changes.
+${PRICE_CORE_JS}
+  const judge = (tb) => {
+    const v = {};
+    tb.querySelectorAll("[data-pk]").forEach((i) => {
+      const x = i.value.trim();
+      i.classList.toggle("bad", x !== "" && !prNum.test(x));
+      v[i.dataset.pk] = x;
+    });
+    const d = tb.dataset;
+    const [text, state] = prSay(v, { records: Number(d.records), in: Number(d.in), cached: Number(d.cached), out: Number(d.out) });
+    const say = tb.querySelector("[data-say]");
+    if (say) { say.textContent = text; say.classList.toggle("bad", state === "bad"); }
+    return state;
+  };
+  document.querySelectorAll("form[data-pr-prov]").forEach((f) => {
+    const save = f.querySelector("[data-pr-save]");
+    const check = () => {
+      const states = [...f.querySelectorAll("tbody[data-pr]")].map(judge);
+      const dirty = [...f.querySelectorAll("[data-pk]")].some((i) => i.value !== i.defaultValue);
+      if (save) save.disabled = !dirty || states.includes("bad");
+    };
+    f.addEventListener("input", (e) => {
+      if (!e.target.matches("[data-pk]")) return;
+      const flash = f.querySelector("[data-pr-flash]");
+      if (flash) flash.textContent = "";
+      check();
+    });
+    check();
+  });
 
   // ------------------------------------------------ Add an MCP server
   const mf = document.getElementById("mcp-add");
