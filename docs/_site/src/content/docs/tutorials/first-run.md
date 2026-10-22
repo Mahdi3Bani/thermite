@@ -78,7 +78,7 @@ Read that container's log, for example `docker compose logs harness` (or `podman
 2. Open <http://127.0.0.1:8800/ui> in your browser.
 3. Paste the token into **Admin token** and press **Sign in**.
 
-You see the **Overview**, the first page in the sidebar. Its first line says `nothing needs you · 0 runs at work · 1 of 1 rigs reporting`. If it says `0 of 1`, the rig hasn't reported yet: wait a minute and press **refresh** in the status bar, the line along the bottom of every page. Dashboard pages never reload by themselves.
+You see the **Overview**, the first page in the sidebar. Its first line says `nothing needs you · 0 runs at work · 1 of 1 rigs reporting`. If it says `0 of 1`, the rig hasn't reported yet: wait a minute and press **refresh** in the status bar, the line along the bottom of every page. This page doesn't update by itself.
 
 The sidebar on the left holds the dashboard's pages: **Overview**, **Campaigns**, **Rigs**, **Metrics**, **Live** and more.
 
