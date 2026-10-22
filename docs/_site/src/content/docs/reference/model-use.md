@@ -1,6 +1,6 @@
 ---
 title: "Model use and cost"
-description: "Every part of the dashboard's model use and cost: the top of a run's page, a campaign page's sidebar, the Metrics page, and each model's price in Settings › Providers."
+description: "Every part of the dashboard's model use and cost: the top of a run's page and its Stats tab, a campaign page's sidebar, the Metrics page, and Model prices in Settings › Providers."
 type: reference
 sidebar:
   order: 22
@@ -8,10 +8,10 @@ sidebar:
 
 The dashboard shows what the agents' model calls used and cost in four places:
 
-- **A run's page**, at the top, above its tabs, so it shows on every tab: the run's [model use](glossary.md), by agent and model.
-- **A campaign's page**, in its sidebar: the same, summed over all its runs on every rig, with each run.
+- **A run's page**: at the top, above its tabs, so on every tab, one line and two cards of the run's [model use](glossary.md); its **Stats** tab has the calls and the table by agent and model.
+- **A campaign's page**, in its sidebar: its model use, summed over all its runs on every rig, with each run.
 - **Metrics**, in the main navigation after **Rigs** (address `/ui/metrics`): the whole system's, by model and by campaign, for today, the last 7 days or all.
-- **Settings › Providers**: each model's price, which the cost uses.
+- **Settings › Providers**, under the providers: **Model prices**, each model's price, which the cost uses.
 
 Code counts every call where it is made, never an agent ([The model usage records](../explanation/how-it-fits-together.md#the-model-usage-records)). Control sums the records when a page is drawn. The REST route [`GET /v1/usage`](rest-api.md#model-usage) and the MCP tool [`model_usage`](mcp-tools.md#model_usage) give the same numbers. Every label and column with an **i** says what its number means when you hover it.
 
@@ -29,24 +29,42 @@ A cost with an **i** before it leaves something out or adds something. Its **i**
 
 ## The six numbers
 
-The run's top and Metrics start with six tiles.
+**Metrics** starts with six tiles. A run's page shows four of them in two cards: **Cost**, and **Tokens in**, **Tokens out** and **Output speed** together. Its calls are on its **Stats** tab, and its time in calls is in its line.
 
 | Tile | What it shows |
 | --- | --- |
 | **Cost** | The dollars, split by a bar into tokens in (not cached), cached in, out, and **GPU time on RunPod**. Under it, the tokens with no dollars: `144k tokens on a plan · 350k no price · 3.3k free` |
 | **Tokens in** | Every token sent to the models, split into `cached` (the provider read them from its cache), `not cached`, and `not reported by` the harnesses that do not say |
 | **Tokens out** | Every token the models wrote, with the reasoning tokens under it where the provider counts them |
-| **Calls** | The model calls. Records that do not say how many calls they cover (a Codex turn) count as none, and an **i** says how many there are. The bars under it count the calls: in each round for a run; in each hour of today, or on each day, for Metrics (each week, past 62 days) |
+| **Calls** | The model calls. Records that do not say how many calls they cover (a Codex turn) count as none, and an **i** says how many there are. The bars under it count the calls in each hour of today, or on each day (each week, past 62 days) |
 | **Output speed** | Tokens out a second, from the first token to the last of each call: the median, with `p10–p90` under it (8 of 10 calls are in this range) |
 | **Time in calls** | All calls added together, from the request to the last token, with the median time to the first token under it |
 
-A run's **Calls** tile also says how many calls the workers made in a trial, such as `28 a trial`.
-
 ## A run's page
 
-The block is called **Model use**. Its line on the right counts the run's trials and rounds: `48 trials · 16 rounds`. A run that has made no model call yet says `No model call recorded yet. Code counts each call of the agents when it ends.` A try of a kit, which has no agents, shows no block.
+At the top of the run's page, above its tabs, so on every tab, are one line and two cards. A run with no agents and no pod spend on RunPod, such as a try of a kit, has neither, and no **Stats** tab.
 
-Under the six numbers, **By agent and model** has one row for each agent's calls to each model, in two groups, as [Edit rig](../how-to/models/model-per-agent.md) names them:
+The line counts the run's trials and rounds, then gives its time and its time in calls: `48 trials · 16 rounds · 30 h 0 m · 6 h 34 m in calls`.
+
+- The run's time is from its start to now, or to its end once it is finished. A paused run's time goes on.
+- The time in calls adds all its calls together, from the request to the last token, so calls at the same time each count. Its **i** says how many records do not report their time, which are not in it. Where no record reports one, the line says `time in calls not reported`.
+- A run that has made no model call yet ends the line with `no model call yet`, and has no cards.
+
+Under the line:
+
+- **Cost**, as on Metrics, with the pod's spend while this run was at work on a RunPod rig.
+- One card with **Tokens in** (and its split), **Tokens out** and **Output speed**, as on Metrics.
+
+### The Stats tab
+
+**Stats**, the last of the run's tabs (`?view=stats` in the address), has the details:
+
+- **Calls**: the run's calls, how many calls the workers made in a trial (`28 a trial`), and the median time to the first token (`first token 1.8 s`). The bars beside it count the calls in each round, from `round 1` to the latest; a run with fewer than two rounds has no bars.
+- **By agent and model**: one row for each agent's calls to each model.
+
+A run that has made no model call yet says `No model call recorded yet. Code counts each call of the agents when it ends.`
+
+**By agent and model** has its rows in groups, as [Edit rig](../how-to/models/model-per-agent.md) names the agents:
 
 - **The work**: **Workers**, then the **Planner**.
 - **The advisors**: **Teachers** (with `teacher 1` or `teacher 2` under it when the run has two teachers and the rig's settings say which model is which, and `merged by` for the model that merges their advice), the **Auditor** and the **Review panel**.
@@ -71,7 +89,7 @@ On a narrow screen the table keeps **Agent**, **In**, **Cached**, **Out**, **tok
 
 The campaign's sidebar has its own **Model use**, over all its runs on every rig. Its line on the right counts the runs with records.
 
-- **Cost**, as on the run's top.
+- **Cost**, as on Metrics.
 - **Tokens in**, with the part that was cached under it. Where a harness does not report the cache, the part is of the tokens that were reported, and an **i** says how many were not.
 - **Tokens out**, with the reasoning tokens.
 - **Calls**, with the time in calls under it.
@@ -92,24 +110,33 @@ Under the six numbers:
 - **By model**: one row for each provider's model, with its provider and every harness that ran it under it (`my-litellm · Pi, OpenCode v2`), its **Calls**, **In**, **Out**, **Cached** (the part of tokens in), **tok/s**, **Cost** and **Share**. When a RunPod pod spent in the period, the last row is **GPU time on RunPod**, with the pods' rigs. On Metrics it includes the time no run was at work, which no campaign counts.
 - **By campaign**: one row for each campaign, with its mode, its **Runs**, then the same columns. A run that control has no campaign for is `no campaign`.
 
-## Prices in Settings › Providers
+## Model prices
 
-Open a provider's row in **Settings › Providers**. Under its models, **Prices, $ for a million tokens** lists each model with three fields: **In** (tokens in not read from the cache), **Cached in** (tokens in read from the cache; empty: the **In** price) and **Out** (tokens out, with reasoning). Under the model's name, a chip says where its price comes from:
+In **Settings › Providers**, under the providers, **Model prices** is one table of the models' prices, in US dollars for a million tokens. It has one row for each model of each provider, except subscriptions: a Claude or ChatGPT provider's calls are on its plan.
 
-| Chip | Meaning |
+| Column | What it shows |
 | --- | --- |
-| `from the provider` | The provider's model list gives the price. Control keeps it up to date with the list, and its fields can't be changed |
-| `free, from the provider` | The list gives a price of 0 |
+| **Model** | The model's id at its provider |
+| **Provider** | The provider that serves it |
+| **In** | Dollars for a million tokens in that the provider did not read from its cache |
+| **Cached in** | Dollars for a million tokens in that the provider read from its cache. Empty: the **In** price |
+| **Out** | Dollars for a million tokens out, with reasoning |
+| **Price from** | Where the price comes from: `provider's list`, `yours`, `free` or `no price` |
+
+On a narrow screen the provider shows under the model.
+
+| Price from | Meaning |
+| --- | --- |
+| `provider's list` | The provider's model list gives the price. Control keeps it up to date with the list. Its prices show as text, not as fields, and can't be changed |
+| `free` | The list gives a price of 0 |
 | `yours` | You set it here, or with [`POST /v1/model-prices`](rest-api.md#model-usage) or [`set_model_price`](mcp-tools.md#set_model_price) |
 | `no price` | Neither: the model's calls show `no price` |
 
-The line under each model says what its calls so far cost at the price in its fields, such as `So far: 41.6M in, 846k out · $34.55`, and changes as you type. **Save prices** waits until a price changes. To set a price, fill in **In** and **Out**; to remove yours, empty all three. The block then says `Saved. Every cost follows.`: a price you set or change costs every call of the model, the earlier ones too. Each change is in the audit log as `model_price_set` or `model_price_cleared`, by `owner:ui`.
+A model with no listed price has three fields. **Save prices**, under the table, saves every row at once, and waits until a price changes. To set a price, fill in **In** and **Out**; to remove yours, empty all three. The line beside **Save prices** then says `Saved. Every cost follows.`: a price you set or change costs every call of the model, the earlier ones too. Each change is in the audit log as `model_price_set` or `model_price_cleared`, by `owner:ui`.
 
-The page says why a price is not saved, before and after **Save prices**:
+The line beside **Save prices** says why a row can't be saved, with the model and its provider: as you type it starts with `Not yet.`, and after you press **Save prices** with `Not saved.`, such as `Not saved. small-model of lab: set In and Out, or leave all three empty.`
 
 | Message | Why |
 | --- | --- |
-| `A price is a number, such as 0.60.` | A field holds something other than a number of US dollars |
-| `Set In and Out, or leave all three empty.` | Only one of **In** and **Out** is set, or **Cached in** without **In** |
-
-A provider whose list gives only free models shows `free, from the provider's list.` instead of the fields. A Claude or ChatGPT subscription has no price: its row says `On a plan: its calls show their tokens, and “on a plan” for cost.`
+| `a price is a number, such as 0.60.` | A field holds something other than a number of US dollars |
+| `set In and Out, or leave all three empty.` | Only one of **In** and **Out** is set, or **Cached in** without **In** |

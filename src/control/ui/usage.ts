@@ -10,14 +10,15 @@ import {
 } from "../../core/usage.ts";
 import { HARNESS_NAMES } from "../rig-model.ts";
 import type { Harness, ProviderModel } from "../store.ts";
-import { campaignHref, esc, infoLabel, modeAvatar } from "./components.ts";
+import { campaignHref, esc, icon, infoLabel, modeAvatar } from "./components.ts";
 
 /**
  * Model use and cost on the dashboard (goal 075, as the owner approved the mockup `v010-usage`):
- * at the top of a run's page, in a campaign page's sidebar, on the Metrics page, and each model's
- * price in Settings › Providers. Every number comes from control's sums of the records that code
- * made at each call (control/usage.ts); a figure no record reports says "not reported", a cost
- * with no price known says "no price", and a subscription's calls "on a plan": never 0.
+ * at the top of a run's page (one line and two cards) with the details on its Stats tab, in a
+ * campaign page's sidebar, on the Metrics page, and one table of model prices in Settings ›
+ * Providers. Every number comes from control's sums of the records that code made at each call
+ * (control/usage.ts); a figure no record reports says "not reported", a cost with no price known
+ * says "no price", and a subscription's calls "on a plan": never 0.
  */
 
 // ---------------------------------------------------------------- words and numbers
@@ -71,6 +72,10 @@ const TIP = {
   cshare:
     "The part of tokens in that the provider read from its cache. Where a harness does not report it, the part is of the tokens that were reported; the i says how many were not.",
   cost: "Tokens times the model's price. “on a plan”: a subscription. “no price”: none is known. An i says what the number leaves out or adds.",
+  clock:
+    "Trials done, rounds, the run's time since it started (to its end, once it is finished), and the time in model calls. The time in calls adds all calls together, from the request to the last token: calls at the same time each count. Code counts every call; agents can't change these numbers. REST and MCP give the same numbers.",
+  runSpeed:
+    "Tokens out a second, from the first token to the last, for each call. The big number is the median of the calls. p10–p90: 8 of 10 calls are in this range. Each model's own speed is on the Stats tab.",
 };
 const costTip = (gpu: string) =>
   `Tokens times each model's price for a million tokens: in, cached in, out. Prices: Settings › Providers. “on a plan”: a subscription; its tokens are counted, not priced. “no price”: none is known, so it is never $0. GPU time on RunPod: ${gpu}.`;
@@ -276,7 +281,7 @@ export function dayEdges(from: number, now: number, tz: string): number[] {
   return out;
 }
 
-// ---------------------------------------------------------------- a run: at the top of its page
+// ---------------------------------------------------------------- a run: its top and its Stats tab
 
 export interface RunUsage {
   report: UsageReport;
@@ -286,6 +291,8 @@ export interface RunUsage {
   /** Its finished trials and its rounds, as its run view counts them. */
   trials: number;
   rounds: number;
+  /** The run's time: since it started, to now or to its end once it is finished; null: not known. */
+  wallMs: number | null;
   rig: string;
   /** A RunPod rig's price an hour now (null: not known); none: not on RunPod. */
   pod?: { perHour: number | null } | undefined;
@@ -293,13 +300,70 @@ export interface RunUsage {
   teacher: (provider: string | null, model: string) => string;
 }
 
-/** The run's model use and cost: the six numbers and a table by agent and model. */
-export function runUsageBlock(u: RunUsage): string {
+/** Nothing to show yet: no record, and no pod spend. */
+const noUse = (t: UsageSums) => !t.records && t.cost.pod_usd === null;
+
+/** Tokens in (cached, not cached, not reported), tokens out and the output speed, in one card. */
+function tokensCard(t: UsageSums, unrepBy: string[], speedTip: string): string {
+  const cached = t.cached_in ?? 0;
+  const notCached = t.uncached_in ?? 0;
+  const unrep = unreported(t);
+  const seg = (cls: string, v: number) =>
+    v > 0 && t.tokens_in > 0
+      ? `<i class="${cls}" style="width:${((v / t.tokens_in) * 100).toFixed(2)}%"></i>`
+      : "";
+  const lg = (cls: string, v: number, word: string) =>
+    v > 0 ? `<span><i class="${cls}"></i><b>${tok(v)}</b>${word}</span>` : "";
+  const speed = t.out_per_s;
+  return `<div class="fact uf-tok"><div class="utok">
+<div><div class="k">${infoLabel("Tokens in", TIP.in)}</div><div class="v">${tok(t.tokens_in)}</div><div class="usplit">${seg("c", cached)}${seg("n", notCached)}${seg("r", unrep)}</div><div class="ulg">${lg("c", cached, "cached")}${lg("n", notCached, "not cached")}${lg("r", unrep, `not reported${unrepBy.length ? ` by ${list(unrepBy)}` : ""}`)}</div></div>
+<div><div class="k">${infoLabel("Tokens out", TIP.out)}</div><div class="v">${tok(t.tokens_out)}</div><div class="s">${t.reasoning ? `${tok(t.reasoning)} reasoning` : "&nbsp;"}</div></div>
+<div><div class="k">${infoLabel("Output speed", speedTip)}</div><div class="v">${speed ? `${Math.round(speed.median)}<span class="u"> tok/s</span>` : NR}</div><div class="s">${speed ? `p10–p90 ${Math.round(speed.p10)}–${Math.round(speed.p90)}` : "&nbsp;"}</div></div>
+</div></div>`;
+}
+
+/**
+ * The top of a run's page, above its tabs (the owner, 2026-10-21: keep it small): one line with
+ * its trials, rounds, time and time in calls, then two cards, Cost and the tokens. The calls and
+ * the table by agent and model are on its Stats tab.
+ */
+export function runUsageTop(u: RunUsage): string {
+  const t = u.report.total;
+  const lines = u.report.by_agent_model;
+  const none = noUse(t);
+  const calls = none
+    ? "no model call yet"
+    : t.call_ms !== null
+      ? `${dur(t.call_ms)} in calls`
+      : t.records
+        ? "time in calls not reported"
+        : "";
+  const parts = [
+    `${int(u.trials)} trial${u.trials === 1 ? "" : "s"}`,
+    `${int(u.rounds)} round${u.rounds === 1 ? "" : "s"}`,
+    u.wallMs === null ? "" : dur(u.wallMs),
+    calls,
+  ].filter(Boolean);
+  const tip = `${TIP.clock}${t.call_ms !== null && t.not_reported.time ? ` ${int(t.not_reported.time)} records do not report their time: not in the time in calls.` : ""}`;
+  const line = `<div class="u-clock">${icon.clock}<span>${parts.join(" · ")}</span>${ii(tip)}</div>`;
+  if (none) return `<div class="block" id="model-use">${line}</div>`;
+  const guessBy = harnessesWhere(lines, (s) => s.cost.priced_as_not_cached > 0);
+  return `<div class="block" id="model-use">${line}
+<div class="u-two"><div class="fact uf-cost"><div class="k">${infoLabel("Cost", costTip("the pod's spend while this run was at work"))}</div>${costParts(t.cost, guessBy)}</div>
+${tokensCard(
+  t,
+  harnessesWhere(lines, (s) => unreported(s) > 0),
+  TIP.runSpeed,
+)}</div>
+</div>`;
+}
+
+/** A run's Stats tab: its calls (in each round, in a trial, the first token) and the table by agent and model. */
+export function runStatsTab(u: RunUsage): string {
   const r = u.report;
   const t = r.total;
-  const head = `<div class="head"><h2>Model use</h2>${ii(TIP.use)}<span class="right">${int(u.trials)} trial${u.trials === 1 ? "" : "s"} · ${int(u.rounds)} round${u.rounds === 1 ? "" : "s"}</span></div>`;
-  if (!t.records && t.cost.pod_usd === null)
-    return `<div class="block" id="model-use">${head}<div class="card"><div class="empty">No model call recorded yet. Code counts each call of the agents when it ends.</div></div></div>`;
+  if (noUse(t))
+    return `<div class="card"><div class="empty">No model call recorded yet. Code counts each call of the agents when it ends.</div></div>`;
   const lines = r.by_agent_model;
   const all = tokensOf(t);
   const teachers = lines.filter((l) => l.agent === "teachers");
@@ -340,17 +404,21 @@ export function runUsageBlock(u: RunUsage): string {
   const perTrial = trials
     ? Math.round(workers.reduce((n, x) => n + (x.calls ?? 0), 0) / trials)
     : 0;
-  return `<div class="block" id="model-use">${head}
-${tiles(t, {
-  costTip: costTip("the pod's spend while this run was at work"),
-  guessBy: harnessesWhere(lines, (s) => s.cost.priced_as_not_cached > 0),
-  unrepBy: harnessesWhere(lines, (s) => unreported(s) > 0),
-  calls: {
-    tip: `Model calls by all agents of this run.${edges.length > 1 ? " The bars: calls in each round." : ""}`,
-    sub: perTrial ? `${int(perTrial)} a trial` : "",
-    bars: edges.length > 1 ? bars(u.rows, edges) : [],
-  },
-})}
+  const perRound = edges.length > 1 ? bars(u.rows, edges) : [];
+  const max = Math.max(...perRound, 1);
+  const sub = [
+    perTrial ? `${int(perTrial)} a trial` : "",
+    t.first_token_ms === null ? "" : `first token ${(t.first_token_ms / 1000).toFixed(1)} s`,
+  ].filter(Boolean);
+  const callsTip = `Model calls by all agents of this run. Under it: the workers' calls in a trial, and the median time to the first token.${perRound.length ? " The bars: calls in each round." : ""}`;
+  const callsCard = t.records
+    ? `<div class="fact u-calls"><div><div class="k">${infoLabel("Calls", callsTip)}</div><div class="v">${t.calls_not_reported === t.records ? NR : int(t.calls)}</div><div class="s">${t.calls_not_reported && t.calls_not_reported < t.records ? ii(`${int(t.calls_not_reported)} records do not say how many calls they cover (a Codex turn): counted as none.`) : ""}${sub.join(" · ") || "&nbsp;"}</div></div>${
+        perRound.length
+          ? `<div><div class="uspark" aria-hidden="true">${perRound.map((b) => `<i style="height:${b > 0 ? Math.max(8, (b / max) * 100).toFixed(0) : 0}%"></i>`).join("")}</div><div class="u-axis"><span>round 1</span><span>round ${perRound.length}</span></div></div>`
+          : ""
+      }</div>`
+    : "";
+  return `<div id="run-stats">${callsCard}
 <div class="u-h">By agent and model</div>
 ${table}
 </div>`;
@@ -509,42 +577,32 @@ ${
 export const runStateWord = (status: string) =>
   status === "running" ? "at work" : status === "paused" ? "paused" : "finished";
 
-// ---------------------------------------------------------------- the price field: Settings › Providers
+// ---------------------------------------------------------------- Model prices: Settings › Providers
 
-const PR_TIP = {
+/** A price field's number: empty, or dollars for a million tokens (up to 1,000,000). */
+export const PRICE_NUMBER = /^(\d{1,7}(\.\d{0,6})?|\.\d{1,6})$/;
+
+/** Why a row of prices can't be saved, in the same words on the page and from the server. */
+export const PRICE_WORDS = {
+  number: "a price is a number, such as 0.60.",
+  pair: "set In and Out, or leave all three empty.",
+} as const;
+
+/** Provider types whose calls are on a plan: their models have no price. */
+const PLAN_TYPES = new Set(["claude", "chatgpt"]);
+
+const MP_TIP = {
   model:
-    "From the provider: its model list gives the price, so control keeps it up to date. Yours: you typed it. No price: neither, so its calls show “no price”, never $0.",
+    "Each model of a provider with a model list. Subscriptions are not here: their calls are on a plan.",
+  provider: "The provider that serves it, as in Providers above.",
   in: "Dollars for a million tokens in that the provider did not read from its cache.",
   cached:
     "Dollars for a million tokens in that the provider read from its cache. Empty: the In price.",
   out: "Dollars for a million tokens out, with reasoning.",
+  from: "provider's list: the provider's model list gives it, and control keeps it up to date; it can't be changed here. yours: you set it, here or over REST or MCP. free: the list gives 0. no price: neither, so its calls show “no price”, never $0. A price you set or change costs the model's earlier calls too. To remove yours, empty its three fields.",
 };
 
-/** A model's calls so far, over every run: tokens in, the cached part that was reported, out. */
-export interface SoFar {
-  records: number;
-  tokens_in: number;
-  cached_in: number;
-  tokens_out: number;
-}
-
-/** What a model's calls so far cost at a price, as the price field's line says it. */
-export function soFarLine(s: SoFar | undefined, price: ModelPrice | null): string {
-  const so = s?.records
-    ? `So far: ${tok(s.tokens_in)} in, ${tok(s.tokens_out)} out`
-    : "No calls yet";
-  if (!price) return `${so} · no price`;
-  if (!s?.records) return so;
-  if (isFree(price)) return `${so} · free`;
-  const cost =
-    ((s.tokens_in - s.cached_in) * price.input +
-      s.cached_in * (price.cached_input ?? price.input) +
-      s.tokens_out * price.output) /
-    1e6;
-  return `${so} · ${usd(cost)}`;
-}
-
-/** A price as the field shows it: cents at least (0.60), more places only where it has them. */
+/** A price as text or in a field: cents at least (0.60), more places only where it has them. */
 const priceText = (n: number | null | undefined) => {
   if (n === null || n === undefined) return "";
   const short = Number(n.toFixed(6));
@@ -552,24 +610,42 @@ const priceText = (n: number | null | undefined) => {
 };
 
 /**
- * A provider's models with their prices, in US dollars for a million tokens: from the provider's
- * list (read only), yours (typed here), or none. Save prices posts every row; the page's script
- * says what each model's calls so far cost at the price typed, and holds Save until a price changes.
+ * Model prices, under the providers in Settings › Providers (the owner, 2026-10-21: one plain
+ * table, nothing nested): one row for each model of each provider that is not a subscription, in
+ * US dollars for a million tokens, and where its price comes from. A listed price is text; any
+ * other has three fields. One Save prices posts every field to POST /ui/settings/prices; the
+ * page's script holds it until a price changes, and says why a row can't be saved.
  */
-export function pricesBlock(o: {
-  provider: string;
-  models: readonly ProviderModel[];
-  /** The owner's prices, by model. */
-  owner: ReadonlyMap<string, ModelPrice>;
-  soFar: ReadonlyMap<string, SoFar>;
+export function modelPricesBlock(o: {
+  providers: readonly { name: string; type: string; models: readonly ProviderModel[] }[];
+  /** The owner's prices. */
+  owner: readonly { provider: string; model: string; price: ModelPrice }[];
   csrf: string;
   /** What the last Save did: saved a change, changed nothing, or refused (with why). */
   flash?: { kind: "saved" | "same" } | { kind: "bad"; text: string } | undefined;
 }): string {
-  if (!o.models.length) return "";
-  if (o.models.every((m) => m.price && isFree(m.price)))
-    return `<div class="small muted">${o.models.map((m) => esc(m.id)).join(", ")}: free, from the provider's list.</div>`;
-  const editable = o.models.some((m) => !m.price);
+  const owner = new Map(o.owner.map((x) => [JSON.stringify([x.provider, x.model]), x.price]));
+  const models = o.providers
+    .filter((p) => !PLAN_TYPES.has(p.type))
+    .flatMap((p) => p.models.map((m) => ({ p: p.name, m })));
+  if (!models.length) return "";
+  const text = (v: number | null) =>
+    `<td class="num">${v === null ? `<span class="muted">–</span>` : priceText(v)}</td>`;
+  let n = 0;
+  const rows = models
+    .map(({ p, m }) => {
+      // The model, with its provider under it on a phone, and the provider's own column.
+      const name = (hidden = "") =>
+        `<td>${hidden}<span class="u-m">${esc(m.id)}</span><span class="us u-ph">${esc(p)}</span></td><td class="u-opt">${esc(p)}</td>`;
+      if (m.price)
+        return `<tr>${name()}${text(m.price.input)}${text(m.price.cached_input)}${text(m.price.output)}<td><span class="chip">${isFree(m.price) ? "free" : "provider's list"}</span></td></tr>`;
+      const own = owner.get(JSON.stringify([p, m.id])) ?? null;
+      const i = n++;
+      const field = (k: "in" | "cached" | "out", label: string, v: number | null | undefined) =>
+        `<td class="num"><input inputmode="decimal" maxlength="12" name="${k}${i}" data-pk="${k}" aria-label="${esc(`${label}, ${m.id} of ${p}`)}" value="${esc(priceText(v))}" placeholder="–"></td>`;
+      return `<tr data-mp="${esc(`${m.id} of ${p}`)}">${name(`<input type="hidden" name="p${i}" value="${esc(p)}"><input type="hidden" name="m${i}" value="${esc(m.id)}">`)}${field("in", "In", own?.input)}${field("cached", "Cached in", own?.cached_input)}${field("out", "Out", own?.output)}<td>${own ? `<span class="chip info">yours</span>` : `<span class="chip warn">no price</span>`}</td></tr>`;
+    })
+    .join("");
   const f = o.flash;
   const flash = !f
     ? ""
@@ -578,26 +654,10 @@ export function pricesBlock(o: {
       : f.kind === "saved"
         ? `<b class="ok">Saved.</b> Every cost follows.`
         : "Nothing changed.";
-  const rows = o.models
-    .map((m, i) => {
-      const listed = m.price ?? null;
-      const set = listed ?? o.owner.get(m.id) ?? null;
-      const s = o.soFar.get(m.id);
-      const chip = listed
-        ? `<span class="chip">${isFree(listed) ? "free, from the provider" : "from the provider"}</span>`
-        : set
-          ? `<span class="chip info" data-src>yours</span>`
-          : `<span class="chip warn" data-src>no price</span>`;
-      const input = (k: "in" | "cached" | "out", label: string, v: number | null | undefined) =>
-        `<td class="num"><span class="pr-in"><span>$</span><input inputmode="decimal" maxlength="12" name="${k}${i}" data-pk="${k}" aria-label="${esc(label)}, ${esc(m.id)}" value="${esc(priceText(v))}" placeholder="–"${listed ? " readonly" : ""}></span></td>`;
-      return `<tbody data-pr="${esc(m.id)}" data-records="${s?.records ?? 0}" data-in="${s?.tokens_in ?? 0}" data-cached="${s?.cached_in ?? 0}" data-out="${s?.tokens_out ?? 0}"><tr><td><input type="hidden" name="m${i}" value="${esc(m.id)}"><span class="u-m">${esc(m.id)}</span>${m.context_window ? ` <span class="muted pr-ctx">· ${Math.round(m.context_window / 1000)}k</span>` : ""}<span class="us">${chip}</span></td>${input("in", "In", set?.input)}${input("cached", "Cached in", set?.cached_input)}${input("out", "Out", set?.output)}</tr><tr class="pr-say"><td colspan="4" data-say>${esc(soFarLine(s, set))}</td></tr></tbody>`;
-    })
-    .join("");
-  return `<form method="post" action="/ui/settings/providers/${encodeURIComponent(o.provider)}/prices" class="pr-form" data-pr-prov id="prices-${esc(o.provider)}"><input type="hidden" name="csrf" value="${esc(o.csrf)}">
-<div class="u-h">Prices, $ for a million tokens</div><div class="card flat pr-card"><table class="pr-t"><thead><tr><th>${infoLabel("Model", PR_TIP.model)}</th><th class="num">${infoLabel("In", PR_TIP.in)}</th><th class="num">${infoLabel("Cached in", PR_TIP.cached)}</th><th class="num">${infoLabel("Out", PR_TIP.out)}</th></tr></thead>${rows}</table></div>
-${editable ? `<div class="pr-act"><button class="primary" data-pr-save>Save prices</button><span class="small" data-pr-flash>${flash}</span></div>` : ""}
-</form>`;
+  const th = (t: string, tip: string, cls = "") =>
+    `<th${cls ? ` class="${cls}"` : ""}>${infoLabel(t, tip)}</th>`;
+  return `<div class="block" id="model-prices"><div class="head"><h2>Model prices</h2><span class="right">$ for a million tokens</span></div>
+<form method="post" action="/ui/settings/prices" data-mp-form><input type="hidden" name="csrf" value="${esc(o.csrf)}"><div class="card flat"><div class="utw"><table class="ut mp-t"><thead><tr>${th("Model", MP_TIP.model)}${th("Provider", MP_TIP.provider, "u-opt")}${th("In", MP_TIP.in, "num")}${th("Cached in", MP_TIP.cached, "num")}${th("Out", MP_TIP.out, "num")}${th("Price from", MP_TIP.from)}</tr></thead><tbody>${rows}</tbody></table></div></div>
+${n || flash ? `<div class="pr-act">${n ? `<button class="primary" data-mp-save>Save prices</button>` : ""}<span class="small" data-mp-flash>${flash}</span></div>` : ""}
+</form></div>`;
 }
-
-/** A price field's number: empty, or dollars for a million tokens (up to 1,000,000). */
-export const PRICE_NUMBER = /^(\d{1,7}(\.\d{0,6})?|\.\d{1,6})$/;

@@ -284,10 +284,13 @@ import { STYLE } from "./ui/style.ts";
 import {
   campaignUsageBlock,
   metricsBody,
+  modelPricesBlock,
   PRICE_NUMBER,
-  pricesBlock,
+  PRICE_WORDS,
+  type RunUsage,
   runStateWord,
-  runUsageBlock,
+  runStatsTab,
+  runUsageTop,
 } from "./ui/usage.ts";
 import { auditReason, clip, jobText, listText, runStatusText, signed, span } from "./ui/words.ts";
 import { setModelPrice, usageData } from "./usage.ts";
@@ -605,24 +608,29 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   };
 
   /**
-   * A run's model use and cost (goal 075), at the top of its page above the tabs: control's sums
-   * of its records on this rig, its rounds for the bars, and a RunPod rig's price an hour. The
-   * teachers' lines say "teacher 1" or "teacher 2" where the rig's settings tell which.
+   * A run's model use and cost (goal 075), for the top of its page above the tabs and its Stats
+   * tab: control's sums of its records on this rig, its rounds for the bars, its time, and a
+   * RunPod rig's price an hour. The teachers' lines say "teacher 1" or "teacher 2" where the
+   * rig's settings tell which. None: a run with no agents (a try of a kit) and nothing spent.
    */
-  const runUsage = (u: RigView, i: RunView) => {
+  const runUsage = (u: RigView, i: RunView, now: number): RunUsage | undefined => {
     const d = usageData(store, { run: i.id, rig: u.id });
-    // A run with no agents (a try of a kit) and nothing spent has no model use to show.
-    if (!i.has_agents && !d.report.total.records && d.report.total.cost.pod_usd === null) return "";
+    if (!i.has_agents && !d.report.total.records && d.report.total.cost.pod_usd === null)
+      return undefined;
     const roles = store.roleModels(u.id);
     const launched = store.runpodRig(u.id);
     const perHour = (launched?.state as { price_per_hr?: unknown } | null | undefined)
       ?.price_per_hr;
-    return runUsageBlock({
+    // The run's time: from its start to now, or to its last event once it is finished.
+    const start = Date.parse(i.created_at ?? "");
+    const end = i.status === "closed" ? Date.parse(i.timeline.at(-1)?.at ?? "") : now;
+    return {
       report: d.report,
       rows: d.rows,
       roundStarts: store.roundStarts(u.id, i.id),
       trials: i.agents.trials,
       rounds: i.agents.epochs,
+      wallMs: Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null,
       rig: u.id,
       pod: launched
         ? { perHour: typeof perHour === "number" && perHour > 0 ? perHour : null }
@@ -634,7 +642,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
         const two = is(roles.second_teacher);
         return one && !two ? "teacher 1" : two && !one ? "teacher 2" : "";
       },
-    });
+    };
   };
 
   /** A campaign's model use and cost over all its runs on every rig (goal 075), for its sidebar. */
@@ -663,6 +671,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const t = csrf(c);
     const back = runHref(u.id, i, view);
     const others = vs.filter((x) => x.id !== u.id);
+    const usage = runUsage(u, i, now);
     const decisions = needs(c, [u], now, back).filter((n) => n.run === i.id);
     const goals = i.goals.length
       ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${i.goals.filter((g) => g.status === "met").length} of ${i.goals.length} met</span><span class="right">the judge's check of champion #${esc(i.goals_seq ?? "?")}${i.goals_at ? `, ${esc(ago(i.goals_at, now))} ago` : ""}</span></div><div class="card flat">${i.goals
@@ -942,7 +951,11 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                       ]),
                     ].filter(Boolean),
                   })
-                : `<p class="run-said">${said}</p>
+                : view === "stats"
+                  ? usage
+                    ? runStatsTab(usage)
+                    : `<div class="card"><div class="empty">No model use: this run has no agents.</div></div>`
+                  : `<p class="run-said">${said}</p>
 ${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}
 <div class="cols run-cols"><div>
 ${goals}${research}${ladder}
@@ -952,8 +965,8 @@ ${goals}${research}${ladder}
 <div class="block"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
 <div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
-    return `${runUsage(u, i)}<section class="block" id="${esc(runKey(u.id, i.id))}">
-<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
+    return `${usage ? runUsageTop(usage) : ""}<section class="block" id="${esc(runKey(u.id, i.id))}">
+<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}${usage ? sub("stats", "Stats") : ""}</nav>
 ${body}
 </section>`;
   };
@@ -2165,7 +2178,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (sel) {
       const qv = c.req.query("view");
       const view: RunViewName =
-        qv === "attempts" || qv === "history" || qv === "experiments" || qv === "journal"
+        qv === "attempts" ||
+        qv === "history" ||
+        qv === "experiments" ||
+        qv === "journal" ||
+        qv === "stats"
           ? qv
           : qv === "planner" || qv === "steering"
             ? "planner"
@@ -3658,34 +3675,25 @@ ${notice}${box}</section></div>`,
         );
     // What an MCP server's form did is said in its own block (at=mcp), where the page opens.
     const atMcp = c.req.query("at") === "mcp";
-    // So is what a provider's Save prices did (at=prices:<provider>), in that provider's block.
-    const at = c.req.query("at") ?? "";
-    const atPrices = at.startsWith("prices:") ? at.slice("prices:".length) : undefined;
-    const ok = atMcp || atPrices !== undefined ? undefined : c.req.query("ok");
-    const error = atMcp || atPrices !== undefined ? undefined : c.req.query("error");
-    // Each model's price and its calls so far (goal 075), for the providers' price fields.
-    const ownerPrices = store.modelPrices();
-    const soFar = store.usageByProviderModel();
-    const prices = (p: ModelProvider) =>
-      pricesBlock({
-        provider: p.name,
-        models: p.models,
-        owner: new Map(
-          ownerPrices.filter((x) => x.provider === p.name).map((x) => [x.model, x.price]),
-        ),
-        soFar: new Map(soFar.filter((x) => x.provider === p.name).map((x) => [x.model, x])),
-        csrf: t,
-        flash:
-          atPrices !== p.name
-            ? undefined
-            : c.req.query("error")
-              ? { kind: "bad", text: String(c.req.query("error")) }
-              : c.req.query("ok") === "saved"
-                ? { kind: "saved" }
-                : c.req.query("ok") === "same"
-                  ? { kind: "same" }
-                  : undefined,
-      });
+    // So is what Save prices did (at=prices), in Model prices.
+    const atPrices = c.req.query("at") === "prices";
+    const ok = atMcp || atPrices ? undefined : c.req.query("ok");
+    const error = atMcp || atPrices ? undefined : c.req.query("error");
+    // Model prices (goal 075): one table under the providers, for every model not on a plan.
+    const prices = modelPricesBlock({
+      providers,
+      owner: store.modelPrices(),
+      csrf: t,
+      flash: !atPrices
+        ? undefined
+        : c.req.query("error")
+          ? { kind: "bad", text: String(c.req.query("error")) }
+          : c.req.query("ok") === "saved"
+            ? { kind: "saved" }
+            : c.req.query("ok") === "same"
+              ? { kind: "same" }
+              : undefined,
+    });
     const allFree = (p: ModelProvider) =>
       p.models.length > 0 && p.models.every((m) => m.price && isFree(m.price));
     const PLAN_LINE = `<div class="muted small" style="margin-top:10px">On a plan: its calls show their tokens, and “on a plan” for cost.</div>`;
@@ -3770,11 +3778,11 @@ ${
               .join("")}</div>`
           : "";
         const pName = encodeURIComponent(p.name);
-        return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"${atPrices === p.name ? " open" : ""}><summary>
+        return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
 <span class="dq-kind"><span class="kind m">Models</span></span>
 <span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ${esc(TYPES[p.type])}</span></span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">${p.key_hint ? `key ${esc(p.key_hint)}` : "no key: its free models"}</span>${p.type === "opencode" ? `<span class="chip info">runs in the OpenCode harness</span>` : isOpencodeOwn(p) ? `<span class="chip info">OpenCode's own: its free models run in the OpenCode harness</span>` : ""}${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 <span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
-</summary><div class="dq-body">${list}${prices(p)}
+</summary><div class="dq-body">${list}
 <form method="post" action="/ui/settings/providers/${pName}/models" class="form-grid"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("A model it does not list", "Some providers serve models their list leaves out. Add one by its id at the provider; it shows as yours.")}<input name="model" maxlength="200" placeholder="its id at the provider"></label><div class="form-end"><button>Add it</button></div></form>
 <form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}">
 <label>${infoLabel("Type", TYPE_TIP)}${typeSelect(p.type)}</label>
@@ -3883,6 +3891,7 @@ ${
       `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, and machines, clusters and GPU clouds are where rigs run. MCP servers give the agents tools from outside Thermite. Add each once with its sign-in or key. Control seals every secret, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi, OpenCode v2, Claude Code or Codex) and their model.</p>
 ${note}
 <div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}${clusterRows(t)}${cloudRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
+${prices}
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
 ${mcpSettingsBlocks(store, mcpServers, t, now, (k) => c.req.query(k))}
 <div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
@@ -6792,42 +6801,40 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     return c.redirect(settingsUrl("ok", `${model} added to "${name}".`), 303);
   });
 
-  // Each model's price (goal 075), from the provider's price field: a model the provider's list
+  // Model prices (goal 075): one table under the providers, one Save. A model the provider's list
   // prices is left as it is; all three fields empty removes the owner's price; In and Out set it.
   // Each change goes through setModelPrice, as POST /v1/model-prices does, and is audited.
-  app.post("/ui/settings/providers/:name/prices", async (c) => {
+  app.post("/ui/settings/prices", async (c) => {
     const f = await c.req.parseBody();
-    const name = c.req.param("name");
     const back = (k: "ok" | "error", m: string) =>
-      c.redirect(
-        `/ui/settings?at=${encodeURIComponent(`prices:${name}`)}&${k}=${encodeURIComponent(m)}#prices-${encodeURIComponent(name)}`,
-        303,
-      );
-    const p = store.provider(name);
-    if (!p) return c.redirect(settingsUrl("error", "No such provider."), 303);
+      c.redirect(`/ui/settings?at=prices&${k}=${encodeURIComponent(m)}#model-prices`, 303);
     const owner = new Map(
-      store
-        .modelPrices()
-        .filter((x) => x.provider === p.name)
-        .map((x) => [x.model, x.price]),
+      store.modelPrices().map((x) => [JSON.stringify([x.provider, x.model]), x.price]),
     );
+    const rows = Object.keys(f)
+      .map((k) => /^m(\d{1,4})$/.exec(k)?.[1])
+      .filter((i): i is string => i !== undefined)
+      .sort((a, b) => Number(a) - Number(b));
     const problems: string[] = [];
     let changed = 0;
-    for (let i = 0; i < p.models.length; i++) {
+    for (const i of rows) {
       const id = f[`m${i}`];
-      if (typeof id !== "string") continue;
-      const m = p.models.find((x) => x.id === id);
-      if (!m || m.price) continue;
+      const name = f[`p${i}`];
+      if (typeof id !== "string" || typeof name !== "string") continue;
+      const p = store.provider(name);
+      const m = p?.models.find((x) => x.id === id);
+      if (!p || !m || m.price) continue;
       const read = (k: string) => {
         const v = String(f[`${k}${i}`] ?? "").trim();
         return v === "" ? null : PRICE_NUMBER.test(v) ? Number(v) : Number.NaN;
       };
       const [input, cached, output] = [read("in"), read("cached"), read("out")];
+      const who = `${id} of ${p.name}`;
       if ([input, cached, output].some((x) => Number.isNaN(x))) {
-        problems.push(`${id}: a price is a number, such as 0.60.`);
+        problems.push(`${who}: ${PRICE_WORDS.number}`);
         continue;
       }
-      const was = owner.get(id);
+      const was = owner.get(JSON.stringify([p.name, id]));
       if (input === null && output === null && cached === null) {
         if (!was) continue;
         const r = setModelPrice(store, { provider: p.name, model: id, clear: true }, "owner:ui");
@@ -6836,7 +6843,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         continue;
       }
       if (input === null || output === null) {
-        problems.push(`${id}: set In and Out, or leave all three empty.`);
+        problems.push(`${who}: ${PRICE_WORDS.pair}`);
         continue;
       }
       if (was && was.input === input && was.output === output && was.cached_input === cached)

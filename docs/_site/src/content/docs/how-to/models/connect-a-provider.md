@@ -145,11 +145,11 @@ Some providers serve models that their list does not show. Open the provider's r
 
 [Model usage](../../reference/model-use.md) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show `no price` until you set one, in US dollars for a million tokens.
 
-1. Open the provider's row in **Settings › Providers**. Under its models, **Prices, $ for a million tokens** lists each model. A chip under its name says `from the provider`, `yours` or `no price`.
-2. Type the model's **In** and **Out** prices, and **Cached in** if the provider charges less for tokens it reads from its cache (empty: the **In** price). The line under the model says what its calls so far cost at that price, such as `So far: 5.1k in, 505 out · <$0.01`.
+1. Open **Settings › Providers**. Under the providers, **Model prices** lists every model of every provider that is not a subscription, in $ for a million tokens. Its **Price from** column says `provider's list`, `free`, `yours` or `no price`.
+2. In the model's row, type its **In** and **Out** prices, and **Cached in** if the provider charges less for tokens it reads from its cache (empty: the **In** price). A model whose list gives a price shows it as text: it can't be changed here.
 3. Press **Save prices**.
 
-The block says `Saved. Every cost follows.`, and the model's chip reads `yours`. The run pages, the campaign pages and **Metrics** cost every call of the model at the new price, the earlier ones too. To remove your price, empty its three fields and press **Save prices**: its calls show `no price` again. A model whose list gives a price can't be changed here.
+The line beside the button says `Saved. Every cost follows.`, and the model's **Price from** reads `yours`. The run pages, the campaign pages and **Metrics** cost every call of the model at the new price, the earlier ones too. To remove your price, empty its three fields and press **Save prices**: its calls show `no price` again.
 
 To set a price without the dashboard, send it to control:
 
