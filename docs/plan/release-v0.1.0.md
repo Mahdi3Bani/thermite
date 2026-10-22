@@ -93,6 +93,7 @@ Research workers build on what earlier trials learned, and a research campaign g
 | Goal | Status | Depends on |
 | --- | --- | --- |
 | [062 · A research folder agents can search and write](goals/062-research-folder.goal) | `VERIFIED` | — |
+| [076 · A claim's source by its address, and a draft's reasons for the owner](goals/076-claim-sources-and-reasons.goal) | `VERIFIED` | [062](goals/062-research-folder.goal), [065](goals/065-journals-and-corpus.goal) |
 
 ### Rigs on RunPod
 

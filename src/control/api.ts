@@ -51,7 +51,14 @@ import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "./pr
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
-import { neededHarness, RigModelBody, rigModelAnswer, rigModelRequest } from "./rig-model.ts";
+import {
+  AdvisorsFileSchema,
+  neededHarness,
+  RigModelBody,
+  rigModelAnswer,
+  rigModelRequest,
+  rigModelsAnswer,
+} from "./rig-model.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
@@ -237,6 +244,11 @@ const SupervisorStats = z.object({
           panel: Count,
         })
         .optional(),
+      /**
+       * What the rig's advisors file sets up for each role (goal 074): Edit rig says what an
+       * advisor with no model from control uses. A malformed one is dropped, not the report.
+       */
+      file: AdvisorsFileSchema.optional().catch(undefined),
     })
     .nullable()
     .optional(),
@@ -812,7 +824,7 @@ export function createControlApi(
   });
 
   // The advisors' routes, by role, when the owner gave them models (each with its key or a
-  // subscription's token). A role with none keeps the rig default: the supervisor's own
+  // subscription's token). A role with none keeps the rig's advisors file: the supervisor's own
   // configuration. Goal 074: the teachers' one or two models (a second only with a first), their
   // merged by model, the auditor and the review panel. A supervisor of an earlier version reads
   // teachers (the first teacher's model, which it runs as two teachers), combiner and panel.
@@ -1351,7 +1363,7 @@ export function createControlApi(
     const rig = c.req.param("rig");
     const agents = read(rig);
     if ("error" in agents) return c.json({ error: agents.error }, 404);
-    return c.json({ rig, agents });
+    return c.json(rigModelsAnswer(store, rig, agents));
   });
 
   // A page of the audit log, newest first; older and newer are the cursors for the next pages.

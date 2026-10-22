@@ -545,6 +545,24 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
           run: String(e.subject),
         },
       );
+    // A claim a worker recorded, in any mode: verified, or a draft with the harness's reasons.
+    case "claim_added": {
+      const by = e.actor === "research" ? "A worker" : e.actor;
+      const said = `"${clip(String(b.text ?? ""), 160)}"`;
+      if (b.verified === true)
+        return s(`${by} recorded a verified claim: ${said}.`, "ok", { run: String(e.subject) });
+      const problems = Array.isArray(b.problems) ? b.problems.map(String) : [];
+      const more = Math.max(0, problems.length - 3) + (Number(b.more_problems) || 0);
+      const why = problems.length
+        ? ` Why: ${problems
+            .slice(0, 3)
+            .map((p) => clip(p, 200))
+            .join("; ")}${more ? `; and ${more} more` : ""}.`
+        : "";
+      return s(`${by}'s claim stays a draft: ${said}.${why}`, "warn", {
+        run: String(e.subject),
+      });
+    }
     default:
       return null;
   }

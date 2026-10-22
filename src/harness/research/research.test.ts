@@ -26,7 +26,15 @@ async function web() {
       '<a href="/nav.html">Home</a><p>Page d.</p><a href="/d-only.html?x=1">d action</a><a href="/d-only.html">d topic</a>',
     "/private/x.html": "<p>secret</p>",
   };
+  let count = 0;
   const server = createServer((req, res) => {
+    // A page that moved, and one whose text changes on every fetch.
+    if (req.url === "/old-b.html") return void res.writeHead(301, { location: "/b.html" }).end();
+    if (req.url === "/old-n.html") return void res.writeHead(302, { location: "/n.html" }).end();
+    if (req.url === "/n.html")
+      return void res
+        .writeHead(200, { "content-type": "text/html" })
+        .end(`<p>Fetch number ${++count} of a page that changes.</p>`);
     const body = pages[req.url ?? ""];
     if (!body) return void res.writeHead(404).end("no");
     res
@@ -340,6 +348,167 @@ describe("research integrity", () => {
     assert.equal(findings(), count, "no second draft");
     research.addFinding("r-1", "lane-1", { ...draft, supporting: [refused.claim, "c-none"] });
     assert.equal(findings(), count + 1);
+    await w.close();
+  });
+
+  test("a quote's source may be its archived URL or file name; the check stays word for word", async () => {
+    const w = await web();
+    const { env, research } = await researchEnv({
+      fetch_policy: { respect_robots: true, per_domain_per_minute: 120, max_bytes: 5_000_000 },
+    });
+    const a = (await research.fetch("r-1", "lane-1", `${w.base}/a.html`)) as { source: string };
+    const b = (await research.fetch("r-1", "lane-1", `${w.base}/old-b.html`)) as {
+      source: string;
+    };
+    const quote = "Stateless workers lose nothing when they crash.";
+    const stored = (claim: string) =>
+      JSON.parse(
+        String(
+          env.service.ledger.db.prepare("select quotes from claim where id = ?").get(claim)?.quotes,
+        ),
+      ) as { source: string; quote: string; resolved_from?: string }[];
+    const event = () =>
+      env.service.ledger
+        .eventsAfter(0, 10_000)
+        .events.filter((e) => e.kind === "claim_added")
+        .map((e) => e.body as Record<string, unknown>)
+        .at(-1);
+
+    // The URL as fetched, with a fragment the archive drops: that source, and recorded so.
+    const byUrl = research.addClaim("r-1", "lane-1", {
+      text: "Workers that keep no state lose nothing in a crash.",
+      quotes: [{ source: `${w.base}/a.html#intro`, quote }],
+    }) as { claim: string; verified: boolean; problems: string[]; resolved?: unknown };
+    assert.equal(byUrl.verified, true, JSON.stringify(byUrl));
+    assert.deepEqual(byUrl.resolved, [{ cited: `${w.base}/a.html#intro`, source: a.source }]);
+    assert.deepEqual(stored(byUrl.claim), [
+      { source: a.source, quote, resolved_from: `${w.base}/a.html#intro` },
+    ]);
+    assert.deepEqual(event()?.sources, [a.source]);
+    assert.deepEqual(event()?.problems, [], "a verified claim's event has no problems");
+
+    // The URL its redirect ended at; the folder's file name, alone or in a path, .txt or .md.
+    const second = "A second page about long research campaigns.";
+    for (const [text, cited] of [
+      ["A second page covers long research campaigns.", `${w.base}/b.html`],
+      ["Long research campaigns get a second page.", `sources/${b.source}.txt`],
+      ["The second page is about long campaigns.", `/scratch/research/r-1/sources/${b.source}.md`],
+    ]) {
+      const r = research.addClaim("r-1", "lane-1", {
+        text,
+        quotes: [{ source: cited, quote: second }],
+      }) as { verified: boolean; problems: string[]; resolved?: unknown };
+      assert.equal(r.verified, true, JSON.stringify(r));
+      assert.deepEqual(r.resolved, [{ cited, source: b.source }]);
+    }
+
+    // The same check as by id: a quote not in the source it names is refused, whatever names it.
+    const wrong = research.addClaim("r-1", "lane-1", {
+      text: "The second page says workers lose nothing.",
+      quotes: [{ source: `${w.base}/b.html`, quote }],
+    });
+    assert.equal(wrong.verified, false);
+    assert.deepEqual(wrong.problems, [`quote not found verbatim in ${b.source}: "${quote}"`]);
+    assert.deepEqual(event()?.sources, [b.source]);
+    assert.deepEqual(event()?.problems, wrong.problems);
+
+    // A URL never archived; one archived in another form (named, not taken); a URL that two
+    // sources answer to; an id that is not one; a file name of no source.
+    await research.fetch("r-1", "lane-1", `${w.base}/old-n.html`);
+    await research.fetch("r-1", "lane-1", `${w.base}/n.html`);
+    const ids = (
+      env.service.ledger.db
+        .prepare(
+          "select id from source where run = 'r-1' and final_url like '%/n.html' order by fetched_at",
+        )
+        .all() as { id: string }[]
+    ).map((r) => r.id);
+    assert.equal(ids.length, 2);
+    const host = w.base.replace(/^http:\/\//, "");
+    const refused = research.addClaim("r-1", "lane-2", {
+      text: "Nothing here is verified.",
+      quotes: [
+        { source: `${w.base}/never.html`, quote },
+        { source: `${host}/a.html/`, quote },
+        { source: `${w.base}/n.html`, quote: "Fetch number 1 of a page that changes." },
+        { source: "s-nope", quote },
+        { source: "sources/s-000000000000.txt", quote },
+        { source: `HTTPS://${host}/B.html`, quote },
+      ],
+    });
+    assert.equal(refused.verified, false);
+    assert.deepEqual(refused.problems, [
+      `no archived source ${w.base}/never.html: no source was archived from that URL; fetch it first, then cite the s-… id that fetch returns`,
+      `no archived source ${host}/a.html/: that URL is not archived as written, but ${a.source} is archived from ${w.base}/a.html; cite that id if it is the same page`,
+      `no archived source ${w.base}/n.html: that URL is archived as 2 sources (${ids.join(", ")}); cite the id of the one the quote is from`,
+      "no archived source s-nope: a quote's source is the s-… id that fetch returned",
+      "no archived source sources/s-000000000000.txt: the research folder has no sources/s-000000000000.txt; cite the s-… id that fetch returned",
+      // Named by where its redirect ended: that address, not the one fetched.
+      `no archived source HTTPS://${host}/B.html: that URL is not archived as written, but ${b.source} is archived from ${w.base}/b.html; cite that id if it is the same page`,
+    ]);
+    assert.deepEqual(event()?.sources, [
+      `${w.base}/never.html`,
+      `${host}/a.html/`,
+      `${w.base}/n.html`,
+      "s-nope",
+      "sources/s-000000000000.txt",
+      `HTTPS://${host}/B.html`,
+    ]);
+    assert.deepEqual(event()?.problems, refused.problems);
+    assert.equal(research.stats("r-1").verified, 4);
+    await w.close();
+  });
+
+  test("a number from a heading or a label is still refused, and the problem says where it is", async () => {
+    const w = await web();
+    const { env, research } = await researchEnv();
+    const a = (await research.fetch("r-1", "lane-1", `${w.base}/a.html`)) as { source: string };
+    const quote = "Stateless workers lose nothing when they crash.";
+    const said = (text: string) =>
+      research.addClaim("r-1", "lane-1", { text, quotes: [{ source: a.source, quote }] });
+    const q = said(`Question 0: ${quote}`);
+    assert.equal(q.verified, false);
+    assert.deepEqual(q.problems, [
+      `the number 0 is not in the claim's quotes: it comes from the heading "Question 0:". Give a question's number in "question", not in the claim's text, and leave headings and labels out of the text`,
+    ]);
+    const h = said(`# Claim c-verify-005\n\n${quote}`);
+    assert.equal(h.verified, false);
+    assert.match(h.problems.join("\n"), /the number 005 .*heading "# Claim c-verify-005"/);
+    // A number in the claim's own words gets the plain problem.
+    const plain = said("Stateless workers lose nothing in 3 crashes.");
+    assert.deepEqual(plain.problems, ["the number 3 is not in the claim's quotes"]);
+    // Without the heading, and the question given in its field, the same claim is verified.
+    const ok = research.addClaim("r-1", "lane-1", {
+      text: quote,
+      quotes: [{ source: a.source, quote }],
+      question: 0,
+    });
+    assert.equal(ok.verified, true);
+    const events = env.service.ledger
+      .eventsAfter(0, 10_000)
+      .events.filter((e) => e.kind === "claim_added")
+      .map((e) => e.body as Record<string, unknown>);
+    assert.deepEqual(events.at(0)?.problems, q.problems);
+    assert.deepEqual(events.at(-1)?.problems, []);
+    await w.close();
+  });
+
+  test("a claim_added event carries at most 20 problems, and counts the rest", async () => {
+    const w = await web();
+    const { env, research } = await researchEnv();
+    const a = (await research.fetch("r-1", "lane-1", `${w.base}/a.html`)) as { source: string };
+    const numbers = Array.from({ length: 25 }, (_, i) => String(100 + i)).join(", ");
+    const r = research.addClaim("r-1", "lane-1", {
+      text: `Workers crashed ${numbers} times.`,
+      quotes: [{ source: a.source, quote: "Stateless workers lose nothing when they crash." }],
+    });
+    assert.equal(r.problems.length, 25);
+    const body = env.service.ledger
+      .eventsAfter(0, 10_000)
+      .events.filter((e) => e.kind === "claim_added")
+      .at(-1)?.body as { problems: string[]; more_problems?: number };
+    assert.deepEqual(body.problems, r.problems.slice(0, 20));
+    assert.equal(body.more_problems, 5);
     await w.close();
   });
 

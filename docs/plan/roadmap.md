@@ -71,6 +71,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 ### Research mode
 
 - [062](goals/062-research-folder.goal) A research folder agents can search and write · `VERIFIED`
+- [076](goals/076-claim-sources-and-reasons.goal) A claim's source by its address, and a draft's reasons for the owner · `VERIFIED`
 
 ### Rigs on RunPod
 

@@ -87,9 +87,12 @@ describe("the research folder", () => {
       question: 0,
     });
     assert.equal(good.verified, true, JSON.stringify(good));
+    // Cited by its URL: the claim keeps the source's id and what was cited.
     const draft = research.addClaim("r-1", "lane-2", {
       text: "Workers never crash at all.",
-      quotes: [{ source: a.source, quote: "Workers never crash at all, ever, in any run." }],
+      quotes: [
+        { source: w.urls[0] as string, quote: "Workers never crash at all, ever, in any run." },
+      ],
     });
     assert.equal(draft.verified, false);
     research.addNote("r-1", "lane-1", "Look for a third site.", [a.source]);
@@ -123,6 +126,16 @@ describe("the research folder", () => {
     assert.match(read(root, "claims", `${good.claim}.md`), /^# Claim c-[0-9a-f]+: verified/);
     assert.match(read(root, "claims", `${good.claim}.md`), /Question 0: What harness designs/);
     assert.match(read(root, "claims", `${draft.claim}.md`), /: draft[\s\S]*Why it is a draft/);
+    assert.ok(
+      read(root, "claims", `${draft.claim}.md`).includes(
+        `- ${a.source} (${w.urls[0]}), cited as ${w.urls[0]}:`,
+      ),
+      "the source's id and address, and the URL the worker cited",
+    );
+    assert.match(
+      read(root, "claims", `${draft.claim}.md`),
+      new RegExp(`quote not found verbatim in ${a.source}`),
+    );
     assert.match(
       read(root, "findings", `${finding.finding}.md`),
       /supported[\s\S]*## Why it matters\n\nIt shows/,

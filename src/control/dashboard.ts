@@ -144,6 +144,7 @@ import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import {
+  advisorsFileOf,
   agentModelsOf,
   HARNESS_NAMES,
   harnessRefusal,
@@ -7241,7 +7242,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   /**
    * Checks a model for one of a rig's other agents (or one of the teachers' models), as its row on
    * Edit rig does, or (an empty choice) its default again: the workers' model for the planner,
-   * the rig default for an advisor. Nothing changes here: applyAgentModel saves what this
+   * the one in the rig's advisors file for an advisor. Nothing changes here: applyAgentModel saves what this
    * allows. `harness` (goal 073): where it runs; left out (a line's Runs in on its empty choice, or
    * a form without it), the one it has while it keeps the same model, else what the model needs.
    * `cap` and `at`: the agent's own cap on its model's window and its compaction point (goal 070),
@@ -7484,6 +7485,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       now,
       two: second === "2" || (second !== "1" && hasSecond),
       href: `/ui/rigs/${rName}/edit`,
+      // What an agent with no model uses (goal 074): the rig's own model, as its harness reports
+      // it, and its advisors file, as its supervisor reports it.
+      defaults: {
+        workers:
+          u.model?.source === "environment"
+            ? (u.model.model ?? undefined)
+            : u.model?.source === "none"
+              ? null
+              : undefined,
+        advisors: advisorsFileOf(u.supervisor),
+      },
     });
     const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
     const where = placed
@@ -7506,7 +7518,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <form id="edit-rig" method="post" action="/ui/rigs/${rName}/edit"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Parts of the rig</h2><div class="card flat">${PARTS.map(sw).join("")}
 <div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
-<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, an agent uses the rig default.</p>
+<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, the workers use the rig's own settings, and the planner uses the workers' model. An advisor uses the model in the rig's advisors file. If the file has none, that advisor is off.</p>
 <div class="card">${agents}</div>
 <div class="g3" style="margin-top:14px">
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
@@ -7598,8 +7610,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 
     // The other agents' lines (goals 070, 073 and 074): each one's model, effort, harness, window
     // and point. Only the lines the form has: a line it lacks keeps its model. The first teacher
-    // on the rig default takes the second teacher and the merged by model with it, as
-    // set_rig_model's clear does; a second teacher needs a first.
+    // with no model (the advisors file's) takes the second teacher and the merged by model with
+    // it, as set_rig_model's clear does; a second teacher needs a first.
     const roles = store.roleModels(rig);
     const noTeachers = "role_teachers" in f && !String(f.role_teachers ?? "");
     if (noTeachers && twoTeachers)
@@ -7719,7 +7731,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const teachersCleared = plans.some((p) => p.role === "teachers" && p.clear);
     for (const plan of plans) {
       const ok = applyAgentModel(rig, plan).ok;
-      // The teachers back to the rig default: said once, for their three models.
+      // The teachers back to the advisors file: said once, for their three models.
       if (!(teachersCleared && plan.clear && plan.role !== "teachers")) said.push(ok);
     }
     if (settings) {
