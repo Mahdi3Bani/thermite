@@ -164,6 +164,20 @@ describe("a model stream that goes silent (goal 079)", () => {
       await new Promise<void>((r) => slow.close(() => r()));
     }
     assert.deepEqual(said, [300, 300, 300], "only the silent calls");
+    // A reader that gives up on an answer (the agent stopped) is not told it went silent.
+    const quit = await startFakeModel(() => ({ silent: "open" }));
+    try {
+      const r = await ask(guarded, quit.url);
+      const reader = (r.body as ReadableStream<Uint8Array>).getReader();
+      const pending = reader.read();
+      await new Promise((x) => setTimeout(x, 50));
+      await reader.cancel("the agent stopped");
+      assert.deepEqual(await pending, { done: true, value: undefined });
+      await new Promise((x) => setTimeout(x, 400));
+      assert.deepEqual(said, [300, 300, 300], "a cancelled answer is not silent");
+    } finally {
+      await quit.close();
+    }
   });
 
   test("Pi's calls: a stream that goes silent ends the call as the provider's server error, with the words", async () => {
