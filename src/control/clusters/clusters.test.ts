@@ -157,6 +157,20 @@ describe("rigs on Kubernetes", () => {
     );
   });
 
+  test("prepare changes the owner of the folders it makes, never their trees", () => {
+    // A folder a user made private below them (the Codex CLI's own) stopped a rig at every start.
+    const objs = clusterRigObjects(plan, secrets) as Obj[];
+    const inits = JSON.stringify(objs).match(/"name":"prepare"[^}]*"command":\[[^\]]*\]/g) ?? [];
+    assert.ok(inits.length > 0);
+    for (const i of inits) {
+      assert.doesNotMatch(i, /chown -R/);
+      assert.match(
+        i,
+        /chown 10001:10001 \/data\/inbox \/data\/inbox\/repos \/data\/inbox\/models \/data\/supervisor/,
+      );
+    }
+  });
+
   test("the check reads nodes with their GPUs and the default storage class", () => {
     const nodes = parseNodes(
       JSON.stringify({

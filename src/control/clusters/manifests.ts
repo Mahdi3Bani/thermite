@@ -90,7 +90,12 @@ const labels = (rig: string, component?: "harness" | "supervisor") => ({
   ...(component ? { "app.kubernetes.io/component": component } : {}),
 });
 
-/** Prepares the shared volume's folders for both pods' users, as the compose images do. */
+/**
+ * Prepares the shared volume's folders for both pods' users, as the compose images do. It changes
+ * the owner of the folders it makes only, never their trees: everything below them is written by
+ * their users, and root without DAC_OVERRIDE cannot read a folder a user made private (as the Codex
+ * CLI makes its own), so a recursive chown would stop the rig at every start.
+ */
 const prepare = (image: string, resources?: Resources): Obj => ({
   name: "prepare",
   image,
@@ -99,7 +104,7 @@ const prepare = (image: string, resources?: Resources): Obj => ({
   command: [
     "sh",
     "-c",
-    "mkdir -p /data/state /data/scratch /data/inbox/repos /data/inbox/models /data/outbox /data/supervisor && chown -R 10001:10001 /data/inbox /data/supervisor && chown 10010:10001 /data/outbox && chmod 2750 /data/outbox",
+    "mkdir -p /data/state /data/scratch /data/inbox/repos /data/inbox/models /data/outbox /data/supervisor && chown 10001:10001 /data/inbox /data/inbox/repos /data/inbox/models /data/supervisor && chown 10010:10001 /data/outbox && chmod 2750 /data/outbox",
   ],
   securityContext: {
     runAsUser: 0,
