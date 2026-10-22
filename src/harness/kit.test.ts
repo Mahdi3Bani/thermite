@@ -94,6 +94,42 @@ describe("kit commands", () => {
     }
   });
 
+  test("every time limit is at most a day, the longest the broker runs anything", () => {
+    const day = 86_400;
+    const at = (limit: number) => ({
+      ...base,
+      build: { ...base.build, timeout_s: limit },
+      cells: { ...base.cells, slow: { params: { work: 1 }, timeout_s: limit } },
+      run: { ...base.run, timeout_s: limit },
+      check: { ...base.check, timeout_s: limit },
+    });
+    const kit = KitSchema.parse(at(day));
+    assert.equal(cellTimeoutS(kit, "slow"), day);
+    assert.equal(kit.build.timeout_s, day);
+    const r = KitSchema.safeParse(at(day + 1));
+    assert.equal(r.success, false);
+    const said = JSON.stringify(r.error?.issues);
+    for (const where of [
+      ["build", "timeout_s"],
+      ["run", "timeout_s"],
+      ["check", "timeout_s"],
+    ])
+      assert.ok(
+        r.error?.issues.some(
+          (i) =>
+            i.path.join(".") === where.join(".") && /at most 86400 s \(24 hours\)/.test(i.message),
+        ),
+        `${where.join(".")}: ${said}`,
+      );
+    // The cell's own limit: its union's issue holds the same words.
+    assert.ok(
+      r.error?.issues.some((i) => i.path[0] === "cells" && i.path[1] === "slow"),
+      said,
+    );
+    // Four limits over a day, four times the words.
+    assert.equal(said.split("at most 86400 s (24 hours)").length - 1, 4, said);
+  });
+
   test("copied kit paths stay inside the kit", () => {
     for (const bad of [".", "../x", "/etc", "run/../../x", "./run", "run/"]) {
       assert.throws(() => KitSchema.parse(withRun({ copy: [bad] })), /inside the kit/, bad);

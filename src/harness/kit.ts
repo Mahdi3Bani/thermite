@@ -3,6 +3,7 @@ import { join, posix } from "node:path";
 import { z } from "zod";
 import type { Contract } from "../core/contract.ts";
 import { McpUses } from "../core/mcp.ts";
+import { MAX_RUN_MS } from "./broker/runner.ts";
 
 /**
  * A project kit: the judge-side recipe for building and measuring one project on one target
@@ -20,6 +21,13 @@ import { McpUses } from "../core/mcp.ts";
 
 const Argv = z.array(z.string().min(1)).min(1);
 const Mib = z.number().int().positive();
+/** A time limit in seconds, at most a day: the broker runs nothing for longer. */
+const MAX_LIMIT_S = MAX_RUN_MS / 1000;
+const Seconds = z
+  .number()
+  .int()
+  .positive()
+  .max(MAX_LIMIT_S, `a time limit is at most ${MAX_LIMIT_S} s (24 hours)`);
 /** A cell's parameters: what a run receives through {params} and {params_json}. */
 const CellParams = z.record(z.string(), z.union([z.number(), z.string(), z.boolean()]));
 export type CellParams = z.infer<typeof CellParams>;
@@ -29,7 +37,7 @@ export type CellParams = z.infer<typeof CellParams>;
  * A parameter's value is never an object, so the two forms cannot be confused.
  */
 const Cell = z.union([
-  z.strictObject({ params: CellParams, timeout_s: z.number().int().positive().optional() }),
+  z.strictObject({ params: CellParams, timeout_s: Seconds.optional() }),
   CellParams,
 ]);
 /** A path inside the kit, never the whole kit. */
@@ -58,7 +66,7 @@ const KitFields = z.strictObject({
     command: Argv,
     /** Paths, relative to the source tree, that make up the build. */
     outputs: z.array(z.string().min(1)).min(1),
-    timeout_s: z.number().int().positive().default(600),
+    timeout_s: Seconds.default(600),
     rss_mib: Mib.default(4096),
     disk_mib: Mib.default(4096),
   }),
@@ -76,7 +84,7 @@ const KitFields = z.strictObject({
      */
     copy: z.array(KitPath).default([]),
     command: Argv,
-    timeout_s: z.number().int().positive().default(300),
+    timeout_s: Seconds.default(300),
     rss_mib: Mib.default(1024),
     disk_mib: Mib.default(256),
   }),
@@ -107,7 +115,7 @@ const KitFields = z.strictObject({
    */
   check: z.strictObject({
     command: Argv,
-    timeout_s: z.number().int().positive().default(120),
+    timeout_s: Seconds.default(120),
   }),
   /**
    * Named verifiers for goal-mode contracts (`verify: {type: "code", verifier: name}`): a goal

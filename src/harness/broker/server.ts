@@ -176,7 +176,12 @@ export function startBrokerServer(opts: BrokerServerOptions): Server {
         void (async () => {
           let res: BrokerResponse;
           try {
-            const req = BrokerRequest.parse(JSON.parse(line));
+            const raw: unknown = JSON.parse(line);
+            // A refused request is still answered under its own id, when it has one, so the
+            // caller hears the refusal instead of waiting for an answer that never comes.
+            const own = (raw as { id?: unknown } | null)?.id;
+            if (Number.isSafeInteger(own)) id = own as number;
+            const req = BrokerRequest.parse(raw);
             id = req.id;
             res = { id, ok: true, result: await handle(req, opts) };
           } catch (err) {

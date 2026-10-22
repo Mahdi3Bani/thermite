@@ -64,18 +64,18 @@ Unknown fields are refused at every level.
 | `build.copy` | list of kit paths | `[]` | Kit files and folders copied into the source tree under `.kit/<path>` before the build |
 | `build.command` | list of text, at least one | required | The build's command and arguments, run in the source tree. Placeholders are not expanded here |
 | `build.outputs` | list of paths, at least one | required | Paths, relative to the source tree, that make up the build |
-| `build.timeout_s` | integer ≥ 1 | 600 | The build's time limit, in seconds |
+| `build.timeout_s` | integer from 1 to 86400 | 600 | The build's time limit, in seconds |
 | `build.rss_mib` | integer ≥ 1 | 4096 | The build's memory limit, in MiB |
 | `build.disk_mib` | integer ≥ 1 | 4096 | The build's disk limit, in MiB |
 | `cells` | object | required | Every cell the kit can measure, with its parameters and, when it needs one, its own time limit. See [Cells](#cells) |
 | `run.copy` | list of kit paths | `[]` | Kit files and folders copied, read-only, into every run. A run reaches them as `{kit:<path>}` |
 | `run.command` | list of text, at least one | required | One run of one build on one cell |
-| `run.timeout_s` | integer ≥ 1 | 300 | A run's time limit, in seconds, for each cell that sets none of its own |
+| `run.timeout_s` | integer from 1 to 86400 | 300 | A run's time limit, in seconds, for each cell that sets none of its own |
 | `run.rss_mib` | integer ≥ 1 | 1024 | A run's memory limit, in MiB |
 | `run.disk_mib` | integer ≥ 1 | 256 | A run's disk limit, in MiB |
 | `metrics` | object | required | What the judge measures. See [Metrics](#metrics) |
 | `check.command` | list of text, at least one | required | The check's command and arguments. See [Check output](#check-output) |
-| `check.timeout_s` | integer ≥ 1 | 120 | The check's time limit, in seconds |
+| `check.timeout_s` | integer from 1 to 86400 | 120 | The check's time limit, in seconds |
 | `verifiers` | object | `{}` | Named verifiers for goal campaigns. See [Verifiers](#verifiers) |
 | `mcp_servers` | list | none | The MCP servers the campaign's agents use, and which agents get each. See [MCP servers](#mcp-servers) |
 
@@ -87,13 +87,14 @@ Unknown fields are refused at every level.
 | Each name in a verifier's `requires` is another verifier of the kit | `<name> is not another verifier of this kit` |
 | Verifiers' `requires` do not form a loop | `verifier gates form a cycle` |
 | Every `{kit}` or `{kit:<path>}` in `run.command` is in `run.copy` | `{kit:<path>} is not in run.copy (a run cannot read the kit)` |
+| Every time limit (`build.timeout_s`, `run.timeout_s`, `check.timeout_s` and a cell's `timeout_s`) is at most 86400 seconds, a day: the judge runs nothing for longer | `a time limit is at most 86400 s (24 hours)` |
 
 ### Cells
 
 A **cell** is one measured input, a test case: a name and its parameters. The dashboard calls cells **cases**. `cells` maps each cell's name to its parameters, in one of two forms:
 
 - **Its parameters alone:** an object whose values are numbers, text or `true`/`false`, such as `"small": {"n": 128, "work": 1006632960}`. Its runs have the time limit `run.timeout_s`.
-- **Its parameters and its own time limit:** `{"params": {…}, "timeout_s": <seconds>}`. `timeout_s` is an integer ≥ 1. It replaces `run.timeout_s` for this cell's runs only, so one slow cell does not set the limit for every cell. Leave `timeout_s` out to keep `run.timeout_s`. No other field is taken in this form.
+- **Its parameters and its own time limit:** `{"params": {…}, "timeout_s": <seconds>}`. `timeout_s` is an integer from 1 to 86400. It replaces `run.timeout_s` for this cell's runs only, so one slow cell does not set the limit for every cell. Leave `timeout_s` out to keep `run.timeout_s`. No other field is taken in this form.
 
 ```json title="kit.json (part)"
 {

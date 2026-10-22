@@ -81,18 +81,16 @@ export function roleIds(role: Role): { uid: number; gid: number } {
     : { uid: IDS.laneBase + n, gid: IDS.laneBase + n };
 }
 
+/** The longest time limit a run may have: a day. A kit's time limits are held to it too. */
+export const MAX_RUN_MS = 24 * 3_600_000;
+
 export const RunRequest = z.object({
   role: RoleSchema,
   argv: z.array(z.string()).min(1),
   cwd: z.string().min(1),
   env: z.record(z.string(), z.string()).default({}),
   /** Unset: no time limit (the run ends with its command, or when its role is killed). */
-  timeoutMs: z
-    .number()
-    .int()
-    .positive()
-    .max(24 * 3_600_000)
-    .optional(),
+  timeoutMs: z.number().int().positive().max(MAX_RUN_MS).optional(),
   rssLimitBytes: z.number().int().positive().optional(),
   /**
    * The executable of an agent that runs its commands itself (OpenCode): when the memory limit

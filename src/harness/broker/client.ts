@@ -28,6 +28,7 @@ export class BrokerClient implements Runner {
         const res = JSON.parse(this.buf.slice(0, i)) as BrokerResponse;
         this.buf = this.buf.slice(i + 1);
         const p = this.pending.get(res.id);
+        // Every request carries its id, and the broker answers a refused one under it too.
         if (!p) continue;
         this.pending.delete(res.id);
         if (res.ok) p.resolve(res.result);

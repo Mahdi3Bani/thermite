@@ -76,6 +76,8 @@ From reviews of a goal campaign on a slow GPU:
   - Checks: typecheck, Biome, the public check, the touched test files, `npm run docs:build` and `npm run docs:check` before each commit. The full `npm run check` ran once: 1,056 of 1,058 tests passed. One failure was this goal's own goal-mode held-out test, whose two runs per case gave too wide an interval on a loaded machine; it now takes three runs and a lower threshold, and passes alone and beside the judge's tests. The other, Metrics' "today" in `src/control/usage-ui.test.ts`, fails in the first hour after midnight in the time zone it names, whatever the code: its bars need two hours of today.
   - Pages: the kit manifest reference, Write a kit, Verdicts and states, Contract, Exports, MCP tools, the REST API, the command line, Knowledge base, Campaign modes, Your first goal campaign, Why agents never judge, Agents, lanes and the planner, Supervision, Isolation, How it fits together, the roadmap; the changelog.
   - The judge, agents, control and multi-GPU compose acceptances run at roll time.
+- 2026-10-22: Fixes from a review of this goal and goal 081.
+  - A kit's time limits (a cell's `timeout_s`, and `build`, `run` and `check`'s) are at most 86400 s, the longest run the broker takes. A longer one passed the kit check, the broker refused its run under the id -1, the controller dropped that answer, and the judge's call never ended. The kit check now refuses it in words, and the broker answers a refused request under the request's own id. Tests: `src/harness/kit.test.ts`, `src/harness/broker/server.test.ts`.
 
 ---
 
