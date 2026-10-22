@@ -322,10 +322,16 @@ describe("the Codex CLI", () => {
       const a = area();
       const f = fakeRunner(events(), { submit: o.submit });
       const owner = inbox(["look at the inner loop"]);
-      const r = await runCodexTrial(spec(a, join(a, "repo")), {
-        ...deps(f),
-        messages: { waiting: owner.waiting, given: owner.given_ },
-      });
+      // The worker keeps working each run: the campaign's nudges of 2 (goal 079: none by default).
+      const r = await runCodexTrial(
+        spec(a, join(a, "repo"), {
+          limits: { ...laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }), nudges: 2 },
+        }),
+        {
+          ...deps(f),
+          messages: { waiting: owner.waiting, given: owner.given_ },
+        },
+      );
       const runs = f.codexRuns();
       return { r, runs, prompts: runs.map((x) => String(x.stdin)), given: owner.given };
     };
@@ -341,7 +347,7 @@ describe("the Codex CLI", () => {
     assert.deepEqual(done.given, [], "it stays waiting for the lane's next trial");
   });
 
-  test("a full ChatGPT plan, as the proxy saw it, ends the trial until a later time; a turn cap stops it; a failed first run ends it", async () => {
+  test("a full ChatGPT plan, as the proxy saw it, ends the trial until a later time; a turn cap stops it; a failed run waits and resumes its thread; no credits ends it", async () => {
     const a = area();
     const limited = fakeRunner(events({ failed: "exceeded retry limit, last status: 429" }));
     const until = "2030-01-01T00:15:00.000Z";
@@ -367,10 +373,30 @@ describe("the Codex CLI", () => {
       JSON.stringify({ type: "thread.started", thread_id: THREAD }),
       JSON.stringify({ type: "turn.failed", error: { message: "stream disconnected" } }),
     ]);
-    const e = await runCodexTrial(spec(d, join(d, "repo")), deps(broken));
+    // A dropped stream is a passing fault (goal 079): the trial waits and resumes the same
+    // thread; only the campaign's failures_in_a_row ends it.
+    const e = await runCodexTrial(
+      spec(d, join(d, "repo"), {
+        limits: { ...laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }), failuresInARow: 2 },
+      }),
+      { ...deps(broken), pauseMs: () => 5 },
+    );
     assert.equal(e.stopped, "error");
-    assert.equal(e.error, "stream disconnected");
-    assert.equal(broken.codexRuns().length, 1, "not resumed: nothing was done");
+    assert.match(e.error ?? "", /failed 2 times in a row .*stream disconnected/);
+    assert.equal(broken.codexRuns().length, 2, "resumed once");
+    assert.ok(
+      broken.codexRuns()[1]?.argv.join(" ").includes(`resume ${THREAD} -`),
+      "in the same thread",
+    );
+    // No credits: the trial ends at once, with its kind, for the scheduler to stop the agents.
+    const g = area();
+    const broke = fakeRunner([
+      JSON.stringify({ type: "thread.started", thread_id: THREAD }),
+      JSON.stringify({ type: "turn.failed", error: { message: "402 insufficient credits" } }),
+    ]);
+    const h = await runCodexTrial(spec(g, join(g, "repo")), { ...deps(broke), pauseMs: () => 5 });
+    assert.deepEqual([h.stopped, h.errorKind], ["error", "credits"]);
+    assert.equal(broke.codexRuns().length, 1);
   });
 
   test("an image without the Codex CLI says so in words: in a trial and in the model check", async () => {

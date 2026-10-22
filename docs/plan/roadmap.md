@@ -67,6 +67,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [073](goals/073-harness-for-each-agent.goal) A harness for each agent · `VERIFIED`
 - [074](goals/074-one-name-for-each-agent.goal) One name for each agent · `VERIFIED`
 - [075](goals/075-model-usage.goal) Model usage for each run, campaign and the whole system · `VERIFIED`
+- [079](goals/079-thermite-overhead.goal) Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion · `VERIFIED`
 - [077](goals/077-archive-and-folders.goal) Archive a campaign; folders in the left navigation; no rigs there · `VERIFIED`
 - [078](goals/078-campaign-brief.goal) A campaign's brief: additional information, ideas and hypotheses for every mode · `IN_PROGRESS`
 - [082](goals/082-judge-findings-in-view.goal) The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check · `VERIFIED`

@@ -1068,11 +1068,19 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         {
           title: "Update a rig's images",
           description:
-            "For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay; a trial in progress stops, and the harness plans it again. Follow it with rig_setup and list_rigs. A failed update can be tried again; one already under way is refused.",
-          inputSchema: { rig: z.string().min(1) },
+            "For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay. By default it drains first: while trials run or the judge has a job under way, the rig starts nothing new and its pods restart once those end (rig_setup shows it draining). wait false restarts them now, also during a drain: a trial in progress then stops, and its experiment goes back to the queue. Follow it with rig_setup and list_rigs. A failed update can be tried again; one already under way is refused.",
+          inputSchema: {
+            rig: z.string().min(1),
+            wait: z
+              .boolean()
+              .optional()
+              .describe(
+                "Wait for the running trials and the judge's job to finish before the restart (default true); false: restart now",
+              ),
+          },
         },
-        audited("update_rig_images", async (a: { rig: string }) => {
-          const r = await update(a.rig, actor);
+        audited("update_rig_images", async (a: { rig: string; wait?: boolean }) => {
+          const r = await update(a.rig, actor, { wait: a.wait });
           if ("error" in r) throw new Error(r.error);
           return { rig: a.rig, said: r.ok };
         }),

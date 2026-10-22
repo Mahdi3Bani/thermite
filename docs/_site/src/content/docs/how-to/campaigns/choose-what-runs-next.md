@@ -45,7 +45,7 @@ Only experiments that wait can change: a lane that has started on one keeps it. 
 
 **In progress** shows what each lane is on: `lane-1 · since 9m ago`, the experiment's title and who added it, or `No lane is at work.` An experiment moves here when a lane's trial starts on it, and to **Tried** when the trial ends.
 
-When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a trial early, its experiment wasn't really tried. It shows under **Tried** as `no attempt: interrupted`, and a copy goes back to the top of **Up next**, by the same author, with a reason that starts `tried again: its trial on lane-1 was interrupted`. A trial that fails with an error comes back the same way. **History** says, for example, `Your experiment "…" went back in the queue: its trial was interrupted.`, or `lane-2's experiment "…" went back in the queue: its trial failed.` See [Steer a run](steer-a-run.md) for pausing and restarting.
+When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a trial early, its experiment wasn't really tried. Nor was it when the trial ended on the model provider's error: a rate limit, an outage, no credits or a refused key. The same experiment goes back to the top of **Up next**, not a copy, with `Came back once: its trial never really tried it` and why. **History** says, for example, `"…" went back to the top of the queue: its trial on lane-1 was interrupted (its trial was stopped).` A trial that fails for another reason, such as a memory limit, tried its experiment: it shows under **Tried** as `no attempt: error`, with how its trial ended. See [Steer a run](steer-a-run.md) for pausing and restarting.
 
 Others write to the queue too, and **Added by** names them:
 

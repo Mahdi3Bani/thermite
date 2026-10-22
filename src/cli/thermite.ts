@@ -32,6 +32,7 @@ const USAGE = `usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
+         [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
          [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
@@ -112,6 +113,7 @@ const USAGE = `usage: thermite <command> [options]
   runpod cancel-reset RIG --control URL --token-file F
                                       cancel the rig's full reset before its wipe (owner's token)
   run start CAMPAIGN --rig R [--agents off] [--provider P --model M] [--promotion auto|owner]
+         [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--judge-gpus N] [--queue-from [RIG/]RUN] [--past ID ...] --control URL --token-file F
                                       start a run of a campaign control keeps (owner's token), as
                                       Start a run on the campaign's page does, with its checks and
@@ -482,6 +484,7 @@ async function main(argv: string[]): Promise<void> {
           direction: { type: "string" },
           agents: { type: "string" },
           promotion: { type: "string" },
+          ask: { type: "string", multiple: true },
           "queue-from": { type: "string" },
           "mcp-servers": { type: "string" },
           "context-window": { type: "string" },
@@ -504,6 +507,13 @@ async function main(argv: string[]): Promise<void> {
       const note = runNote(values);
       if (values.promotion !== undefined && !["auto", "owner"].includes(values.promotion))
         fail("--promotion is auto or owner");
+      const { askOwnerOption } = await import("./run.ts");
+      let ask: ReturnType<typeof askOwnerOption>;
+      try {
+        ask = askOwnerOption(values.ask);
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
       if (!values.print && (!values.control || !values["token-file"] || !values.rig))
         fail("give --control, --token-file and --rig to issue it, or --print to show it");
       // A past run's untried experiments (goal 067), from control's records of that run.
@@ -631,6 +641,8 @@ async function main(argv: string[]): Promise<void> {
         ...(values.promotion
           ? { promotion: values.promotion === "owner" ? "owner_approval" : "auto" }
           : {}),
+        // What else the run asks the owner about (goal 079); unset: nothing.
+        ...(ask ? { ask_owner: ask } : {}),
         imports,
         ...(queue.length ? { queue } : {}),
         // The MCP servers the kit's kit.json names: the rig refuses a run whose list differs.
@@ -851,6 +863,7 @@ async function main(argv: string[]): Promise<void> {
           provider: { type: "string" },
           model: { type: "string" },
           promotion: { type: "string" },
+          ask: { type: "string", multiple: true },
           "judge-gpus": { type: "string" },
           "queue-from": { type: "string" },
           past: { type: "string", multiple: true },

@@ -645,7 +645,7 @@ describe("the planner as the queue's coordinator", () => {
     await stubborn.round();
     const epoch = body(events(stubborn.env, "epoch_started")[0]);
     assert.equal(epoch.source, "fallback");
-    assert.match(JSON.stringify(epoch.refused), /try 2: rule \d+ is an old rule in words/);
+    assert.match(JSON.stringify(epoch.refused), /try 2: refused: rule \d+ is an old rule in words/);
     assert.deepEqual(
       stubborn.env.service.ledger.activeDirectives(RUN).map((d) => d.id),
       [waits],
@@ -711,7 +711,7 @@ describe("the planner as the queue's coordinator", () => {
     assert.deepEqual(s.given(), ["lane-1:stage the tiles in shared memory"]);
   });
 
-  test("an interrupted trial's experiment goes back to the top of the queue", async (t) => {
+  test("an interrupted trial's experiment goes back to the top of the queue: the same row, with why (goal 079)", async (t) => {
     const s = await setup(t, {
       lanes: 1,
       trial: (_spec, signal) =>
@@ -726,25 +726,59 @@ describe("the planner as the queue's coordinator", () => {
     assert.ok(await s.scheduler.tick());
     await command(s.env, "pause_run", { run: RUN, reason: "test" });
     await s.scheduler.idle();
-    assert.equal(s.q.get(x)?.state, "done");
-    assert.equal(s.q.get(x)?.result, "interrupted");
-    const again = s.q.queued(RUN)[0];
-    assert.equal(again?.title, "long one");
-    assert.equal(again?.added_by, "owner");
-    assert.match(String(again?.why), /tried again: its trial on lane-1 was interrupted \(x-/);
-    // Its event says it came back from that trial, not that its author added it again.
-    const added = events(s.env, "experiment_added").find((e) => body(e).id === again?.id);
-    assert.deepEqual(body(added).requeued_from, {
-      experiment: x,
-      trial: s.q.get(x)?.trial,
-      lane: "lane-1",
-      result: "interrupted",
+    // The same row, not a copy: back at the top, its author and its why as they were.
+    const back = s.q.get(x);
+    assert.equal(back?.state, "queued");
+    assert.equal(s.q.queued(RUN)[0]?.id, x);
+    assert.equal(back?.added_by, "owner");
+    assert.equal(back?.why, "big win if it works");
+    assert.equal(back?.returns, 1);
+    assert.match(String(back?.cause), /stopped|interrupted/);
+    assert.equal(s.q.all(RUN).length, 2, "no copy");
+    const returned = events(s.env, "experiment_returned");
+    assert.equal(returned.length, 1);
+    assert.equal(body(returned[0]).id, x);
+    assert.equal(body(returned[0]).result, "interrupted");
+    // The planner's brief says why it came back, and its tried list is not filled with copies.
+    const brief = s.q.brief(RUN);
+    assert.equal(brief.up_next[0]?.id, x);
+    assert.equal(brief.up_next[0]?.returned?.times, 1);
+    assert.equal(brief.tried.length, 0);
+  });
+
+  test("a trial that ends on the provider's error gives its experiment back; another failure is tried, with its cause (goal 079)", async (t) => {
+    let error = "503 Service Unavailable";
+    const s = await setup(t, {
+      lanes: 1,
+      trial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        error,
+      }),
     });
-    assert.equal(
-      events(s.env, "experiment_added").filter((e) => body(e).requeued_from).length,
-      1,
-      "only the experiment that came back",
-    );
+    const x = await s.add("waits for the provider");
+    assert.ok(await s.scheduler.tick());
+    await s.scheduler.idle();
+    const back = s.q.get(x);
+    assert.equal(back?.state, "queued", "the provider failed: it was never really tried");
+    assert.equal(back?.returns, 1);
+    assert.match(String(back?.cause), /503 Service Unavailable/);
+    // A failure of the trial itself (not the provider's): tried, and the brief says how it ended.
+    error = "the lane's memory limit of 2048 MiB was reached";
+    for (let i = 0; i < 50 && s.q.get(x)?.state !== "done"; i++) {
+      await s.scheduler.tick();
+      await s.scheduler.idle();
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.equal(s.q.get(x)?.state, "done");
+    assert.equal(s.q.get(x)?.result, "error");
+    const tried = s.q.brief(RUN).tried.find((e) => e.id === x);
+    assert.equal(tried?.result, "error");
+    assert.match(String(tried?.cause), /memory limit of 2048 MiB/);
+    assert.equal(s.q.all(RUN).length, 1, "still one row");
   });
 
   test("after a restart, an experiment whose trial a dead controller left open goes back to the queue", async (t) => {
@@ -771,7 +805,10 @@ describe("the planner as the queue's coordinator", () => {
         tokensOut: 0,
       }),
     });
-    assert.equal(s.q.get(x)?.result, "interrupted");
+    // Back in the queue, the same row, with why (goal 079).
+    assert.equal(s.q.get(x)?.state, "queued");
+    assert.equal(s.q.get(x)?.returns, 1);
+    assert.match(String(s.q.get(x)?.cause), /the harness restarted/);
     assert.deepEqual(
       s.q.queued(RUN).map((e) => e.title),
       ["half done"],

@@ -34,7 +34,14 @@ import {
   SYSTEM,
   takeUsage,
 } from "./opencode.ts";
-import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
+import { afterProgramFailure, type ProviderLink } from "./provider-errors.ts";
+import {
+  type SubmitOutcome,
+  stopNudging,
+  type TrialResult,
+  type TrialSpec,
+  trialBudget,
+} from "./worker.ts";
 
 /**
  * Trials, model checks and planner calls in Claude Code, for a Claude subscription. Anthropic
@@ -435,7 +442,8 @@ export function claudeEnv(o: {
   apiUrl: string;
   auth: string;
   tmp: string;
-  maxCommandMs: number;
+  /** The trial's or the call's length; none: a day, the most a command may ask for. */
+  maxCommandMs?: number | undefined;
   extra?: Record<string, string> | undefined;
 }): Record<string, string> {
   return {
@@ -446,8 +454,11 @@ export function claudeEnv(o: {
     THERMITE_HARNESS_URL: o.apiUrl,
     THERMITE_TRIAL_AUTH: o.auth,
     ...CLAUDE_BASE_ENV,
-    // A build or a test may run for most of the trial.
-    BASH_MAX_TIMEOUT_MS: String(Math.max(120_000, o.maxCommandMs)),
+    // A build or a test may run for most of the trial. Without a trial length (goal 079), a day:
+    // the most a command may ask for, as Claude Code needs a number.
+    BASH_MAX_TIMEOUT_MS: String(
+      o.maxCommandMs !== undefined ? Math.max(120_000, o.maxCommandMs) : 86_400_000,
+    ),
   };
 }
 
@@ -533,7 +544,7 @@ export const CLAUDE_SYSTEM = SYSTEM.replace(
   `\n\n${SHELL_NOTE}`,
 );
 
-export interface ClaudeTrialDeps {
+export interface ClaudeTrialDeps extends ProviderLink {
   runner: Runner;
   model: ModelConfig;
   /** The harness API as the lane reaches it, for example http://127.0.0.1:8700. */
@@ -646,10 +657,13 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       error: `could not set Claude Code up: ${setup.stderr.slice(-300)}`,
     };
   const started = Date.now();
-  const deadline = started + spec.wallMs;
-  const minutes = Math.round(spec.wallMs / 60_000);
+  // A trial's length only when the campaign or the rig sets one (goal 079).
+  const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
+  const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
+  // Failed model calls in a row, and rate limits in a row (goal 079).
+  const count = { failures: 0, rateWaits: 0 };
   const maxTurns = spec.maxTurns;
-  let message = `${CLAUDE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each model reply is one)` : ""}. Submit before it ends.`;
+  let message = `${CLAUDE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one")}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -678,6 +692,8 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     }
     const errorsBefore = tally.errors.length;
     const progressBefore = tally.turns + tally.toolCalls;
+    const callsBefore = tally.toolCalls;
+    const runStarted = Date.now();
     const exe = claudeExe() ?? claudeBin();
     const running = deps.runner.run({
       role: spec.lane,
@@ -694,7 +710,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       cwd: spec.workspace,
       env,
       stdin: deps.model.apiKey,
-      timeoutMs: remaining,
+      ...(Number.isFinite(remaining) ? { timeoutMs: remaining } : {}),
       rssLimitBytes: limits.runRssMib * 1024 * 1024,
       ...(claudeExe() ? { spareExe: claudeExe() } : {}),
       disk: { path: area, limitBytes: limits.workspaceMib * 1024 * 1024 },
@@ -759,10 +775,38 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       result.stopped = "wall";
       break;
     }
-    if (tally.errors.length > errorsBefore && tally.toolCalls === 0) {
-      result.stopped = "error";
-      result.error = tally.errors.at(-1);
-      break;
+    // A run that ended with the provider's error (goal 079): by its kind, the trial ends (no
+    // credits, a refused key, an unserved model, or the campaign's limit), or waits and goes on
+    // in the same session. The failure is not one of the nudges.
+    if (tally.errors.length > errorsBefore) {
+      if (tally.turns + tally.toolCalls > progressBefore) count.failures = 0;
+      const step = await afterProgramFailure({
+        error: tally.errors.at(-1) as string,
+        answer: deps.providerAnswer?.(runStarted),
+        count,
+        failuresInARow: limits.failuresInARow,
+        deadline,
+        signal: deps.signal,
+        waiting: deps.waiting,
+        pauseMs: deps.pauseMs,
+      });
+      if ("interrupted" in step) {
+        result.stopped = "interrupted";
+        break;
+      }
+      if ("wall" in step) {
+        result.stopped = "wall";
+        break;
+      }
+      if ("end" in step) {
+        result.stopped = "error";
+        result.error = step.end.error;
+        result.errorKind = step.end.kind;
+        break;
+      }
+      nudges--;
+      message = [step.goOn, ...ownerLines(carried.take(tally))].join("\n\n");
+      continue;
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
@@ -773,10 +817,16 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       );
       break;
     }
-    // Continued twice to get a submission, and then for as long as the owner's messages wait
-    // and the agent keeps working. A message is read only once the agent starts on the prompt.
+    // Continued to get a submission (goal 079) for as long as the agent keeps working (a tool
+    // call in this run), with no number unless the campaign sets lanes.limits.nudges; a nudge it
+    // answers without any work ends the trial, its own choice. The owner's messages continue it
+    // while they wait and it keeps working. A message is read only once the agent starts on the
+    // prompt.
     const progressed = tally.turns + tally.toolCalls > progressBefore;
-    if (nudges >= 2 && (!progressed || !(deps.messages?.waiting().length ?? 0))) break;
+    if (
+      stopNudging(nudges, tally.toolCalls > callsBefore, progressed, limits.nudges, deps.messages)
+    )
+      break;
     message = [NUDGE, ...ownerLines(carried.take(tally))].join("\n\n");
   }
   const sub = deps.submitted();
@@ -813,7 +863,8 @@ export async function claudeOnce(
   deps: ClaudeOnceDeps,
   o: {
     tools: string;
-    timeoutMs: number;
+    /** None unless given: a planner call runs until it answers or its run stops (goal 079). */
+    timeoutMs?: number | undefined;
     signal?: AbortSignal | undefined;
     role: Role;
     /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
@@ -882,7 +933,7 @@ export async function claudeOnce(
       },
       // The token, which the shell gives Claude Code on file descriptor 3.
       stdin: model.apiKey,
-      timeoutMs: o.timeoutMs,
+      ...(o.timeoutMs !== undefined ? { timeoutMs: o.timeoutMs } : {}),
       captureBytes: 8 * 1024 * 1024,
     });
     const live = readClaudeEvents(r.stdout.split("\n"), tally);
@@ -906,7 +957,7 @@ export async function claudeOnce(
       }).take(live, tally.compactions.splice(0));
     }
     if (r.killedFor === "timeout")
-      tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
+      tally.errors.push(`no answer in ${Math.round((o.timeoutMs ?? 0) / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
       tally.errors.push(
         claudeExitWords(

@@ -721,11 +721,17 @@ export class Research {
     return { section: name };
   }
 
-  /** Running time (paused time does not count) against the contract's durations. */
+  /**
+   * Running time against the contract's durations. Paused time does not count, and neither does
+   * time the agents could not run (goal 079): while they were stopped (no credits, a refused key,
+   * a failing model check) or waited for the provider's rate limit. The minimum is a floor, never
+   * a stop: a run ends at its maximum, and runs on without one until someone stops it.
+   */
   clock(run: string) {
     const c = this.contract(run);
     const created = String(this.get("select created_at from run where id = ?", run)?.created_at);
-    let elapsedMs = 0;
+    const now = Date.now();
+    const running: [number, number][] = [];
     let since: number | null = Date.parse(created);
     for (const e of this.all(
       "select at, body from event where kind in ('run_status', 'instance_status') and subject = ? order by id",
@@ -735,20 +741,64 @@ export class Research {
       const at = Date.parse(String(e.at));
       if (status === "running") since ??= at;
       else if (since !== null) {
-        elapsedMs += at - since;
+        running.push([since, at]);
         since = null;
       }
     }
-    if (since !== null) elapsedMs += Date.now() - since;
+    if (since !== null) running.push([since, now]);
+    const blocked = this.agentsBlocked(run, now);
+    let elapsedMs = 0;
+    let waitedMs = 0;
+    for (const [a, b] of running) {
+      let lost = 0;
+      for (const [x, y] of blocked) lost += Math.max(0, Math.min(b, y) - Math.max(a, x));
+      elapsedMs += b - a - lost;
+      waitedMs += lost;
+    }
     const minMs = parseDuration(c.min_duration as string);
-    const maxMs = c.max_duration ? parseDuration(c.max_duration) : minMs;
+    const maxMs = c.max_duration ? parseDuration(c.max_duration) : null;
     return {
       started_at: created,
       elapsed_ms: elapsedMs,
+      /** Running time the agents could not work: not counted (goal 079). */
+      waited_ms: waitedMs,
       min_ms: minMs,
       max_ms: maxMs,
-      done: elapsedMs >= maxMs,
+      done: maxMs !== null && elapsedMs >= maxMs,
     };
+  }
+
+  /**
+   * When the run's agents could not run (goal 079), merged and in order: from each agents_stopped
+   * to the agents_resumed after it (or now), and each wait for the provider's rate limit until the
+   * time it named.
+   */
+  private agentsBlocked(run: string, now: number): [number, number][] {
+    const spans: [number, number][] = [];
+    let stoppedAt: number | null = null;
+    for (const e of this.all(
+      "select kind, at, body from event where kind in ('agents_stopped', 'agents_resumed', 'agents_wait_for_limit') and subject = ? order by id",
+      run,
+    )) {
+      const at = Date.parse(String(e.at));
+      if (e.kind === "agents_stopped") stoppedAt ??= at;
+      else if (e.kind === "agents_resumed") {
+        if (stoppedAt !== null) spans.push([stoppedAt, at]);
+        stoppedAt = null;
+      } else {
+        const until = Date.parse(String((JSON.parse(String(e.body)) as { until?: string }).until));
+        if (!Number.isNaN(until) && until > at) spans.push([at, Math.min(until, now)]);
+      }
+    }
+    if (stoppedAt !== null) spans.push([stoppedAt, now]);
+    spans.sort((x, y) => x[0] - y[0]);
+    const merged: [number, number][] = [];
+    for (const s of spans) {
+      const last = merged.at(-1);
+      if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+      else merged.push([s[0], s[1]]);
+    }
+    return merged;
   }
 
   /** Distinct domains a verified claim's quotes come from. */

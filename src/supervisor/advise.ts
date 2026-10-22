@@ -734,6 +734,21 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     };
     // The owner's messages go to the auditor once, with the first audit that gets them.
     const told = new Set<number>();
+    /**
+     * An audit the auditor could not answer, its last try: the owner decides (goal 079). Hands-off
+     * leaves no other step, so it goes to the owner as a failure, with the error.
+     */
+    const failed = async (attempt: string, key: string, err: unknown, run?: string) => {
+      fail(`audit of ${attempt}`, err, run);
+      if ((next.tries[key] ?? 0) < MAX_TRIES || !cfg.advisors.auditor) return;
+      await api("POST", "/v1/audits", {
+        attempt,
+        decision: "needs_owner",
+        reasons: `the auditor could not answer after ${MAX_TRIES} tries: ${clip(err instanceof Error ? err.message : String(err), 500)}`,
+        citations: [],
+        auditor: cfg.advisors.auditor.name,
+      }).catch((e) => fail(`audit of ${attempt}: handing it to the owner`, e, run));
+    };
     for (const pkg of audits) {
       const key = `audit:${pkg.attempt}`;
       if (!due(key)) continue;
@@ -754,7 +769,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         count(r);
         await usageOut(pkg.run, `audit ${pkg.attempt}`, "auditor", r.usage);
         if (!r.output) {
-          fail(`audit of ${pkg.attempt}`, r.error, pkg.run);
+          await failed(pkg.attempt, key, r.error, pkg.run);
           continue;
         }
         const posted = (await api("POST", "/v1/audits", {
@@ -803,7 +818,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           ...(r.compactions?.length ? { compactions: r.compactions } : {}),
         });
       } catch (err) {
-        fail(`audit of ${pkg.attempt}`, err, pkg.run);
+        await failed(pkg.attempt, key, err, pkg.run);
       }
     }
   }
@@ -866,6 +881,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         }
         const posted = (await api("POST", `/v1/reviews/${pkg.id}`, { results })) as {
           result?: string;
+          accepted?: boolean;
         };
         s.reviews++;
         if (pkg.run) {
@@ -880,7 +896,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         say(
           pkg.run,
           "status",
-          `review ${pkg.id}: ${posted?.result === "review_passed" ? "the review panel passed it; it waits for the owner's acceptance" : "the review panel did not pass it"}`,
+          `review ${pkg.id}: ${posted?.result !== "review_passed" ? "the review panel did not pass it" : posted.accepted ? "the review panel passed it, and it was accepted (the run does not ask the owner)" : "the review panel passed it; it waits for the owner's acceptance"}`,
         );
         // Each reviewer's field notes, once the review is posted.
         const noted: unknown[] = [];

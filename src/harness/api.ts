@@ -18,7 +18,6 @@ import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
 import type { Research } from "./research/research.ts";
-import { Reviews } from "./reviews.ts";
 import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
 
 /**
@@ -136,10 +135,9 @@ export function createHarnessApi(
   // its own route: the planner's, when control gave the planner a model of its own (goal 073).
   const openTrial = (token: string) => {
     try {
-      registry.openTrial(token);
-      return true;
+      return registry.openTrial(token).id;
     } catch {
-      return false;
+      return undefined;
     }
   };
   app.all("/v1/model-proxy/*", bodyLimit({ maxSize: 64 * 1024 * 1024 }), async (c) => {
@@ -148,7 +146,8 @@ export function createHarnessApi(
       ? bearer.slice(7)
       : (c.req.header("x-api-key") ?? "");
     const trial = given.startsWith("trial.");
-    const ok = trial ? openTrial(given.slice("trial.".length)) : service.proxyTokenValid(given);
+    const trialId = trial ? openTrial(given.slice("trial.".length)) : undefined;
+    const ok = trial ? trialId !== undefined : service.proxyTokenValid(given);
     if (!ok) return c.json({ error: "unauthorized" }, 401);
     const m = (trial ? undefined : service.proxyTokenModel(given)) ?? service.models?.current();
     // OpenCode's own models need no proxy; a Claude subscription is used only by Claude Code.
@@ -167,6 +166,8 @@ export function createHarnessApi(
       },
       { api: m.api, baseUrl: m.baseUrl, key: m.keyNow?.() ?? m.apiKey },
       () => service.noteUsageLimit(),
+      // Each error answer, for the trial (or the check or plan) to tell its kind (goal 079).
+      (a) => service.noteProviderAnswer(trialId ?? "proxy", a),
     );
   });
 
@@ -388,10 +389,17 @@ export function createHarnessApi(
           .max(8),
       })
       .parse(await c.req.json());
-    return c.json({
-      review: id,
-      result: new Reviews(service.ledger).recordPanel(id, body.results, "supervisor"),
-    });
+    return c.json({ review: id, ...service.recordReviewPanel(id, body.results, "supervisor") });
+  });
+
+  // The supervisor says which advisors it has (goal 079): whether an auditor decides this rig's
+  // audits, and its review panel's size. Without an auditor, the audits held go on by the run's
+  // rules.
+  app.put("/v1/advisors", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const body = z
+      .strictObject({ auditor: z.boolean(), panel: z.number().int().min(0).max(100) })
+      .parse(await c.req.json());
+    return c.json({ released: await service.setAdvisors(body, "supervisor") });
   });
 
   // The advisors' receipts and answers for the owner's messages: which messages an advisor role
@@ -512,9 +520,18 @@ export function createHarnessApi(
             tokens_out: z.number().int().min(0),
           })
           .optional(),
+        /** The trial waits for its provider, then goes on in the same conversation (goal 079). */
+        wait: z
+          .object({
+            until: z.iso.datetime(),
+            kind: z.enum(["rate_limit", "server", "model", "context", "credits", "auth", "route"]),
+            words: z.string().max(2000),
+          })
+          .optional(),
       })
       .parse(await c.req.json());
     service.trialReport(trial, body);
+    if (body.wait) service.trialWait(trial, body.wait);
     return c.json({ ok: true });
   });
 

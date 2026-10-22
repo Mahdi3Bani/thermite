@@ -118,6 +118,26 @@ function contextOf(m: Record<string, unknown>): number | undefined {
 }
 
 /**
+ * A model's maximum output from its list entry (goal 079): the field each provider names it by.
+ * Anthropic's list gives `max_tokens` (the output cap; `max_input_tokens` is its window);
+ * OpenRouter's gives `top_provider.max_completion_tokens`; others `max_output_tokens`,
+ * `max_completion_tokens` or `output_token_limit`. A list that names none gives none.
+ */
+export function outputOf(m: Record<string, unknown>, type: ProviderType): number | undefined {
+  const num = (v: unknown) =>
+    typeof v === "number" && Number.isInteger(v) && v > 0 && v <= 10_000_000 ? v : undefined;
+  for (const k of ["max_output_tokens", "max_completion_tokens", "output_token_limit"]) {
+    const v = num(m[k]);
+    if (v) return v;
+  }
+  if (type === "anthropic") {
+    const v = num(m.max_tokens);
+    if (v) return v;
+  }
+  return num((m.top_provider as Record<string, unknown> | undefined)?.max_completion_tokens);
+}
+
+/**
  * A model's price from its list entry (goal 075), in US dollars per million tokens: the `pricing`
  * object OpenRouter's list gives, as Nous Portal's does too, in US dollars per token, as text
  * (`prompt`, `completion`, `input_cache_read`). OpenAI's own list, Anthropic's and OpenCode Zen's
@@ -191,7 +211,13 @@ export async function listModels(
     for (const m of body.data as Record<string, unknown>[]) {
       if (typeof m?.id !== "string" || !m.id || m.id.length > 200) continue;
       const price = listedPrice(m);
-      out.push({ id: m.id, context_window: contextOf(m), ...(price ? { price } : {}) });
+      const output = outputOf(m, type);
+      out.push({
+        id: m.id,
+        context_window: contextOf(m),
+        ...(price ? { price } : {}),
+        ...(output ? { max_output: output } : {}),
+      });
     }
     if (type !== "anthropic" || body.has_more !== true || typeof body.last_id !== "string") break;
     after = body.last_id;

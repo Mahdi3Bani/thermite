@@ -121,7 +121,8 @@ export class ModelSource {
       apiKey: r.api_key,
       contextWindow: r.context_window,
       ...(r.compact_at !== undefined ? { compactAt: r.compact_at } : {}),
-      maxTokens: r.max_tokens || 8192,
+      // The model's maximum output from the provider's list; 0: none sent (goal 079).
+      maxTokens: r.max_tokens,
       reasoning: reasoningFromEnv(r.reasoning ?? undefined),
       effort: r.effort ?? undefined,
       ...(type === "chatgpt"

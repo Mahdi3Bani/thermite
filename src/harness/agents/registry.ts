@@ -225,6 +225,8 @@ export class Registry {
     notes?: string | undefined;
     /** "research": planned by the research plan's fixed method, not by a model (no refusal). */
     plan?: "research" | undefined;
+    /** Why each of the model's tries gave no usable plan (goal 079). */
+    causes?: { try: number; cause: string; detail: string }[] | undefined;
     by: string;
   }): void {
     this.ledger.tx(() => {
@@ -258,6 +260,15 @@ export class Registry {
         // Why the model's plans were refused (the first few, shortened), so a fallback says why.
         ...(input.rawViolations.length
           ? { refused: input.rawViolations.slice(0, 4).map((v) => v.slice(0, 300)) }
+          : {}),
+        // The real cause of each try that gave no plan: timeout, text only, cut off, the
+        // provider's error, cancelled, or refused with which rules (goal 079).
+        ...(input.causes?.length
+          ? {
+              causes: input.causes
+                .slice(0, 4)
+                .map((c) => ({ try: c.try, cause: c.cause, detail: c.detail.slice(0, 300) })),
+            }
           : {}),
         directives: input.directives ?? [],
         assignments: input.assignments.map((a) => ({
@@ -454,18 +465,29 @@ export class Registry {
 
   /**
    * Trials a dead controller left unfinished. Their worker processes died with it; the trials
-   * are closed as interrupted (any submission they made stands), so their lanes can go on.
+   * are closed as interrupted (any submission they made stands), so their lanes can go on. Each
+   * keeps the counters its worker last reported (goal 079): the work it did still counts.
    */
   interruptUnfinished(by: string): string[] {
-    const open = this.all("select id from trial where ended_at is null").map((r) => String(r.id));
-    for (const id of open) {
+    const open = this.all(
+      "select id, turns, tool_calls, tokens_in, tokens_out from trial where ended_at is null",
+    );
+    const n = (v: unknown) => (typeof v === "number" ? v : 0);
+    for (const t of open) {
       this.finishTrial(
-        id,
-        { stopped: "interrupted", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 },
+        String(t.id),
+        {
+          stopped: "interrupted",
+          turns: n(t.turns),
+          toolCalls: n(t.tool_calls),
+          tokensIn: n(t.tokens_in),
+          tokensOut: n(t.tokens_out),
+          error: "the harness restarted while this trial ran",
+        },
         by,
       );
     }
-    return open;
+    return open.map((t) => String(t.id));
   }
 
   /** Trials of a lane in an epoch (finished or running). */

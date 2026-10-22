@@ -25,6 +25,8 @@ export interface AdvisorRoute {
   context_window: number;
   /** The role's compaction point, when the owner set one (goal 070). */
   compact_at?: number | undefined;
+  /** The model's maximum output from the provider's list; 0 or none: none sent (goal 079). */
+  max_tokens?: number | undefined;
   reasoning: string | null;
   effort?: string | null | undefined;
   /** The harness the role runs in (older controls: none, Pi or what the model needs). */
@@ -67,7 +69,6 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       effort: EFFORTS.find((e) => e === route.effort),
       ...(route.context_window > 0 ? { context_window: route.context_window } : {}),
       ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
-      timeout_s: 1800,
     };
   const reasoning = route.reasoning;
   const effort =
@@ -83,7 +84,6 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
         model: route.model,
         context_window: route.context_window,
         ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
-        timeout_s: 1800,
       };
     if (route.type !== "openai" && route.type !== "anthropic" && route.type !== "chatgpt")
       return undefined;
@@ -97,7 +97,6 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       api_key: route.api_key,
       context_window: route.context_window,
       ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
-      timeout_s: 1800,
     };
   }
   // The Codex CLI: OpenAI's Responses API only.
@@ -114,7 +113,6 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       reasoning: effort,
       context_window: route.context_window,
       ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
-      timeout_s: 1800,
     };
   }
   if (route.type !== "openai" && route.type !== "anthropic" && route.type !== "chatgpt")
@@ -130,9 +128,9 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
     reasoning: effort,
     context_window: route.context_window || 200_000,
     ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
-    max_tokens: 8192,
-    max_turns: 24,
-    timeout_s: 900,
+    // The model's maximum output from the provider's list; none known: none sent (goal 079).
+    ...(route.max_tokens ? { max_tokens: route.max_tokens } : {}),
+    // No turn or time limit on a call (goal 079): the advisors file can set them.
     usd_per_mtok_in: 0,
     usd_per_mtok_out: 0,
   };

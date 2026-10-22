@@ -73,8 +73,8 @@ Every field this example leaves out takes its default. The repository has one ex
 | `models` | list of `{name, sha256}` | `[]` | [Model files](glossary.md) the campaign uses: data files the project loads that are not in its repository, such as a model's weights. Not the agents' AI model. Each must be on the rig, or imported by the command that starts the run. The kit reaches one as `{models:<sha256>}`, and agents are told where they are |
 | `lanes` | object | `{"count": 2, "trials_per_epoch": 3}` | How the work is split. See [Lanes](#lanes) |
 | `budget` | object | `{"max_open_attempts": 4}` | Optional budgets and back-pressure. See [Budget](#budget) |
-| `min_duration` | duration | none | Research: required. The time the campaign runs at least, and its end when `max_duration` is not set. Other modes: accepted, not used yet |
-| `max_duration` | duration | none | Research: when the campaign ends. It may not be shorter than `min_duration`. Other modes: accepted, not used yet |
+| `min_duration` | duration | none | Research: required. The time the campaign runs at least: a floor, never a stop. Other modes: accepted, not used yet |
+| `max_duration` | duration | none | Research: when the campaign ends. It may not be shorter than `min_duration`. Without it, a research campaign runs until someone stops it. Other modes: accepted, not used yet |
 | `search_policy` | object | none | Rules for research search queries. See [Search policy](#search-policy) |
 | `notes` | text | none | The campaign's additional information, from its author, in Markdown, with no length limit. See [The campaign's brief](#the-campaigns-brief) |
 | `hypotheses` | list of text, each not empty | none | What the campaign's author thinks is true, one entry each. See [The campaign's brief](#the-campaigns-brief) |
@@ -151,7 +151,10 @@ A contract without `lanes.queue_target` keeps its hash: the field has no default
 | `workspace_mib` | 256–65536 | 2048 | Disk, in MiB, for the trial's workspace, build trees included. Each development run gets the same amount |
 | `dev_run_timeout_s` | 10–3600 | none on a development device of its own; 300 on a device the judge shares | Time limit, in seconds, for one development run |
 | `dev_run_rss_mib` | 256–16384 | 4096 | Memory, in MiB, for one development run |
-| `trial_minutes` | 1–1440 | the rig's trial length (20 minutes unless changed) | One trial's length, in minutes |
+| `trial_minutes` | 1–1440 | the rig's trial length, which is none unless someone sets it | One trial's length, in minutes. Without one, a trial lasts until its worker submits, or stops and answers a nudge without any work |
+| `failures_in_a_row` | 1–10000 | none | A trial ends after this many failed model calls in a row: a provider's 5xx, a broken connection, or a request it refused. A rate limit's waits never count. Without it, the worker waits a growing pause after each failure and goes on |
+| `cutoffs_in_a_row` | 1–10000 | none | A trial ends after this many replies in a row cut off at the output limit without a tool call (Pi). Without it, the worker is told to think less and goes on |
+| `nudges` | 0–10000 | none | How many times a worker that stops without submitting is told to go on; then its trial ends. `0`: never. Without it, it is told for as long as it keeps working, and a nudge it answers without any work ends the trial |
 | `processes` | 64–65536 | 256 | Processes and threads that each of a lane's users may have at once: the user of its commands (with OpenCode, Claude Code or Codex when the lane uses one), of its development runs, and of its Pi worker. At the limit, starting one more fails (`Resource temporarily unavailable`); nothing is stopped. Raise it for builds or tests that start many threads |
 
 A limit ends one command or one trial, never the campaign. [Limits and pacing](limits-and-pacing.md) lists every limit Thermite has.
@@ -296,7 +299,7 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | `fetch_policy.max_bytes` | integer ≥ 1 | 5000000 | The largest response fetched, in bytes. A larger one is refused: `larger than <n> bytes` |
 | `fetch_policy.allow_logins` | `false` | `false` | Always off |
 
-A research run closes when its running time reaches `max_duration`, or `min_duration` when `max_duration` is not set. Time while the run is paused does not count. It then writes its final report. A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
+A research run closes when its running time reaches `max_duration`, and then writes its final report. Without `max_duration` it runs until someone stops it: `min_duration` is a floor, never a stop. Time while the run is paused does not count, and neither does time its agents could not run: while they were stopped by the provider (no credits, a refused key, a failing model check) or waited for its rate limit ([Limits and pacing](limits-and-pacing.md#the-model-provider)). A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
 
 ## Accepted, not used yet
 

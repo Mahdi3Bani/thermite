@@ -152,13 +152,13 @@ An attempt reported by an older harness has none in its event, and shows none.
 
 ### Why a result waits
 
-A promotable result goes to the auditor first when:
+On a rig with an auditor, a promotable result goes to the auditor first when:
 
 - the agent declared known flaws (trigger `known_flaws`);
 - in a hill climb, the gain is above `acceptance.audit.absolute` (trigger `absolute`), or above `acceptance.audit.ratio_to_median` times the median of the run's earlier confirmed gains, once there are three (trigger `ratio`);
 - in a goal campaign, the contract has an `adversarial_checklist` (trigger `adversarial_checklist`).
 
-The auditor answers `clear`, `block` or `needs_owner`. An audit can hold a result back, never pass one: after `clear`, a result with declared flaws, a gain above the absolute trigger, or a rig or run that promotes only with the owner's approval still waits for the owner. Without an audit, the promotion policy decides: `auto` promotes at once, `owner_approval` waits. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows how to answer.
+The auditor answers `clear`, `block` or `needs_owner`. Its clear is the last step: the result is promoted, its declared flaws accepted (`flaws_accepted`), unless the run asks the owner. Its block stops it (`promotion_blocked`, with the auditor's reasons). On a rig with no auditor, the judge records `audit_skipped` with the trigger, and goes on. Then the run's rules decide: `owner_approval` waits for the owner; `auto` promotes at once, unless the run's `ask_owner` asks about a gain above its `above_gain` or about declared flaws (`promotion_pending`, with the reason). A promotion with declared flaws that nothing asked about accepts them, and the record says by which step. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows how to choose and how to answer.
 
 ## Outcome words on the dashboard
 
@@ -197,6 +197,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | | A full reset is about to wipe the rig | `wiping` |
 | `closed` | A goal campaign meets its goals, and a second, independent check agrees | `every required goal is met` |
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
+| | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
 | | A research campaign's time is over | `the research window is over` |
 | | A smoke check finishes its own run | `the smoke check is done` |
 | | The harness restarted during a smoke check | `its smoke check was interrupted` |
@@ -248,7 +249,8 @@ An **experiment** is one thing for a lane to try, in a run's [experiment queue](
 - Only `proposed` and `queued` experiments can be edited or dropped, and only `queued` ones move. A command that breaks this is refused, for example `experiment <id> is done: only queued experiments move`.
 - One experiment goes to one trial. The planner can give a lane a queued experiment or a lane's idea.
 - **A copied experiment says where it came from.** **Start a run** can begin a new run's queue with another run's untried experiments, and with past experiments from the [knowledge base](knowledge-base.md) folders the campaign may read. Each keeps its first author, and `from_run` names the run it came from. One from past research ends its details with `In <run> (<campaign>) it was <result>.`, or `From <run> (<campaign>).` when that run gave it no result. A copied experiment that MCP's `issue_command` takes from control's records gets the same `In <run> (<campaign>) it was <result>.` line when its item has a result.
-- **An interrupted trial's experiment comes back.** When a trial is interrupted (by **Pause**, **Restart the lanes** or a harness restart) or fails with an error before it submits, its experiment is `done`, and a new experiment with the same text goes to the top of the queue. It keeps its author, and its why starts with `tried again: its trial on <lane> was interrupted (<old id>)`, or `failed` for an error. Its `experiment_added` event has `requeued_from`: `{experiment, trial, lane, result}`, with `interrupted` or `error` as the result. **History** says `<author>'s experiment "<title>" went back in the queue: its trial was interrupted.`, or `… its trial failed.`, such as "The planner's experiment …" or "Your experiment …".
+- **An experiment its trial never really tried comes back.** When a trial is interrupted (by **Pause**, **Restart the lanes** or a harness restart), or ends on the model provider's error (a rate limit, a 5xx or a broken connection, no credits, a refused key, an unserved model) before it submits, the same experiment goes back to `queued`, at the top: not a copy. It keeps its author and its why, and counts how many times it came back (`returns`), with the last cause (`cause`). Its `experiment_returned` event has `{id, lane, trial, result, cause, returns, position}`, with `interrupted` or `error` as the result. **History** says `"<title>" went back to the top of the queue: its trial on <lane> was interrupted (<cause>).`, or `… ended on the provider's error (<cause>).` While the run's agents are stopped, it waits there; it is the next one given out when they go on. A ledger from before kept a copy instead, whose `experiment_added` event has `requeued_from`.
+- **A tried experiment says how its trial ended.** Every experiment that is `done` keeps its trial's cause in words (`cause`): the provider's or the program's words for an error, the time or turn limit, the model stopping. The planner's and the teachers' brief show it beside each tried experiment's result, and the **Tried** list shows it.
 
 ### An experiment's result
 

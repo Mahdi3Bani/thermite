@@ -93,9 +93,10 @@ Submit the real improvement last. Each patch applies to the current champion, so
 
 Open the run's **Attempts** tab. Each change shows its outcome. The dashboard learns a verdict with the rig's next report, within a minute: until then the change shows **Judging**, so press **refresh**. Open one for **What happened to it** and **The judge's reasons**. From the harness container, without the wait, `thermite status --harness http://127.0.0.1:8700 --token-file /run/secrets/harness-proposer-token --attempt <id>` prints its state and verdict.
 
-Two things can hold a winner back:
+Three things can hold a winner back:
 
-- A confirmed gain above 15% always waits for you, after the rig's auditor if it has one, unless the contract raises `acceptance.audit.absolute`. See [Decide what waits for you](decide-what-waits.md).
+- On a rig with an auditor, a confirmed gain above 15% goes to the auditor first, unless the contract raises `acceptance.audit.absolute`; its block stops the change. See [Decide what waits for you](decide-what-waits.md).
+- With **Ask me first about** set, such as **a gain above this %**, or `--ask gain:15`, those wins wait for you.
 - With **ask me every time**, or `--promotion owner`, every confirmed win waits for you.
 
 ## Check that the kit is ready

@@ -199,7 +199,7 @@ A rig can also take its model from its own settings, the `THERMITE_MODEL_*` vari
 | `THERMITE_MODEL_API_KEY_FILE` | A file holding the key. On the local stack: `.dev/secrets/model-api-key` |
 | `THERMITE_MODEL_CONTEXT_WINDOW` | The model's context per request. `0` means unknown |
 | `THERMITE_MODEL_COMPACT_AT` | The share of the window, in percent (50 to 95), at which an agent's conversation is compacted. Unset: 80 |
-| `THERMITE_MODEL_MAX_TOKENS` | The longest reply, thinking included. Default `8192` |
+| `THERMITE_MODEL_MAX_TOKENS` | The longest reply, thinking included. Default: none sent, so the provider's own limit applies (Anthropic's API gets 32,000). A model from control takes the model's maximum output from the provider's list |
 | `THERMITE_MODEL_REASONING_EFFORT` | `none`, `low`, `medium` or `high`. Unset: nothing is sent |
 | `THERMITE_MODEL_API` | `openai` (the default), `anthropic`, `opencode`, `claude` or `chatgpt` |
 | `THERMITE_AGENT_HARNESS` | `pi` (the default), `opencode`, `claude-code` or `codex` |

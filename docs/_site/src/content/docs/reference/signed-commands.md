@@ -129,6 +129,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `redirect` | None: on the dashboard, rules come from **Tell the planner**, a `message_agent` to the planner, which makes them | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
+| `drain_rig` | **Update to these images** on the page of a rig at work set up on a cluster, and **Call the update off**; control issues it as the caller | No | `update_rig_images` | `update_rig_images` | No | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
 | `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
@@ -169,6 +170,7 @@ Starts a run of a campaign on the rig. On a [rig launched on RunPod](rest-api.md
 | `imports` | list of [imports](#imports) | `[]` | What the rig must take in first: the project, the kit, models |
 | `agents` | boolean | worker agents run | `false`: a judge-only run |
 | `promotion` | `auto` or `owner_approval` | the rig's own setting | The run's promotion rule |
+| `ask_owner` | `{above_gain?, declared_flaws?, reviews?, not_possible?}` | nothing: hands-off | What else the run asks the owner about. `above_gain`, a fraction above 0, at most 100: a confirmed gain above it waits for the owner (0.15 is 15%); `declared_flaws`, `true`: a win whose worker declared flaws waits; `reviews`, `true`: a review panel's pass waits for the owner's acceptance; `not_possible`, `true`: a "not possible" proposal waits. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md#choose-what-waits) |
 | `queue` | up to 500 experiments, each as below | none | Experiments to start the new run's [experiment queue](#queue_add) with, in order: usually another run's untried ones |
 | `briefing` | up to 200 items, each as below | none | Background from past research for every agent's brief, in order: findings, claims, notes and reports from [the knowledge base](knowledge-base.md#briefings) |
 | `mcp_servers` | the kit's [`mcp_servers`](kit-manifest.md#mcp-servers) list | none | The MCP servers the run's kit names (a research contract's, for a research run), with the agents that get each. Control fills it in from a kit it keeps, from the page's reading of a kit in a repository, or from a research contract, and refuses a server **Settings** lacks. The harness refuses the run when it differs from what the kit names. Control gives the rig only the servers its runs name. For a research run, leave it out: control takes the contract's list, and refuses another with `The assignment names the MCP servers <list>, and the contract names <list>. Leave mcp_servers out: control takes the contract's.` |
@@ -299,9 +301,9 @@ The dashboard calls directives **rules**. It sends no `redirect`: on a run's **P
 | `run` | lowercase id | The run |
 | `reseed_commit` | commit | Accepted by the schema, but the harness refuses it: `re-seeding lanes is not available in this version; reset without it` |
 
-The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. The experiment each ended trial was on ends with the result `interrupted`, and a copy of it goes to the top of the run's queue, with the same author and the reason `tried again: its trial on <lane> was interrupted (<old id>)`, followed by the old reason. The copy's `experiment_added` event also has `requeued_from`: `{experiment, trial, lane, result}`, the experiment it repeats, its trial, the lane and `interrupted`. Result: `{"run", "reset": true}`.
+The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. The experiment each ended trial was on goes back to the top of the run's queue, the same experiment with its author and its why, and counts the return (`returns`) with its cause; its `experiment_returned` event has `{id, lane, trial, result: "interrupted", cause, returns, position: "top"}`. Result: `{"run", "reset": true}`.
 
-The run page's **History** says "You restarted the lanes: their trials ended, and every lane starts again from the champion." (with the issuer's name in place of "You" for the agent's token), and, for each copy, `<author>'s experiment "<title>" went back in the queue: its trial was interrupted.`, such as "The planner's experiment …" or "Your experiment …". The dashboard offers **Restart the lanes** only on a running run with agents: a run without agents (a try, a rig check) has no lanes.
+The run page's **History** says "You restarted the lanes: their trials ended, and every lane starts again from the champion." (with the issuer's name in place of "You" for the agent's token), and, for each experiment, `"<title>" went back to the top of the queue: its trial on <lane> was interrupted (<cause>).` The dashboard offers **Restart the lanes** only on a running run with agents: a run without agents (a try, a rig check) has no lanes.
 
 ### `message_agent`
 
@@ -507,6 +509,17 @@ The supervisor takes the patch from the [results repository](../how-to/operate/r
 
 The harness writes an export to its outbox for the supervisor to push. Result: `{"export", "export_id", "through_event", "attempts", "events"}`.
 
+### `drain_rig`
+
+Only control issues it, before it moves a rig at work onto new images (**Update to these images**, or [`update_rig_images`](mcp-tools.md#update_rig_images)), and to call the update off.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `drain` | boolean | `true`: the rig drains; `false`: the drain ends |
+| `reason` | text, 1 to 500 characters, optional | Why, as the event records it |
+
+While a rig drains, its harness starts no new trial, plan or judge job, and those running end as they would. Its report's `work` says what still runs, `{trials, judge_jobs, draining}`, and control restarts its pods once nothing does. A drain lasts until the harness restarts, which ends it. The event `rig_drain` records each change with the same figures. Result: `{"trials", "judge_jobs", "draining"}`.
+
 ### `wipe_state`
 
 Only control's full reset issues it, as the owner who asked for the reset, after the owner confirmed the wipe. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
@@ -552,7 +565,7 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 | `teachers` | boolean | The teachers, and their merged by model, run in the supervisor, where configured |
 | `review` | boolean | The review panel runs in the supervisor, where configured |
 | `exports` | boolean | Hourly exports for the supervisor to push |
-| `trial_minutes` | 1 to 10080 | A trial's length when its contract sets none |
+| `trial_minutes` | 1 to 1440, or `null` | A trial's length when its contract sets none. `null`: none |
 | `max_turns` | 1 to 100000, or `null` | A limit on each trial's model turns. `null`: no limit |
 | `promotion` | `auto` or `owner_approval` | The rig's promotion rule, for runs that set none |
 | `judge_gpus` | 1 to 8, or `null` | On a rig given its set of GPUs, how many are the judge's. `null`: the rig's default. A change restarts the harness to regroup the cards |

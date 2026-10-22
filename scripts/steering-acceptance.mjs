@@ -271,36 +271,27 @@ try {
       afterBlock.attempts.find((a) => a.id === blocked.attempt)?.lifecycle === "audit_blocked",
     afterBlock.audits,
   );
-  // A win far above the absolute trigger: a clear still sends it to the owner, who approves.
-  const approveWhenCleared = async (rig, attempt) => {
-    await until(
-      `${attempt} cleared and waiting for the owner`,
+  // A win far above the absolute trigger: the auditor's clear is the last step, and it is
+  // promoted with no owner step (goal 079: hands-off by default).
+  const promotedWhenCleared = async (rig, attempt) =>
+    until(
+      `${attempt} cleared and promoted`,
       async () => {
         const i = await runOf(rig);
         return i?.audits?.some((a) => a.attempt === attempt && a.decision === "clear") &&
-          i.pending_promotions.includes(attempt)
+          i.champion.some((c) => c.attempt === attempt)
           ? i
           : undefined;
       },
       1_200_000,
       3000,
     );
-    await command("approve_promotion", { run: "smoke-1", attempt }, rig);
-    return until(
-      `${attempt} promoted`,
-      async () => {
-        const i = await runOf(rig);
-        return i?.champion.some((c) => c.attempt === attempt) ? i : undefined;
-      },
-      300_000,
-      3000,
-    );
-  };
   const clean = submitTo("harness", candidatePatch(env, good), "good kernel");
-  const promoted = await approveWhenCleared("local-1", clean.attempt);
+  const promoted = await promotedWhenCleared("local-1", clean.attempt);
   check(
-    "a cleared audit of a large gain goes to the owner, whose approval promotes it",
-    promoted.audits.some((a) => a.attempt === clean.attempt && a.decision === "clear"),
+    "a cleared audit of a large gain promotes it, with no owner step",
+    promoted.audits.some((a) => a.attempt === clean.attempt && a.decision === "clear") &&
+      !promoted.pending_promotions.includes(clean.attempt),
     promoted.audits,
   );
 
@@ -335,7 +326,7 @@ try {
     600_000,
     3000,
   );
-  await approveWhenCleared("local-2", received.attempt);
+  await promotedWhenCleared("local-2", received.attempt);
   const accepted = await until(
     "local-2 judged the propagated champion",
     async () =>

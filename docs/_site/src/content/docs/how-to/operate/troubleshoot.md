@@ -243,7 +243,19 @@ Two causes are common on a laptop:
 
 - **You see:** the harness's log says `agents wait for a model route`, and no trials start. Or the **New campaign** page won't start the run: `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".` On a campaign's page, **Start a run** says **Not started.** and `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
 - **Why:** the rig has no model yet. A run without agents (**Agents**: **Off: a try**) needs none.
-- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers**, or under **The agents' model** on the **New campaign** page or in the **Start a run** panel. The rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** starts nothing. Each says so and points to **Settings › Providers**, which shows the rig taking the model until it has it, for example `rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.` [When the rig doesn't have the model yet](../campaigns/start-from-dashboard.md#when-the-rig-doesnt-have-the-model-yet) says how to start the run then. If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
+- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers**, or under **The agents' model** on the **New campaign** page or in the **Start a run** panel. The rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** starts nothing. Each says so and points to **Settings › Providers**, which shows the rig taking the model until it has it, for example `rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.` [When the rig doesn't have the model yet](../campaigns/start-from-dashboard.md#when-the-rig-doesnt-have-the-model-yet) says how to start the run then. If the rig's model check fails, no trial starts either: see [The agents stopped: the provider refuses](#the-agents-stopped-the-provider-refuses).
+
+### The agents stopped: the provider refuses
+
+- **You see:** under **Needs you**, an **Agents stopped** card: `The model provider refuses: no credits left at the provider` (or `the provider refuses the key`, `the provider does not serve this model on this key`, or `The model check of the workers' model fails`), with the provider's own words, such as `404 insufficient_credits_for_paid_model`. The run's **History** says `The agents stopped: no credits left at the provider (…). No trial starts until a model check passes.` No trial or plan starts. A research run's clock stops.
+- **Why:** a trial got that answer from the model provider, or the workers' model check failed. Trying again would get the same answer, so the run's agents stop, instead of starting trial after trial that dies the same way. The judge goes on with the changes it has.
+- **Do:** fix the cause: add credits at the provider; check the provider's key in **Settings › Providers**; or give the rig another model on **Edit rig**. Thermite checks the model again after a minute, then less often, at most every 30 minutes. Press **Check the model now** on the card to check at once, or resume the run. Once a check passes, or the rig has another model, the agents go on: **History** says `The agents go on: a model check passed.`, and the card goes away.
+
+### Trials wait for the provider
+
+- **You see:** in a trial's **Live**, `waiting until 03:14:20 UTC: the provider's rate limit (429 Rate limit reached …). The trial goes on in the same conversation.`, or `the provider failed for now (503 Service Unavailable)`. The run's **History** may say `The agents wait for the provider's limit until 2026-10-22 03:14 UTC (…)`.
+- **Why:** the provider asked for a pause (a rate limit), or failed for now (an outage). The trial waits for the time the provider gives (its `Retry-After`, its rate-limit reset headers, or its words), or a growing pause when it gives none, and then goes on where it was. No new trial starts on the rig until a rate limit's time. Nothing ends the trial for this unless the campaign sets `lanes.limits.failures_in_a_row` ([Limits and pacing](../../reference/limits-and-pacing.md#the-model-provider)).
+- **Do:** nothing. If it happens all the time, the provider's limits are too low for the rig's workers: lower **Workers at a time** on **Edit rig**, or raise the provider's limits.
 
 ### A research campaign's trials all end in errors
 
@@ -263,7 +275,7 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 ### A trial stopped without a "trial ended" line
 
 - **You see:** in a run's **Live**, a lane's trial started, but no "trial ended" line follows it. The lane's next trial may already have started.
-- **Why:** the rig's harness restarted while the trial ran, for example after **Restart them**, **Update to these images**, a restart with your compose tool, or a crash. A restart stops the running trials. When the harness starts again, it closes them as `interrupted`, without a "trial ended" line. Control shows a trial as working only while the rig says it is at work, or for 15 minutes after its last line.
+- **Why:** the rig's harness restarted while the trial ran, for example after **Restart them**, **Update now, without waiting**, a restart with your compose tool, or a crash. (**Update to these images** waits for the running trials to end first.) A restart stops the running trials. When the harness starts again, it closes them as `interrupted`, with the turns and tokens their workers last reported, without a "trial ended" line. Control shows a trial as working only while the rig says it is at work, or for 15 minutes after its last line.
 - **Do:** nothing. The lane goes on with a new trial, and a change the trial had already submitted stands. The trial's experiment goes back to the top of the queue: see [An experiment came back at the top of the queue](#an-experiment-came-back-at-the-top-of-the-queue).
 
 ### A trial's conversation was compacted
@@ -310,14 +322,14 @@ A reason about one experiment names its state, then the rule: `only queued exper
 
 ### An experiment came back at the top of the queue
 
-- **You see:** an experiment that a lane already worked on is first under **Up next** again. Its reason starts with `tried again: its trial on lane-2 was interrupted` or `… failed`, and the old experiment's id. The run's **History** says, for example, `Your experiment "…" went back in the queue: its trial was interrupted.`
-- **Why:** when a trial ends because it was interrupted, by **Pause**, **Restart the lanes** or a restart of the harness, or because of an error, its experiment was not really tried. It is marked as done, and a copy goes to the top of the queue, with the same author.
-- **Do:** nothing, or press **Drop** on it if it should not be tried again. A trial that ended for another reason, such as its time running out, doesn't come back.
+- **You see:** an experiment that a lane already worked on is first under **Up next** again, with `Came back once: its trial never really tried it` and why. The run's **History** says, for example, `"…" went back to the top of the queue: its trial on lane-2 was interrupted (its trial was stopped).` or `… ended on the provider's error (503 Service Unavailable).`
+- **Why:** when a trial ends because it was interrupted, by **Pause**, **Restart the lanes** or a restart of the harness, or on the model provider's error (a rate limit, an outage, no credits, a refused key), its experiment was not really tried. It goes back to the top of the queue, with how many times and why.
+- **Do:** nothing, or press **Drop** on it if it should not be tried again. It is the same experiment, not a copy: the queue does not fill up with repeats. A trial that ended for another reason, such as its time running out or a memory limit, doesn't come back: the experiment is tried, and **Tried** says how its trial ended.
 
 ### History says a round followed the fixed rules
 
 - **You see:** in a run's **History**, a round's line says why the planner's model didn't plan it, such as `The planner planned round 3 (by the fixed rules: no model): lane-1 on loop-tiling.` The words in brackets name the cause:
-  - `(by the fixed rules: the model gave no usable plan, because …)`: in two tries, the model didn't answer or gave a plan that code refused. After `because` comes the problem, or, when there were several, each with its try: `try 1: …; try 2: …`;
+  - `(by the fixed rules: the model gave no usable plan, because …)`: in two tries, the model gave no plan, or a plan that code refused. After `because` comes each try's cause in words, with its detail: `it answered in text without a plan`, `its reply was cut off at the output limit`, `the provider failed` (with the provider's words), `it ran out of time`, `it was cancelled`, or `the plan was refused` (with each rule it broke), such as `try 1: its reply was cut off at the output limit (…); try 2: the plan was refused (…)`;
   - `(by the fixed rules: no model)`: the rig has no model for the planner, of its own or the workers';
   - `(by the fixed rules: the planner is off on this rig (Edit rig))`: the **Planner** switch is off on **Edit rig**.
 

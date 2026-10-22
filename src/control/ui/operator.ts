@@ -55,7 +55,16 @@ export interface Forms {
 
 /** Something that waits for the owner. */
 export interface Need {
-  kind: "promotion" | "audit" | "blocked" | "key" | "reset" | "review" | "conclusion" | "stale";
+  kind:
+    | "promotion"
+    | "audit"
+    | "blocked"
+    | "key"
+    | "reset"
+    | "agents"
+    | "review"
+    | "conclusion"
+    | "stale";
   rig: string;
   run?: string | undefined;
   attempt?: string | undefined;
@@ -268,6 +277,18 @@ const CHAMPION_IS =
 const REJECT_DOES =
   "The change does not become the champion. The record shows that you rejected it. The agents continue from the current champion.";
 
+/**
+ * Why a change waits for you (goal 079: only where the run asks, or the auditor sent it). The
+ * reason comes from the harness; one from before goal 079 may be missing.
+ */
+const waitWhy = (reason: string | null | undefined, max?: number) => {
+  if (!reason) return "This run asks you to decide every change. This is its promotion rule.";
+  const r = esc(max ? clip(reason, max) : reason);
+  return /^the auditor/i.test(reason)
+    ? `The auditor sent this change to you: ${r}.`
+    : `It waits for you because ${r}.`;
+};
+
 /** Why a change waits for an audit, in plain words. */
 const auditWhy = (reason: string, a: AttemptView | undefined) => {
   const n = a?.known_flaws.length ?? 0;
@@ -423,9 +444,7 @@ export function needs(
             kind: "Your decision",
             question: "Make this change the new champion?",
             headline: changeHeadline(r, a, id),
-            why: w?.reason
-              ? `The auditor sent this change to you: ${esc(clip(w.reason, 160))}`
-              : "This rig changes its champion only after you agree",
+            why: waitWhy(w?.reason, 160),
             chips: changeChips(r, a),
             key: `promote-${u.id}-${r.id}-${id}`,
             u,
@@ -433,7 +452,7 @@ export function needs(
             lane: a?.lane,
             since: w?.at ?? a?.updated_at,
             now,
-            facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${w?.reason ? `The auditor sent this change to you: ${esc(w.reason)}` : "This rig changes its champion only after you agree. This is its promotion rule."}</dd>`,
+            facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${waitWhy(w?.reason)}</dd>`,
             choices: [
               {
                 button: f.cmd({
@@ -471,10 +490,14 @@ export function needs(
           }),
         });
       }
-      for (const au of r.audits.filter((x) => x.decision === null || x.decision === "block")) {
+      // An audit the rig's auditor will decide needs nothing from you (goal 079): only a block
+      // does, or an audit held on a rig with no auditor that has not been let go yet.
+      const advisors = hasAdvisors(u);
+      for (const au of r.audits.filter(
+        (x) => x.decision === "block" || (x.decision === null && !advisors),
+      )) {
         const a = find(au.attempt);
         const blocked = au.decision === "block";
-        const advisors = hasAdvisors(u);
         out.push({
           kind: blocked ? "blocked" : "audit",
           rig: u.id,
@@ -605,6 +628,56 @@ export function needs(
           }),
         });
       }
+      // The run's agents stopped on the provider's refusal or a failing model check (goal 079):
+      // a real failure, not a decision; it ends by itself once a model check passes.
+      const stop = r.agents_stopped;
+      if (stop && r.status !== "closed") {
+        const check = stop.kind === "check";
+        out.push({
+          kind: "agents",
+          rig: u.id,
+          run: r.id,
+          at: stop.since,
+          ...card({
+            tone: "bad",
+            ic: icon.warn,
+            kind: "Agents stopped",
+            question: "The agents of this run cannot work",
+            headline: check
+              ? "The model check of the workers' model fails"
+              : `The model provider refuses: ${esc(stop.said)}`,
+            why: `No trial or plan starts until a model check passes. The provider said: ${esc(stop.words.slice(0, 200))}`,
+            key: `agents-${u.id}-${r.id}`,
+            u,
+            r,
+            since: stop.since,
+            now,
+            facts: `<dt>What</dt><dd>${check ? "The workers' model failed its check." : `A ${esc(stop.by)} found that ${esc(stop.said)}.`} No new trial or plan starts. Trials in progress end as they would. The judge goes on with the changes it has. A research run's clock stops.</dd>
+<dt>The provider's words</dt><dd><code>${esc(stop.words)}</code></dd>
+<dt>Check</dt><dd>${stop.kind === "credits" ? "Add credits at the provider, or give the rig another model on Edit rig." : stop.kind === "auth" ? "The provider's key in Settings › Providers: it may be wrong, expired or revoked." : stop.kind === "route" ? "The model's name, and whether this key may use it, in Settings › Providers; or give the rig another model on Edit rig." : "The check's result on the rig's page, and the provider in Settings › Providers."}</dd>
+<dt>When it ends</dt><dd>Thermite checks the model again after a minute, then less often (at most every 30 minutes). The agents go on once a check passes, or when the rig gets another model.</dd>`,
+            choices: [
+              {
+                button: f.cmd({
+                  rig: u.id,
+                  kind: "rig_check",
+                  fields: { check: "model" },
+                  label: "Check the model now",
+                  cls: "primary",
+                  back,
+                }),
+                label: "Check the model now",
+                does: "The rig checks its workers' model at once. If the check passes, the agents go on.",
+              },
+              {
+                button: `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Edit rig</a>`,
+                label: "Edit rig",
+                does: "Give the rig's agents another model. A new model ends the stop at once.",
+              },
+            ],
+          }),
+        });
+      }
       for (const k of r.conclusions.filter((x) => x.decision === null)) {
         out.push({
           kind: "conclusion",
@@ -730,7 +803,17 @@ export function needs(
       }),
     });
   }
-  const order = ["key", "reset", "promotion", "audit", "blocked", "review", "conclusion", "stale"];
+  const order = [
+    "key",
+    "reset",
+    "agents",
+    "promotion",
+    "audit",
+    "blocked",
+    "review",
+    "conclusion",
+    "stale",
+  ];
   return out.sort(
     (a, b) =>
       order.indexOf(a.kind) - order.indexOf(b.kind) ||
@@ -738,11 +821,16 @@ export function needs(
   );
 }
 
-/** How many of the owner's decisions a run waits on. */
-export function waitingOn(r: RunView): number {
+/**
+ * How many of the owner's decisions a run waits on. With its rig: an audit that the rig's
+ * auditor will decide is not one of them (goal 079).
+ */
+export function waitingOn(r: RunView, u?: RigView): number {
+  const auditor = u ? hasAdvisors(u) : false;
   return (
     r.pending_promotions.length +
-    r.audits.filter((x) => x.decision === null || x.decision === "block").length +
+    (r.agents_stopped && r.status !== "closed" ? 1 : 0) +
+    r.audits.filter((x) => x.decision === "block" || (x.decision === null && !auditor)).length +
     r.reviews.filter((x) => x.panel === "review_passed" && !x.owner).length +
     r.conclusions.filter((x) => x.decision === null).length
   );
@@ -934,7 +1022,7 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
       : r.status === "paused"
         ? ["Paused", "warn"]
         : [cap(r.status), ""];
-  const n = waitingOn(r);
+  const n = waitingOn(r, u);
   const last = r.attempts
     .map((a) => a.updated_at)
     .sort()

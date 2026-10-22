@@ -78,7 +78,8 @@ export async function spawnTrial(
         ...(route ? modelEnv(route) : {}),
         THERMITE_HARNESS_URL: `http://127.0.0.1:${apiPort}`,
       },
-      timeoutMs: spec.wallMs + 120_000,
+      // The trial's own length, when it has one, and two minutes to hand its result over.
+      ...(spec.wallMs !== undefined ? { timeoutMs: spec.wallMs + 120_000 } : {}),
       rssLimitBytes: 2 * 1024 * 1024 * 1024,
       // The contract's process limit for the lane's users; without it, the broker's default.
       ...(spec.limits ? { nproc: spec.limits.processes } : {}),

@@ -218,6 +218,8 @@ describe("Start a run over REST (goal 029)", () => {
       ["rig", "rig-a"],
       ["agents", "on"],
       ["promotion", "owner_approval"],
+      ["ask_above_gain", "15"],
+      ["ask_declared_flaws", "1"],
       ["copy_queue", "1"],
       ["copy_from", "rig-a/gs-3"],
       ["past", String(s.exp.id)],
@@ -229,6 +231,7 @@ describe("Start a run over REST (goal 029)", () => {
     const r = await s.rest("gemv-speed", {
       rig: "rig-a",
       promotion: "owner_approval",
+      ask_owner: { above_gain: 0.15, declared_flaws: true },
       queue_from: { rig: "rig-a", run: "gs-3" },
       past: [s.exp.id, s.finding.id],
     });
@@ -268,12 +271,27 @@ describe("Start a run over REST (goal 029)", () => {
       },
     ]);
     assert.equal(fromApi.promotion, "owner_approval");
+    // Ask me first (goal 079): the same switches from the panel and over REST.
+    assert.deepEqual(fromApi.ask_owner, { above_gain: 0.15, declared_flaws: true });
+    // A percent that is not one is refused in words, and nothing is sent.
+    const sent = s.assigned().length;
+    const bad = await s.form("gemv-speed", [
+      ["rig", "rig-a"],
+      ["ask_above_gain", "lots"],
+    ]);
+    assert.match(
+      decodeURIComponent(String(bad.headers.get("location"))),
+      /Ask me first: "lots" is not a percent/,
+    );
+    assert.equal(s.assigned().length, sent);
     // A try: no agents, nothing copied, the run named as a try.
     const tried = await s.rest("gemv-speed", { rig: "rig-a", agents: false });
     assert.equal(tried.status, 201);
     assert.match(String((await json<{ run: string }>(tried)).run), /^gemv-speed-try-\d+$/);
     assert.equal(s.assigned().at(-1)?.payload.agents, false);
     assert.equal(s.assigned().at(-1)?.payload.queue, undefined);
+    // Nothing asked: no ask_owner is sent (hands-off by default).
+    assert.equal(s.assigned().at(-1)?.payload.ask_owner, undefined);
   });
 
   test("refusals in words, as Start a run gives them; nothing is sent", async () => {

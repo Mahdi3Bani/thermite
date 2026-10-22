@@ -10,6 +10,7 @@ export interface RunStartOptions {
   provider?: string | undefined;
   model?: string | undefined;
   promotion?: string | undefined;
+  ask?: string[] | undefined;
   "judge-gpus"?: string | undefined;
   "queue-from"?: string | undefined;
   past?: string[] | undefined;
@@ -22,6 +23,27 @@ const whole = (flag: string, text: string): number => {
   return n;
 };
 
+/**
+ * `--ask`, given once for each (goal 079): what else the run asks the owner about. `gain:PERCENT`
+ * a confirmed gain above it, `flaws` a win with declared flaws, `reviews` a review panel's pass,
+ * `not-possible` a "not possible" ending. Throws, in words, on another value.
+ */
+export function askOwnerOption(
+  values: string[] | undefined,
+): Record<string, number | boolean> | undefined {
+  if (!values?.length) return undefined;
+  const out: Record<string, number | boolean> = {};
+  for (const v of values) {
+    const gain = /^gain:(\d+(?:\.\d+)?)%?$/.exec(v);
+    if (gain && Number(gain[1]) > 0) out.above_gain = Number(gain[1]) / 100;
+    else if (v === "flaws") out.declared_flaws = true;
+    else if (v === "reviews") out.reviews = true;
+    else if (v === "not-possible") out.not_possible = true;
+    else throw new Error("--ask is gain:PERCENT, flaws, reviews or not-possible");
+  }
+  return out;
+}
+
 /** The body of POST /v1/campaigns/<name>/runs. Throws, in words, on an option it can't take. */
 export function runStartBody(o: RunStartOptions): Record<string, unknown> {
   if (!o.rig) throw new Error("--rig names the rig the run starts on");
@@ -33,6 +55,7 @@ export function runStartBody(o: RunStartOptions): Record<string, unknown> {
     throw new Error(
       "--provider and --model go together: the agents' model is one of a provider's models",
     );
+  const ask = askOwnerOption(o.ask);
   let queueFrom: { rig: string; run: string } | undefined;
   const from = o["queue-from"];
   if (from !== undefined) {
@@ -48,6 +71,7 @@ export function runStartBody(o: RunStartOptions): Record<string, unknown> {
     ...(o.agents === "off" ? { agents: false } : {}),
     ...(o.provider && o.model ? { agents_model: { provider: o.provider, model: o.model } } : {}),
     ...(o.promotion ? { promotion: o.promotion === "owner" ? "owner_approval" : "auto" } : {}),
+    ...(ask ? { ask_owner: ask } : {}),
     ...(o["judge-gpus"] !== undefined
       ? { judge_gpus: whole("--judge-gpus", o["judge-gpus"]) }
       : {}),

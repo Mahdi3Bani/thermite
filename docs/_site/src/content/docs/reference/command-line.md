@@ -47,6 +47,7 @@ usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
+         [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
          [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
@@ -127,6 +128,7 @@ usage: thermite <command> [options]
   runpod cancel-reset RIG --control URL --token-file F
                                       cancel the rig's full reset before its wipe (owner's token)
   run start CAMPAIGN --rig R [--agents off] [--provider P --model M] [--promotion auto|owner]
+         [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--judge-gpus N] [--queue-from [RIG/]RUN] [--past ID ...] --control URL --token-file F
                                       start a run of a campaign control keeps (owner's token), as
                                       Start a run on the campaign's page does, with its checks and
@@ -314,6 +316,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--direction D` | No | | The old name of `--note`. It still works in v0.1.0, and prints `--direction is now --note: a direction is now a named line of experiments` on standard error. With `--note` as well, the command stops: `--direction is the old name of --note: give only --note` (exit 2) |
 | `--agents on\|off` | No | `on` | `off` starts a judge-only run: no worker agents, the judge still works |
 | `--promotion auto\|owner` | No | The rig's own setting | The run's promotion rule. `owner` is sent as `owner_approval`: every confirmed win waits for the owner |
+| `--ask WHAT` | No, repeatable | Nothing: the run is hands-off | What else the run asks the owner about, sent as the command's `ask_owner`: `gain:PERCENT`, a confirmed gain above it (`gain:15` is 15%); `flaws`, a win whose worker declared flaws; `reviews`, a review panel's pass of a goal; `not-possible`, a "not possible" ending of a goal campaign. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) |
 | `--queue-from [RIG/]RUN` | No | Off: the new run's queue starts empty | A past run whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). `RUN` alone is a run on `--rig`; `RIG/RUN` names its rig. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
 | `--mcp-servers JSON\|@file` | When the kit names MCP servers | None | The MCP servers the kit's `kit.json` names, as it names them ([`mcp_servers`](kit-manifest.md#mcp-servers)): the JSON list itself, or `@` and a file that holds it. Sent as the command's `mcp_servers`. Control refuses a server **Settings** lacks, and the rig refuses the run when the list differs from `kit.json`'s. A research contract's own `mcp_servers` are sent without it |
 | `--context-window TOKENS` | No | The contract's | The campaign's own context window for the run's agents: the contract's [`agents_context.context_window`](contract.md#agents-context), over the file's. 4,096 to 100,000,000. Each agent works with the lower of it and its own window. The contract sent, and its hash, change with it |
@@ -366,6 +369,7 @@ Sent, it prints control's answer on one line, such as `{"id":"<command id>","sta
 | `--model <arg>: expected NAME=URL for a model the contract lists` | No `=`, or a name the contract's `models` does not list |
 | `--agents is on or off` | Another value |
 | `--promotion is auto or owner` | Another value |
+| `--ask is gain:PERCENT, flaws, reviews or not-possible` | Another value |
 | `a run without agents has no queue: leave out --queue-from` | `--queue-from` with `--agents off`. The harness refuses such a payload the same way |
 | `--queue-from reads the past run from control: give --control and --token-file` | `--queue-from` without either |
 | `--queue-from RUN is a run on --rig: give --rig, or RIG/RUN` | `--queue-from` with a run alone and no `--rig` |
@@ -541,13 +545,14 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `--agents on\|off` | No | `on` | `off`: a try, with no agents. The judge measures the starting code on every case once |
 | `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first, with the harness the model needs (the rig's own when control gave it this model already). When the rig does not run `M` yet, the run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model. When the rig runs `M` already, the run starts |
 | `--promotion auto\|owner` | No | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
+| `--ask WHAT` | No, repeatable | nothing | **Ask me first about**: `gain:PERCENT`, `flaws`, `reviews` or `not-possible`, as for `assign` |
 | `--judge-gpus N` | No | the rig's current split | For a rig with several GPUs: how many the judge measures on. The rig's harness restarts to apply a new split |
 | `--queue-from [RIG/]RUN` | No | | Another run of this campaign, on `--rig` unless `RIG/` is given: its untried experiments start the new run's queue |
 | `--past ID` | No | | An item of Thermite's knowledge base, by the id MCP's `kb_search` gives; give it again for more. Experiments join the queue; findings, claims, notes and reports go to every agent's brief |
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
 
-Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too. With `--agents off`, control refuses `--provider`, `--queue-from` and `--past`: `-> 400 {"error":"A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents."}`.
+Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--ask is gain:PERCENT, flaws, reviews or not-possible`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too. With `--agents off`, control refuses `--provider`, `--queue-from` and `--past`: `-> 400 {"error":"A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents."}`.
 
 ### `campaign copy`
 

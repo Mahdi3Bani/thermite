@@ -102,6 +102,16 @@ export function listText(xs: string[]): string {
   return `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`;
 }
 
+/** Why a planner's try gave no plan, as the harness records it (goal 079). */
+const PLAN_CAUSE_WORDS: Record<string, string> = {
+  timeout: "it ran out of time",
+  text_only: "it answered in text without a plan",
+  cut_off: "its reply was cut off at the output limit",
+  provider_error: "the provider failed",
+  cancelled: "it was cancelled",
+  invalid: "the plan was refused",
+};
+
 export interface Sentence {
   text: string;
   tone: "" | "ok" | "warn" | "bad";
@@ -167,8 +177,18 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         ? (b.assignments as { lane?: string; family?: string }[])
         : [];
       const round = Number.isFinite(Number(b.n)) ? `round ${String(b.n)}` : "a round";
-      // Why each try's plan was refused ("try 2: …"): one try's reason alone, else each in turn.
-      const refused = Array.isArray(b.refused) ? b.refused.map(String) : [];
+      // Why each try gave no plan: its real cause (goal 079), else ("try 2: …") its refusal.
+      const causes = Array.isArray(b.causes)
+        ? (b.causes as { try?: unknown; cause?: unknown; detail?: unknown }[]).map(
+            (c) =>
+              `try ${String(c.try)}: ${PLAN_CAUSE_WORDS[String(c.cause)] ?? String(c.cause)}${c.detail ? ` (${clip(String(c.detail), 160)})` : ""}`,
+          )
+        : [];
+      const refused = causes.length
+        ? causes
+        : Array.isArray(b.refused)
+          ? b.refused.map(String)
+          : [];
       const because =
         refused.length === 1 ? String(refused[0]).replace(/^try \d+: /, "") : refused.join("; ");
       // A research run plans its rounds with a fixed method on purpose: not a refused plan.
@@ -311,10 +331,19 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         run: att(e.subject)?.run,
       });
     case "flaws_accepted":
-      return s(`You accepted ${e.subject}'s declared flaws.`, "", {
-        attempt: String(e.subject),
-        run: att(e.subject)?.run,
-      });
+      return s(
+        b.by
+          ? `${e.subject}'s declared flaws were accepted with its promotion: ${String(b.by)}.`
+          : `You accepted ${e.subject}'s declared flaws.`,
+        "",
+        { attempt: String(e.subject), run: att(e.subject)?.run },
+      );
+    case "audit_skipped":
+      return s(
+        `${e.subject} had no audit: ${String(b.why ?? "this rig has no auditor")} (one was called for: ${auditReason(String(b.reason ?? ""))}).`,
+        "",
+        { attempt: String(e.subject), run: String(b.run ?? "") },
+      );
     case "goal_report": {
       const gs = Array.isArray(b.goals) ? (b.goals as { status?: string }[]) : [];
       const met = gs.filter((g) => g.status === "met").length;
@@ -475,6 +504,13 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         { run: String(e.subject) },
       );
     }
+    // Its trial never really tried it (goal 079): the same experiment, back at the top.
+    case "experiment_returned":
+      return s(
+        `"${clip(title(e.subject, b.id), 120)}" went back to the top of the queue: its trial${b.lane ? ` on ${String(b.lane)}` : ""} ${b.result === "interrupted" ? "was interrupted" : "ended on the provider's error"} (${clip(String(b.cause ?? ""), 200)}).`,
+        "",
+        { run: String(e.subject) },
+      );
     case "experiment_accepted":
     case "experiment_moved":
     case "experiment_edited":
@@ -545,6 +581,25 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     case "rig_check_started":
       return s(
         `The ${checkName(String(b.check ?? ""))} check started${b.force ? " (forced)" : ""}.`,
+      );
+    // The model provider decides when agents can work (goal 079).
+    case "agents_stopped":
+      return s(
+        `The agents stopped: ${String(b.said ?? b.kind ?? "the provider refuses")} (${clip(String(b.words ?? ""), 200)}). No trial starts until a model check passes.`,
+        "bad",
+        { run: String(e.subject) },
+      );
+    case "agents_resumed":
+      return s(`The agents go on: ${String(b.why ?? "a model check passed")}.`, "ok", {
+        run: String(e.subject),
+      });
+    case "agents_wait_for_limit":
+      return s(
+        `The agents wait for the provider's limit until ${String(b.until ?? "?")
+          .replace("T", " ")
+          .slice(0, 16)} UTC${b.reason ? ` (${clip(String(b.reason), 160)})` : ""}.`,
+        "warn",
+        { run: String(e.subject) },
       );
     case "model_route_set":
       return s(

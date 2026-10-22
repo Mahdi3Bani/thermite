@@ -62,7 +62,7 @@ When a limit is reached, no new trial starts. The trials that are running go on 
 
 The run's state is **Paused**, and its **History** says, for example, `Run sort-speed-1 paused: the wall-time budget is spent.` Its queued judge jobs wait too. Nothing is lost: the champion and every verdict stay.
 
-A research campaign ends by its own time instead: after `max_duration` of running time, or `min_duration` when there is no `max_duration`, it writes its final report and closes with `the research window is over`.
+A research campaign ends by its own time instead: after `max_duration` of running time it writes its final report and closes with `the research window is over`. Without `max_duration` it runs until you stop it: `min_duration` is a floor, never a stop. Time its agents could not work, stopped by the model provider or waiting for its rate limit, does not count.
 
 ## Go on after a limit
 

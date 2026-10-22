@@ -92,7 +92,19 @@ class InfraError extends Error {}
 interface Finish {
   result: unknown;
   verdict?: Parameters<Ledger["recordVerdict"]>[0] | undefined;
-  promote?: { run: string; expectedSeq: number; attempt: string; commitSha: string } | undefined;
+  promote?:
+    | {
+        run: string;
+        expectedSeq: number;
+        attempt: string;
+        commitSha: string;
+        /**
+         * Declared flaws accepted by this step (goal 079: hands-off by default): who accepts
+         * them, as the record says. Set only when nothing asks the owner.
+         */
+        clearFlaws?: string | undefined;
+      }
+    | undefined;
   events?: { kind: string; subject: string; body: unknown }[] | undefined;
   enqueue?: Parameters<Ledger["enqueueJob"]>[0] | undefined;
   lifecycle?: string | undefined;
@@ -230,12 +242,39 @@ export class Judge {
       for (const e of fin.events ?? [])
         this.ledger.appendEvent(this.o.owner, e.kind, e.subject, e.body);
       if (fin.promote) {
-        const r = this.ledger.promote({ ...fin.promote, by: this.o.owner });
+        const { clearFlaws, ...promote } = fin.promote;
+        // Declared flaws nothing asks the owner about are accepted by this promotion (goal 079),
+        // and only if it happens.
+        const flawed =
+          (
+            JSON.parse(
+              String(this.ledger.getAttempt(promote.attempt)?.known_flaws ?? "[]"),
+            ) as unknown[]
+          ).length > 0;
+        const accepting =
+          clearFlaws !== undefined &&
+          flawed &&
+          Number(
+            this.ledger.db
+              .prepare(
+                "update attempt set flaws_cleared_by = ? where id = ? and flaws_cleared_by is null",
+              )
+              .run(clearFlaws, promote.attempt).changes,
+          ) > 0;
+        const r = this.ledger.promote({ ...promote, by: this.o.owner });
         if (r.ok) {
           lifecycle = "promoted";
           movedRun = fin.promote.run;
           result.promoted = { seq: r.seq };
+          if (accepting)
+            this.ledger.appendEvent(this.o.owner, "flaws_accepted", promote.attempt, {
+              by: clearFlaws,
+            });
         } else {
+          if (accepting)
+            this.ledger.db
+              .prepare("update attempt set flaws_cleared_by = null where id = ?")
+              .run(promote.attempt);
           // Lost the compare-and-swap: screen again against the new champion.
           lifecycle = "queued";
           enqueue = { attempt: fin.promote.attempt, kind: "evaluate", actor: this.o.owner };
@@ -876,9 +915,11 @@ export class Judge {
   }
 
   /**
-   * What happens to a promotable result: an audit first when one is triggered (open known flaws,
-   * a gain above the contract's audit trigger, a goal campaign's adversarial checklist), then
-   * the rig's promotion policy.
+   * What happens to a promotable result (goal 079: hands-off by default). An audit first when one
+   * is triggered (open known flaws, a gain above the contract's audit trigger, a goal campaign's
+   * adversarial checklist) and the rig has an auditor, or may have one (its supervisor has not
+   * said yet); without an auditor the audit is skipped, and recorded so. Then the owner only where
+   * the run asks (every win, a gain above its line, declared flaws); else the champion.
    */
   private promotion(
     fin: Finish,
@@ -894,7 +935,7 @@ export class Judge {
       delta: fin.verdict?.delta,
       priorDeltas: audits.priorDeltas(run, attemptId),
     });
-    if (trigger) {
+    if (trigger && this.o.service.advisors?.auditor !== false) {
       return {
         ...fin,
         result: { ...(fin.result as object), promoted: false, waiting: "audit" },
@@ -910,16 +951,27 @@ export class Judge {
         lifecycle: "awaiting_audit",
       };
     }
-    if (this.o.service.promotionFor(run) === "owner_approval") {
+    const skipped = trigger
+      ? [
+          {
+            kind: "audit_skipped",
+            subject: attemptId,
+            body: { run, reason: trigger.reason, why: "this rig has no auditor" },
+          },
+        ]
+      : [];
+    const ask = this.o.service.ownerAsks(run, attempt, fin.verdict?.delta ?? null);
+    if (ask) {
       return {
         ...fin,
-        result: { ...(fin.result as object), promoted: false, waiting: "owner_approval" },
+        result: { ...(fin.result as object), promoted: false, waiting: "owner" },
         events: [
           ...(fin.events ?? []),
+          ...skipped,
           {
             kind: "promotion_pending",
             subject: attemptId,
-            body: { run, expected_seq: expectedSeq, commit: attempt.commit_sha },
+            body: { run, expected_seq: expectedSeq, commit: attempt.commit_sha, reason: ask },
           },
         ],
         lifecycle: "awaiting_approval",
@@ -927,11 +979,13 @@ export class Judge {
     }
     return {
       ...fin,
+      ...(skipped.length ? { events: [...(fin.events ?? []), ...skipped] } : {}),
       promote: {
         run,
         expectedSeq,
         attempt: attemptId,
         commitSha: String(attempt.commit_sha),
+        clearFlaws: `${this.o.owner} (no audit: ${trigger ? "this rig has no auditor" : "none was called for"})`,
       },
     };
   }
@@ -1465,7 +1519,13 @@ export class Judge {
   private maybeScheduleValidation(): void {
     for (const inst of this.ledger.listRuns()) {
       if (inst.status !== "running" || inst.mode !== "goal") continue;
-      new Conclusions(this.ledger).maybePropose(inst.id, this.goalContract(inst.id), this.o.owner);
+      const proposal = new Conclusions(this.ledger).maybePropose(
+        inst.id,
+        this.goalContract(inst.id),
+        this.o.owner,
+      );
+      // Hands-off by default (goal 079): the evidence ends the campaign unless the run asks.
+      if (proposal !== undefined && this.o.service.takeConclusion(inst.id, proposal)) continue;
       const seq = this.ledger.currentChampion(inst.id).seq;
       const jobs = this.ledger.db
         .prepare(

@@ -32,7 +32,6 @@ describe("advisors from control", () => {
         model: "claude-opus-5-5",
         token: "tok",
         effort: "max",
-        timeout_s: 1800,
       },
     );
     const keyed = runtimeOf(route(), "teacher-1");
@@ -50,6 +49,51 @@ describe("advisors from control", () => {
     assert.equal(signedIn?.runtime === "openai" && signedIn.api_key, "access");
   });
 
+  test("a role from control has no hidden turn, time or reply limit (goal 079); the advisors file can set them", () => {
+    const keyed = runtimeOf(route({ type: "openai", base_url: "https://x/v1" }), "teacher-1");
+    assert.ok(keyed?.runtime === "openai");
+    if (keyed?.runtime !== "openai") return;
+    assert.equal(keyed.max_turns, undefined);
+    assert.equal(keyed.timeout_s, undefined);
+    assert.equal(keyed.max_tokens, undefined, "none listed: none sent");
+    // The model's maximum output from the provider's list goes with the route.
+    const listed = runtimeOf(
+      route({ type: "openai", base_url: "https://x/v1", max_tokens: 64_000 }),
+      "teacher-1",
+    );
+    assert.equal(listed?.runtime === "openai" && listed.max_tokens, 64_000);
+    for (const harness of ["opencode", "codex"]) {
+      const cli = runtimeOf(route({ type: "openai", harness }), "auditor") as {
+        timeout_s?: number;
+      };
+      assert.equal(cli.timeout_s, undefined, harness);
+    }
+    // The advisors file: none unless set, and what it sets stays.
+    const parsed = AdvisorsConfig.parse({
+      teachers: [
+        { name: "t", runtime: "openai", base_url: "https://x/v1", model: "m", api_key: "k" },
+      ],
+    });
+    const t = parsed.teachers[0] as { max_turns?: number; timeout_s?: number; max_tokens?: number };
+    assert.deepEqual([t.max_turns, t.timeout_s, t.max_tokens], [undefined, undefined, undefined]);
+    const set = AdvisorsConfig.parse({
+      teachers: [
+        {
+          name: "t",
+          runtime: "openai",
+          base_url: "https://x/v1",
+          model: "m",
+          api_key: "k",
+          max_turns: 24,
+          timeout_s: 900,
+          max_tokens: 8192,
+        },
+      ],
+    });
+    const s2 = set.teachers[0] as { max_turns?: number; timeout_s?: number; max_tokens?: number };
+    assert.deepEqual([s2.max_turns, s2.timeout_s, s2.max_tokens], [24, 900, 8192]);
+  });
+
   test("each role runs in the harness its route names: OpenCode (its own models too) or Codex", () => {
     // OpenCode's own models: no key, no base address.
     assert.deepEqual(
@@ -64,7 +108,6 @@ describe("advisors from control", () => {
         api: "opencode",
         model: "big-pickle",
         context_window: 0,
-        timeout_s: 1800,
       },
     );
     // A provider's model in OpenCode: its key stays in memory, for the call's proxy.
@@ -79,7 +122,6 @@ describe("advisors from control", () => {
         model: "claude-test",
         api_key: "key-in-memory",
         context_window: 200_000,
-        timeout_s: 1800,
       },
     );
     // A ChatGPT sign-in in Codex, with its effort.
@@ -105,7 +147,6 @@ describe("advisors from control", () => {
         api_key: "access",
         reasoning: "high",
         context_window: 0,
-        timeout_s: 1800,
       },
     );
     // Codex speaks only the Responses API: an Anthropic route in Codex is not run.

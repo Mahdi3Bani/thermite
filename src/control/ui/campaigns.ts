@@ -212,7 +212,8 @@ ${
     : ""
 }${o.past ?? ""}
 <details class="adv"><summary>More options</summary><div class="sgrid">
-<label class="sfd">${infoLabel("When a change is confirmed better", "Keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
+<label class="sfd">${infoLabel("When a change is confirmed better", "Keep it at once as the new best (the default), or wait for you every time. The rig's default is set on its Edit rig page.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
+<div class="sfd">${infoLabel("Ask me first about", "Thermite is hands-off by default: when the judge confirms a change is better, it becomes the champion with no step of yours (after the auditor clears it, when the rig has an auditor and the campaign calls for an audit). A review panel's pass is accepted, and a goal campaign the evidence shows is not possible ends. Choose here what you want to decide yourself; it then waits for you in Needs you.")}<span class="act" style="display:grid;gap:4px"><input name="ask_above_gain" inputmode="decimal" placeholder="a gain above this %, such as 15 (empty: never)" aria-label="Ask me about a gain above this percent"><label class="small" title="A change whose agent declared flaws in it waits for you."><input type="checkbox" name="ask_declared_flaws" value="1"> a change whose agent declared flaws</label><label class="small" title="A review goal is met only after you accept the review panel's pass."><input type="checkbox" name="ask_reviews" value="1"> a review panel's pass of a goal</label><label class="small" title="A goal campaign the evidence shows is not possible ends only after you accept."><input type="checkbox" name="ask_not_possible" value="1"> ending a goal campaign as not possible</label></span></div>
 <label class="sfd">${infoLabel("GPUs for the judge", "For a rig with several GPUs: how many the judge measures on; the rest are the agents'. It changes the rig's split for every run on it, and the rig's harness restarts to apply it. Empty: the rig's current split.")}<input name="judge_gpus" inputmode="numeric" placeholder="the rig's current split"></label>
 </div></details>
 <div class="muted small">${o.from}</div>
@@ -234,7 +235,7 @@ export function earlierRuns(
         ? `<span class="kst pause">Paused</span>`
         : `<span class="kst done">${esc(x.run.status === "closed" ? "Finished" : x.run.status)}</span>`;
     const last = lastActivity(x.run);
-    const n = waitingOn(x.run);
+    const n = waitingOn(x.run, x.rig);
     return `<tr><td>${st}</td><td><a href="${runHref(x.rig.id, x.run)}"><b>${esc(x.run.id)}</b></a>${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.rig.id)}</td><td>${runProgress(x.run)}${x.result}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
   };
   const head = `<thead><tr><th style="width:90px">State</th><th>Run</th><th>Rig</th><th>Result</th><th>Why it stopped</th><th>Last activity</th><th></th></tr></thead>`;

@@ -22,6 +22,7 @@ import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
+import { afterProgramFailure, type ProviderLink } from "./provider-errors.ts";
 import {
   CODE_RESEARCH_TOOLS,
   codeResearchNote,
@@ -32,7 +33,7 @@ import {
 } from "./research-tools.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import { NOTE_USAGE } from "./trial-cli.ts";
-import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
+import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } from "./worker.ts";
 
 /**
  * Trials (hill-climb, goal and research), model checks and planner calls in OpenCode v2 instead
@@ -440,7 +441,7 @@ export class CarriedMessages {
   }
 }
 
-export interface OpencodeTrialDeps {
+export interface OpencodeTrialDeps extends ProviderLink {
   runner: Runner;
   model: ModelConfig;
   /** The harness API as the lane reaches it, for example http://127.0.0.1:8700. */
@@ -564,7 +565,8 @@ function startInArea(
     ],
     cwd,
     env,
-    timeoutMs: o.remaining,
+    // No time limit unless the trial has one (goal 079).
+    ...(Number.isFinite(o.remaining) ? { timeoutMs: o.remaining } : {}),
     rssLimitBytes: o.limits.runRssMib * 1024 * 1024,
     // Over the memory limit, OpenCode's commands are killed and OpenCode carries on, as a
     // lane command under Pi would be; the trial ends only if OpenCode alone is over.
@@ -633,9 +635,12 @@ export async function runOpencodeTrial(
     own: opencodeOwn({ root: area, drops: [OPENCODE_DROPS], title }),
   });
   const started = Date.now();
-  const deadline = started + spec.wallMs;
-  const minutes = Math.round(spec.wallMs / 60_000);
-  let message = `${SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes. Submit before it ends.`;
+  // A trial's length only when the campaign or the rig sets one (goal 079).
+  const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
+  const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
+  let message = `${SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${minutes !== undefined ? `This trial lasts ${minutes} minutes. Submit before it ends.` : "Submit once your change works."}`;
+  // Failed model calls in a row, and rate limits in a row (goal 079).
+  const count = { failures: 0, rateWaits: 0 };
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -662,6 +667,8 @@ export async function runOpencodeTrial(
     }
     const errorsBefore = tally.errors.length;
     const progressBefore = tally.turns + tally.toolCalls;
+    const callsBefore = tally.toolCalls;
+    const runStarted = Date.now();
     const args = [
       "run",
       "--standalone",
@@ -717,22 +724,54 @@ export async function runOpencodeTrial(
       result.stopped = "wall";
       break;
     }
-    // A run that failed outright (its model unreachable, say) ends the trial; the scheduler's
-    // backoff decides when the lane tries again.
-    if (tally.errors.length > errorsBefore && tally.toolCalls === 0) {
-      result.stopped = "error";
-      result.error = tally.errors.at(-1);
-      break;
+    const progressed = tally.turns + tally.toolCalls > progressBefore;
+    // A run that ended with the provider's error (goal 079): by its kind, the trial ends (no
+    // credits, a refused key, an unserved model, or the campaign's limit), or waits and goes on
+    // in the same session. The failure is not one of the nudges.
+    if (tally.errors.length > errorsBefore) {
+      if (progressed) count.failures = 0;
+      const step = await afterProgramFailure({
+        error: tally.errors.at(-1) as string,
+        answer: deps.providerAnswer?.(runStarted),
+        count,
+        failuresInARow: limits.failuresInARow,
+        deadline,
+        signal: deps.signal,
+        waiting: deps.waiting,
+        pauseMs: deps.pauseMs,
+      });
+      if ("interrupted" in step) {
+        result.stopped = "interrupted";
+        break;
+      }
+      if ("wall" in step) {
+        result.stopped = "wall";
+        break;
+      }
+      if ("end" in step) {
+        result.stopped = "error";
+        result.error = step.end.error;
+        result.errorKind = step.end.kind;
+        break;
+      }
+      nudges--;
+      message = [step.goOn, ...ownerLines(carried.take(tally))].join("\n\n");
+      continue;
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
       result.error = `OpenCode exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
       break;
     }
-    // Continued twice to get a submission, and then for as long as the owner's messages wait
-    // and the agent keeps working. A message is read only once the agent starts on the prompt.
-    const progressed = tally.turns + tally.toolCalls > progressBefore;
-    if (nudges >= 2 && (!progressed || !(deps.messages?.waiting().length ?? 0))) break;
+    // Continued to get a submission (goal 079) for as long as the agent keeps working (a tool
+    // call in this run), with no number unless the campaign sets lanes.limits.nudges; a nudge it
+    // answers without any work ends the trial, its own choice. The owner's messages continue it
+    // while they wait and it keeps working. A message is read only once the agent starts on the
+    // prompt.
+    if (
+      stopNudging(nudges, tally.toolCalls > callsBefore, progressed, limits.nudges, deps.messages)
+    )
+      break;
     message = [NUDGE, ...ownerLines(carried.take(tally))].join("\n\n");
   }
   const sub = deps.submitted();
@@ -756,7 +795,7 @@ export async function runOpencodeTrial(
 export function researchPrompt(
   limits: LaneLimitValues,
   brief: string,
-  minutes: number,
+  minutes: number | undefined,
   folder: ResearchFolderPaths,
 ): string {
   return `${RESEARCH_SYSTEM}
@@ -775,9 +814,13 @@ ${researchFolderNote(folder)} Your shell starts in your working area; use grep, 
 
 ${limitsNote(limits)}
 
-${brief}
+${brief}${
+  minutes !== undefined
+    ? `
 
-This trial lasts ${minutes} minutes.`;
+This trial lasts ${minutes} minutes.`
+    : ""
+}`;
 }
 
 export interface OpencodeResearchDeps extends Omit<OpencodeTrialDeps, "submitted"> {
@@ -840,8 +883,9 @@ export async function runOpencodeResearchTrial(
     on: deps.compacted,
     own: opencodeOwn({ root: area, drops: [OPENCODE_DROPS], title }),
   });
-  const deadline = Date.now() + spec.wallMs;
-  const minutes = Math.round(spec.wallMs / 60_000);
+  // A trial's length only when the campaign or the rig sets one (goal 079).
+  const deadline = spec.wallMs !== undefined ? Date.now() + spec.wallMs : Number.POSITIVE_INFINITY;
+  const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
   let message = `${researchPrompt(limits, spec.brief, minutes, deps.folder)}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
@@ -862,7 +906,8 @@ export async function runOpencodeResearchTrial(
       });
   };
   const capped = () => spec.maxTurns !== undefined && tally.turns >= spec.maxTurns;
-  let retries = 0;
+  // Failed model calls in a row, and rate limits in a row (goal 079).
+  const count = { failures: 0, rateWaits: 0 };
   for (;;) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
@@ -872,6 +917,7 @@ export async function runOpencodeResearchTrial(
     const errorsBefore = tally.errors.length;
     const callsBefore = tally.toolCalls;
     const turnsBefore = tally.turns;
+    const runStarted = Date.now();
     const running = startInArea(
       deps.runner,
       role,
@@ -925,33 +971,50 @@ export async function runOpencodeResearchTrial(
       result.stopped = "wall";
       break;
     }
-    const failed = tally.errors.length > errorsBefore;
-    // A run that failed before any work (its model unreachable, say) ends the trial; the
-    // scheduler's backoff decides when the lane tries again.
-    if (failed && tally.toolCalls === callsBefore) {
-      result.stopped = "error";
-      result.error = tally.errors.at(-1);
-      break;
+    const progressed = tally.turns > turnsBefore || tally.toolCalls > callsBefore;
+    // A run that ended with the provider's error (goal 079): by its kind, the trial ends (no
+    // credits, a refused key, an unserved model, or the campaign's limit), or waits and goes on
+    // in the same session.
+    if (tally.errors.length > errorsBefore) {
+      if (progressed) count.failures = 0;
+      const step = await afterProgramFailure({
+        error: tally.errors.at(-1) as string,
+        answer: deps.providerAnswer?.(runStarted),
+        count,
+        failuresInARow: limits.failuresInARow,
+        deadline,
+        signal: deps.signal,
+        waiting: deps.waiting,
+        pauseMs: deps.pauseMs,
+      });
+      if ("interrupted" in step) {
+        result.stopped = "interrupted";
+        break;
+      }
+      if ("wall" in step) {
+        result.stopped = "wall";
+        break;
+      }
+      if ("end" in step) {
+        result.stopped = "error";
+        result.error = step.end.error;
+        result.errorKind = step.end.kind;
+        break;
+      }
+      message = [step.goOn, ...ownerLines(carried.take(tally))].join("\n\n");
+      continue;
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
       result.error = `OpenCode exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
       break;
     }
-    // Continued after a failure that followed some work (twice at most), and for as long as the
-    // owner's messages wait and the agent keeps working. Messages are taken only for a run that
-    // starts, and read only once the agent starts on that prompt: none is ever dropped.
-    const progressed = tally.turns > turnsBefore || tally.toolCalls > callsBefore;
-    const retry = failed && retries < 2;
+    // Continued for as long as the owner's messages wait and the agent keeps working. Messages
+    // are taken only for a run that starts, and read only once the agent starts on that prompt:
+    // none is ever dropped.
     const owner = progressed ? (deps.messages?.waiting().length ?? 0) : 0;
-    if (!retry && !owner) break;
-    if (failed) retries++;
-    message = [
-      ...(failed
-        ? [`The model call failed (${tally.errors.at(-1)}). Continue where you left off.`]
-        : ["Continue your research."]),
-      ...ownerLines(carried.take(tally)),
-    ].join("\n\n");
+    if (!owner) break;
+    message = ["Continue your research.", ...ownerLines(carried.take(tally))].join("\n\n");
   }
   if (result.stopped === "wall") result.error = `the trial reached its ${minutes}-minute limit`;
   result.turns = tally.turns;
@@ -971,7 +1034,8 @@ export interface OpencodeAskDeps {
   /** An unprivileged role to run as, and an empty directory to run in (owned by that role). */
   role: Role;
   dir: string;
-  timeoutMs: number;
+  /** None unless given: a planner call runs until it answers or its run stops (goal 079). */
+  timeoutMs?: number | undefined;
   signal?: AbortSignal | undefined;
   /** The MCP servers the call may use (a planner's), at the harness's gateway. */
   mcp?: McpAccess | undefined;
@@ -1028,7 +1092,7 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
       ],
       cwd: deps.dir,
       env,
-      timeoutMs: deps.timeoutMs,
+      ...(deps.timeoutMs !== undefined ? { timeoutMs: deps.timeoutMs } : {}),
       captureBytes: 8 * 1024 * 1024,
     });
     const live = readOpencodeEvents(r.stdout.split("\n"), tally);
@@ -1049,7 +1113,7 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
       );
     }
     if (r.killedFor === "timeout")
-      tally.errors.push(`no answer in ${Math.round(deps.timeoutMs / 1000)} s`);
+      tally.errors.push(`no answer in ${Math.round((deps.timeoutMs ?? 0) / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
       tally.errors.push(
         `OpenCode exited ${r.exitCode ?? r.signal}: ${tally.notes.at(-1) ?? r.stderr.slice(-300)}`,
@@ -1083,7 +1147,7 @@ export async function opencodeOnce(
   deps: OpencodeOnceDeps,
   o: {
     role: Role;
-    timeoutMs: number;
+    timeoutMs?: number | undefined;
     signal?: AbortSignal | undefined;
     /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
     mcp?: Omit<McpAccess, "apiUrl"> | undefined;

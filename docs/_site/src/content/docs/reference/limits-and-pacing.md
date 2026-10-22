@@ -6,14 +6,14 @@ sidebar:
   order: 15
 ---
 
-**Nothing ends research by default.** A hill climb runs until someone pauses it. A goal campaign runs until its goals are met or the owner accepts that they are not possible. A research campaign runs for the time its contract gives it. Every cap that can stop a campaign is off until you set it.
+**Nothing ends research by default.** A hill climb runs until someone pauses it. A goal campaign runs until its goals are met or the owner accepts that they are not possible. A research campaign runs until its `max_duration`, or, without one, until someone stops it. Every cap that can stop a campaign, and every cap on a trial, is off until you set it.
 
 Thermite's limits are of four kinds. Only a cap can stop a run's work, and only one you set:
 
 | Kind | What it does | What it ends |
 | --- | --- | --- |
 | [Caps](#caps) | Limits you set: budgets, a research window, turns per trial, spending and size limits | Only what that cap names, such as pausing a run when its budget is spent. None is set by default; a research contract must name its own duration |
-| [Pacing](#pacing) | Spaces work out: trial lengths, waits after errors, how often things repeat | Nothing. A trial may end; the lane's next one starts afresh |
+| [Pacing](#pacing) | Spaces work out: waits after errors, how often things repeat | Nothing. Work waits, then goes on |
 | [Back-pressure](#back-pressure) | Holds new work until earlier work settles | Nothing. Work waits, then goes on |
 | [Per-process and per-trial limits](#per-process-and-per-trial-limits) | Bound one build, run, command, check or trial | That one process or trial. The lane goes on |
 
@@ -26,10 +26,14 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `budget.wall_hours` | The [contract](contract.md) | None | No new trial starts. Once the running trial ends, the run is paused: `the wall-time budget is spent`. Counted from the run's creation, paused time included |
 | `budget.device_hours` | The contract | None | The same, when the judge's time on the run reaches it: `the device-hours budget is spent` |
 | `budget.llm_usd` | The contract | None | The same, when the agents' token spending reaches it: `the model budget is spent ($<amount>)`. It counts only when the rig sets both `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (prices per million tokens) |
-| `min_duration`, `max_duration` | A research contract | `min_duration` is required | The research campaign closes after `max_duration` of running time (paused time does not count), or after `min_duration` when `max_duration` is not set: `the research window is over`. Other modes ignore both |
+| `max_duration` | A research contract | None | The research campaign closes after `max_duration` of running time: `the research window is over`. Paused time does not count, and neither does time its agents could not run: while they were [stopped](#the-model-provider) or waited for the provider's rate limit. Without it, the campaign runs until someone stops it. `min_duration` (required) is a floor, never a stop: it is what a worker's brief calls "at least". Other modes ignore both |
 | `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teachers starts no round until then. Research goes on. It counts only advisors with prices set |
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
 | Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
+| A trial's length | The contract's `lanes.limits.trial_minutes` (1 to 1,440), else **Edit rig** › **One trial lasts (minutes)** or `THERMITE_TRIAL_MINUTES` | None | One trial ends at that time, and its worker is told when 85% of it is used. Without it, a trial lasts until its worker submits, or stops and answers a nudge without any work. The lane's next trial starts afresh |
+| Failed model calls in a row (`failures_in_a_row`) | The contract's `lanes.limits` | None | One trial ends after that many failed model calls in a row: a provider's 5xx, a broken connection or a request it refused. A rate limit's waits never count. The lane's next trial starts afresh |
+| Replies cut off in a row (`cutoffs_in_a_row`) | The contract's `lanes.limits` | None | One trial ends after that many replies in a row cut off at the output limit without a tool call (Pi) |
+| Nudges (`nudges`) | The contract's `lanes.limits` | None | A worker that stops without submitting is told to go on at most that many times; then its trial ends. `0`: never. Without it, the worker is told for as long as it keeps working |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
 | A RunPod rig's spend limit (`spend_limit_usd`) | **Launch on RunPod**, or **Change the spend limit or the idle stop** on the rig's page; or the launch and the rig's limits over REST, MCP or the command line | None | Control stops the pod, its results sent out first: its runs are paused, its GPU is no longer billed and its volume stays. A start is refused until the limit is raised or cleared. See [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) |
 | A RunPod rig's idle stop (`idle_stop_minutes`) | The same | None | When no run has been at work on the rig for that many minutes (no run running, or every run paused, blocked or finished), control stops the pod as for the spend limit. At least 5 minutes. Assigning or resuming a run starts the pod again. The dashboard's launch form fills in 30 minutes, which the owner can change or clear; the REST API, MCP and the command line have no default. See [When a rig is idle](rest-api.md#when-a-rig-is-idle) |
@@ -40,24 +44,40 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 
 ## Pacing
 
-None of these ends research. A trial that ends at its time is followed by the lane's next trial, with fresh context.
+None of these ends research or a trial.
 
 ### Trials and lanes
 
 | What | Default | Set by |
 | --- | --- | --- |
-| A trial's length | 20 minutes | The contract's `lanes.limits.trial_minutes` (1 to 1,440), else **Edit rig** › **One trial lasts (minutes)** or `THERMITE_TRIAL_MINUTES` |
 | Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` (1 to 16) |
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
-| Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap. None about the context window: a conversation that grows is compacted (below) | Fixed |
+| Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap, when those [caps](#caps) are set. None about the context window: a conversation that grows is compacted (below) | Fixed |
 | Compaction of an agent's conversation | At 80% of the model's [context window](glossary.md). The conversation is kept as a document, summarized, and the agent goes on. It never ends a trial and never asks for a submission | **Compact at** in each agent's **Context** cell on **Edit rig**; `compact_at` (50 to 95) with each agent's model, over [`set_rig_model`](mcp-tools.md#set_rig_model) or [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model); the campaign's own `agents_context.compact_at`; or `THERMITE_MODEL_COMPACT_AT`. See [Compaction](#compaction) |
-| Nudges when a worker stops without submitting | 2. An OpenCode, Claude Code or Codex worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode, Claude Code and Codex). Then the trial ends; the trial's time limit still applies |
+| Nudges when a worker stops without submitting | No number: the worker is told to go on for as long as it keeps working (a tool call since the last nudge). A nudge it answers without any work ends the trial: its own choice, not a cap. An OpenCode, Claude Code or Codex worker is also continued while the owner's messages wait for its trial and its last run made progress | The contract's `lanes.limits.nudges` sets a number (Pi, OpenCode, Claude Code and Codex) |
 | Time to finish after a submission | 5 s after the submission is recorded, the lane's agent is stopped. Its closing reply is not waited for, and a note or idea it has not written by then is not recorded | Fixed (OpenCode, Claude Code and Codex; Pi stops at once: no tool call runs after its submission) |
-| Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, or 5 cut-off replies in a row. A full context is compacted, and the trial goes on | Fixed |
+| A failed model call in a trial | By the provider's error: see [The model provider](#the-model-provider). A full context is compacted, and the trial goes on | |
+| A reply cut off at the output limit (Pi) | The worker is told to think less and make one tool call, and the trial goes on | `lanes.limits.cutoffs_in_a_row` sets a [cap](#caps) |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
-| A run's cool-down after 6 trials in a row end in errors | 30 minutes, with an `agents_cooldown` event. A new model given to the rig, or the run resumed, after the last of those errors ends it at once | Fixed |
 | A full subscription usage window | Claude: no new trial or plan on the rig until the window resets. ChatGPT: 15 minutes, then try again | Fixed. Nothing buys more usage |
+
+### The model provider
+
+The provider decides when the agents can work. Each error a model call gets is sorted by its kind, from the provider's status, headers and words, and none of them ends research:
+
+| The provider's error | What happens |
+| --- | --- |
+| A rate limit (429, `rate limit`, a full ChatGPT plan) | The trial waits for the time the provider gives: its `Retry-After` header, a rate-limit reset header (`x-ratelimit-reset-*`, `anthropic-ratelimit-*-reset`), or its words (`try again in 20s`). Without one: 30 s, doubling to 10 minutes. It then goes on in the same conversation. No new trial or plan starts on the rig until that time (`agents_wait_for_limit`), and a research run's clock stops meanwhile |
+| A passing fault (a 5xx, an overloaded server, a broken connection) | The trial waits 5 s, doubling to 60 s, and goes on in the same conversation |
+| The model's own error (a request the provider refused) | The same: the worker is told the call failed, and goes on |
+| A conversation longer than the model's window | It is [compacted](#compaction), and the trial goes on |
+| No credits (402, `insufficient credits`, `exceeded your current quota`), a refused key (401, 403) or a model the provider does not serve on this key | The trial ends at once. The run's agents stop (`agents_stopped`): no new trial or plan starts, and the run shows in **Needs you** with the provider's words. The model is checked again after a minute, then after a pause that doubles to 30 minutes; at once when the owner resumes the run or presses **Check the model now**. A passing check, or another model for the rig, ends the stop (`agents_resumed`). A research run's clock stops meanwhile |
+| The workers' model check fails | The same as no credits: no trial starts on a model that fails its check, until a check passes or the route changes |
+
+- **Pi, OpenCode, Claude Code and Codex** answer the same way. OpenCode, Claude Code and Codex go on in the same session after a wait; the harness's model proxy tells their errors' kinds from the provider's answers.
+- **A trial that never really tried its experiment** (it ended on the provider's error, or it was interrupted by a pause, a reset or a restart) gives the experiment back: the same row goes to the top of the [queue](glossary.md), with how many times and why (`experiment_returned`). It is the next one given out when the agents go on.
+- **A trial interrupted by a restart** keeps the turns and tokens its worker last reported.
 
 ### Compaction
 
@@ -119,9 +139,11 @@ The dashboard calls an epoch a **round**.
 
 | What | Default | Notes |
 | --- | --- | --- |
-| Epoch cap | 3 hours. With `budget.wall_hours`, 6% of it, between 30 minutes and 3 hours | An epoch ends when every lane's trials are done and settled, or at the cap once no trial runs |
+| An epoch's end | When every lane's trials are done and their attempts settled. It has no time cap | |
 | Fork rounds | Every 20 epochs (epochs 21, 41, …). With `budget.wall_hours`, at one third and two thirds of it | Every lane starts again from the champion |
-| Planner call | 180 s with Pi; 300 s with OpenCode, Claude Code or Codex | A failed or timed-out call, or an answer that code refuses, is tried once more; a refused answer goes back with its problems. After a second failure, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue |
+| Planner call | No time limit: it ends when the planner answers, or when its run is paused or closed. In Pi, a `submit_plan` its tool's schema refuses goes back to the planner with the reason; the same refused arguments a second time end the call (`invalid`) | A call that gives no plan, or an answer that code refuses, is tried once more; a refused answer goes back with its problems. After a second failure, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Each try's cause is recorded in the round's `epoch_started` event (`causes`) and in **History**: `timeout`, `text_only` (it answered in text without a plan), `cut_off` (its reply reached the output limit), `provider_error` (with the provider's kind and words), `cancelled`, or `invalid` (with each rule the plan broke). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue, and its rounds count as research rounds, never as fallbacks |
+| The fallback's directions | Mandated first, then tried; then, in a goal campaign, a direction that names a goal the champion does not meet yet; then the least explored. A direction whose goals the champion already meets all of (its name or description names their ids) is skipped; with none left, each goal not met yet becomes a direction | Fixed |
+| The planner's answer | Every limit it is held to is in its tool's schema and in its prompt: see [The experiment queue](#the-experiment-queue) | |
 | Goal campaign: wait for the goal report | Up to 2 hours, or until 3 checks of the champion failed | Then the epoch is planned without it |
 
 ### The judge
@@ -148,6 +170,7 @@ The dashboard calls an epoch a **round**.
 | A rig shown as stale | After 180 s without a report | `THERMITE_CONTROL_STALE_SECONDS` |
 | A rig shown as offline on **Rigs**, in the REST API, MCP and `thermite rig list` | After 900 s without a report, never before it is stale | `THERMITE_CONTROL_OFFLINE_SECONDS` |
 | A GPU cloud in **Providers** read again: prices, pods and spend | Every 15 minutes, and on **Read again** | Fixed |
+| A draining rig's reports looked at, for its image update | Every 10 s: its pods restart once its report says nothing runs. The drain has no time limit; **Update now, without waiting** skips it | Fixed |
 | Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teachers ends the wait (below) | `THERMITE_POLL_SECONDS` |
 | Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teachers, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
 | A new owner's message to the teachers, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teachers** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
@@ -166,7 +189,8 @@ The dashboard calls an epoch a **round**.
 | A lane's next trial | After its last trial ended and that trial's attempt settled | The lane waits for the judge |
 | One running run for each rig | Assigning or resuming a run pauses the rig's others: `replaced by <run>` | The other runs wait, paused |
 | The judge | One job at a time on each judge device; builds one at a time on the rig | Jobs wait in a queue, by priority |
-| Development runs on a shared device | A development run waits while the judge has any job queued or running, then holds the device | Waiting longer than 10 minutes gives up with `the judge kept the device busy; try again later` |
+| Development runs on a shared device | A development run waits while the judge has any job queued or running, then holds the device | It waits until the judge is done or its trial ends: no time limit of its own |
+| A development run behind another lane's | It waits for a free device | Until one is free, or its trial ends: `the trial ended before a device was free` |
 | One development run for each lane | A lane's next development run waits for its last | |
 
 ## Per-process and per-trial limits
@@ -200,7 +224,7 @@ Memory is the sum over all the processes the build or run started, sampled every
 | A lane's build cache | 8 GB (`CCACHE_MAXSIZE`) | Fixed |
 | One file-tool call of a Pi worker | 30 s | Fixed |
 | Preparing a submission's patch | 60 s | Fixed |
-| A Pi worker process | The trial's length plus 2 minutes, and 2 GiB of memory | Fixed |
+| A Pi worker process | 2 GiB of memory; with a trial length, that length plus 2 minutes | Fixed |
 | A submission, its patch included | 32 MiB | Fixed |
 | A submission | One for each trial: `trial <id> has already submitted` | Fixed |
 
@@ -213,8 +237,8 @@ Memory is the sum over all the processes the build or run started, sampled every
 | Smoke check | 3 hours for the whole check |
 | A research fetch | 30 s, at most 5 redirects, at most `fetch_policy.max_bytes` (5,000,000 by default). In a hill-climb or goal run, 5,000,000 bytes, and `robots.txt` is respected |
 | A research tool's answer | 14,000 characters when it is JSON, for a Pi worker's file tools too. A folder listing shows at most 500 entries, a folder search at most 200 lines |
-| One advisor call (`openai` runtime) | `max_turns` 24 and `timeout_s` 900, unless the advisors file sets them |
-| One advisor call (`cli` and `claude-code` runtimes) | `timeout_s` 1,800, unless the advisors file sets it |
+| One advisor call | No turn or time limit, unless the [advisors file](advisors-file.md) sets `max_turns` (`openai` runtime) or `timeout_s` |
+| One reply of an agent or an advisor | The model's maximum output, from the provider's model list; none sent when the list gives none, so the provider's own applies. Anthropic's API needs one: 32,000 tokens when the list gives none. An advisors file's `max_tokens` sets an advisor's |
 
 ### Sizes a rig has
 
@@ -248,14 +272,14 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | A place in the queue | `top`, `end`, or an index from 0 to 100,000 among the queued experiments, 0 first. An index past the last puts it last |
 | A lane's idea | One request of at most 64 KiB. No limit on how many |
 | Experiments copied into a new run by **Start a run**, its twins (`thermite run start`, `POST /v1/campaigns/<campaign>/runs`, MCP's `start_run`) or `thermite assign --queue-from` (`assign_campaign`'s `queue`) | 500. Each copies at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, **Start a run** copies none, and its twins and `thermite assign` refuse a run to copy from |
-| The planner's answer | At most 40 moves, 40 drops, 5 rules, 5 old rules in words converted and 13 new directions. No limit on the experiments it adds or the ideas it accepts |
+| The planner's answer | At most 40 moves, 40 drops, 5 rules, 5 old rules in words converted and 13 new directions. No limit on the experiments it adds or the ideas it accepts. A title up to 200 characters; details, and an inline experiment's focus, up to 4,000 (a focus past its title goes into details); a direction up to 80; each why and rationale up to 2,000; a new direction's description 3 to 300; notes up to 2,000. Its tool's schema and its prompt say each of these |
 | Old rules in words converted in one planner's round | 5, the oldest first. The rest convert at the next rounds |
 | A teacher's or the merged by model's answer | No limit on the opportunities in its portfolio, or on its plain experiments; up to 10 moves, each with a why. One that doesn't fit is left out. Its review still counts |
 | The auditor's answer | One check |
 | The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves. The supervisor sends the teachers' portfolio in as many requests as it needs |
 | **Ideas kept ready**, a campaign's target queue depth | A target, not a limit: 0 to 1,000, two for each lane by default. The queue may hold more, and nothing stops when it holds fewer |
 | The teachers' code and evidence reads | One listing: 2,000 files. One read of a file: 400 lines by default, at most 2,000; a file over 8 MiB is not read. One read of a diff: 40,000 characters, then the next part |
-| The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts. Details are cut to 600 characters and whys to 400 |
+| The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts and how each trial ended in words (`cause`). An experiment up next that came back says how many times and why (`returned`). Details are cut to 600 characters, whys to 400 and causes to 300 |
 | The **Planner** tab's **What the planner did** | The newest 30 entries: hand-outs, the planner's changes to the queue and the rules, and the messages it read. Control keeps the newest 50 hand-outs for each run |
 | The messages under **Tell the planner** | Your newest 10 to the planner or to everyone working. Control keeps the newest 200 messages for each run |
 

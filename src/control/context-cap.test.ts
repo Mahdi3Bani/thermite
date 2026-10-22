@@ -132,6 +132,19 @@ describe("a cap on a rig's model context window", () => {
     assert.equal(capWords(204_800, undefined), undefined);
   });
 
+  test("the route's reply limit is the model's maximum output from the provider's list; none listed, none sent (goal 079)", async () => {
+    const s = await stack();
+    await s.give({ provider: "lab", model: "wide-model" });
+    const plain = (await s.route()) as { max_tokens?: number; revision: string };
+    assert.equal(plain.max_tokens, 0, "none listed: 0, and the rig sends none");
+    s.store.setProviderModels("lab", [
+      { id: "wide-model", context_window: 204_800, max_output: 64_000 },
+    ]);
+    const listed = (await s.route()) as { max_tokens?: number; revision: string };
+    assert.equal(listed.max_tokens, 64_000);
+    assert.notEqual(listed.revision, plain.revision, "the rig takes the new limit");
+  });
+
   test("REST: a cap below the provider's window goes into the route; above it is refused; none means the provider's", async () => {
     const s = await stack();
     const capped = await s.give({ provider: "lab", model: "wide-model", context_window: 131_072 });

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Decision } from "../store.ts";
+import type { RigView, RunView } from "../views.ts";
 import { moreText } from "./components.ts";
-import { decidedState } from "./operator.ts";
+import { decidedState, waitingOn } from "./operator.ts";
 
 const NOW = Date.parse("2026-10-21T21:00:00Z");
 const item = { rig: "rig-a", run: "run-1", attempt: "a-1" };
@@ -64,6 +65,34 @@ describe("a decision the owner made", () => {
     // The item began waiting after the owner's choice: the old choice is not this wait's.
     const again = decidedState([decision({})], item, "2026-10-21T20:59:55Z", label, NOW);
     assert.equal(again, undefined);
+  });
+});
+
+describe("what waits for the owner (goal 079)", () => {
+  test("an audit the rig's auditor will decide is not counted; a block, or no auditor, is", () => {
+    const audit = (decision: string | null) => ({
+      attempt: "a-1",
+      reason: "gain 20.0% above 15%",
+      decision,
+      at: "2026-10-21T20:00:00Z",
+      expected_seq: 1,
+      reasons: null,
+    });
+    const run = (audits: ReturnType<typeof audit>[]) =>
+      ({
+        status: "running",
+        pending_promotions: [],
+        agents_stopped: null,
+        audits,
+        reviews: [],
+        conclusions: [],
+      }) as unknown as RunView;
+    const rig = (auditor: boolean) =>
+      ({ supervisor: { advisors: { roles: { auditor } } } }) as unknown as RigView;
+    assert.equal(waitingOn(run([audit(null)]), rig(true)), 0);
+    assert.equal(waitingOn(run([audit(null)]), rig(false)), 1);
+    assert.equal(waitingOn(run([audit("block")]), rig(true)), 1);
+    assert.equal(waitingOn(run([audit("skipped")]), rig(false)), 0);
   });
 });
 

@@ -683,6 +683,7 @@ The operator's description ends with one more sentence: `judge_gpus is the owner
 | `agents` | boolean, optional | `true` | `false`: a try, with no agents. The judge measures the starting code on every case once (**Agents** › **Off: a try**) |
 | `agents_model` | `{provider, model}`, optional | none | For a rig with no model for its agents: a model from a provider in **Providers** (**The agents' model**). Control gives the rig the model, with the harness the model needs (the rig's own when control gave it this model already), and does not start the run yet |
 | `promotion` | `auto` or `owner_approval`, optional | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner (**When a change is confirmed better**) |
+| `ask_owner` | `{above_gain?, declared_flaws?, reviews?, not_possible?}`, optional | nothing | What else the run asks the owner about (**Ask me first about**). `above_gain`, a fraction: a confirmed gain above it waits for the owner (0.15 is 15%); `declared_flaws`, `true`: a win whose worker declared flaws waits; `reviews`, `true`: a review panel's pass waits for the owner's acceptance; `not_possible`, `true`: a "not possible" proposal waits. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md#choose-what-waits) |
 | `judge_gpus` | whole number, optional | the rig's current split | For a rig with several GPUs: how many the judge measures on (**GPUs for the judge**). The owner's token only. It changes the rig's split for every run on it, and the rig's harness restarts to apply it |
 | `queue_from` | `{rig, run}`, optional | none | Another run of this campaign: its untried experiments start the new run's queue, up next in their order, then its lanes' ideas (**Copy the untried experiments of**) |
 | `past` | array of whole numbers, optional | none | Items of Thermite's knowledge base by their `id`, as [`kb_search`](#kb_search) gives it, from folders the campaign may read (**From past research**). Experiments join the queue after the copied ones; findings, claims, notes and reports go to every agent's brief as background |
@@ -882,18 +883,23 @@ Besides `mcp:cluster_rig`, the audit log records `cluster_rig_stop`, `cluster_ri
 
 **Update a rig's images.** Owner and operator.
 
-> For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay; a trial in progress stops, and the harness plans it again. Follow it with rig_setup and list_rigs. A failed update can be tried again; one already under way is refused.
+> For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay. By default it drains first: while trials run or the judge has a job under way, the rig starts nothing new and its pods restart once those end (rig_setup shows it draining). wait false restarts them now, also during a drain: a trial in progress then stops, and its experiment goes back to the queue. Follow it with rig_setup and list_rigs. A failed update can be tried again; one already under way is refused.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | A rig control set up on a Kubernetes cluster |
+| `wait` | boolean | `true` | Wait for the running trials and the judge's job to finish before the restart; `false`: restart now |
 
 It does what **Update to these images**, **Try the update again** and **Give it control's new address** do on the rig's page. Control applies the rig's two deployments again with the images it now deploys: `THERMITE_RIG_HARNESS_IMAGE`, or `THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs, and `THERMITE_RIG_SUPERVISOR_IMAGE`, and with control's address for rigs, `THERMITE_CONTROL_PUBLIC_URL`, as the supervisor's `CONTROL_URL` (see [Settings](settings.md#rigs-that-control-sets-up)). The rig's secret, volume, service and network rules stay as they are. Control then waits, in the background, up to 15 minutes for the new pods and then up to 10 minutes for a report from them; [`rig_setup`](#rig_setup) shows each step. The rig's status is `updating` until then, and `running` after, or `failed` with the step that failed. A stop or a removal meanwhile ends the wait.
 
 An update while the rig is `updating` or `starting` is refused before control compares the images or reads the address, so it never answers `already runs` then. When the image names are the same as the rig's, control reads the `CONTROL_URL` of the rig's supervisor deployment. If it differs from `THERMITE_CONTROL_PUBLIC_URL`, control applies the deployments again with the new address. The rig's page offers this as **Give it control's new address** when the address control recorded for the rig differs from its own. Control records the address when it sets a rig up and at each update; a rig set up before control recorded it shows no button until its next update, but this tool reads the deployment and needs no record. If control can't read that deployment, it answers with an error and changes nothing. For a rig whose status is `failed`, control applies the images again even when they are the ones it recorded, without reading the address: that is how a failed update is tried again, as **Try the update again** on the rig's page does.
 
+**The drain.** When the rig's last report shows trials running or a job under the judge's lease, control first sends it [`drain_rig`](signed-commands.md#drain_rig): the rig starts no new trial, plan or judge job, and those running end as they would. Its status is `draining`, and [`rig_setup`](#rig_setup) has the step "waiting for … to finish". Control looks at its reports every 10 seconds: once one says nothing runs, it applies the deployments as below ("nothing runs any more: its pods restart now"). Another call with `wait` true answers that it is draining; with `wait` false the update goes ahead at once. **Call the update off** on the rig's page ends the drain. A rig with nothing at work, or whose harness is too old to report its work, is updated at once. If the update then fails, the drain ends and the rig goes back to work.
+
 Returns `{rig, said}`, where `said` is one of:
 
+- `<rig> drains first: it starts nothing new, and its pods restart on the new images once <n> trials and the judge's job finish. …`: the rig was at work
+- `<rig> is draining: its pods restart on the new images once its trials and the judge's job end. Update now skips the wait.`: a drain is under way, and `wait` is true
 - `<rig>'s pods restart on the new images.`
 - `<rig>'s pods restart with control's new address.`: the same images, with the new address
 - `<rig>'s pods restart on control's images again (a retry).`: the rig was `failed`, and control's images are the ones it recorded
@@ -912,7 +918,7 @@ Errors:
 - `Control could not read <rig>'s deployment to compare control's address: <kubectl's error>`: the same images, and the supervisor's deployment could not be read
 - kubectl's own error
 
-Besides `mcp:update_rig_images`, the audit log records `cluster_rig_images` with the old and the new images. A rig on a machine moves onto control's images only with **Update to** control's version on its page; one joined with a join command has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+Besides `mcp:update_rig_images`, the audit log records `cluster_rig_drain` when the rig drains first, and `cluster_rig_images` with the old and the new images. A rig on a machine moves onto control's images only with **Update to** control's version on its page; one joined with a join command has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 ### set_cluster_slots
 

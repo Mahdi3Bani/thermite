@@ -26,8 +26,8 @@ Without a limit, nothing runs wild either. Code, not an agent, decides when a ca
 flowchart LR
   R((Running)) -- you pause it, a budget you set is spent,<br/>or another run starts on the rig --> P((Paused))
   P -- you resume it --> R
-  R -- goal campaign: every required goal met,<br/>or you accept that it is not possible --> C((Closed))
-  R -- research campaign: its time window is over --> C
+  R -- goal campaign: every required goal met,<br/>or the evidence shows it is not possible --> C((Closed))
+  R -- research campaign: its maximum duration is over --> C
 ```
 
 A hill climb has no arrow to **Closed**: a faster program can always be tried, so it runs until you pause it. The dashboard labels a closed run **Finished**, and a paused run **Paused**, even while a decision waits in it: the decision still shows under **Needs you**.
@@ -36,21 +36,21 @@ A hill climb has no arrow to **Closed**: a faster program can always be tried, s
 
 Thermite uses three kinds of limits that never end a campaign:
 
-- **Pacing** spaces work out. It ends one trial, or makes the agents rest for a while, and then the work goes on.
+- **Pacing** spaces work out. It makes the agents wait for a while, and then the work goes on.
 - **Back-pressure** holds new work until earlier work settles. Work waits; nothing ends.
 - **Per-process limits** bound one build, run or command, so that one runaway process can't take the rig down. That one process ends; the lane goes on.
 
 | Example | Kind | What happens |
 | --- | --- | --- |
-| A trial's time is up (20 minutes by default) | Pacing | The trial ends, and the lane's next trial starts fresh |
 | Trials keep achieving nothing | Pacing | The lane waits a little longer before each next trial, up to 10 minutes |
-| Many trials in a row end in errors, as in a model outage | Pacing | The agents rest for a while, then try again. A new model for the rig, or resuming the run, ends the rest at once |
+| The model provider fails for now, as in an outage or at its rate limit | Pacing | The trial waits (for the time the provider gives, at a rate limit) and goes on in the same conversation |
+| The provider has no credits left, or refuses the key | Pacing | No trial starts. The run shows in **Needs you** with the provider's words, and the model is checked again, less and less often; the agents go on once a check passes, or the rig gets another model |
 | A subscription's usage window is full | Pacing | The agents wait for it. Nothing pays for more |
 | A lane's last change is still with the judge | Back-pressure | The lane waits for the verdict |
 | Too many changes wait for the judge | Back-pressure | New trials wait until fewer are open |
 | A build, a timed run or a lane's command uses too much memory or disk, or a judge's step runs past the kit's time limit | Per-process | That one process ends |
 
-A trial "achieves nothing" when it ends in an error, without a change, with a change refused before it is built, or with a change identical to an earlier one. The [limits and pacing reference](../reference/limits-and-pacing.md) lists every value and where it is set.
+A trial has no time limit, no turn limit and no limit on failures in a row unless someone sets one: those are caps, listed with the others. A trial "achieves nothing" when it ends in an error, without a change, with a change refused before it is built, or with a change identical to an earlier one. The [limits and pacing reference](../reference/limits-and-pacing.md) lists every value and where it is set.
 
 Long runs also take care of their own measurement: once a day, when it has nothing else to do, a hill climb's judge times the champion against itself to learn how noisy the device is ([Campaign modes](campaign-modes.md)).
 
@@ -61,8 +61,8 @@ No agent can end a campaign. What ends one is written in code, the same for ever
 | Mode | Ends when | Without that |
 | --- | --- | --- |
 | **Hill climb** | Never on its own | It runs until you pause it, a budget you set pauses it, or another run starts on its rig |
-| **Goal** | Every required goal is met (or, if the contract says so, enough of them), confirmed by two independent checks of the champion. Or you accept a "not possible" proposal | It has no time limit of its own |
-| **Research** | Its time window is over: the contract's maximum duration, or its minimum duration when it sets no maximum. Only running time counts | The window is part of every research contract: its author sets it |
+| **Goal** | Every required goal is met (or, if the contract says so, enough of them), confirmed by two independent checks of the champion. Or a "not possible" proposal is taken: at once, or when you accept it if the run asks you | It has no time limit of its own |
+| **Research** | Its running time reaches the contract's maximum duration. Without one, it runs until someone stops it: the minimum is a floor, never a stop. Only time the agents could work counts | The author sets the maximum, or none |
 
 A run that has stopped is **paused**, not closed, and keeps everything it found, including its experiment queue: the experiments its lanes were on go back to the top. A **closed** run is finished. Either way, its champion and its results stay, ready to take. [Campaign modes](campaign-modes.md) explains each ending in full.
 

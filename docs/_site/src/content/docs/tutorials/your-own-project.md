@@ -186,7 +186,7 @@ As in [Hand the work to agents](agents-with-a-free-model.md#9-watch-the-agent-wo
 To watch the agent:
 
 1. At the top of the run's page, press **Live**. Live opens on `primes-speed-1` and shows its lines as they come, newest at the bottom. Above them are filters: **Everyone**, **lane-1**, **Planner**, **Judge**, **Advisors** and **You**. (**lane-1** shows once the planner has given the lane its first experiment.)
-2. Choose **lane-1**. It has a green dot while its agent works. Now you see only the agent: it reads `primes.c`, changes it, builds it and tries it. Each trial lasts at most 20 minutes.
+2. Choose **lane-1**. It has a green dot while its agent works. Now you see only the agent: it reads `primes.c`, changes it, builds it and tries it. Each trial lasts until the agent submits its change or stops.
 
 The box at the bottom of Live now says **To lane-1**, and its grey text says when the agent would read a message from you. You don't need it in this tutorial: [Steer a run](../how-to/campaigns/steer-a-run.md) says how to use it.
 
@@ -198,22 +198,22 @@ The run's **Attempts** tab lists each change the agent submitted. The first one 
 
 When the judge has confirmed a change faster on fresh runs, it waits for you. Then, on the run's page:
 
-- the top line ends **Audit** or **Approval** instead of `Running`;
+- the top line ends **Approval** instead of `Running`;
 - the run's **Overview** tab has a dot, and the tab's first line ends `1 decision waits for you.`;
 - under **Recent**, a line says that the change was `confirmed faster on fresh runs`;
 - under **Needs you**, at the top of the **Overview** tab, the change has the label **Your decision**. Its row says `lane-1 changed 1 file. The judge measured it:` and the gain, and it has the buttons **Make it the champion** and **Reject it**.
 
 The **Overview** item in the sidebar shows a count too.
 
-**Audit** is the more likely word. It means the change waits for a second look: its gain is above 15%, the limit unless a contract sets another, or the agent wrote down problems that the change has. This rig has no auditor, so the second look is yours. **Approval** means the change waits only because you asked to approve every change.
+**Approval** means the change waits because you asked, in step 5, to decide every change: its row says `It waits for you because you asked to decide every change (promotion: owner approval).` Without that choice, Thermite is hands-off, and the change would have become the champion by itself. This rig has no auditor, so no audit comes first. Just after the rig starts, before its supervisor has said that it has no auditor, the word can be **Audit** for a minute.
 
 1. Open the item: press the text of its row, not its buttons. It asks `Make this change the new champion?`, and shows what the agent says it did, which files it changed and by how many lines, what the judge found, why the change waits for you, and what each choice does.
-2. Read **Problems that the agent wrote**, if the item has them. Agents often note limits that don't matter here: when we ran this tutorial, the agent wrote that its new method uses some memory (`Basic sieve uses O(n) memory`). That is no reason to refuse a faster program. If a problem says that the answers can be wrong, or that the change works only for the test cases, press **Reject it** instead, as in [Hand the work to agents](agents-with-a-free-model.md#if-a-change-waits-for-you).
+2. Read **Problems that the agent wrote**, if the item has them. Agents often note limits that don't matter here: when we ran this tutorial, the agent wrote that its new method uses some memory (`Basic sieve uses O(n) memory`). That is no reason to refuse a faster program. If a problem says that the answers can be wrong, or that the change works only for the test cases, press **Reject it** instead. The change then never becomes the champion, and the attempt shows **Declined**.
 3. Press **Make it the champion**.
 
 The item leaves **Needs you** at once. The change's own page says `You selected Make it the champion`, and within seconds, with no refresh, `The rig made the change champion #2.` The **champion** is the run's best version so far. Champion #1 was your project as you pushed it.
 
-The agent goes on working while you decide, so another change may wait for you by then, and the top line still ends **Audit**. Its item says that the champion changed after the judge measured it, so **Make it the champion** would have the judge test it again against champion #2. You can leave it: this tutorial takes champion #2 home, and step 12 pauses the run.
+The agent goes on working while you decide, so another change may wait for you by then, and the top line still ends **Approval**. Its item says that the champion changed after the judge measured it, so **Make it the champion** would have the judge test it again against champion #2. You can leave it: this tutorial takes champion #2 home, and step 12 pauses the run.
 
 The change itself stays on the rig until the rig's next **export**: it copies the run's results out of the harness, keeps them, and sends each new champion to control as a patch. You'll read the change line by line in the next step, before you keep it.
 

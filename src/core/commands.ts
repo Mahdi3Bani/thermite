@@ -226,6 +226,23 @@ export type BriefingSeed = z.infer<typeof BriefingSeed>;
 export const MESSAGE_TARGET =
   /^(all|planner|advisors|teachers|auditor|panel|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/;
 
+/**
+ * What a run asks the owner about (goal 079). Thermite is hands-off by default: a win the judge
+ * confirms is promoted with no owner step (after its auditor's clear, when the rig has an
+ * auditor and the campaign calls for an audit), a review panel's pass is accepted and a "not
+ * possible" proposal is taken. Each switch here asks the owner instead: `above_gain`, a confirmed
+ * gain above this fraction (0.15 is 15%); `declared_flaws`, a win whose worker declared flaws;
+ * `reviews`, a review panel's pass of a subjective goal; `not_possible`, a proposal to end a goal
+ * campaign as not possible. `promotion: "owner_approval"` asks about every win.
+ */
+export const AskOwner = z.strictObject({
+  above_gain: z.number().positive().max(100).optional(),
+  declared_flaws: z.boolean().optional(),
+  reviews: z.boolean().optional(),
+  not_possible: z.boolean().optional(),
+});
+export type AskOwner = z.infer<typeof AskOwner>;
+
 export const CommandPayloads = {
   assign_campaign: z.object({
     run: IdSchema,
@@ -239,10 +256,13 @@ export const CommandPayloads = {
     /** False: a judge-only run. No worker agents run; the judge still works. */
     agents: z.boolean().optional(),
     /**
-     * The run's promotion policy: "auto" (confirmed wins promote, audits still hold surprising
-     * ones) or "owner_approval" (every promotion waits for the owner). Unset: the rig's default.
+     * The run's promotion policy: "auto" (confirmed wins promote, after an auditor's clear when
+     * the rig has one and the campaign calls for an audit) or "owner_approval" (every promotion
+     * waits for the owner). Unset: the rig's default.
      */
     promotion: z.enum(["auto", "owner_approval"]).optional(),
+    /** What else the run asks the owner about (goal 079); unset: nothing. */
+    ask_owner: AskOwner.optional(),
     /** Experiments another run had not tried, to start this run's queue with, in order. */
     queue: z.array(QueueSeed).max(500).optional(),
     /** Background from past research for every agent's brief (goal 065), in order. */
@@ -350,6 +370,16 @@ export const CommandPayloads = {
   /** A full export (a full reset's) also carries the research archive and the ledger snapshot. */
   export_now: z.object({ full: z.boolean().default(false) }),
   /**
+   * The rig drains before its images change (goal 079): no new trial, plan or judge job starts,
+   * and those running end as they would. The rig's report says what still runs; control restarts
+   * it once nothing does, or at once when the owner skips the wait. `drain: false` ends a drain.
+   * A drain lasts until the harness restarts.
+   */
+  drain_rig: z.strictObject({
+    drain: z.boolean(),
+    reason: z.string().trim().min(1).max(500).optional(),
+  }),
+  /**
    * Owner-only full reset, after control verified that `export` (an export_now's result) was
    * pushed to the results repository. The harness refuses if research was recorded after it.
    */
@@ -373,7 +403,8 @@ export const CommandPayloads = {
     teachers: z.boolean().optional(),
     review: z.boolean().optional(),
     exports: z.boolean().optional(),
-    trial_minutes: z.number().int().min(1).max(10_080).optional(),
+    /** A trial's length when its contract sets none; null: none (goal 079). */
+    trial_minutes: z.number().int().min(1).max(1440).nullable().optional(),
     max_turns: z.number().int().min(1).max(100_000).nullable().optional(),
     promotion: z.enum(["auto", "owner_approval"]).optional(),
     /** How many of the rig's GPUs are the judge's (a rig configured with its GPU set). */

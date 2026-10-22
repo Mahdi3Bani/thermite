@@ -3,10 +3,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { log } from "../common/env.ts";
 import type { McpConnect } from "../common/mcp-client.ts";
 import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
+  type AskOwner,
   CommandPayloads,
   type Envelope,
   ExperimentId,
@@ -29,6 +31,7 @@ import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
+import { KIND_WORDS, type ProviderErrorKind } from "./agents/provider-errors.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import type { Compactions } from "./compactions.ts";
@@ -60,6 +63,7 @@ import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import { type McpCaller, McpGateway } from "./mcp-gateway.ts";
 import { type AdvisorRole, messageText, OwnerMessages } from "./messages.ts";
+import type { ProviderErrorAnswer } from "./model-forward.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
@@ -340,6 +344,26 @@ export class HarnessService {
     this.usageLimitAt = now;
   }
 
+  /** The newest error answer the model proxy saw for each trial (or "proxy"): goal 079. */
+  private readonly providerAnswers = new Map<string, ProviderErrorAnswer & { at: number }>();
+
+  /** The model proxy saw a provider's error answer for a trial (or a check or a plan). */
+  noteProviderAnswer(who: string, a: ProviderErrorAnswer, now = Date.now()): void {
+    this.providerAnswers.delete(who);
+    this.providerAnswers.set(who, { ...a, at: now });
+    // The newest few hundred: a trial reads its own soon after its program stops.
+    for (const k of this.providerAnswers.keys()) {
+      if (this.providerAnswers.size <= 256) break;
+      this.providerAnswers.delete(k);
+    }
+  }
+
+  /** The newest error answer the proxy saw for a trial, if it came at or after `since` (ms). */
+  providerAnswerSince(who: string, since: number): ProviderErrorAnswer | undefined {
+    const a = this.providerAnswers.get(who);
+    return a && a.at >= since ? { status: a.status, headers: a.headers, body: a.body } : undefined;
+  }
+
   /**
    * When agents may try the ChatGPT plan again, if the proxy saw it full at or after `since` (ms):
    * OpenAI gives no reset time, so a fixed wait (CHATGPT_LIMIT_WAIT_MS). Undefined: it did not.
@@ -358,6 +382,27 @@ export class HarnessService {
    * research folder, and the record of it (main.ts sets it, with the research folder).
    */
   compactions?: Compactions | undefined;
+  /**
+   * The rig drains (goal 079): no new trial, plan or judge job starts, and those running end as
+   * they would. Kept in memory only: the restart it prepares for ends it.
+   */
+  draining: { since: string; reason: string; by: string } | undefined;
+
+  /** What still runs, for a drain's report: open trials and the judge's leased jobs. */
+  work(): {
+    trials: number;
+    judge_jobs: number;
+    draining: { since: string; reason: string } | null;
+  } {
+    const n = (sql: string) =>
+      Number((this.ledger.db.prepare(sql).get() as { n: number } | undefined)?.n ?? 0);
+    return {
+      trials: n("select count(*) as n from trial where ended_at is null"),
+      judge_jobs: n("select count(*) as n from job where state = 'leased'"),
+      draining: this.draining ? { since: this.draining.since, reason: this.draining.reason } : null,
+    };
+  }
+
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   get promotion(): "auto" | "owner_approval" {
     return this.settings.get().promotion;
@@ -393,9 +438,10 @@ export class HarnessService {
         teachers: true,
         review: true,
         exports: true,
-        trial_minutes: 20,
+        trial_minutes: null,
         max_turns: null,
-        promotion: input.promotion ?? "owner_approval",
+        // Hands-off by default (goal 079).
+        promotion: input.promotion ?? "auto",
         judge_gpus: null,
       });
     this.rig = input.rig;
@@ -432,6 +478,172 @@ export class HarnessService {
   /** A run's promotion policy: its own, chosen when it was assigned, or the rig's default. */
   promotionFor(run: string): "auto" | "owner_approval" {
     return this.ledger.getRun(run)?.promotion ?? this.promotion;
+  }
+
+  /** What else a run asks the owner about (goal 079): nothing unless it was set to ask. */
+  askFor(run: string): AskOwner {
+    return this.ledger.getRun(run)?.ask_owner ?? {};
+  }
+
+  /**
+   * Why a confirmed win waits for the owner, or undefined (goal 079). Thermite is hands-off by
+   * default: a win waits only where the run (or the rig's default) asks: every win (promotion
+   * policy "owner_approval"), a gain above `ask_owner.above_gain`, or declared flaws
+   * (`ask_owner.declared_flaws`).
+   */
+  ownerAsks(
+    run: string,
+    attempt: Record<string, unknown>,
+    delta: number | null,
+  ): string | undefined {
+    if (this.promotionFor(run) === "owner_approval")
+      return "you asked to decide every change (promotion: owner approval)";
+    const ask = this.askFor(run);
+    const flaws = (JSON.parse(String(attempt.known_flaws ?? "[]")) as unknown[]).length;
+    if (ask.declared_flaws && flaws > 0)
+      return `you asked to decide changes with declared flaws: this one declares ${flaws}`;
+    const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+    if (ask.above_gain !== undefined && delta !== null && delta > ask.above_gain)
+      return `you asked to decide gains above ${pct(ask.above_gain)}: this one is ${pct(delta)}`;
+    return undefined;
+  }
+
+  /** The change of an attempt's current verdict, if it has one. */
+  private verdictDelta(attempt: string): number | null {
+    const v = this.ledger.currentVerdict(attempt);
+    const d = v
+      ? (this.ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as
+          | { delta: number | null }
+          | undefined)
+      : undefined;
+    return typeof d?.delta === "number" ? d.delta : null;
+  }
+
+  /**
+   * The supervisor's advisors, as it last said (goal 079): whether an auditor decides this rig's
+   * audits, and how many reviewers its review panel has. Unknown until it says.
+   */
+  advisors: { auditor: boolean; panel: number; at: string } | undefined;
+
+  /**
+   * The supervisor says which advisors it has (goal 079). Without an auditor, the audits held for
+   * one go on by the run's rules: promoted, or to the owner where the run asks.
+   */
+  async setAdvisors(a: { auditor: boolean; panel: number }, by: string): Promise<string[]> {
+    this.advisors = { ...a, at: this.clock().toISOString() };
+    return a.auditor ? [] : this.releaseHeldAudits(by);
+  }
+
+  /**
+   * A review panel's results (goal 079). A pass is accepted with no owner step, unless the run
+   * asks the owner (`ask_owner.reviews`); the goal tree is checked again.
+   */
+  recordReviewPanel(
+    id: number,
+    results: { reviewer: string; pass: boolean; reasons: string }[],
+    by: string,
+  ): { result: "review_passed" | "review_failed"; accepted?: true } {
+    const reviews = new Reviews(this.ledger);
+    const result = reviews.recordPanel(id, results, by);
+    const row = this.ledger.db.prepare("select run from review where id = ?").get(id) as
+      | { run: string }
+      | undefined;
+    if (result !== "review_passed" || !row || this.askFor(row.run).reviews) return { result };
+    reviews.ownerDecision(
+      id,
+      row.run,
+      true,
+      "hands-off: the review panel passed it, and the run does not ask the owner",
+      "harness (hands-off)",
+    );
+    this.ledger.enqueueJob({ kind: "validate", priority: 40, spec: { run: row.run }, actor: by });
+    return { result, accepted: true };
+  }
+
+  /**
+   * A "not possible" proposal (goal 079): taken, closing the run, unless the run asks the owner
+   * (`ask_owner.not_possible`). True when it was taken.
+   */
+  takeConclusion(run: string, proposal: number): boolean {
+    if (this.askFor(run).not_possible) return false;
+    new Conclusions(this.ledger).decide(
+      run,
+      proposal,
+      true,
+      "hands-off: the run does not ask the owner",
+      "harness (hands-off)",
+      "not possible: the evidence holds, and the run does not ask the owner",
+    );
+    return true;
+  }
+
+  /** The audits held while no auditor decides them (goal 079), released by the run's rules. */
+  async releaseHeldAudits(by: string): Promise<string[]> {
+    const audits = new Audits(this.ledger);
+    const out: string[] = [];
+    for (const id of audits.pending()) {
+      const au = this.ledger.db.prepare("select * from audit where id = ?").get(id) as
+        | Record<string, unknown>
+        | undefined;
+      if (!au) continue;
+      const attempt = String(au.attempt);
+      if (String(this.ledger.getAttempt(attempt)?.lifecycle) !== "awaiting_audit") continue;
+      this.ledger.appendEvent(by, "audit_skipped", attempt, {
+        audit: id,
+        run: String(au.run),
+        reason: String(au.reason),
+        why: "this rig has no auditor",
+      });
+      await this.promoteOrAsk(attempt, String(au.run), Number(au.expected_seq), by, "no auditor");
+      out.push(attempt);
+    }
+    return out;
+  }
+
+  /**
+   * A win with nothing left to hold it (an auditor's clear, or no auditor): the owner, where the
+   * run asks; else the champion by compare-and-swap, its declared flaws accepted by this step
+   * (goal 079: hands-off by default). A champion that moved meanwhile sends it to be screened
+   * again.
+   */
+  private async promoteOrAsk(
+    attempt: string,
+    run: string,
+    expectedSeq: number,
+    by: string,
+    cleared: string,
+  ): Promise<Record<string, unknown>> {
+    const a = this.ledger.getAttempt(attempt) as Record<string, unknown>;
+    const ask = this.ownerAsks(run, a, this.verdictDelta(attempt));
+    if (ask) {
+      this.ledger.tx(() => {
+        this.ledger.appendEvent(by, "promotion_pending", attempt, {
+          run,
+          expected_seq: expectedSeq,
+          commit: a.commit_sha,
+          reason: ask,
+        });
+        this.ledger.setAttemptLifecycle(attempt, "awaiting_approval", by);
+      });
+      return { effect: "waiting for the owner", reason: ask };
+    }
+    const flaws = (JSON.parse(String(a.known_flaws ?? "[]")) as unknown[]).length > 0;
+    const before = (a.flaws_cleared_by as string | null) ?? null;
+    if (flaws && !before)
+      this.ledger.db
+        .prepare("update attempt set flaws_cleared_by = ? where id = ?")
+        .run(`${by} (${cleared})`, attempt);
+    const r = await this.promoteAttempt({ run, attempt, expectedSeq, by });
+    if (r.promoted) {
+      if (flaws && !before)
+        this.ledger.appendEvent(by, "flaws_accepted", attempt, { by: `${by} (${cleared})` });
+      return { effect: "promoted", seq: r.seq };
+    }
+    if (flaws && !before)
+      this.ledger.db
+        .prepare("update attempt set flaws_cleared_by = null where id = ?")
+        .run(attempt);
+    return this.rescreen(attempt, r.currentSeq, by) as Record<string, unknown>;
   }
 
   mirrorFor(repo: string): string {
@@ -510,6 +722,22 @@ export class HarnessService {
         return this.assignCampaign(CommandPayloads.assign_campaign.parse(payload), by);
       case "rig_check":
         return this.startRigCheck(CommandPayloads.rig_check.parse(payload), by);
+      case "drain_rig": {
+        const p = CommandPayloads.drain_rig.parse(payload);
+        this.draining = p.drain
+          ? (this.draining ?? {
+              since: this.clock().toISOString(),
+              reason: p.reason ?? "its images are about to change",
+              by,
+            })
+          : undefined;
+        this.ledger.appendEvent(by, "rig_drain", null, {
+          drain: p.drain,
+          ...(p.reason ? { reason: p.reason } : {}),
+          ...this.work(),
+        });
+        return this.work();
+      }
       case "pause_run": {
         const p = CommandPayloads.pause_run.parse(payload);
         this.ledger.setRunStatus(p.run, "paused", p.reason, by);
@@ -869,6 +1097,7 @@ export class HarnessService {
         direction: p.direction,
         agents: p.agents,
         promotion: p.promotion,
+        askOwner: p.ask_owner,
         // The background the owner picked from past research: every agent's brief shows it.
         briefing: p.briefing?.map((b) => ({ text: b.text, from: b.from })),
         actor: by,
@@ -1185,6 +1414,26 @@ export class HarnessService {
   private checkRun: Promise<void> | undefined;
   private modelCheckWaits = false;
 
+  /** Whether a rig check runs now (a model check would have to wait). */
+  modelCheckRunning(): boolean {
+    return this.checking !== undefined;
+  }
+
+  /**
+   * Checks the workers' model now, unless a check runs or this rig has none (goal 079: the
+   * scheduler checks again while the agents are stopped). True when it started one.
+   */
+  checkModelNow(by: string): boolean {
+    if (!this.rigChecks.model || this.checking) return false;
+    try {
+      this.startRigCheck({ check: "model" }, by);
+      return true;
+    } catch (err) {
+      log("harness", "the model check did not start", { error: String(err) });
+      return false;
+    }
+  }
+
   /**
    * A check at start, run before anything else and awaited. Forced: at start no trial or judge
    * job of this controller can be running. Never fatal: its result is its own event.
@@ -1282,9 +1531,10 @@ export class HarnessService {
   }
 
   /**
-   * The auditor's decision. Block holds the attempt for good (only the owner can override);
-   * needs_owner sends it to the owner; clear returns it to the promotion policy, except that
-   * declared flaws always go to the owner: an audit can block, never pass.
+   * The auditor's decision. Block holds the attempt for good (only the owner can override), with
+   * the auditor's reasons; needs_owner sends it to the owner. Clear is the last step (goal 079,
+   * the owner's decision of 2026-10-22): the win is promoted, even above the audit trigger or with
+   * declared flaws, unless the run asks the owner.
    */
   async decideAudit(input: {
     attempt: string;
@@ -1315,28 +1565,24 @@ export class HarnessService {
     if (input.decision === "block") {
       this.ledger.tx(() => {
         this.ledger.appendEvent(input.auditor, "promotion_blocked", input.attempt, {
-          reason: "blocked by the audit",
+          reason: `blocked by the audit: ${input.reasons.slice(0, 1000)}`,
         });
         this.ledger.setAttemptLifecycle(input.attempt, "audit_blocked", input.auditor);
       });
       return { decision: "block", effect: "blocked" };
     }
-    if (input.decision === "needs_owner") return toOwner("the auditor asked for the owner");
-    if (String(audit.trigger) === "known_flaws") return toOwner("declared flaws need the owner");
-    // A gain above the absolute trigger always needs the owner; a model never decides it.
-    if (String(audit.trigger) === "absolute") return toOwner("a gain this large needs the owner");
-    if (this.promotionFor(run) === "owner_approval")
-      return toOwner("promotion policy: owner approval");
-    const r = await this.promoteAttempt({
-      run,
-      attempt: input.attempt,
-      expectedSeq,
-      by: input.auditor,
-    });
-    if (r.promoted) return { decision: "clear", effect: "promoted", seq: r.seq };
+    if (input.decision === "needs_owner")
+      return toOwner(`the auditor asked for the owner: ${input.reasons.slice(0, 600)}`);
+    // The auditor's clear is the last step: the run's own rules decide (goal 079).
     return {
       decision: "clear",
-      ...(this.rescreen(input.attempt, r.currentSeq, input.auditor) as object),
+      ...(await this.promoteOrAsk(
+        input.attempt,
+        run,
+        expectedSeq,
+        input.auditor,
+        "the auditor's clear",
+      )),
     };
   }
 
@@ -1447,7 +1693,8 @@ export class HarnessService {
         .all(run) as Record<string, unknown>[]
     ).map((e) => ({
       n: Number(e.n),
-      source: String(e.source),
+      // A research run's rounds are set by its research plan, never by the planner (goal 079).
+      source: contract.mode === "research" ? "research plan" : String(e.source),
       planner_valid: Number(e.planner_valid) === 1,
       violations: (JSON.parse(String(e.raw_violations)) as unknown[]).length,
       directives: JSON.parse(String(e.directives ?? "[]")) as number[],
@@ -2082,7 +2329,22 @@ export class HarnessService {
         | undefined;
     },
   ): void {
-    if (r.progress) this.trialProgress.set(trial.id, r.progress);
+    if (r.progress) {
+      this.trialProgress.set(trial.id, r.progress);
+      // Kept in the trial's record too, so a restart that interrupts it keeps its counters
+      // (goal 079).
+      this.ledger.db
+        .prepare(
+          "update trial set turns = ?, tool_calls = ?, tokens_in = ?, tokens_out = ? where id = ? and ended_at is null",
+        )
+        .run(
+          r.progress.turns,
+          r.progress.tool_calls,
+          r.progress.tokens_in,
+          r.progress.tokens_out,
+          trial.id,
+        );
+    }
     for (const e of r.entries ?? [])
       this.live.append({
         source: `trial:${trial.id}`,
@@ -2092,6 +2354,33 @@ export class HarnessService {
         run: trial.run,
       });
     if (r.entries?.length || r.progress?.turns || r.progress?.tokens_in) this.trialAtWork(trial.id);
+  }
+
+  /**
+   * A trial waits for its provider and then goes on in the same conversation (goal 079): a line in
+   * its session, and for a rate limit, a wait the scheduler and the research clock read: no new
+   * trial starts before it ends, and a research run's clock stops meanwhile.
+   */
+  trialWait(
+    trial: { id: string; run: string; lane: string },
+    w: { until: string; kind: string; words: string },
+  ): void {
+    const at = new Date(w.until);
+    const when = Number.isNaN(at.getTime()) ? w.until : at.toISOString().slice(11, 19);
+    this.live.append({
+      source: `trial:${trial.id}`,
+      kind: "status",
+      text: `waiting until ${when} UTC: ${KIND_WORDS[w.kind as ProviderErrorKind] ?? w.kind} (${w.words.slice(0, 300)}). The trial goes on in the same conversation.`,
+      lane: trial.lane,
+      run: trial.run,
+    });
+    if (w.kind === "rate_limit" && !Number.isNaN(at.getTime()))
+      this.ledger.appendEvent("scheduler", "agents_wait_for_limit", trial.run, {
+        until: at.toISOString(),
+        trial: trial.id,
+        reason: w.words.slice(0, 600),
+        in_trial: true,
+      });
   }
 
   /** A trial's waiting messages, given to it now (each read at once). */
@@ -2152,6 +2441,9 @@ export class HarnessService {
         ...(this.models ? { model: this.models.info() } : {}),
         // What runs on this rig and how (Edit rig).
         settings: this.settings.get(),
+        // What still runs, and whether the rig drains (goal 079): control restarts a draining
+        // rig once nothing runs.
+        work: this.work(),
         ...(this.gpuSplit ? { gpu_split: this.gpuSplit } : {}),
         ...(this.subscriptionUsage && this.models?.info().source !== "none"
           ? {

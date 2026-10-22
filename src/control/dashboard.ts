@@ -146,7 +146,7 @@ import {
 } from "./machines/ssh.ts";
 import { campaignMcpServers, McpServers } from "./mcp-servers.ts";
 import { mcpSettingsBlocks, mountMcpUi } from "./mcp-ui.ts";
-import { type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
+import { askOwnerFrom, type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
@@ -398,6 +398,8 @@ export interface DashboardOptions {
   rigImages?: RigImages | undefined;
   /** How control reaches Kubernetes clusters (tests give their own). */
   clusterKubectl?: ClusterKubectl | undefined;
+  /** How often a draining rig's report is looked at (goal 079; default 10 s). */
+  drainWatchMs?: number | undefined;
   /** How control reaches GPU clouds' APIs (tests give their own). */
   cloudFetch?: typeof fetch | undefined;
   /** Test pods on GPU clouds (made by createControlApi). */
@@ -956,12 +958,22 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             })
             .join("")}</div></div>`
         : "";
-    const policyWord =
-      i.promotion === "auto"
-        ? "Automatic when the judge confirms; audits and big gains still wait for you"
-        : i.promotion === "owner_approval"
-          ? "Only with your approval"
-          : "The rig's default (set where the rig is deployed)";
+    // Hands-off by default (goal 079): what the run asks you about, if anything.
+    const asks = [
+      typeof i.ask_owner.above_gain === "number"
+        ? `a gain above ${(i.ask_owner.above_gain * 100).toFixed(1).replace(/\.0$/, "")}%`
+        : "",
+      i.ask_owner.declared_flaws ? "a change with declared flaws" : "",
+      i.ask_owner.reviews ? "a review panel's pass" : "",
+      i.ask_owner.not_possible ? 'a "not possible" ending' : "",
+    ].filter(Boolean);
+    const policyWord = `${
+      i.promotion === "owner_approval"
+        ? "Only with your approval"
+        : i.promotion === "auto"
+          ? "Automatic when the judge confirms, after the auditor's clear when an audit is called for"
+          : "The rig's default (automatic unless it was set to ask you)"
+    }${asks.length && i.promotion !== "owner_approval" ? `. It asks you about ${asks.join(", ")}` : ""}`;
     const settings = [
       [
         "Champion",
@@ -1466,6 +1478,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       }
     }
     const promotion = String(f.promotion ?? "");
+    const askOwner = askOwnerFrom(f);
+    if (typeof askOwner === "string") return newCampaignPage(c, { draft, errors: [askOwner] });
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return newCampaignPage(c, { draft, errors: [split] });
     // The agents' model: given here, or the rig's; agents never start on a rig with none.
@@ -1530,6 +1544,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           target: { type: target.type, class: target.class },
           start: startValue === "save" ? false : startValue === "try" ? "try" : true,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+          askOwner,
           by: "owner:ui",
         },
       );
@@ -1871,6 +1886,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : undefined,
           agents,
           promotion: req.promotion,
+          askOwner: req.askOwner,
           by,
           owner,
           // A command carries at most 500 experiments.
@@ -2068,6 +2084,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       c.redirect(`${campaignHref(campaign)}?start=1&error=${encodeURIComponent(m)}`, 303);
     const agents = String(f.agents ?? "on") !== "off";
     const promotion = String(f.promotion ?? "");
+    const askOwner = askOwnerFrom(f);
+    if (typeof askOwner === "string") return back(askOwner);
     const choice = String(f.agents_model ?? "").trim();
     let model: StartRunRequest["model"];
     if (choice) {
@@ -2091,6 +2109,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         // are left out, whatever the form sent.
         model: agents ? model : undefined,
         promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+        askOwner,
         judgeGpus: String(f.judge_gpus ?? ""),
         queueFrom:
           agents && String(f.copy_queue ?? "") === "1" && slash > 0
@@ -3058,7 +3077,7 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
     const live = u.runs.filter((i) => i.status === "running");
     const runsNow = live
       .map((i) =>
-        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i) }),
+        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i, u) }),
       )
       .join("");
     const checks: [string, string, string][] = [
@@ -3396,7 +3415,7 @@ ${rp ? "" : events}
     const runLink = (x: { u: RigView; r: RunView }, sub: string, cls = "") =>
       `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.u.id, x.r.id)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
     const nav = `<nav class="lruns" aria-label="Runs" data-part="lruns">
-<div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r) ? ` · <span class="warn">${waitingOn(x.r)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
+<div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r, x.u) ? ` · <span class="warn">${waitingOn(x.r, x.u)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
 ${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
 ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
 </nav>`;
@@ -3513,8 +3532,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         : r.mode === "goal"
           ? `${r.goals.filter((g) => g.status === "met").length} of ${r.goals.length} goals met`
           : signed((r.champion.filter((x) => !x.reopened).at(-1)?.cumulative ?? 1) - 1),
-      waitingOn(r)
-        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r)} wait${waitingOn(r) === 1 ? "s" : ""} for you</a>`
+      waitingOn(r, u)
+        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r, u)} wait${waitingOn(r, u) === 1 ? "s" : ""} for you</a>`
         : "",
     ]
       .filter(Boolean)
@@ -5170,10 +5189,17 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
     const want = controlImages(s.gpus);
     const keeps =
-      "Its volume, tokens, runs and results stay. A trial in progress stops, and the harness plans it again.";
+      "Its volume, tokens, runs and results stay. Running trials and the judge's job under way finish first: the rig starts nothing new meanwhile. Update now skips the wait: a trial in progress then stops, and its experiment goes back to the queue.";
     // New images; or the same ones after a failed update (a retry); or a new address for control.
-    const update =
-      !manage || typeof want === "string"
+    // Draining for an update (goal 079): what it waits for, and the two ways out.
+    const work = rigWork(r.rig);
+    const draining =
+      r.status === "draining" && typeof want !== "string"
+        ? `<div class="small" style="margin-top:12px">Draining before its pods restart on control's images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">${work ? `It waits for ${esc(workWords(work))} to finish, and starts nothing new.` : "It waits for its next report."} Its pods restart as soon as nothing runs.</div>${act("images-now", "Update now, without waiting")}${act("drain-cancel", "Call the update off")}`
+        : "";
+    const update = draining
+      ? draining
+      : !manage || typeof want === "string"
         ? ""
         : want.harness !== s.images.harness || want.supervisor !== s.images.supervisor
           ? `<div class="small" style="margin-top:12px">Control now deploys other images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">Its pods restart on these images. ${keeps} After a newer harness has opened its ledger, an older image may not open it.</div>${act("images", "Update to these images")}`
@@ -5754,6 +5780,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   const updateClusterRigImages = async (
     rig: string,
     by: string,
+    o: { wait?: boolean | undefined } = {},
   ): Promise<{ ok: string } | { error: string }> => {
     const r = store.clusterRig(rig);
     if (!r || r.status === "removed")
@@ -5770,6 +5797,12 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const old = r.spec.images;
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
+    // A drain under way (goal 079): asked again, it goes on waiting; asked not to wait, the
+    // update goes ahead now.
+    if (r.status === "draining" && o.wait !== false)
+      return {
+        ok: `${rig} is draining: its pods restart on the new images once its trials and the judge's job end. Update now skips the wait.`,
+      };
     // One change at a time: an update or a start still waiting for its pods is not overlapped.
     if (r.status === "updating" || r.status === "starting")
       return {
@@ -5807,6 +5840,30 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         return { ok: `${rig} already runs control's images.` };
     }
     const stopped = r.status === "stopped";
+    // Drain first (goal 079): while trials run or the judge has a job under way, the rig starts
+    // nothing new and lets those end; the watcher below restarts its pods once nothing runs.
+    // A harness too old to report its work is updated at once, as before.
+    const work = rigWork(rig);
+    if (
+      o.wait !== false &&
+      !stopped &&
+      r.status !== "draining" &&
+      work &&
+      (work.trials > 0 || work.judge_jobs > 0)
+    ) {
+      issueCommand(store, opts.privateKeyPem, {
+        rig,
+        kind: "drain_rig",
+        payload: { drain: true, reason: "its images are about to change" },
+        issuedBy: by,
+      });
+      store.setClusterRigStatus(rig, "draining");
+      store.rigSetupEvent(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
+      store.audit(by, "cluster_rig_drain", { rig, to: images });
+      return {
+        ok: `${rig} drains first: it starts nothing new, and its pods restart on the new images once ${workWords(work)} finish. Update now, on its page or with update_rig_images and wait false, skips the wait.`,
+      };
+    }
     const out = await kube.kubectl(
       clusterTarget(k),
       ["apply", "-f", "-"],
@@ -5815,6 +5872,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     );
     if (out.code !== 0) {
       store.rigSetupEvent(rig, "images", false, kubeError(out));
+      // A rig that drained for it goes back to work: the update did not happen.
+      if (r.status === "draining") {
+        undrain(rig, by);
+        store.setClusterRigStatus(rig, "failed");
+      }
       return { error: kubeError(out) };
     }
     store.setClusterRigImages(rig, images, controlAddress());
@@ -5849,6 +5911,49 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     };
   };
   if (opts.actions) opts.actions.updateRigImages = updateClusterRigImages;
+  /** What a rig still runs, as its last report says (goal 079); none from an older harness. */
+  const rigWork = (
+    rig: string,
+  ): { trials: number; judge_jobs: number; draining: unknown } | undefined => {
+    const w = (store.rigs().find((x) => x.id === rig)?.summary as { work?: unknown } | undefined)
+      ?.work as { trials?: unknown; judge_jobs?: unknown; draining?: unknown } | undefined;
+    if (!w || typeof w.trials !== "number" || typeof w.judge_jobs !== "number") return undefined;
+    return { trials: w.trials, judge_jobs: w.judge_jobs, draining: w.draining ?? null };
+  };
+  const workWords = (w: { trials: number; judge_jobs: number }) =>
+    [
+      w.trials ? `${w.trials} trial${w.trials === 1 ? "" : "s"}` : "",
+      w.judge_jobs ? `the judge's job${w.judge_jobs === 1 ? "" : "s"}` : "",
+    ]
+      .filter(Boolean)
+      .join(" and ") || "its work";
+  /** A drain ends: the rig starts work again (its images did not change). */
+  const undrain = (rig: string, by: string) =>
+    issueCommand(store, opts.privateKeyPem, {
+      rig,
+      kind: "drain_rig",
+      payload: { drain: false, reason: "the update did not happen" },
+      issuedBy: by,
+    });
+  /** The owner calls the update off: the rig goes back to work on its images. */
+  const cancelDrain = (rig: string, by: string): { ok: string } | { error: string } => {
+    const r = store.clusterRig(rig);
+    if (r?.status !== "draining") return { error: `${rig} is not draining.` };
+    undrain(rig, by);
+    store.setClusterRigStatus(rig, "running");
+    store.rigSetupEvent(rig, "drain", true, "called off: the rig goes back to work on its images");
+    return { ok: `${rig} goes back to work on its images.` };
+  };
+  // A draining rig's pods restart once its report says nothing runs any more (goal 079).
+  const drainWatch = setInterval(() => {
+    for (const r of store.clusterRigs().filter((x) => x.status === "draining")) {
+      const w = rigWork(r.rig);
+      if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
+      store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
+      void updateClusterRigImages(r.rig, "control:drain", { wait: false }).catch(() => {});
+    }
+  }, opts.drainWatchMs ?? 10_000);
+  drainWatch.unref?.();
   const addClusterRigFrom = async (
     c: Ctx,
     f: Record<string, unknown>,
@@ -6237,8 +6342,14 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const action = c.req.param("action");
     const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
-    if (action === "images") {
-      const done = await updateClusterRigImages(r.rig, "owner:ui");
+    if (action === "images" || action === "images-now") {
+      const done = await updateClusterRigImages(r.rig, "owner:ui", {
+        wait: action !== "images-now",
+      });
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    if (action === "drain-cancel") {
+      const done = cancelDrain(r.rig, "owner:ui");
       return "error" in done ? back("error", done.error) : back("ok", done.ok);
     }
     if (!["stop", "start", "restart", "remove"].includes(action))
@@ -7796,11 +7907,11 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, the workers use the rig's own settings, and the planner uses the workers' model. An advisor uses the model in the rig's advisors file. If the file has none, that advisor is off.</p>
 <div class="card">${agents}</div>
 <div class="g3" style="margin-top:14px">
-<label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
+<label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit. Empty: no limit; a trial lasts until the worker submits or stops.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 </div></div>
 <div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
-<label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion. A change that the campaign sends to an audit still waits for the audit.</span></span></label>
+<label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion with no step of yours. When the campaign calls for an audit and this rig has an auditor, the auditor's clear comes first; its block stops the change. A run can still ask you about some changes (Ask me first, when you start it).</span></span></label>
 <label class="ch${s?.promotion === "owner_approval" ? " on" : ""}"><input type="radio" name="promotion" value="owner_approval"${s?.promotion === "owner_approval" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Ask me for each change</b><br><span class="muted small">Each confirmed change waits for you in Needs you.</span></span></label>
 </div><div class="muted small" style="margin-top:6px">A campaign can set its own rule when it starts; that rule comes first for its runs.</div></div>
 <div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl>${
@@ -7965,8 +8076,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       };
       const lanes = num("lanes");
       if (lanes !== null && lanes !== s.lanes) change.lanes = lanes;
+      // Empty: no limit (goal 079).
       const minutes = num("trial_minutes");
-      if (minutes !== null && minutes !== s.trial_minutes) change.trial_minutes = minutes;
+      if (minutes !== s.trial_minutes) change.trial_minutes = minutes;
       const turns = num("max_turns");
       if (turns !== s.max_turns) change.max_turns = turns;
       const promotion = String(f.promotion ?? s.promotion);
