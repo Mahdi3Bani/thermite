@@ -308,8 +308,19 @@ function watchAdvisor() {
       }
       const vars = env.split("\0");
       const was = seen.get(pid);
+      let ppid = was?.ppid ?? "";
+      let argv0 = was?.argv0 ?? "";
+      try {
+        ppid = readFileSync(`/proc/${pid}/stat`, "latin1").replace(/^.*\) /s, "").split(" ")[1] ?? "";
+        argv0 = readFileSync(`/proc/${pid}/cmdline`, "latin1").split("\0")[0] ?? "";
+      } catch {
+        // gone
+      }
       const scrub = vars.some((v) => v.startsWith("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB="));
       seen.set(pid, {
+        pid,
+        ppid,
+        argv0,
         exe: exe || was?.exe || "",
         token: env.includes(TOKEN) || Boolean(was?.token),
         scrub: scrub || Boolean(was?.scrub),
@@ -347,10 +358,15 @@ async function advisor() {
     r.output?.decision === "clear",
     r.error ?? r.output,
   );
+  // Claude Code also starts short-lived copies of its own binary (its ripgrep, for one), without
+  // file descriptor 3 or its name: only the call's own Claude Code, whose parent is not Claude
+  // Code, signs in. No process of the call may have the token or the scrub.
   const claude = procs.filter((p) => p.exe === "/usr/local/bin/claude");
+  const pids = new Set(claude.map((p) => p.pid));
+  const main = claude.filter((p) => !pids.has(p.ppid));
   check(
     "the advisor's Claude Code ran without the scrub, its sign-in on file descriptor 3, and no process of the call had the token in its environment",
-    claude.length > 0 && claude.every((p) => p.fd) && procs.every((p) => !p.token && !p.scrub),
+    main.length > 0 && main.every((p) => p.fd) && procs.every((p) => !p.token && !p.scrub),
     procs,
   );
 }
