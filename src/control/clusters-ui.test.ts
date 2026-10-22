@@ -654,6 +654,113 @@ describe("clusters in Providers and Add a rig", () => {
     assert.equal(s.store.clusterRig("cpu-1")?.status, "updating");
   });
 
+  test("a harness that started again while draining is asked to drain again, once (goal 079)", async () => {
+    const f = fakeCluster({ canCreateNamespaces: false, slots: { "thermite-slot-1": true } });
+    const before = await control(f.k);
+    await before.post("/ui/settings/add", {
+      type: "k8s",
+      name: "k8s-c",
+      kubeconfig: KUBECONFIG,
+      placement: "slot",
+      slots: "thermite-slot-1",
+    });
+    await before.post("/ui/rigs/add", {
+      place: "cluster:k8s-c",
+      rig: "cpu-1",
+      "k_gpus__k8s-c": "0",
+      "k_slot__k8s-c": "thermite-slot-1",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    before.store.setClusterRigStatus("cpu-1", "running");
+    const report = (work: Record<string, unknown>) =>
+      before.store.ingest({
+        rig: "cpu-1",
+        ledger_id: "l-1",
+        cursor: 0,
+        next: 0,
+        generated_at: new Date().toISOString(),
+        events: [],
+        summary: { work },
+      });
+    report({ trials: 1, judge_jobs: 0, draining: null });
+    const s = await control(f.k, {
+      store: before.store,
+      secrets: before.secrets,
+      tag: "2",
+      drainWatchMs: 20,
+    });
+    await s.post("/ui/rigs/cpu-1/cluster/images", {});
+    const drains = () =>
+      s.store.latestCommands("cpu-1", "drain_rig").filter((c) => c.payload.drain === true);
+    // Not yet taken: the report without a drain is not a reason to ask again.
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(drains().length, 1);
+    // Taken, then the harness started again: its next report has no drain.
+    const first = drains()[0];
+    assert.ok(first);
+    s.store.ackCommand("cpu-1", first.id, "delivered", {});
+    await new Promise((r) => setTimeout(r, 5));
+    report({ trials: 1, judge_jobs: 0, draining: null });
+    for (let i = 0; i < 50 && drains().length < 2; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(drains().length, 2);
+    assert.match(
+      s.store
+        .rigSetupEvents("cpu-1")
+        .map((e) => e.detail ?? "")
+        .join("\n"),
+      /its harness started again and was not draining: asked again/,
+    );
+    // The new ask is on its way: not asked a third time, and no restart while the trial runs.
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(drains().length, 2);
+    assert.equal(s.store.clusterRig("cpu-1")?.status, "draining");
+    // Its history names the step in words.
+    assert.match(
+      await s.page("/ui/rigs/cpu-1"),
+      /Draining: it starts nothing new until its work ends/,
+    );
+  });
+
+  test("Update to control's version moves a busy rig's pods at once: its runs are paused, so no drain (goal 079)", async () => {
+    const f = fakeCluster({ canCreateNamespaces: false, slots: { "thermite-slot-1": true } });
+    const before = await control(f.k);
+    await before.post("/ui/settings/add", {
+      type: "k8s",
+      name: "k8s-c",
+      kubeconfig: KUBECONFIG,
+      placement: "slot",
+      slots: "thermite-slot-1",
+    });
+    await before.post("/ui/rigs/add", {
+      place: "cluster:k8s-c",
+      rig: "cpu-1",
+      "k_gpus__k8s-c": "0",
+      "k_slot__k8s-c": "thermite-slot-1",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    before.store.setClusterRigStatus("cpu-1", "running");
+    before.store.ingest({
+      rig: "cpu-1",
+      ledger_id: "l-1",
+      cursor: 0,
+      next: 0,
+      generated_at: new Date().toISOString(),
+      events: [],
+      summary: { work: { trials: 2, judge_jobs: 1, draining: null } },
+    });
+    const s = await control(f.k, { store: before.store, secrets: before.secrets, tag: "2" });
+    f.calls.length = 0;
+    await s.post("/ui/rigs/cpu-1/update", {});
+    for (let i = 0; i < 100 && !f.calls.some((c) => c.args[0] === "apply"); i++)
+      await new Promise((r) => setTimeout(r, 20));
+    assert.ok(
+      f.calls.some((c) => c.args[0] === "apply"),
+      "its pods move now",
+    );
+    assert.equal(s.store.latestCommands("cpu-1", "drain_rig").length, 0);
+    assert.notEqual(s.store.clusterRig("cpu-1")?.status, "draining");
+  });
+
   test("CPU slots: the quota sets the rig's CPUs and memory; slots added later; a rig added over MCP", async () => {
     const quota = { "limits.cpu": "6", "limits.memory": "24Gi", "requests.storage": "200Gi" };
     const f = fakeCluster({

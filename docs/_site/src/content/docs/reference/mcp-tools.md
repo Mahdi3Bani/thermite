@@ -356,7 +356,7 @@ For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster,
 | `first_report` | First report reached control. Also written, with the detail `it reported after the wait ended`, when a cluster rig that control marked `failed` because its first report did not come reports after all |
 | `stop`, `start`, `restart` | Stopped; Started; Restarted |
 | `images` | Its deployments applied with new images. Its `detail` names the images that changed; `control's address for rigs → <url>` when only that changed; or `the same images again, after a failed change` for a retry. It is followed by `; at its next start` for a stopped rig |
-| `drain` | `drain` and its detail: `waiting for … to finish` when an update waits for the rig's work, `nothing runs any more: its pods restart now`, or `called off: the rig goes back to work on its images` |
+| `drain` | Draining: it starts nothing new until its work ends. Its detail: `waiting for … to finish` when an update waits for the rig's work, `its harness started again and was not draining: asked again`, `nothing runs any more: its pods restart now`, or `called off: the rig goes back to work on its images` |
 | `images_running` | Its pods run the new images |
 | `report_after_images` | A report reached control from the new images. Also written, with the detail `it reported after the wait ended`, when a cluster rig marked `failed` while waiting for its new images reports after all |
 | `pods_running` | Its pods run again. Written after a cluster rig's `start` or `restart` |

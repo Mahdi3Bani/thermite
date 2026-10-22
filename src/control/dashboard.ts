@@ -5084,6 +5084,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     join_revoked: "Join command revoked",
     join_used: "Join command used: the rig fetched its files from control",
     retired: "Retired: its token no longer works",
+    drain: "Draining: it starts nothing new until its work ends",
     images: "Its deployments applied with new images",
     images_running: "Its pods run the new images",
     report_after_images: "A report reached control from the new images",
@@ -5935,6 +5936,29 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       payload: { drain: false, reason: "the update did not happen" },
       issuedBy: by,
     });
+  /**
+   * A harness keeps its drain in memory only: one that started again since it took the drain
+   * reports none, and goes back to work. Asked again, it drains again (once the last ask is
+   * taken and a report came after it, so an ask still on its way is not repeated).
+   */
+  const redrain = (rig: string) => {
+    const last = store.latestCommands(rig, "drain_rig", 1)[0];
+    if (last?.payload.drain !== true || last.status === "pending" || !last.acked_at) return;
+    const seen = store.rigs().find((x) => x.id === rig)?.last_seen;
+    if (!seen || Date.parse(seen) <= Date.parse(last.acked_at)) return;
+    issueCommand(store, opts.privateKeyPem, {
+      rig,
+      kind: "drain_rig",
+      payload: { drain: true, reason: "its images are about to change" },
+      issuedBy: "control:drain",
+    });
+    store.rigSetupEvent(
+      rig,
+      "drain",
+      true,
+      "its harness started again and was not draining: asked again",
+    );
+  };
   /** The owner calls the update off: the rig goes back to work on its images. */
   const cancelDrain = (rig: string, by: string): { ok: string } | { error: string } => {
     const r = store.clusterRig(rig);
@@ -5948,6 +5972,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   const drainWatch = setInterval(() => {
     for (const r of store.clusterRigs().filter((x) => x.status === "draining")) {
       const w = rigWork(r.rig);
+      if (w && w.draining === null) redrain(r.rig);
       if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
       store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
       void updateClusterRigImages(r.rig, "control:drain", { wait: false }).catch(() => {});
@@ -6544,7 +6569,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       throw new Error(
         `${rig} runs the images control deploys already (${want.harness}, ${want.supervisor}), and they are not Thermite ${control.version}'s: set control's rig images to ${control.version}'s, then update again`,
       );
-    const done = await updateClusterRigImages(rig, "owner:ui");
+    // The update has paused the rig's runs at a safe point already: its containers move now, and
+    // a drain would only report them moved before they did.
+    const done = await updateClusterRigImages(rig, "owner:ui", { wait: false });
     if ("error" in done) throw new Error(done.error);
     return done.ok;
   };
