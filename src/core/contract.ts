@@ -125,7 +125,18 @@ const Common = {
   min_duration: DurationSchema.optional(),
   max_duration: DurationSchema.optional(),
   search_policy: SearchPolicy.optional(),
+  /**
+   * The campaign's additional information, from its author (goal 078): background, links, what
+   * was tried, limits and what good looks like, in Markdown, with no length limit. The planner,
+   * the workers and the advisors get it as data to weigh, never as a rule (brief.ts).
+   */
   notes: z.string().optional(),
+  /**
+   * What the campaign's author thinks is true, one entry each (goal 078): a starting point for the
+   * agents to test, not a fact. A research run starts with them as its hypotheses. Optional and
+   * without a default, so contracts written before it keep their hash.
+   */
+  hypotheses: z.array(z.string().min(1)).optional(),
   /**
    * The campaign's own context window and compaction point for all its runs' agents (goal 070):
    * each agent's window is the lower of this and its own model's, and this point replaces the
@@ -139,6 +150,12 @@ const EditPolicy = {
   editable_paths: z.array(z.string().min(1)).min(1),
   /** Regular expressions; an added line matching one is refused at V0. */
   forbidden_patterns: z.array(RegexSchema).default([]),
+  /**
+   * Ideas the campaign's author wants tried, one entry each (goal 078): the planner and the
+   * workers get them as starting points, not rules. Optional and without a default, so contracts
+   * written before it keep their hash.
+   */
+  ideas: z.array(z.string().min(1)).optional(),
 };
 
 const Acceptance = z

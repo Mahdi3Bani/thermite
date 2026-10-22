@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { z } from "zod";
 import type { McpConnect } from "../common/mcp-client.ts";
+import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
   CommandPayloads,
@@ -52,6 +53,7 @@ import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf } from "./research/folder.ts";
+import { startingHypotheses } from "./research/research.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { ModelUsage } from "./usage.ts";
@@ -858,6 +860,9 @@ export class HarnessService {
         briefing: p.briefing?.map((b) => ({ text: b.text, from: b.from })),
         actor: by,
       });
+      // A research run starts with its campaign's hypotheses as its own (goal 078).
+      if (contract.mode === "research" && contract.hypotheses?.length)
+        startingHypotheses(this.ledger, p.run, contract.hypotheses, by);
       // The MCP servers the run's agents use, and which agents get each: what the gateway and
       // the advisors read from now on (goal 068).
       if (named.length)
@@ -1172,10 +1177,15 @@ export class HarnessService {
 
   /** What the supervisor's auditor sees for each open audit: the package and the diff. */
   async auditPackages(): Promise<
-    (AuditPackage & { diff: string; owner_messages: { id: number; at: string; text: string }[] })[]
+    (AuditPackage & {
+      campaign_brief?: BriefData;
+      diff: string;
+      owner_messages: { id: number; at: string; text: string }[];
+    })[]
   > {
     const audits = new Audits(this.ledger);
     const out: (AuditPackage & {
+      campaign_brief?: BriefData;
       diff: string;
       owner_messages: { id: number; at: string; text: string }[];
     })[] = [];
@@ -1192,8 +1202,12 @@ export class HarnessService {
         String(a.parent_commit),
         String(a.commit_sha),
       );
+      // The campaign's brief from its author, whole, before the diff (goal 078): a package too
+      // long for the auditor's window is cut at its end.
+      const brief = briefData(this.contractFor(row.run));
       out.push({
         ...pkg,
+        ...(brief ? { campaign_brief: brief } : {}),
         diff: diff.slice(0, 200_000),
         // The owner's messages the auditor has not read (to it, or to all the advisors).
         owner_messages: this.ownerMessagesFor(row.run, "auditor"),
@@ -1205,13 +1219,20 @@ export class HarnessService {
 
   /** Reviews waiting for the panel, each with the owner's messages the panel has not read. */
   reviewPackages(): (ReviewPackage & {
+    campaign_brief?: BriefData;
     owner_messages: { id: number; at: string; text: string }[];
   })[] {
-    return new Reviews(this.ledger).pending().map((r) => ({
-      ...r,
-      owner_messages: this.ownerMessagesFor(r.run, "panel"),
-      ...this.backgroundFor(r.run),
-    }));
+    return new Reviews(this.ledger).pending().map(({ diff, ...r }) => {
+      // The campaign's brief from its author, whole, before the diff (goal 078).
+      const brief = briefData(this.contractFor(r.run));
+      return {
+        ...r,
+        ...(brief ? { campaign_brief: brief } : {}),
+        diff,
+        owner_messages: this.ownerMessagesFor(r.run, "panel"),
+        ...this.backgroundFor(r.run),
+      };
+    });
   }
 
   /** A run's background from past research, for an advisor's brief or package (when it has one). */
@@ -1328,6 +1349,7 @@ export class HarnessService {
             status: string;
           }[])
         : undefined;
+    const brief = briefData(contract);
     return {
       rig: this.rig,
       run,
@@ -1345,6 +1367,9 @@ export class HarnessService {
                 required: g.required,
               }))
             : { topic: contract.topic, questions: contract.questions },
+      // The campaign's brief from its author, whole (goal 078): ahead of the long parts, so a
+      // brief cut to the teacher's window loses the evidence first.
+      ...(brief ? { campaign_brief: brief } : {}),
       editable_paths: "editable_paths" in contract ? contract.editable_paths : [],
       champion: { seq: champion.seq, attempt: champion.attempt },
       families: registry.families(run),

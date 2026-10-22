@@ -182,6 +182,7 @@ import {
   type TunnelRig,
 } from "./store.ts";
 import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
+import { campaignBriefBlock } from "./ui/campaign-brief.ts";
 import { type ContextRig, contextBlock, startLine, startNote } from "./ui/campaign-context.ts";
 import { CAMPAIGN_CONTEXT_JS } from "./ui/campaign-context-client.ts";
 import {
@@ -2124,6 +2125,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const failed = kbFailed || onContext ? undefined : c.req.query("error");
     const okNote = onContext ? undefined : c.req.query("ok");
     const context = () => contextSection(c, name, vs, onContext);
+    // The campaign's brief from its contract (goal 078): what its agents know.
+    const brief = () => (isRigCheck(name) ? "" : campaignBriefBlock(campaignContract(store, name)));
     const note = failed
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
       : okNote
@@ -2163,7 +2166,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           waiting
             ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>`
-        }${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+        }${brief()}${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -2304,7 +2307,7 @@ ${
         now,
       )}</div>`
     : ""
-}${context()}${knowledgeSection(c, name, vs, kbFailed)}
+}${brief()}${context()}${knowledgeSection(c, name, vs, kbFailed)}
 </div><div class="side">${campaignUsage(k)}</div></div>${drawer}`,
       vs,
     );

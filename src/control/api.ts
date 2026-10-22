@@ -1189,25 +1189,31 @@ export function createControlApi(
   });
 
   // Copy a campaign control keeps (goal 069): a new campaign with the same contract and kit
-  // under another name, with its own empty folder in the knowledge base and no runs.
-  app.post("/v1/campaigns/:campaign/copy", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
-    const copy = actions.copyCampaign;
-    if (!copy) return c.json({ error: "this control copies no campaigns" }, 404);
-    const from = c.req.param("campaign");
-    const raw: unknown = await c.req.json().catch(() => undefined);
-    const body = CopyCampaignBody.safeParse(raw);
-    const out = body.success
-      ? copy({ from, ...body.data }, "owner:api")
-      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
-    if (out.state === "refused") {
-      store.audit("owner:api", "refused", {
-        path: `/v1/campaigns/${from}/copy`,
-        why: redact(out.error),
-      });
-      return c.json({ error: out.error }, out.status);
-    }
-    return c.json(copyCampaignAnswer(out), 201);
-  });
+  // under another name, with its own empty folder in the knowledge base and no runs. Its own
+  // brief may come with it (goal 078): room for as much as one command carries to a rig.
+  app.post(
+    "/v1/campaigns/:campaign/copy",
+    admin,
+    bodyLimit({ maxSize: 4 * 1024 * 1024 }),
+    async (c) => {
+      const copy = actions.copyCampaign;
+      if (!copy) return c.json({ error: "this control copies no campaigns" }, 404);
+      const from = c.req.param("campaign");
+      const raw: unknown = await c.req.json().catch(() => undefined);
+      const body = CopyCampaignBody.safeParse(raw);
+      const out = body.success
+        ? copy({ from, ...body.data }, "owner:api")
+        : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+      if (out.state === "refused") {
+        store.audit("owner:api", "refused", {
+          path: `/v1/campaigns/${from}/copy`,
+          why: redact(out.error),
+        });
+        return c.json({ error: out.error }, out.status);
+      }
+      return c.json(copyCampaignAnswer(out), 201);
+    },
+  );
 
   // A campaign's own context window and compaction point for all its runs' agents (goal 070):
   // the twin of MCP's set_campaign_context. A new version of its contract; an empty body removes

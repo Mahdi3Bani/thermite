@@ -127,7 +127,14 @@ export const CampaignDraft = z.strictObject({
   mode: z.enum(["hill_climb", "goal", "research"]),
   campaign: IdSchema,
   title: z.string().min(1).max(300),
-  notes: z.string().max(8000).optional(),
+  /**
+   * The campaign's brief (goal 078), with no length limit: the additional information (Markdown,
+   * the contract's notes), the ideas to try (hill climb and goal) and the hypotheses. The agents
+   * get it as starting points, not rules (core/brief.ts).
+   */
+  notes: z.string().optional(),
+  ideas: z.array(z.string()).optional(),
+  hypotheses: z.array(z.string()).optional(),
   /** The rig's measurement target, from the rig the campaign starts on. */
   target: z.strictObject({ type: z.string().min(1), class: z.string().min(1) }),
   project: z
@@ -166,7 +173,8 @@ export const CampaignDraft = z.strictObject({
   research: z
     .strictObject({
       topic: z.string().min(1).max(2000),
-      questions: z.array(z.string().min(1).max(1000)).min(1).max(50),
+      // Each question may be long and have several lines (goal 078); at least one is needed.
+      questions: z.array(z.string()),
       seeds: z.array(z.string().url()).max(100).default([]),
       min_duration: DurationSchema,
     })
@@ -307,6 +315,17 @@ export function buildCampaign(
     ...(context?.context_window !== undefined ? { context_window: context.context_window } : {}),
     ...(context?.compact_at !== undefined ? { compact_at: context.compact_at } : {}),
   };
+  // The brief's lists: entries trimmed, empty ones left out (goal 078).
+  const entries = (xs: string[] | undefined) => (xs ?? []).map((x) => x.trim()).filter(Boolean);
+  const ideas = entries(d.ideas);
+  const hypotheses = entries(d.hypotheses);
+  if (d.mode === "research" && ideas.length)
+    return {
+      ok: false,
+      errors: [
+        "Ideas to try are for hill-climb and goal campaigns: give a research campaign questions and hypotheses",
+      ],
+    };
   const contract: Record<string, unknown> = {
     schema_version: 1,
     campaign: d.campaign,
@@ -317,7 +336,9 @@ export function buildCampaign(
       count: d.lanes,
       ...(Object.keys(d.limits).length ? { limits: d.limits } : {}),
     },
-    ...(d.notes ? { notes: d.notes } : {}),
+    ...(d.notes?.trim() ? { notes: d.notes } : {}),
+    ...(ideas.length ? { ideas } : {}),
+    ...(hypotheses.length ? { hypotheses } : {}),
     ...(d.wall_hours ? { budget: { wall_hours: d.wall_hours } } : {}),
     ...(Object.keys(own).length ? { agents_context: own } : {}),
   };
@@ -325,10 +346,13 @@ export function buildCampaign(
   if (d.mode === "research") {
     if (!d.research)
       return { ok: false, errors: ["a research campaign needs its topic and questions"] };
+    const questions = entries(d.research.questions);
+    if (!questions.length)
+      return { ok: false, errors: ["a research campaign needs at least one question"] };
     Object.assign(contract, {
       project: { repo: d.project?.repo ?? `${d.campaign.slice(0, 50)}-notes` },
       topic: d.research.topic,
-      questions: d.research.questions,
+      questions,
       seeds: d.research.seeds,
       min_duration: d.research.min_duration,
       // A research campaign has no kit: its contract names its MCP servers.

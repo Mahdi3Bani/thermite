@@ -33,6 +33,10 @@ Reading is not only for research campaigns. A change to code often rests on some
 
 Such a run's research folder holds `INDEX.md`, `sources/`, `claims/` and `notes/`, which the harness writes from the run's records and keeps current, `knowledge/`, the past research described below, and `compactions/` once a trial's conversation was [compacted](../reference/limits-and-pacing.md#compaction). Once the run has recorded anything there, each worker's brief points to the folder, and tells the worker to search it before fetching a page again. The fetcher uses fixed values in these runs: it respects `robots.txt`, and fetches at most 6 pages a minute from each site and at most 5,000,000 bytes a page. In Pi, the worker has the tools `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note`; in OpenCode, Claude Code and Codex, the same five as `thermite-trial research` commands.
 
+### The campaign's brief
+
+In every mode, a campaign can carry its author's **brief**: additional information in Markdown (the project and its links, what was tried, limits, what good looks like), ideas to try (hill climb and goal) and hypotheses. It is part of the contract. The planner and the advisors read it whole, each worker reads it in its brief, and the run's folder keeps it as `BRIEF.md`. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide. [The campaign's brief](../reference/contract.md#the-campaigns-brief) lists what each agent gets.
+
 ### Field notes and past research
 
 In every mode, the workers, the planner (where the run has one) and the advisors keep **field notes** as they work: short notes of what they observed, decided and learned, which the run's **Journal** tab shows. Every run's records also go into its campaign's folder in **Thermite's knowledge base** on control. Later runs of the campaign read that folder, and other campaigns' folders when the owner grants them, in their research folder's `knowledge/`. [Journals and the knowledge base](journals-and-knowledge.md) explains both.
@@ -76,7 +80,7 @@ A goal campaign has no time limit of its own. Budgets pause it, as in any mode.
 
 ## Research
 
-A research campaign studies a topic for a set time. The contract gives the topic, the questions, starting URLs and which web sites to include or leave out. There is no project to change and no kit: the work is reading.
+A research campaign studies a topic for a set time. The contract gives the topic, the questions, starting URLs and which web sites to include or leave out. A question can be as long as it needs, with several lines; every research worker's brief has each one whole. The brief adds the background and the author's hypotheses: the run starts with those hypotheses as its own, so its workers look for sources for and against them. There is no project to change and no kit: the work is reading.
 
 **How the work is checked.** Workers fetch pages through the rig's archiving fetcher, which keeps a copy of everything it reads. By default it respects `robots.txt`. It limits how fast it fetches from each site and how large a page may be, and never fetches private or local addresses. A page a worker reads any other way verifies nothing until it is fetched through the archiving fetcher. A worker records a **claim** with exact quotes from those archived pages. Code then checks it:
 
@@ -92,6 +96,7 @@ Workers can also write research notes, propose hypotheses that cite verified cla
 ```text
 INDEX.md          the questions, what is known so far, and where everything is
 REPORT.md         the newest report
+BRIEF.md          the campaign's brief from its author, when it has one
 sources/          every archived page as text: the words a claim's quotes must match
 claims/ findings/ hypotheses/ notes/ report/
                   every claim (verified or draft), finding, hypothesis, note and report section

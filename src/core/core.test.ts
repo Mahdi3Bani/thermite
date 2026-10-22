@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { goalFixture, hillClimbFixture, researchFixture } from "../testing/fixtures.ts";
 import { canonicalJson, canonicalSha } from "./canonical.ts";
@@ -14,6 +16,8 @@ import { agentsContextRefusal, agentsContextWords, contextApplied } from "./comp
 import { parseContract } from "./contract.ts";
 import { parseDuration } from "./duration.ts";
 import { globToRegExp, matchesAny } from "./glob.ts";
+
+const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
 
 describe("canonical JSON", () => {
   test("sorts keys and omits undefined", () => {
@@ -158,6 +162,61 @@ describe("contracts", () => {
         r.errors.join("; "),
       );
     }
+  });
+
+  test("a campaign's brief (goal 078): notes, ideas and hypotheses are optional, in the hash only when set; old contracts keep their hashes", () => {
+    // The hashes of the example contracts and the fixtures before goal 078: unchanged.
+    const examples = join(import.meta.dirname, "..", "..", "examples", "contracts");
+    const before: [unknown, string][] = [
+      [
+        readJson(join(examples, "goal-example.json")),
+        "1938aea2ef40f963e07fb5b392087992308f019db78a3414ed5670369f02f5c4",
+      ],
+      [
+        readJson(join(examples, "research-example.json")),
+        "866ba7a8e82cdf8a010832073e9d4707bc2f32a1edbb02b7633164e721650c17",
+      ],
+      [
+        readJson(join(examples, "smoke-cpu.json")),
+        "301a7cebe3defd6e5d91bc31e2951bf3f84f14ea0ea906d440edbae207c33c92",
+      ],
+      [
+        readJson(join(examples, "smoke-cpu-goal.json")),
+        "d3a0b62d381fa2d834cabdf2f9e99dc490e9ef9a618144c5bcf2d83aa9a88f15",
+      ],
+      [hillClimbFixture, "5a040613c0e9ea9f4e277978f4fb229d0fced4493348fac4a0cef2e095ee94d9"],
+      [goalFixture, "eb289201617fdeea3212e273e5925ed2bff2b6951b1e11d1525aaca7f36a72d2"],
+      [researchFixture, "198706ecb4cc39015c6ef2515efd800182f6b60fdf8b6bbc1c2de78a14dab945"],
+    ];
+    for (const [c, sha] of before) {
+      const r = parseContract(c);
+      assert.ok(r.ok, r.ok ? "" : r.errors.join("; "));
+      assert.equal(r.ok && r.sha, sha);
+      assert.ok(r.ok && !("ideas" in r.contract) && !("hypotheses" in r.contract));
+    }
+    // A brief of any length; each part changes the hash.
+    const notes = `## Background\n${"A long line about the project. ".repeat(4000)}`;
+    const hc = parseContract({
+      ...hillClimbFixture,
+      notes,
+      ideas: ["Fuse the dequantize step.", "Load 128-bit vectors."],
+      hypotheses: ["It is memory bound.\nAt batch size 1 only."],
+    });
+    assert.ok(hc.ok, hc.ok ? "" : hc.errors.join("; "));
+    assert.ok(hc.ok && hc.contract.mode === "hill_climb" && hc.contract.ideas?.length === 2);
+    assert.equal(hc.ok && hc.contract.notes, notes);
+    const base = parseContract(hillClimbFixture);
+    assert.ok(hc.ok && base.ok && hc.sha !== base.sha);
+    const research = parseContract({
+      ...researchFixture,
+      questions: ["A question\nwith a second line, as long as it needs."],
+      hypotheses: ["Fresh workers lose nothing."],
+    });
+    assert.ok(research.ok, research.ok ? "" : research.errors.join("; "));
+    // Ideas to try are for hill climb and goal; empty entries are refused.
+    assert.ok(!parseContract({ ...researchFixture, ideas: ["x"] }).ok);
+    const empty = parseContract({ ...goalFixture, hypotheses: [""] });
+    assert.ok(!empty.ok && empty.errors.some((e) => e.startsWith("hypotheses.0")));
   });
 
   test("the window an agent works with: the lower wins, and the campaign's point replaces its own", () => {

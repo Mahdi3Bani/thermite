@@ -18,7 +18,7 @@ The **New campaign** page starts a [campaign](../../reference/glossary.md) in fi
 
 ## 1. Aim
 
-Open **Campaigns** in the sidebar and press **New campaign**, at the top right of the page. The page shows the steps **1 Aim**, **2 Project**, **3 How to measure** (**3 The question** for research), **4 Where it runs** and **5 Review and start**. Move with **Next** and **Back**. Hover over the "i" beside a field to read what it means.
+Open **Campaigns** in the sidebar and press **New campaign**, at the top right of the page. The page shows the steps **1 Aim**, **2 Project**, **3 How to measure** (**3 Sources** for research), **4 Where it runs** and **5 Review and start**. Move with **Next** and **Back**. Hover over the "i" beside a field to read what it means.
 
 Choose a card. [Campaign modes](../../explanation/campaign-modes.md) explains each.
 
@@ -29,6 +29,24 @@ Choose a card. [Campaign modes](../../explanation/campaign-modes.md) explains ea
 | **Research a question** | Collect sourced findings. No code changes |
 
 Fill in **Campaign name** (lowercase letters, digits, dots and dashes, such as `sort-speed`) and **Title** (one sentence; agents read it too). Runs are named after the campaign: `sort-speed-1`, `sort-speed-2`. Using a name again saves a new version of that campaign, and the page doesn't warn you that the name is in use. Nothing that ran changes: runs that exist keep their version, and later runs use the new one. This is how you change a campaign made here, such as its stop time: fill in the page again with the same name. The page starts empty each time.
+
+### The brief
+
+Under the name and the title, **The brief** says what the agents should know. They get it as starting points, not rules: the objective, the judge and your messages decide. Only a research campaign's questions are required.
+
+| Field | Mode | What it does |
+| --- | --- | --- |
+| **Topic** | Research | What the agents research, in one sentence |
+| **Questions** | Research | What the research must answer, one question in each box. A question can be long and have several lines. **Add a question** adds a box, and **×** removes one. At least one. Every finding answers one of them, and the report counts the verified claims for each |
+| **Additional information** | All | Background in Markdown: the project and its links, what was tried, limits, and what good looks like. No length limit. The preview beside the box shows it as it renders, as you type |
+| **Ideas to try** | Hill climb and goals | One idea in each box. The planner turns those that fit into experiments, and every worker reads them |
+| **Hypotheses** | All | What you think is true, one in each box, for the agents to test. A research run starts with them as its own hypotheses |
+
+A box grows with its text. Empty boxes are left out. The count beside each list follows it, such as `3 ideas`, or `At least one.` in red under **Questions** while it has none.
+
+The line under **Additional information** follows its size as you type. Up to 32,000 characters it says, for example, `Markdown · 1,240 characters. Every agent gets all of it.` Over that, it says `Markdown · 40,512 characters. Each worker's brief has the first 32,000; the rest is in BRIEF.md in the run's folder. The planner gets all of it, and the advisors as much as their window takes.` A campaign goes to a rig in one signed command of at most 3.5 MiB: a brief of more than about 3,000,000 bytes shows `Too long to send: a campaign goes to a rig in one command of at most 3.5 MiB.` in red.
+
+Control keeps the brief in the campaign's contract: [The campaign's brief](../../reference/contract.md#the-campaigns-brief) lists the fields and what each agent gets. The campaign's page shows it under **The brief**: the questions, the ideas and the hypotheses, then the additional information as it renders. A long text is folded, with its size; press it to open it.
 
 ## 2. Project
 
@@ -119,9 +137,9 @@ The last part of **How to measure** gives the campaign's agents tools from outsi
 
 The line under the list says what each kind of agent gets, such as `The workers get 31 tools from gbrain; the planner gets none; the advisors get 31 tools from gbrain.`, and warns of a server that is not in **Settings**, of one that doesn't work now, of one with no agents, and of a kind of agent left with no tool. **What goes into kit.json** shows the list. A kit described here gets it in its `kit.json`. An uploaded kit's list starts as its `kit.json` has it, and a change is written into the kit control keeps. A server it names that **Settings** lacks stays in the list, with `paper-search is not in Settings: this campaign can't start until it is. The uploaded kit names it: add it in Settings, or upload the kit without it.` A tool limit in its `kit.json` stays for a server whose tools **Settings** has not read. For **A kit in a repository**, the list is read from the kit's `kit.json` once you fill in **Kit repository** and **Kit commit**, each server marked `✓ found` or `✕ missing`, with **Add it in Settings** for a missing one; change it in the kit's repository. [Give agents MCP tools](give-agents-mcp-tools.md) says more.
 
-### The question
+### Sources
 
-For research, step 3 asks for **Topic** (a sentence), **Questions** (one per line, up to 50; the report counts the verified claims for each), **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. A run made here ends after that much running time; time while it is paused doesn't count. **MCP servers for the agents** is on this step too, as [above](#mcp-servers-for-the-agents); control writes the servers into the campaign's contract.
+For research, step 3 asks for **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. The topic and the questions are in [the brief](#the-brief), on step 1. A run made here ends after that much running time; time while it is paused doesn't count. **MCP servers for the agents** is on this step too, as [above](#mcp-servers-for-the-agents); control writes the servers into the campaign's contract.
 
 ## 4. Where it runs
 
@@ -164,11 +182,10 @@ Under **Advanced**, at the foot of step 4:
 | **Disk per agent (MiB)** | For one trial's copy of the code and its builds, 256 to 65536. Empty: 2048 |
 | **Stop after (hours)** | Empty: no limit. When the time is up, no new trial starts and the run is paused. See [Set a budget or a stop time](budget-and-stop-time.md) |
 | **GPUs for the judge** | For a rig with several GPUs: how many the judge measures on. The rig's harness, its container that holds the judge and the agents, restarts to apply it. Empty: the rig's current split |
-| **Notes for the agents** | Anything the agents should know |
 
 ## 5. Review and start
 
-Read the summary sentence. **What control will check (the draft)** shows your answers as JSON, as the page sends them; control builds the contract from them. Then press one of:
+Read the summary sentence. It ends with the brief in a few words, such as `Its brief: 1,240 characters of additional information, 3 ideas to try, 1 hypothesis.`, or `Its brief is empty.` **What control will check (the draft)** shows your answers as JSON, as the page sends them; control builds the contract from them. Then press one of:
 
 - **Start the campaign**: starts the first run, with agents.
 - **Try the kit first** (hill climb and goal): starts a run with no agents, so you see the kit work before an agent spends anything. See [Test a kit with known candidates](test-a-kit.md).
@@ -338,3 +355,5 @@ npx thermite run start sort-speed-model-a --rig rig-1 \
 ```
 
 The first command prints the copy, such as `{"campaign":"sort-speed-model-a","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`; the second starts a run of it. Over REST it is `POST /v1/campaigns/sort-speed/copy` with `{"name": "sort-speed-model-a"}`. Over MCP it is [`copy_campaign`](../../reference/mcp-tools.md#copy_campaign) with `{"from": "sort-speed", "name": "sort-speed-model-a"}`. A research copy's other servers are `mcp_servers` there, or `--mcp-servers-json` on the command line: see [`campaign copy`](../../reference/command-line.md#campaign-copy). The copy's own agents' context is `agents_context` there, such as `{"context_window": 131072}` (`null`: none), or `--context-window` and `--compact-at` on the command line.
+
+The copy keeps the campaign's [brief](#the-brief). To give it its own, send `notes`, `ideas` or `hypotheses` with the copy over REST or MCP, or `--info-file`, `--idea` or `--hypothesis` on the command line: each part given replaces the campaign's, and an empty one removes it. A research copy takes no ideas.
