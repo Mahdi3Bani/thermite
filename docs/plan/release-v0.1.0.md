@@ -30,7 +30,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - A documentation site with tutorials, how-to guides, reference and explanation. Agents can read all of it through `llms.txt`.
 - A changelog, a known-limits page, a security policy and a contributor guide.
 
-**Later:** one Logs page and full API and MCP coverage (v0.2.0); safer managed rigs and lane network rules (v0.3.0); kit tools and clearer evidence (v0.4.0); web search and multi-day runs (v0.5.0). 0.x versions make no upgrade promise.
+**Later:** quick follow-ups such as an Info tab for campaigns and runs, stuck rigs in Needs you and the model's reasoning on Live (v0.1.1); one Logs page and full API and MCP coverage (v0.2.0); safer managed rigs and lane network rules (v0.3.0); kit tools and clearer evidence (v0.4.0); web search and multi-day runs (v0.5.0). 0.x versions make no upgrade promise.
 
 ## Goals
 
@@ -129,7 +129,7 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 1. Goal 002 first, so CI runs on every push from now on.
 2. The parts go on at the same time; in Running campaigns, 064 follows 063 and 065 follows 064. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
 3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the pull request into `main`, the changelog, the tag and the GitHub Release.
-4. Fixes from tester reports ship as 0.1.1, 0.1.2 and so on. New features go into v0.2.0.
+4. Fixes from tester reports, and the quick follow-ups the roadmap puts in v0.1.1, ship as 0.1.1, 0.1.2 and so on. Other new features go into v0.2.0.
 
 ## Decisions made from the open questions
 

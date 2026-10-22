@@ -96,7 +96,7 @@ The judge needs a [kit](../../explanation/kits.md): how to build your project, r
 
 The placeholders, in **Run** and in **Is it right?**, are `{args}` (the case's **Arguments**), `{input}` (its **Input file**), `{build}` (what the build made: `{build}/build/app`), `{out}` (a folder for the run's results, which the check reads) and `{kit}` (the **Files for the check**). Any other gives `{x} is not a placeholder here: use {args}, {input}, {build}, {out} or {kit}`. This short set is the page's own: a `kit.json` you write yourself has other placeholders, and there the check's exit code doesn't count, only its JSON line. See [Write a kit for your project](write-a-kit.md).
 
-- A **Hidden test** case is used only to double-check a change that already looks better, so a change can't win by helping only the cases agents see. At least one case must not be hidden.
+- A **Hidden test** case is used only to double-check a change that already looks better, and, in a goal campaign, the champion before the run closes, so a change can't win by helping only the cases agents see. At least one case must not be hidden.
 - With **How long a run takes**, the score is a time, better lower. When every case, hidden ones too, has a **Work done** value, the score is a rate instead: **Work done** divided by the time, such as items per second, better higher.
 - A kit described here takes up to 64 cases, 32 check files and 32 input files, each up to about 10 MB.
 
@@ -217,7 +217,7 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 | The reason starts with | What to do |
 | --- | --- |
 | `staging:` | The rig could not fetch the project or the kit: the reason names the address, such as `staging: https://git.example.com/you/project.git has no commit …`, or gives git's own error. Check that the address works from the rig and that the commit is pushed there. For a private repository, use **Try it** on its Git access: see [Use a private repository](private-repository.md#5-check-that-the-rig-fetched-it). |
-| `the kit does not fit the contract:` | A kit in a repository lacks a case, metric or verifier that the page named, or measures on another target. Each problem is named, such as `cells names cell large, which the kit does not have`. Correct the names, or commit the kit again and use its new **Kit commit**. |
+| `the kit does not fit the contract:` | A kit in a repository lacks a case, metric or verifier that the page named, a case it runs has no `work` parameter above zero for one of the kit's rate metrics, or it measures on another target. Each problem is named, such as `cells names cell large, which the kit does not have`. Correct the names, or commit the kit again and use its new **Kit commit**. |
 
 When nothing in the campaign must change, such as after you fixed the repository's access, **Start a run** on the campaign's page starts the same version again. Otherwise fill in the **New campaign** page again with the same **Campaign name** and press **Start the campaign**: this saves a new version and starts it.
 

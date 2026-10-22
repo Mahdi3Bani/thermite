@@ -300,10 +300,9 @@ Contract fields that refer to the kit:
 | Contract field | Refers to | Checked when a run is assigned |
 | --- | --- | --- |
 | `project.kit` | The kit's `repo` and `commit` | Yes: the commit must be on the rig, and its `kit.json` valid |
-| `cells`, `held_out_cells` (hill climb) | Cell names | Yes |
+| `cells` (hill climb), `held_out_cells` (hill climb and goal) | Cell names | Yes |
 | `objective.primary.metric`, `objective.secondary[].metric`, `guards[].metric`, `hard_constraints[].metric` | Metric names | Yes |
 | `monitor_only` | Metric names | No; the field is not used |
-| `held_out_cells` (goal) | Cell names | No. A held-out cell the kit lacks fails as `no cell <cell>` when a goal is verified |
 | `goals[].verify` `{"type": "code", "verifier": …}` | A verifier name | Yes |
 | `goals[].verify` `{"type": "metric_threshold", "metric": …, "cells": …}` | A metric name in `metrics`, and cell names. A number the check prints counts only when `metrics` declares it as a `from: "check"` metric | Yes |
 | `models` | Imported model files, reached as `{models:<sha256>}` | The files must be imported; the kit does not list them |

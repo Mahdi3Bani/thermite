@@ -8,7 +8,7 @@ sidebar:
 
 Thermite is hands-off by default. A change the judge confirms becomes the new best with no step of yours, after the rig's auditor clears it when an audit is called for. A review panel's pass is accepted, and a goal campaign the evidence shows is not possible ends. Only what you ask to decide waits for you, and what goes wrong: an auditor's block, agents the model provider stopped, a rig's new key, a full reset you started and a rig that stopped reporting. This page shows how to choose what waits, where it waits and what each button does. Campaigns go on while a decision waits: agents keep working from the current [champion](../../reference/glossary.md).
 
-![The Overview: two decisions under Needs you, each with what the judge measured and the buttons Make it the champion and Reject it](../../../../assets/screenshots/overview.webp)
+![The Overview: under Needs you, a decision on a run that asks you about every change, with what the judge measured and the buttons Make it the champion and Reject it, and a rig that stopped reporting, with Open the rig](../../../../assets/screenshots/overview.webp)
 
 ## Find what waits
 

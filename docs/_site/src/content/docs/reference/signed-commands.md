@@ -130,7 +130,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `redirect` | None: on the dashboard, rules come from **Tell the planner**, a `message_agent` to the planner, which makes them | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
-| `drain_rig` | **Update to these images**, **Try the update again**, **Give it control's new address** and **Update to** control's version on the page of a rig at work set up on a cluster, and **Call the update off**; control issues it as the caller | Yes (`POST /v1/commands`): the rig drains, but its page shows no update waiting, and it stays drained until `drain: false` or a restart | `update_rig_images` | `update_rig_images` | No | |
+| `drain_rig` | **Update to these images**, **Try the update again** and **Give it control's new address** on the page of a rig at work set up on a cluster, and **Call the update off**; control issues it as the caller | Yes (`POST /v1/commands`): the rig drains, but its page shows no update waiting, and it stays drained until `drain: false` or a restart | `update_rig_images` | `update_rig_images` | No | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
 | `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
@@ -268,10 +268,10 @@ The run becomes `closed` with the reason, as a goal run that met its goals does,
 - its lanes' running trials end, as for [`pause_run`](#pause_run), and its planner call is cancelled; no new round or trial starts;
 - the judge takes no job of a closed run, so its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded, but a win it confirms does not become the champion: it is held as **Run closed**; if that job would close the run as complete, the run keeps your reason;
 - a research run's final report is written once its last trial has ended, as at the end of its time;
-- it can't be resumed or paused again: [`resume_run`](#resume_run) and [`pause_run`](#pause_run) refuse it with `run <run> is closed`. Its queue, rules and messages no longer change;
+- it can't be resumed or paused again: [`resume_run`](#resume_run) and [`pause_run`](#pause_run) refuse it with `run <run> is closed`. Its queue and rules no longer change, and it takes no new message: `run <run> is closed: nothing will read this message`. A message kept in force can still be removed with [`unkeep_message`](#unkeep_message);
 - nothing in it waits for a decision any more. A change waiting for approval or held for an audit, a review the review panel passed and a "not possible" proposal stay as they were when it closed: control leaves them out of **Needs you**, the harness refuses [`approve_promotion`](#approve_promotion), [`decline_promotion`](#decline_promotion), [`accept_review`](#accept_review) and [`conclude`](#conclude) for the run, and the rig's auditor gets none of its audits. None of its changes becomes the champion by a decision.
 
-Its experiments, attempts, champion and journal stay, and the rig's next export carries the close, as after a run that met its goals. Refusals: `run <run> is already closed (<its reason>): there is nothing to close`. Result: `{"run", "status": "closed", "was": "running"}`, with `"paused"` for a run that was paused.
+Its experiments, attempts, champion and journal stay, and the rig's next export carries the close, as after a run that met its goals. Refusals: `no run <run>`, and `run <run> is already closed (<its reason>): there is nothing to close`, without the reason in brackets when the run closed with none. Result: `{"run", "status": "closed", "was": "running"}`, with `"paused"` for a run that was paused.
 
 On the dashboard, **Close run** is under **⋯** in the header of a running or paused run's page. It says `The run ends for good: nothing more starts, and it can't be resumed. Its results stay.`, takes the reason in **Why**, and sends only once you type `close <run>` in the box below it. Control refuses it before signing, in words, without them: `Not sent: Write why you close the run first.` or `Not sent: Type close <run> to confirm.`
 
@@ -540,7 +540,7 @@ Control issues it before it moves a rig at work onto new images or a new address
 | `drain` | boolean | `true`: the rig drains; `false`: the drain ends |
 | `reason` | text, 1 to 500 characters, optional | Why, as the event records it |
 
-While a rig drains, its harness starts no new trial, plan or judge job, and those running end as they would; a plan that ends during the drain records its round and starts no trial. Its report's `work` says what still runs, `{trials, judge_jobs, draining}`, and control restarts its pods once nothing does. `judge_jobs` counts only jobs under a lease still in force: a lease that ran out is taken back to the queue while the rig drains, which starts nothing. A drain lasts until the harness restarts, which ends it. The event `rig_drain` records each change with the same figures. Result: `{"trials", "judge_jobs", "draining"}`.
+While a rig drains, its harness starts no new trial, plan or judge job, and those running end as they would; a plan that ends during the drain records its round and starts no trial. Its report's `work` says what still runs, `{trials, judge_jobs, draining}`, and control restarts its pods once nothing does. `judge_jobs` counts only jobs under a lease still in force: a lease that ran out is taken back while the rig drains, queued again or `blocked` after its third lost lease, which starts nothing. A drain lasts until the harness restarts, which ends it. The event `rig_drain` records each change with the same figures. Result: `{"trials", "judge_jobs", "draining"}`.
 
 ### `wipe_state`
 

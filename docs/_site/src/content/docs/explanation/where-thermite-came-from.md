@@ -14,7 +14,7 @@ Each lesson below is paired with the part of Thermite that answers it. The [glos
 
 A search for speed has long dry spells. A loop that stops after a fixed number of failures ends the search at the first long one, whether or not the next change would have worked.
 
-**In Thermite:** nothing ends research by default. There is no limit on turns, attempts, failures or time unless you set one. A lane whose trials end without a usable change waits a little longer before its next trial, up to ten minutes. A provider's error is answered by its kind: a rate limit or an outage waits and goes on, and no credits, a refused key or an outage that lasts 30 minutes stops the agents until the model works again. → [Why Thermite runs until the job is done](runs-until-done.md)
+**In Thermite:** nothing ends research by default. There is no limit on turns, attempts, failures or time unless you set one. A lane whose trials end without a usable change waits a little longer before its next trial, up to ten minutes. A provider's error is answered by its kind: a rate limit or an outage waits and goes on, and no credits, a refused key, or an outage or refused requests that last 30 minutes stop the agents until the model works again. → [Why Thermite runs until the job is done](runs-until-done.md)
 
 ## Useful experiments discarded because they didn't move one number
 

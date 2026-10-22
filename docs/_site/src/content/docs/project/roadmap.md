@@ -37,7 +37,7 @@ Thermite's core is built: the judge, control and its dashboard, the agents, and 
 - less overhead and fewer stops: a provider's error is sorted by its kind, so a rate limit waits and a refused key or no credits stops the run's agents and asks you; no hidden default caps; a rig can finish its running trials before an image update; a restart keeps a trial's counters and the lanes' caches; and a win is promoted once the auditor clears it, unless you ask to decide first. It is done ([goal 079](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/079-thermite-overhead.goal); [Promotions](../how-to/campaigns/decide-what-waits.md#promotions));
 - a campaign's brief for every mode, on its own step of **New campaign**: additional information in Markdown, starting links, ideas to try and hypotheses, which the planner, the workers and the advisors get. It is done ([goal 078](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/078-campaign-brief.goal); [The brief](../how-to/campaigns/start-from-dashboard.md#2-the-brief));
 - a queue that stays full of ideas: the teachers' main product is a portfolio of new opportunities, written to the queue, and they read the champion's code, the attempts' diffs and the judge's reasons; a campaign keeps a target of experiments ready, **Ideas kept ready**, and a queue below it asks the planner and then the teachers for more; lanes propose their follow-ups. It is done ([goal 081](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/081-ideas-first.goal); [Supervision](../explanation/supervision.md#the-teachers));
-- a goal report that keeps what it measured: a goal checked by the kit's verifier gives each measured case's values, met or not, as a threshold goal does, on the run's **Goals** block and to the agents, never a held-out case's; and no new trial while the judge checks a second time a champion that met every goal, a check that also runs the held-out cases of the goals met. It is done ([goal 086](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/086-goal-report-values-and-confirmation-wait.goal); [The goal report](../reference/verdicts.md#the-goal-report));
+- a goal report that keeps what it measured: a goal checked by the kit's verifier gives each measured case's values, met or not, as a threshold goal does, on the run's **Goals** block and to the agents, never a held-out case's; and no new trial while the judge checks a second time a champion that met every required goal, a check that also runs the held-out cases of the goals met. It is done ([goal 086](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/086-goal-report-values-and-confirmation-wait.goal); [The goal report](../reference/verdicts.md#the-goal-report));
 - closing a run by hand: **Close run** on a run's page, and `close_run` with the owner's token, end a run you no longer want for good, with your reason, as a run that met its goals ends. It is done ([goal 087](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/087-close-a-run.goal); [Close a run](../how-to/campaigns/steer-a-run.md#close-a-run));
 - a kit written elsewhere, given to control as a git bundle of its repository: control keeps it with its commits, and rigs fetch it from control by commit. It is built; its compose checks are next ([goal 096](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/096-kits-from-elsewhere.goal); [Give control a kit you wrote elsewhere](../how-to/campaigns/write-a-kit.md#give-control-a-kit-you-wrote-elsewhere)).
 
@@ -48,13 +48,13 @@ Also built:
 - a sample project;
 - the Codex CLI as a worker harness for a ChatGPT subscription ([Run the agents in Codex](../how-to/models/chatgpt-subscription.md#run-the-agents-in-codex));
 - Start a run over REST, MCP and the command line, as well as from the campaign's page;
-- rigs on RunPod ([Run a rig on RunPod](../how-to/install/runpod-rig.md)). The owner launches them from the dashboard or over REST, MCP and the command line, and stops, starts and terminates them. A RunPod rig can stop by itself when no run is at work on it.
+- rigs on RunPod ([Run a rig on RunPod](../how-to/install/runpod-rig.md)). The owner launches them from the dashboard or over REST, MCP and the command line, and stops, starts and terminates them. A RunPod rig can stop by itself when no run is at work on it. It works on the pod's own disk and keeps a snapshot of its state on the pod's volume, so a stop and a start keep its work. Its page shows the pod's log, before the rig enrolls too ([A pod that runs but never enrolls](../how-to/install/runpod-rig.md#a-pod-that-runs-but-never-enrolls-read-its-log));
+- sign-in with a real Claude or ChatGPT subscription, each tested from start to end: sign in, give a rig the model, pass its model check, and run a trial whose change the judge confirmed ([goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/009-subscription-sign-in-tests.goal); [Use a Claude subscription](../how-to/models/claude-subscription.md), [Use a ChatGPT subscription](../how-to/models/chatgpt-subscription.md)).
 
 Still to come in v0.1.0:
 
 - the first published images, which the release's tag publishes;
-- the RunPod steps run on a real pod, from launch to terminate;
-- sign-in tests with real Claude and ChatGPT subscriptions.
+- the RunPod steps run on a real pod, from launch to terminate, with the judge's check of how noisy the pod's timing is.
 
 The [roadmap file](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md) lists every v0.1.0 goal with its status, and the [release plan](https://github.com/iammrduncan/thermite/blob/main/docs/plan/release-v0.1.0.md) gives the release's scope and the steps to ship it.
 
@@ -64,13 +64,14 @@ Later versions are proposed: their order and contents can change. Each one ships
 
 | Version | Focus |
 | --- | --- |
-| **v0.2.0** | Run Thermite without the dashboard: every dashboard action has an API and MCP twin, all logs are in one place you can search, and you sign in with your identity provider. Also planned: a deep-research teacher that runs when the queue needs ideas, and research tasks with web search inside goal and hill-climb runs. |
+| **v0.1.1** | Quick follow-ups to the first release: **New campaign**'s buttons show they were pressed; an **Info** tab with everything a campaign and a run were started with; a stuck rig in **Needs you**; the model's reasoning and words on **Live**, not only its tool calls; a **Copy** button by each ID; and, in **Settings › Providers**, all that Thermite spent on a GPU cloud, not only its test pods. |
+| **v0.2.0** | Run Thermite without the dashboard: every dashboard action has an API and MCP twin, all logs are in one place you can search, and you sign in with your identity provider. Also planned: a deep-research teacher that runs when the queue needs ideas, research tasks with web search inside goal and hill-climb runs, a run that starts from a champion on another rig, faster dashboard pages, and a **Knowledge** page to explore the knowledge base, with copies of it in outside stores. |
 | **v0.3.0** | Rigs you can trust: checks before a rig is deployed, setup and removal that are safe to repeat, upgrades from control, and GPU rigs under compose. |
 | **v0.4.0** | Kits and evidence: kits are easier to write and to test before agents start, and each result shows clearer evidence. |
 | **v0.5.0** | Unattended for days: campaigns in all three modes run for days with no one watching, and research mode can search the web. |
 | **Later** | Ideas with no version yet, such as more kinds of target and planning across rigs. |
 
-After v0.1.0, version numbers count up by the middle number: 0.2.0, 0.3.0 and so on. Fixes ship as 0.1.1, 0.1.2. A 0.x version makes no promise about upgrades.
+After v0.1.0, version numbers count up by the middle number: 0.2.0, 0.3.0 and so on. Fixes and quick follow-ups ship as 0.1.1, 0.1.2. A 0.x version makes no promise about upgrades.
 
 ## The plan files
 

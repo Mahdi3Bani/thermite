@@ -81,7 +81,7 @@ If it never enrolls, **Pull mode** shows the last error, and `thermite runpod li
 
 ### A pod that runs but never enrolls: read its log
 
-Before a rig enrolls, control sees nothing of it, and the pod's log is the one place that says why. **Pod log**, under **Getting it ready**, reads it from RunPod's API with the key you gave in **Settings › Providers**, so you need no RunPod console. The page reads it once as it opens; press **Read again** for the newest lines. Each line is marked `container`, for what the rig image printed, or `system`, for RunPod's own steps, such as the image pull. The newest line is at the bottom.
+Before a rig enrolls, control sees nothing of it, and the pod's log is the one place that says why. **Pod log**, under **Getting it ready**, reads it from RunPod's API with the key you gave in **Settings › Providers**, so you need no RunPod console. The first time the page opens, it reads the log by itself; after that it shows the last read, and **Read again** reads the newest lines. Each line is marked `container`, for what the rig image printed, or `system`, for RunPod's own steps, such as the image pull. The newest line is at the bottom.
 
 Look for the last thing the image printed: an image that failed to pull, a crash at start, or a supervisor that could not reach control. A read that RunPod refuses says why in the block, such as `Not read: RunPod refused to show pod …'s log with this key: the key may not read pod logs.`: give control a key with read access to pods. Over the REST API, `GET /v1/rigs/<rig>/runpod/logs` gives the same lines, and so does the MCP tool [`runpod_rig_logs`](../../reference/mcp-tools.md#runpod_rig_logs).
 

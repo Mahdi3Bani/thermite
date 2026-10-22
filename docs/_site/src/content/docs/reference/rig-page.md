@@ -194,12 +194,13 @@ A rig on RunPod has **History** in place of **Recent**, with filters: **All**, *
 | Part | What it shows |
 | --- | --- |
 | The lines | Oldest first, the newest at the bottom, in a box that opens scrolled to the newest. Each line has its source, `container` (what the rig image printed) or `system` (RunPod's own, such as the image pull), and its time in UTC; the full time shows when you point at it |
-| Under them | `Read 2 min ago, at 14:05 UTC: 57 lines, container and system, oldest first.` A read over MCP or REST for one source only says `system lines only` or `container lines only` |
+| Under them | `Read 2m ago, at 14:05 UTC: 57 lines, container and system, oldest first.` A read over MCP or REST for one source only says `system lines only` or `container lines only` |
 | **Read the log** or **Read again** | Reads the log now. The button says `Reading…` until the lines come, and the block is drawn again with them, with no refresh |
 | A refusal | `Not read:` and why, in red, such as `RunPod refused to show pod …'s log with this key: the key may not read pod logs. A key with read access to pods can` |
-| Nothing read | `Not read yet.` |
+| Nothing read | `Not read yet.`, or `Not read yet. Reading it…` while the page reads it by itself |
+| An empty log | `RunPod has no line in this pod's log yet.` |
 
-Loading the page never reads RunPod: a read holds RunPod's stream open for up to 10 seconds, and the page's script loads the page again every few seconds while it follows a button. Control keeps each rig's last read in memory until it restarts, and a read over REST or MCP shows here too. Before the rig's first report, when control has no read of the log yet, the page's script presses **Read the log** once the page has opened; after the first report, the block waits for you to press it.
+Loading the page never reads RunPod: a read holds RunPod's stream open for up to 10 seconds, and the page's script loads the page again every few seconds while it follows a button. Control keeps each rig's last read in memory until it restarts, and a read over REST or MCP shows here too. Before the rig's first report, when control has no read of the log yet, the page's script presses **Read the log** once the page has opened; after the first report, the block waits for you to press it. After the first report, **Pod log** is in the left column, below **The judge's last jobs**.
 
 Before control shows a line, it takes out what looks like a credential: a URL's user and password, a bearer token, and keys with a known prefix, such as `hf_`, `ghp_` or `rpa_`, which become `hf_***`. It also takes out a terminal's colour codes. A pod that is terminated has no **Pod log**: RunPod no longer has it.
 

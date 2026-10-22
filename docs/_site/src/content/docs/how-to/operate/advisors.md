@@ -158,7 +158,7 @@ Wait a minute, then press **refresh** in the status bar, the line along the bott
   - `teacher teacher-a: …`, with what it suggests, or `teacher teacher-b gave no review: …`;
   - `directives for the planner: …`, each with its reason, or `the teachers set no directives`, with `. Dropped: …` for what the supervisor left out, such as an opportunity without evidence or a rule that would freeze the queue's size;
   - `the teachers added to the queue: …`, with the titles of their portfolio's experiments, `the teachers moved …`, with their ids, and `refused: add "…": it repeats x-… (up next)` for an idea already waiting;
-  - `audit of …`, with the attempt, which try of that audit it is (`(try 1)`), the auditor's decision, what it did to the result and why;
+  - `audit of …`, with the attempt, which try of that audit it is (`(try 1)`), the auditor's decision, what it did to the result and why; after the last try, `audit of …: the auditor could not answer after 5 tries, so it waits for the owner`, or, when that hand-off fails, `audit of …: handing it to the owner (tried again in 30 minutes): …`;
   - `the auditor added to the queue: …`, with the title of its check;
   - `review …`, with each reviewer's pass or fail and why, then the review panel's outcome;
   - `advisor round done: …`, the round's counts, when the round did something.

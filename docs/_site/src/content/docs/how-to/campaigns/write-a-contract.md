@@ -151,7 +151,7 @@ The rest of a goal contract:
 
 Code goals are checked in the order of their kit verifiers' `priority`.
 
-The judge first checks which goals the starting point already meets. If it meets every required goal, the run closes at once with `Every required goal is met: the campaign is complete.` Measure where the project starts before you set a `metric_threshold`, as [Your first goal campaign](../../tutorials/first-goal-campaign.md) does.
+The judge first checks which goals the starting point already meets. If it meets every required goal, the judge checks it a second time, with the held-out cases of the goals met, and no trial starts meanwhile. If that check agrees, the run closes with `Every required goal is met: the campaign is complete.` Measure where the project starts before you set a `metric_threshold`, as [Your first goal campaign](../../tutorials/first-goal-campaign.md) does.
 
 ## 4. Write a research campaign
 

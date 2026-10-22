@@ -47,7 +47,7 @@ A model in several files, such as a model in shards, is one entry in the contrac
 
 The inbox copy stays. A later assignment that names the same file finds it, checks its SHA-256 and does not download it again. So a rig needs free space for the file twice: the inbox's copy and the harness's copy.
 
-On a GPU cloud, put the inbox and the harness's state on a disk that outlasts the container: the pod's volume, or a network volume. A network volume keeps the file for the next pod that mounts it.
+On RunPod, the rig image keeps the inbox and the harness's state on the pod's own disk, and a snapshot of both on the pod's volume, which a stop keeps ([Where the state lives](harness-image.md#where-the-state-lives)). So give the file room twice on each: the disk holds both copies, and so does the snapshot.
 
 ## The checks
 

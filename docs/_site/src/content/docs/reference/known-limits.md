@@ -39,7 +39,7 @@ Compose joins the harness to a normal network, `egress`, for its way out ([Netwo
 
 ## There are no default caps
 
-Thermite never ends research by default. A hill climb runs until you pause it, a goal campaign until its goals are met, and a research campaign until its `max_duration`, or, without one, until you stop it. Nothing limits turns, attempts, failures, time or spending unless you set it ([Limits and pacing](limits-and-pacing.md#caps)). The advisors have no spending limit either, unless the advisors file sets one, and that limit counts only the advisors that the file gives prices ([Configure advisors](../how-to/operate/advisors.md#spending)).
+Thermite never ends research by default. A hill climb runs until you pause or close it, a goal campaign until its goals are met, and a research campaign until its `max_duration`, or, without one, until you stop it. Nothing limits turns, attempts, failures, time or spending unless you set it ([Limits and pacing](limits-and-pacing.md#caps)). The advisors have no spending limit either, unless the advisors file sets one, and that limit counts only the advisors that the file gives prices ([Configure advisors](../how-to/operate/advisors.md#spending)).
 
 So with a paid model key, the agents spend for as long as the campaign runs. Before you give a rig a paid key, set a stop time or a budget ([Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md)). Also set a spending limit with your model provider: the contract's model spend limit counts only the workers' trials, and only on a rig that has token prices.
 

@@ -12,7 +12,7 @@ Quantization and engine work need a model's weights on the rig. Weights are too 
 
 - A rig that reports to control, and the owner's token in a file. See [Start a run from the command line](start-from-command-line.md).
 - The file's URL and its SHA-256. On Hugging Face, the URL of one file is `https://huggingface.co/<org>/<model>/resolve/<commit>/<file>`, and the file's page shows its SHA-256 for a large file. Use a commit, not `main`: a branch can move to another file. Without a SHA-256 from the source, download the file once yourself and run `sha256sum` on it (`shasum -a 256` on a Mac).
-- Free space on the rig for the file twice: the supervisor's copy in the inbox and the harness's own copy. On a GPU cloud, both belong on a volume that outlasts the container. See [Where the file goes](../../reference/model-files.md#where-the-file-goes).
+- Free space on the rig for the file twice: the supervisor's copy in the inbox and the harness's own copy. On RunPod, both copies are on the pod's own disk, and again in the snapshot on its volume: give each room for the file twice. See [Where the file goes](../../reference/model-files.md#where-the-file-goes).
 
 ## 1. List the file in the contract
 

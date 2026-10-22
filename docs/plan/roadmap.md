@@ -4,7 +4,7 @@ Every goal, by version, in priority order. Each line links to its goal. [How The
 
 - **v0.1.0 is decided.** Its plan is [release-v0.1.0.md](release-v0.1.0.md).
 - **Later versions are proposed.** Their order and their contents can change.
-- **Versions count up by the middle number:** 0.2.0, 0.3.0 and so on. Fixes ship as 0.1.1, 0.1.2.
+- **Versions count up by the middle number:** 0.2.0, 0.3.0 and so on. Fixes and quick follow-ups ship as 0.1.1, 0.1.2.
 - **Each version ships when its goals are verified,** not on a date. Each one also takes the fixes from tester reports on the version before it.
 
 ## Built so far

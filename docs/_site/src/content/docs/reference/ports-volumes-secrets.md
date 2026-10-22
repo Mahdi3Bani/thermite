@@ -162,7 +162,7 @@ A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control rem
 | What | Where | Holds |
 | --- | --- | --- |
 | The pod's container disk | 40 GB unless set (`container_disk_gb`), emptied when the pod stops | The rig's live state in `/var/lib/thermite-rig`, and `/scratch` |
-| The pod's volume | `/workspace`, 100 GB unless set (`volume_gb`), kept while the pod is stopped and removed with it | A snapshot of the rig's state, in `/workspace/thermite`, root's alone |
+| The pod's volume | `/workspace`, 100 GB unless set (`volume_gb`), kept while the pod is stopped and removed with it | A snapshot of the rig's state, in `/workspace/thermite`, root's alone. It holds copies of the rig's keys and tokens too: the harness's keys, the supervisor's keys and enrollment, and root's copy of the supervisor's token |
 
 The [one-container rig image](harness-image.md#where-the-state-lives) says when the snapshot is taken and how a start restores it.
 
