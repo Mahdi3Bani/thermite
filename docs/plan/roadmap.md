@@ -100,6 +100,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 **Quick follow-ups to the first release.** Proposed.
 
 - [088](goals/088-new-campaign-button-progress.goal) New campaign's buttons show they were pressed · `PROPOSED`
+- [090](goals/090-info-tab.goal) An Info tab for campaigns and runs: everything they were started with · `PROPOSED`
 
 ## v0.2.0
 
