@@ -244,14 +244,14 @@ Every candidate is judged against the seed, the project as it is.
 
 | Candidate | The change | Expected |
 | --- | --- | --- |
-| `good` | Shared-memory tiling | `win_confirmed` |
+| `good` | Register tiling: shared-memory tiles of 64 × 8 and 8 × 64, and a 4 × 4 block of outputs for each thread | `win_confirmed` |
 | `noop` | A renamed variable | `neutral` |
 | `broken` | Skips half of the sum | `invalid` |
 | `fallback` | Calls the reference code | `invalid` |
 
 ### The smoke kits and contract
 
-Both kits multiply two square matrices of floats. The build links the candidate's kernel with the kit's driver and wraps the reference function, so the kit can see whether the candidate called it. The kit's check computes the product again in double precision (the CUDA kit checks 64 evenly spaced rows, since its matrices are larger), allows an error of at most 0.002, and fails a run with values that are not numbers or that called the reference.
+Both kits multiply two square matrices of floats, many times over (`reps`), so that the work takes much longer than starting the process. The build links the candidate's kernel with the kit's driver and wraps the reference function, so the kit can see whether the candidate called it. The kit's check computes the product again in double precision (the CUDA kit checks 64 evenly spaced rows, since its matrices are larger), allows an error of at most 0.002, and fails a run with values that are not numbers or that called the reference.
 
 | | `smoke-cpu` | `smoke-cuda` |
 | --- | --- | --- |
@@ -260,7 +260,7 @@ Both kits multiply two square matrices of floats. The build links the candidate'
 | Build limits | 120 s, 1024 MiB memory, 256 MiB disk | 300 s, 2048 MiB memory, 512 MiB disk |
 | Run limits | 60 s, 256 MiB memory, 32 MiB disk | 120 s, 2048 MiB memory, 64 MiB disk |
 | Check time limit | 60 s | 300 s |
-| Compiler | `cc` | `nvcc`, for the `sm_60` architecture |
+| Compiler | `cc` | `nvcc`, with native code for `sm_60`, `sm_70`, `sm_75`, `sm_80`, `sm_86`, `sm_89` and `sm_90`, and PTX for newer GPUs. `CUDA_ARCH`, such as `sm_86`, builds for that architecture only |
 
 The contract measures `small` and `large`, keeps `held` for confirmation, and lets changes touch only `src/kernel/**`. It sets `min_effect` 0.1, `equivalence_band` 0.05 and `runs_per_cell` 3, because timing on a shared CPU is noisy. Its audit triggers are set to 1000, so no smoke candidate is audited. It forbids added lines that match `clock_gettime`, `gettimeofday`, `\brdtsc`, `\btimes\s*\(`, `__real_`, `__wrap_` and `thermite_ref_calls`.
 
