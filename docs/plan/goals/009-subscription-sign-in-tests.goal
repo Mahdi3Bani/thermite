@@ -1,7 +1,7 @@
 ---
 id: "009"
 title: "Real subscription sign-in tests"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-21
 
 # 009 · Real subscription sign-in tests
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -23,8 +23,8 @@ Subscriptions are built, but they are tested only against stand-ins.
 
 ## Done when
 
-- [ ] Both sign-ins work from start to end once, and the results are in Progress.
-- [ ] Any fix they need is committed.
+- [x] Both sign-ins work from start to end once, and the results are in Progress. (The wait at a usage limit is left out for v0.1.0: see Decisions, 2026-10-22.)
+- [x] Any fix they need is committed.
 
 ## Decisions
 
@@ -33,6 +33,7 @@ Subscriptions are built, but they are tested only against stand-ins.
 - 2026-10-21, the lead session, from the build's evidence (see Progress): Claude Code's own sandbox stays off in a rig, and the rig's isolation holds its commands, as for OpenCode and Codex. The sandbox cannot start inside a rig, and its scrub refuses a headless agent's edits and commands. The token reaches Claude Code on a file descriptor, never in an environment or a file. Advisors keep the scrub until the open question below is decided. Shown to the owner with the build.
 - 2026-10-20, owner: The tests run before the tag, as recommended.
 - 2026-10-21, owner: Advisors also run Claude Code without the scrub, now, for v0.1.0. `bubblewrap` leaves the images.
+- 2026-10-22, owner: the wait at a usage limit is left out of this test for v0.1.0: "we don't need to fix every hole before release... leave that test out." A full usage window is handled as a rate limit by the harness (goal 079) and is tested against stand-ins only.
 
 ## Open questions
 
@@ -57,6 +58,8 @@ Subscriptions are built, but they are tested only against stand-ins.
   - Next: the compose acceptances for this change (Claude Code, real Claude Code, the rig image and steering), then the steps that need a real subscription.
 - 2026-10-21: A real Claude Code trial run on the owner's Claude subscription (Claude Code 2.1.305, model sonnet-5.5, on a lab rig with the sample in `examples/matmul-cpu`, one agent). The planner's first answer was valid; three trials each submitted a change (4 to 7 turns, 75,000 to 117,000 tokens in each); the judge confirmed each as a win (+68%, +82% and +78% flops/s against the starting code, n=5). The run was then paused to keep the subscription's quota. Found and fixed on the way: control compared the model a rig reports (Claude Code's name, `claude-sonnet-5-5`) with the subscription's id (`sonnet-5.5`), so it never saw the rig take the model and refused to start runs there (`sameModel`, `src/control/providers.ts`). Left: the wait at a usage limit, and the same trial with Sign in with ChatGPT.
 - 2026-10-21: The same trial with Sign in with ChatGPT: the sample on a lab CPU rig with the owner's ChatGPT subscription (GPT-6.1 Sol) in the Codex CLI. The planner's first answer was valid; the first trial's change was judged a confirmed win, +60.6% flops/s against the starting code (95% interval 34.1% to 92.2%, n=5). The run was then paused. Both subscriptions have now signed in, given a rig the model and run judged trials. Left for the first box: a wait at a usage limit, seen on a real plan.
+
+- 2026-10-22: Both sign-ins have worked from start to end once (see 2026-10-21): each signed in, gave a rig the model, passed the model check and ran a trial whose change the judge confirmed as a win. The owner left the usage-limit wait out of v0.1.0. `VERIFIED`.
 
 ---
 
