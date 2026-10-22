@@ -1,7 +1,7 @@
 ---
 id: "096"
 title: "Give control a kit written elsewhere, as a git bundle"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 depends_on: []
 created: 2026-10-22
@@ -10,7 +10,7 @@ updated: 2026-10-22
 
 # 096 · Give control a kit written elsewhere, as a git bundle
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -31,7 +31,7 @@ On 2026-10-22 the owner was ready to start a campaign on a kit repository writte
 - [x] A rig's supervisor fetches a commit of a kit added this way, one that is not its head, from control's route with git itself. Test: `src/control/kit-import.test.ts`.
 - [x] REST, MCP and the command line, with their token rules, and the audit entry. Tests: `src/control/kit-import.test.ts`, `src/cli/kit.test.ts`.
 - [x] The pages match the code: Write a kit, Start a run from the command line, the REST API, MCP tools, command line, signed commands, tokens and limits references, Let an agent run Thermite over MCP, Run Thermite on one machine; the changelog has the change.
-- [ ] The compose smoke and the new-campaign acceptance pass with this change.
+- [x] The compose smoke and the new-campaign acceptance pass with this change.
 
 ## Decisions
 
@@ -56,6 +56,9 @@ On 2026-10-22 the owner was ready to start a campaign on a kit repository writte
   - Code: `src/control/kit-repos.ts` (`importBundle`, `list`, `history`, `commitCount`), `src/control/kit-add.ts` (the audit entry and the answers), `src/control/api.ts` (the routes), `src/control/mcp.ts` (`kits`, `kit_add`), `src/cli/thermite.ts` (`kit add`, `kit list`, `assign --kit control:NAME`).
   - Tests: `src/control/kit-import.test.ts` (commit ids kept, the head, a rig's fetch of an older commit through control's route with git, every refusal, a bundle that builds on the kit's commits, REST and MCP token rules, the audit entries), `src/cli/kit.test.ts` (`kit add`, `kit list`, `assign --kit control:NAME`).
   - Checks before the commit: typecheck, Biome, the touched test files and their neighbours (MCP, start run, copy campaign, campaign context, folders, rig settings, kit repositories, kit upload, new campaign, staging, tunnel, the CLI's assign, run, campaign and MCP files), `npm run docs:build`, `npm run docs:check`, and the public check. The compose acceptances were not run: the machine's Podman VM was busy.
+- 2026-10-22: The compose smoke and the new-campaign acceptance passed with this change, on the change itself and again on a later commit, each with the full check (1231 and 1259 tests).
+- 2026-10-22: First real use. A kit written elsewhere (a goal campaign's kit of 13 commits, a bundle of half a megabyte) was given to control through `kit_add`, and a rig fetched it from control by commit and verified it when the campaign was assigned. The owner had no token file for `thermite kit add`, and writing the bundle into `kit_add` as text is impractical for an agent, so the call was made by a script that read the bundle from its file. Goal [097](097-add-a-kit-bundle-from-the-dashboard.goal) (v0.1.1) puts a bundle upload on the dashboard and gives agents a way to send a large bundle.
+- 2026-10-22: Verified.
 
 ---
 
