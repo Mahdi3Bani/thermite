@@ -114,7 +114,7 @@ curl -sS -H "$AUTH" -H 'content-type: application/json' \
   "$CONTROL/v1/rigs/rig-1/settings"
 ```
 
-It answers `{"rig":"rig-1","id":"<command id>","sent":{"lanes":3,"review":false},"restarts":false,"said":"Control sent 2 settings to rig-1. The rig takes the change in less than one minute."}`. Control sends only the fields that differ from what the rig reports, as one signed command; follow it as above. A request that changes nothing answers `"said":"Nothing changed."`, with `id` `null`. `GET` on the same address reads the rig's settings and its GPU split. [A rig's settings](../../reference/rest-api.md#a-rigs-settings) lists every field and refusal, such as `400` and `{"error":"Not saved: with 4 GPUs the judge takes 1 to 3 of them, and the agents at most 8."}`. Each agent's model has its own route: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model).
+It answers `{"rig":"rig-1","id":"<command id>","sent":{"lanes":3,"review":false},"restarts":false,"said":"Control sent 2 settings to rig-1. The rig takes the change in less than one minute."}`. Control sends only the fields that differ from what the rig reports, as one signed command; follow it as in [Issue a command and follow it](#issue-a-command-and-follow-it). A request that changes nothing answers `"said":"Nothing changed."`, with `id` `null`. `GET` on the same address reads the rig's settings and its GPU split. [A rig's settings](../../reference/rest-api.md#a-rigs-settings) lists every field and refusal, such as `400` and `{"error":"Not saved: with 4 GPUs the judge takes 1 to 3 of them, and the agents at most 8."}`. Each agent's model has its own route: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model).
 
 ## Read the leaderboard
 
