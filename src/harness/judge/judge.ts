@@ -50,6 +50,9 @@ import { clipReason, REASONS_CHARS } from "./reasons.ts";
  * confirm:   fresh blocks decided on their own data, plus held-out cells (pass or fail only,
  *            seen by promotion alone), then promotion by compare-and-swap if policy allows.
  * calibrate: A/A blocks (champion against itself) to measure the rig's noise.
+ * validate:  a goal campaign's champion on every goal; when every required goal is met, a second
+ *            validation, which also runs the held-out cells of the goals met, before the run
+ *            closes (goal 086).
  */
 
 export type PromotionPolicy = "auto" | "owner_approval";
@@ -935,20 +938,23 @@ export class Judge {
   /**
    * The owner's event for a held-out record (goal 082): each cell's name, its kind of failure, and
    * its value against its threshold where there is one. It reaches control and the rig's exports;
-   * no agent reads events, and the knowledge base does not take this one.
+   * no agent reads events, and the knowledge base does not take this one. Its subject is the
+   * attempt, or, for a goal run's champion (goal 086), the run, with `champion_seq`.
    */
   private heldOutEvent(
     job: JobRow,
     run: string,
-    attempt: string,
+    subject: string,
     ho: HeldOutResult,
+    championSeq?: number,
   ): { kind: string; subject: string; body: unknown } {
     return {
       kind: "held_out_checked",
-      subject: attempt,
+      subject,
       body: {
         run,
         job: job.id,
+        ...(championSeq !== undefined ? { champion_seq: championSeq } : {}),
         pass: ho.pass,
         cells: ho.cells.slice(0, HELD_OUT_EVENT_CELLS),
         cells_total: ho.cells.length,
@@ -1062,8 +1068,9 @@ export class Judge {
     } = {},
   ): Promise<GoalResult[]> {
     const out: GoalResult[] = [];
-    // Held-out cells run only at confirmation. Their results go to promotion code and, by name
-    // and kind alone, to the held_out record: never into measurements, goal checks or reports.
+    // Held-out cells run only at confirmation: an attempt's, or a champion's second validation
+    // (goal 086). Their results go to the judge's decision and, by name and kind alone, to the
+    // held_out record: never into measurements, goal checks or reports.
     const held = new Set(contract.held_out_cells);
     const heldCell = (c: HeldOutCell) => {
       if (opts.heldOut) opts.heldOutCells?.push(c);
@@ -1333,6 +1340,52 @@ export class Judge {
     });
   }
 
+  /**
+   * A goal campaign's held-out pass on one build (goal 082): the held-out cells of these goals,
+   * an attempt's newly met goals at its confirmation or, at the confirming validation, each goal
+   * the champion meets (goal 086). Each cell's name and kind go into the result, for the owner's
+   * record; `failed` names the goals whose held-out check did not pass. Never a cell's values or
+   * texts, and its errors reach the agents in fixed words only (heldOutPass).
+   */
+  private async heldOutGoals(
+    job: JobRow,
+    contract: GoalContract,
+    ctx: MeasureContext,
+    arm: Arm,
+    goals: string[],
+  ): Promise<HeldOutResult & { failed: string[] }> {
+    const cells: HeldOutCell[] = [];
+    const checked = await this.heldOutPass(job, () =>
+      this.verifyGoals(job, contract, ctx, arm, { heldOut: true, goals, heldOutCells: cells }),
+    );
+    // A goal with no held-out cell has nothing to fail here.
+    const failed = checked
+      .filter((r) => r.status !== "met" && r.reasons !== "no held-out cells")
+      .map((r) => r.goal);
+    return { pass: !failed.length, cells: heldOutResult(cells).cells, failed };
+  }
+
+  /**
+   * The held-out cells one goal's check ran: a threshold goal's own, or those of a code goal's
+   * verifier and of the gates it requires.
+   */
+  private heldOutCellsOf(
+    goal: GoalContract["goals"][number] | undefined,
+    kit: Kit,
+    cells: readonly HeldOutCell[],
+  ): HeldOutCell[] {
+    if (!goal) return [];
+    if (goal.verify.type !== "code") return cells.filter((c) => c.goal === goal.id);
+    const verifiers = new Set<string>();
+    const add = (name: string) => {
+      if (verifiers.has(name)) return;
+      verifiers.add(name);
+      for (const gate of kit.verifiers[name]?.requires ?? []) add(gate);
+    };
+    add(goal.verify.verifier);
+    return cells.filter((c) => c.verifier !== undefined && verifiers.has(c.verifier));
+  }
+
   private complete(
     contract: GoalContract,
     results: { required: boolean; status: GoalStatus }[],
@@ -1351,7 +1404,8 @@ export class Judge {
     const champion = this.ledger.currentChampion(run);
     const k = await this.kitFor(contract);
     const arm = await this.armFor("champion", run, champion.commit_sha, k);
-    const results = await this.verifyGoals(job, contract, this.context(k, job), arm, {
+    const ctx = this.context(k, job);
+    const results = await this.verifyGoals(job, contract, ctx, arm, {
       champion: { run, attempt: champion.attempt, commit: champion.commit_sha },
     });
     this.recordGoals(job, run, null, champion.commit_sha, results, true);
@@ -1363,20 +1417,76 @@ export class Judge {
     const confirming =
       spec.confirm === true &&
       (spec.champion_seq === undefined || Number(spec.champion_seq) === champion.seq);
+    // The second validation also runs the held-out cells of each goal the champion meets (goal
+    // 086, the owner's decision of 2026-10-22): an attempt's confirmation runs them only for the
+    // goals it newly met, so without this a goal met long before was never checked on them. The
+    // run closes only if every one passes. Subjective goals have no cells.
+    let ho: (HeldOutResult & { failed: string[] }) | undefined;
+    if (confirming && done && contract.held_out_cells.length) {
+      const met = results
+        .filter(
+          (r) =>
+            r.status === "met" &&
+            contract.goals.find((g) => g.id === r.goal)?.verify.type !== "review",
+        )
+        .map((r) => r.goal);
+      if (met.length) ho = await this.heldOutGoals(job, contract, ctx, arm, met);
+      // No held-out cell ran (none of these goals has one): there was nothing to check.
+      if (ho?.pass && !ho.cells.length) ho = undefined;
+      if (ho)
+        this.ledger.recordChampionHeldOut(job.id, job.fence, run, champion.seq, ho.pass, {
+          pass: ho.pass,
+          cells: ho.cells,
+        });
+    }
+    // A goal whose held-out check failed is not met: the goal tree says so, so a change that
+    // meets it again is progress, and its own confirmation runs that goal's held-out cells. The
+    // report says why by kind alone (goal 082), never which cell, its values or its texts; the
+    // owner's detail is in the held_out record and its event.
+    const unconfirmed = new Set(ho && !ho.pass ? ho.failed : []);
+    const shown: GoalResult[] = results.map((r) =>
+      unconfirmed.has(r.goal)
+        ? {
+            ...r,
+            status: "unmet",
+            reasons: `not confirmed: ${heldOutWords(
+              heldOutKinds(
+                this.heldOutCellsOf(
+                  contract.goals.find((g) => g.id === r.goal),
+                  k.kit,
+                  ho?.cells ?? [],
+                ),
+              ),
+            )}; on the measured cells: ${r.reasons}`,
+          }
+        : r,
+    );
+    if (unconfirmed.size)
+      this.recordGoals(
+        job,
+        run,
+        null,
+        champion.commit_sha,
+        shown.filter((r) => unconfirmed.has(r.goal)),
+        true,
+      );
+    const complete = done && !unconfirmed.size;
     const summary = {
       run,
       champion_seq: champion.seq,
       // Each goal's description too, so a reader of the report needs no copy of the contract;
       // a code goal's values on each public cell (goal 086).
-      goals: results.map((r) => ({
+      goals: shown.map((r) => ({
         goal: r.goal,
         description: contract.goals.find((g) => g.id === r.goal)?.description ?? null,
         status: r.status,
         reasons: r.reasons,
         ...(r.values ? { values: r.values } : {}),
       })),
-      complete: done,
+      complete,
       ...(done && !confirming ? { confirming: true } : {}),
+      // The champion was not confirmed: its held-out check failed, said by kind alone.
+      ...(ho && !ho.pass ? { not_confirmed: heldOutWords(heldOutKinds(ho.cells)) } : {}),
     };
     if (done && !confirming) {
       return {
@@ -1393,12 +1503,14 @@ export class Judge {
     return {
       result: summary,
       events: [
+        // The owner's record of the champion's held-out check, before the report it decided.
+        ...(ho ? [this.heldOutEvent(job, run, run, ho, champion.seq)] : []),
         { kind: "goal_report", subject: run, body: summary },
-        ...(done
+        ...(complete
           ? [{ kind: "goal_complete", subject: run, body: { champion_seq: champion.seq } }]
           : []),
       ],
-      ...(done ? { close: { run, reason: "every required goal is met" } } : {}),
+      ...(complete ? { close: { run, reason: "every required goal is met" } } : {}),
     };
   }
 
@@ -1522,18 +1634,8 @@ export class Judge {
       const held = screened.filter((g) => !gained.includes(g));
       let ho: HeldOutResult | undefined;
       if (contract.held_out_cells.length && gained.length) {
-        const cells: HeldOutCell[] = [];
-        const checked = await this.heldOutPass(job, () =>
-          this.verifyGoals(job, contract, ctx, cand, {
-            heldOut: true,
-            goals: gained,
-            heldOutCells: cells,
-          }),
-        );
-        ho = {
-          pass: checked.every((r) => r.status === "met" || r.reasons === "no held-out cells"),
-          cells: heldOutResult(cells).cells,
-        };
+        const { pass, cells } = await this.heldOutGoals(job, contract, ctx, cand, gained);
+        ho = { pass, cells };
         this.ledger.recordHeldOut(job.id, job.fence, attemptId, ho.pass, ho);
       }
       const ok =

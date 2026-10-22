@@ -786,4 +786,29 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   `
   alter table run add column ask_owner text;
   `,
+  // 20: a goal run's champion has held-out records of its own (goal 086): the confirming
+  // validation of a champion that met every required goal runs its held-out cells too. Such a
+  // record names its run and champion and no attempt (the seed has none), so an attempt's own
+  // records are never mixed with it. SQLite cannot drop a column's NOT NULL, so the table is
+  // rebuilt: every row and id is kept, and it stays append-only.
+  `
+  create table held_out_v20 (
+    id integer primary key autoincrement,
+    job integer not null references job (id),
+    fence integer not null,
+    attempt text references attempt (id),
+    run text,
+    champion_seq integer,
+    pass integer not null,
+    detail text not null,
+    created_at text not null,
+    check (attempt is not null or (run is not null and champion_seq is not null))
+  );
+  insert into held_out_v20 (id, job, fence, attempt, pass, detail, created_at)
+    select id, job, fence, attempt, pass, detail, created_at from held_out order by id;
+  drop table held_out;
+  alter table held_out_v20 rename to held_out;
+  create trigger held_out_no_update before update on held_out begin select raise(abort, 'held_out is append-only'); end;
+  create trigger held_out_no_delete before delete on held_out begin select raise(abort, 'held_out is append-only'); end;
+  `,
 ];

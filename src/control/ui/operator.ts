@@ -2,6 +2,7 @@ import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../harness/judge/held
 import { type ControlStore, type Decision, fingerprint } from "../store.ts";
 import {
   type AttemptView,
+  type HeldOutView,
   type JudgeJob,
   podStopped,
   type RigView,
@@ -1224,8 +1225,20 @@ function figure(x: number): string {
  * check gives one. The agents get only that a held-out check failed, and how.
  */
 function heldOutBlock(a: AttemptView, now: number): string {
-  const h = a.held_out;
-  if (!h) return "";
+  return a.held_out ? heldOutCard(a.held_out, "Held-out checks", now) : "";
+}
+
+/**
+ * The newest held-out check of a goal run's champion, for the owner (goal 086): the second
+ * validation of a champion that met every required goal runs the held-out cells of the goals it
+ * met, and the run closes only if each passes. On the run's page, under its goals.
+ */
+export function championHeldOutBlock(r: RunView, now: number): string {
+  const h = r.champion_held_out;
+  return h ? heldOutCard(h, `Held-out checks of champion #${h.champion_seq}`, now) : "";
+}
+
+function heldOutCard(h: HeldOutView, title: string, now: number): string {
   const failed = h.cells.filter((c) => !c.ok).length;
   const rows = h.cells
     .map((c) => {
@@ -1254,7 +1267,7 @@ function heldOutBlock(a: AttemptView, now: number): string {
     h.cells_total > h.cells.length
       ? `<div class="note small">and ${h.cells_total - h.cells.length} more cases: the rig's held_out record keeps them all</div>`
       : "";
-  return `<div class="block"><div class="head"><h2>Held-out checks</h2><span class="n">${h.pass ? "all passed" : `${failed} failed`}</span><span class="right">${esc(ago(h.at, now))} ago · only you see which case: the agents see only that a held-out check failed, and how</span></div><div class="card flat"><table><thead><tr><th>Case</th><th>Checked for</th><th>Result</th><th>Measured</th><th>Threshold</th></tr></thead><tbody>${rows}</tbody></table>${more}</div></div>`;
+  return `<div class="block"><div class="head"><h2>${esc(title)}</h2><span class="n">${h.pass ? "all passed" : `${failed} failed`}</span><span class="right">${esc(ago(h.at, now))} ago · only you see which case: the agents see only that a held-out check failed, and how</span></div><div class="card flat"><table><thead><tr><th>Case</th><th>Checked for</th><th>Result</th><th>Measured</th><th>Threshold</th></tr></thead><tbody>${rows}</tbody></table>${more}</div></div>`;
 }
 
 /**
