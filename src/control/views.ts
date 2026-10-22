@@ -1379,9 +1379,11 @@ export function rigView(
         }
         break;
       }
-      case "crash_infra": {
+      case "crash_infra":
+      case "job_lease_expired": {
         // A job whose lease ran out too often is blocked: it will not run. A blocked validation
-        // leaves no completion to confirm, and the lanes go on (goal 086).
+        // leaves no completion to confirm, and the lanes go on (goal 086). Both requeue events
+        // (a crash, and a lease that ran out) can block one.
         const j = jobs.get(String(e.subject));
         if (!j || b.state !== "blocked") break;
         j.finished_at = e.at;

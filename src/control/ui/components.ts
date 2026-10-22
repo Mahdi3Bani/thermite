@@ -147,7 +147,9 @@ export const modeName = (mode: string | null) => MODE[mode ?? ""]?.[1] ?? mode ?
  * reads as paused whatever waits in it: its decisions show in Needs you.
  */
 export function runState(i: RunView): { text: string; cls: string; icon: string } {
-  const heldAudit = i.audits.some((a) => a.decision === null || a.decision === "block");
+  // A blocked result waits on the owner; an open audit is the auditor's to decide (goal 079).
+  const blocked = i.audits.some((a) => a.decision === "block");
+  const auditing = i.audits.some((a) => a.decision === null);
   if (i.status === "closed") return { text: "Finished", cls: "muted", icon: icon.check };
   if (i.status === "paused") return { text: "Paused", cls: "muted", icon: icon.pause };
   if (i.pending_promotions.length) return { text: "Approval", cls: "warn", icon: icon.warn };
@@ -155,13 +157,23 @@ export function runState(i: RunView): { text: string; cls: string; icon: string 
     return { text: "Decision", cls: "warn", icon: icon.warn };
   if (i.reviews.some((r) => r.panel === "review_passed" && !r.owner))
     return { text: "Review", cls: "violet", icon: icon.warn };
-  if (heldAudit) return { text: "Audit", cls: "warn", icon: icon.shield };
+  if (blocked) return { text: "Audit", cls: "warn", icon: icon.shield };
+  if (auditing) return { text: "Auditing", cls: "info", icon: icon.shield };
   return { text: "Running", cls: "info", icon: icon.live };
 }
 
 /** A campaign's state: its most urgent run's. */
 export function campaignState(k: CampaignView): { text: string; cls: string; icon: string } {
-  const order = ["Approval", "Decision", "Review", "Audit", "Running", "Paused", "Finished"];
+  const order = [
+    "Approval",
+    "Decision",
+    "Review",
+    "Audit",
+    "Auditing",
+    "Running",
+    "Paused",
+    "Finished",
+  ];
   const states = k.runs.map((x) => runState(x.run));
   return (
     states.sort((a, b) => order.indexOf(a.text) - order.indexOf(b.text))[0] ?? {

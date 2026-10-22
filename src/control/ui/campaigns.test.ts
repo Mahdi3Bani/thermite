@@ -83,7 +83,16 @@ test("a paused run reads as paused, whatever decision waits in it", async () => 
   assert.equal(runState(r("paused", approval)).text, "Paused");
   assert.equal(runState(r("paused", audit)).text, "Paused");
   assert.equal(runState(r("running", approval)).text, "Approval");
-  assert.equal(runState(r("running", audit)).text, "Audit");
+  // An open audit is the auditor's to decide; a blocked result waits on the owner.
+  assert.deepEqual(
+    [runState(r("running", audit)).text, runState(r("running", audit)).cls],
+    ["Auditing", "info"],
+  );
+  const blocked = { audits: [{ decision: "block" }] } as unknown as Partial<RunView>;
+  assert.deepEqual(
+    [runState(r("running", blocked)).text, runState(r("running", blocked)).cls],
+    ["Audit", "warn"],
+  );
   assert.equal(runState(r("closed", approval)).text, "Finished");
 });
 

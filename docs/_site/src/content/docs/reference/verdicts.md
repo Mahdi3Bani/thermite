@@ -249,7 +249,8 @@ A run's page and its **Live** header show the run with one label: the first that
 | **Approval** | A result waits for the owner's approval |
 | **Decision** | A "not possible" proposal waits for the owner |
 | **Review** | The review panel passed a goal, and the owner has not answered yet |
-| **Audit** | An audit is open or has blocked a result |
+| **Audit** | An audit blocked a result: it waits for you |
+| **Auditing** | An audit is open: the rig's auditor decides it |
 | **Running** | Otherwise |
 
 What waits in a paused run still shows in **Needs you**, as for a running one. What waited in a closed run does not.

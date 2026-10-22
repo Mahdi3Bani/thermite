@@ -178,5 +178,19 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
       { kind: "crash_infra", subject: "42", body: { fence: 1, expiries: 3, state: "blocked" } },
     ]);
     assert.doesNotMatch(await c.page(RUN), WAIT);
+
+    // The same when the lease ran out a third time (job_lease_expired, blocked).
+    c.ingest([report({ complete: true, confirming: true })]);
+    assert.match(await c.page(RUN), WAIT);
+    c.ingest([
+      { kind: "job_queued", subject: "43", body: { attempt: null, kind: "validate" } },
+      { kind: "job_leased", subject: "43", body: { fence: 1 } },
+      {
+        kind: "job_lease_expired",
+        subject: "43",
+        body: { fence: 1, expiries: 3, state: "blocked" },
+      },
+    ]);
+    assert.doesNotMatch(await c.page(RUN), WAIT);
   });
 });
