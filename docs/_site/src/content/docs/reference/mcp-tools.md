@@ -50,8 +50,8 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
-| `control_log`, `providers`, `rig_models`, `mcp_servers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
-| `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `set_campaign_context`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `control_log`, `providers`, `rig_models`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders` | Yes | Yes | No | Yes |
+| `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `set_campaign_context`, `archive_campaign`, `unarchive_campaign`, `create_campaign_folder`, `rename_campaign_folder`, `delete_campaign_folder`, `move_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -742,6 +742,84 @@ Errors:
 - `A context window is a whole number of tokens from 4,096 to 100,000,000.`
 - `The compaction point is a whole percent of the context window, from 50 to 95.`
 - `The contract of <campaign> is not valid, so control cannot save a new version:` and the contract's errors
+
+### campaign_folders
+
+**Campaign folders and archived campaigns.** Owner, operator and reader.
+
+> How the owner arranged the campaigns in the dashboard's left navigation: each folder, by name, with the campaigns in it ({name, campaigns, created_at, created_by}), and the archived campaigns ({campaign, at, by}), which are out of the navigation, Needs you and the Overview. A campaign in no folder and not archived shows on its own in the navigation. These folders only group campaigns there: they are not the campaigns' folders in the knowledge base (kb_folders).
+
+No inputs. It returns what [`GET /v1/campaign-folders`](rest-api.md#archive-a-campaign-and-folders) returns: `{folders, archived}`, the folders by name and the archived campaigns, the newest first. `by` is the actor that archived the campaign, such as `owner:ui` or `owner:operator`.
+
+### archive_campaign
+
+**Archive a campaign.** Owner and operator.
+
+> As Archive on a campaign's page: the campaign leaves the dashboard's left navigation, Needs you and the Overview's lists, and the Campaigns page lists it under Archived. Its runs, results, kits and folder in the knowledge base stay; it also leaves its folder in the navigation. Control starts and resumes no run of an archived campaign until unarchive_campaign. Returns {campaign, archived: true, at, by, changed} (changed: false when it was archived already). Refused in words while a run of it is at work or waits to start (a start or resume control sent that the rig has not taken yet): "Pause or close its runs first.", with each such run; and for a campaign control does not know.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `campaign` | string | | The campaign, as on its page |
+
+It does what [`POST /v1/campaigns/<campaign>/archive`](rest-api.md#archive-a-campaign-and-folders) does, with the same refusals, such as `Pause or close its runs first. sort-speed-2 is at work on rig-1.` While the campaign is archived, `issue_command` and `start_run` refuse to start or resume a run of it: `sort-speed is archived. Unarchive it first.` Besides `mcp:archive_campaign`, the audit log has `campaign_archived`, by the caller's actor.
+
+### unarchive_campaign
+
+**Unarchive a campaign.** Owner and operator.
+
+> As Unarchive on the Campaigns page's Archived list: the campaign comes back to the dashboard's left navigation, in no folder, and its runs may start again. Returns {campaign, archived: false, at: null, by: null, changed} (changed: false when it was not archived). Refused in words for a campaign control does not know.
+
+It takes `campaign`, as `archive_campaign` does. The audit log has `campaign_unarchived` when it changed something.
+
+### create_campaign_folder
+
+**Make a folder for campaigns.** Owner and operator.
+
+> A folder in the dashboard's left navigation, to group campaigns there (move_campaign puts one in it). Not a folder of the knowledge base. A name is one line of at most 40 characters, and two folders can't have the same one, whatever its case. Returns {folder: {name, campaigns, created_at, created_by}}. Refused in words: an empty name, a name too long, a taken one.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | | The folder's name, trimmed |
+
+The audit log has `campaign_folder_created`.
+
+### rename_campaign_folder
+
+**Rename a folder for campaigns.** Owner and operator.
+
+> Renames a folder of the dashboard's left navigation; its campaigns stay in it. Returns {folder, was, changed}. Refused in words: no such folder, an empty name, a name too long, a taken one.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `folder` | string | | The folder's name now, whatever its case |
+| `name` | string | | Its new name |
+
+The audit log has `campaign_folder_renamed`, with the old name and the new.
+
+### delete_campaign_folder
+
+**Delete an empty folder for campaigns.** Owner and operator.
+
+> Deletes a folder of the dashboard's left navigation that has no campaign in it. Returns {deleted}. Refused in words: no such folder, or one with campaigns in it (move them out first with move_campaign, folder: null).
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `folder` | string | | The folder's name |
+
+A folder with campaigns is refused, such as `Kernels is not empty. Move its 2 campaigns out first: sort-speed, gemv-speed.` The audit log has `campaign_folder_deleted`.
+
+### move_campaign
+
+**Move a campaign to a folder.** Owner and operator.
+
+> Puts a campaign in a folder of the dashboard's left navigation (folder: its name), or in none (folder: null). Only the navigation changes: not its runs, results or folder in the knowledge base. Returns {campaign, folder, changed}. Refused in words: no such campaign or folder, an archived campaign (unarchive it first).
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `campaign` | string | | The campaign, as on its page |
+| `folder` | string or `null` | | The folder's name, whatever its case, or `null` for none |
+
+It does what [`POST /v1/campaigns/<campaign>/folder`](rest-api.md#archive-a-campaign-and-folders) and **Move to folder** on the campaign's page do. The audit log has `campaign_moved`, with the folder and the one it came from.
 
 ### cluster_rig
 

@@ -2380,13 +2380,9 @@ describe("the Rigs list", () => {
     );
     assert.match(stopped, /<span class="rsub">then it stopped<\/span>/);
     assert.match(stopped, /storage only<span class="rsub">\$\d+\.\d\d so far<\/span>/);
-    // The sidebar and the status bar call it stopped, not stale, and Needs you has no card for it.
-    assert.match(
-      list,
-      new RegExp(
-        `<span class="dot "></span><span class="name">${s.idle}</span><span class="right">stopped</span>`,
-      ),
-    );
+    // The status bar calls it stopped, not stale, and Needs you has no card for it. The sidebar
+    // lists no rigs (goal 077): the Rigs page does.
+    assert.doesNotMatch(list, new RegExp(`<span class="name">${s.idle}</span>`));
     assert.match(list, /\d+ rigs(?: · \d+ stale)? · 1 stopped<\/span>/);
     assert.doesNotMatch(
       await s.get("/ui"),

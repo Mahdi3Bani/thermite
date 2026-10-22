@@ -40,6 +40,7 @@ In progress:
 
 - a cap on the context window of each agent's model, and compaction near it: an agent's conversation is kept, summarized and goes on, in every harness, the advisors' included. A campaign can set its own window and compaction point for its runs. Both work over REST and MCP, and a campaign's own over the command line too; fields for them on **Edit rig**, **New campaign**, **Copy** and the campaign's page are still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
 - a harness of the owner's choice for every kind of agent, not only the workers: Pi, OpenCode v2, Claude Code or the Codex CLI for the planner and each advisor too ([goal 073](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/073-harness-for-each-agent.goal)).
+- archiving a campaign, folders for campaigns in the dashboard's left navigation, and a navigation without the rigs. They are built, and wait for the owner's look at their screens ([goal 077](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/077-archive-and-folders.goal); [Archive campaigns and sort them into folders](../how-to/campaigns/archive-and-folders.md)).
 
 Still to come in v0.1.0:
 
