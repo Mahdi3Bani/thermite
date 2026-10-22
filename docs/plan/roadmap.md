@@ -104,6 +104,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [091](goals/091-needs-you-stuck-rigs.goal) Needs you shows a rig that is stuck · `PROPOSED`
 - [093](goals/093-live-shows-reasoning.goal) Live shows what the model thinks and says, not only its tool calls · `PROPOSED`
 - [094](goals/094-copy-id.goal) Copy an ID from any page · `PROPOSED`
+- [095](goals/095-runpod-spend-on-providers.goal) Providers shows what Thermite spent on a GPU cloud, not only its test pods · `PROPOSED`
 
 ## v0.2.0
 

@@ -1,0 +1,43 @@
+---
+id: "095"
+title: "Providers shows what Thermite spent on a GPU cloud, not only its test pods"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 095 · Providers shows what Thermite spent on a GPU cloud, not only its test pods
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A bug fix. A GPU cloud's card in **Settings › Providers** (RunPod) shows what this control has spent there, in all: its test pods and every rig it launched (running, stopped and ended), with a line for each kind and a link to each rig. It leaves out anything else on the same account (other pods, other people's workloads), because control counts only what it launched itself. Today the card shows the test pods' cost alone.
+
+## Why
+
+The owner, 2026-10-22: "provider page for runpod shouldn't show test costs, it should show thermite costs for runpod... which includes tests but also the other stuff we've done. Outside of other workloads on runpod, only costs from our thermite control."
+
+## Done when
+
+- [ ] The card's total and its lines match the sum of control's own records of its test pods and launched rigs, with a test.
+- [ ] Nothing launched outside control is counted.
+- [ ] The pages that describe the card and the Metrics totals (goal 075) agree.
+
+## Decisions
+
+- 2026-10-22, owner: a bug fix for v0.1.1.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's feedback.
+
+---
+
+Run with `/goal Complete docs/plan/goals/095-runpod-spend-on-providers.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
