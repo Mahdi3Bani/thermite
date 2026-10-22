@@ -406,6 +406,9 @@ details.matrix[open] > summary { border-bottom: 1px solid var(--border); }
 .gl:last-child { border-bottom: 0; }
 .gl-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .gl-why { color: var(--muted-foreground); font-size: 12px; } .gl-why.bad { color: var(--error-foreground); }
+details.more > summary { list-style: none; cursor: pointer; } details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary .more-tog::after { content: "more"; color: var(--primary); white-space: nowrap; }
+details.more[open] > summary .more-part { display: none; } details.more[open] > summary .more-tog::after { content: "less"; }
 .gl-mark { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--muted); color: var(--muted-foreground); }
 .gl-mark.ok { background: var(--success-surface); color: var(--success-foreground); }
 .gl-mark.bad { background: var(--error-surface); color: var(--error-foreground); }

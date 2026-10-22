@@ -83,7 +83,7 @@ On the run's **Overview** tab, the **Goals** block says `0 of 1 met`, and under 
 flops_per_s >= 10000000000: large: 3.44791e+9 [3.32615e+9, 3.56967e+9]
 ```
 
-The first number after `large:` is your computer's speed now: here 3.45 × 10⁹, or 3.45 billion operations a second. The two in brackets are the range the judge is 95% sure of. Your numbers will differ: they depend on your processor. If the block says `The judge has not checked the goals yet.`, press **refresh** after another minute.
+The first number after `large:` is your computer's speed now: here 3.45 × 10⁹, or 3.45 billion operations a second. The two in brackets are the range the judge is 95% sure of. Your numbers will differ: they depend on your processor. A long goal or line shows only its start: press **more** to read all of it. If the block says `The judge has not checked the goals yet.`, press **refresh** after another minute.
 
 ## 4. Set a goal you can reach
 

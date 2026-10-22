@@ -18,6 +18,15 @@ export function esc(v: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * A long text shown in part, with "more" to read it whole. A details element, so it works without
+ * the page's script.
+ */
+export function moreText(text: string, n: number): string {
+  if (text.length <= n) return esc(text);
+  return `<details class="more"><summary><span class="more-part">${esc(`${text.slice(0, n - 1)}…`)}</span> <span class="more-tog"></span></summary>${esc(text)}</details>`;
+}
+
 /** A label with its info icon: hovering or focusing the icon shows what the field means. */
 export const infoLabel = (text: string, tip: string) =>
   `<span class="lb">${esc(text)}<i class="ii" tabindex="0" data-tip="${esc(tip)}">i</i></span>`;

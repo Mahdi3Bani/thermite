@@ -220,6 +220,7 @@ import {
   meter,
   modeAvatar,
   modeName,
+  moreText,
   num,
   pct,
   type RunTab,
@@ -738,7 +739,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${i.goals.filter((g) => g.status === "met").length} of ${i.goals.length} met</span><span class="right">the judge's check of champion #${esc(i.goals_seq ?? "?")}${i.goals_at ? `, ${esc(ago(i.goals_at, now))} ago` : ""}</span></div><div class="card flat">${i.goals
           .map((g) => {
             const st = goalState(g);
-            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<span class="muted">${esc(clip(g.description, 200))}</span>` : ""}${g.status === "met" ? "" : `<span class="gl-why ${st.tone}">${esc(g.reasons.slice(0, 400))}</span>`}</span></div>`;
+            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${g.status === "met" ? "" : `<div class="gl-why ${st.tone}">${moreText(g.reasons, 400)}</div>`}</span></div>`;
           })
           .join("")}</div></div>`
       : i.mode === "goal"

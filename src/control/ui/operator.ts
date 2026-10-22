@@ -7,7 +7,16 @@ import {
   type RunView,
   type StoredEvent,
 } from "../views.ts";
-import { ago, esc, icon, modeAvatar, reportingTag, runHref, sparkline } from "./components.ts";
+import {
+  ago,
+  esc,
+  icon,
+  modeAvatar,
+  moreText,
+  reportingTag,
+  runHref,
+  sparkline,
+} from "./components.ts";
 import {
   attemptState,
   auditReason,
@@ -1175,7 +1184,7 @@ export function attemptDetail(
                   : g.status === "met"
                     ? ["ok", "✓", "met by the champion too"]
                     : ["off", "·", "not met yet"];
-            return `<div class="gl"><span class="gl-mark ${tone}">${mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b> ${gained || lost ? `<span class="chip ${tone}">${esc(word)}</span>` : `<span class="muted small">${esc(word)}</span>`}</span>${g.description ? `<span class="muted">${esc(clip(g.description, 200))}</span>` : ""}</span></div>`;
+            return `<div class="gl"><span class="gl-mark ${tone}">${mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b> ${gained || lost ? `<span class="chip ${tone}">${esc(word)}</span>` : `<span class="muted small">${esc(word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}</span></div>`;
           })
           .join("")}</div></div>`
       : "";
