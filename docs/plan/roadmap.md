@@ -95,6 +95,12 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 - [026](goals/026-ship-v0.1.0.goal) Ship v0.1.0 · `READY`
 
+## v0.1.1
+
+**Quick follow-ups to the first release.** Proposed.
+
+- [088](goals/088-new-campaign-button-progress.goal) New campaign's buttons show they were pressed · `PROPOSED`
+
 ## v0.2.0
 
 **Run Thermite without the dashboard.** Every dashboard action has an API and MCP twin, all logs are in one place you can search, and sign-in uses your identity provider. Proposed.
@@ -107,6 +113,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [083](goals/083-deep-research-teacher.goal) A deep-research teacher that runs on a trigger · `PROPOSED`
 - [084](goals/084-research-tasks-in-code-runs.goal) Research tasks inside goal and hill-climb runs, with web search · `PROPOSED`
 - [085](goals/085-move-a-campaign-to-another-rig.goal) Move a campaign's work to another rig · `PROPOSED`
+- [089](goals/089-dashboard-performance.goal) Faster dashboard pages · `PROPOSED`
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
 - [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`

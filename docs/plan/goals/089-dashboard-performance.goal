@@ -1,0 +1,43 @@
+---
+id: "089"
+title: "Faster dashboard pages"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 089 · Faster dashboard pages
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+A review of how fast control's pages load, with numbers first: the time each main page takes on a control with real history (Campaigns, a campaign's page, a run's page and its tabs, Rigs, a rig's page, Metrics, Needs you), where that time goes (the store's queries, folding a rig's events into its view, rendering), and the fixes that the numbers point to, such as views kept up to date as reports arrive instead of rebuilt on each page, indexes, and pages that load their slow parts after the rest.
+
+## Why
+
+The owner, 2026-10-22: "page loads are somewhat slow on campaigns etc, review application performance as a v0.2.0 item."
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version: the pages measured, a target for each, and the fixes.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- The target for each page, and on what history (a control with a month of reports from several rigs).
+
+## Progress
+
+- 2026-10-22: Goal written as a plan, from the owner's feedback.
+
+---
+
+Run with `/goal Complete docs/plan/goals/089-dashboard-performance.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

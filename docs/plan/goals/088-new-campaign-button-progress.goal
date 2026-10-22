@@ -1,0 +1,43 @@
+---
+id: "088"
+title: "New campaign's buttons show they were pressed"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["080"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 088 · New campaign's buttons show they were pressed
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [080](080-buttons-show-progress.goal)
+
+## What
+
+On **New campaign**, **Start the campaign**, **Try the kit first** and **Save without starting** answer at once when pressed: the button turns gray, shows a spinner and a word such as **Starting…**, and the other buttons cannot be pressed until the answer comes. Then the page says what happened, as the buttons of goal 080 do: the run started (with a link to its page), the kit check began, or the campaign was saved; or why not.
+
+## Why
+
+The owner, 2026-10-22: "clicking start campaign doesn't give immediate feedback that it was submitted and grey out with loading symbol or something... add as a v0.1.1 item for quick follow after initial release." Goal 080 gave the dashboard's action buttons their progress; New campaign's form posts the old way, so a press shows nothing until the next page loads, and a second press can send the campaign twice.
+
+## Done when
+
+- [ ] The three buttons follow goal 080's pattern: pressed, they show progress at once and block a second press; the answer is shown where the owner is.
+- [ ] A test posts the form as a browser does and checks the button's states and that a second press is refused while the first is under way.
+- [ ] The pages that describe New campaign's last step say it.
+
+## Decisions
+
+- 2026-10-22, owner: in v0.1.1, a quick follow after the first release.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's feedback.
+
+---
+
+Run with `/goal Complete docs/plan/goals/088-new-campaign-button-progress.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
