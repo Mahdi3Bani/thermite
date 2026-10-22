@@ -22,6 +22,17 @@ import {
   setCampaignContext,
 } from "./campaign-context.ts";
 import {
+  archiveCampaign,
+  campaignFoldersAnswer,
+  createFolder,
+  deleteFolder,
+  FOLDER_NAME_MAX,
+  moveCampaign,
+  renameFolder,
+  type ShelfOutcome,
+  unarchiveCampaign,
+} from "./campaign-folders.ts";
+import {
   type CopyCampaignRequest,
   copyCampaignAnswer,
   copyCampaignFields,
@@ -915,6 +926,116 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             if (out.state === "refused") throw new Error(out.error);
             return campaignContextAnswer(out);
           },
+        ),
+      );
+    }
+    // Archive a campaign, and the dashboard navigation's folders (goal 077): the same functions as
+    // the dashboard and REST. The reader may read them; the owner and an operator change them.
+    const allViews = () =>
+      store
+        .rigs()
+        .map((u) =>
+          rigView(store, u.id, {
+            staleAfterMs: opts.staleAfterMs,
+            offlineAfterMs: opts.offlineAfterMs,
+            control: opts.control,
+          }),
+        )
+        .filter((v): v is NonNullable<typeof v> => v !== undefined);
+    const shelved = <T>(out: ShelfOutcome<T>): T => {
+      if (!out.ok) throw new Error(out.error);
+      return out.answer;
+    };
+    server.registerTool(
+      "campaign_folders",
+      {
+        title: "Campaign folders and archived campaigns",
+        description:
+          "How the owner arranged the campaigns in the dashboard's left navigation: each folder, by name, with the campaigns in it ({name, campaigns, created_at, created_by}), archived ones too, and the archived campaigns ({campaign, at, by, folder}), which are out of the navigation, Needs you and the Overview. An archived campaign keeps its folder (folder: its name, or null), but the navigation neither shows nor counts it there until it is unarchived. A campaign in no folder and not archived shows on its own in the navigation. These folders only group campaigns there: they are not the campaigns' folders in the knowledge base (kb_folders).",
+        inputSchema: {},
+      },
+      audited("campaign_folders", () => campaignFoldersAnswer(store)),
+    );
+    if (canCommand) {
+      const campaignInput = {
+        campaign: z.string().min(1).describe("The campaign, as on its page"),
+      };
+      server.registerTool(
+        "archive_campaign",
+        {
+          title: "Archive a campaign",
+          description:
+            "As Archive on a campaign's page: the campaign leaves the dashboard's left navigation, Needs you and the Overview's lists, and the Campaigns page lists it under Archived. Its runs, results, kits and folder in the knowledge base stay, and it keeps its folder in the navigation, where it comes back when unarchived. Control starts and resumes no run of an archived campaign until unarchive_campaign. Returns {campaign, archived: true, at, by, folder, changed} (changed: false when it was archived already). Refused in words while a run of it is at work or waits to start (a start or resume control sent that the rig has not taken yet): \"Pause or close its runs first.\", with each such run; and for a campaign control does not know.",
+          inputSchema: campaignInput,
+        },
+        audited("archive_campaign", (a: { campaign: string }) =>
+          shelved(archiveCampaign(store, allViews(), a.campaign, actor)),
+        ),
+      );
+      server.registerTool(
+        "unarchive_campaign",
+        {
+          title: "Unarchive a campaign",
+          description:
+            "As Unarchive on the Campaigns page's Archived list: the campaign comes back to the dashboard's left navigation, in the folder it kept, and its runs may start again. Returns {campaign, archived: false, at: null, by: null, folder, changed} (changed: false when it was not archived). Refused in words for a campaign control does not know.",
+          inputSchema: campaignInput,
+        },
+        audited("unarchive_campaign", (a: { campaign: string }) =>
+          shelved(unarchiveCampaign(store, allViews(), a.campaign, actor)),
+        ),
+      );
+      const folderName = z.string().max(200).describe(`At most ${FOLDER_NAME_MAX} characters`);
+      server.registerTool(
+        "create_campaign_folder",
+        {
+          title: "Make a folder for campaigns",
+          description: `A folder in the dashboard's left navigation, to group campaigns there (move_campaign puts one in it). Not a folder of the knowledge base. A name is one line of at most ${FOLDER_NAME_MAX} characters, and two folders can't have the same one, whatever its case. Returns {folder: {name, campaigns, created_at, created_by}}. Refused in words: an empty name, a name too long, a taken one.`,
+          inputSchema: { name: folderName },
+        },
+        audited("create_campaign_folder", (a: { name: string }) =>
+          shelved(createFolder(store, a.name, actor)),
+        ),
+      );
+      server.registerTool(
+        "rename_campaign_folder",
+        {
+          title: "Rename a folder for campaigns",
+          description:
+            "Renames a folder of the dashboard's left navigation; its campaigns stay in it. Returns {folder, was, changed}. Refused in words: no such folder, an empty name, a name too long, a taken one.",
+          inputSchema: {
+            folder: z.string().min(1).max(200).describe("The folder's name now"),
+            name: folderName.describe("Its new name"),
+          },
+        },
+        audited("rename_campaign_folder", (a: { folder: string; name: string }) =>
+          shelved(renameFolder(store, a.folder, a.name, actor)),
+        ),
+      );
+      server.registerTool(
+        "delete_campaign_folder",
+        {
+          title: "Delete an empty folder for campaigns",
+          description:
+            "Deletes a folder of the dashboard's left navigation that has no campaign in it, archived ones included. Returns {deleted}. Refused in words: no such folder, or one with campaigns in it, each archived one marked (archived) (move them out first with move_campaign, folder: null).",
+          inputSchema: { folder: z.string().min(1).max(200).describe("The folder's name") },
+        },
+        audited("delete_campaign_folder", (a: { folder: string }) =>
+          shelved(deleteFolder(store, a.folder, actor)),
+        ),
+      );
+      server.registerTool(
+        "move_campaign",
+        {
+          title: "Move a campaign to a folder",
+          description:
+            "Puts a campaign in a folder of the dashboard's left navigation (folder: its name), or in none (folder: null). Only the navigation changes: not its runs, results or folder in the knowledge base. An archived campaign may move too: it comes back into its new folder when it is unarchived. Returns {campaign, folder, changed}. Refused in words: no such campaign or folder.",
+          inputSchema: {
+            ...campaignInput,
+            folder: z.string().max(200).nullable().describe("The folder's name, or null for none"),
+          },
+        },
+        audited("move_campaign", (a: { campaign: string; folder: string | null }) =>
+          shelved(moveCampaign(store, allViews(), a.campaign, a.folder, actor)),
         ),
       );
     }

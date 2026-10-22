@@ -84,6 +84,19 @@ export const icon = {
     '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
   ),
   dots: svg('<path d="M5 12h.01M12 12h.01M19 12h.01"/>', 16),
+  folder: svg(
+    '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    15,
+  ),
+  newFolder: svg(
+    '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10.5v5M9.5 13h5"/>',
+    15,
+  ),
+  chevron: svg('<path d="m9 6 6 6-6 6"/>', 12),
+  archive: svg(
+    '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>',
+    14,
+  ),
   chip: svg(
     '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
     18,
@@ -347,6 +360,80 @@ export interface Shell {
   now: number;
   /** A full-height content area without padding (the live view). */
   flush?: boolean | undefined;
+  /** The left navigation's folders and archived campaigns (goal 077); none: no folders. */
+  nav?: NavCampaigns | undefined;
+}
+
+/** What the left navigation shows of the campaigns besides their runs (goal 077). */
+export interface NavCampaigns {
+  /** The folders, in order, each with the campaigns in it. */
+  folders: { id: number; name: string; campaigns: string[] }[];
+  /** Archived campaigns: not in the navigation. */
+  archived: ReadonlySet<string>;
+  /** The form token for New folder and the folders' menus. */
+  csrf: string;
+  /** Where the folders' forms return (a path under /ui). */
+  back: string;
+  /** The campaign whose page this is, marked in the list. */
+  current?: string | undefined;
+}
+
+/** A folder's name in the navigation, at most this long (campaign-folders.ts checks it too). */
+const FOLDER_NAME_MAX = 40;
+const FOLDER_TIP =
+  "A folder groups campaigns in this navigation, and nothing else: a campaign's runs, results and folder in the knowledge base stay as they are. Up to 40 characters; each name once.";
+
+/** What an empty folder says: a folder that holds only archived campaigns says so. */
+export const emptyFolder = (archived: number) =>
+  archived
+    ? `${archived} archived ${archived === 1 ? "campaign" : "campaigns"}, not shown.`
+    : "Empty. Drag a campaign here.";
+
+/**
+ * The campaigns in the left navigation (goal 077): folders first, each with its campaigns, then
+ * the campaigns in no folder. Every campaign that is not archived shows, finished ones too, with
+ * its state; a rig check only while it is at work. An archived campaign keeps its folder, but the
+ * folder neither shows nor counts it. A row can be dragged onto a folder, or onto
+ * "no folder" (client.ts sends the move); a folder folds, and the browser remembers it. Without
+ * the script, the folders' forms and the campaign page's Move to folder still work.
+ */
+function navCampaigns(camps: CampaignView[], nav: NavCampaigns | undefined): string {
+  const archived = nav?.archived ?? new Set<string>();
+  // A rig check's campaign (the smoke run a rig check starts) shows only while it is at work.
+  const shown = camps.filter(
+    (k) =>
+      !archived.has(k.name) &&
+      (!k.name.startsWith("rig-check-") || k.runs.some((x) => x.run.status === "running")),
+  );
+  const row = (k: CampaignView) => {
+    const st = campaignState(k);
+    return `<a class="side-row" href="${campaignHref(k.name)}" draggable="true" data-campaign="${esc(k.name)}"${nav?.current === k.name ? ` aria-current="page"` : ""}>${modeAvatar(k.mode)}<span class="name">${esc(k.name)}</span><span class="right label ${st.cls}">${esc(st.text)}</span></a>`;
+  };
+  const hidden = (back: string) =>
+    nav
+      ? `<input type="hidden" name="csrf" value="${esc(nav.csrf)}"><input type="hidden" name="back" value="${esc(back)}">`
+      : "";
+  const filed = new Set<string>();
+  const folders = (nav?.folders ?? [])
+    .map((f) => {
+      const rows = shown.filter((k) => f.campaigns.includes(k.name));
+      for (const k of rows) filed.add(k.name);
+      // An archived campaign keeps its folder, but neither shows in it nor counts.
+      const shelved = f.campaigns.filter((c) => archived.has(c)).length;
+      return `<div class="side-fold" data-folder="${f.id}"><details class="side-folder" open data-fold="${f.id}" data-archived="${shelved}"><summary>${icon.chevron}${icon.folder}<span class="fname">${esc(f.name)}</span><span class="n">${rows.length}</span></summary>${rows.map(row).join("") || `<div class="side-empty">${emptyFolder(shelved)}</div>`}</details><details class="fmenu"><summary class="ib" title="Rename or delete" aria-label="${esc(f.name)}: rename or delete">${icon.dots}</summary><div class="menu-pop"><form class="sfd" method="post" action="/ui/campaign-folders/${f.id}/rename">${hidden(nav?.back ?? "/ui")}${infoLabel("Folder name", FOLDER_TIP)}<input name="name" value="${esc(f.name)}" maxlength="${FOLDER_NAME_MAX}" required autocomplete="off" aria-label="Folder name"><button class="sm">Rename</button></form><div class="fsep"></div><form method="post" action="/ui/campaign-folders/${f.id}/delete">${hidden(nav?.back ?? "/ui")}<button class="sm">Delete folder</button></form><span class="muted small">Only an empty folder is deleted.</span></div></details></div>`;
+    })
+    .join("");
+  const loose = shown
+    .filter((k) => !filed.has(k.name))
+    .map(row)
+    .join("");
+  if (!nav && !loose) return "";
+  const head = `<div class="side-head"><span class="section">Campaigns</span>${
+    nav
+      ? `<details class="fnew"><summary class="ib" title="New folder" aria-label="New folder">${icon.newFolder}</summary><form class="side-new menu-pop" method="post" action="/ui/campaign-folders">${hidden(nav.back)}<label class="sfd">${infoLabel("New folder", FOLDER_TIP)}<input name="name" maxlength="${FOLDER_NAME_MAX}" required autocomplete="off" placeholder="Kernels"></label><button class="sm primary">Create</button></form></details>`
+      : ""
+  }</div>`;
+  return `${head}<div class="side-camps" id="side-camps"${nav ? ` data-csrf="${esc(nav.csrf)}"` : ""}>${folders}${loose}${nav?.folders.length ? `<div class="side-drop" data-drop="">Drop here: no folder</div>` : ""}</div><div class="side-say small" id="side-say" role="status"></div>`;
 }
 
 export function shell(s: Shell, body: string): string {
@@ -364,21 +451,10 @@ export function shell(s: Shell, body: string): string {
   );
   const nav = (href: string, key: Shell["active"], ic: string, text: string, right = "") =>
     `<a href="${href}" class="${s.active === key ? "on" : ""}">${ic}<span>${esc(text)}</span>${right}</a>`;
-  const rigRows = s.rigs
-    .map(
-      (u) =>
-        `<a class="side-row" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="dot ${podStopped(u) ? "" : u.stale ? "bad" : "ok"}"></span><span class="name">${esc(u.id)}</span><span class="right">${podStopped(u) ? "stopped" : u.stale ? "stale" : u.runs.filter((i) => i.status === "running").length || ""}</span></a>`,
-    )
-    .join("");
+  // No list of rigs here (goal 077): the Rigs page lists them, with their state.
   const camps = campaignViews(s.rigs);
-  const campRows = camps
-    .filter((k) => k.runs.some((x) => x.run.status !== "closed"))
-    .slice(0, 12)
-    .map((k) => {
-      const st = campaignState(k);
-      return `<a class="side-row" href="${campaignHref(k.name)}">${modeAvatar(k.mode)}<span class="name">${esc(k.name)}</span><span class="right label ${st.cls}">${esc(st.text)}</span></a>`;
-    })
-    .join("");
+  const archived = s.nav?.archived;
+  const campCount = archived ? camps.filter((k) => !archived.has(k.name)).length : camps.length;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(s.title)} · Thermite</title>${ICON_LINKS}
 <style>${STYLE}</style><script src="/ui/assets/app.js" defer></script></head>
@@ -387,7 +463,7 @@ export function shell(s: Shell, body: string): string {
   <a class="brand" href="/ui"><span class="mark">Th</span>Thermite</a>
   <nav class="nav">
     ${nav("/ui", "overview", icon.home, "Overview", s.needs ? `<span class="badge">${s.needs}</span>` : "")}
-    ${nav("/ui/campaigns", "campaigns", icon.trophy, "Campaigns", `<span class="count">${camps.length}</span>`)}
+    ${nav("/ui/campaigns", "campaigns", icon.trophy, "Campaigns", `<span class="count">${campCount}</span>`)}
     ${nav("/ui/rigs", "rigs", icon.rigs, "Rigs", `<span class="count">${s.rigs.length}</span>`)}
     ${nav("/ui/metrics", "metrics", icon.chart, "Metrics")}
     ${nav("/ui/live", "live", icon.terminal, "Live")}
@@ -396,8 +472,7 @@ export function shell(s: Shell, body: string): string {
     ${nav("/ui/reports", "reports", icon.file, "Reports")}
     ${nav("/ui/audit", "audit", icon.shield, "Audit log")}
   </nav>
-  ${campRows ? `<div class="section">Campaigns</div>${campRows}` : ""}
-  ${s.rigs.length ? `<div class="section">Rigs</div>${rigRows}` : ""}
+  ${navCampaigns(camps, s.nav)}
   <div class="side-foot"><form method="post" action="/ui/logout"><button class="ghost sm">${icon.logout}Sign out</button></form><a class="cog${s.active === "settings" ? " on" : ""}" href="/ui/settings" title="Settings" aria-label="Settings">${icon.cog}</a></div>
 </aside>
 <div class="main">
