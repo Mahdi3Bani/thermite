@@ -1,0 +1,51 @@
+---
+id: "086"
+title: "A goal report keeps what it measured; lanes wait while a met champion is confirmed"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: ["082"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+1. **A met code-verifier goal keeps its values.** For each goal checked by a kit verifier, the judge keeps the metrics of each public cell's run, met or unmet: in the goal's reasons, in the goal report and its `goal_report` event. The dashboard shows them where the run's goals are listed, in plain text beside the reasons, with no new screen; `get_run` and the REST rig view give them. A metric threshold goal already reports its values: a code goal's values read the same way. Values of public cells may go to the agents (the planner, the workers). A held-out cell's values are never kept or shown anywhere.
+2. **Lanes wait while a champion that met every goal is confirmed.** In goal mode, when a validation of the champion has found every required goal met and only the judge's second, confirming validation is left, the scheduler starts no new trial for that run until it is done. A trial already running goes on. If the confirmation does not agree, or fails, trials start again. The run says why, in words, where it says what is at work.
+
+## Why
+
+From a goal campaign that closed on 2026-10-22:
+
+- **A met goal's report had no numbers.** A goal checked by the kit's verifier was reported only as `verifier <name> passed on <cells>`: the metrics each cell's run produced, there a perplexity ratio, were dropped. The owner could not see by how much the goal was met, and the lanes could not see how much room a change had before it lost the goal. A metric threshold goal gave its values; a verifier goal did not.
+- **A trial ran after the campaign had, in effect, finished.** A validation of the champion found every required goal met. While the judge's confirming validation was pending, the scheduler started another trial. It ran 50 minutes and used about 139,000 input tokens, and the run's close killed it. Its work could never count.
+
+## Done when
+
+- [ ] A code verifier's goal keeps each public cell's metrics, met or unmet: in its reasons, read as a threshold goal's are; as `values` in the goal report and its `goal_report` event; and in the ledger's goal checks.
+- [ ] A held-out cell's values are kept nowhere: no report, event, goal check, held-out record or agent input.
+- [ ] The run's **Goals** block shows each goal's reasons, met or not, with its values; `get_run` and `GET /v1/rigs/<rig>/view` give `values`.
+- [ ] The planner and each worker's brief read the values of public cells.
+- [ ] In goal mode, while the confirming validation of a champion that met every required goal is queued or running, the scheduler starts no new trial for that run; a trial already running goes on; when the confirmation does not agree or fails, trials start again. **Live** and the run's page say why.
+- [ ] Tests: values kept for met and unmet code goals; held-out values never in reports, events or agent input; the dashboard shows them; the scheduler holds while the confirmation is pending and goes on after a failed one.
+- [ ] The pages on goal reports and their event, verdicts, the run's Goals block and when trials start match the code; the changelog has the change.
+
+## Decisions
+
+- 2026-10-22, lead, in the build brief: keep each public cell's metrics for a code goal, met or unmet, and show them where the run's goals are listed, in plain text beside the reasons, with no new screen. Never keep or show a held-out cell's values; the held-out pass keeps names and kinds only (goal 082). Values of public cells may go to the agents. While a met champion is confirmed, start no new trial for the run; a trial running goes on; trials start again if the confirmation fails. Say why where the run says what is at work.
+
+## Open questions
+
+- **Held-out cells on the final champion.** The confirming validation of a champion that meets every goal runs only public cells, as the first validation does: held-out cells never run on the final champion. An attempt runs them at its confirmation, but only for the goals it gains. Proposal: the confirming validation also runs the held-out cells, and the run closes only if they pass. The owner decides. Not built.
+
+## Progress
+
+- 2026-10-22: Goal written from a goal campaign that closed on 2026-10-22. Building.
+
+---
+
+Run with `/goal Complete docs/plan/goals/086-goal-report-values-and-confirmation-wait.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
