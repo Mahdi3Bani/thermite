@@ -110,7 +110,7 @@ ${table}
 <label class="fd">${infoLabel("Data center", "Where the pod runs. Any: RunPod picks one with the GPU free.")}<select name="datacenter" id="dc"><option value="">Any data center</option>${dcs.map((d) => `<option value="${esc(d.id)}"${d.id === f.datacenter ? " selected" : ""}>${esc(d.id)}${d.name && d.name !== d.id ? ` · ${esc(d.name)}` : ""}</option>`).join("")}</select></label>
 </div></div>
 <div class="sec"><h2>3 · Storage</h2><div class="g3">
-<div class="fd">${infoLabel("Storage", "Where the rig keeps its state, builds and model files: a volume of the pod, mounted at /workspace. It stays while the pod is stopped, and goes when the pod is terminated.")}<div class="small" style="padding-top:8px">A pod volume, kept while the pod is stopped and deleted with it.</div></div>
+<div class="fd">${infoLabel("Storage", "Where the rig keeps a snapshot of its state, builds and model files among it: a volume of the pod, mounted at /workspace. The rig works on the pod's own disk, which RunPod empties when the pod stops; the snapshot brings its state back at the next start. The volume stays while the pod is stopped, and goes when the pod is terminated.")}<div class="small" style="padding-top:8px">A pod volume, kept while the pod is stopped and deleted with it.</div></div>
 <label class="fd">${infoLabel("Volume size (GB)", "The pod volume's size, 10 to 10000 GB. RunPod bills it by the GB, while the pod runs and while it is stopped.")}<input name="volume_gb" id="gb" inputmode="numeric" value="${esc(f.volume_gb ?? String(o.volumeGb))}"></label>
 </div></div>
 <div class="sec"><h2>4 · Image</h2><div class="g3">

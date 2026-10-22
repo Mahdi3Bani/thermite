@@ -175,6 +175,18 @@ To have control apply the images again and wait once more, press **Try the updat
 
   If the block says `Not read: RunPod refused to show pod …'s log with this key`, the key may not read pod logs: give control a key with read access to pods. Fix the cause, such as the image's name, then terminate the pod and launch the rig again ([Run a rig on RunPod](../install/runpod-rig.md)). The pod costs money while it runs: stop or terminate it if you can't fix it now.
 
+  If the `container` lines say `could not chown the state volume`, or `EPERM: operation not permitted, chown '/workspace/thermite/…'`, the pod runs a rig image that kept the rig's state on the pod's volume. RunPod's volume refuses even root a change of owner, which that image needed to keep the rig's parts apart. The rig image now keeps the state on the pod's own disk and only a snapshot of it on the volume ([Where the state lives](../../reference/harness-image.md#where-the-state-lives)): terminate the pod and launch the rig again on the current image.
+
+### A RunPod rig lost its state over a stop
+
+- **You see:** after **Start the pod**, the rig reports with fresh records, or never reports again because it made new keys that control does not know.
+- **Why:** the rig works on the pod's own disk, which RunPod empties at a stop, and its state comes back from the snapshot on the volume. A start finds none when no snapshot could be taken: the snapshot folder was open to other users, so the rig never wrote it, or the volume was full.
+- **Do:** read **Pod log** ([A rig's page](../../reference/rig-page.md#pod-log)) for the broker's lines about the snapshot:
+  - `the snapshot folder is open to other users: no snapshot is taken or restored`: the volume lets another user into a folder of mode 0700. Its **Isolation** check fails too. Launch the rig on another volume or data center;
+  - `could not take a snapshot of the rig's state: the last one stays`, with its `error`: free room on the volume, or launch with a larger one;
+  - `fatal: could not restore the rig's state from its snapshot`: the start stops, holds the error a minute and tries again, with the snapshot unchanged. Its `error` says why, such as a pod disk too small for the state;
+  - `no snapshot at the stop: the last complete one stays`: the stop gave the rig too little time, and only what changed after the last snapshot is gone.
+
 ### The harness stops at start: the ledger is newer
 
 - **You see:** the harness keeps restarting, and its log has a `fatal` line with `this ledger is at schema version 13, newer than this code's 12: run a newer Thermite, or restore the ledger from before the upgrade` (the numbers vary).

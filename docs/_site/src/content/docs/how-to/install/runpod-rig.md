@@ -42,11 +42,13 @@ The form lists RunPod's GPU types on Secure cloud, cheapest first, with their me
 | **GPUs for the judge** | half, rounded up | Only with 2 GPUs or more: how many the judge measures on, the lowest-numbered. The rest are the agents' for their own test runs |
 | **Cloud** | Secure cloud, on demand | The only choice for now. Community cloud and spot pods come later |
 | **Data center** | Any data center | Where the pod runs. Any: RunPod picks one with the GPU free |
-| **Volume size (GB)** | `100` | The pod volume at `/workspace`, which keeps the rig's state while the pod is stopped. 10 to 10000 GB |
+| **Volume size (GB)** | `100` | The pod volume at `/workspace`, which keeps a snapshot of the rig's state while the pod is stopped. 10 to 10000 GB |
 | **Image** | Thermite's rig image, as control names it | Or **Your own image**, with its name and tag in **Your image** |
 | **Spend limit (USD)** | none | Control stops the pod once it has cost this much since launch |
 | **Stop when idle for (minutes)** | `30` | Control stops the pod once no run has been at work on it for this long: 5 minutes or more. Clear the field and the pod never stops by itself. A refused launch keeps what you typed, an empty field too. See [step 5](#5-watch-its-cost-and-change-its-limits) |
 | **Rig name** | `rp-` and 8 characters | The rig's name: 2 to 40 lowercase letters, digits and dashes. It can't change later |
+
+The rig works on the pod's own disk, 40 GB, which RunPod empties when the pod stops, and keeps a snapshot of its state on the volume ([step 6](#6-stop-and-start-it)). Both hold the rig's state, its model files and builds among it: give the volume room for it. A launch from the command line (`--disk`), the REST API or MCP (`container_disk_gb`) can give the pod's own disk more room too.
 
 Every label has an **i**: hover it for what the field means. The price under the form follows each choice: the GPU's price on Secure cloud times the GPUs, such as `$0.50 an hour`. RunPod also bills the container disk and the volume by the GB. The sentence under the price says what the launch starts and what stops it, and what to fix while a field is wrong.
 
@@ -107,13 +109,15 @@ A pod that reaches a limit is stopped as in step 6: its runs are paused and its 
 
 ## 6. Stop and start it
 
-A stopped pod costs nothing for its GPU, and keeps its volume, with the rig's state, until you start it again.
+A stopped pod costs nothing for its GPU, and keeps its volume, with the snapshot of the rig's state, until you start it again.
 
 Under **Start, stop and end it**, press **Stop the pod**. The page says `Stopping: its runs are paused and its results go out first, then the pod stops.`, and a card shows the stop's steps as they happen. Control pauses the rig's running runs, asks for an export, and stops the pod once that export, and every export and champion's patch waiting on the rig, has reached control. If they can't leave within 15 minutes, it stops the pod all the same, and what did not leave stays on the volume. Then the pod's state says **Stopped**, and **Cost now** says `storage only`. A stopped rig is not called stale or offline.
 
-Press **Start the pod** to start it again. RunPod gives a stopped pod's GPU to whoever asks next. When it has no GPU free for the pod, the start is refused and says so: `RunPod has no free GPU for pod … now, so the pod stays stopped (…). Its volume stays. Try again later, or terminate it and launch a new rig.` Once the pod runs, control resumes the runs the stop paused. The rig reports again with the same keys and enrollment: it does not enroll again.
+**What a stop keeps.** RunPod empties the pod's own disk when it stops, and keeps its volume. The rig works on its own disk, and keeps a snapshot of its state on the volume: the ledger, kits, builds, model files, the exports and imports waiting, the supervisor's state, and the pod's keys and enrollment. It takes one every 5 minutes, after each export, after enrollment, and as the pod stops, before its two parts stop. Each is written beside the last and swapped in only once it is whole, so a stop cut short keeps the last whole one, and loses only what changed after it. Control's stop pauses the runs and sends an export out first, and that export makes a snapshot too. [Where the state lives](../../reference/harness-image.md#where-the-state-lives) says what a snapshot holds and how.
 
-**Restart the pod** stops the pod and starts it again, with no export: the volume keeps everything. It does not pause the runs. A trial in progress stops: the harness records it as interrupted, and its experiment goes back to the top of the queue. A restart can meet the same lack of a free GPU.
+Press **Start the pod** to start it again. RunPod gives a stopped pod's GPU to whoever asks next. When it has no GPU free for the pod, the start is refused and says so: `RunPod has no free GPU for pod … now, so the pod stays stopped (…). Its volume stays. Try again later, or terminate it and launch a new rig.` Once the pod runs, the rig restores its state from the snapshot onto the fresh disk, and its log says `restored the rig's state from its snapshot`. Control resumes the runs the stop paused. The rig reports again with the same keys and enrollment: it does not enroll again.
+
+**Restart the pod** stops the pod and starts it again, with no export: the snapshot it takes as it stops keeps the rig's state. It does not pause the runs. A trial in progress stops: the harness records it as interrupted, and its experiment goes back to the top of the queue. A restart can meet the same lack of a free GPU.
 
 From the command line: `thermite runpod stop rp-1a2b3c4d $c`, `thermite runpod start …` and `thermite runpod restart …`.
 

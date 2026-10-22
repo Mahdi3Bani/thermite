@@ -8,13 +8,16 @@
 //     key against the launch's SHA-256 and gives the harness its own copy, and the rig's
 //     settings from control reach the controller, but not the enrollment code;
 //   - the rig's reports reach control through control's pulls only;
+//   - the state's snapshot folder (/workspace/thermite; on RunPod, the volume) is root's, mode
+//     0700, closed to both parts and the roles, and root takes a snapshot right after enrollment;
 //   - the isolation selftest passes, both the harness's own check at start and one run as root,
 //     with the container checks (the supervisor's user, its GPU access, set-id files, RunPod's
-//     variables, the enrollment code, control's key) and the supervisor's places probed for
-//     every role;
+//     variables, the enrollment code, control's key, the snapshot folder) and the supervisor's
+//     places and the snapshot folder probed for every role;
 //   - a key the supervisor writes after enrollment changes nothing the harness trusts;
 //   - a supervisor or a controller that exits starts again;
-//   - a stop ends both parts cleanly, with exit code 0.
+//   - a stop takes a snapshot of the state, with the ledger, then ends both parts cleanly, with
+//     exit code 0.
 // With rootless Podman on a machine VM it also gives the container GPU device nodes it can't
 // regroup (nobody's, mode 0666, as RunPod's are): the GPU fence alone must keep every role but
 // the GPU's own off them, and the supervisor too. Nothing here needs or touches a real GPU.
@@ -39,7 +42,9 @@ const name = "thermite-rig-image-check";
 /** Fake device nodes owned by the Podman VM's root, which a rootless container doesn't map. */
 const FOREIGN = "/var/tmp/thermite-rig-image-foreign-nodes";
 const NODES = ["nvidia0", "nvidiactl", "nvidia-uvm"];
-const STATE = "/workspace/thermite";
+/** The rig's live state, on the container's disk, and its snapshot (on RunPod, the volume). */
+const STATE = "/var/lib/thermite-rig";
+const SNAPSHOT = "/workspace/thermite";
 const sh = (args, opts = {}) =>
   execFileSync(engine, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -232,6 +237,20 @@ try {
   await waitFor("enrolled: the harness starts with control's key from enrollment", 120_000);
   check(Boolean(store.tunnelRig(rig)?.enrolled_at), "control enrolled the pod and pinned its keys");
   await waitFor("judge ready");
+  // The state snapshot: root's folder, closed to the parts and the roles, taken after enrollment.
+  const closed = await waitFor("the snapshot folder is closed to the parts and the roles", 5000);
+  const snapStat = sh(["exec", name, "stat", "-c", "%u %a", SNAPSHOT]).trim();
+  check(
+    closed.dir === SNAPSHOT && snapStat === "0 700",
+    "the state's snapshot folder is root's, mode 0700, closed to the parts and the roles",
+    `${snapStat}; ${JSON.stringify(closed)}`,
+  );
+  const enrolledSnap = (await waitFor("took a snapshot of the rig's state", 60_000)) ?? {};
+  check(
+    enrolledSnap.reason === "after enrollment" && enrolledSnap.files > 0,
+    "root took a snapshot of the state right after enrollment",
+    JSON.stringify(enrolledSnap),
+  );
   const tokenMade = logLines("made the token between the supervisor and the harness").length;
   check(tokenMade === 1, "the broker made the token between the two parts once");
   const keyNow = () => ({
@@ -287,7 +306,8 @@ try {
     startContainer["supervisor-user"] === "uid 10001, gid 10001, no_new_privs" &&
       /^none \(read [1-9]/.test(startContainer["runpod-variables"] ?? "") &&
       /^none \(read [1-9]/.test(startContainer["enroll-code"] ?? "") &&
-      startContainer["control-key"] === "root's, the key the launch named",
+      startContainer["control-key"] === "root's, the key the launch named" &&
+      /^closed to thermite, supervisor, agent-1 /.test(startContainer["state-snapshot"] ?? ""),
     "it checked the container, from the controller's side too",
     JSON.stringify(startContainer),
   );
@@ -331,6 +351,11 @@ try {
     "the supervisor's user cannot open the GPU",
     c["supervisor-gpu"],
   );
+  check(
+    c["state-snapshot"] === "closed to thermite, supervisor, agent-1 (owner 0:0, mode 700)",
+    "neither part nor a role may open the state's snapshot folder",
+    c["state-snapshot"],
+  );
   const roles = report.roles ?? {};
   const mustRefuse = [
     "pid1-environ",
@@ -339,6 +364,8 @@ try {
     "inbox-list",
     "supervisor-environ",
     "control-key-write",
+    "state-snapshot-list",
+    "state-snapshot-create",
   ];
   const leaks = Object.entries(roles).flatMap(([role, r]) => [
     ...mustRefuse.filter((p) => !/^E[A-Z]+$/.test(r[p] ?? "")).map((p) => `${role} ${p}: ${r[p]}`),
@@ -348,7 +375,7 @@ try {
   ]);
   check(
     Object.keys(roles).length >= 6 && leaks.length === 0,
-    "no role reaches the supervisor's places, PID 1's environment or a RunPod variable",
+    "no role reaches the supervisor's places, PID 1's environment, the state's snapshot or a RunPod variable",
     leaks.slice(0, 6).join("; "),
   );
   if (foreign) {
@@ -416,6 +443,20 @@ try {
     code === "0" && stopped === 1 && supervisorStopping === 1 && stopS < 60,
     "a stop ends both parts cleanly, with control away",
     `exit ${code}, ${stopS} s, "stopped" logged ${stopped} time(s), the supervisor stopping in pull mode ${supervisorStopping} time(s)`,
+  );
+  // The stop's snapshot, taken before the parts were told to stop, with the ledger.
+  const lines = logs().split("\n");
+  const atStop = lines.findIndex((l) => l.includes('"reason":"at the stop"'));
+  const partsStopping = lines.findIndex(
+    (l) => l.includes('"component":"supervisor"') && l.includes('"msg":"stopping"'),
+  );
+  const stopSnap = atStop >= 0 ? JSON.parse(lines[atStop]) : {};
+  check(
+    stopSnap.msg === "took a snapshot of the rig's state" &&
+      stopSnap.ledger === true &&
+      atStop < partsStopping,
+    "the stop took a snapshot of the state, with the ledger, before the parts stopped",
+    JSON.stringify(stopSnap),
   );
   if (code !== "0" || stopped !== 1) console.log(`the rig's last output:\n${logs().slice(-4000)}`);
 } catch (err) {

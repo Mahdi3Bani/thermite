@@ -33,6 +33,7 @@ import {
 } from "./broker/one-container.ts";
 import { listProcesses, type Proc } from "./broker/process.ts";
 import { IDS, type Role, roleIds, walk } from "./broker/runner.ts";
+import { SNAPSHOT_RECORD, type SnapshotRecord } from "./broker/snapshot.ts";
 import { copyForRun } from "./judge/measure.ts";
 import { writeAtomic } from "./research/folder.ts";
 
@@ -42,7 +43,8 @@ import { writeAtomic } from "./research/folder.ts";
  * to read, list or write what the role must not reach. Every probe must be refused, except a
  * `readable` or `reachable` probe, which must succeed. In the one-container rig image it also
  * checks the container as a whole (containerChecks): the supervisor's user, its GPU access,
- * set-id files, RunPod's variables, the enrollment code and, in pull mode, control's key.
+ * set-id files, RunPod's variables, the enrollment code, in pull mode control's key, and the state
+ * snapshot's folder (THERMITE_STATE_SNAPSHOT_DIR), which no role may list or write in either.
  */
 
 export interface Probe {
@@ -508,9 +510,30 @@ export function controlKeyCheck(
 }
 
 /**
+ * The state snapshot's folder (THERMITE_STATE_SNAPSHOT_DIR), as the broker found it at start
+ * (its record next to its socket): "closed to thermite, supervisor, agent-1 (owner 0:0, mode
+ * 700)" when the controller's user, the supervisor's and a role were each refused listing it and
+ * writing in it; otherwise "OPENED: …", "failed: …" or "MISSING: …". The roles probe it too.
+ */
+export function stateSnapshotCheck(brokerDir: string): string {
+  let r: SnapshotRecord;
+  try {
+    r = JSON.parse(readFileSync(join(brokerDir, SNAPSHOT_RECORD), "utf8")) as SnapshotRecord;
+  } catch (err) {
+    return `MISSING: no record from the broker (${(err as NodeJS.ErrnoException).code ?? String(err)})`;
+  }
+  const users = Object.entries(r.users ?? {});
+  if (r.closed && users.length)
+    return `closed to ${users.map(([u]) => u).join(", ")} (owner ${r.owner}, mode ${r.mode})`;
+  const open = users.filter(([, v]) => v.startsWith("OPENED"));
+  if (open.length) return `OPENED: ${open.map(([u, v]) => `${u} ${v.slice(8)}`).join("; ")}`;
+  return `failed: ${users.map(([u, v]) => `${u} ${v}`).join("; ") || "no user was probed"}`;
+}
+
+/**
  * The one-container image's checks of the container as a whole: the supervisor's user, its GPU
  * access, set-id files, RunPod's variables and the enrollment code; in pull mode, also the key
- * the harness trusts.
+ * the harness trusts; with a state snapshot, its folder.
  */
 export async function containerChecks(opts: {
   brokerDir: string;
@@ -520,6 +543,8 @@ export async function containerChecks(opts: {
   rootDir?: string;
   waitMs?: number;
   controlKey?: { file: string; sha256: string } | undefined;
+  /** THERMITE_STATE_SNAPSHOT_DIR, when the rig keeps a snapshot of its state. */
+  snapshotDir?: string | undefined;
 }): Promise<Record<string, string>> {
   return {
     "supervisor-user": await supervisorUserCheck(opts.procDir, opts.waitMs),
@@ -530,6 +555,7 @@ export async function containerChecks(opts: {
     ...(opts.controlKey
       ? { "control-key": controlKeyCheck(opts.controlKey.file, opts.controlKey.sha256) }
       : {}),
+    ...(opts.snapshotDir ? { "state-snapshot": stateSnapshotCheck(opts.brokerDir) } : {}),
   };
 }
 
@@ -646,6 +672,8 @@ export async function isolationSelftest(opts: {
   controllerPid?: number;
   /** The one-container rig image (oneContainerTargets): the supervisor shares the container. */
   oneContainer?: OneContainerTargets | undefined;
+  /** THERMITE_STATE_SNAPSHOT_DIR: no role may list the state's snapshot or write in it. */
+  snapshotDir?: string | undefined;
 }): Promise<IsolationReport> {
   const busy = opts.force ? undefined : isolationBusy(opts.stateDir);
   if (busy) throw new Error(`the rig is busy: ${busy}; rerun with --force to probe anyway`);
@@ -656,6 +684,7 @@ export async function isolationSelftest(opts: {
         brokerDir: dirname(opts.socketPath),
         skip: [opts.scratchDir],
         controlKey: opts.oneContainer.controlKey,
+        snapshotDir: opts.snapshotDir,
       })
     : undefined;
   const probes: Probe[] = [
@@ -691,6 +720,12 @@ export async function isolationSelftest(opts: {
     if (pod.controlKey)
       probes.push({ name: "control-key-write", op: "access", path: pod.controlKey.file });
   }
+  // The state's snapshot on the host's volume: root's alone, whatever owner the volume shows.
+  if (opts.snapshotDir)
+    probes.push(
+      { name: "state-snapshot-list", op: "list", path: opts.snapshotDir },
+      { name: "state-snapshot-create", op: "create", path: opts.snapshotDir },
+    );
   const kitFile = firstKitFile(join(opts.stateDir, "kits"));
   if (kitFile) probes.push({ name: "kit-by-path", op: "read", path: kitFile });
   else skipped.push("kit-by-path (no kit checked out yet)");

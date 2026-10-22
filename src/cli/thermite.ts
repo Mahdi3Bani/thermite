@@ -1173,6 +1173,8 @@ async function main(argv: string[]): Promise<void> {
         force: rest.includes("--force"),
         // The one-container rig image (THERMITE_ONE_CONTAINER): the supervisor's places too.
         oneContainer: oneContainerTargets(env),
+        // The state's snapshot on the host's volume, where the rig keeps one.
+        snapshotDir: env.THERMITE_STATE_SNAPSHOT_DIR || undefined,
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (!report.ok) process.exit(1);

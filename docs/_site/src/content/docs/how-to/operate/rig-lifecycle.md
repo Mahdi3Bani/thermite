@@ -19,7 +19,7 @@ What you can do to a [rig](../../reference/glossary.md), and where, depends on h
 
 A full reset needs the rig's full export off the rig first: in its [results repository](results-repository.md), or, for a rig without one, on control. Of the rigs Thermite sets up, only the compose stack has a results repository; the others send their exports to control ([Exports](../../reference/exports.md#where-exports-go)).
 
-A rig launched on RunPod has its buttons under **The pod** on its page: **Stop the pod**, **Start the pod**, **Restart the pod**, **Start the full reset** and **Terminate**. [Run a rig on RunPod](../install/runpod-rig.md#6-stop-and-start-it) gives the steps and the commands, which the REST API and MCP have too. Its stop sends its results out before the pod stops, and its terminate removes the pod only once every result has left it.
+A rig launched on RunPod has its buttons under **The pod** on its page: **Stop the pod**, **Start the pod**, **Restart the pod**, **Start the full reset** and **Terminate**. [Run a rig on RunPod](../install/runpod-rig.md#6-stop-and-start-it) gives the steps and the commands, which the REST API and MCP have too. Its stop sends its results out before the pod stops, and its terminate removes the pod only once every result has left it. RunPod empties a stopped pod's own disk, where the rig works: the rig keeps a snapshot of its state on the pod's volume, taken every few minutes, after each export and as the pod stops, and restores it when the pod starts again, keys and enrollment with it ([What a stop keeps](../install/runpod-rig.md#6-stop-and-start-it)).
 
 The buttons below are on the rig's page: open **Rigs** in the dashboard's sidebar, then the rig.
 

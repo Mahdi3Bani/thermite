@@ -1118,7 +1118,7 @@ Returns `{rig, pod, lines: [{source, ts, line}], read_at}`, as [`GET /v1/rigs/<r
 | `datacenter` | string, optional | any | "A data center's id" |
 | `image` | string, optional | `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image the pod runs |
 | `container_disk_gb` | whole number, 10 to 2000, optional | 40 | The container's own disk in GB |
-| `volume_gb` | whole number, 10 to 10000, optional | 100 | The pod's volume at `/workspace` in GB, where the rig keeps its state |
+| `volume_gb` | whole number, 10 to 10000, optional | 100 | The pod's volume at `/workspace` in GB, where the rig keeps a snapshot of its state |
 | `rig` | string, optional | `rp-` and 8 hexadecimal characters | "Lowercase letters, digits and dashes" |
 | `enroll_within_minutes` | number above 0, optional | no expiry | "The enrollment code expires this long after the launch" |
 | `settings` | object, optional | a GPU rig on all the pod's GPUs | "The rig's settings at enrollment" |

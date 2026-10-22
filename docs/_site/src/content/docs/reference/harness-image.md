@@ -194,37 +194,72 @@ The launch gives the rest: control's launch values for [pull mode](settings.md#p
 | --- | --- | --- |
 | `THERMITE_ONE_CONTAINER` | `1` | The broker also prepares and starts the supervisor. The isolation check also checks the container as a whole |
 | `THERMITE_FATAL_HOLD_SECONDS` | `60` | A fatal error at start is held for a minute before the broker exits, so the pod's log keeps it and RunPod does not restart the container every few seconds |
-| `THERMITE_STATE_DIR` | `/workspace/thermite/harness` | The harness's state, on RunPod's volume (mounted at `/workspace`, kept when a pod stops) |
-| `THERMITE_OUTBOX_DIR` | `/workspace/thermite/outbox` | The outbox, read by both parts |
-| `THERMITE_INBOX_DIR` | `/workspace/thermite/inbox` | The inbox, read by both parts, on the volume |
-| `THERMITE_SUPERVISOR_HOME` | `/workspace/thermite/supervisor` | The supervisor's state, on the volume |
-| `THERMITE_SUPERVISOR_TOKEN_FILE` | `/workspace/thermite/secrets/supervisor-token` | The token between the two parts, made at first start |
+| `THERMITE_STATE_DIR` | `/var/lib/thermite-rig/harness` | The harness's state, on the container's own disk |
+| `THERMITE_OUTBOX_DIR` | `/var/lib/thermite-rig/outbox` | The outbox, read by both parts |
+| `THERMITE_INBOX_DIR` | `/var/lib/thermite-rig/inbox` | The inbox, read by both parts |
+| `THERMITE_SUPERVISOR_HOME` | `/var/lib/thermite-rig/supervisor` | The supervisor's state |
+| `THERMITE_SUPERVISOR_TOKEN_FILE` | `/var/lib/thermite-rig/secrets/supervisor-token` | The token between the two parts, made at first start |
+| `THERMITE_STATE_SNAPSHOT_DIR` | `/workspace/thermite` | Where root keeps a snapshot of the state, on RunPod's volume (mounted at `/workspace`, kept when a pod stops). See [Where the state lives](#where-the-state-lives) |
 | `THERMITE_CONTROL_PUBKEY_FILE` | `/etc/thermite/control-signing.pub` | Root's copy of control's key, the only key the harness reads |
 | `THERMITE_LISTEN` | `127.0.0.1:8700` | The harness API answers on loopback only |
 | `HARNESS_URL` | `http://127.0.0.1:8700` | The supervisor reaches the harness there |
 | `THERMITE_TUNNEL_PORT` | `8790` | Pull mode, on this port |
-| `THERMITE_TUNNEL_DIR` | `/workspace/thermite/supervisor/tunnel` | The pod's own keys and its enrollment. The harness gets it too: its isolation check makes sure no role can read the keys |
-| `THERMITE_TUNNEL_ENROLLED_DIR` | `/workspace/thermite/supervisor/enrolled` | Where enrollment leaves control's key and the rig's settings |
+| `THERMITE_TUNNEL_DIR` | `/var/lib/thermite-rig/supervisor/tunnel` | The pod's own keys and its enrollment. The harness gets it too: its isolation check makes sure no role can read the keys |
+| `THERMITE_TUNNEL_ENROLLED_DIR` | `/var/lib/thermite-rig/supervisor/enrolled` | Where enrollment leaves control's key and the rig's settings |
+
+### Where the state lives
+
+RunPod empties a pod's container disk when the pod stops, and keeps its volume. The volume refuses even root a change of owner, and the rig keeps its parts and roles apart by owner. So the rig's state lives on the container's disk, in `/var/lib/thermite-rig`, where each part and role keeps its own folders as in the harness image. Root keeps a **snapshot** of it on the volume, and puts it back after a stop:
+
+| When | Root |
+| --- | --- |
+| At a start, first | Makes the snapshot folder, `THERMITE_STATE_SNAPSHOT_DIR`, its own with mode 0700, and never gives anything in it another owner. As the controller's user, the supervisor's and `agent-1`, it tries to list the folder and to write in it: each must be refused, whatever owner the volume shows. It logs `the snapshot folder is closed to the parts and the roles` with the owner and mode the volume shows, and records what each user met in `snapshot.json` in its socket's folder, for the isolation check. A folder another user can open is never written or read: the broker logs `the snapshot folder is open to other users: no snapshot is taken or restored`, and the isolation check fails |
+| At a start on an empty disk | When the live folders hold nothing, restores the newest complete snapshot into them, as below, and logs `restored the rig's state from its snapshot` with when it was taken, and the files, folders and bytes of each part. With no snapshot yet it logs `no snapshot yet: the rig starts with a fresh state`. When the live folders hold the state already (a restart that kept the disk), it restores nothing |
+| Every 5 minutes | Takes a snapshot (`THERMITE_STATE_SNAPSHOT_MINUTES`) |
+| After each export | Takes a snapshot once a new export is in the outbox. It looks every 10 seconds |
+| After enrollment | Takes a snapshot at once: the pod's keys and its enrollment are then kept |
+| At a stop | Takes a snapshot on `SIGTERM`, before it tells the two parts to stop, and waits for it up to 8 seconds (`THERMITE_STATE_SNAPSHOT_STOP_SECONDS`). A second signal ends it at once. Either way the last complete snapshot stays |
+
+Each snapshot logs `took a snapshot of the rig's state`, with why (`reason`), the files and bytes it holds, how many it linked and copied, and how long it took. A snapshot holds the harness's state, the outbox, the inbox, the supervisor's state (with the pod's keys, its enrollment and the nonces it has seen) and root's copy of the supervisor's token. It leaves out what is made again at every start or is not done yet: the supervisor's `tmp` and its copy of the token, exports still being written (names starting with `.` in the outbox), and the ledger's write-ahead files.
+
+- **The ledger** is copied with SQLite's backup, by a process that runs as the controller's user, never as a plain copy of a file being written. The copy is consistent: a transaction is in it whole or not at all. It is copied first, so an export the ledger records is in the outbox's copy too.
+- **Other files** are copied as they are. A file that has not changed since the last snapshot (the same size and time) is a hard link to that snapshot's copy, so a snapshot copies only what changed. On a volume that refuses hard links every file is copied, and the log line says so.
+- **Only plain files and folders of the part's own user** are copied: a link, a device, a pipe, a socket or another user's file is left out and named in the log line (`skipped_first`).
+- **A new folder, then a rename.** A snapshot is written into `snapshot.new`, its list of files, `SNAPSHOT.json`, last, then renamed to `snapshot`. The snapshot before it stays whole until then. A snapshot that fails, such as on a full volume, leaves the one before it, logs `could not take a snapshot of the rig's state: the last one stays`, and is tried again a minute later.
+- **Out of the judge's way.** The snapshot runs in a process of its own, at a low CPU and disk priority but at a stop, so it never holds up the broker, which times the judge's runs. One that falls due while a timed run is at work waits for it to end, up to 5 minutes.
+
+A restore copies only plain files and folders, under the parts the rig has and the names a snapshot holds. A link, a device, a pipe, a name that climbs out of its part, or a file whose size is not the one recorded, is refused and counted in the log line. Each restored file and folder gets its part's owner, as a start gives it, and the mode it had, with no set-user-id or set-group-id bit on a file. Each part is written beside its live folder, then renamed into place once every part is written: a restore that fails changes nothing, logs `fatal: could not restore the rig's state from its snapshot`, and is tried again at the next start.
+
+| Part | Owner it is restored with |
+| --- | --- |
+| The harness's state | `thermite` (10010:10010) |
+| The outbox | `thermite`, with the supervisor's group (10010:10001) |
+| The inbox | `supervisor`, with group `thermite` (10001:10010) |
+| The supervisor's state | `supervisor` (10001:10001) |
+| Root's copy of the token | root |
+
+The container's disk holds the live state, models and builds among it, and the volume a copy of it: give both room for the state, as [Run a rig on RunPod](../how-to/install/runpod-rig.md#2-choose-the-gpu-the-limits-and-the-name-and-launch) says.
 
 ### How it starts
 
 1. `thermite-rig-start` removes every `RUNPOD_` variable from the environment: RunPod's API key, the pod's ID and the others. It passes the pod's ID on as `THERMITE_TUNNEL_POD`, unless that is set already. Then it starts `tini`, so no process of the rig has RunPod's variables, PID 1 included.
-2. The broker, as root, prepares the harness's places as in the harness image, and the supervisor's:
+2. The broker, as root, makes the snapshot folder and checks that it is closed to the parts and the roles. On an empty disk, such as after a stop, it restores the state from the snapshot ([Where the state lives](#where-the-state-lives)).
+3. The broker prepares the harness's places as in the harness image, and the supervisor's:
    - its state folder, `THERMITE_SUPERVISOR_HOME`: the supervisor's, mode 0700, with a folder `tmp` emptied at every start. `/tmp` is closed to the supervisor, as to the roles;
    - the inbox: the supervisor's, with the controller's group `thermite`, mode 2750;
    - the token the supervisor uses on the harness API: made at first start in `THERMITE_SUPERVISOR_TOKEN_FILE` (root's, 0600, in a folder of mode 0700), and copied at every start to `harness-token` in the supervisor's state folder (the supervisor's, 0600);
    - in pull mode, it removes the harness's copy of control's key from an earlier start. A start without `THERMITE_RIG_ID`, `THERMITE_CONTROL_PUBKEY_FILE` or a `THERMITE_TUNNEL_CONTROL_KEY_SHA256` of 64 hexadecimal characters stops with `fatal: pull mode needs the launch's values`.
-3. As the supervisor's user, started the way the supervisor is, it tries to open each GPU device node. It records what happened in `supervisor.json` in its socket's folder, for the isolation check.
-4. It starts the supervisor as `supervisor` (10001), with no_new_privs (`setpriv --no-new-privs`), and in the GPU fence with no card where the kernel has Landlock: neither the supervisor nor a program it starts (an advisor's) can open the GPU. The supervisor serves the pull mode port and waits for control to enroll the pod.
-5. The broker waits for enrollment, and logs `waiting for enrollment: the harness starts once control has enrolled the pod` at once and every 10 minutes after. When the supervisor has written `control.pub` in `THERMITE_TUNNEL_ENROLLED_DIR`, root reads what enrollment left, as data:
+4. As the supervisor's user, started the way the supervisor is, it tries to open each GPU device node. It records what happened in `supervisor.json` in its socket's folder, for the isolation check.
+5. It starts the supervisor as `supervisor` (10001), with no_new_privs (`setpriv --no-new-privs`), and in the GPU fence with no card where the kernel has Landlock: neither the supervisor nor a program it starts (an advisor's) can open the GPU. The supervisor serves the pull mode port and waits for control to enroll the pod.
+6. The broker waits for enrollment, and logs `waiting for enrollment: the harness starts once control has enrolled the pod` at once and every 10 minutes after. When the supervisor has written `control.pub` in `THERMITE_TUNNEL_ENROLLED_DIR`, root reads what enrollment left, as data:
    - `control.pub` and `rig.env` must be plain files of the supervisor's own, not links, of at most 16 KiB;
    - `control.pub` must be an Ed25519 public key whose SHA-256 is `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, the one the launch named;
    - `rig.env` must hold only `NAME=value` lines for `THERMITE_RIG_ID`, which must be the launch's, and the settings control gives a rig (`THERMITE_TARGET`, `THERMITE_TARGET_CLASS`, `THERMITE_GPUS`, `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_JUDGE_GPUS`, `THERMITE_MAX_TRIALS`, `THERMITE_TRIAL_MINUTES` and `THERMITE_PROMOTION`), each once, with values of letters, digits and `. _ , : -`. Nothing in it is run or expanded.
 
    Anything else is refused, and the broker logs `refused what enrollment left: the harness waits` with the reason, again when the reason changes and every 10 minutes.
-6. Root writes control's key to `THERMITE_CONTROL_PUBKEY_FILE`, in a folder of its own (mode 0755), as a new file of mode 0644, and logs `enrolled: the harness starts with control's key from enrollment` with the names of the settings. It adds the settings to the controller's environment, regroups the GPUs if they changed, and starts the controller as `thermite`, as in the harness image. A key the supervisor writes after that changes nothing: root copied the key once, at this start, after checking it.
+7. Root writes control's key to `THERMITE_CONTROL_PUBKEY_FILE`, in a folder of its own (mode 0755), as a new file of mode 0644, and logs `enrolled: the harness starts with control's key from enrollment` with the names of the settings. It takes a snapshot of the state. It adds the settings to the controller's environment, regroups the GPUs if they changed, and starts the controller as `thermite`, as in the harness image. A key the supervisor writes after that changes nothing: root copied the key once, at this start, after checking it.
 
-A pod that restarts does not enroll again: the supervisor writes the same files again at start, and the broker checks them again before the controller starts.
+A pod that restarts does not enroll again: the supervisor writes the same files again at start, and the broker checks them again before the controller starts. After a stop, the pod's keys and its enrollment come back from the snapshot.
 
 The supervisor's environment is the broker's, without RunPod's variables and without the harness's secret files, with `HOME` (its passwd home), `TMPDIR` (its `tmp`), `USER=supervisor` and `THERMITE_HARNESS_TOKEN_FILE` set. It takes the enrollment code out of its own environment at start. The controller gets no `RUNPOD_` variable, in every image, and none of pull mode's launch values but `THERMITE_TUNNEL_DIR` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, which its isolation check reads. The roles get what they get in the harness image.
 
@@ -235,22 +270,25 @@ The supervisor's environment is the broker's, without RunPod's variables and wit
 | The controller exits | Does what it does in the harness image: ends the controller's processes and every role's, and starts it again, with the key root copied at this start |
 | The supervisor exits | Ends whatever the supervisor started (its process group and every process of its user), logs `supervisor exited; restarting`, and starts it again |
 | A part exits again soon | Waits 2 seconds before the next start, then twice as long each time, up to 30 seconds. After a run of more than a minute it waits 1 second |
-| It gets `SIGTERM` or `SIGINT`, as when the pod stops | Passes the signal to both parts and starts neither again. Once both have ended, it ends every role's processes, logs `stopped` and exits with the controller's exit code. A stop while it waits for enrollment ends the supervisor the same way. The supervisor logs `stopping` and closes pull mode's ports at once: its calls that wait for control's next exchange end with 503, so it ends within seconds whether or not control is connected |
+| It gets `SIGTERM` or `SIGINT`, as when the pod stops | Takes a snapshot of the state first, for up to 8 seconds ([Where the state lives](#where-the-state-lives)). Then passes the signal to both parts and starts neither again. Once both have ended, it ends every role's processes, logs `stopped` and exits with the controller's exit code. A stop while it waits for enrollment ends the supervisor the same way. The supervisor logs `stopping` and closes pull mode's ports at once: its calls that wait for control's next exchange end with 503, so it ends within seconds whether or not control is connected |
 
 ### Paths
 
 | Path | What | Owner and mode |
 | --- | --- | --- |
-| `/workspace/thermite/harness` | The harness's state | As `/var/lib/thermite` in the harness image |
-| `/workspace/thermite/outbox` | Exports for the supervisor | `thermite` with the supervisor's group (10010:10001), 2750 |
-| `/workspace/thermite/inbox` | What the supervisor fetched for the harness | `supervisor` with group `thermite` (10001:10010), 2750 |
-| `/workspace/thermite/supervisor` | The supervisor's state, its `harness-token`, its `tmp`, the pod's keys (`tunnel/`) and what enrollment left (`enrolled/`) | `supervisor`, 0700 |
-| `/workspace/thermite/secrets` | Root's copy of the token between the two parts | root, 0700 |
+| `/var/lib/thermite-rig` | The live state's folder, on the container's disk | root, 0711 |
+| `/var/lib/thermite-rig/harness` | The harness's state | As `/var/lib/thermite` in the harness image |
+| `/var/lib/thermite-rig/outbox` | Exports for the supervisor | `thermite` with the supervisor's group (10010:10001), 2750 |
+| `/var/lib/thermite-rig/inbox` | What the supervisor fetched for the harness | `supervisor` with group `thermite` (10001:10010), 2750 |
+| `/var/lib/thermite-rig/supervisor` | The supervisor's state, its `harness-token`, its `tmp`, the pod's keys (`tunnel/`) and what enrollment left (`enrolled/`) | `supervisor`, 0700 |
+| `/var/lib/thermite-rig/secrets` | Root's copy of the token between the two parts | root, 0700 |
+| `/workspace/thermite` | The state's snapshot, on RunPod's volume: `snapshot/`, and `snapshot.new/` while one is written | root, 0700. Whatever owner the volume shows, no part or role may open it |
+| `/run/thermite/snapshot.json` | The broker's record of the snapshot folder: its owner and mode, and what each user met trying to open it | root, 0644, in the broker's folder |
 | `/etc/thermite/control-signing.pub` | Control's key, copied by root from enrollment once checked | root, 0644, in a folder of root's (0755) |
 | `/run/thermite/supervisor.json` | The broker's record of the supervisor's user, fence and GPU access | root, 0644, in the broker's folder (root and group `thermite`, 0750) |
 | `/scratch` | As in the harness image, on the container's own disk | root, 0755 |
 
-The [isolation check](rig-checks.md#the-one-container-image) checks the supervisor, set-id files, RunPod's variables, the enrollment code and control's key in this image too.
+The [isolation check](rig-checks.md#the-one-container-image) checks the supervisor, set-id files, RunPod's variables, the enrollment code, control's key and the snapshot folder in this image too.
 
 ## The control image
 

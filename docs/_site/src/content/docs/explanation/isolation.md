@@ -105,8 +105,9 @@ A pod is less closed than the containers Thermite sets up itself, and the image 
 - **RunPod's variables.** RunPod puts its own variables in the container's environment, an API key among them. The image's entry point removes them before anything else starts, so no process of the rig has them.
 - **The GPU's device files.** On RunPod they keep the owner and permissions they came with, open to everyone, and the broker cannot change them. The GPU fence alone keeps every role but the GPU's own off them.
 - **Control's key.** The supervisor and the harness share a container, so the supervisor must not choose the key the harness trusts. Enrollment brings control's key to the supervisor; root checks it against the SHA-256 the launch named and gives the harness a copy that only root can write. The enrollment code reaches the supervisor alone.
+- **The volume.** RunPod's volume refuses even root a change of owner, and owners are what keep the parts and roles apart. So the rig's state lives on the pod's own disk, with the owners it has everywhere else, and root keeps a snapshot of it on the volume, in a folder that neither part nor any role may open. Root puts it back after a stop ([Where the state lives](../reference/harness-image.md#where-the-state-lives)).
 
-The isolation self-test checks all four, and the supervisor's user, in that image.
+The isolation self-test checks all five, and the supervisor's user, in that image.
 
 ## The isolation self-test
 
