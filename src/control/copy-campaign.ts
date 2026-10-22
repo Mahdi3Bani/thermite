@@ -206,13 +206,17 @@ export function copyCampaign(
     contract = Object.keys(own).length ? { ...rest, agents_context: own } : rest;
   }
   // The copy's own brief (goal 078): each part given replaces the source's.
+  const before = contract;
   const brief = briefChange(contract, req);
   if (typeof brief === "string") return refuse(brief, 400);
   contract = brief;
   const parsed = parseContract(contract);
   if (!parsed.ok)
+    // The copy's own brief can be what is wrong, not the source: say whose it is.
     return refuse(
-      `The contract of ${from} is not valid, so control cannot copy it: ${parsed.errors.join("; ")}`,
+      brief !== before && parseContract(before).ok
+        ? `The copy's own brief is not valid: ${parsed.errors.join("; ")}`
+        : `The contract of ${from} is not valid, so control cannot copy it: ${parsed.errors.join("; ")}`,
     );
   let sources: CampaignSources;
   let copiedFrom: CopiedFrom;

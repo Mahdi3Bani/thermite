@@ -324,7 +324,7 @@ Control refuses, and saves nothing:
 | 400 | `A research run has no planner: its research plan is code. Give <server> to the workers or the advisors.` |
 | 400 | `A context window is a whole number of tokens from 4,096 to 100,000,000.` or `The compaction point is a whole percent of the context window, from 50 to 95.`: `agents_context` out of range |
 | 409 | `There is a campaign named <name> already. Choose another name.`: a campaign control keeps, one a rig reported, a folder in the knowledge base, or a name in a grant |
-| 409 | `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors, for an assignment whose contract the contract check refuses, or for a copy whose own `links` has an entry that is not a web address. The message names the source campaign even then |
+| 409 | `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors, for an assignment whose contract the contract check refuses; `The copy's own brief is not valid:` and the errors, for a copy whose own brief (for example a `links` entry that is not a web address) makes its contract invalid |
 | 400 | `Ideas to try are for hill-climb and goal campaigns. A research campaign has questions and hypotheses.`, for `ideas` with a research campaign |
 
 Each refusal is in the audit log as `refused`, with the route's path and why. MCP's [`copy_campaign`](mcp-tools.md#copy_campaign) and [`thermite campaign copy`](command-line.md#campaign-copy) do the same. [Compare two models from zero](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero) says when to copy.

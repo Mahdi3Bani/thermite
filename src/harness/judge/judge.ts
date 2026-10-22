@@ -30,6 +30,7 @@ import {
   type HeldOutResult,
   heldOutKindOf,
   heldOutKinds,
+  heldOutMeasure,
   heldOutResult,
   heldOutWords,
   meetsThreshold,
@@ -878,7 +879,7 @@ export class Judge {
         value: ratio,
         threshold,
         op: ">" as const,
-        measure: `${metric}, the change's median over the champion's`,
+        measure: heldOutMeasure(metric, direction),
         unit: "ratio",
       };
       if (Math.log(ratio) > -toLog(2 * contract.acceptance.equivalence_band))

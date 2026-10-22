@@ -175,7 +175,7 @@ export const EDIT_RIG_JS = `
     if (s.hErr) return "Fix Runs in first: " + s.hErr;
     const shows = adv ? "" : " History and Live show each compaction.";
     if (s.h === "pi") {
-      if (!W) return "In Pi, with no window, Thermite compacts only when the provider says the context is full.";
+      if (!W) return r.kind === "workers" ? "In Pi, with no window, Thermite compacts only when the provider says the context is full." : "In Pi, with no window, Thermite does not compact " + (adv ? "the advisor's" : "the planner's") + " conversation. Type a window to have it compacted.";
       if (adv) return "In Pi, at " + fmt(T) + " tokens, Thermite keeps the whole conversation in the supervisor, with the advisor's round. Then the same model writes a summary, and " + r.who + " continue" + r.s + ". Live shows each compaction.";
       return "In Pi, at " + fmt(T) + " tokens, Thermite keeps the whole conversation in the run's research folder, as compactions/" + (r.kind === "workers" ? "<trial>" : "planner-<id>") + "-<n>.md. Then the same model writes a summary, and " + (r.kind === "workers" ? "the worker continues with it and its most recent turns" : "the planner continues its call") + "." + shows;
     }

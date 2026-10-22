@@ -502,6 +502,15 @@ describe("a campaign's brief on the screens (goal 078)", () => {
       String(((await refused.json()) as { error: string }).error),
       /Ideas to try are for hill-climb and goal campaigns/,
     );
+    // A copy's own link that is not a web address: the copy's brief is named, not the source.
+    const badLink = await s.rest("fastmat-speed", {
+      name: "fastmat-speed-e",
+      links: ["not a url"],
+    });
+    assert.equal(badLink.status, 409);
+    const why = String(((await badLink.json()) as { error: string }).error);
+    assert.match(why, /^The copy's own brief is not valid: /);
+    assert.doesNotMatch(why, /The contract of fastmat-speed/);
     await client.close();
   });
 });

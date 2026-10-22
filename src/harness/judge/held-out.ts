@@ -70,6 +70,16 @@ export const HELD_OUT_OWNER_WORDS: Record<HeldOutKind, string> = {
   no_cell: "is not in the kit",
 };
 
+/**
+ * What a hill climb's held-out ratio measures: the change over the champion when higher is better,
+ * the champion over the change when lower is better, so a ratio above 1 is always an improvement.
+ */
+export function heldOutMeasure(metric: string, direction: "max" | "min"): string {
+  return direction === "max"
+    ? `${metric}, the change's median over the champion's`
+    : `${metric}, the champion's median over the change's (lower is better)`;
+}
+
 /** Whether a value is on the passing side of a goal's threshold. */
 export function meetsThreshold(x: number, op: ">=" | ">" | "<=" | "<", value: number): boolean {
   return op === ">=" ? x >= value : op === ">" ? x > value : op === "<=" ? x <= value : x < value;

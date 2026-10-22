@@ -13,6 +13,7 @@ import {
   heldOutCellsOf,
   heldOutKindOf,
   heldOutKinds,
+  heldOutMeasure,
   heldOutWords,
   meetsThreshold,
 } from "./held-out.ts";
@@ -365,6 +366,17 @@ describe("held-out kinds", () => {
     // A record from before goal 082 kept {cell: {ratio, ok}}: it has no cells to read.
     assert.deepEqual(heldOutCellsOf({ held: { ratio: 0.5, ok: false } }), []);
     for (const k of HELD_OUT_KINDS) assert.match(heldOutWords([k]), /^a held-out check /);
+  });
+
+  test("a held-out ratio says which way it was taken: above 1 is better in both directions", () => {
+    assert.equal(
+      heldOutMeasure("ops_per_s", "max"),
+      "ops_per_s, the change's median over the champion's",
+    );
+    assert.equal(
+      heldOutMeasure("latency_ms", "min"),
+      "latency_ms, the champion's median over the change's (lower is better)",
+    );
   });
 
   test("a threshold's sides", () => {

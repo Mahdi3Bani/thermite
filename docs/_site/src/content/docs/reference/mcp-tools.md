@@ -742,7 +742,8 @@ Errors:
 - `A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.`
 - `A name that starts with rig-check- is for rig checks. Choose another name.`
 - `There is a campaign named <name> already. Choose another name.`
-- `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors, also for a copy whose own `links` has an entry that is not a web address
+- `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors
+- `The copy's own brief is not valid:` and the errors, for a copy whose own brief (for example a `links` entry that is not a web address) makes its contract invalid
 - `This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.`: `mcp_servers` for a hill-climb or goal campaign
 - `Settings has no MCP server named <server>. Add it in Settings › MCP servers, or take it out of mcp_servers.`
 - `<server> has no tool named <tool>. Its tools are <tools>.`
