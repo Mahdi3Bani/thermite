@@ -460,7 +460,7 @@ Drops an experiment that still waits, so no lane tries it. It stays in the run's
 
 ### `queue_accept`
 
-Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea` or Pi's `idea` tool) goes up next. The planner's model also queues or drops ideas as it plans. Under **Ideas from the lanes**, the **Experiments** tab says: "The planner's model queues or drops these at its next hand-out, and you can decide first. Without its model (none set, its answer refused, the planner off, or a research run) they wait for you."
+Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea` or Pi's `idea` tool) goes up next. The planner's model also queues or drops ideas as it plans. Under **Ideas from the lanes**, the **Experiments** tab says: "The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model. In a research run they wait for you."
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |

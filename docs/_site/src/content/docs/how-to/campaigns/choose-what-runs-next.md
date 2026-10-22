@@ -58,14 +58,23 @@ Your own experiments show `you`. When a lane gets an experiment that neither you
 
 ## Queue or drop the lanes' ideas
 
-While it works, a lane's worker may propose an **idea**: another experiment worth trying beyond its own. Workers do this by themselves, and you set nothing up for it; its trial goes on. Thermite sets no limit on how many ideas a lane proposes.
+While it works, a lane's worker may propose an **idea**: another experiment worth trying beyond its own. Workers do this by themselves, and you set nothing up for it; its trial goes on. A code trial's brief asks its worker to propose each distinct follow-up its work suggests before it submits or stops. Thermite sets no limit on how many ideas a lane proposes.
 
-Ideas wait under **Ideas from the lanes**, headed `wait for the planner or you`, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. Below them, the card says `The planner's model queues or drops these at its next hand-out, and you can decide first. Without its model (none set, its answer refused, the planner off, or a research run) they wait for you.` The lane's worker is told the same: `it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` To decide:
+Ideas wait under **Ideas from the lanes**, headed `wait for the planner or you`, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. Below them, the card says `The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model. In a research run they wait for you.` ([Keep ideas ready](#keep-ideas-ready) says how many that is.) The lane's worker is told the same: `it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` To decide:
 
 - **Queue it** puts the idea at the end of **Up next**.
 - **Drop** drops it at once, with the reason `the owner dropped this idea`. It shows under **Tried** as `dropped by you: the owner dropped this idea`.
 
 With no ideas waiting, the card says `None waiting. Lanes propose ideas while they work.`
+
+## Keep ideas ready
+
+A hill-climb or goal campaign keeps a number of experiments ready in each run's queue: **Ideas kept ready**, two for each lane unless you set another. It is a target that drives ideas, not a cap: the queue may hold more, and nothing stops when it holds fewer.
+
+- **See it** on the campaign's page, under **Experiment queue**: `Ideas kept ready 4 (2 for each of 2 lanes)`.
+- **Set it** when you make the campaign: on **Campaigns › New campaign**, step **5 Where it runs**, open **Advanced** and enter **Ideas kept ready**. `0` asks for no ideas. In a contract, it is `lanes.queue_target` ([Contract](../../reference/contract.md#lanes)); a new version of the contract changes it for new runs.
+
+When a round leaves fewer ready, the planner is asked to top the queue up, the lanes' distinct ideas go up next, and then the teachers are asked for ideas at once. Live and **History** say so: `After round 3, the queue had 1 of its target of 4 experiments ready: the teachers were asked for ideas at once.` [Agents, lanes and the planner](../../explanation/agents-lanes-planner.md#keeping-the-queue-at-its-target) explains each step.
 
 ## Read what was tried
 

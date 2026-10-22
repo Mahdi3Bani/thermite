@@ -70,6 +70,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [077](goals/077-archive-and-folders.goal) Archive a campaign; folders in the left navigation; no rigs there · `VERIFIED`
 - [078](goals/078-campaign-brief.goal) A campaign's brief: additional information, ideas and hypotheses for every mode · `IN_PROGRESS`
 - [082](goals/082-judge-findings-in-view.goal) The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check · `VERIFIED`
+- [081](goals/081-ideas-first.goal) Teachers put ideas first; a target queue depth; lanes propose follow-ups · `IN_PROGRESS`
 
 ### Research mode
 
@@ -100,6 +101,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [029](goals/029-api-mcp-coverage.goal) Full API and MCP coverage · `IN_PROGRESS`
 - [071](goals/071-bounded-mcp-answers.goal) MCP answers that fit an agent's context · `PROPOSED`
 - [072](goals/072-why-nothing-at-work.goal) Say why a running run has nothing at work · `PROPOSED`
+- [083](goals/083-deep-research-teacher.goal) A deep-research teacher that runs on a trigger · `PROPOSED`
+- [084](goals/084-research-tasks-in-code-runs.goal) Research tasks inside goal and hill-climb runs, with web search · `PROPOSED`
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
 - [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`

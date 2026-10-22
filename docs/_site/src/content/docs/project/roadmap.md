@@ -45,6 +45,7 @@ In progress:
 - a cap on the context window of each agent's model, and compaction near it: an agent's conversation is kept, summarized and goes on, in every harness, the advisors' included. A campaign can set its own window and compaction point for its runs. Both work over REST and MCP, and a campaign's own over the command line too; fields for them on **Edit rig**, **New campaign**, **Copy** and the campaign's page are still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
 - a harness of the owner's choice for every kind of agent, not only the workers: Pi, OpenCode v2, Claude Code or the Codex CLI for the planner and each advisor too ([goal 073](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/073-harness-for-each-agent.goal)).
 - a campaign's brief for every mode, on its own step of **New campaign**: additional information in Markdown, starting links, ideas to try and hypotheses, which the planner, the workers and the advisors get. Its screens are approved; it waits for its last checks ([goal 078](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/078-campaign-brief.goal); [The brief](../how-to/campaigns/start-from-dashboard.md#2-the-brief)).
+- a queue that stays full of ideas: the teachers' main product is a portfolio of new opportunities, written to the queue, and they read the champion's code, the attempts' diffs and the judge's reasons; a campaign keeps a target of experiments ready, **Ideas kept ready**, and a queue below it asks the planner and then the teachers for more; lanes propose their follow-ups. It is built and waits for its last checks ([goal 081](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/081-ideas-first.goal); [Supervision](../explanation/supervision.md#the-teachers)).
 
 Still to come in v0.1.0:
 
@@ -60,7 +61,7 @@ Later versions are proposed: their order and contents can change. Each one ships
 
 | Version | Focus |
 | --- | --- |
-| **v0.2.0** | Run Thermite without the dashboard: every dashboard action has an API and MCP twin, all logs are in one place you can search, and you sign in with your identity provider. |
+| **v0.2.0** | Run Thermite without the dashboard: every dashboard action has an API and MCP twin, all logs are in one place you can search, and you sign in with your identity provider. Also planned: a deep-research teacher that runs when the queue needs ideas, and research tasks with web search inside goal and hill-climb runs. |
 | **v0.3.0** | Rigs you can trust: checks before a rig is deployed, setup and removal that are safe to repeat, upgrades from control, and GPU rigs under compose. |
 | **v0.4.0** | Kits and evidence: kits are easier to write and to test before agents start, and each result shows clearer evidence. |
 | **v0.5.0** | Unattended for days: campaigns in all three modes run for days with no one watching, and research mode can search the web. |

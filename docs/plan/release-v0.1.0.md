@@ -73,6 +73,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [077 · Archive a campaign; folders in the left navigation; no rigs there](goals/077-archive-and-folders.goal) | `VERIFIED` | — |
 | [078 · A campaign's brief: additional information, ideas and hypotheses for every mode](goals/078-campaign-brief.goal) | `IN_PROGRESS` | — |
 | [082 · The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check](goals/082-judge-findings-in-view.goal) | `VERIFIED` | — |
+| [081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups](goals/081-ideas-first.goal) | `IN_PROGRESS` | [064](goals/064-experiment-queue.goal), [066](goals/066-direction-rules.goal), [074](goals/074-one-name-for-each-agent.goal) |
 
 ### Install from images
 

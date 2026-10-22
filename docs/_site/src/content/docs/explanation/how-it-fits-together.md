@@ -199,7 +199,7 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 | Event | What it records |
 | --- | --- |
 | `experiment_added` | A new experiment: its title, details, direction, why, who added it and its state (`queued`, or `proposed` for a lane's idea). A copied one also names the run it came from. One put back after its trial was interrupted or failed names the experiment it repeats, with that trial, its lane and how it ended (`requeued_from`) |
-| `experiment_accepted` | A lane's idea, queued |
+| `experiment_accepted` | A lane's idea, queued: by the owner, or by the planner, with why (its model's, or, below the queue's target, the fixed rules') |
 | `experiment_moved` | A new place in the queue |
 | `experiment_edited` | New text |
 | `experiment_dropped` | Dropped, with who dropped it and why |
@@ -211,7 +211,8 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 | `family_added` | A new direction: its name, what it means, who added it, and the rules it was designed for (`for_rules`) when a rule named it before the run had it |
 | `directive_dropped` | A rule taken out of force |
 | `directive_converted` | An old rule in words that the planner converted at its round: the old rule, the new rule in its place (`to`), its kind, its direction and the old words |
-| `directives_left_out` | Rules a new set named that the rig left out, with why: rules the owner had removed, named by the advisors, the planner or an agent's token; and, in a research run, an advisor's rule for a direction that is not a task kind |
+| `directives_left_out` | Rules a new set named that the rig left out, with why: rules the owner had removed, named by the advisors, the planner or an agent's token; an advisor's rule that would freeze the queue's size or pin an experiment (`reason`: `freezes_queue` or `pins_experiment`); and, in a research run, an advisor's rule for a direction that is not a task kind |
+| `queue_low` | A planner's round left the queue below its target: the round, the experiments ready, the target and the lanes. The supervisor starts the teachers' round at once |
 
 Control builds a run's **Experiments** and **Planner** tabs, and the MCP tool `run_queue`, from these events and the messages' events above. The run's **History** tab tells each change in words, such as "You dropped "…": why.", "The planner moved "…" to place 1." or "The planner's experiment "…" went back in the queue: its trial was interrupted." [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change the queue.
 

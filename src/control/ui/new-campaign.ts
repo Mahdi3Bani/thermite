@@ -12,6 +12,13 @@ import { kitMcpSection } from "./new-campaign-mcp.ts";
 export { infoLabel };
 
 /**
+ * What "Ideas kept ready" means (goal 081), on New campaign and the campaign's page: the
+ * contract's lanes.queue_target, a target that drives ideas, never a cap.
+ */
+export const QUEUE_TARGET_TIP =
+  "How many experiments the queue keeps ready for the agents' next tries, for all of them together. When it holds fewer, the planner is asked for more distinct ideas, and the teachers at once when the planner has none. It is a target that drives ideas, not a cap: the queue may hold more, and nothing stops when it holds fewer. Empty: 2 for each agent. 0: ask for none. Hill climbs and goals only; a research campaign has its research plan.";
+
+/**
  * The new-campaign page: a campaign from nothing
  * in six steps (aim, the brief, project, how to measure, where, review), with every setting
  * beyond the simple ones folded under Advanced and a description behind every label's info icon.
@@ -237,6 +244,7 @@ ${field("One try lasts (minutes)", "How long an agent works on one idea before i
 ${field("Memory per agent (MiB)", "Memory for everything one agent runs at once. A command that goes over is stopped. Empty: 2048.", `<input name="run_rss_mib" placeholder="2048">`)}
 ${field("Disk per agent (MiB)", "Disk for one try's copy of the code and its builds. Empty: 2048.", `<input name="workspace_mib" placeholder="2048">`)}
 ${field("Stop after (hours)", "Stop the agents after this many hours. Empty: no limit; the campaign runs until it is done or you stop it.", `<input name="wall_hours" placeholder="no limit">`)}
+${field("Ideas kept ready", QUEUE_TARGET_TIP, `<input name="queue_target" inputmode="numeric" placeholder="2 for each agent">`)}
 ${field("GPUs for the judge", "For a rig with several GPUs: how many the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. It changes the rig's split for every run on it, and the rig's harness restarts to apply it. Empty: the rig's current split.", `<input name="judge_gpus" inputmode="numeric" placeholder="the rig's current split">`)}
 </div></details>
 <div class="act" style="margin-top:12px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>

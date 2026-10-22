@@ -138,6 +138,9 @@ A [lane](glossary.md) is one worker's line of search. An epoch is one round of p
 | `lanes.count` | integer, 1–16 | required when `lanes` is given; 2 when `lanes` is left out | Lanes planned in each epoch. A `lane_count` [directive](advisors-file.md#what-each-role-must-answer) can lower it. A rig has users for lanes 1 to 16 only, so more is refused. How many trials run at the same time is the rig's own setting, **Workers at a time**, which is 1 unless it is changed: see [Settings](settings.md#the-rigs-settings) |
 | `lanes.trials_per_epoch` | integer ≥ 1 | 3 | Trials each lane runs in one epoch |
 | `lanes.limits` | object | none | What each lane may use. Every field is optional, and the defaults below apply to what is left out |
+| `lanes.queue_target` | integer, 0–1000 | none: 2 for each lane | **Ideas kept ready**: the experiments the run's queue keeps ready for the lanes' later trials in a round, counted after each round's hand-out. A target that drives ideas, never a cap: below it, the planner is asked to top the queue up, the lanes' distinct ideas go up next, and the teachers are asked for ideas at once. `0` asks for none. The lanes it counts are the round's, so a `lane_count` directive lowers the default too. Hill climb and goal only: a research run's research plan fills its queue. See [Keeping the queue at its target](../explanation/agents-lanes-planner.md#keeping-the-queue-at-its-target) |
+
+A contract without `lanes.queue_target` keeps its hash: the field has no default in the contract itself.
 
 `lanes.limits`:
 

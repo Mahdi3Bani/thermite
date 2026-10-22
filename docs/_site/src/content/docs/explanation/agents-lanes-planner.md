@@ -56,7 +56,7 @@ An experiment is always in one of five states:
 
 | State | Where the **Experiments** tab shows it | What it means |
 | --- | --- | --- |
-| `proposed` | **Ideas from the lanes** | A lane's idea. It waits until the owner or the planner's model queues it or drops it |
+| `proposed` | **Ideas from the lanes** | A lane's idea. It waits until the owner or the planner's model queues it or drops it, or until the queue is below its target, when the planner queues the distinct ones |
 | `queued` | **Up next** | Waiting for a lane, in order |
 | `assigned` | **In progress** | A lane's trial works on it, so no other lane can get it |
 | `done` | **Tried** | Its trial ended: with its attempt and the judge's verdict, or with no attempt and why |
@@ -67,9 +67,9 @@ The queue is research state, so it lives in the harness's ledger, like the attem
 ### Where experiments come from
 
 - **The owner** adds experiments, moves them, edits them and drops them, and queues or drops the lanes' ideas: on the **Experiments** tab, or with the commands `queue_add`, `queue_move`, `queue_edit`, `queue_drop` and `queue_accept` over the REST API, the command line or MCP. Each is a [signed command](../reference/signed-commands.md) in the owner's name. An operator's token, which the owner gives an agent that runs campaigns for them, may send them too; an agent's token can't.
-- **The planner** adds experiments, moves them, drops them and queues the lanes' ideas, each with why. When the queue has nothing for a lane, the fixed rules add one ([below](#when-there-is-no-planner-answer)).
-- **The advisors:** the teachers add experiments and move queued ones, from their reviews and their outside reading. The auditor can put a check at the top of the queue when it doubts a result that it can't settle. Advisors never drop an experiment or give out work ([Supervision](supervision.md#the-teachers)).
-- **The lanes:** a worker that sees something worth trying beyond its own experiment proposes it as an **idea**, with `thermite-trial idea` in OpenCode, Claude Code and Codex, or the `idea` tool in Pi. Its trial goes on. The idea waits as `proposed` until the planner's model or the owner queues it or drops it. The fixed rules never take an idea, so without an answer from the planner's model (no model, the planner off, its answer refused, or a research run) the idea waits for the owner.
+- **The planner** adds experiments, moves them, drops them and queues the lanes' ideas, each with why, and keeps the queue at its target ([below](#keeping-the-queue-at-its-target)). When the queue has nothing for a lane, the fixed rules add one ([below](#when-there-is-no-planner-answer)).
+- **The advisors:** the teachers' main product is a portfolio of new opportunities, each added as an experiment with its mechanism, gain bound, smallest experiment and control, stop condition and evidence, from their reading of the run's code, its evidence and outside sources. They also move queued experiments. The auditor can put a check at the top of the queue when it doubts a result that it can't settle. Advisors never drop an experiment or give out work ([Supervision](supervision.md#the-teachers)).
+- **The lanes:** a worker that sees something worth trying beyond its own experiment proposes it as an **idea**, with `thermite-trial idea` in OpenCode, Claude Code and Codex, or the `idea` tool in Pi. Its trial goes on. A code trial's brief asks its worker to propose each distinct follow-up its work suggests, with why, before it submits or stops. The idea waits as `proposed` until the planner's model or the owner queues it or drops it. When the queue is below its target, the planner queues the distinct ideas itself, with or without its model ([below](#keeping-the-queue-at-its-target)). In a research run, ideas wait for the owner.
 - **Another run:** for a run with agents, **Start a run** can copy up to 500 untried experiments of another run of the same campaign into the new run's queue: up next in order, then the lanes' ideas, each with who added it and why. The tried ones stay with their run. `thermite assign --queue-from` copies the same ones, only when asked, and so do Start a run's twins: `thermite run start --queue-from`, the REST API and MCP's `start_run`.
 - **Past research:** experiments the owner ticks under **Start a run › From past research**, from any folder the campaign may read, join the new run's queue after the copied ones. Each says which run it came from and what result it gave there.
 - **The research plan,** in a research run ([Research campaigns](#research-campaigns)).
@@ -93,6 +93,7 @@ The **planner** coordinates the lanes. It is one model call at the start of each
 - the objective, the champion, the approach families tried and their verdicts, recent attempts from every lane (a change the static checks refused with its first five violations), and each lane's best result;
 - the queue: up next in order, the lanes' ideas, what each lane is on now, and the newest experiments tried, with the judge's verdict and change for each attempt;
 - each lane's last direction and experiment;
+- the queue's target (`queue_target`): how many experiments up next should hold after this round's hand-out, what it holds now, and at least how many to add ([below](#keeping-the-queue-at-its-target));
 - the rules in force, each naming a direction, and any old rule in the owner's own words, marked legacy;
 - the run's directions, and the ones that rules name but the run doesn't have yet, which it must design;
 - the old rules in words that it must convert this round, at most 5, each with its kind, its words and why;
@@ -110,7 +111,7 @@ A message counts as read by the planner only when the model's plan is used. Whil
 The planner answers with:
 
 - **an experiment for each lane:** one from up next, a lane's idea, one it adds in the same answer, or a new one described in place; a starting point, either the champion or the lane's own best result; and why;
-- **changes to the queue,** each with why: experiments to add, queued ones to move or drop, and ideas to queue or drop;
+- **changes to the queue,** each with why: experiments to add, queued ones to move or drop, and ideas to queue or drop. It is told to keep the queue at its target with distinct ideas, to queue the lanes' distinct ideas, and to drop an idea that repeats one queued or tried, saying which;
 - **rules that an owner's message asks for,** such as "stop :loop tiling:" or "never touch the timer code". Each names a direction and records the message it came from. A `:name:` in the message names the direction exactly; for plain words, the planner picks the run's direction that fits, or designs a new one;
 - **the conversion of each old rule in words:** the direction its words mean, one of the run's or a new one it designs;
 - **new directions** (approach families), each with its name and what it means, in the planner's own words. It designs each direction that a rule names but the run doesn't have yet, and any new one that a rule or a conversion of its own names. It may make up others as it goes;
@@ -142,11 +143,23 @@ An old rule in plain words, such as "anything that uses shared memory", from bef
 
 A good answer is then applied in order: ideas queued and experiments dropped, new ones added, moves, the new rules, the converted old rules, and last the hand-out. If the queue or the rules changed since the planner read them, for example because the owner moved or dropped that experiment, or removed an old rule, in the meantime, the change is skipped, and the hand-out says so. A lane whose experiment can no longer be given out takes one by the fixed rules. Each **hand-out**, what went to which lane and why, is recorded. The run's **Planner** tab lists the hand-outs, and the planner's own changes to the queue and the rules with their reasons, under **What the planner did**, and its **History** tab gives each one a line, such as "The planner gave out round 4: lane-1 on "…"."
 
+### Keeping the queue at its target
+
+A hill-climb or goal campaign keeps a **target** of experiments ready in each run's queue, for the lanes' later trials in a round: **Ideas kept ready** on the **New campaign** page, `lanes.queue_target` in its [contract](../reference/contract.md#lanes). Without one, it is two for each of the round's lanes. It is a target that drives ideas, not a cap: the queue may hold more, and nothing stops when it holds fewer. `0` asks for no ideas.
+
+Each round, after the hand-out, code counts the experiments ready: those up next that no lane was given this round and that no **Avoid** rule names. Then:
+
+1. **The planner is asked to top the queue up.** Its input says the target, what up next holds and at least how many to add. It is told to queue the lanes' distinct ideas and to add distinct new experiments, each with why, until up next reaches the target, and more when it has more distinct, evidenced ideas. Code never refuses a plan for falling short.
+2. **The lanes' distinct ideas go up next.** When up next is still below the target, with or without the model's plan, the planner queues the lanes' ideas whose titles repeat no other experiment of the run, oldest first, until it reaches the target. Each is recorded as the planner's, with the why `the queue had fewer than its target of 4 experiments ready: a lane's distinct idea goes up next`. A repeat, or an idea in a direction an **Avoid** rule names, waits.
+3. **The teachers are asked at once.** When the queue is still below the target, the round records it, and Live says, for example, `after round 3 the queue has 1 of its target of 4 experiments ready: the teachers are asked for ideas now`. The rig's supervisor starts the teachers' round for the run at once, not on their schedule ([Supervision](supervision.md#ideas-when-the-queue-runs-low)). History says `After round 3, the queue had 1 of its target of 4 experiments ready: the teachers were asked for ideas at once.`
+
+A research run has no target: its research plan fills its queue, one task for each lane.
+
 ### When there is no planner answer
 
 With the **Planner** switch off on **Edit rig**, when the planner's model can't be reached, or after a refused answer, the lanes take queued experiments by fixed rules:
 
-1. A direction that an **Always** rule names, with nothing queued or in progress in it, gets an experiment at the top of the queue, so that a lane can keep to the rule.
+1. A direction that an **Always** rule names, with nothing queued or in progress in it, gets an experiment at the top of the queue, so that a lane can keep to the rule. When up next is below its target, the lanes' distinct ideas go up next first ([above](#keeping-the-queue-at-its-target)).
 2. Each lane takes the next queued experiment in order, skipping directions that an **Avoid** rule names. Directions that an **Always** rule names come first, then those that a **Try** rule names, then the rest.
 3. Among the next few experiments of that rank (as many as the run has lanes), a lane takes one in its own last direction, if there is one.
 4. Only when the queue has nothing for a lane do the fixed rules add an experiment for it: in an **Always** direction first, then a **Try** direction, then the least-tried one.
@@ -165,7 +178,7 @@ A **directive** is a recorded instruction that steers the planner. It comes from
 
 A directive may name a direction the run doesn't have yet. Code keeps it by name from the start. The planner's model then designs the direction at its next round: it says what the direction means, in its own words, and adds experiments in it when the rule asks for them. The run then has the direction, and its **History** says "The planner designed the new direction :loop-tiling: for rule 9: …". Without the model, an **Always** rule's new direction gets a fixed description from the fixed rules. A research run has no planner to design one, so there a directive may name only a task kind.
 
-The owner's directives come first: a teacher's or the planner's directive about a family the owner has a directive for does not apply. A directive's reasons and notes are for the planner only; workers never see them. A directive can steer the search, but it can never change a verdict.
+The owner's directives come first: a teacher's or the planner's directive about a family the owner has a directive for does not apply. A teacher's directive that would freeze the queue's size or pin an experiment never applies: code refuses it ([Supervision](supervision.md#what-they-answer-a-portfolio-first)). A directive's reasons and notes are for the planner only; workers never see them. A directive can steer the search, but it can never change a verdict.
 
 The dashboard calls directives **rules**. A run's **Planner** tab lists the rules in force, with who set each and why, and what code does with each now; a rule the planner added shows the message it came from. On the dashboard, rules come from **Tell the planner**: the owner says what they want, in plain words or naming a direction as `:name:` (typing `:` lists the run's directions), and the planner makes the rules at its next round. The tab then shows the planner's answer under the message: each rule it made, and each direction it designed for one. The planner, not a form, turns words into rules, because a rule must name a direction for code to keep it, and choosing or designing that direction is a planning decision. **Remove** takes a rule out of force, whoever set it, and keeps it out. The teachers' next set replaces their last one, and the planner adds rules when an owner's message asks, but neither brings back a rule the owner removed: the harness leaves out any rule of the same kind, on the same direction, and records that it did. Only the owner's own `redirect` can set it again. [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how, and [Supervision](supervision.md) explains the teachers.
 

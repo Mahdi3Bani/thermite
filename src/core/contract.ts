@@ -112,6 +112,13 @@ const Common = {
       trials_per_epoch: z.number().int().min(1).default(3),
       /** Raised limits for heavy projects (see laneLimits for the defaults). */
       limits: LaneLimits.optional(),
+      /**
+       * The target queue depth (goal 081): queued experiments to keep ready for the lanes' next
+       * trials. Below it, the planner is asked to top the queue up, and the teachers when it
+       * can't. A target that drives ideas, never a cap; 0 asks for none. Unset: two for each
+       * lane. Optional and without a default, so contracts written before it keep their hash.
+       */
+      queue_target: z.number().int().min(0).max(1000).optional(),
     })
     .default({ count: 2, trials_per_epoch: 3 }),
   budget: z

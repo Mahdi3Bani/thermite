@@ -181,7 +181,7 @@ Choose **Experiments**. It shows the run's queue of experiments. Three of its pa
 - **In progress**: what `lane-1` works on now, while its trial runs.
 - **Tried**: every experiment that has ended, newest first, with its result. For a trial that submitted a change, the result is its attempt and a word for how the judge decided it, as in the table below.
 
-The card **Ideas from the lanes** holds what an agent proposes beyond its own experiment; it is usually empty. You can add, reorder and drop experiments yourself, and queue or drop the lanes' ideas. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
+The card **Ideas from the lanes** holds what an agent proposes beyond its own experiment, such as a follow-up its work suggests; the planner queues the distinct ones when the queue runs low. You can add, reorder and drop experiments yourself, and queue or drop the lanes' ideas. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
 
 The next tab, **Journal**, holds the agents' **field notes**: what they observe, the decisions they make and why, and what they learn, written as they work. Later runs can read them: see [Use past research in a new run](../how-to/campaigns/use-past-research.md).
 

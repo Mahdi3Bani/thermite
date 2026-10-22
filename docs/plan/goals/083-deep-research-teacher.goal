@@ -1,0 +1,51 @@
+---
+id: "083"
+title: "A deep-research teacher that runs on a trigger"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["081", "062"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 083 · A deep-research teacher that runs on a trigger
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+A third kind of teacher, the **deep-research teacher**, that runs rarely or on a trigger instead of every hour:
+
+- **When it runs.** On a trigger: the queue below its target after the hourly teachers' round has run too ([081](081-ideas-first.goal)), a goal unmet for several rounds, or the owner's request. Optionally also on a long schedule, such as once a day.
+- **What it does.** Deep research on the problems, directions and ideas already in the run's queue and in its tried log: the champion's code and the attempts' diffs, the judge's findings, the run's past research, and outside sources (papers, upstream code, issues).
+- **What it writes.** Proposed experiments for the queue, each in the teachers' portfolio form: mechanism, gain bound, the smallest discriminating experiment and its control, a stop condition, why it is new, and its evidence. Each claim it rests on is checked, as research mode's claims are: a quote must be found in the archived source ([062](062-research-folder.goal)), or the experiment says the claim is unchecked.
+- **What it may not do.** As every advisor: no verdict, no rule that freezes the queue, no shell or file tools beyond the read-only ones, and no private reads beside an open web fetch.
+
+## Why
+
+The owner, 2026-10-22, on goal 081: in an earlier setup, teachers did "deep research on the problems/areas/ideas already in the queue and helping the queue". Goal 081 makes the hourly teachers put ideas first; this goal adds the slower, deeper research that an hourly round has no time for, when the run needs ideas most.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Which triggers, and how many rounds a goal stays unmet before one fires.
+- Whether it is a fourth advisor role on **Edit rig**, or a mode of the teachers.
+- Its spending: a separate daily limit, or the advisors' `max_usd_per_day`.
+
+## Progress
+
+- 2026-10-22: Goal written as a plan, from the owner's request on goal 081.
+- 2026-10-22: Renumbered from 082, which goal 082 (the judge's findings in view) took first.
+
+---
+
+Run with `/goal Complete docs/plan/goals/083-deep-research-teacher.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

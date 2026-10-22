@@ -1,4 +1,5 @@
 import type { StoredRule } from "../../core/commands.ts";
+import { ideaWords } from "../../core/queue-target.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { directionOf, type Experiment, type ExperimentQueue, inFamily } from "../queue.ts";
 import type { NewFamily, QueuePlan } from "./planner.ts";
@@ -178,6 +179,32 @@ export class Coordinator {
       },
       PLANNER,
     );
+  }
+
+  /**
+   * Tops the queue up from the lanes' ideas (goal 081): the oldest distinct ones go up next, as
+   * the planner's, until `need` are accepted. An idea is distinct when its words repeat no other
+   * experiment of the run (queued, in progress, tried or dropped) and no idea taken before it; an
+   * idea in a direction an AVOID rule names stays where it is. The rest wait, as before, for the
+   * planner's model or the owner.
+   */
+  acceptIdeas(run: string, need: number, avoided: (x: Experiment) => boolean, why: string) {
+    const out: Experiment[] = [];
+    if (need <= 0) return out;
+    const seen = new Set(
+      this.queue
+        .all(run)
+        .filter((x) => x.state !== "proposed")
+        .map((x) => ideaWords(x.title)),
+    );
+    for (const x of this.queue.proposed(run)) {
+      if (out.length >= need) break;
+      const words = ideaWords(x.title);
+      if (!words || seen.has(words) || avoided(x)) continue;
+      seen.add(words);
+      out.push(this.queue.accept(run, x.id, { by: PLANNER, why }, PLANNER));
+    }
+    return out;
   }
 
   /**

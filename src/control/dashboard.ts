@@ -21,6 +21,7 @@ import {
 } from "../core/compaction.ts";
 import { FolderSchema, MAX_LANES, parseContract } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
+import { queueTarget, queueTargetNote } from "../core/queue-target.ts";
 import { isFree, knownTimeZone, type UsagePeriod } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, goalChecks } from "../harness/goal-checks.ts";
@@ -272,7 +273,7 @@ import {
   SEARCH_KINDS,
 } from "./ui/knowledge.ts";
 import { liveEntryHtml, liveLinesHtml, resultJoin, runEntryHtml, runLinesHtml } from "./ui/live.ts";
-import { infoLabel, newCampaignBody } from "./ui/new-campaign.ts";
+import { infoLabel, newCampaignBody, QUEUE_TARGET_TIP } from "./ui/new-campaign.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import {
   attemptDetail,
@@ -2243,6 +2244,27 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         const own = ownModels(store, r.id, mode);
         return { id: r.id, own, now: rigContext(own, ctx) };
       });
+  /**
+   * The campaign's Experiment queue block (goal 081): its target queue depth, the ideas kept
+   * ready, from its newest contract. None for a rig check, a research campaign (its research
+   * plan fills its queue) or a campaign with no contract.
+   */
+  const queueTargetSection = (name: string) => {
+    if (isRigCheck(name)) return "";
+    const contract = campaignContract(store, name) as
+      | { mode?: unknown; lanes?: { count?: unknown; queue_target?: unknown } }
+      | undefined;
+    if (!contract || contract.mode === "research") return "";
+    const count = Number(contract.lanes?.count) || 2;
+    const own = contract.lanes?.queue_target;
+    const lanes = {
+      count,
+      ...(typeof own === "number" ? { queue_target: own } : {}),
+    };
+    return `<div class="block" id="queue-target"><div class="head"><h2>Experiment queue</h2><span class="right">every run of ${esc(name)}</span></div>
+<div class="card"><div>${infoLabel("Ideas kept ready", QUEUE_TARGET_TIP)} <b>${queueTarget({ lanes })}</b> <span class="muted">(${esc(queueTargetNote({ lanes }))})</span></div>
+<div class="muted small">Set it in New campaign, or as <code>lanes.queue_target</code> in the campaign's contract. A run's Live view says when its queue falls below it, and the teachers are then asked for ideas at once.</div></div></div>`;
+  };
   /** The campaign's Agents' context block; none for a rig check, or a campaign with no contract. */
   const contextSection = (c: Ctx, name: string, vs: RigView[], said: boolean) => {
     if (isRigCheck(name)) return "";
@@ -2411,7 +2433,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           waiting
             ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>`
-        }${savedGoals}${brief()}${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+        }${savedGoals}${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -2570,7 +2592,7 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
               now,
             )}</div>`
           : ""
-      }</div>${brief()}${context()}${knowledgeSection(c, name, vs, kbFailed)}
+      }</div>${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}
 </div><div class="side">${campaignUsage(k)}</div></div>${drawer}`,
       vs,
     );

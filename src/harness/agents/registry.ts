@@ -65,6 +65,35 @@ export interface Evidence {
 /** How many of a refused change's violations the planner's and the teachers' evidence shows. */
 const EVIDENCE_VIOLATIONS = 5;
 
+/**
+ * One attempt's evidence, from its row (id, lane, family, hypothesis, lifecycle and v0): the one
+ * shape the planner's evidence, the teachers' brief and their read_evidence tool share (goals 081
+ * and 082).
+ */
+export function evidenceOf(ledger: Ledger, r: Row): Evidence {
+  const v = ledger.currentVerdict(String(r.id));
+  const d = v
+    ? (ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as Row | undefined)
+        ?.delta
+    : null;
+  const refused = violationsOf(r.v0);
+  const heldOut = ledger.heldOutFailure(String(r.id));
+  return {
+    attempt: String(r.id),
+    lane: r.lane === null || r.lane === undefined ? null : String(r.lane),
+    family: r.family === null || r.family === undefined ? null : String(r.family),
+    hypothesis:
+      r.hypothesis === null || r.hypothesis === undefined
+        ? null
+        : String(r.hypothesis).slice(0, 300),
+    lifecycle: String(r.lifecycle),
+    verdict: v?.verdict ?? null,
+    delta: typeof d === "number" ? d : null,
+    ...(refused.length ? { refused: shownViolations(refused, EVIDENCE_VIOLATIONS) } : {}),
+    ...(heldOut ? { held_out: heldOutWords(heldOut) } : {}),
+  };
+}
+
 export class Registry {
   private readonly ledger: Ledger;
 
@@ -167,23 +196,7 @@ export class Registry {
           run,
           limit,
         );
-    return rows.map((r) => {
-      const v = this.ledger.currentVerdict(String(r.id));
-      const d = v ? this.get("select delta from verdict where id = ?", v.id)?.delta : null;
-      const refused = violationsOf(r.v0);
-      const heldOut = this.ledger.heldOutFailure(String(r.id));
-      return {
-        attempt: String(r.id),
-        lane: r.lane === null ? null : String(r.lane),
-        family: r.family === null ? null : String(r.family),
-        hypothesis: r.hypothesis === null ? null : String(r.hypothesis).slice(0, 300),
-        lifecycle: String(r.lifecycle),
-        verdict: v?.verdict ?? null,
-        delta: typeof d === "number" ? d : null,
-        ...(refused.length ? { refused: shownViolations(refused, EVIDENCE_VIOLATIONS) } : {}),
-        ...(heldOut ? { held_out: heldOutWords(heldOut) } : {}),
-      };
-    });
+    return rows.map((r) => evidenceOf(this.ledger, r));
   }
 
   currentEpoch(run: string): EpochRecord | undefined {

@@ -348,6 +348,8 @@ ${BRIEF_PAGE_JS}
     Object.assign(d, briefDraft(mode, briefFieldsNow()));
     for (const k of ["trial_minutes", "run_rss_mib", "workspace_mib"]) { const n = num(k); if (n !== undefined) d.limits[k] = n; }
     if (num("wall_hours")) d.wall_hours = num("wall_hours");
+    // Ideas kept ready (goal 081): the queue's target, for hill climbs and goals.
+    if (mode !== "research" && num("queue_target") !== undefined) d.queue_target = num("queue_target");
     // The campaign's own Agents' context (goal 070): numbers out of range go as typed, so that
     // control refuses them in its words; the submit stops on what is not a number.
     const cw = ccNum(val("context_window")), ca = ccNum(val("compact_at"), true);
@@ -485,7 +487,7 @@ ${BRIEF_PAGE_JS}
   const back = form.dataset.draft ? JSON.parse(form.dataset.draft) : null;
   if (back) {
     const set = (n, v) => { if (form.elements[n] && v !== undefined && v !== null) form.elements[n].value = Array.isArray(v) ? v.join(n === "editable_paths" || n === "forbidden_patterns" || n === "links" ? "\\n" : " ") : v; };
-    set("campaign", back.campaign); set("title", back.title); set("notes", back.notes); set("lanes", back.lanes);
+    set("campaign", back.campaign); set("title", back.title); set("notes", back.notes); set("lanes", back.lanes); set("queue_target", back.queue_target);
     // The brief's lists, one box for each entry (goal 078).
     blFill("ideas", back.ideas); blFill("hypotheses", back.hypotheses);
     set("links", back.mode === "research" ? back.research && back.research.seeds : back.links);
