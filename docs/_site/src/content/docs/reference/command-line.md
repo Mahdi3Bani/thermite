@@ -724,7 +724,7 @@ The research tools are a Pi research worker's, without its file tools. In a hill
 | `read_source` | `SOURCE` | `--offset N`, `--length N` | Reads more of an archived source's text, from an offset |
 | `search` | `QUERY` | | Searches the web. Rigs have no web search yet, so it returns the reason |
 | `search_corpus` | `TEXT` | | Searches the archived sources for a piece of text, ignoring case |
-| `add_claim` | none | `--text`, `--question N`, `--confidence N`; the quotes only through `-` | Records a claim with exact quotes from archived sources. Unverified quotes leave it a draft. `question` is the index of the campaign question it answers, from 0 |
+| `add_claim` | none | `--text`, `--question N`, `--confidence N`; the quotes only through `-` | Records a claim with exact quotes from archived sources. Unverified quotes leave it a draft. Each quote's `source` is the source's id, `s-…`, as `fetch` returned it; its address and its file name are taken too (below). `question` is the index of the campaign question it answers, from 0 |
 | `add_note` | `TEXT` | `--source SOURCE`, repeated | Records a research note, with the sources it relies on: its text cut to 4000 characters, at most 20 sources. An empty text is refused: `a note needs its text`. A research note is not a field note |
 | `propose_hypothesis` | `TEXT` | `--supporting CLAIM`, repeated | Proposes a hypothesis, citing the verified claims that support it |
 | `add_finding` | none | none: every field through `-` | Records a finding: `text`, `summary`, `why_it_matters` and the `supporting` claims. Draft claims, or numbers not in those claims, leave it a draft |
@@ -738,6 +738,25 @@ thermite-trial research add_claim - <<'EOF'
 {"text": "the claim", "quotes": [{"source": "SOURCE", "quote": "exact words from it"}], "question": 0, "confidence": 0.8}
 EOF
 ```
+
+`SOURCE` is the id `fetch` returned, such as `s-3f2a9c41d0b7`. The harness also takes, as that source's id:
+
+- the address the page was archived from, as fetched or where its redirects ended, written as the archive keeps it (without a `#` part);
+- its file name in the research folder, `s-….txt` or `s-….md`, alone or at the end of a path, such as `sources/s-3f2a9c41d0b7.txt`.
+
+When the address or file name names exactly one archived source, the quote is checked against that source's text, word for word, as by its id. The answer then has `resolved`, `[{"cited": "https://example.com/paper", "source": "s-3f2a9c41d0b7"}]`, and the claim's file in the research folder shows `cited as` and what was cited. Anything else leaves the claim a draft, with a problem that starts `no archived source <what was cited>:` and says what it could be:
+
+| Cited | Problem, after the colon |
+| --- | --- |
+| An address no source was archived from | `no source was archived from that URL; fetch it first, then cite the s-… id that fetch returns` |
+| An address two or more sources were archived from | `that URL is archived as <n> sources (<ids>); cite the id of the one the quote is from` |
+| An archived address written another way: `http` for `https`, without its scheme or `www.`, with a `/` at the end, or with other capital letters | `that URL is not archived as written, but <id> is archived from <address>; cite that id if it is the same page` |
+| The file name of no source | `the research folder has no sources/<id>.txt; cite the s-… id that fetch returned` |
+| Anything else | `a quote's source is the s-… id that fetch returned` |
+
+A number in `text` that is in none of the quotes leaves the claim a draft: `the number <n> is not in the claim's quotes`. When it comes from a heading or a label of the text, such as `# Claim c-005` or `Question 0:` at the start of a line, the problem goes on: `: it comes from the heading "<heading>". Give a question's number in "question", not in the claim's text, and leave headings and labels out of the text`.
+
+The answer is `{claim, verified, problems}`, with `resolved` when an address or file name was taken, and `note` when the claim was already recorded.
 
 It reads these settings, which the harness sets for each trial:
 
