@@ -9,7 +9,8 @@
 //   - a trial as lane-1: its Write tool edits the workspace, its command finds the token in no
 //     environment, and it submits with thermite-trial;
 //   - a trial that compacts (the stand-in reports a large conversation): Thermite's PreCompact
-//     hook copies the transcript, and the summary names the kept file (goal 070);
+//     hook copies the whole transcript, to the last tool result, which Claude Code writes only
+//     after the hook starts, and the summary names the kept file (goal 070);
 //   - an advisor's call as the supervisor's user, with /tmp closed to it (the one-container rig):
 //     without CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, with the token on file descriptor 3 and in no
 //     process's environment;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -30,7 +31,7 @@ import {
   opencodeSessionMarkdown,
   readUnder,
 } from "./cli-conversation.ts";
-import { claudePostCompact, claudePreCompact } from "./compaction-hook.ts";
+import { claudePostCompact, claudePreCompact, type Settle } from "./compaction-hook.ts";
 import { compactionPlugin, type OpencodeCompaction } from "./opencode-plugin.ts";
 
 /**
@@ -407,12 +408,62 @@ describe("Claude Code's PreCompact hook (goal 070)", () => {
     assert.equal(meta.copied, true);
   });
 
-  test("it never stands in the compaction's way: no transcript, bad input or no folder still exit 0", () => {
-    const area = tmp("hook-bad");
+  test("it copies the transcript once Claude Code has written the lines it held back", async () => {
+    // Claude Code 2.1.305 writes its transcript every 100 ms and runs the hook without writing
+    // first: the newest lines come while the hook waits, and early on the file is not there yet.
+    const area = tmp("hook-settle");
+    const quick: Settle = { quietMs: 150, maxMs: 3_000, stepMs: 10 };
+    const transcript = join(area, "s-1.jsonl");
+    const [first, ...rest] = CLAUDE;
+    writeFileSync(transcript, jsonl([first]));
+    const late = setTimeout(() => appendFileSync(transcript, jsonl(rest)), 60);
     const drops = join(area, "drops");
     assert.match(
-      claudePreCompact({ transcript_path: join(area, "missing.jsonl") }, drops, line),
+      await claudePreCompact({ transcript_path: transcript }, drops, line, quick),
+      /t-1-2\.md/,
+    );
+    clearTimeout(late);
+    assert.equal(
+      readFileSync(join(drops, "2.jsonl"), "utf8"),
+      jsonl(CLAUDE),
+      "every line, the late ones too",
+    );
+    const fresh = join(area, "s-2.jsonl");
+    const born = setTimeout(() => writeFileSync(fresh, jsonl([first])), 80);
+    const drops2 = join(area, "drops-2");
+    assert.match(
+      await claudePreCompact({ transcript_path: fresh }, drops2, line, quick),
       /t-1-1\.md/,
+    );
+    clearTimeout(born);
+    assert.equal(
+      readFileSync(join(drops2, "1.jsonl"), "utf8"),
+      jsonl([first]),
+      "a file that came late",
+    );
+    const meta = JSON.parse(readFileSync(join(drops2, "1.meta.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    assert.equal(meta.copied, true);
+    assert.ok(Number(meta.waited_ms) >= 80, `it waited for the file: ${String(meta.waited_ms)} ms`);
+  });
+
+  test("it never stands in the compaction's way: no transcript, bad input or no folder still exit 0", async () => {
+    const area = tmp("hook-bad");
+    const drops = join(area, "drops");
+    const started = Date.now();
+    assert.match(
+      await claudePreCompact({ transcript_path: join(area, "missing.jsonl") }, drops, line, {
+        quietMs: 20,
+        maxMs: 100,
+        stepMs: 10,
+      }),
+      /t-1-1\.md/,
+    );
+    assert.ok(
+      Date.now() - started < 2_000,
+      "a transcript that never comes is waited for a while only",
     );
     assert.ok(!existsSync(join(drops, "1.jsonl")), "nothing to copy");
     // With no transcript to count from, the next number follows the hook's own records.
@@ -430,14 +481,14 @@ describe("Claude Code's PreCompact hook (goal 070)", () => {
     assert.equal(none.stdout, "");
   });
 
-  test("the PostCompact hook keeps the summary under the last copy's number, and prints nothing", () => {
+  test("the PostCompact hook keeps the summary under the last copy's number, and prints nothing", async () => {
     const area = tmp("hook-post");
     const transcript = join(area, "s-1.jsonl");
     writeFileSync(transcript, jsonl(CLAUDE));
     const drops = join(area, "claude-compactions");
     // Nothing copied yet: nothing to name the summary after.
     assert.equal(claudePostCompact({ compact_summary: "Early." }, drops), undefined);
-    claudePreCompact({ transcript_path: transcript }, drops, line);
+    await claudePreCompact({ transcript_path: transcript }, drops, line);
     const post = spawnSync(process.execPath, [CLAUDE_HOOK, "claude-post", drops], {
       input: JSON.stringify({
         session_id: "s-1",

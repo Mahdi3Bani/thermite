@@ -215,9 +215,12 @@ async function harness() {
     first.own === true &&
     /from Claude Code's own transcript of the session/.test(first.markdown) &&
     /COMPACT-CHECK/.test(first.markdown) &&
+    // The newest tool result before the compaction: Claude Code wrote it to its transcript only
+    // while the hook waited.
+    /Tool result: Bash \(toolu_compact_2\)/.test(first.markdown) &&
     (first.summary ?? "").includes(`${kept.dir}/t-compact-1.md`);
   check(
-    "the real Claude Code compacted a trial's conversation: its PreCompact hook copied the transcript, and the summary names the kept file",
+    "the real Claude Code compacted a trial's conversation: its PreCompact hook copied the whole transcript, to the last tool result, and the summary names the kept file",
     compactedOk,
     {
       compactions: ct.compactions ?? 0,
@@ -226,6 +229,7 @@ async function harness() {
       own: first?.own,
       summary: first?.summary,
       head: first?.markdown.slice(0, 300),
+      results: first?.markdown.match(/Tool result: [^\n]*/g),
     },
     compactedOk ? undefined : await compactionDiagnostics(runner, area2, said2),
   );
@@ -262,7 +266,12 @@ async function compactionDiagnostics(runner, area, live) {
     out.push(...lines.slice(-60).map((l) => `  ${l.slice(0, 400)}`));
   }
   if (!files(join(home, "debug")).length) out.push(`no debug log under ${join(home, "debug")}`);
-  out.push(`the hooks' folder: ${files(join(area, "claude-compactions")).map((f) => f.split("/").pop()).join(", ") || "empty or missing"}`);
+  const drops = files(join(area, "claude-compactions"));
+  out.push(`the hooks' folder: ${drops.map((f) => f.split("/").pop()).join(", ") || "empty or missing"}`);
+  for (const f of drops.filter((f) => f.endsWith(".meta.json")))
+    out.push(`  ${f.split("/").pop()}: ${readFileSync(f, "utf8").trim().slice(0, 600)}`);
+  for (const f of drops.filter((f) => f.endsWith(".jsonl")))
+    out.push(`  ${f.split("/").pop()}: ${readFileSync(f, "utf8").split("\n").filter(Boolean).length} lines`);
   for (const project of files(join(home, "projects")))
     for (const t of files(project).filter((f) => f.endsWith(".jsonl"))) {
       const lines = readFileSync(t, "utf8").split("\n").filter(Boolean);
