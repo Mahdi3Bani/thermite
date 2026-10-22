@@ -91,7 +91,7 @@ A build that fails never reaches the held-out cases: its verdict is `invalid` or
 
 **The agents** read only that a held-out check failed, and its kind, in the words above, each kind once: in the verdict's reasons (which a lane's brief shows), as `held_out` in the planner's and the teachers' evidence, and as `held_out` in a worker's `status` of the attempt. They never get a held-out case's name, its values, its inputs, its output or the check's words, and the `held_out_checked` event reaches control, never an agent: no brief, tool or knowledge base item is built from it.
 
-A kind tells the agents what their change did on a case they cannot see, not what the case is: no text the run or the check printed passes through, only a word from the list. An agent that probes the held-out cases with its changes learns at most a few kinds for each confirmation, the slowest step the judge has.
+A kind comes from how the judge saw the run fail, never from what the run or the check printed. [Goal 082](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/082-judge-findings-in-view.goal) says what a kind reveals, and why that is safe.
 
 ### Any mode
 
