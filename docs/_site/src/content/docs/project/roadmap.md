@@ -64,7 +64,7 @@ Later versions are proposed: their order and contents can change. Each one ships
 
 | Version | Focus |
 | --- | --- |
-| **v0.1.1** | Quick follow-ups to the first release: **New campaign**'s buttons show they were pressed; an **Info** tab with everything a campaign and a run were started with; a stuck rig in **Needs you**; the model's reasoning and words on **Live**, not only its tool calls; a **Copy** button by each ID; and, in **Settings › Providers**, all that Thermite spent on a GPU cloud, not only its test pods. |
+| **v0.1.1** | Quick follow-ups to the first release: **New campaign**'s buttons show they were pressed; an **Info** tab with everything a campaign and a run were started with; a stuck rig in **Needs you**; the model's reasoning and words on **Live**, not only its tool calls; a **Copy** button by each ID; in **Settings › Providers**, all that Thermite spent on a GPU cloud, not only its test pods; and a kit bundle given to control from the dashboard. |
 | **v0.2.0** | Run Thermite without the dashboard: every dashboard action has an API and MCP twin, all logs are in one place you can search, and you sign in with your identity provider. Also planned: a deep-research teacher that runs when the queue needs ideas, research tasks with web search inside goal and hill-climb runs, a run that starts from a champion on another rig, faster dashboard pages, and a **Knowledge** page to explore the knowledge base, with copies of it in outside stores. |
 | **v0.3.0** | Rigs you can trust: checks before a rig is deployed, setup and removal that are safe to repeat, upgrades from control, and GPU rigs under compose. |
 | **v0.4.0** | Kits and evidence: kits are easier to write and to test before agents start, and each result shows clearer evidence. |

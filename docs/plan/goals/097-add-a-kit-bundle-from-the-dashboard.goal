@@ -1,0 +1,46 @@
+---
+id: "097"
+title: "Give control a kit bundle from the dashboard"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["096"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 097 · Give control a kit bundle from the dashboard
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+The dashboard takes a kit repository written elsewhere, as a git bundle file, as [096](096-kits-from-elsewhere.goal) lets REST, MCP and the command line do today. The owner picks the file, names the kit, and sees what control kept: the head commit, the number of commits, the kit's name and target, or the refusal in words. Control keeps every commit with its id, so a contract that names a commit still matches.
+
+An agent that works through MCP gets a way to send a bundle that is not one long text argument: for example, a short-lived upload link that control makes for one bundle, which the agent's own tools can send the file to.
+
+## Why
+
+On 2026-10-22 the owner gave control the kit of a campaign written elsewhere. The dashboard had no place for a bundle: its **New campaign** page takes kit folders, which make new commits. The command line needs a token file, which the owner did not know about: "I don't know what token file is or where it is". MCP's `kit_add` takes the bundle as base64 inside the call, which is impractical for an agent to write out for a bundle of half a megabyte. So the kit was sent with a script that called `kit_add` with the file. Earlier the same day the owner asked: "I thought we already had an upload kit thing?"
+
+## Done when
+
+- [ ] A mockup, approved by the owner, of where the upload sits and what it says.
+- [ ] The upload on the dashboard, with the same checks and refusals as `kit_add`, and a test.
+- [ ] A way for an agent over MCP to send a large bundle without writing it out as text, and a test.
+- [ ] The pages that describe kits kept on control.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Where the upload sits: on **New campaign**, beside the kit folder upload, or on a page that lists the kits control keeps.
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's first kit given to control from elsewhere.
+
+---
+
+Run with `/goal Complete docs/plan/goals/097-add-a-kit-bundle-from-the-dashboard.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
