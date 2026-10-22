@@ -51,7 +51,7 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 
 | Argument | Images | Default | Effect |
 | --- | --- | --- | --- |
-| `NODE_IMAGE` | All three | `docker.io/library/node:22-bookworm-slim`, pinned by its sha256 digest | The Node.js image every stage starts from |
+| `NODE_IMAGE` | All three | `docker.io/library/node:22.23.4-bookworm-slim`, pinned by its sha256 digest | The Node.js image every stage starts from |
 | `BASE_IMAGE` | Harness | `NODE_IMAGE` | The harness's final base. GPU rigs set a CUDA 12.x development image: see [The CUDA harness](#the-cuda-harness) |
 | `OPENCODE_VERSION` | Harness, supervisor | `2.0.32` | The OpenCode release installed |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | empty | A Claude Code release to install. Empty: Claude Code is not installed |

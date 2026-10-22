@@ -6,6 +6,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ### Install and run
 
+- The images are built on Node.js 22.23.4. A release builds every image layer again, without the build cache, so each image has its base's newest system packages.
 - Install from published images, with no build. Each release attaches a compose file that pins the images by digest, and `thermite local init` makes the stack's secret files. Building from source stays for contributors.
 - The images:
   - control, the CPU harness and the supervisor, for amd64 and arm64;
