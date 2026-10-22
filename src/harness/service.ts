@@ -1712,11 +1712,25 @@ export class HarnessService {
     };
   }
 
+  /**
+   * The run's project mirror, for the teachers' code reads (goal 081). A research run has none: it
+   * works on sources, not a repository, and its seed is a placeholder whose mirror was never made,
+   * so Git would be started in a folder that does not exist.
+   */
+  private codeMirror(run: string): string {
+    const inst = this.requireRun(run);
+    if (inst.mode === "research")
+      throw new LedgerError(
+        "invalid",
+        `run ${run} is a research run: it has no code to read. Its work is the sources, claims and notes in its research folder`,
+      );
+    return this.mirrorFor(inst.seed_repo);
+  }
+
   /** The champion's commit and the run's project mirror, for the teachers' code reads (goal 081). */
   private championCode(run: string): { mirror: string; commit: string } {
-    const inst = this.requireRun(run);
     return {
-      mirror: this.mirrorFor(inst.seed_repo),
+      mirror: this.codeMirror(run),
       commit: this.ledger.currentChampion(run).commit_sha,
     };
   }
@@ -1740,8 +1754,7 @@ export class HarnessService {
 
   /** An attempt's diff, in parts, for the teachers (goal 081). */
   attemptDiff(run: string, attempt: string, offset?: number): ReturnType<typeof readAttemptDiff> {
-    const inst = this.requireRun(run);
-    return readAttemptDiff(this.ledger, this.mirrorFor(inst.seed_repo), run, attempt, offset);
+    return readAttemptDiff(this.ledger, this.codeMirror(run), run, attempt, offset);
   }
 
   /**

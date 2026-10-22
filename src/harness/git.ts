@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { sha256Hex } from "../core/canonical.ts";
 
@@ -24,7 +24,17 @@ const IDENTITY = [
 
 export class GitError extends Error {}
 
+/**
+ * A repository Git runs in must exist: Node starts no program in a folder that does not, and
+ * says only `spawn git ENOENT`, as if Git were missing. Say what is missing instead.
+ */
+function needRepo(cwd: string, op: string): void {
+  if (!existsSync(cwd))
+    throw new GitError(`git ${op} failed: there is no repository ${basename(cwd)} on this rig`);
+}
+
 async function git(cwd: string, args: string[]): Promise<string> {
+  needRepo(cwd, args[0] ?? "");
   try {
     const { stdout } = await run("git", [...IDENTITY, ...args], {
       cwd,
@@ -271,6 +281,7 @@ function binaryFilesOf(numstatZ: string): string[] {
 
 /** The patch from parent to commit as bytes (exports and propagation: never decoded as text). */
 export async function patchBytes(mirror: string, parent: string, commit: string): Promise<Buffer> {
+  needRepo(mirror, "diff");
   try {
     const { stdout } = await run(
       "git",
@@ -383,6 +394,7 @@ export async function treeFile(
 ): Promise<{ size: number; bytes?: Buffer } | undefined> {
   if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit))
     throw new GitError(`not a commit id: ${commit}`);
+  needRepo(mirror, "cat-file");
   const spec = `${commit}:${path}`;
   const type = await git(mirror, ["cat-file", "-t", spec]).then(
     (t) => t.trim(),
