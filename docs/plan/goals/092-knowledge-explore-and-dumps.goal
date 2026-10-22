@@ -1,0 +1,45 @@
+---
+id: "092"
+title: "Explore the knowledge base, and dump it to outside stores"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["065"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 092 · Explore the knowledge base, and dump it to outside stores
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020) · **Depends on:** [065](065-journals-and-corpus.goal)
+
+## What
+
+A plan only; nothing of it is built.
+
+- **A better Knowledge page.** Browse and search what the campaigns' folders hold: runs, trials, experiments with their results, attempts with their verdicts, field notes, research notes, sources, claims, hypotheses, findings and reports. Filter by campaign, run, kind, writer and time; follow links between items (a claim to its source, a finding to the attempts behind it, an experiment to its verdict); see a campaign's knowledge over time.
+- **Dumps to outside context stores.** The owner sets up a store once in **Settings › Providers**, such as an S3-compatible bucket (for example SeaweedFS, MinIO or Amazon S3), with its key sealed as other secrets are. Control writes each campaign folder there, in full and then as it changes, in an open format (Markdown and JSON files, with a manifest), so other tools and agents outside Thermite can read the work. Which folders go where is the owner's choice; a store is written by control only, never by a rig or an agent.
+
+## Why
+
+The owner, 2026-10-22: "Better Knowledge interface and exploration. Ways to setup dumps to external context stores like s3 (seaweedfs) etc..."
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version: the page's mockup, the stores supported and the dump format.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Which stores beyond S3-compatible ones (a Git repository, a folder on a mounted share).
+- Whether dumps include the sources' archived text, which can be large, or only links to it.
+
+## Progress
+
+- 2026-10-22: Goal written as a plan, from the owner's request.
+
+---
+
+Run with `/goal Complete docs/plan/goals/092-knowledge-explore-and-dumps.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
