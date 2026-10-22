@@ -37,7 +37,7 @@ export const CODE_TOOLS = {
 } as const;
 
 /** A number given by a model, or none. */
-const num = (v: unknown) =>
+export const toolNumber = (v: unknown) =>
   typeof v === "number" && Number.isFinite(v)
     ? Math.floor(v)
     : typeof v === "string" && v.trim() && Number.isFinite(Number(v))
@@ -54,9 +54,9 @@ export function runCodeTool(
     case "list_files":
       return code.listFiles(typeof p.path === "string" ? p.path : "");
     case "read_file":
-      return code.readFile(String(p.path ?? ""), num(p.offset), num(p.limit));
+      return code.readFile(String(p.path ?? ""), toolNumber(p.offset), toolNumber(p.limit));
     case "read_diff":
-      return code.readDiff(String(p.attempt ?? ""), num(p.offset));
+      return code.readDiff(String(p.attempt ?? ""), toolNumber(p.offset));
     case "read_evidence":
       return code.evidence(typeof p.attempt === "string" && p.attempt ? p.attempt : undefined);
   }

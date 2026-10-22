@@ -9,6 +9,7 @@ import type { LiveKind } from "../core/live.ts";
 import type { McpUse } from "../core/mcp.ts";
 import { type AdvisorAgent, AGENT_WORDS } from "../core/usage.ts";
 import type { McpCaller, McpGateway } from "../harness/mcp-gateway.ts";
+import { KIND_PATHS, RESEARCH_KINDS, type ResearchKind } from "../harness/run-research.ts";
 import {
   type AdvisorCompaction,
   type AdvisorKeeper,
@@ -24,6 +25,7 @@ import {
 } from "./advisors.ts";
 import type { AdvisorCode } from "./code-tools.ts";
 import type { PastSearch } from "./past-mcp.ts";
+import type { AdvisorResearch } from "./research-tools.ts";
 
 /**
  * The supervisor's advisor loop: the teachers review each running run on their cadence, and at
@@ -40,6 +42,10 @@ import type { PastSearch } from "./past-mcp.ts";
  * folders its campaign may read in Thermite's knowledge base), read only, through the harness's
  * copy of the run's knowledge/: the same items the workers search. A teacher that may fetch any
  * web page gets no past research at all.
+ *
+ * The teachers also read the run's code and evidence (goal 081, not in a research run) and its own
+ * research (goal 098: its sources, claims, hypotheses, findings, notes and files), read only,
+ * through the harness; a teacher that may fetch any web page reads neither.
  *
  * They get the MCP servers the run's kit gives the advisors (goal 068): the supervisor makes each
  * call with the sign-in control gave it, and tells the harness when a server fails or comes back,
@@ -81,6 +87,8 @@ export interface AdviseState {
   ideasSeen?: Record<string, number> | undefined;
   /** Runs already told their teachers read no code because they may fetch any page. */
   codeOffSaid?: Record<string, boolean> | undefined;
+  /** Runs already told their teachers read none of the run's research: they may fetch any page. */
+  researchOffSaid?: Record<string, boolean> | undefined;
   /**
    * Each open audit's last error, by its retry key (goal 079): the words its hand-off to the
    * owner gives once its tries are spent.
@@ -341,6 +349,35 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       readFile: (path, offset, limit) => get("/v1/code/file", { path, offset, limit }),
       readDiff: (attempt, offset) => get("/v1/code/diff", { attempt, offset }),
       evidence: (attempt) => get("/v1/evidence", { attempt }),
+    };
+  };
+  // The run's own research for its teachers, read only, through the harness (goal 098): each kind
+  // a page at a time, a source's archived text, a file of its research folder, and a search.
+  const researchFor = (run: string): AdvisorResearch => {
+    const get = (path: string, params: Record<string, string | number | undefined>) =>
+      api(
+        "GET",
+        `${path}?${new URLSearchParams(
+          Object.entries({ run, ...params }).flatMap(([k, v]) =>
+            v === undefined ? [] : [[k, String(v)] as [string, string]],
+          ),
+        ).toString()}`,
+      );
+    return {
+      list: (kind, o) =>
+        (RESEARCH_KINDS as readonly string[]).includes(kind)
+          ? get(`/v1/research/${KIND_PATHS[kind as ResearchKind]}`, o)
+          : Promise.reject(
+              new Error(`no kind ${kind.slice(0, 40)}: the kinds are ${RESEARCH_KINDS.join(", ")}`),
+            ),
+      readSource: (source, offset, limit) => get("/v1/research/source", { source, offset, limit }),
+      readFile: (path, offset, limit) => get("/v1/research/file", { path, offset, limit }),
+      search: (query, o) =>
+        get("/v1/research/search", {
+          q: query.slice(0, 300),
+          kinds: o.kinds?.length ? o.kinds.join(",") : undefined,
+          limit: o.limit,
+        }),
     };
   };
   // The MCP servers a run's kit gives its advisors (goal 068), from the harness's list of runs
@@ -614,6 +651,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           owner_messages?: OwnerMessage[];
           background?: unknown;
           past_research?: unknown;
+          /** What the run's own research holds (goal 098): its tools read the rest. */
+          research?: unknown;
         };
         // Teachers with an open web fetch get no records of other campaigns: past research and
         // the briefing stay out of their brief (and its tool), as the knowledge-base search does.
@@ -630,7 +669,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const round = `teachers ${new Date().toISOString()}`;
         // The run's code and evidence, read only (goal 081); none for teachers with an open
         // fetch: the code is private, and private reads never meet the open web in one advisor.
-        if (openFetch) {
+        // A research run has no code to withhold.
+        if (openFetch && inst.mode !== "research") {
           next.codeOffSaid ??= {};
           if (!next.codeOffSaid[inst.id]) {
             next.codeOffSaid[inst.id] = true;
@@ -638,6 +678,20 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
               inst.id,
               "status",
               `the teachers may fetch any web page (fetch_domains "*"), so they read no code, diffs or the judge's full findings: only their brief`,
+            );
+          }
+        }
+        // The run's own research, read only (goal 098), when its brief says it has some; none for
+        // teachers with an open fetch either, said once.
+        const research = Boolean(brief.research);
+        if (openFetch && research) {
+          next.researchOffSaid ??= {};
+          if (!next.researchOffSaid[inst.id]) {
+            next.researchOffSaid[inst.id] = true;
+            say(
+              inst.id,
+              "status",
+              `the teachers may fetch any web page (fetch_domains "*"), so they read none of the run's own sources, claims, hypotheses, findings, notes or files: only the summary in their brief`,
             );
           }
         }
@@ -653,6 +707,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             // A research run has no code: its seed is a placeholder, with no repository on the
             // rig, so its teachers get none of the code tools.
             ...(openFetch || inst.mode === "research" ? {} : { code: codeFor(inst.id) }),
+            // The run's own research: a research run's always, a hill-climb or goal run's when its
+            // trials recorded some (the brief has `research`), never with an open fetch.
+            ...(openFetch || !research ? {} : { research: researchFor(inst.id) }),
             // The run's MCP servers for its advisors (none with an open fetch: mcpFor says so).
             mcp: await mcpFor(inst.id),
             // Teachers with an open fetch search no past research either.

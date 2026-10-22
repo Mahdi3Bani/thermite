@@ -8,6 +8,11 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 import { type AdvisorCode, CODE_TOOL_NAMES, registerCodeTools } from "./code-tools.ts";
+import {
+  type AdvisorResearch,
+  RESEARCH_TOOL_NAMES,
+  registerResearchTools,
+} from "./research-tools.ts";
 
 /**
  * The run's past research for an advisor in Claude Code (goal 065), OpenCode or the Codex CLI
@@ -62,23 +67,28 @@ export interface AdvisorServers {
 }
 
 /**
- * Starts the advisor's local MCP servers on a free port: the past-research search and the
- * teachers' code and evidence reads (goal 081) at /mcp, the server named PAST_MCP_SERVER, and
- * each MCP server the advisor gets at /mcp/<name>. Claude Code is given them alone, and
- * permission for their tools only. Close it when the call ends.
+ * Starts the advisor's local MCP servers on a free port: the past-research search, the
+ * teachers' code and evidence reads (goal 081) and their reads of the run's own research (goal
+ * 098) at /mcp, the server named PAST_MCP_SERVER, and each MCP server the advisor gets at
+ * /mcp/<name>. Claude Code is given them alone, and permission for their tools only. Close it
+ * when the call ends.
  */
 export async function serveAdvisorTools(o: {
   pastSearch?: PastSearch | undefined;
   mcp?: AdvisorServers | undefined;
   /** The teachers' read-only tools for the run's code and evidence (goal 081), on the same server. */
   code?: AdvisorCode | undefined;
+  /** The teachers' read-only tools for the run's own research (goal 098), on the same server. */
+  research?: AdvisorResearch | undefined;
 }): Promise<PastSearchServer> {
   const token = randomBytes(24).toString("hex");
   const search = o.pastSearch;
   const code = o.code;
+  const research = o.research;
   const build = () => {
     const server = new McpServer({ name: "thermite-past-research", version: "1.0.0" });
     if (code) registerCodeTools(server, code);
+    if (research) registerResearchTools(server, research);
     if (search)
       server.registerTool(
         PAST_SEARCH_TOOL,
@@ -130,7 +140,7 @@ export async function serveAdvisorTools(o: {
     await make().connect(transport);
     return transport.handleRequest(c.req.raw);
   };
-  const thermite = Boolean(search || code);
+  const thermite = Boolean(search || code || research);
   if (thermite) app.all("/mcp", serving(build));
   const mcp = o.mcp;
   if (mcp)
@@ -163,6 +173,7 @@ export async function serveAdvisorTools(o: {
       "--allowedTools",
       ...(search ? [PAST_MCP_TOOL] : []),
       ...(code ? CODE_TOOL_NAMES.map((n) => `mcp__${PAST_MCP_SERVER}__${n}`) : []),
+      ...(research ? RESEARCH_TOOL_NAMES.map((n) => `mcp__${PAST_MCP_SERVER}__${n}`) : []),
       // A server's name allows each of its tools.
       ...(mcp?.servers ?? []).map((s) => `mcp__${s}`),
     ],

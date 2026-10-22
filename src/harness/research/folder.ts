@@ -42,6 +42,12 @@ type Row = Record<string, unknown>;
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+/**
+ * Where each lane's files are saved in the harness's state (stateDir/research-work/<run>/<lane>/):
+ * they outlive scratch, and the teachers read them from here (run-research.ts).
+ */
+export const SAVED_LANES_DIR = "research-work";
+
 /** A run's folder under the folders' root (scratch/research): its run id must be a safe name. */
 export function folderRootOf(scratchRoot: string, run: string): string {
   if (!SAFE.test(run)) throw new Error(`not a run id for a folder: ${run}`);
@@ -62,7 +68,7 @@ export function writeAtomic(path: string, data: string | Buffer): void {
 }
 
 /** A file's bytes, never through a symlink. */
-function readNoFollow(path: string): Buffer {
+export function readNoFollow(path: string): Buffer {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     return readFileSync(fd);
@@ -128,6 +134,9 @@ function textOf(data: Buffer): string | undefined {
 
 /** A name safe as one path part: a section's name, say. */
 const fileName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[.-]+/, "") || "x";
+
+/** A report section's file in the folder, from its top: report/<name>.md. */
+export const sectionPath = (name: string) => `report/${fileName(name)}.md`;
 
 const list = (json: unknown) => JSON.parse(String(json ?? "[]")) as string[];
 
@@ -353,7 +362,7 @@ export class ResearchFolder {
     const sections = this.all("select * from report_section where run = ? order by name", run);
     for (const s of sections)
       this.changed(
-        join(root, "report", `${fileName(String(s.name))}.md`),
+        join(root, sectionPath(String(s.name))),
         `# ${s.name}\n\n${s.body}\n\nUpdated: ${s.updated_at} by ${s.updated_by}\n`,
       );
 

@@ -233,7 +233,7 @@ The briefs point at `knowledge/` only when it holds something.
 
 ### The planner's and the advisors' search
 
-The planner and the advisors read no files of the run. They search its past research with a tool instead, read only: the same items its workers search in `knowledge/`, from the harness's own copy. They get it only while the run has past research, when their brief or package has its `past_research` line.
+The planner and the advisors read no files of the run's `knowledge/` folder. They search its past research with a tool instead, read only: the same items its workers search in `knowledge/`, from the harness's own copy. They get it only while the run has past research, when their brief or package has its `past_research` line. The run's own items are not past research: the teachers read them with other tools ([The run's own research](advisors-file.md#the-runs-own-research)).
 
 | Who | How it searches |
 | --- | --- |

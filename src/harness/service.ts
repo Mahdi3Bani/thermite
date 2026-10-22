@@ -69,10 +69,11 @@ import type { ProviderErrorAnswer } from "./model-forward.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
-import { folderRootOf } from "./research/folder.ts";
+import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
 import { startingHypotheses } from "./research/research.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
+import { RunResearch } from "./run-research.ts";
 import { ModelUsage } from "./usage.ts";
 import { checkV0, violationsOf } from "./v0.ts";
 
@@ -331,6 +332,12 @@ export class HarnessService {
   /** Past research in each run's research folder (knowledge/), as the supervisor syncs it. */
   readonly knowledge: Knowledge;
   /**
+   * Each run's own research, read only, for its teachers (goal 098): sources, claims, hypotheses,
+   * findings, notes and the files of its research folder, from the ledger and the lanes' saved
+   * files.
+   */
+  readonly runResearch: RunResearch;
+  /**
    * The MCP servers the runs' kits name (goal 068): workers and the planner call them through
    * here; their sign-in, from control by way of the supervisor, stays in this process's memory.
    */
@@ -508,6 +515,11 @@ export class HarnessService {
     this.knowledge = new Knowledge({
       stateRoot: join(this.paths.stateDir, "knowledge"),
       folderRoot: (run) => folderRootOf(join(this.paths.scratchDir, "research"), run),
+    });
+    // The lanes' files where the research folder saves them (main.ts): stateDir/research-work.
+    this.runResearch = new RunResearch({
+      ledger: this.ledger,
+      savedLanes: join(this.paths.stateDir, SAVED_LANES_DIR),
     });
     this.mcp = new McpGateway({
       uses: (run) => this.mcpUses(run),
@@ -1775,7 +1787,8 @@ export class HarnessService {
    * the direction registry, recent attempts with the judge's public reasons, the causes of the
    * experiments tried, epochs, the directives in force, the queue and its target, and what the
    * teachers proposed before (goal 081). Nothing from held-out cells (evidence.ts says how), and
-   * no worker text beyond hypotheses and ideas.
+   * no worker text beyond hypotheses and ideas, the field notes, and the run's own research
+   * (goal 098): its counts, each question's coverage and the newest report, marked as data.
    */
   brief(run: string): unknown {
     const inst = this.requireRun(run);
@@ -1805,6 +1818,7 @@ export class HarnessService {
           }[])
         : undefined;
     const brief = briefData(contract);
+    const research = this.runResearch.summary(run);
     return {
       rig: this.rig,
       run,
@@ -1822,6 +1836,10 @@ export class HarnessService {
                 required: g.required,
               }))
             : { topic: contract.topic, questions: contract.questions },
+      // What the run's own research holds (goal 098): a research run's always, a hill-climb or
+      // goal run's when its trials recorded some. Short, before the long parts a window may cut;
+      // the teachers' research tools read the rest.
+      ...(research ? { research } : {}),
       // The campaign's brief from its author, whole (goal 078): ahead of the long parts, so a
       // brief cut to the teacher's window loses the evidence first.
       ...(brief ? { campaign_brief: brief } : {}),
