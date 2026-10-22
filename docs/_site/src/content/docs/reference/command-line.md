@@ -665,6 +665,13 @@ npx thermite command --control https://control.example.com --token-file ~/thermi
   --payload '{"run":"run-1","title":"unroll the inner loop by 4","why":"the profile shows loop overhead","position":"top"}'
 ```
 
+A run you no longer want is closed for good with `close_run`, as **Close run** on its page does:
+
+```sh
+npx thermite command --control https://control.example.com --token-file ~/thermite-owner-token \
+  --rig rig-1 --kind close_run --payload '{"run":"run-1","reason":"another run finished the work"}'
+```
+
 Control refuses `wipe_state` with `400 {"error":"wipe_state is issued only by a full reset"}`, and a payload that does not fit its kind with `400 {"error":"bad <kind> payload: …"}` (an unknown rig: `404`). `GET /v1/commands/<id>` and the dashboard's **Commands** page show the command's status. A command the rig refuses, such as a `queue_move` for an experiment that is no longer queued, shows there as `failed`, with the reason.
 
 ### `submit`

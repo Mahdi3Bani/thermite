@@ -360,6 +360,11 @@ const SESSION_DAYS = 30;
 const DAY_MS = 24 * 3_600_000;
 const CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+/** What Close run does, in its ⋯ menu on a run's page (goal 087). */
+const CLOSE_RUN_WORDS =
+  "The run ends for good: nothing more starts, and it can't be resumed. Its results stay.";
+const CLOSE_WHY_TIP =
+  "Why you close the run, up to 500 characters. The run keeps it: it shows wherever the run's state does, in its History and in the rig's export.";
 // biome-ignore lint/suspicious/noExplicitAny: any route's context
 type Ctx = Context<any, any, any>;
 type RunViewName = RunTab;
@@ -612,11 +617,25 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   /** Pause, with an optional reason the run keeps (it shows wherever the run's state does). */
   const pauseMenu = (c: Ctx, rig: string, run: string, back: string, cls = "") =>
     `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}">Pause</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "pause_run", fields: { run }, label: "Pause the run", cls: "sm", back, extra: `<input name="reason" maxlength="500" placeholder="why (optional)" aria-label="Why" style="width:100%;margin-bottom:6px">` })}<div class="muted small">The lanes' running trials stop and no new ones start. Its jobs waiting for the judge wait until you resume, so the judge's time goes to running runs. Resume picks up from the same champion.</div></div></details>`;
-  /** ⋯ with Restart the lanes, for a running run with agents (the run's header and Live's). */
-  const moreMenu = (c: Ctx, rig: string, r: RunView, back: string, cls = "") =>
-    r.status === "running" && r.has_agents !== false
-      ? `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "reset_workers", fields: { run: r.id }, label: "Restart the lanes", cls, back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
-      : "";
+  /**
+   * Close run (goal 087): the owner's reason, what closing does, and a typed confirmation, as
+   * Retire and Full reset ask for. Control checks the typed words too (/ui/commands).
+   */
+  const closeForm = (c: Ctx, rig: string, run: string, back: string) =>
+    `<form method="post" action="/ui/commands" class="stack close-run"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(rig)}"><input type="hidden" name="kind" value="close_run"><input type="hidden" name="run" value="${esc(run)}"><input type="hidden" name="back" value="${esc(back)}"><div class="small"><b>Close run.</b> <span class="muted">${CLOSE_RUN_WORDS}</span></div><label>${infoLabel("Why", CLOSE_WHY_TIP)}<input name="reason" required maxlength="500" placeholder="such as: another run finished the work"></label><input name="confirm" placeholder="type: close ${esc(run)}" data-confirm="close ${esc(run)}" aria-label="Type close ${esc(run)} to confirm"><button class="danger">Close the run</button></form>`;
+  /**
+   * ⋯ in a run's header: Restart the lanes, for a running run with agents (the run's header and
+   * Live's), and, with `close` (the run's page), Close run for a run not closed yet (goal 087).
+   */
+  const moreMenu = (c: Ctx, rig: string, r: RunView, back: string, cls = "", close = false) => {
+    const restart =
+      r.status === "running" && r.has_agents !== false
+        ? `${cmdForm(c, { rig, kind: "reset_workers", fields: { run: r.id }, label: "Restart the lanes", cls, back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div>`
+        : "";
+    const closing = close && r.status !== "closed" ? closeForm(c, rig, r.id, back) : "";
+    if (!restart && !closing) return "";
+    return `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}" title="More">⋯</summary><div class="menu-pop">${restart}${restart && closing ? `<div class="divider" style="margin:2px 0"></div>` : ""}${closing}</div></details>`;
+  };
   const forms = (c: Ctx): Forms => ({
     cmd: (f) => cmdForm(c, f),
     csrf: csrf(c),
@@ -2495,7 +2514,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : "";
       // A run without agents (a try, a rig check) has no one to message and no lanes to restart.
       const agents = sel.run.has_agents !== false;
-      const more = moreMenu(c, sel.rig.id, sel.run, back);
+      const more = moreMenu(c, sel.rig.id, sel.run, back, "", true);
       return page(
         c,
         {
@@ -8169,6 +8188,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const payloads: Partial<Record<string, unknown>> = {
       pause_run: { run, reason: String(f.reason || "paused from the dashboard") },
       resume_run: { run },
+      close_run: { run, reason: String(f.reason ?? "").trim() },
       reset_workers: { run },
       export_now: {},
       rig_check: { check: String(f.check ?? ""), ...(f.force === "true" ? { force: true } : {}) },
@@ -8219,6 +8239,16 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       const why = "this command is not available from the dashboard";
       return json ? c.json(notSent(why), 400) : c.text(why, 400);
     }
+    // Close run (goal 087) takes the owner's reason and the typed words, as its form asks.
+    const closing =
+      kind !== "close_run"
+        ? ""
+        : !String(f.reason ?? "").trim()
+          ? "write why you close the run first"
+          : String(f.confirm ?? "").trim() !== `close ${run}`
+            ? `type close ${run} to confirm`
+            : "";
+    if (closing) return json ? c.json(notSent(closing), 400) : c.text(`refused: ${closing}`, 400);
     let woke: string | null;
     let id: string;
     try {

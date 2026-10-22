@@ -1,18 +1,19 @@
 ---
 title: "Steer a run"
-description: "Pause, resume or restart a run's lanes, and send its agents messages."
+description: "Pause, resume or close a run, restart its lanes, and send its agents messages."
 type: how-to
 sidebar:
   order: 8
 ---
 
-You can steer a running campaign without touching its judge: pause or resume it, start its lanes afresh, and send its agents a message. To choose what the lanes try next, and to make rules for the planner, see [Choose what a run tries next](choose-what-runs-next.md). Nothing you do here changes a verdict.
+You can steer a running campaign without touching its judge: pause or resume it, start its lanes afresh, send its agents a message, or close it for good. To choose what the lanes try next, and to make rules for the planner, see [Choose what a run tries next](choose-what-runs-next.md). Nothing you do here changes a verdict.
 
 | Action | Where on the dashboard | What it does |
 | --- | --- | --- |
 | **Pause** | The run's header, Live's header, or the run's card under **At work now** | The agents' running [trials](../../reference/glossary.md) stop, and no new ones start. A stopped trial's work that it had not submitted is thrown away; changes already submitted stay. Each stopped trial's experiment goes back to the top of the run's [queue](choose-what-runs-next.md). The judge finishes the job it is on; the run's other queued jobs wait until you resume |
 | **Resume** | The run's header; Live's header, where a paused run is listed under **Ended in the last day**, marked `paused`; or the run's row under **Earlier runs** | New trials start again, in the round the run was in: a trial that the pause stopped still counts in it. The planner plans the next round when this one's trials are done. If the model provider stopped the run's agents, the model is checked again at once ([limits and pacing](../../reference/limits-and-pacing.md#the-model-provider)). Any other running run on that rig is paused: a rig runs one run at a time |
 | **Restart the lanes** | **⋯** in the run's header or in Live's header, while a run with agents is running | Ends the running trials and the current round at once, with no question first. Their experiments go back to the top of the queue. The planner plans the next round straight away, and every lane starts again from the champion. Nothing the judge decided is lost |
+| **Close run** | **⋯** in the run's header, while the run is running or paused | Ends the run for good, with your reason: as for **Pause**, its running trials stop and nothing new starts, and its jobs waiting for the judge never run. It can't be resumed. Its experiments, attempts, champion and journal stay. See [Close a run](#close-a-run) |
 | A message | The message box in **Live**, or **Tell the planner** on the **Planner** tab | Text for everyone working, one lane, the planner or the [advisors](../../reference/glossary.md). A message to everyone or to a lane can stay in force for every new trial. The planner makes rules from what you tell it |
 | The experiment queue and the rules | The run's **Experiments** and **Planner** tabs | See [Choose what a run tries next](choose-what-runs-next.md) |
 
@@ -29,12 +30,32 @@ A trial is one worker's session in a [lane](../../reference/glossary.md): it end
 2. In the run's header:
    - To pause, press **Pause**. A small menu opens. It says `The lanes' running trials stop and no new ones start. Its jobs waiting for the judge wait until you resume, so the judge's time goes to running runs. Resume picks up from the same champion.` You may say why in **why (optional)**, up to 500 characters. Press **Pause the run**.
    - To resume a paused run, press **Resume**.
-   - To restart the lanes, press **⋯**, then **Restart the lanes**. The menu says what it does; the button sends the command at once. **⋯** shows only while the run is running, and never on a run without agents, such as a [try](../../reference/glossary.md): it has no lanes to restart. Live's header, beside **Pause**, has the same **⋯**.
+   - To restart the lanes, press **⋯**, then **Restart the lanes**. The menu says what it does; the button sends the command at once. **Restart the lanes** shows only while the run is running, and never on a run without agents, such as a [try](../../reference/glossary.md): it has no lanes to restart. Live's header, beside **Pause**, has a **⋯** with **Restart the lanes** too.
 
    The menu closes, and a line at the top of the page follows the command: `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, then `rig-1 took it at 03:41 UTC. This page shows the change when the rig next reports.`, with your rig's name. See [Signed commands](../../reference/signed-commands.md#on-the-dashboard).
 3. Stay on the page: it changes by itself. Once the rig has reported, within a minute, the line says `Done. rig-1 took it at 03:41 UTC.`, and the line under the run's name ends `· Paused` or `· Running`, with **Resume** or **Pause** beside it. A paused run reads `Paused` even while a change or a decision waits for you: what waits shows under **Needs you** on the run's **Overview**. The run's **History** tab shows `Run sort-speed-1 paused: checking the kit.`, with the reason you gave, or `Run sort-speed-1 resumed.`, or, after a restart, `You restarted the lanes: their trials ended, and every lane starts again from the champion.` A trial that the pause or the restart stopped shows in **History** as `lane-1's trial on loop-tiling ended without a submission (interrupted).`, and its experiment's return to the top of the queue as, for example, `"…" went back to the top of the queue: its trial on lane-1 was interrupted (its trial was stopped).` After **Restart the lanes**, the planner's next round follows in **History** within a few minutes.
 
 With **why (optional)** left empty, the reason is `paused from the dashboard`. The reason also shows in the run's **Now** block, and under **Why it stopped** in the campaign's **Earlier runs**.
+
+## Close a run
+
+Close a run you no longer want, such as a paused run whose work another run finished. A closed run ends for good, as a goal run that met its goals does: it can't be resumed. To stop it for a while, pause it instead.
+
+1. Open the run's page, as in [Pause, resume or restart the lanes](#pause-resume-or-restart-the-lanes). The run is running or paused.
+2. In the run's header, press **⋯**. The menu has **Close run**, below **Restart the lanes** on a running run with agents. It says `The run ends for good: nothing more starts, and it can't be resumed. Its results stay.`
+3. In **Why**, say why you close it, such as `another run finished the work`, up to 500 characters. The run keeps it.
+4. In the box below, type `close` and the run's name, such as `close sort-speed-1`. **Close the run** waits until the words match. Press it.
+
+   The menu closes, and a line at the top of the page follows the command, as for **Pause**. Without a reason or the typed words, control refuses it: `Not sent: Write why you close the run first.` or `Not sent: Type close sort-speed-1 to confirm.`
+5. Once the rig has reported, the line under the run's name ends `· Finished`, and the header has no **Pause**, **Resume** or **⋯**. The run's **Overview** says `This run is closed: another run finished the work. It is finished.`, and its **History** tab `Run sort-speed-1 closed: another run finished the work.`
+
+What happens on the rig:
+
+- The run's running trials stop, as for a pause, and its planner call is cancelled. No new round or trial starts.
+- Its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded.
+- A research run's final report is written once its last trial has ended.
+- Its experiments, attempts, champion and journal stay, and the rig's next export carries the close. A decision that waits for you in it, such as a change waiting for approval, still shows under **Needs you**.
+- **Resume** and **Pause** no longer work on it: the rig refuses them with `run sort-speed-1 is closed`. Closing it again is refused too: `run sort-speed-1 is already closed (another run finished the work): there is nothing to close`.
 
 ## Send the agents a message
 
@@ -133,6 +154,7 @@ It prints the command's id and `"status":"pending"`. In each payload, `run` is t
 | --- | --- |
 | `pause_run` | `{"run":"sort-speed-1","reason":"checking the kit"}` |
 | `resume_run` | `{"run":"sort-speed-1"}` |
+| `close_run` (**Close run**; the owner's token only) | `{"run":"sort-speed-1","reason":"another run finished the work"}` |
 | `reset_workers` (**Restart the lanes**) | `{"run":"sort-speed-1"}` |
 | `redirect`, added to the rules in force | `{"run":"sort-speed-1","directives":[{"kind":"avoid","family":"loop-tiling","rationale":"three trials regressed"}],"replace":false}` |
 | `redirect`, a direction in plain words or `:name:`, added to the rules in force | `{"run":"sort-speed-1","directives":[{"kind":"try","family":":vector loads:","rationale":"twice the bandwidth"}],"replace":false}` |
@@ -171,11 +193,11 @@ Over MCP, an agent sends the same kinds and payloads with the `issue_command` to
 
 ## Who may do what
 
-| | Pause, resume, restart the lanes, add rules | Message the agents, remove a kept message | Change the experiment queue, remove a rule |
-| --- | --- | --- | --- |
-| The owner: dashboard, REST API, command line, MCP | yes | yes | yes |
-| The operator's token over MCP | yes | yes | yes |
-| The agent's token over MCP | yes | no | no |
-| The reader's token | no | no | no |
+| | Pause, resume, restart the lanes, add rules | Message the agents, remove a kept message | Change the experiment queue, remove a rule | Close a run |
+| --- | --- | --- | --- | --- |
+| The owner: dashboard, REST API, command line, MCP | yes | yes | yes | yes |
+| The operator's token over MCP | yes | yes | yes | no |
+| The agent's token over MCP | yes | no | no | no |
+| The reader's token | no | no | no | no |
 
 Approving and rejecting changes is the owner's alone: see [Decide what waits for you](decide-what-waits.md). [Tokens and roles](../../reference/tokens.md#people-and-agents) has every role.

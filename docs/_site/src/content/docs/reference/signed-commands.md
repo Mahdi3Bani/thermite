@@ -116,7 +116,7 @@ The harness checks every command in this order. A command that fails a check mar
 | It is not being applied right now | None: the harness answers `in_progress`, and the supervisor asks again later | Stays `pending` |
 | An owner-only kind was issued by the owner (`issued_by` is `owner` or starts with `owner:`) | `<kind> is the owner's to issue, not <issuer>'s` | `failed` |
 
-The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `wipe_state`, `message_agent`, `unkeep_message`, `rig_settings`, and the six kinds that change a run's experiment queue and its rules: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
+The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `close_run`, `wipe_state`, `message_agent`, `unkeep_message`, `rig_settings`, and the six kinds that change a run's experiment queue and its rules: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
 
 ## Who may issue each kind
 
@@ -126,6 +126,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `rig_check` | **Run it** in a rig's **Checks**; **Check** on **Settings** | Yes | Yes | Yes | Yes | |
 | `pause_run` | **Pause**, then **Pause the run** in its menu, in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
 | `resume_run` | **Resume** in a run's header, in the header of the run's **Live**, and on a paused run's row under **Earlier runs** | Yes | Yes | Yes | Yes | |
+| `close_run` | **⋯**, then **Close the run**, in the header of a run's page, while the run is running or paused | Yes | Yes | No | No | Yes |
 | `redirect` | None: on the dashboard, rules come from **Tell the planner**, a `message_agent` to the planner, which makes them | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
@@ -146,7 +147,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands` | `set_rig_settings`; `start_run` with `judge_gpus` | `set_rig_settings`, but not `promotion` or `judge_gpus` | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
-Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion` or `decline_promotion`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
 
 On the dashboard, only an experiment up next has **Edit**: a lane's idea's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
 
@@ -243,7 +244,7 @@ Result: `{"check", "id", "started": true}`. The finding arrives later as a `rig_
 | `run` | lowercase id | The run |
 | `reason` | text, at least 1 character | Why. The dashboard sends what you write in **why (optional)** in the **Pause** menu, at most 500 characters, or `paused from the dashboard` when you leave it empty |
 
-The run becomes `paused` with the reason. Its lanes' running trials end; the experiment each was on goes back to the top of the run's queue, as for [`reset_workers`](#reset_workers). The judge takes no new job of a paused run: its jobs waiting for the judge stay queued until the run runs again. Result: `{"run", "status": "paused"}`.
+The run becomes `paused` with the reason. Its lanes' running trials end; the experiment each was on goes back to the top of the run's queue, as for [`reset_workers`](#reset_workers). The judge takes no new job of a paused run: its jobs waiting for the judge stay queued until the run runs again. A closed run is refused: `run <run> is closed`. Result: `{"run", "status": "paused"}`.
 
 ### `resume_run`
 
@@ -252,6 +253,26 @@ The run becomes `paused` with the reason. Its lanes' running trials end; the exp
 | `run` | lowercase id | The run |
 
 The run becomes `running`, and the rig's other running runs are paused: a rig runs one run at a time. A closed run is refused: `run <run> is closed`. Result: `{"run", "status": "running"}`. On a rig launched on RunPod whose pod is stopped, control starts the pod first, as for [`assign_campaign`](#assign_campaign).
+
+### `close_run`
+
+The owner closes a run by hand, for good: for example a paused run whose work another run finished. Owner only.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `run` | lowercase id | The run |
+| `reason` | text, 1 to 2000 characters after spaces at either end are taken off | Why. The dashboard sends what you write in **Why** in **Close run**, at most 500 characters |
+
+The run becomes `closed` with the reason, as a goal run that met its goals does, and its `run_status` event is `{"status": "closed", "reason"}`. A running or a paused run may be closed:
+
+- its lanes' running trials end, as for [`pause_run`](#pause_run), and its planner call is cancelled; no new round or trial starts;
+- the judge takes no job of a closed run, so its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded; if that job would close the run as complete, the run keeps your reason;
+- a research run's final report is written once its last trial has ended, as at the end of its time;
+- it can't be resumed or paused again: [`resume_run`](#resume_run) and [`pause_run`](#pause_run) refuse it with `run <run> is closed`. Its queue, rules and messages no longer change.
+
+Its experiments, attempts, champion and journal stay, and the rig's next export carries the close, as after a run that met its goals. Refusals: `run <run> is already closed (<its reason>): there is nothing to close`. Result: `{"run", "status": "closed", "was": "running"}`, with `"paused"` for a run that was paused.
+
+On the dashboard, **Close run** is under **⋯** in the header of a running or paused run's page. It says `The run ends for good: nothing more starts, and it can't be resumed. Its results stay.`, takes the reason in **Why**, and sends only once you type `close <run>` in the box below it. Control refuses it before signing, in words, without them: `Not sent: Write why you close the run first.` or `Not sent: Type close <run> to confirm.`
 
 ### `redirect`
 

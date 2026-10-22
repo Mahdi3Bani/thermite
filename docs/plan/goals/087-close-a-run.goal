@@ -1,0 +1,66 @@
+---
+id: "087"
+title: "The owner closes a run by hand"
+status: VERIFIED
+version: "0.1.0"
+depends_on: ["080"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 087 · The owner closes a run by hand
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [080](080-buttons-show-progress.goal)
+
+## What
+
+The owner closes a run they no longer want, for good, with a reason:
+
+1. **A signed command, `close_run {run, reason}`, owner only.** The harness closes the run as it closes one at goal completion: status `closed`, with the owner's reason in `run_status`. The trials at work stop as for a pause, the planner stops for it, and its jobs waiting for the judge never run. A closed run can't be resumed. Closing a closed run is refused in words. Its experiments, attempts, champion and exports stay, and the export after it closes carries the end, as after completion.
+2. **Close run on a run's page.** Under **⋯** in the header of a running or paused run, for the owner: a reason field with its info icon, and a confirmation that says what it does in plain words: "The run ends for good: nothing more starts, and it can't be resumed. Its results stay." The button follows the command to its outcome, as every command's button does (goal 080).
+3. **REST, MCP and the command line.** `POST /v1/commands` takes `close_run` with the owner's token. Over MCP, `issue_command` takes it with the owner's token only, not the operator's or an agent's. `thermite command` sends it.
+
+## Why
+
+Today a run closes only when its goals are met, when the owner accepts a "not possible" proposal, or when a research run's time is over. The owner asked to close a paused goal run whose work another run had finished, and there was no way to do it. Thermite runs itself: a gap in what the owner can do through control is fixed in Thermite, not worked around.
+
+## Done when
+
+- [x] `close_run {run, reason}` is a signed command. The harness takes it only from the owner, closes the run with the reason (`run_status`), stops its trials and its planner call as for a pause, starts no new round or trial, leases none of its judge jobs, refuses `resume_run` and `pause_run` for it, and refuses a second close in words. Its attempts and champion stay, and the export after it has the close.
+- [x] **Close run** under **⋯** on a running or paused run's page: a reason (with its info icon), the words of what it does, and a typed confirmation. The button follows the command, and the page then shows the run closed with the reason.
+- [x] `POST /v1/commands` takes it with the owner's token; MCP's `issue_command` takes it with the owner's token only; `thermite command` sends it.
+- [x] Tests: the harness (status, reason, trials stopped, no new trial, judge jobs not leased, resume and pause refused, a second close refused, a non-owner refused, the export, a research run's final report); the dashboard (the menu, control's refusals, the command followed to the page that shows the run closed with the reason); REST and MCP token rules.
+- [x] The pages match the code: signed commands, Steer a run, the glossary and the run's page, verdicts and run states, why runs go on until done, campaign modes, the MCP tools, REST API, command line and tokens references, the automation how-tos, the roadmap page; the changelog has the change.
+
+## Decisions
+
+- 2026-10-22, lead, in the build brief: a signed `close_run {run, reason}`, owner only (the harness's owner-only set; the operator does not close runs). The run closes as at goal completion; its trials stop as for a pause; its queued judge jobs never run; the planner stops; it can't be resumed; a second close is refused in words; its records and exports stay. On the run's page, a **Close run** action for the owner beside Pause and Resume or in their **⋯**, with a reason field, an info icon and a confirmation in plain words, following goal 080's button pattern. REST's `POST /v1/commands` and the owner's MCP `issue_command` take it; the command line's generic `thermite command` covers it.
+- 2026-10-22, builder, within the brief:
+  - **Where.** In the **⋯** of a run's page header, below **Restart the lanes**, for a running or a paused run. **⋯** now shows on a paused run and on a run without agents too, with **Close run** alone. Live's header keeps its **⋯** with **Restart the lanes** only: closing is a decision for the run's page.
+  - **The confirmation** is a typed one, `close <run>`, as **Retire it** and **Full reset** ask on a rig's page: the button waits for the words, and control checks them and the reason before it signs, for a form posted without the page's script (`Not sent: Write why you close the run first.`, `Not sent: Type close <run> to confirm.`).
+  - **The reason** is kept as given, trimmed, as a pause's is: the run's page says `This run is closed: <reason>. It is finished.`, and **History** `Run <run> closed: <reason>.` The payload takes 1 to 2,000 characters; the dashboard's field takes 500, as **Pause**'s does.
+  - **No new event kind.** The close is the `run_status` event that goal completion writes, with the issuer as its actor (`control:owner:ui`, `control:owner:api`, `control:owner:mcp`), and the command's own record. So control's views, the knowledge base and exports read it as they read every close.
+  - **Pause refuses a closed run.** Before, `pause_run` set a closed run to paused, and `resume_run` could then run it again. Now it is refused with `run <run> is closed`, as a resume is. Control pauses only running runs itself (a full reset, an update, a RunPod stop), so none of its own steps changes.
+  - **A judge job under way.** A job the judge leased before the close finishes and its verdict is recorded, as for a pause. If it would close the run as complete, the run keeps the owner's reason: the judge closes only a run that is not closed yet.
+  - **A research run** closed by the owner gets its final report once its last trial has ended, from the ledger, as at the end of its time; the next export then carries the report and its folder.
+  - **The operator** may not close a run: control's MCP list for the operator has no `close_run`, and REST commands take the owner's token only. The harness's gate takes `owner:` issuers, as for the other owner-only kinds.
+  - **Screens.** The change is a form in an existing menu, on the patterns already there (the menu, a typed confirmation, the follow pattern of goal 080), so no mockup was made first.
+
+## Open questions
+
+- **Decisions that wait in a closed run.** A change waiting for approval, or a review or a "not possible" proposal, in a run the owner closes stays under **Needs you**, and the owner may still decide it, as after a run that closed at goal completion. Proposal: leave such items out of **Needs you** for a closed run, and refuse `approve_promotion` there. The owner decides. Not built.
+- The owner looks at **Close run** in the **⋯** of a run's page (`src/control/close-run.test.ts` builds it).
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's ask to close a paused goal run whose work another run had finished. Building.
+- 2026-10-22: Built and verified.
+  - The command: `src/core/commands.ts` (`close_run`), `src/harness/service.ts` (the owner-only set, `close_run`, `pause_run` of a closed run), `src/harness/judge/judge.ts` (a run already closed keeps its reason), `src/harness/agents/scheduler.ts` (`finishClosedResearch`).
+  - Control: `src/control/dashboard.ts` (**Close run** in the run page's **⋯**, the checks in `/ui/commands`), `src/control/ui/style.ts`, `src/control/ui/words.ts` (`close the run`), `src/control/mcp.ts` (the owner's kinds and the tool's description).
+  - Tests: `src/harness/close-run.test.ts` (a running run closed with a trial at work and a judge job queued: the reason, the stop, no new round or trial, no lease, resume, pause and a second close refused, an agent's close refused, the export; a paused run, and a judge job under way that would close it as complete; a research run's final report, once), `src/control/close-run.test.ts` (the menu, control's refusals, the command followed through the supervisor's relay to the page that shows the run closed with the reason, a second close refused by the rig; REST and MCP for the owner's, the operator's and the agent's tokens).
+  - Checks before each commit: typecheck, Biome, the touched test files (the new two, and the scheduler, scheduler queue, judge, goal report, steering, research, service, core, MCP, dashboard, action progress, steering UI, rig page and operator files), `npm run docs:build`, `npm run docs:check`, and the public check. The agents, judge and steering compose acceptances run at roll time.
+  - Pages: Signed commands, Steer a run, Glossary, How the parts fit together, Verdicts and states, Why Thermite runs until the job is done, Campaign modes, Your first goal campaign, the MCP tools, REST API, command line and tokens references, Let an agent run Thermite over MCP, Script Thermite with the REST API, the roadmap; the changelog.
+
+---
+
+Run with `/goal Complete docs/plan/goals/087-close-a-run.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

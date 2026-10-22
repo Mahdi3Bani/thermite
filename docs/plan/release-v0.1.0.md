@@ -76,6 +76,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [082 · The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check](goals/082-judge-findings-in-view.goal) | `VERIFIED` | — |
 | [081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups](goals/081-ideas-first.goal) | `VERIFIED` | [064](goals/064-experiment-queue.goal), [066](goals/066-direction-rules.goal), [074](goals/074-one-name-for-each-agent.goal) |
 | [086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed](goals/086-goal-report-values-and-confirmation-wait.goal) | `VERIFIED` | [082](goals/082-judge-findings-in-view.goal) |
+| [087 · The owner closes a run by hand](goals/087-close-a-run.goal) | `VERIFIED` | [080](goals/080-buttons-show-progress.goal) |
 
 ### Install from images
 

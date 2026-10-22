@@ -313,7 +313,8 @@ export class Judge {
           by: this.o.owner,
         });
       }
-      if (fin.close)
+      // A run the owner closed while this job ran keeps the owner's reason (goal 087).
+      if (fin.close && this.ledger.getRun(fin.close.run)?.status !== "closed")
         this.ledger.setRunStatus(fin.close.run, "closed", fin.close.reason, this.o.owner);
       if (lifecycle && job.attempt)
         this.ledger.setAttemptLifecycle(job.attempt, lifecycle, this.o.owner);

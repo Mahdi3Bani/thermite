@@ -127,8 +127,16 @@ const OPERATOR_COMMANDS = [
   "queue_accept",
   "drop_directive",
 ] as const;
-/** The owner (admin token) may also approve or decline promotions over MCP; agents never may. */
-const OWNER_COMMANDS = [...OPERATOR_COMMANDS, "approve_promotion", "decline_promotion"] as const;
+/**
+ * The owner (admin token) may also approve or decline promotions over MCP, and close a run for
+ * good (goal 087); operators and agents never may.
+ */
+const OWNER_COMMANDS = [
+  ...OPERATOR_COMMANDS,
+  "approve_promotion",
+  "decline_promotion",
+  "close_run",
+] as const;
 
 type Role = "owner" | "operator" | "agent" | "reader";
 
@@ -408,7 +416,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       "issue_command",
       {
         title: "Issue a signed command",
-        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value?, rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; ${role === "agent" ? "" : "message_agent {run, to: all|lane-N|trial:ID|planner|advisors|teachers|auditor|review_panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top|end|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); "}assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. \`thermite assign --print\` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.`,
+        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value?, rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; ${role === "owner" ? "close_run {run, reason} (the owner's token only: the run ends for good, nothing more starts and it can't be resumed; its results stay); " : ""}${role === "agent" ? "" : "message_agent {run, to: all|lane-N|trial:ID|planner|advisors|teachers|auditor|review_panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top|end|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); "}assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. \`thermite assign --print\` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.`,
         inputSchema: {
           rig: z.string().min(1),
           kind: z.enum(kinds as unknown as [CommandKind, ...CommandKind[]]),

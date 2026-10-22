@@ -83,6 +83,7 @@ const COMMAND: Record<string, string> = {
   message_agent: "message an agent",
   pause_run: "pause the run",
   resume_run: "resume the run",
+  close_run: "close the run",
   reset_workers: "reset the workers",
   redirect: "steer the planner",
   accept_review: "decide a review",

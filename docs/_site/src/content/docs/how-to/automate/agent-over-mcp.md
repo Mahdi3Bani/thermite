@@ -24,7 +24,7 @@ Control has an MCP server, so an AI agent such as Claude Code can watch rigs and
 
 The reader's token reads control's log, providers, MCP servers, how rigs were set up and the navigation's folders (`campaign_folders`), and the agent's token doesn't: they describe control itself, not the campaigns, and are for whoever runs control.
 
-Give the agent the token with the least it needs: it acts with that token's rights, and nothing more. Don't give an agent the owner's token. The owner's token also approves and declines promotions over MCP, retires rigs, works on the whole REST API and signs in to the dashboard.
+Give the agent the token with the least it needs: it acts with that token's rights, and nothing more. Don't give an agent the owner's token. The owner's token also approves and declines promotions over MCP, closes runs for good (`close_run`), retires rigs, works on the whole REST API and signs in to the dashboard.
 
 Some things no token can do over MCP: approving a goal the review panel passed, ending a campaign as not possible, changing a rig's settings (apart from its agents' model), accepting a rig's key and wiping a rig. Adding, changing or deleting an [MCP server](../operate/mcp-servers.md) is for the owner's token alone. A model is never the last word on what counts as a result; see [Why agents never judge](../../explanation/why-agents-never-judge.md). Approving and declining promotions is the owner's alone.
 

@@ -286,6 +286,12 @@ export const CommandPayloads = {
   }),
   pause_run: z.object({ run: IdSchema, reason: z.string().min(1) }),
   resume_run: z.object({ run: IdSchema }),
+  /**
+   * The owner closes a run by hand (goal 087, owner only): it ends for good, as a run that met its
+   * goals does, with the owner's reason. Its trials stop, nothing new starts, its jobs waiting for
+   * the judge never run, and it can't be resumed. Its records stay.
+   */
+  close_run: z.object({ run: IdSchema, reason: z.string().trim().min(1).max(2000) }),
   /** A directive set; by default it replaces this author's previous set. */
   redirect: z.object({
     run: IdSchema,

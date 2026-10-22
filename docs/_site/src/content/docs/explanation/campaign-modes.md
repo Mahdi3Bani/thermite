@@ -21,7 +21,7 @@ A **campaign** is one piece of research: what to improve, reach or find out, and
 
 Each campaign has a **contract**: a file that says what the campaign must achieve, what must not get worse and which files the agents may change. A contract has a version number; a changed contract is a new version, never an edit of a running one. A **run** is the campaign on one rig, and one campaign can have runs on several rigs. [Write a contract](../how-to/campaigns/write-a-contract.md) and the [contract reference](../reference/contract.md) cover every field.
 
-In every mode, **code decides when a campaign is done, never an agent.** No agent can close a run, mark a goal met or end the research early.
+In every mode, **code decides when a campaign is done, never an agent.** No agent can close a run, mark a goal met or end the research early. The owner can close a run by hand, in any mode, when they no longer want it: it ends for good ([Steer a run](../how-to/campaigns/steer-a-run.md#close-a-run)).
 
 Nothing ends a campaign by default. There is no limit on turns, attempts, failures or time unless you set one. The contract can set three **budgets**: hours since the run was created (paused time counts too), hours of judging on the device, and money spent on the model (counted only when the rig is told the model's prices). A spent budget **pauses** the run; it never closes it. The **Stop after (hours)** field on the New campaign page sets the first. [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) explains all three, and [Why Thermite runs until the job is done](runs-until-done.md) explains why there are no defaults.
 
@@ -53,7 +53,7 @@ A hill climb pushes one number, the **primary metric**, up or down: operations p
 
 **Who promotes.** Hands-off by default: a confirmed win becomes the new champion with no step of the owner's. On a rig with an auditor, a surprisingly large gain first goes to an **audit**: by default, a gain above 15%, or above three times the median of the run's earlier confirmed gains once it has three. So does a change whose agent declared known flaws. The auditor's clear is the last step; its block stops the change, with its reasons; anything it hands on waits for the owner. A run waits for the owner only where it was set to ask: every promotion, a gain above a line, or declared flaws. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows how to choose.
 
-**When it ends.** Never on its own. A faster program can always be tried, so no code closes a hill climb. It stops when you pause it, when a budget you set pauses it, or when another run starts on its rig. Its champion is ready to download at any time.
+**When it ends.** Never on its own. A faster program can always be tried, so no code closes a hill climb. It stops when you pause it, when a budget you set pauses it, or when another run starts on its rig, and ends when you close it. Its champion is ready to download at any time.
 
 ## Goal
 
