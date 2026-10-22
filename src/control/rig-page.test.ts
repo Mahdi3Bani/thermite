@@ -122,6 +122,19 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
         ).headers.get("location"),
       ),
     );
+  /** A form as the page's script sends it (goal 080): with fetch, asking for JSON. */
+  const send = async (path: string, form: Record<string, string> = {}) => {
+    const r = await api.request(path, {
+      method: "POST",
+      body: new URLSearchParams({ csrf, ...form }),
+      headers: {
+        cookie,
+        accept: "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+    });
+    return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+  };
   // Each rig's next report, with events numbered on from its last.
   const cursors = new Map<string, number>();
   const report = (rig: string, events: { kind: string; subject: string; body: object }[] = []) => {
@@ -150,7 +163,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     store.setRigBuild(rig, "harness", b);
     store.setRigBuild(rig, "supervisor", b);
   };
-  return { store, api, page, post, report, lastSeen, builds, updates, actions };
+  return { store, api, page, post, send, report, lastSeen, builds, updates, actions };
 }
 
 /** A rig control set up on gpu-host-1, which reports. */
@@ -224,9 +237,25 @@ describe("a rig's page: its version", () => {
       },
     ]);
     const asked = await s.post("/ui/rigs/gpu-1/update");
-    assert.match(asked, /ok=The update of gpu-1 to 0\.1\.0 began/);
+    assert.match(
+      asked,
+      /ok=The update of gpu-1 to 0\.1\.0 began\. Its steps show below as they happen\./,
+    );
     // Another update waits for this one.
     assert.match(await s.post("/ui/rigs/gpu-1/update"), /error=An update of gpu-1 is under way/);
+    // The page's script follows the steps (goal 080): the banners name the route, whose state
+    // changes with each step, final once the update ended. Its refusal comes in words.
+    const follow = async () =>
+      JSON.parse(await s.page("/ui/rigs/gpu-1/update.json")) as { state: string; final: boolean };
+    const first = await follow();
+    assert.equal(first.final, false);
+    assert.match(
+      await s.page("/ui/rigs/gpu-1"),
+      /<div data-part="banners" data-follow="\/ui\/rigs\/gpu-1\/update\.json" data-follow-state="[^"]+">/,
+    );
+    const again = await s.send("/ui/rigs/gpu-1/update");
+    assert.equal(again.status, 400);
+    assert.match(String(again.body.said), /^Not sent: An update of gpu-1 is under way/);
     // 1. The run pauses: the rig takes the command.
     await until(() => s.store.pendingCommands("gpu-1").length === 1);
     const pause = s.store.pendingCommands("gpu-1")[0]?.envelope;
@@ -278,7 +307,12 @@ describe("a rig's page: its version", () => {
         ["update_resumed", true],
       ],
     );
+    await until(() => s.updates.waiting("gpu-1") === null);
+    const last = await follow();
+    assert.equal(last.final, true);
+    assert.notEqual(last.state, first.state);
     const page = await s.page("/ui/rigs/gpu-1");
+    assert.doesNotMatch(page, /data-follow="\/ui\/rigs\/gpu-1\/update\.json"/);
     assert.match(page, /data-state="updated"/);
     assert.match(page, /Updated\. It runs Thermite 0\.1\.0, as control does\./);
     assert.match(page, /Its runs paused at a safe point <span class="muted">· runs paused: run-1/);
@@ -287,6 +321,65 @@ describe("a rig's page: its version", () => {
       /The isolation check after the update <span class="muted">· passed: every probe/,
     );
     assert.ok(s.store.listAudit(50).some((a) => a.action === "rig_update"));
+  });
+
+  test("Stop and Start on Set up by control, from the page's script: the block follows the change", async () => {
+    const s = await control();
+    machineRig(s, "gpu-1");
+    let page = await s.page("/ui/rigs/gpu-1");
+    assert.match(
+      page,
+      /<div class="block" data-part="placed"><div class="head"><h2>Set up by control/,
+    );
+    assert.match(page, /action="\/ui\/rigs\/gpu-1\/machine\/stop" data-act>/);
+    assert.match(page, /action="\/ui\/rigs\/gpu-1\/machine\/remove"><input/);
+    const stop = await s.send("/ui/rigs/gpu-1/machine/stop");
+    assert.equal(stop.status, 200);
+    assert.deepEqual(
+      [stop.body.final, stop.body.said, stop.body.tone, stop.body.follow],
+      [true, "Stopped.", "ok", "/ui/rigs/gpu-1/place.json"],
+    );
+    assert.match(String(stop.body.state), /^stopped:\d+$/);
+    // A change under way: the block names the route, which is final once the change ended.
+    s.store.setMachineRigStatus("gpu-1", "starting");
+    page = await s.page("/ui/rigs/gpu-1");
+    assert.match(
+      page,
+      /data-part="placed" data-follow="\/ui\/rigs\/gpu-1\/place\.json" data-follow-state="starting:\d+"/,
+    );
+    assert.equal(JSON.parse(await s.page("/ui/rigs/gpu-1/place.json")).final, false);
+    s.store.setMachineRigStatus("gpu-1", "running");
+    assert.equal(JSON.parse(await s.page("/ui/rigs/gpu-1/place.json")).final, true);
+    const bad = await s.send("/ui/rigs/no-such-rig/machine/stop");
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.said, "Not sent: Control didn't set this rig up.");
+  });
+
+  test("Update from the page's script: the answer names the route that follows its steps", async () => {
+    const s = await control();
+    machineRig(s, "gpu-1");
+    s.builds("gpu-1", OLD);
+    // The button is sent by the page's script.
+    assert.match(
+      await s.page("/ui/rigs/gpu-1"),
+      /<form class="inline" method="post" action="\/ui\/rigs\/gpu-1\/update" data-act>/,
+    );
+    const r = await s.send("/ui/rigs/gpu-1/update");
+    assert.equal(r.status, 200);
+    assert.equal(r.body.follow, "/ui/rigs/gpu-1/update.json");
+    assert.equal(r.body.final, false);
+    assert.equal(
+      r.body.said,
+      "The update of gpu-1 to 0.1.0 began. Its steps show below as they happen.",
+    );
+    assert.match(await s.page("/ui/rigs/gpu-1"), /<button disabled>Updating…<\/button>/);
+    // A rig control did not set up: refused in words.
+    s.report("own-1");
+    s.builds("own-1", OLD);
+    const own = await s.send("/ui/rigs/own-1/update");
+    assert.equal(own.status, 400);
+    assert.match(String(own.body.said), /^Not sent: Control didn't set own-1 up on a machine/);
+    await until(() => s.updates.waiting("gpu-1") === null);
   });
 
   test("an isolation check the rig refuses after the update is said so, and the update ends", async () => {

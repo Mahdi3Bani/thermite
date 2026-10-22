@@ -56,9 +56,9 @@ This guide covers providers reached with an API key, or with no key for OpenCode
 3. Choose the model. The list groups the models by provider. A group marked "OpenCode harness only" needs **OpenCode v2**. Without a key, OpenCode serves only the models whose names end in `-free`.
 4. Press **Use**.
 
-   The page shows `rig-1 takes my-model from "my-litellm" under Pi within a minute, and checks it.`
+   The button turns into **Sending…**, and a line at the top of the page shows `rig-1 takes my-model from "my-litellm" under Pi within a minute, and checks it.`
 
-5. Wait a minute or two, then press **refresh** in the status bar, the line along the bottom of the page. Dashboard pages do not reload by themselves. Until the rig takes the model, its row says "taking my-model under Pi".
+5. Wait a minute or two on the page: the row follows the rig by itself, with no refresh. Until the rig takes the model, its row says "taking my-model under Pi". Then its model check shows as it runs, such as "Its model check is running · 12 s."
 
 The rig's row now says "Its agents run under Pi with my-model from my-litellm." Below it you see the model check's result, for example "Its model check passed 1m ago: my-model answered with a correct tool call in 3.2 s". Press **Check** to run it again.
 

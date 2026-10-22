@@ -461,6 +461,13 @@ details.matrix .card { border: 0; border-radius: 0; }
 .ck-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ck-sum { font-size: 13px; } .ck-sum.bad { color: var(--error-foreground); }
 .ck-what { color: var(--muted-foreground); font-size: 12px; }
+.cks .ck { grid-template-columns: 132px minmax(0, 1fr) auto; }
+/* An action followed to its outcome (goal 080): its words beside the button, or at the top. */
+.fw-top { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; font-size: 13px; font-weight: 500; }
+.fw-say { margin-top: 6px; font-size: 12px; color: var(--muted-foreground); }
+.fw-say.ok { color: var(--success-foreground); } .fw-say.bad { color: var(--error-foreground); }
+.lcol > .fw-say { margin: 0; padding: 6px 14px; border-top: 1px solid var(--border); background: var(--card); }
+[data-fw-top] > .fw-top { margin: 0; padding: 8px 14px; border-width: 0 0 1px; border-radius: 0; box-shadow: none; }
 .rr { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto 100px; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: inherit; }
 .rr:last-child { border-bottom: 0; }
 .rr:hover { background: var(--muted); text-decoration: none; }

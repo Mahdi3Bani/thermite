@@ -44,9 +44,9 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
    A program that can't run the model is refused in a red line under the agent's line, such as "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
 5. To change an agent's context window or the point where its conversation is compacted, see [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
 6. Read the list under **What changes when you save**, at the foot of the page. It says each change in a short sentence, such as "You change the auditor's model to my-model." and "You change where the auditor runs to Claude Code." While a line is refused, the list says why instead, such as "Not saved yet (the auditor): A Claude subscription runs only in Claude Code: …", and **Save changes** is off.
-7. Press **Save changes**.
+7. Press **Save changes**. The button says **Sending…** at once.
 
-You return to the rig's page, which says, for example, "Control sent a new model and a model for the auditor to rig-1. The rig takes the change in less than one minute."
+You return to the rig's page, which says, for example, "Control sent a new model and a model for the auditor to rig-1. The rig takes the change in less than one minute." When the save also changed the rig's settings, the line goes on with how their command stands, and changes by itself: `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, then `Done. rig-1 took it at 03:41 UTC.` While the rig takes a new model for its workers, its **Checks** block follows it, and shows its model check as it runs.
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
 

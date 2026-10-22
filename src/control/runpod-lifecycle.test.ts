@@ -902,7 +902,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     assert.equal(resumed.status, 303);
     assert.match(
       decodeURIComponent(resumed.headers.get("location") ?? ""),
-      /pod was stopped: control started it\. .*the rig does it once its pod runs/,
+      /pod was stopped: control started it\. The run starts once the pod runs\. Sent to rp-\w+ at \d\d:\d\d UTC\./,
     );
     assert.equal(t.view(other).status, "RUNNING");
   });

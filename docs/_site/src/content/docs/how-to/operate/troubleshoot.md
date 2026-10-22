@@ -274,9 +274,9 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 
 ### A message to the agents was refused
 
-- **You see:** after **Send** in **Live**, your message never shows in the stream. Above the message box, a strip says **Not sent.** and why:
-  - when control refused the message, its reason shows at once, and the message is not on **Commands**;
-  - when the rig refused it, the strip says `The rig refused your last message:` and the rig's reason. It shows once the rig has answered, so press **refresh** in the status bar after a few seconds. On **Commands**, the message's **message agent** row is **failed**, with the rig's reason in **Outcome**.
+- **You see:** after **Send** in **Live**, your message never shows in the stream, and the line under the message box says why:
+  - when control refused the message, `Not sent:` and its reason show at once, what you wrote stays in the box, and the message is not on **Commands**;
+  - when the rig refused it, the line says `rig-1 refused it:` and the rig's reason, within seconds and with no refresh, and a strip above the box says **Not sent.** `The rig refused your last message:` and the reason. On **Commands**, the message's **message agent** row is **failed**, with the rig's reason in **Outcome**.
 
   The rig's refusal stays until a later message to the run goes through, and shows also for a message sent over MCP, the REST API or the command line. A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box.
 - **Why:** a message that nothing would read is refused. Control refuses, before signing it, a message with no words (`Write a message first.`), and one to a recipient that **Live** greys out, with the same words: everyone working, a lane or the planner of a run without agents, such as a try; a part that is off on **Edit rig**, such as `The planner is off on this rig (Edit rig), so nothing would read it.`; an advisor the rig's supervisor hasn't set up, such as `This rig's supervisor has no auditor set up, so nothing would read it.`; or the planner, auditor or review panel of a research run. The rig refuses what control can't check, such as a lane the run doesn't have. [Steer a run](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive) lists control's reasons, and [`message_agent`](../../reference/signed-commands.md#message_agent) the rig's.
@@ -292,9 +292,9 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 
 Each run has an [experiment queue](../campaigns/choose-what-runs-next.md): the experiments up next, in order, which the planner gives to free lanes, and the lanes' ideas, which wait for the planner or you.
 
-- **You see:** on a run's **Experiments** or **Planner** tab, you pressed **Add**, **↑ Top**, **Save** under **Edit**, **Drop it**, **Queue it**, **Drop** or **Remove**, or dragged an experiment. The page said `Control sent the command to rig-1. The rig does it in less than 10 seconds. This page shows the result.`, but the tab doesn't change. On **Commands**, the command's row, such as **queue move** or **drop directive**, is **failed**, with the rig's reason in **Outcome**.
+- **You see:** on a run's **Experiments** or **Planner** tab, you pressed **Add**, **↑ Top**, **Save** under **Edit**, **Drop it**, **Queue it**, **Drop** or **Remove**, or dragged an experiment. A line said `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, then `rig-1 refused it:` and the rig's reason, and the tab doesn't change. On **Commands**, the command's row, such as **queue move** or **drop directive**, is **failed**, with the rig's reason in **Outcome**.
 - **Why:** most often, the queue changed on the rig before your command reached it. A lane took the experiment, or the planner queued or dropped an idea first. A change that worked shows on the tab after the rig's next report, within a minute by default.
-- **Do:** press **refresh** in the status bar, and act on what the tab shows now.
+- **Do:** act on what the tab shows now: it is drawn again when the rig answers.
 
 A reason about one experiment names its state, then the rule: `only queued experiments move` after **↑ Top** or a drag, `only proposed or queued experiments can be edited` after **Save** under **Edit**, and `only proposed or queued experiments can be dropped` after **Drop**. For example, `experiment x-3f2a9c41d07e is assigned: only queued experiments move`.
 

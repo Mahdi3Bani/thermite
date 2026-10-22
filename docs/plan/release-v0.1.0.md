@@ -51,6 +51,7 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 | [008 · Community files and contributor docs](goals/008-community-files.goal) | `VERIFIED` | — |
 | [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `IN_PROGRESS` | — |
 | [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `VERIFIED` | — |
+| [080 · A button says at once that it took, and shows its outcome without a refresh](goals/080-buttons-show-progress.goal) | `VERIFIED` | [063](goals/063-scan-and-steer.goal) |
 
 ### Running campaigns
 
