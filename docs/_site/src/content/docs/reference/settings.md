@@ -262,7 +262,7 @@ See [Set up the results repository](../how-to/operate/results-repository.md).
 | `THERMITE_INBOX_DIR` | path | `/inbox` | no | The harness's inbox. The supervisor writes imports there, [model files](model-files.md#where-the-file-goes) it downloads among them |
 | `THERMITE_HF_TOKEN_FILE` | path | not set | path to a secret | A Hugging Face token, for [gated model files](model-files.md#gated-models-on-hugging-face). The supervisor reads it when it starts and sends it to Hugging Face only. The harness never gets it |
 | `THERMITE_OUTBOX_DIR` | path | `/outbox` | no | The harness's outbox. The supervisor reads exports from it |
-| `THERMITE_ADVISORS_FILE` | path to a JSON file | not set | path to a secret | The [advisors file](advisors-file.md), the rig default for the advisors: the teachers, their merged by model, the auditor and the review panel. A role given a model on **Edit rig** uses that model instead. Not set, and no role given a model: no advisors run |
+| `THERMITE_ADVISORS_FILE` | path to a JSON file | not set | path to a secret | The [advisors file](advisors-file.md), the advisors' models when control gives them none: the teachers, their merged by model, the auditor and the review panel. A role given a model on **Edit rig** uses that model instead. Not set, and no role given a model: no advisors run |
 | `THERMITE_CLAUDE_BIN` | name or path | `claude` on the `PATH` | no | The Claude Code program, for advisors that run in Claude Code |
 
 ## Command line
