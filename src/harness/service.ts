@@ -103,6 +103,7 @@ const OWNER_ONLY = new Set([
   "decline_promotion",
   "accept_review",
   "conclude",
+  "close_run",
   "wipe_state",
   "message_agent",
   "unkeep_message",
@@ -748,6 +749,8 @@ export class HarnessService {
       }
       case "pause_run": {
         const p = CommandPayloads.pause_run.parse(payload);
+        // A closed run stays closed: a pause would let a resume open it again.
+        if (this.requireRun(p.run).status === "closed") throw new Error(`run ${p.run} is closed`);
         this.ledger.setRunStatus(p.run, "paused", p.reason, by);
         return { run: p.run, status: "paused" };
       }
@@ -761,6 +764,20 @@ export class HarnessService {
           this.ledger.setRunStatus(p.run, "running", null, by);
         });
         return { run: p.run, status: "running" };
+      }
+      case "close_run": {
+        // The owner ends a run for good (goal 087), as goal completion does: the run is closed
+        // with the reason. The scheduler stops its trials and planner call as for a pause, the
+        // judge leases only running runs' jobs, and a closed run is never resumed.
+        const p = CommandPayloads.close_run.parse(payload);
+        const inst = this.requireRun(p.run);
+        if (inst.status === "closed")
+          throw new LedgerError(
+            "conflict",
+            `run ${p.run} is already closed${inst.pause_reason ? ` (${inst.pause_reason})` : ""}: there is nothing to close`,
+          );
+        this.ledger.setRunStatus(p.run, "closed", p.reason, by);
+        return { run: p.run, status: "closed", was: inst.status };
       }
       case "redirect": {
         const p = CommandPayloads.redirect.parse(payload);

@@ -223,13 +223,14 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
 | | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
 | | A research campaign's time is over | `the research window is over` |
+| | The owner closes it by hand (`close_run`, **Close run** under **⋯** on the run's page), running or paused | the reason given: what you typed in **Why** |
 | | A smoke check finishes its own run | `the smoke check is done` |
 | | The harness restarted during a smoke check | `its smoke check was interrupted` |
 
-- **A closed run stays closed.** Resuming it is refused with `run <run> is closed`.
+- **A closed run stays closed.** Resuming or pausing it is refused with `run <run> is closed`, and closing it again with `run <run> is already closed (<its reason>): there is nothing to close`. A job the judge was measuring when the run closed finishes, but never closes the run a second time: the first reason stays.
 - **A hill climb never closes on its own.** It runs until someone pauses it or a budget the contract sets pauses it. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) says why.
 - **Budgets pause; they do not close.** They apply only to runs with agents and a model. When one is spent, no new trial starts, and the run is paused once the running trial ends. `wall_hours` counts from the run's creation, paused time included, so a resumed run is paused again. [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) and [Limits and pacing](limits-and-pacing.md) say more.
-- **Judging waits with the run.** The judge works only on running runs. A paused run's queued judge jobs stay queued until it resumes.
+- **Judging waits with the run.** The judge works only on running runs. A paused run's queued judge jobs stay queued until it resumes; a closed run's never run.
 
 ### Run labels on the dashboard
 

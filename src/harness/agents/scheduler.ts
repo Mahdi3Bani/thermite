@@ -255,6 +255,8 @@ export class Scheduler {
   private readonly running = new Map<string, Promise<void>>();
   /** Research runs whose starting links this scheduler has begun to archive (goal 078). */
   private readonly seeded = new Set<string>();
+  /** Closed research runs whose final report failed (finishClosedResearch). */
+  private readonly finalFailed = new Set<string>();
   private readonly aborts = new Map<string, AbortController>();
   /** The run each running trial (by lane) works for. */
   private readonly laneRun = new Map<string, string>();
@@ -318,6 +320,34 @@ export class Scheduler {
       }
     }
     if (this.planning && !running(this.planning.run)) this.planning.ctrl.abort();
+  }
+
+  /**
+   * A research run the owner closed (close_run, goal 087) ends as one whose window is over: once
+   * its last trial has ended, its final report is written from the ledger, and the next export
+   * carries it and the run's folder. A run closed at the end of its window has its final report.
+   */
+  private finishClosedResearch(): void {
+    if (!this.o.research) return;
+    const closed = this.ledger.db
+      .prepare(
+        `select id from run where mode = 'research' and status = 'closed'
+           and not exists (select 1 from event where kind = 'research_final' and subject = run.id)`,
+      )
+      .all() as { id: string }[];
+    for (const { id } of closed) {
+      // Its last trials end first; a report that failed is not tried again by this process.
+      if ([...this.laneRun.values()].includes(id) || this.finalFailed.has(id)) continue;
+      try {
+        this.o.research.report(id, "final");
+      } catch (err) {
+        this.finalFailed.add(id);
+        log("scheduler", "final report of a closed research run failed", {
+          run: id,
+          error: String(err),
+        });
+      }
+    }
   }
 
   /** Checks every second while trials or a planner call are in flight (the tick may be waiting). */
@@ -1359,6 +1389,7 @@ export class Scheduler {
     await this.applyResets();
     // Stopping or draining: no new plan or trial; those running end as they would.
     if (this.halted()) return false;
+    this.finishClosedResearch();
     const inst = this.run();
     if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
