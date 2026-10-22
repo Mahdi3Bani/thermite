@@ -8,6 +8,7 @@ import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
 import { MIGRATIONS } from "./schema.ts";
+import { shownViolations, violationsOf } from "./v0.ts";
 
 /**
  * The harness ledger: the authoritative research record for one rig.
@@ -618,6 +619,14 @@ export class Ledger {
         known_flaws: a.knownFlaws ?? [],
         // What changed, bounded: the first 50 files and how many there were in all.
         ...(a.files ? { files: a.files.slice(0, 50), files_total: a.files.length } : {}),
+        // Why the static checks refused it, bounded (goal 082): control, the knowledge base and
+        // the owner see what the submitting trial saw. The record keeps them all.
+        ...(() => {
+          const refused = violationsOf(a.v0);
+          if (!refused.length) return {};
+          const shown = shownViolations(refused);
+          return { violations: shown.violations, violations_total: shown.total };
+        })(),
       });
     });
   }

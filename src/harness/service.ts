@@ -55,7 +55,7 @@ import { folderRootOf } from "./research/folder.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { ModelUsage } from "./usage.ts";
-import { checkV0 } from "./v0.ts";
+import { checkV0, violationsOf } from "./v0.ts";
 
 /** A directive set may not both avoid a direction and ask for it. */
 function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
@@ -1767,7 +1767,10 @@ export class HarnessService {
     }
   }
 
-  /** What a proposer may see about its own attempt: lifecycle, verdict and V0 findings. */
+  /**
+   * What a proposer may see about an attempt: lifecycle, verdict and V0 findings, with the
+   * violations of a refused change at the top (`violations`, all of them).
+   */
   attemptStatus(id: string): unknown {
     const a = this.ledger.getAttempt(id);
     if (!a) throw new LedgerError("not_found", `no attempt ${id}`);
@@ -1775,9 +1778,11 @@ export class HarnessService {
     return {
       attempt: id,
       run: a.run,
+      lane: a.lane ?? null,
       lifecycle: a.lifecycle,
       commit: a.commit_sha,
       v0: a.v0 ? JSON.parse(String(a.v0)) : null,
+      violations: violationsOf(a.v0),
       verdict: verdict ? { verdict: verdict.verdict } : null,
     };
   }

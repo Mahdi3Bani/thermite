@@ -1090,6 +1090,20 @@ export function timeline(
 }
 
 /**
+ * Why the static checks refused a change before building (goal 082): each violation, as the
+ * submitting trial got it, and how many more when the rig sent only the first 20.
+ */
+function refusedBlock(a: AttemptView): string {
+  if (!a.violations_total) return "";
+  const more = a.violations_total - a.violations.length;
+  return `<div class="block"><div class="head"><h2>Refused before building</h2><span class="n">${a.violations_total}</span><span class="right">the static checks: the editable paths, the forbidden patterns, no binary files, links or submodules</span></div><div class="card flat">${a.violations
+    .map((v) => `<div class="fw">${esc(v)}</div>`)
+    .join(
+      "",
+    )}${more > 0 ? `<div class="fw muted small">and ${more} more: the rig's record of the attempt keeps them all</div>` : ""}</div></div>`;
+}
+
+/**
  * One attempt, in full: what it does and where it stands in one sentence, the decision it waits
  * for, then what happened to it, the goals it moves, the files it changes and its facts.
  */
@@ -1239,6 +1253,7 @@ export function attemptDetail(
 <p class="run-said">${said}</p>
 ${opts.decision ? `<div class="block"><div class="head"><h2>Your decision</h2></div>${opts.decision.box}</div>` : ""}
 <div class="cols run-cols"><div>
+${refusedBlock(a)}
 ${a.known_flaws.length ? `<div class="block"><div class="head"><h2>Flaws its author declared</h2><span class="n">${a.known_flaws.length}</span></div><div class="card flat">${a.known_flaws.map((f) => `<div class="fw">${esc(f)}</div>`).join("")}</div></div>` : ""}
 <div class="block"><div class="head"><h2>What happened to it</h2></div><div class="card">${stepper}</div>
 <details class="card flat matrix" data-k="events-${esc(a.id)}" style="margin-top:10px"><summary>Every event <span class="muted small">${history.length}</span></summary>${timeline(

@@ -1,5 +1,6 @@
 import { directionOf, isLegacyRule, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { type Hardware, readHardware } from "../core/hardware.ts";
+import { clip } from "../core/kb-index.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
@@ -54,6 +55,13 @@ export interface AttemptView {
   /** The files it changes, with their line counts (null for a binary file), and how many. */
   files: { path: string; added: number | null; removed: number | null }[];
   files_total: number;
+  /**
+   * Why the static checks refused it before building (goal 082): the first 20 violations, each
+   * cut to 300 characters, and how many there were. Empty, and 0, when it was not refused or its
+   * rig's harness is older.
+   */
+  violations: string[];
+  violations_total: number;
 }
 
 /** A judge job, from its queued, leased and finished events. */
@@ -687,6 +695,15 @@ export function rigView(
               )
             : [],
           files_total: typeof b.files_total === "number" ? b.files_total : 0,
+          violations: Array.isArray(b.violations)
+            ? b.violations.slice(0, 20).map((v) => clip(String(v), 300))
+            : [],
+          violations_total:
+            typeof b.violations_total === "number"
+              ? b.violations_total
+              : Array.isArray(b.violations)
+                ? b.violations.length
+                : 0,
         };
         attempts.set(a.id, a);
         inst(a.run).attempts.push(a);

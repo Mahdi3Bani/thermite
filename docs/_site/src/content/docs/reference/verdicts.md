@@ -87,7 +87,7 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | State | Meaning | Dashboard says |
 | --- | --- | --- |
 | `queued` | Waiting for the judge. Also after a screen again or a retry | "waiting for the judge" |
-| `rejected_v0` | Refused by the static checks before any build: a file outside the editable paths, a forbidden pattern in an added line, a binary file, a link or a submodule, or no change at all. Kept, never built, no verdict | "rejected v0" |
+| `rejected_v0` | Refused by the static checks before any build: a file outside the editable paths, a forbidden pattern in an added line, a binary file, a link or a submodule, or no change at all. Kept, never built, no verdict. Its violations, such as `binary change: assets/table.bin`, are in its record: see [Why a change was refused](#why-a-change-was-refused) | "rejected v0" |
 | `duplicate` | The same change as an earlier attempt of the run. Not judged again | "the same change as an earlier attempt" |
 | `building` | The judge is building the change and the champion | "being built" |
 | `gating` | Hill climb: each case runs once for both; the change must pass the kit's check | "gating" |
@@ -103,6 +103,29 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | `errored` | Infrastructure failed twice. Not counted against the research | "failed in the judge" |
 
 A lane's next trial starts only once its last attempt is **settled**: `judged`, `promoted`, `rejected_v0`, `duplicate`, `errored`, `awaiting_approval`, `awaiting_audit` or `audit_blocked`. Attempts in `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` count as **open** against the contract's `budget.max_open_attempts`.
+
+### Why a change was refused
+
+The static checks give one violation for each problem they find:
+
+| Violation | When |
+| --- | --- |
+| `no files changed` | The change changes no file |
+| `binary change: <path>` | A file the checks cannot read as text, so they cannot scan it for forbidden patterns |
+| `symlink or submodule: <path>` | A link, which could point a build or the judge at private files, or a submodule, which pulls in other code |
+| `path not editable: <path>` | A file outside the contract's `editable_paths` |
+| `forbidden pattern <pattern>: <line>` | An added line that matches one of the contract's `forbidden_patterns`, with the line's first 120 characters |
+
+The violations go everywhere the change is looked at, not only to the trial that submitted it:
+
+- **The submitting trial** gets them all in its answer (`violations`).
+- **The attempt's event**, `attempt_recorded`, has the first 20, each cut to 300 characters, in `violations`, and how many there were in `violations_total`. Control reads them from there.
+- **On the dashboard**, the attempt's page lists them under **Refused before building**, with `and <n> more` past the first 20, and the run's **History** says `The static checks refused it: <the first one>, and <n> more.`
+- **Over REST and MCP**, each attempt in [`get_run`](mcp-tools.md#get_run) and in `GET /v1/rigs/<rig>/view` has `violations` and `violations_total`.
+- **In the knowledge base**, the attempt's item says `Refused before building: …` ([Knowledge base](knowledge-base.md)).
+- **The agents** see them too: a lane's brief lists its recent attempts, a refused one with `Refused before building: …` (the first 20); the planner's and the teachers' evidence give each refused attempt's first 5 under `refused`, with `total`; and a worker's `status` of any attempt of its campaign answers with all of them.
+
+An attempt reported by an older harness has none in its event, and shows none.
 
 ### Why a result waits
 

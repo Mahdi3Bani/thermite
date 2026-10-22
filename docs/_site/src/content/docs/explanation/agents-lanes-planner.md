@@ -90,7 +90,7 @@ The owner wanted one list of all the upcoming experiments and of those already t
 
 The **planner** coordinates the lanes. It is one model call at the start of each round, with no memory of its own. Each time, the harness builds its input from the ledger:
 
-- the objective, the champion, the approach families tried and their verdicts, recent attempts from every lane, and each lane's best result;
+- the objective, the champion, the approach families tried and their verdicts, recent attempts from every lane (a change the static checks refused with its first five violations), and each lane's best result;
 - the queue: up next in order, the lanes' ideas, what each lane is on now, and the newest experiments tried, with the judge's verdict and change for each attempt;
 - each lane's last direction and experiment;
 - the rules in force, each naming a direction, and any old rule in the owner's own words, marked legacy;
@@ -205,7 +205,7 @@ Past research reaches a run as data too. Control keeps a folder for each campaig
 Thermite's rule is that **the harness owns all research state**. Every agent call, worker or planner, starts fresh from context that the harness builds out of its ledger. There are three reasons:
 
 - **Nothing is lost when a session goes wrong.** A crashed, confused or stuck session holds no state, so it can simply end. The next trial starts from what the judge recorded, not from what the last agent believed. After a harness restart, unfinished trials are marked as interrupted, their experiments go back to the top of the queue, and the next plan is built from the same ledger.
-- **Wide search, not early convergence.** Each worker sees only its own lane's attempts, so lanes do not all chase the first idea that worked. The planner is the one place that sees every lane and the whole queue, and it decides from the record, not from a conversation it has been part of for hours.
+- **Wide search, not early convergence.** Each worker's brief shows only its own lane's attempts, so lanes do not all chase the first idea that worked. A worker can still look up any attempt of its campaign by its id, such as one a hand-out names, with its `status` tool. The planner is the one place that sees every lane and the whole queue, and it decides from the record, not from a conversation it has been part of for hours.
 - **What carries forward is what the judge confirmed.** A worker's results come from verdicts and the judge's reasons, never from another agent's account of its own success. What other agents wrote, such as their field notes and past research, reaches a worker only as data to weigh, and no note is ever a verdict.
 
 The cost is repeated reading. Each trial reads the relevant code again, which takes time and model tokens, and an insight the agent writes nowhere is gone when the trial ends. The lane's build cache, the judge's reasons in each brief and the agents' field notes keep that cost down: a note outlives its trial, and its run. The queue does the same for the planner: what to try next, and what was tried, carry over between rounds in the ledger, not in any agent.

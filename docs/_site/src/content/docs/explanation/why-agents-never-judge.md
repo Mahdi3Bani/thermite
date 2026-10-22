@@ -23,7 +23,7 @@ So in Thermite, agents only propose. A **judge**, which is ordinary code that th
 | Read and edit the project in their own workspace, build it and test their changes | Read or change the judge, the project's [kit](kits.md) or its hidden test cases |
 | Use the measuring device for their own test runs while the judge is not using it, or a device of their own on a rig that has one | Run anything on the judge's device while it is timing |
 | Submit a change, with what they expect from it and any flaws they know of | Submit a number that counts |
-| See the verdict and the judge's reasons for their own lane's attempts | See hidden test results, other agents' workspaces or any credentials |
+| See the verdict and the judge's reasons for their own lane's attempts, and the state, verdict and refusals of any attempt of their campaign | See hidden test results, other agents' workspaces or any credentials |
 | Work on the experiment the planner gives them, and propose ideas for the run's queue | Decide that a campaign is finished |
 
 The [isolation](isolation.md) page explains how a rig enforces this: each agent works as its own operating-system user, with no way into the judge's files.

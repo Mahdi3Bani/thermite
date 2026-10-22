@@ -195,10 +195,13 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     }
     case "attempt_recorded": {
       const flaws = Array.isArray(b.known_flaws) ? b.known_flaws.length : 0;
+      // Why the static checks refused it (goal 082): the first violation, and how many more.
+      const refused = Array.isArray(b.violations) ? b.violations.map(String) : [];
+      const total = typeof b.violations_total === "number" ? b.violations_total : refused.length;
       return s(
         // A known attempt is named by its hypothesis where the sentence is shown; else quote it.
-        `${b.lane ? String(b.lane) : "Someone"} submitted ${e.subject}${b.hypothesis && !att(e.subject)?.hypothesis ? `: "${clip(String(b.hypothesis), 160)}"` : "."}${flaws ? ` It declares ${flaws} known flaw${flaws > 1 ? "s" : ""}.` : ""}`,
-        "",
+        `${b.lane ? String(b.lane) : "Someone"} submitted ${e.subject}${b.hypothesis && !att(e.subject)?.hypothesis ? `: "${clip(String(b.hypothesis), 160)}"` : "."}${flaws ? ` It declares ${flaws} known flaw${flaws > 1 ? "s" : ""}.` : ""}${refused.length ? ` The static checks refused it: ${clip(refused[0] as string, 200)}${total > 1 ? `, and ${total - 1} more` : ""}.` : ""}`,
+        refused.length ? "warn" : "",
         { attempt: String(e.subject), run: String(b.run ?? "") },
       );
     }
