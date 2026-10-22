@@ -364,6 +364,93 @@ describe("advisors", () => {
     );
   });
 
+  /** A rig whose large win waits for an audit, and a command-line auditor that prints `script`. */
+  async function heldForAudit(script: string) {
+    const env = makeJudgeEnv({
+      contract: {
+        acceptance: {
+          looks: [3, 6],
+          confirm_blocks: 4,
+          audit: { ratio_to_median: 3, absolute: 0.15 },
+        },
+      },
+    });
+    await env.service.applyCommand(env.assign);
+    const id = (
+      await env.service.submitAttempt(
+        { run: "js-1", patch_base64: env.patch(FAST_KERNEL), hypothesis: "h", known_flaws: [] },
+        "t",
+      )
+    ).attempt;
+    await env.drain();
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
+    writeFileSync(join(dir, "auditor.mjs"), script);
+    const advisors = AdvisorsConfig.parse({
+      auditor: {
+        name: "cli-auditor",
+        runtime: "cli",
+        argv: [process.execPath, join(dir, "auditor.mjs")],
+        restricted: true,
+      },
+    });
+    const cfg = {
+      harnessUrl: "http://harness",
+      harnessToken: tokens.supervisor,
+      home: mkdtempSync(join(tmpdir(), "thermite-sup-")),
+      advisors,
+      retryMs: 0,
+    };
+    const audit = Number(
+      env.ledger.db.prepare("select id from audit where attempt = ?").get(id)?.id,
+    );
+    return { env, id, audit, cfg };
+  }
+
+  test("an audit's tries are its own: an earlier audit of the same attempt does not use them up (goal 079)", async () => {
+    const { env, id, cfg } = await heldForAudit(
+      `console.log(JSON.stringify({decision:"block",reasons:"the inner loop was removed",citations:["diff"]}));`,
+    );
+    // An earlier audit of this attempt (another confirmation) was tried five times, just now.
+    const state = emptyAdviseState();
+    state.tried[`audit:${id}`] = new Date().toISOString();
+    state.tries[`audit:${id}`] = 5;
+    const next = await adviseOnce({ ...cfg, fetchImpl: harnessFetch(env) }, state);
+    assert.equal(next.stats.audits, 1, "the open audit is tried");
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "audit_blocked");
+    assert.equal(next.tries[`audit:${id}`], undefined, "the old marker is gone");
+  });
+
+  test("an audit whose last try failed reaches the owner even when the first hand-off fails (goal 079)", async () => {
+    const { env, id, audit, cfg } = await heldForAudit(
+      `console.log("no answer"); process.exit(3);`,
+    );
+    // The harness refuses the first hand-off to the owner, as if it were away.
+    const inner = harnessFetch(env);
+    let refused = 0;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const body = String((init as RequestInit | undefined)?.body ?? "");
+      if (String(input).endsWith("/v1/audits") && body.includes("needs_owner") && !refused++)
+        return new Response(JSON.stringify({ error: "the harness is away" }), { status: 503 });
+      return inner(input, init);
+    };
+    let state = emptyAdviseState();
+    for (let n = 1; n <= 5; n++) state = await adviseOnce({ ...cfg, fetchImpl }, state);
+    assert.equal(refused, 1, "the fifth failure was handed to the owner, and refused");
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(state.tries[`audit:${audit}`], 5);
+    // The next round hands it again: it reaches the owner, with the auditor's error.
+    state = await adviseOnce({ ...cfg, fetchImpl }, state);
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_approval");
+    assert.match(
+      String(env.ledger.latestEventBody("promotion_pending", id)?.reason),
+      /the auditor could not answer after 5 tries: no valid answer: no answer/,
+    );
+    // Closed: its markers go.
+    state = await adviseOnce({ ...cfg, fetchImpl }, state);
+    assert.equal(state.tries[`audit:${audit}`], undefined);
+  });
+
   test("the review panel passes a subjective goal, accepted with no owner step (goal 079)", async () => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
     await env.service.applyCommand(env.assign);

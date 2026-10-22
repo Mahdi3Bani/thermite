@@ -78,7 +78,7 @@ The rig's auditor, one of its [advisors](../operate/advisors.md), answers each a
 
 A rig with no auditor, or with its **Auditor** switched off on **Edit rig**, has no audits: the change becomes the champion, or waits where the run asks you. Its record says why, with the event `audit_skipped`: `had no audit: this rig has no auditor`. The rig's supervisor tells the harness which advisors it has at each round, and again every minute. Until it first says so after a start, an audit holds the change; once it says the rig has no auditor, the held changes go on by the run's rules. A supervisor of an earlier version never says it: then an audit waits for you, with `This rig has no auditor, thus you must make the decision.`
 
-An auditor that fails to answer an audit is tried up to five times in all, 30 minutes apart. After the last try, the change waits for you as **Your decision**, with the auditor's error.
+An auditor that fails to answer an audit is tried up to five times in all, 30 minutes apart. After the last try, the change waits for you as **Your decision**, with the auditor's error. Each audit counts its own tries: a new audit of the same change, after a new confirmation, starts again at one. If the hand-off to you does not reach the rig, the supervisor tries it again every 30 minutes until the change is in **Needs you**.
 
 **Make it the champion** decides in place of the auditor. **Overrule the auditor**, on a **Blocked** row, makes a blocked change the champion anyway.
 

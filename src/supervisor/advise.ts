@@ -81,6 +81,11 @@ export interface AdviseState {
   ideasSeen?: Record<string, number> | undefined;
   /** Runs already told their teachers read no code because they may fetch any page. */
   codeOffSaid?: Record<string, boolean> | undefined;
+  /**
+   * Each open audit's last error, by its retry key (goal 079): the words its hand-off to the
+   * owner gives once its tries are spent.
+   */
+  auditErrors?: Record<string, string> | undefined;
   stats: {
     teacher_runs: number;
     directive_sets: number;
@@ -724,8 +729,11 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
 
   // The auditor: open audits. An audit can block, never pass; the harness enforces that too.
   if (cfg.advisors.auditor && !overBudget()) {
+    const auditor = cfg.advisors.auditor;
     const { audits } = (await api("GET", "/v1/audits/pending")) as {
       audits: {
+        /** The audit's own id: each confirmation of an attempt has an audit of its own. */
+        id?: number;
         attempt: string;
         run?: string;
         owner_messages?: OwnerMessage[];
@@ -734,23 +742,66 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     };
     // The owner's messages go to the auditor once, with the first audit that gets them.
     const told = new Set<number>();
+    // Each audit's tries are its own, by its id (goal 079): a new audit of the same attempt starts
+    // afresh. The markers of audits no longer open go.
+    const keyOf = (pkg: { id?: number; attempt: string }) => `audit:${pkg.id ?? pkg.attempt}`;
+    const open = new Set(audits.map(keyOf));
+    next.auditErrors ??= {};
+    const errors = next.auditErrors;
+    for (const k of [...Object.keys(next.tried), ...Object.keys(errors)]) {
+      if (!k.startsWith("audit:") || open.has(k)) continue;
+      delete next.tried[k];
+      delete next.tries[k];
+      delete errors[k];
+    }
     /**
-     * An audit the auditor could not answer, its last try: the owner decides (goal 079). Hands-off
-     * leaves no other step, so it goes to the owner as a failure, with the error.
+     * An audit whose tries are spent goes to the owner (goal 079), with the last error: hands-off
+     * leaves no other step. A hand-off that does not reach the harness is tried again every
+     * retryMs, while the audit is still open: an audit never waits with nobody told.
      */
-    const failed = async (attempt: string, key: string, err: unknown, run?: string) => {
-      fail(`audit of ${attempt}`, err, run);
-      if ((next.tries[key] ?? 0) < MAX_TRIES || !cfg.advisors.auditor) return;
-      await api("POST", "/v1/audits", {
-        attempt,
-        decision: "needs_owner",
-        reasons: `the auditor could not answer after ${MAX_TRIES} tries: ${clip(err instanceof Error ? err.message : String(err), 500)}`,
-        citations: [],
-        auditor: cfg.advisors.auditor.name,
-      }).catch((e) => fail(`audit of ${attempt}: handing it to the owner`, e, run));
+    const toOwner = async (pkg: { attempt: string; run?: string }, key: string) => {
+      next.tried[key] = new Date().toISOString();
+      try {
+        await api("POST", "/v1/audits", {
+          attempt: pkg.attempt,
+          decision: "needs_owner",
+          reasons: `the auditor could not answer after ${MAX_TRIES} tries: ${errors[key] ?? "no detail"}`,
+          citations: [],
+          auditor: auditor.name,
+        });
+        say(
+          pkg.run,
+          "status",
+          `audit of ${pkg.attempt}: the auditor could not answer after ${MAX_TRIES} tries, so it waits for the owner`,
+        );
+      } catch (e) {
+        fail(
+          `audit of ${pkg.attempt}: handing it to the owner (tried again in ${Math.round(retryMs / 60_000)} minutes)`,
+          e,
+          pkg.run,
+        );
+      }
+    };
+    /** An audit the auditor could not answer: tried again later, or, its last try, the owner's. */
+    const failed = async (
+      pkg: { attempt: string; run?: string },
+      key: string,
+      err: unknown,
+    ): Promise<void> => {
+      fail(`audit of ${pkg.attempt}`, err, pkg.run);
+      errors[key] = clip(err instanceof Error ? err.message : String(err), 500);
+      if ((next.tries[key] ?? 0) < MAX_TRIES) return;
+      await toOwner(pkg, key);
     };
     for (const pkg of audits) {
-      const key = `audit:${pkg.attempt}`;
+      const key = keyOf(pkg);
+      // Its tries are spent and it is still open: its hand-off to the owner did not reach the
+      // harness. It is handed again.
+      if ((next.tries[key] ?? 0) >= MAX_TRIES) {
+        const t = next.tried[key];
+        if (!t || now - Date.parse(t) >= retryMs) await toOwner(pkg, key);
+        continue;
+      }
       if (!due(key)) continue;
       mark(key);
       const owner = (pkg.owner_messages ?? []).filter((m) => !told.has(m.id));
@@ -769,7 +820,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         count(r);
         await usageOut(pkg.run, `audit ${pkg.attempt}`, "auditor", r.usage);
         if (!r.output) {
-          await failed(pkg.attempt, key, r.error, pkg.run);
+          await failed(pkg, key, r.error);
           continue;
         }
         const posted = (await api("POST", "/v1/audits", {
@@ -777,7 +828,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           decision: r.output.decision,
           reasons: r.output.reasons,
           citations: r.output.citations,
-          auditor: cfg.advisors.auditor.name,
+          auditor: auditor.name,
         })) as { effect?: string };
         s.audits++;
         // Read only with the posted audit: an audit that fails to post gives them again.
@@ -786,7 +837,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             pkg.run,
             "auditor",
             owner.map((m) => m.id),
-            r.output.answers.map((a) => ({ ...a, advisor: cfg.advisors.auditor?.name })),
+            r.output.answers.map((a) => ({ ...a, advisor: auditor.name })),
           );
           for (const m of owner) told.add(m.id);
         }
@@ -808,7 +859,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             : undefined;
         // Its field notes, once the audit is posted.
         const noted = pkg.run
-          ? await notesOut(pkg.run, "auditor", cfg.advisors.auditor.name, r.output.journal)
+          ? await notesOut(pkg.run, "auditor", auditor.name, r.output.journal)
           : undefined;
         record(`audit-${pkg.attempt}`, {
           decision: r.output,
@@ -818,7 +869,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           ...(r.compactions?.length ? { compactions: r.compactions } : {}),
         });
       } catch (err) {
-        await failed(pkg.attempt, key, err, pkg.run);
+        await failed(pkg, key, err);
       }
     }
   }
@@ -913,11 +964,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       }
     }
   }
-  // Old retry markers go after a week.
+  // Old retry markers go after a week (an open audit's are renewed by each try or hand-off; a
+  // closed audit's went above).
   for (const [k, t] of Object.entries(next.tried)) {
     if (now - Date.parse(t) > 7 * 24 * 3_600_000) {
       delete next.tried[k];
       delete next.tries[k];
+      delete next.auditErrors?.[k];
     }
   }
   return next;
