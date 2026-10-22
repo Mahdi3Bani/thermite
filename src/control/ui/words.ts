@@ -348,7 +348,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       const gs = Array.isArray(b.goals) ? (b.goals as { status?: string }[]) : [];
       const met = gs.filter((g) => g.status === "met").length;
       return s(
-        `The judge checked champion #${String(b.champion_seq ?? "?")}: ${met} of ${gs.length} goals met${b.complete ? ", every required goal" : ""}.`,
+        `The judge checked champion #${String(b.champion_seq ?? "?")}: ${met} of ${gs.length} goals met${b.complete ? ", every required goal" : ""}.${b.complete && b.confirming ? " It checks the champion a second time before the run closes; no new trial starts until then." : ""}`,
         b.complete ? "ok" : "",
         { run: String(e.subject) },
       );

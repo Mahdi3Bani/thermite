@@ -72,6 +72,29 @@ The judge checks the change against each goal and compares the result with what 
 
 A goal checked by a metric threshold whose `cells` name both measured and held-out cases is screened on its measured cases and confirmed on its held-out ones. The held-out pass checks only the goals the change newly met.
 
+### The goal report
+
+The judge also checks every goal on the champion: a **validation**, once for each champion (the starting point, then each promotion) and again after a validation that failed. Its event `goal_report` has the body `{run, champion_seq, goals, complete, confirming?}`, and each goal is `{goal, description, status, reasons, values?}`. The run's **Goals** block shows each goal's reasons under it, met or not; the planner reads the report, and each worker's brief has every goal's status and reasons.
+
+| A goal checked by | Its reasons | `values` |
+| --- | --- | --- |
+| A metric threshold | `<metric> <op> <value>: ` and each case's mean and 95% interval: `big: 4.51235e+7 [4.49012e+7, 4.53458e+7]` | none |
+| A kit verifier, met | `verifier <name> passed on <cases>: ` and each case's values: `small: ops_per_s 4.51235e+7, sum 6.00000e+7; big: ops_per_s 4.40000e+7, sum 3.00000e+8` | each case's `{cell, ok, metrics}` |
+| A kit verifier, not met | each case that failed and why (`quick: crash: killed: timeout`), then `; measured: ` and the values of the cases that gave some | the same |
+| A kit verifier whose gate did not pass | `not run: it requires <verifiers>, which did not pass` | none |
+| The review panel | what the review panel and the owner decided | none |
+
+- **A case's values** are the kit's metrics as the judge works them out, by name, in the kit's order; the reasons give six significant figures. A case whose output the kit's check refused gives the numbers its check reported for the kit's metrics taken from the check (`from: "check"`), so an unmet goal shows by how much; a case that crashed or ran out of time gives none. At most 100 cases a goal.
+- **Only measured cases.** A held-out case runs only at confirmation, and the judge keeps none of its values, not even for the owner: [Held-out failures](#held-out-failures).
+- **The rig's ledger** keeps every goal check, the champion's and each attempt's, with the same reasons, in its `goal_check` table.
+
+**Completion is checked twice.** When a validation finds every required goal met (`complete: true`), the report has `confirming: true`, and the judge queues a second, independent validation of the same champion. Until it is done, the run starts no new round and no new trial. A trial at work goes on. The run's page says `Champion #<n> met every required goal, and the judge is checking it a second time: no new trial starts until that check is done.`, and **Live** says `no new trial starts: the judge is confirming that champion #<n> meets every required goal; …`.
+
+- If the second validation agrees, the run closes (`goal_complete`).
+- If it does not, or it fails, the lanes go on, and **Live** says `trials start again: the judge's confirmation of champion #<n> did not close the run`.
+- A second validation queued for an earlier champion, when a promotion came first, counts as the first validation of the champion now: the run never closes on one validation.
+- The second validation runs the measured cases only, as the first does.
+
 ### Held-out failures
 
 A **held-out case** (the contract's `held_out_cells`; the dashboard calls them hidden tests) runs only at confirmation. When one fails, the judge records the case's name and its **kind** of failure, from a closed list, and never the case's inputs, its output or the check's words:
@@ -196,7 +219,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | | The judge's time on the run reaches `budget.device_hours` | `the device-hours budget is spent` |
 | | The agents' model spending reaches `budget.llm_usd` | `the model budget is spent ($<amount>)` |
 | | A full reset is about to wipe the rig | `wiping` |
-| `closed` | A goal campaign meets its goals, and a second, independent check agrees | `every required goal is met` |
+| `closed` | A goal campaign meets its goals, and a second, independent check agrees ([The goal report](#the-goal-report)) | `every required goal is met` |
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
 | | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
 | | A research campaign's time is over | `the research window is over` |

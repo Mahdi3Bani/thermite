@@ -282,6 +282,7 @@ import {
   attemptHref,
   attemptRows,
   cap,
+  confirmingWords,
   type Forms,
   goalState,
   jobHtml,
@@ -777,7 +778,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${i.goals.filter((g) => g.status === "met").length} of ${i.goals.length} met</span><span class="right">the judge's check of champion #${esc(i.goals_seq ?? "?")}${i.goals_at ? `, ${esc(ago(i.goals_at, now))} ago` : ""}</span></div><div class="card flat">${i.goals
           .map((g) => {
             const st = goalState(g);
-            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${g.status === "met" ? "" : `<div class="gl-why ${st.tone}">${moreText(g.reasons, 400)}</div>`}${howFor(g.goal)}</span></div>`;
+            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}<div class="gl-why ${st.tone}">${moreText(g.reasons, 400)}</div>${howFor(g.goal)}</span></div>`;
           })
           .join("")}</div></div>`
       : i.mode === "goal"
@@ -928,6 +929,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
           ? `${lanesAtWork} lane${lanesAtWork === 1 ? " is" : "s are"} at work.`
           : "No lane is at work."
         : `It is ${esc(runStatusText(i))}.`,
+      i.status === "running" ? confirmingWords(i) : "",
       judging
         ? `The judge is ${esc(jobText(judging).replace(/^[A-Z]/, (x) => x.toLowerCase()))}.`
         : "",

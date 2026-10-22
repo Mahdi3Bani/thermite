@@ -1,0 +1,67 @@
+---
+id: "086"
+title: "A goal report keeps what it measured; lanes wait while a met champion is confirmed"
+status: VERIFIED
+version: "0.1.0"
+depends_on: ["082"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+1. **A met code-verifier goal keeps its values.** For each goal checked by a kit verifier, the judge keeps the metrics of each public cell's run, met or unmet: in the goal's reasons, in the goal report and its `goal_report` event. The dashboard shows them where the run's goals are listed, in plain text beside the reasons, with no new screen; `get_run` and the REST rig view give them. A metric threshold goal already reports its values: a code goal's values read the same way. Values of public cells may go to the agents (the planner, the workers). A held-out cell's values are never kept or shown anywhere.
+2. **Lanes wait while a champion that met every goal is confirmed.** In goal mode, when a validation of the champion has found every required goal met and only the judge's second, confirming validation is left, the scheduler starts no new trial for that run until it is done. A trial already running goes on. If the confirmation does not agree, or fails, trials start again. The run says why, in words, where it says what is at work.
+
+## Why
+
+From a goal campaign that closed on 2026-10-22:
+
+- **A met goal's report had no numbers.** A goal checked by the kit's verifier was reported only as `verifier <name> passed on <cells>`: the metrics each cell's run produced, there a perplexity ratio, were dropped. The owner could not see by how much the goal was met, and the lanes could not see how much room a change had before it lost the goal. A metric threshold goal gave its values; a verifier goal did not.
+- **A trial ran after the campaign had, in effect, finished.** A validation of the champion found every required goal met. While the judge's confirming validation was pending, the scheduler started another trial. It ran 50 minutes and used about 139,000 input tokens, and the run's close killed it. Its work could never count.
+
+## Done when
+
+- [x] A code verifier's goal keeps each public cell's metrics, met or unmet: in its reasons, read as a threshold goal's are; as `values` in the goal report and its `goal_report` event; and in the ledger's goal checks.
+- [x] A held-out cell's values are kept nowhere: no report, event, goal check, held-out record or agent input.
+- [x] The run's **Goals** block shows each goal's reasons, met or not, with its values; `get_run` and `GET /v1/rigs/<rig>/view` give `values`.
+- [x] The planner and each worker's brief read the values of public cells.
+- [x] In goal mode, while the confirming validation of a champion that met every required goal is queued or running, the scheduler starts no new trial for that run; a trial already running goes on; when the confirmation does not agree or fails, trials start again. **Live** and the run's page say why.
+- [x] Tests: values kept for met and unmet code goals; held-out values never in reports, events or agent input; the dashboard shows them; the scheduler holds while the confirmation is pending and goes on after a failed one.
+- [x] The pages on goal reports and their event, verdicts, the run's Goals block and when trials start match the code; the changelog has the change.
+
+## Decisions
+
+- 2026-10-22, lead, in the build brief: keep each public cell's metrics for a code goal, met or unmet, and show them where the run's goals are listed, in plain text beside the reasons, with no new screen. Never keep or show a held-out cell's values; the held-out pass keeps names and kinds only (goal 082). Values of public cells may go to the agents. While a met champion is confirmed, start no new trial for the run; a trial running goes on; trials start again if the confirmation fails. Say why where the run says what is at work.
+- 2026-10-22, builder, within the brief:
+  - **Values read as a threshold goal's.** In the reasons, with six significant figures. Met: `verifier <name> passed on <cells>: <cell>: <metric> <value>, …; …`. Unmet: each failed cell and why, as before, then `; measured: ` and the values. The report and its event also carry them as `values`: each cell `{cell, ok, metrics}`, the kit's metrics by name, at most 100 cells. The values are in the reasons so that every reader of a goal report gets them: the Goals block, the planner, the workers' briefs, REST and MCP.
+  - **A refused output's values.** A cell whose output the kit's check refused gives the numbers its check reported for the kit's metrics taken from the check (`from: "check"`), so an unmet goal shows by how much. A crash or a timeout gives none. The check is the judge's own program, and the cell is public.
+  - **The held-out pass collects no values at all,** so none can leak. Its record keeps names and kinds, as goal 082 decided.
+  - **A met goal's reasons are shown.** On the run's **Goals** block a met goal had no line; it now shows its reasons in muted text, a threshold goal's too. Each worker's brief likewise gives a met goal's reasons, so a lane sees how much room a change has before it loses the goal.
+  - **What holds the lanes** is a confirming validation (`confirm: true`) queued or running for the current champion. It holds a new round's planning too: a planner call then would be lost the same way. A confirming validation that fails, or does not agree, ends the hold.
+  - **Where the run says why.** No place yet says why nothing is at work: that is goal 072. So the scheduler writes a **Live** status line, as it does for its other waits, which the run's **Now** block shows as the planner's line: `no new trial starts: the judge is confirming that champion #<n> meets every required goal; …`, then `trials start again: …` when the hold ends without closing the run. The run's summary line on its page says it too, from control's view (`goals_confirming`, set from the goal report's `confirming`, and cleared by the next report or a failed validation), and so do `get_run` and the REST rig view. **History** says that the judge checks the champion a second time.
+  - **A confirmation queued for an earlier champion** is now a first validation of the current one. Before, if a promotion came between a validation that met every goal and its confirmation, the confirmation validated the new champion and could close the run on that one validation. Found while reading how completion is confirmed.
+  - **Screens.** The changes are a line in the existing Goals block and a sentence in the run's existing summary line, on the patterns already there, so no mockup was made first.
+
+## Open questions
+
+- **Held-out cells on the final champion.** The confirming validation of a champion that meets every goal runs only public cells, as the first validation does: held-out cells never run on the final champion. An attempt runs them at its confirmation, but only for the goals it gains. Proposal: the confirming validation also runs the held-out cells, and the run closes only if they pass. The owner decides. Not built.
+- The owner looks at the new lines: a met goal's values in the run's **Goals** block, and the run's summary line while a champion is confirmed (`src/control/goal-report-ui.test.ts` builds both).
+
+## Progress
+
+- 2026-10-22: Goal written from a goal campaign that closed on 2026-10-22. Building.
+- 2026-10-22: Built and verified.
+  - Values: `src/harness/judge/goal-values.ts` (`runValues`, `valuesText`, `parseGoalValues`), `src/harness/judge/judge.ts` (`verifyGoals`, `validate`), `src/harness/agents/scheduler.ts` (the worker's brief), `src/harness/agents/planner.ts` (the planner's prompt), `src/control/views.ts` (`values`), `src/control/dashboard.ts` (the Goals block).
+  - The hold: `src/harness/agents/scheduler.ts` (`waitingForConfirmation`), `src/harness/judge/judge.ts` (a confirmation of an earlier champion), `src/control/views.ts` (`goals_confirming`), `src/control/ui/operator.ts` (`confirmingWords`), `src/control/ui/words.ts` (History), `src/control/dashboard.ts` (the run's summary line).
+  - Tests: `src/harness/judge/goal-report.test.ts` (a real goal campaign with a met and an unmet code goal, a refused output's values, a held-out cell whose values reach no report, event, goal check, held-out record, agent input, REST view or page; the Goals block through the supervisor's relay; a confirmation queued for an earlier champion; the helpers), `src/harness/agents/scheduler.test.ts` (no new trial while the confirmation is queued or running, the trial at work not stopped, trials again after a failed one; no hold for another champion's confirmation; a met goal's values in the worker's brief), `src/control/goal-report-ui.test.ts` (the Goals block, REST and MCP, the run's summary line and History while confirming, and its end).
+  - Checks before each commit: typecheck, Biome, the public check (and the maintainers' private denylist over the diff and the commit messages), the touched test files, `npm run docs:build` and `npm run docs:check`. The judge, agents and steering compose acceptances run at roll time.
+  - Pages: Verdicts and states (a new section, The goal report), Limits and pacing, Campaign modes, Agents, lanes and the planner, the MCP tools and REST API references, Your first goal campaign, the roadmap; the changelog.
+
+---
+
+Run with `/goal Complete docs/plan/goals/086-goal-report-values-and-confirmation-wait.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

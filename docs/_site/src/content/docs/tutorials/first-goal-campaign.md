@@ -176,12 +176,12 @@ It takes less than a minute. Stay on the page of `goal-1`. Press **refresh** unt
 
 1. The judge screens your change: it builds it and checks the goal. It says the change `looked like goal progress; being confirmed on fresh runs. Newly met: faster.`
 2. It checks the change again on fresh runs: `confirmed: it meets more goals and loses none. Newly met: faster.` Then your change `became champion #2`. Champion #1 was the project as it started.
-3. The judge checks the goals of the new champion: `The judge checked champion #2: 1 of 1 goals met, every required goal.`
+3. The judge checks the goals of the new champion: `The judge checked champion #2: 1 of 1 goals met, every required goal. It checks the champion a second time before the run closes; no new trial starts until then.`
 4. It checks them a second time, because ending a campaign is final and one check is not enough. The last three lines come at the same moment: `Run goal-1 closed: every required goal is met.`, `Every required goal is met: the campaign is complete.`, and the second check's `1 of 1 goals met, every required goal`.
 
 To see the whole story, from `Run goal-1 started`, open the run's **History** tab: it keeps every line, also newest first.
 
-The run's state is now **Finished**. On the run's **Overview** tab, the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more. In the table, the row for **smoke-cpu-goal** says `1 paused` and `1 finished` under **Runs**, and `1/1 goals met` under **Best so far**. The paused run is `goal-start-1`, which you left paused in step 5. It uses nothing while it is paused, but it keeps the campaign's row under **Active and paused**, and the sidebar shows the campaign as **Paused**. Nothing more runs: `goal-1` stopped once its goal was met.
+The run's state is now **Finished**. On the run's **Overview** tab, the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`, and under it the line with the speed the judge measured, now above your goal. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more. In the table, the row for **smoke-cpu-goal** says `1 paused` and `1 finished` under **Runs**, and `1/1 goals met` under **Best so far**. The paused run is `goal-start-1`, which you left paused in step 5. It uses nothing while it is paused, but it keeps the campaign's row under **Active and paused**, and the sidebar shows the campaign as **Paused**. Nothing more runs: `goal-1` stopped once its goal was met.
 
 ## What you did
 

@@ -24,6 +24,7 @@ import {
   type GoalStatus,
   goalDelta,
 } from "./decide.ts";
+import { GOAL_VALUES_CELLS, type GoalCellValues, runValues, valuesText } from "./goal-values.ts";
 import {
   type HeldOutCell,
   type HeldOutKind,
@@ -51,6 +52,16 @@ import { clipReason, REASONS_CHARS } from "./reasons.ts";
  */
 
 export type PromotionPolicy = "auto" | "owner_approval";
+
+/** One goal's check on one build: its status, its reasons and, for a code goal, its values. */
+interface GoalResult {
+  goal: string;
+  required: boolean;
+  status: GoalStatus;
+  reasons: string;
+  /** A code verifier's goal: each public cell's values (goal 086); never a held-out cell's. */
+  values?: GoalCellValues[];
+}
 
 export interface JudgeOptions {
   service: HarnessService;
@@ -1019,8 +1030,8 @@ export class Judge {
        */
       heldOutCells?: HeldOutCell[];
     } = {},
-  ): Promise<{ goal: string; required: boolean; status: GoalStatus; reasons: string }[]> {
-    const out: { goal: string; required: boolean; status: GoalStatus; reasons: string }[] = [];
+  ): Promise<GoalResult[]> {
+    const out: GoalResult[] = [];
     // Held-out cells run only at confirmation. Their results go to promotion code and, by name
     // and kind alone, to the held_out record: never into measurements, goal checks or reports.
     const held = new Set(contract.held_out_cells);
@@ -1032,7 +1043,12 @@ export class Judge {
     // Priority gates: each code verifier is evaluated once per pass, its gates (`requires`)
     // first. One whose gate did not pass runs none of its cells. A gate with no cells in this
     // pass (all held out, or none held out) does not block.
-    type VerifierResult = { ok: boolean; runnable: boolean; reasons: string };
+    type VerifierResult = {
+      ok: boolean;
+      runnable: boolean;
+      reasons: string;
+      values?: GoalCellValues[];
+    };
     const verified = new Map<string, VerifierResult>();
     const evaluate = async (name: string): Promise<VerifierResult> => {
       const known = verified.get(name);
@@ -1063,6 +1079,9 @@ export class Judge {
         } else {
           this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
           const failures: string[] = [];
+          // Each public cell's values (goal 086). The held-out pass keeps none: names and kinds
+          // only, never a held-out cell's values.
+          const values: GoalCellValues[] = [];
           for (const cell of cells) {
             if (!ctx.kit.cells[cell]) {
               failures.push(`no cell ${cell}`);
@@ -1071,18 +1090,25 @@ export class Judge {
             }
             const r = await runArm(ctx, arm, cell);
             if (r.kind !== "ok") failures.push(`${cell}: ${r.kind}: ${clipReason(r.reason)}`);
+            if (!opts.heldOut) {
+              const metrics = runValues(ctx.kit, r);
+              if (Object.keys(metrics).length) values.push({ cell, ok: r.kind === "ok", metrics });
+            }
             heldCell(
               r.kind === "ok"
                 ? { cell, verifier: name, ok: true }
                 : { cell, verifier: name, ok: false, kind: heldOutKindOf(r) },
             );
           }
+          // In words as a threshold goal gives its values: "cell: metric value; …".
+          const said = values.length ? valuesText(values) : "";
           result = {
             ok: !failures.length,
             runnable: true,
             reasons: failures.length
-              ? failures.join("; ")
-              : `verifier ${name} passed on ${cells.join(", ")}`,
+              ? `${failures.join("; ")}${said ? `; measured: ${said}` : ""}`
+              : `verifier ${name} passed on ${cells.join(", ")}${said ? `: ${said}` : ""}`,
+            ...(values.length ? { values: values.slice(0, GOAL_VALUES_CELLS) } : {}),
           };
         }
       }
@@ -1135,6 +1161,7 @@ export class Judge {
           required: g.required,
           status: !r.runnable ? "not_runnable" : r.ok ? "met" : "unmet",
           reasons: r.reasons,
+          ...(r.values ? { values: r.values } : {}),
         });
         continue;
       }
@@ -1300,17 +1327,23 @@ export class Judge {
     this.recordGoals(job, run, null, champion.commit_sha, results, true);
     const done = this.complete(contract, results);
     // Completion is final, so one validation is not enough: a second, independent validation
-    // of the same champion must agree before the campaign closes.
-    const confirming = this.spec(job).confirm === true;
+    // of the same champion must agree before the campaign closes. A confirmation queued for an
+    // earlier champion (a promotion came first) is a first validation of this one (goal 086).
+    const spec = this.spec(job);
+    const confirming =
+      spec.confirm === true &&
+      (spec.champion_seq === undefined || Number(spec.champion_seq) === champion.seq);
     const summary = {
       run,
       champion_seq: champion.seq,
-      // Each goal's description too, so a reader of the report needs no copy of the contract.
+      // Each goal's description too, so a reader of the report needs no copy of the contract;
+      // a code goal's values on each public cell (goal 086).
       goals: results.map((r) => ({
         goal: r.goal,
         description: contract.goals.find((g) => g.id === r.goal)?.description ?? null,
         status: r.status,
         reasons: r.reasons,
+        ...(r.values ? { values: r.values } : {}),
       })),
       complete: done,
       ...(done && !confirming ? { confirming: true } : {}),

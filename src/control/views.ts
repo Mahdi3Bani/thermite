@@ -3,6 +3,10 @@ import { type Hardware, readHardware } from "../core/hardware.ts";
 import { clip } from "../core/kb-index.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
+import {
+  type GoalCellValues as GoalValues,
+  parseGoalValues as goalValuesOf,
+} from "../harness/judge/goal-values.ts";
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
@@ -210,10 +214,26 @@ export interface RunView {
   } | null;
   /** Research mode: the newest digest's figures and report. */
   research: Record<string, unknown> | null;
-  goals: { goal: string; description: string | null; status: string; reasons: string }[];
+  goals: {
+    goal: string;
+    description: string | null;
+    status: string;
+    reasons: string;
+    /**
+     * A code verifier's goal (goal 086): each public cell's values as the judge measured them,
+     * met or not; null for another goal, or a report from an older harness. Never a held-out
+     * cell's.
+     */
+    values: GoalValues[] | null;
+  }[];
   /** When the judge last checked the goals, and on which champion. */
   goals_at: string | null;
   goals_seq: number | null;
+  /**
+   * The judge's check of the champion found every required goal met, and its second, confirming
+   * check is still to come (goal 086): the run's lanes start no new trial until it is done.
+   */
+  goals_confirming: boolean;
   /**
    * How each goal is really checked, as the rig's kit runs it (goal 082): from the rig's
    * `goal_checks` event when the run started. Null for a run an older harness started.
@@ -695,6 +715,7 @@ export function rigView(
         goals: [],
         goals_at: null,
         goals_seq: null,
+        goals_confirming: false,
         goal_checks: null,
         audits: [],
         promotion_waits: {},
@@ -1014,9 +1035,12 @@ export function rigView(
           description: typeof g.description === "string" ? g.description : null,
           status: g.status,
           reasons: g.reasons,
+          values: goalValuesOf((g as { values?: unknown }).values),
         }));
         v.goals_at = e.at;
         v.goals_seq = typeof b.champion_seq === "number" ? b.champion_seq : null;
+        // Every required goal met, and the second check still to come (goal 086).
+        v.goals_confirming = b.complete === true && b.confirming === true;
         break;
       }
       case "audit_requested": {
@@ -1343,6 +1367,9 @@ export function rigView(
         j.state = String(b.state ?? "done");
         j.result =
           b.result && typeof b.result === "object" ? (b.result as Record<string, unknown>) : {};
+        // A validation that failed leaves no completion to confirm: the lanes go on (goal 086).
+        const jr = j.run ? runs.get(j.run) : undefined;
+        if (jr && j.kind === "validate" && j.state === "failed") jr.goals_confirming = false;
         const a = j.attempt ? attempts.get(j.attempt) : undefined;
         if (a && j.state === "done") {
           const r = j.result;
