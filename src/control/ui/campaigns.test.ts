@@ -210,6 +210,62 @@ test("History tells a run's MCP servers, and a server that fails and comes back,
   ]);
 });
 
+test("History tells each claim: verified, or a draft with the harness's reasons", async () => {
+  const { sentence } = await import("./words.ts");
+  const u = { judge: { jobs: [] }, runs: [] } as never;
+  const say = (actor: string, body: Record<string, unknown>) => {
+    const x = sentence(u, {
+      kind: "claim_added",
+      subject: "r-1",
+      actor,
+      at: "2026-10-21T00:00:00Z",
+      body,
+    } as never);
+    return [x?.text, x?.tone, x?.run];
+  };
+  assert.deepEqual(
+    say("lane-1", {
+      claim: "c-1",
+      verified: true,
+      text: "Workers keep no state.",
+      sources: ["s-1"],
+      problems: [],
+    }),
+    ['lane-1 recorded a verified claim: "Workers keep no state.".', "ok", "r-1"],
+  );
+  assert.deepEqual(
+    say("lane-2", {
+      claim: "c-2",
+      verified: false,
+      text: "Question 0: Workers keep no state.",
+      sources: ["https://example.com/a"],
+      problems: [
+        "no archived source https://example.com/a: no source was archived from that URL; fetch it first, then cite the s-… id that fetch returns",
+        'the number 0 is not in the claim\'s quotes: it comes from the heading "Question 0:"',
+      ],
+    }),
+    [
+      'lane-2\'s claim stays a draft: "Question 0: Workers keep no state.". Why: no archived source https://example.com/a: no source was archived from that URL; fetch it first, then cite the s-… id that fetch returns; the number 0 is not in the claim\'s quotes: it comes from the heading "Question 0:".',
+      "warn",
+      "r-1",
+    ],
+  );
+  // More than three reasons: the first three, and how many more (with those the event left out).
+  const [many] = say("research", {
+    verified: false,
+    text: "Many numbers.",
+    problems: ["a", "b", "c", "d"],
+    more_problems: 5,
+  });
+  assert.equal(many, 'A worker\'s claim stays a draft: "Many numbers.". Why: a; b; c; and 6 more.');
+  // A draft from before events carried their reasons: no reasons, no invented ones.
+  assert.deepEqual(say("lane-1", { verified: false, text: "Old draft." }), [
+    'lane-1\'s claim stays a draft: "Old draft.".',
+    "warn",
+    "r-1",
+  ]);
+});
+
 test("History tells the queue's changes, the hand-outs and the rules in words", async () => {
   const { sentence } = await import("./words.ts");
   const u = {

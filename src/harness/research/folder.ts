@@ -236,7 +236,11 @@ export class ResearchFolder {
     const claims = this.all("select * from claim where run = ? order by created_at", run);
     for (const c of claims)
       this.once(run, join(root, "claims", `${c.id}.md`), () => {
-        const quotes = JSON.parse(String(c.quotes)) as { source: string; quote: string }[];
+        const quotes = JSON.parse(String(c.quotes)) as {
+          source: string;
+          quote: string;
+          resolved_from?: string;
+        }[];
         const problems = list(c.problems);
         const q = c.question === null ? undefined : Number(c.question);
         return [
@@ -251,7 +255,8 @@ export class ResearchFolder {
           "## Quotes",
           "",
           ...quotes.flatMap((x) => [
-            `- ${x.source} (${urlOf.get(x.source) ?? "no such source"}):`,
+            // A URL or file name the worker cited for an archived source: its id, and what was cited.
+            `- ${x.source} (${urlOf.get(x.source) ?? "no such source"})${x.resolved_from ? `, cited as ${x.resolved_from}` : ""}:`,
             `  "${x.quote}"`,
           ]),
           ...(problems.length
