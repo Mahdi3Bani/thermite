@@ -5899,7 +5899,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       store.rigSetupEvent(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
       store.audit(by, "cluster_rig_drain", { rig, to: images });
       return {
-        ok: `${rig} drains first: it starts nothing new, and its pods restart on the new images once ${workWords(work)} finish. Update now, on its page or with update_rig_images and wait false, skips the wait.`,
+        ok: `${rig} drains first: it starts nothing new, and its pods restart on the new images once ${workWords(work)} ${work.trials + work.judge_jobs === 1 ? "finishes" : "finish"}. Update now, on its page or with update_rig_images and wait false, skips the wait.`,
       };
     }
     const out = await kube.kubectl(
