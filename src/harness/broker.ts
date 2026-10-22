@@ -88,6 +88,17 @@ import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
 const controller = fileURLToPath(new URL("./main.js", import.meta.url));
 const supervisorMain = fileURLToPath(new URL("../supervisor/main.js", import.meta.url));
 const env = process.env;
+/**
+ * A fatal error at start: the broker exits, after THERMITE_FATAL_HOLD_SECONDS when it is set (the
+ * rig image sets 60). A host that starts a stopped container again at once, such as RunPod, then
+ * keeps the error in the pod's log, and the container does not restart every few seconds.
+ */
+function fatalExit(): never {
+  const hold = Number(env.THERMITE_FATAL_HOLD_SECONDS ?? 0);
+  if (Number.isFinite(hold) && hold > 0)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(hold, 600) * 1000);
+  process.exit(1);
+}
 const stateDir = env.THERMITE_STATE_DIR ?? "/var/lib/thermite";
 const scratchDir = env.THERMITE_SCRATCH_DIR ?? "/scratch";
 const outboxDir = env.THERMITE_OUTBOX_DIR ?? "/outbox";
@@ -217,7 +228,7 @@ function readSecrets(): Record<string, string> {
     const fileOpen = (statSync(path).mode & 0o044) !== 0;
     if (dirOpen && fileOpen) {
       log("broker", "fatal: a secret file stays readable by other users", { file: fileVar });
-      process.exit(1);
+      fatalExit();
     }
   }
   return values;
@@ -581,7 +592,7 @@ function prepareOneContainer(): SupervisorPaths {
         missing,
         hint: "THERMITE_TUNNEL_CONTROL_KEY_SHA256 is 64 hexadecimal characters",
       });
-      process.exit(1);
+      fatalExit();
     }
     rmSync(env.THERMITE_CONTROL_PUBKEY_FILE as string, { force: true });
   }
@@ -605,7 +616,7 @@ function prepareOneContainer(): SupervisorPaths {
   const rootToken = env.THERMITE_SUPERVISOR_TOKEN_FILE;
   if (!rootToken) {
     log("broker", "fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE");
-    process.exit(1);
+    fatalExit();
   }
   if (!existsSync(rootToken)) {
     mkdirSync(dirname(rootToken), { recursive: true, mode: 0o700 });
@@ -783,14 +794,23 @@ if (withSupervisor && !isRoot) {
   log("broker", "fatal: the one-container image must run as root", {
     hint: "the broker starts the supervisor and each role as users of their own",
   });
-  process.exit(1);
+  fatalExit();
 }
 
 if (isRoot) {
   prepareDirectories();
   prepareSocket();
-  // Before the secrets are read: a token it makes is read with them.
-  const pod = withSupervisor ? prepareOneContainer() : undefined;
+  // Before the secrets are read: a token it makes is read with them. A throw here (a volume that
+  // refuses ownership, say) is logged as fatal and held, as the other start errors are.
+  let pod: ReturnType<typeof prepareOneContainer> | undefined;
+  try {
+    pod = withSupervisor ? prepareOneContainer() : undefined;
+  } catch (err) {
+    log("broker", "fatal: could not prepare the rig's folders", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    fatalExit();
+  }
   setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
   let lists = currentLists();
@@ -853,7 +873,7 @@ if (isRoot) {
           log("broker", "fatal: could not give the harness control's key from enrollment", {
             error: err instanceof Error ? err.message : String(err),
           });
-          process.exit(1);
+          fatalExit();
         },
       );
     else start();
@@ -865,5 +885,5 @@ if (isRoot) {
   log("broker", "fatal: not root, so roles cannot be separated", {
     hint: "run the harness container as root (the broker drops to role users), or set THERMITE_ALLOW_UNSEPARATED=1 for development only",
   });
-  process.exit(1);
+  fatalExit();
 }

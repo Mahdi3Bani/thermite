@@ -6,6 +6,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ### Install and run
 
+- A rig whose broker stops at start with a fatal error holds it a minute before it exits (`THERMITE_FATAL_HOLD_SECONDS`, 60 in the one-container rig image), so the pod's log on RunPod keeps the error and the container does not restart every few seconds. A throw while the rig's folders are prepared is logged as fatal too.
 - The images are built on Node.js 22.23.4. A release builds every image layer again, without the build cache, so each image has its base's newest system packages.
 - Install from published images, with no build. Each release attaches a compose file that pins the images by digest, and `thermite local init` makes the stack's secret files. Building from source stays for contributors.
 - The images:

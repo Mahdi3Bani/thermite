@@ -32,7 +32,10 @@ COPY --chmod=0755 containers/rig/thermite-rig-start /usr/local/bin/thermite-rig-
 # The harness API answers on loopback only. Pull mode: control connects to the supervisor's port;
 # the supervisor's enrollment brings control's key, and root gives the harness its own copy of it
 # (THERMITE_CONTROL_PUBKEY_FILE, in a folder only root writes) once its SHA-256 is the launch's.
+# A fatal error at start is held for a minute before the broker exits, so the pod's log keeps it
+# and RunPod does not restart the container every few seconds.
 ENV THERMITE_ONE_CONTAINER=1 \
+    THERMITE_FATAL_HOLD_SECONDS=60 \
     THERMITE_STATE_DIR=/workspace/thermite/harness \
     THERMITE_OUTBOX_DIR=/workspace/thermite/outbox \
     THERMITE_INBOX_DIR=/workspace/thermite/inbox \

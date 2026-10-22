@@ -193,6 +193,7 @@ The launch gives the rest: control's launch values for [pull mode](settings.md#p
 | Variable | Value | Effect |
 | --- | --- | --- |
 | `THERMITE_ONE_CONTAINER` | `1` | The broker also prepares and starts the supervisor. The isolation check also checks the container as a whole |
+| `THERMITE_FATAL_HOLD_SECONDS` | `60` | A fatal error at start is held for a minute before the broker exits, so the pod's log keeps it and RunPod does not restart the container every few seconds |
 | `THERMITE_STATE_DIR` | `/workspace/thermite/harness` | The harness's state, on RunPod's volume (mounted at `/workspace`, kept when a pod stops) |
 | `THERMITE_OUTBOX_DIR` | `/workspace/thermite/outbox` | The outbox, read by both parts |
 | `THERMITE_INBOX_DIR` | `/workspace/thermite/inbox` | The inbox, read by both parts, on the volume |
