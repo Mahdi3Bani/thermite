@@ -329,7 +329,11 @@ export class ControlTunnels {
         );
         if (r.status !== 200)
           return fail(
-            `the pod did not enroll (answer ${r.status}). A pod refuses a wrong or expired code, a second enrollment, and a clock more than ${TUNNEL_SKEW_MS / 1000} s from control's.`,
+            // RunPod's proxy answers an empty 404 when nothing listens on the pod's port, the same
+            // answer a pod gives a request it refuses: the first is the likelier one, so it comes first.
+            r.status === 404 && r.body.length === 0
+              ? `the pod did not enroll (an empty 404). Most often nothing listens on the pod's port yet: the pod may still be pulling its image, its container may have stopped, or its service did not start. Its Pod log says which. A pod that does listen refuses a wrong or expired code, a second enrollment, and a clock more than ${TUNNEL_SKEW_MS / 1000} s from control's.`
+              : `the pod did not enroll (answer ${r.status}). A pod refuses a wrong or expired code, a second enrollment, and a clock more than ${TUNNEL_SKEW_MS / 1000} s from control's.`,
           );
         const keys = EnrollAnswer.safeParse(JSON.parse(r.body.toString("utf8")));
         if (!keys.success) return fail("the pod's enrollment answer is not valid: not enrolled");

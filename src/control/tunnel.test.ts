@@ -398,7 +398,10 @@ describe("pull mode: control connects to a rig through a proxy", () => {
   test("a wrong code is refused at the pod, and nothing is pinned", async () => {
     const s = await setup({ podCode: "f".repeat(64) });
     try {
-      assert.match(await s.tunnels.step(s.rig), /did not enroll \(answer 404\)/);
+      assert.match(
+        await s.tunnels.step(s.rig),
+        /did not enroll \(an empty 404\)\. Most often nothing listens on the pod.s port yet/,
+      );
       assert.equal(s.store.tunnelRig(s.rig)?.enrolled_at, null);
       assert.equal(s.store.tunnelRig(s.rig)?.pod_sign_public, null);
       assert.ok(!s.pod.tunnel.enrolled());
