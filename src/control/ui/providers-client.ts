@@ -1,27 +1,22 @@
-import { PRICE_NUMBER } from "./usage.ts";
+import { PRICE_NUMBER, PRICE_WORDS } from "./usage.ts";
 
 /**
- * The price field's line without the page (goal 075): what a model's calls so far cost at the
- * prices typed, as ui/usage.ts's soFarLine says it, or why the prices do not read. The page's
- * script runs it as it is, and so do its tests. v: the three fields as typed; s: the calls so far.
+ * A row of Model prices without the page (goal 075): whether its three fields, as typed, set a
+ * price, remove it (all empty) or can't be saved, and why, in the words the server uses
+ * (PRICE_WORDS). The page's script runs it as it is, and so do its tests.
  */
 export const PRICE_CORE_JS = `
 const prNum = ${String(PRICE_NUMBER)};
-const prTok = (n) => n >= 1e8 ? Math.round(n / 1e6) + "M" : n >= 0.9995e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n));
-const prUsd = (x) => x > 0 && x < 0.005 ? "<$0.01" : "$" + x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-function prSay(v, s) {
+const prWords = ${JSON.stringify(PRICE_WORDS)};
+function prJudge(v) {
   const t = {};
   for (const k of ["in", "cached", "out"]) {
     const x = String(v[k] ?? "").trim();
-    if (x !== "" && !prNum.test(x)) return ["A price is a number, such as 0.60.", "bad"];
+    if (x !== "" && !prNum.test(x)) return ["bad", prWords.number];
     t[k] = x === "" ? null : Number(x);
   }
-  if ((t.in === null) !== (t.out === null) || (t.cached !== null && t.in === null)) return ["Set In and Out, or leave all three empty.", "bad"];
-  const so = s.records ? "So far: " + prTok(s.in) + " in, " + prTok(s.out) + " out" : "No calls yet";
-  if (t.in === null) return [so + " · no price", "none"];
-  if (!s.records) return [so, "set"];
-  if (t.in === 0 && t.out === 0 && !t.cached) return [so + " · free", "set"];
-  return [so + " · " + prUsd(((s.in - s.cached) * t.in + s.cached * (t.cached === null ? t.in : t.cached) + s.out * t.out) / 1e6), "set"];
+  if ((t.in === null) !== (t.out === null) || (t.cached !== null && t.in === null)) return ["bad", prWords.pair];
+  return [t.in === null ? "none" : "set", ""];
 }
 `;
 
@@ -56,38 +51,43 @@ export const PROVIDERS_JS = `
     show();
   }
 
-  // ------------------------------------------------ each model's price (goal 075)
-  // Each row says what the model's calls so far cost at the price typed; a price that is not a
-  // number, or In without Out, says why; Save prices waits until a price changes.
+  // ------------------------------------------------ Model prices (goal 075)
+  // Each row's fields are checked as they are typed: a field that is not a number is marked, and
+  // the line by Save says which model's row can't be saved and why. Save waits for a change.
 ${PRICE_CORE_JS}
-  const judge = (tb) => {
-    const v = {};
-    tb.querySelectorAll("[data-pk]").forEach((i) => {
-      const x = i.value.trim();
-      i.classList.toggle("bad", x !== "" && !prNum.test(x));
-      v[i.dataset.pk] = x;
-    });
-    const d = tb.dataset;
-    const [text, state] = prSay(v, { records: Number(d.records), in: Number(d.in), cached: Number(d.cached), out: Number(d.out) });
-    const say = tb.querySelector("[data-say]");
-    if (say) { say.textContent = text; say.classList.toggle("bad", state === "bad"); }
-    return state;
-  };
-  document.querySelectorAll("form[data-pr-prov]").forEach((f) => {
-    const save = f.querySelector("[data-pr-save]");
+  const mpf = document.querySelector("form[data-mp-form]");
+  const mpSave = mpf && mpf.querySelector("[data-mp-save]");
+  if (mpf && mpSave) {
+    const flash = mpf.querySelector("[data-mp-flash]");
     const check = () => {
-      const states = [...f.querySelectorAll("tbody[data-pr]")].map(judge);
-      const dirty = [...f.querySelectorAll("[data-pk]")].some((i) => i.value !== i.defaultValue);
-      if (save) save.disabled = !dirty || states.includes("bad");
+      let bad = null;
+      for (const tr of mpf.querySelectorAll("tr[data-mp]")) {
+        const v = {};
+        tr.querySelectorAll("[data-pk]").forEach((i) => {
+          const x = i.value.trim();
+          i.classList.toggle("bad", x !== "" && !prNum.test(x));
+          v[i.dataset.pk] = x;
+        });
+        const [state, why] = prJudge(v);
+        if (state === "bad" && !bad) bad = tr.dataset.mp + ": " + why;
+      }
+      const dirty = [...mpf.querySelectorAll("[data-pk]")].some((i) => i.value !== i.defaultValue);
+      mpSave.disabled = !dirty || bad !== null;
+      return bad;
     };
-    f.addEventListener("input", (e) => {
+    mpf.addEventListener("input", (e) => {
       if (!e.target.matches("[data-pk]")) return;
-      const flash = f.querySelector("[data-pr-flash]");
-      if (flash) flash.textContent = "";
-      check();
+      const bad = check();
+      flash.replaceChildren();
+      if (bad) {
+        const b = document.createElement("b");
+        b.className = "bad";
+        b.textContent = "Not yet.";
+        flash.append(b, " " + bad);
+      }
     });
     check();
-  });
+  }
 
   // ------------------------------------------------ Add an MCP server
   const mf = document.getElementById("mcp-add");

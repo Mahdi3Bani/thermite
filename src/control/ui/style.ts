@@ -932,7 +932,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .outrow { display: grid; grid-template-columns: 18px minmax(0, 1fr) 120px; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .outrow:last-child { border-bottom: 0; }
 .outrow .small { text-align: right; }
-/* goal 075: model use and cost (a run's top, a campaign's sidebar, Metrics, the price field) */
+/* goal 075: model use and cost (a run's top and Stats tab, a campaign's sidebar, Metrics, Model prices) */
 #model-use { margin-bottom: 18px; }
 /* A campaign's page has model use in its sidebar: its Knowledge block stacks in the main column. */
 .run-cols .kbcols { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -989,36 +989,42 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .u-runs { margin-top: 10px; }
 .u-runs .ut th, .u-runs .ut td { padding: 7px 10px; }
 .u-more { margin-top: 8px; font-size: 12.5px; text-align: right; }
-.pr-t { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.pr-t th { padding: 7px 10px; border-bottom: 1px solid var(--border); background: var(--muted); text-align: left; font-size: 12px; }
-.pr-t th .lb { font-weight: 500; }
-.pr-t th.num { text-align: right; }
-.pr-t th.num .lb { justify-content: flex-end; }
-.pr-card { max-width: 640px; }
-.pr-t td { padding: 8px 10px 2px; vertical-align: top; border-bottom: 0; }
-.pr-t td.num { text-align: right; white-space: nowrap; }
-.pr-t .u-m { font-weight: 600; }
-.pr-t .us { display: block; margin-top: 4px; }
-.pr-t tr.pr-say td { padding: 2px 10px 9px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-.pr-t tbody:last-child tr.pr-say td { border-bottom: 0; }
-.pr-t tr.pr-say td.bad { color: var(--error-foreground); }
-.pr-in { display: inline-flex; align-items: center; gap: 4px; }
-.pr-in > span { color: var(--muted-foreground); }
-.pr-in input { width: 76px; height: 30px; padding: 0 8px; text-align: right; font-variant-numeric: tabular-nums; }
-.pr-in input[readonly] { border-color: transparent; background: transparent; padding-right: 1px; cursor: default; }
-.pr-in input.bad { border-color: var(--error); }
 .pr-act { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 10px; }
 .pr-act b.ok { color: var(--success-foreground); }
-.pr-form { margin: 12px 0; }
+.pr-act b.bad { color: var(--error-foreground); }
+/* A run's top (the owner, 2026-10-21: keep it small): one line, then Cost and the tokens. */
+.u-clock { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 8px; font-size: 13px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.u-clock > .icon { width: 14px; height: 14px; flex: none; }
+.u-two { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
+.u-two .fact, .u-calls.fact { padding: 10px 12px; min-width: 0; }
+.u-two .fact .v, .u-calls .v { font-size: 22px; letter-spacing: -.01em; }
+.u-two .fact .v .u { font-size: 12px; font-weight: 500; color: var(--muted-foreground); letter-spacing: 0; }
+.u-two .fact .s, .u-calls .s { font-variant-numeric: tabular-nums; }
+.u-two .nr, .u-calls .nr { font-size: 15px; font-weight: 500; font-style: italic; color: var(--muted-foreground); }
+.u-two .s .ii, .u-calls .s .ii { display: inline-grid; margin-right: 5px; vertical-align: -3px; }
+.utok { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px 18px; }
+.utok > div + div { border-left: 1px solid var(--border); padding-left: 16px; }
+/* A run's Stats tab: its calls, with a bar for each round. */
+.u-calls { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 10px 24px; align-items: end; }
+.u-calls .uspark { height: 64px; margin: 0; gap: 4px; }
+.u-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11.5px; color: var(--muted-foreground); }
+/* Settings › Providers: Model prices, one table under the providers. */
+.mp-t td { vertical-align: middle; }
+.mp-t input { width: 76px; height: 28px; padding: 0 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.mp-t input.bad { border-color: var(--error); }
 @media (max-width: 1300px) { .ufacts { grid-template-columns: repeat(4, minmax(0, 1fr)); } .ufacts .uf-wide { grid-column: span 2; } }
-@media (max-width: 700px) { .ufacts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ufacts .uf-wide { grid-column: 1 / -1; } }
+@media (max-width: 700px) {
+  .ufacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ufacts .uf-wide { grid-column: 1 / -1; }
+  .u-two, .u-calls { grid-template-columns: minmax(0, 1fr); }
+  .utok { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .utok > :first-child { grid-column: 1 / -1; }
+  .utok > div + div { border-left: 0; padding-left: 0; }
+  .utok > div:last-child { border-left: 1px solid var(--border); padding-left: 14px; }
+}
 @media (max-width: 600px) {
-  .pr-in > span, .pr-ctx { display: none; }
-  .pr-in input { width: 52px; padding: 0 5px; }
-  .pr-t th, .pr-t td { padding-left: 4px; padding-right: 4px; }
-  .pr-t th:first-child, .pr-t td:first-child { padding-left: 8px; }
-  .pr-t th:last-child, .pr-t td:last-child { padding-right: 8px; }
-  .pr-t th .lb { gap: 3px; font-size: 11px; }
+  .mp-t input { width: 46px; padding: 0 4px; }
+  .mp-t .chip { white-space: normal; }
   .ut { font-size: 12px; }
   .ut .u-opt { display: none; }
   .ut .u-ph { display: block; }

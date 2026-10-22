@@ -171,7 +171,7 @@ The first change takes a while. The planner works for a few minutes, a trial can
 
 When the agent submits its change, the judge takes over. Open **Overview** in the sidebar and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 
-Then open **Campaigns**, and on the card under **At work now**, choose `matmul-agents › matmul-agents-1`. The run's page opens. Its title, `matmul-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**.
+Then open **Campaigns**, and on the card under **At work now**, choose `matmul-agents › matmul-agents-1`. The run's page opens. Its title, `matmul-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History**, **Planner** and **Stats**.
 
 Choose **Experiments**. It shows the run's queue of experiments. Three of its parts matter here:
 

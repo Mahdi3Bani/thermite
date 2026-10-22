@@ -2303,37 +2303,6 @@ export class ControlStore {
   }
 
   /**
-   * Each provider's models' calls so far, over every record (goal 075: the price field's line on
-   * Settings › Providers): tokens in, the cached ones over the records that report the cache, and
-   * tokens out.
-   */
-  usageByProviderModel(): {
-    provider: string;
-    model: string;
-    records: number;
-    tokens_in: number;
-    cached_in: number;
-    tokens_out: number;
-  }[] {
-    return (
-      this.db
-        .prepare(
-          `select provider, model, count(*) as records, sum(tokens_in) as tokens_in,
-             sum(coalesce(cached_in, 0)) as cached_in, sum(tokens_out) as tokens_out
-           from model_call where provider is not null group by provider, model`,
-        )
-        .all() as Row[]
-    ).map((r) => ({
-      provider: String(r.provider),
-      model: String(r.model),
-      records: Number(r.records),
-      tokens_in: Number(r.tokens_in),
-      cached_in: Number(r.cached_in),
-      tokens_out: Number(r.tokens_out),
-    }));
-  }
-
-  /**
    * When each round of a run on a rig started, oldest first (goal 075: a run page's calls in each
    * round): the times of its `epoch_started` events, on any of the rig's ledgers.
    */

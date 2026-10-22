@@ -163,8 +163,15 @@ export const reportingTag = (u: Pick<RigView, "stale" | "runpod">): string =>
       : "";
 /** A run's key on its campaign's page (run ids are unique per rig only). */
 export const runKey = (rig: string, run: string) => `${rig}/${run}`;
-/** A run page's tabs. */
-export type RunTab = "overview" | "experiments" | "journal" | "attempts" | "history" | "planner";
+/** A run page's tabs. Stats: its model use in detail (goal 075), for a run with agents or spend. */
+export type RunTab =
+  | "overview"
+  | "experiments"
+  | "journal"
+  | "attempts"
+  | "history"
+  | "planner"
+  | "stats";
 /** A run's page (on its campaign's page), and one of its tabs. */
 export const runHref = (
   rig: string,

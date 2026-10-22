@@ -6,14 +6,14 @@ import { createControlApi } from "./api.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 import { PRICE_CORE_JS } from "./ui/providers-client.ts";
-import { bars, dayEdges, soFarLine } from "./ui/usage.ts";
+import { bars, dayEdges, PRICE_WORDS } from "./ui/usage.ts";
 
 /**
  * Model use and cost on the screens (goal 075, as the owner approved the mockup v010-usage): the
- * top of a run's page on every tab, a campaign page's sidebar, the Metrics page with today from
- * midnight in the viewer's time zone, and each model's price in Settings › Providers. Every
- * figure a harness does not report says "not reported"; a cost says "on a plan", "no price" or
- * "free", never $0.
+ * top of a run's page on every tab (one line and two cards) with the details on its Stats tab, a
+ * campaign page's sidebar, the Metrics page with today from midnight in the viewer's time zone,
+ * and one table of model prices in Settings › Providers. Every figure a harness does not report
+ * says "not reported"; a cost says "on a plan", "no price" or "free", never $0.
  */
 
 const TOKENS = { admin: "admin-token-abcdef", rigs: {} };
@@ -116,7 +116,11 @@ async function stack() {
   store.assignRoleModel("rig-a", "teachers", { provider: "lab", model: "wide-model" });
   store.assignRoleModel("rig-a", "second_teacher", { provider: "sub", model: "opus-5.5" });
   ingest(store, "rig-a", [
-    ["run_created", "r-1", { campaign: "matmul", mode: "hill_climb", version: 1, agents: true }],
+    [
+      "run_created",
+      "r-1",
+      { campaign: "matmul", mode: "hill_climb", version: 1, agents: true, at: ago(6) },
+    ],
     ["epoch_started", "r-1", { n: 1, at: ago(5) }],
     ["epoch_started", "r-1", { n: 2, at: ago(3) }],
     ["epoch_started", "r-1", { n: 3, at: ago(1.5) }],
@@ -264,7 +268,7 @@ const rowWith = (html: string, text: string) => {
 const unesc = (s: string) => s.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 
 describe("model use on the screens (goal 075)", () => {
-  test("a run's page: its model use above the tabs, on every tab, by agent and model with the cost words", async () => {
+  test("a run's page: one line and two cards above the tabs, on every tab; its Stats tab has the calls and the table by agent and model", async () => {
     const s = await stack();
     const html = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1");
     const block = from(html, '<div class="block" id="model-use">', '<nav class="tabs">');
@@ -272,34 +276,50 @@ describe("model use on the screens (goal 075)", () => {
       html.indexOf('id="model-use"') < html.indexOf('<nav class="tabs">'),
       "above the tabs",
     );
+    // One line: trials, rounds, the run's time (it started 6 hours ago) and the time in calls
+    // (two of its seven records report theirs: 400 s and 200 s). Its i says what each part is, and
+    // how many records leave their time out.
+    const line = from(block, '<div class="u-clock">', '<div class="u-two">');
+    assert.match(line, /<span>0 trials · 3 rounds · 6 h 0 m · 10 m in calls<\/span>/);
     assert.match(
-      block,
-      /<h2>Model use<\/h2><i class="ii" tabindex="0" data-tip="Every model call of the agents, counted by code/,
+      unesc(line),
+      /data-tip="Trials done, rounds, the run's time since it started .* 5 records do not report their time: not in the time in calls\."/,
     );
-    assert.match(block, /0 trials · 3 rounds/);
-    // The six numbers, each label with its info icon.
-    for (const label of [
-      "Cost",
-      "Tokens in",
-      "Tokens out",
-      "Calls",
-      "Output speed",
-      "Time in calls",
-    ])
+    // Two cards: Cost, and the tokens with the speed. Each label has its info icon.
+    for (const label of ["Cost", "Tokens in", "Tokens out", "Output speed"])
       assert.match(
         block,
         new RegExp(`<span class="lb">${label}<i class="ii" tabindex="0" data-tip="`),
       );
-    // Nine calls; the workers made 4 in 2 trials.
-    assert.match(block, /<div class="v">9<\/div><div class="s">2 a trial<\/div>/);
+    assert.equal(block.match(/<div class="fact /g)?.length, 2);
+    for (const gone of ["Calls", "Time in calls", "By agent and model", "<table"])
+      assert.ok(!block.includes(gone), `${gone} is not at the top`);
+    assert.match(unesc(block), /Each model's own speed is on the Stats tab\./);
+    // The Stats tab, last, after Planner.
+    assert.match(
+      html,
+      /Planner<\/a><a class="" href="\/ui\/campaigns\/matmul\?run=rig-a%2Fr-1&view=stats">Stats<\/a><\/nav>/,
+    );
+    const stats = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1&view=stats");
+    assert.match(stats, /<a class="on" href="[^"]*&view=stats">Stats<\/a>/);
+    assert.match(stats, /id="model-use"/, "the top is there too");
+    const tab = from(stats, '<div id="run-stats">', "</table>");
+    // Nine calls; the workers made 4 in 2 trials; the first token's median.
+    assert.match(tab, /<span class="lb">Calls<i class="ii" tabindex="0" data-tip="/);
+    assert.match(
+      tab,
+      /<div class="v">9<\/div><div class="s">2 a trial · first token 1\.5 s<\/div>/,
+    );
     // The calls in each of the three rounds: 2 (the planner, a worker), 4 (the advisors), 3.
-    assert.match(block, /The bars: calls in each round\./);
+    assert.match(tab, /The bars: calls in each round\./);
     assert.equal(
-      (block.match(/<div class="uspark"[^>]*>(.*?)<\/div>/)?.[1] ?? "").split("<i ").length - 1,
+      (tab.match(/<div class="uspark"[^>]*>(.*?)<\/div>/)?.[1] ?? "").split("<i ").length - 1,
       3,
     );
+    assert.match(tab, /<span>round 1<\/span><span>round 3<\/span>/);
+    assert.match(tab, /<div class="u-h">By agent and model<\/div>/);
     // The groups and the agents' names (goal 074), with the teachers told apart by the rig's settings.
-    const table = from(block, '<table class="ut">', "</table>");
+    const table = from(tab, '<table class="ut">', "</table>");
     for (const word of ["The work", "The advisors", "Workers", "Planner", "Teachers", "Auditor"])
       assert.ok(table.includes(word), word);
     assert.match(
@@ -332,10 +352,10 @@ describe("model use on the screens (goal 075)", () => {
       /7\.0k tokens in priced as not cached: OpenCode v2 does not report cached tokens\./,
     );
     // The total says what its dollars leave out.
-    const cost = from(block, "uf-cost", "uf-in");
+    const cost = from(block, "uf-cost", "uf-tok");
     assert.match(cost, /tokens on a plan · 5\.5k no price · 3\.3k free/);
     // Tokens in, split: cached, not cached, and not reported (with the harness).
-    assert.match(from(block, "uf-in", '<div class="fact">'), /not reported by OpenCode v2/);
+    assert.match(from(block, "uf-tok", "Tokens out"), /not reported by OpenCode v2/);
     // On every tab.
     for (const view of ["history", "attempts", "planner"])
       assert.match(
@@ -355,15 +375,15 @@ describe("model use on the screens (goal 075)", () => {
       by: "t",
     });
     s.store.saveRunpodRig("rig-a", { spent_usd: 1.65, price_per_hr: 1.65 }, true);
-    const html = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1");
+    const html = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1&view=stats");
     const gpu = rowWith(html, "<b>GPU time on RunPod</b>");
     assert.match(gpu, /1 h 0 m at \$1\.65\/h/);
     assert.match(gpu, /\$1\.65<\/td>/);
     assert.match(html, /<tr class="grp"><td colspan="10">The rig<\/td><\/tr>/);
-    assert.match(from(html, "uf-cost", "uf-in"), /GPU time on RunPod/);
+    assert.match(from(html, "uf-cost", "uf-tok"), /GPU time on RunPod/);
   });
 
-  test("a run with no records yet says so; a try of a kit, with no agents, shows nothing", async () => {
+  test("a run with no records yet says so; a try of a kit, with no agents, shows nothing and has no Stats tab", async () => {
     const s = await stack();
     ingest(
       s.store,
@@ -377,9 +397,15 @@ describe("model use on the screens (goal 075)", () => {
       ],
       12,
     );
+    const fresh = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-3");
     assert.match(
-      await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-3"),
-      /No model call recorded yet\./,
+      from(fresh, '<div class="block" id="model-use">', '<nav class="tabs">'),
+      /<span>0 trials · 0 rounds · \d+ s · no model call yet<\/span>/,
+    );
+    assert.doesNotMatch(fresh, /<div class="u-two">/);
+    assert.match(
+      await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-3&view=stats"),
+      /No model call recorded yet\. Code counts each call of the agents when it ends\./,
     );
     ingest(
       s.store,
@@ -393,10 +419,9 @@ describe("model use on the screens (goal 075)", () => {
       ],
       13,
     );
-    assert.doesNotMatch(
-      await s.page("/ui/campaigns/matmul?run=rig-a%2Fmatmul-try-1"),
-      /id="model-use"/,
-    );
+    const tried = await s.page("/ui/campaigns/matmul?run=rig-a%2Fmatmul-try-1");
+    assert.doesNotMatch(tried, /id="model-use"/);
+    assert.doesNotMatch(tried, /view=stats/);
   });
 
   test("a campaign's page: its model use in the sidebar, over all its runs, each run linked", async () => {
@@ -526,40 +551,54 @@ describe("model use on the screens (goal 075)", () => {
     );
   });
 
-  test("Settings › Providers: each model's price, from the provider, yours or none; Save prices sets and clears it", async () => {
+  test("Settings › Providers: one Model prices table under the providers, no subscription in it; Save prices sets and clears a price", async () => {
     const s = await stack();
     let html = await s.page("/ui/settings");
-    const lab = from(html, 'id="prices-lab"', "</form>");
-    assert.match(lab, /Prices, \$ for a million tokens/);
-    for (const label of ["Model", "In", "Cached in", "Out"])
-      assert.match(lab, new RegExp(`<span class="lb">${label}<i class="ii"`), label);
-    const wide = from(lab, 'data-pr="wide-model"', "</tbody>");
-    assert.match(wide, /<span class="chip">from the provider<\/span>/);
-    assert.match(wide, /name="in0"[^>]*value="3\.00"[^>]*readonly/);
-    assert.match(wide, /name="cached0"[^>]*value="0\.30"/);
-    // Its calls so far: workers, a teacher and the auditor (2.01M in, 40.5k out).
-    assert.match(wide, /So far: 2\.0M in, 40k out · \$/);
-    const small = from(lab, 'data-pr="small-model"', "</tbody>");
-    assert.match(small, /<span class="chip warn" data-src>no price<\/span>/);
-    assert.match(small, /So far: 5\.1k in, 505 out · no price/);
-    // A provider whose list gives only free models says so; a subscription is on a plan.
-    assert.match(html, /free-model: free, from the provider's list\./);
-    assert.match(html, /1 model · free, from the provider/);
-    assert.match(html, /On a plan: its calls show their tokens, and “on a plan” for cost\./);
-    // Save: small-model gets a price; the listed price is left as it is, whatever is posted.
+    // Under the providers, before Add a provider; nothing about prices inside a provider.
+    assert.ok(html.indexOf("<h2>Providers</h2>") < html.indexOf('id="model-prices"'));
+    assert.ok(html.indexOf('id="model-prices"') < html.indexOf("<h2>Add a provider</h2>"));
+    assert.doesNotMatch(html, /Prices, \$ for a million tokens|So far:|data-pr-prov/);
+    const block = from(html, '<div class="block" id="model-prices">', "</form>");
+    assert.match(block, /<h2>Model prices<\/h2><i class="ii"/);
+    assert.match(block, /\$ for a million tokens/);
+    for (const label of ["Model", "Provider", "In", "Cached in", "Out", "Price from"])
+      assert.match(block, new RegExp(`<span class="lb">${label}<i class="ii"`), label);
+    assert.match(block, /<form method="post" action="\/ui\/settings\/prices" data-mp-form>/);
+    // A listed price is text, not a field.
+    const wide = rowWith(block, '<span class="u-m">wide-model</span>');
+    assert.doesNotMatch(wide, /<input/);
+    assert.match(
+      wide,
+      /<td class="num">3\.00<\/td><td class="num">0\.30<\/td><td class="num">15\.00<\/td><td><span class="chip">provider's list<\/span>/,
+    );
+    const small = rowWith(block, '<span class="u-m">small-model</span>');
+    assert.match(small, /<input type="hidden" name="p0" value="lab">/);
+    assert.match(small, /name="in0"[^>]*value=""/);
+    assert.match(small, /<span class="chip warn">no price<\/span>/);
+    assert.match(
+      rowWith(block, '<span class="u-m">free-model</span>'),
+      /<td class="num">0\.00<\/td><td class="num"><span class="muted">–<\/span><\/td><td class="num">0\.00<\/td><td><span class="chip">free<\/span>/,
+    );
+    // A subscription's models are on a plan: not in the table.
+    assert.doesNotMatch(block, /opus-5\.5/);
+    assert.equal(block.match(/<tr data-mp=/g)?.length, 1, "one row to fill in");
+    assert.equal(block.match(/Save prices/g)?.length, 1, "one Save");
+    // Save: small-model gets a price; a listed price posted anyway is left as it is.
     const form = {
-      m0: "wide-model",
-      in0: "9",
-      cached0: "",
-      out0: "9",
-      m1: "small-model",
-      in1: "0.60",
-      cached1: "0.1",
-      out1: "2.5",
+      p0: "lab",
+      m0: "small-model",
+      in0: "0.60",
+      cached0: "0.1",
+      out0: "2.5",
+      p1: "lab",
+      m1: "wide-model",
+      in1: "9",
+      cached1: "",
+      out1: "9",
     };
-    let r = await s.post("/ui/settings/providers/lab/prices", form);
+    let r = await s.post("/ui/settings/prices", form);
     assert.equal(r.status, 303);
-    assert.equal(r.to, "/ui/settings?at=prices:lab&ok=saved#prices-lab");
+    assert.equal(r.to, "/ui/settings?at=prices&ok=saved#model-prices");
     assert.deepEqual(
       s.store.modelPrices().map((x) => [x.provider, x.model, x.price]),
       [["lab", "small-model", { input: 0.6, cached_input: 0.1, output: 2.5 }]],
@@ -568,42 +607,49 @@ describe("model use on the screens (goal 075)", () => {
       s.store.provider("lab")?.models.find((m) => m.id === "wide-model")?.price?.input,
       3,
     );
-    html = await s.page("/ui/settings?at=prices%3Alab&ok=saved");
-    const saved = from(html, 'id="prices-lab"', "</form>");
+    html = await s.page("/ui/settings?at=prices&ok=saved");
+    const saved = from(html, '<div class="block" id="model-prices">', "</form>");
     assert.match(saved, /<b class="ok">Saved\.<\/b> Every cost follows\./);
-    assert.match(
-      from(saved, 'data-pr="small-model"', "</tbody>"),
-      /<span class="chip info" data-src>yours<\/span>/,
-    );
-    assert.match(html, /data-k="provider-lab" open>/);
+    const mine = rowWith(saved, '<span class="u-m">small-model</span>');
+    assert.match(mine, /<span class="chip info">yours<\/span>/);
+    assert.match(mine, /name="in0"[^>]*value="0\.60"/);
+    assert.match(mine, /name="cached0"[^>]*value="0\.10"/);
+    // The page's own note at the top stays empty: the flash is in Model prices.
     assert.doesNotMatch(html, /<div class="card" style="margin-bottom:16px"><b class="ok">saved/);
     // Every call of the model, the earlier ones too, is costed at it.
-    const run = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1");
+    const run = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1&view=stats");
     assert.doesNotMatch(rowWith(run, "<b>Planner</b>"), /no price/);
     // The same again changes nothing; refusals in words, and nothing changes.
     assert.equal(
-      (await s.post("/ui/settings/providers/lab/prices", form)).to,
-      "/ui/settings?at=prices:lab&ok=same#prices-lab",
+      (await s.post("/ui/settings/prices", form)).to,
+      "/ui/settings?at=prices&ok=same#model-prices",
     );
-    r = await s.post("/ui/settings/providers/lab/prices", { ...form, in1: "lots" });
-    assert.match(r.to, /&error=small-model: a price is a number, such as 0\.60\.#prices-lab$/);
-    r = await s.post("/ui/settings/providers/lab/prices", { ...form, out1: "" });
-    assert.match(r.to, /&error=small-model: set In and Out, or leave all three empty\./);
+    r = await s.post("/ui/settings/prices", { ...form, in0: "lots" });
+    assert.match(
+      r.to,
+      /&error=small-model of lab: a price is a number, such as 0\.60\.#model-prices$/,
+    );
+    r = await s.post("/ui/settings/prices", { ...form, out0: "" });
+    assert.match(r.to, /&error=small-model of lab: set In and Out, or leave all three empty\./);
     assert.equal(s.store.modelPrices()[0]?.price.output, 2.5);
+    // A subscription's model, posted anyway, is refused in words.
+    r = await s.post("/ui/settings/prices", {
+      p0: "sub",
+      m0: "opus-5.5",
+      in0: "1",
+      cached0: "",
+      out0: "1",
+    });
+    assert.match(r.to, /&error=sub is a subscription: its calls are on its plan/);
     html = await s.page(
-      `/ui/settings?at=prices%3Alab&error=${encodeURIComponent("small-model: a price is a number, such as 0.60.")}`,
+      `/ui/settings?at=prices&error=${encodeURIComponent("small-model of lab: a price is a number, such as 0.60.")}`,
     );
     assert.match(
-      from(html, 'id="prices-lab"', "</form>"),
-      /<b class="bad">Not saved\.<\/b> small-model: a price is a number/,
+      from(html, '<div class="block" id="model-prices">', "</form>"),
+      /<b class="bad">Not saved\.<\/b> small-model of lab: a price is a number/,
     );
     // All three empty: no price again.
-    r = await s.post("/ui/settings/providers/lab/prices", {
-      ...form,
-      in1: "",
-      cached1: "",
-      out1: "",
-    });
+    r = await s.post("/ui/settings/prices", { ...form, in0: "", cached0: "", out0: "" });
     assert.match(r.to, /ok=saved/);
     assert.deepEqual(s.store.modelPrices(), []);
     // Each change is in the audit log, as the owner's on the dashboard.
@@ -619,51 +665,50 @@ describe("model use on the screens (goal 075)", () => {
     );
   });
 
-  test("the price field's line: the page's script says what the server says, and refuses what it refuses", () => {
-    const say = new Function(`${PRICE_CORE_JS}; return prSay;`)() as (
+  test("Model prices: the page's script refuses what the server refuses, in the same words", async () => {
+    const judge = new Function(`${PRICE_CORE_JS}; return prJudge;`)() as (
       v: Record<string, string>,
-      s: { records: number; in: number; cached: number; out: number },
     ) => [string, string];
-    const so = { records: 4, tokens_in: 2_010_000, cached_in: 600_000, tokens_out: 40_470 };
-    const sv = { records: so.records, in: so.tokens_in, cached: so.cached_in, out: so.tokens_out };
-    for (const [v, price] of [
-      [
-        { in: "3", cached: "0.3", out: "15" },
-        { input: 3, cached_input: 0.3, output: 15 },
-      ],
-      [
-        { in: "1", cached: "", out: "2" },
-        { input: 1, cached_input: null, output: 2 },
-      ],
-      [
-        { in: "0", cached: "", out: "0" },
-        { input: 0, cached_input: null, output: 0 },
-      ],
-      [{ in: "", cached: "", out: "" }, null],
-      [
-        { in: "0.000001", cached: "", out: "0" },
-        { input: 0.000001, cached_input: null, output: 0 },
-      ],
-    ] as const) {
-      assert.equal(say(v, sv)[0], soFarLine(so, price), JSON.stringify(v));
-      assert.equal(
-        say(v, { records: 0, in: 0, cached: 0, out: 0 })[0],
-        soFarLine(undefined, price),
-      );
+    assert.deepEqual(judge({ in: "3", cached: "0.3", out: "15" }), ["set", ""]);
+    assert.deepEqual(judge({ in: "0.000001", cached: "", out: "0" }), ["set", ""]);
+    assert.deepEqual(judge({ in: "", cached: "", out: "" }), ["none", ""]);
+    const s = await stack();
+    for (const v of [
+      { in: "1,5", cached: "", out: "2" },
+      { in: "1", cached: "", out: "" },
+      { in: "", cached: "0.1", out: "" },
+      { in: "1", cached: "-1", out: "2" },
+    ]) {
+      const [state, why] = judge(v);
+      assert.equal(state, "bad", JSON.stringify(v));
+      assert.ok(why === PRICE_WORDS.number || why === PRICE_WORDS.pair, why);
+      const r = await s.post("/ui/settings/prices", {
+        p0: "lab",
+        m0: "small-model",
+        in0: v.in,
+        cached0: v.cached,
+        out0: v.out,
+      });
+      assert.equal(r.to, `/ui/settings?at=prices&error=small-model of lab: ${why}#model-prices`);
     }
-    assert.deepEqual(say({ in: "1,5", cached: "", out: "2" }, sv), [
-      "A price is a number, such as 0.60.",
-      "bad",
-    ]);
-    assert.deepEqual(say({ in: "1", cached: "", out: "" }, sv), [
-      "Set In and Out, or leave all three empty.",
-      "bad",
-    ]);
-    assert.deepEqual(say({ in: "", cached: "0.1", out: "" }, sv), [
-      "Set In and Out, or leave all three empty.",
-      "bad",
-    ]);
-    assert.equal(say({ in: "", cached: "", out: "" }, sv)[1], "none");
+    // What the script lets through, the server saves.
+    assert.match(
+      (
+        await s.post("/ui/settings/prices", {
+          p0: "lab",
+          m0: "small-model",
+          in0: "0.000001",
+          cached0: "",
+          out0: "0",
+        })
+      ).to,
+      /ok=saved/,
+    );
+    assert.deepEqual(s.store.modelPrices()[0]?.price, {
+      input: 0.000001,
+      cached_input: null,
+      output: 0,
+    });
   });
 
   test("the bars: each record in the span it started in; days in a time zone, 23 or 25 hours on the days the clocks change", () => {
