@@ -186,6 +186,65 @@ describe("ledger", () => {
     ledger.close();
   });
 
+  test("held-out records kept before version 20 stay as they were; a champion's names its run and no attempt (goal 086)", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "thermite-ledger-")), "ledger.db");
+    const db = new DatabaseSync(path);
+    db.exec("create table schema_migrations (version integer primary key)");
+    MIGRATIONS.slice(0, 19).forEach((m, i) => {
+      if (typeof m === "string") db.exec(m);
+      else m(db);
+      db.prepare("insert into schema_migrations (version) values (?)").run(i + 1);
+    });
+    const at = "2026-10-21T00:00:00.000Z";
+    db.prepare(
+      "insert into contract (campaign, version, sha, mode, body, created_at) values ('c', 1, 's', 'goal', '{}', ?)",
+    ).run(at);
+    db.prepare(
+      "insert into run (id, campaign, version, contract_sha, mode, seed_repo, seed_commit, status, created_at, updated_at) values ('old-1', 'c', 1, 's', 'goal', 'r', 'c0', 'running', ?, ?)",
+    ).run(at, at);
+    db.prepare(
+      "insert into attempt (id, run, parent_ref, parent_commit, commit_sha, ref, diff_sha, normalized_diff_sha, lifecycle, created_at, updated_at) values ('a-1', 'old-1', 'p', 'c0', 'c1', 'r', 'd', 'n', 'judged', ?, ?)",
+    ).run(at, at);
+    db.prepare(
+      "insert into job (kind, state, fence, lease_owner, lease_until, spec, created_at, updated_at) values ('validate', 'leased', 1, 't', '2999-01-01T00:00:00.000Z', '{}', ?, ?)",
+    ).run(at, at);
+    db.prepare(
+      "insert into held_out (job, fence, attempt, pass, detail, created_at) values (1, 1, 'a-1', 0, ?, ?)",
+    ).run('{"cells":[{"cell":"h","ok":false,"kind":"crashed"}],"pass":false}', at);
+    db.close();
+    const ledger = Ledger.open(path);
+    const rows = () =>
+      ledger.db
+        .prepare("select id, attempt, run, champion_seq, pass from held_out order by id")
+        .all()
+        .map((r) => ({ ...r }));
+    assert.deepEqual(rows(), [{ id: 1, attempt: "a-1", run: null, champion_seq: null, pass: 0 }]);
+    assert.deepEqual(ledger.heldOutFailure("a-1"), ["crashed"]);
+    // A champion's record: its run and champion, no attempt; the attempt's own is unchanged.
+    ledger.recordChampionHeldOut(1, 1, "old-1", 2, false, {
+      pass: false,
+      cells: [{ cell: "h", ok: true }],
+    });
+    assert.deepEqual(rows()[1], { id: 2, attempt: null, run: "old-1", champion_seq: 2, pass: 0 });
+    assert.deepEqual(ledger.heldOutFailure("a-1"), ["crashed"]);
+    // Still append-only; a record names an attempt, or a run and its champion.
+    assert.throws(
+      () => ledger.db.prepare("update held_out set pass = 1 where id = 1").run(),
+      /append-only/,
+    );
+    assert.throws(() => ledger.db.prepare("delete from held_out").run(), /append-only/);
+    assert.throws(
+      () =>
+        ledger.db
+          .prepare(
+            "insert into held_out (job, fence, attempt, pass, detail, created_at) values (1, 1, null, 1, '{}', ?)",
+          )
+          .run(at),
+      /CHECK constraint/,
+    );
+    ledger.close();
+  });
+
   test("a contract edit must become a new version", () => {
     const { ledger } = setup();
     const v1 = contractOf(hillClimbFixture);

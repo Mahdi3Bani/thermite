@@ -60,6 +60,8 @@ export function agentEvent(e: StoredEvent): StoredEvent {
       ...e,
       body: {
         ...(typeof b.run === "string" ? { run: b.run } : {}),
+        // A goal run's champion's check (goal 086): which champion, never which case.
+        ...(typeof b.champion_seq === "number" ? { champion_seq: b.champion_seq } : {}),
         pass,
         kinds,
         words: pass ? null : heldOutWords(kinds),
@@ -72,10 +74,11 @@ export function agentEvent(e: StoredEvent): StoredEvent {
 }
 
 /** A run as the agent token sees it: held-out checks as their kinds, no held-out cell named. */
-export function agentRun(r: RunView): Omit<RunView, "attempts"> & {
+export function agentRun(r: RunView): Omit<RunView, "attempts" | "champion_held_out"> & {
   attempts: (Omit<AttemptView, "held_out"> & {
     held_out: AgentHeldOut | null;
   })[];
+  champion_held_out: (AgentHeldOut & { champion_seq: number }) | null;
 } {
   return {
     ...r,
@@ -83,6 +86,10 @@ export function agentRun(r: RunView): Omit<RunView, "attempts"> & {
       ...a,
       held_out: a.held_out ? agentHeldOut(a.held_out) : null,
     })),
+    // The champion's held-out check (goal 086), as an attempt's: its kinds alone.
+    champion_held_out: r.champion_held_out
+      ? { ...agentHeldOut(r.champion_held_out), champion_seq: r.champion_held_out.champion_seq }
+      : null,
     goal_checks: agentGoalChecks(r.goal_checks),
     timeline: r.timeline.map(agentEvent),
   };

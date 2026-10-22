@@ -253,7 +253,7 @@ A hard constraint is one of:
 | `independence_epochs` | integer ≥ 0 | 2 | Accepted, not used yet |
 | `min_live_families` | integer ≥ 1 | 2 | Accepted, not used yet |
 | `threshold_reps` | integer, 2–20 | 5 | Runs on each cell when a `metric_threshold` goal is checked |
-| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation, for the goals a candidate newly meets. A verifier whose cells are all held out never shows as met in the goal report. A threshold goal whose `cells` mix measured and held-out cells is screened on the measured ones. When a held-out cell fails, the agents learn only its kind ([Held-out failures](verdicts.md#held-out-failures)) |
+| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation: for the goals a candidate newly meets, and, before the run closes, for every goal the champion meets. A verifier whose cells are all held out never shows as met in the goal report. A threshold goal whose `cells` mix measured and held-out cells is screened on the measured ones. When a held-out cell fails, the agents learn only its kind ([Held-out failures](verdicts.md#held-out-failures)) |
 
 Each goal:
 

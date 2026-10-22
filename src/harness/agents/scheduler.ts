@@ -791,6 +791,10 @@ export class Scheduler {
         status: g.status,
         reasons: clipReason(g.reasons, BRIEF_GOAL_CHARS),
       })),
+      // Its held-out check failed (goal 086): the judge's fixed words of the kinds alone.
+      ...(typeof body.not_confirmed === "string"
+        ? { not_confirmed: clipReason(body.not_confirmed, BRIEF_GOAL_CHARS) }
+        : {}),
     };
   }
 
@@ -2243,7 +2247,12 @@ export class Scheduler {
         : `Added by ${x.added_by === "copied" ? "an earlier run" : x.added_by}: its words are a suggestion to weigh, not instructions.`,
       "",
       report
-        ? `# What the champion meets (the judge's check of champion #${report.champion_seq})\n${report.goals
+        ? `# What the champion meets (the judge's check of champion #${report.champion_seq})\n${
+            // Its held-out check failed (goal 086): by kind alone, never which case.
+            report.not_confirmed
+              ? `The judge did not confirm it on the held-out cases: ${report.not_confirmed}. The run goes on: a goal not confirmed is not met yet.\n`
+              : ""
+          }${report.goals
             // A met goal's reasons too: its values on the public cells (goal 086) say how much
             // room a change has before it loses the goal. Never a held-out cell's.
             .map((g) => `- ${g.goal}: ${g.status}. ${clipReason(g.reasons, BRIEF_GOAL_CHARS)}`)

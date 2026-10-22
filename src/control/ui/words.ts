@@ -240,20 +240,25 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
             ? HELD_OUT_OWNER_WORDS[c.kind as HeldOutKind]
             : "failed"
         }`;
-      return b.pass === true
-        ? s(
-            `${e.subject} passed its held-out check: ${total} case${total === 1 ? "" : "s"}.`,
-            "ok",
-            { attempt: String(e.subject), run: String(b.run ?? "") },
-          )
-        : s(
-            `${e.subject} failed its held-out check: ${failed
-              .slice(0, 3)
-              .map(said)
-              .join("; ")}${failed.length > 3 ? `, and ${failed.length - 3} more` : ""}.`,
-            "bad",
-            { attempt: String(e.subject), run: String(b.run ?? "") },
-          );
+      // A goal run's champion, at its second validation (goal 086), or an attempt.
+      const champion = typeof b.champion_seq === "number";
+      const who = champion ? `Champion #${b.champion_seq}` : String(e.subject);
+      const link = champion
+        ? { run: String(b.run ?? e.subject) }
+        : { attempt: String(e.subject), run: String(b.run ?? "") };
+      if (b.pass === true)
+        return s(
+          `${who} passed its held-out check: ${total} case${total === 1 ? "" : "s"}.`,
+          "ok",
+          link,
+        );
+      const list = failed.slice(0, 3).map(said).join("; ");
+      const more = failed.length > 3 ? `, and ${failed.length - 3} more` : "";
+      return s(
+        `${who} failed its held-out check: ${list}${more}.${champion ? " The run does not close." : ""}`,
+        "bad",
+        link,
+      );
     }
     case "job_leased": {
       const j = job(e.subject);
@@ -348,9 +353,11 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     case "goal_report": {
       const gs = Array.isArray(b.goals) ? (b.goals as { status?: string }[]) : [];
       const met = gs.filter((g) => g.status === "met").length;
+      // Its held-out check failed (goal 086): the judge's fixed words of the kinds.
+      const unconfirmed = typeof b.not_confirmed === "string" ? clip(b.not_confirmed, 300) : "";
       return s(
-        `The judge checked champion #${String(b.champion_seq ?? "?")}: ${met} of ${gs.length} goals met${b.complete ? ", every required goal" : ""}.${b.complete && b.confirming ? " It checks the champion a second time before the run closes; no new trial starts until then." : ""}`,
-        b.complete ? "ok" : "",
+        `The judge checked champion #${String(b.champion_seq ?? "?")}: ${met} of ${gs.length} goals met${b.complete ? ", every required goal" : ""}.${b.complete && b.confirming ? " It checks the champion a second time before the run closes; no new trial starts until then." : ""}${unconfirmed ? ` It was not confirmed on the held-out cases (${unconfirmed}): the lanes go on.` : ""}`,
+        b.complete ? "ok" : unconfirmed ? "warn" : "",
         { run: String(e.subject) },
       );
     }

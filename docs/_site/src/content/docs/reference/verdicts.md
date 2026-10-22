@@ -70,11 +70,11 @@ The judge checks the change against each goal and compares the result with what 
 | `goal_progress` | Confirmation | In fresh runs the new goals still hold, none is lost or unclear, and the held-out cases pass | "confirmed: it meets more goals and loses none" |
 | `not_confirmed` | Confirmation | Anything else. Its reasons say why, after `confirmation failed: `: the [held-out kinds](#held-out-failures), `no longer met: <goals>`, `lost: <goals>`, `could not check: <goals>` | "did not hold up on fresh runs" |
 
-A goal checked by a metric threshold whose `cells` name both measured and held-out cases is screened on its measured cases and confirmed on its held-out ones. The held-out pass checks only the goals the change newly met.
+A goal checked by a metric threshold whose `cells` name both measured and held-out cases is screened on its measured cases and confirmed on its held-out ones. The held-out pass checks only the goals the change newly met. Before the run closes, the champion's second validation checks the held-out cases of every goal it meets ([The goal report](#the-goal-report)).
 
 ### The goal report
 
-The judge also checks every goal on the champion: a **validation**, once for each champion (the starting point, then each promotion) and again after a validation that failed. Its event `goal_report` has the body `{run, champion_seq, goals, complete, confirming?}`, and each goal is `{goal, description, status, reasons, values?}`. The run's **Goals** block shows each goal's reasons under it, met or not; the planner reads the report, and each worker's brief has every goal's status and reasons.
+The judge also checks every goal on the champion: a **validation**, once for each champion (the starting point, then each promotion) and again after a validation that failed. Its event `goal_report` has the body `{run, champion_seq, goals, complete, confirming?, not_confirmed?}`, and each goal is `{goal, description, status, reasons, values?}`. The run's **Goals** block shows each goal's reasons under it, met or not; the planner reads the report, and each worker's brief has every goal's status and reasons.
 
 | A goal checked by | Its reasons | `values` |
 | --- | --- | --- |
@@ -83,21 +83,23 @@ The judge also checks every goal on the champion: a **validation**, once for eac
 | A kit verifier, not met | each case that failed and why (`quick: crash: killed: timeout`), then `; measured: ` and the values of the cases that gave some | the same |
 | A kit verifier whose gate did not pass | `not run: it requires <verifiers>, which did not pass` | none |
 | The review panel | what the review panel and the owner decided | none |
+| Any goal whose held-out check failed at the second validation | `not confirmed: ` and the [held-out kinds](#held-out-failures) of its cases, then `; on the measured cells: ` and its reasons as above. Its status is `unmet` | as above |
 
 - **A case's values** are the kit's metrics as the judge works them out, by name, in the kit's order; the reasons give six significant figures. A case whose output the kit's check refused gives the numbers its check reported for the kit's metrics taken from the check (`from: "check"`), so an unmet goal shows by how much; a case that crashed or ran out of time gives none. At most 100 cases a goal.
-- **Only measured cases.** A held-out case runs only at confirmation, and the judge keeps none of its values, not even for the owner: [Held-out failures](#held-out-failures).
+- **Only measured cases.** A held-out case runs only at confirmation (an attempt's, or the champion's second validation), and the judge keeps none of its values, not even for the owner: [Held-out failures](#held-out-failures).
 - **The rig's ledger** keeps every goal check, the champion's and each attempt's, with the same reasons, in its `goal_check` table.
 
 **Completion is checked twice.** When a validation finds every required goal met (`complete: true`), the report has `confirming: true`, and the judge queues a second, independent validation of the same champion. Until it is done, the run starts no new round and no new trial. A trial at work goes on. The run's page says `Champion #<n> met every required goal, and the judge is checking it a second time: no new trial starts until that check is done.`, and **Live** says `no new trial starts: the judge is confirming that champion #<n> meets every required goal; …`.
 
-- If the second validation agrees, the run closes (`goal_complete`).
+- The second validation runs the measured cases, as the first does, and then the held-out cases of each goal it finds met (a review goal has none). An attempt's confirmation runs the held-out cases only of the goals it newly met, so without this a goal met long before would never run them. A contract without held-out cases, or whose goals met have none, runs no held-out case here.
+- If every required goal still holds and every held-out case passes, the run closes (`goal_complete`).
 - If it does not, or it fails or is blocked after three lost leases, the lanes go on, and **Live** says `trials start again: the judge's confirmation of champion #<n> did not close the run`.
+- If a held-out case fails, the run does not close. Each goal whose held-out check failed is `unmet`, with the reasons above, in the report and in the goal tree, so a change that meets it again is progress, and that change's own confirmation runs the goal's held-out cases. The report has `complete: false` and `not_confirmed`, the kinds of failure in the agents' words, such as `a held-out check failed the kit's check`. **History** says `It was not confirmed on the held-out cases (<kinds>): the lanes go on.` The planner reads `not_confirmed`, and each worker's brief says `The judge did not confirm it on the held-out cases: <kinds>.` above the goals.
 - A second validation queued for an earlier champion, when a promotion came first, counts as the first validation of the champion now: the run never closes on one validation.
-- The second validation runs the measured cases only, as the first does.
 
 ### Held-out failures
 
-A **held-out case** (the contract's `held_out_cells`; the dashboard calls them hidden tests) runs only at confirmation. When one fails, the judge records the case's name and its **kind** of failure, from a closed list, and never the case's inputs, its output or the check's words:
+A **held-out case** (the contract's `held_out_cells`; the dashboard calls them hidden tests) runs only at confirmation: an attempt's, and, in a goal campaign, the champion's second validation before the run closes. When one fails, the judge records the case's name and its **kind** of failure, from a closed list, and never the case's inputs, its output or the check's words:
 
 | Kind | When | The agents read |
 | --- | --- | --- |
@@ -112,7 +114,9 @@ A build that fails never reaches the held-out cases: its verdict is `invalid` or
 
 **The owner** sees each held-out case of the newest confirmation: its name, what it was checked for (a goal, a kit verifier, or "no worse than the champion" in a hill climb), passed or its kind, and, where the check gives one, the measured value against its threshold. A threshold goal's value is the mean of its runs with its interval, in the metric's unit; a hill climb's is the ratio of the medians. It is on the attempt's page under **Held-out checks**, in the run's **History** (`<attempt> failed its held-out check: big timed out.`, or `<attempt> passed its held-out check: 3 cases.`), in `held_out` of each attempt in [`get_run`](mcp-tools.md#get_run) and `GET /v1/rigs/<rig>/view`, and in the judge's event `held_out_checked`, whose body is `{run, job, pass, cells, cells_total}`: each cell `{cell, goal?, verifier?, ok, kind?, value?, low?, high?, threshold?, op?, measure?, unit?}`, at most 50, and `cells_total` counts them all. The rig's ledger keeps the whole record in its `held_out` table, which no export holds.
 
-**The agents** read only that a held-out check failed, and its kind, in the words above, each kind once: in the verdict's reasons (which a lane's brief shows), as `held_out` in the planner's and the teachers' evidence, and as `held_out` in a worker's `status` of the attempt. They never get a held-out case's name, its values, its inputs, its output or the check's words, and the `held_out_checked` event reaches control, never an agent: no brief, tool or knowledge base item is built from it. Control's agent token, for an agent that works over MCP, reads them as the agents do: in [`get_run`](mcp-tools.md#get_run) and [`recent_events`](mcp-tools.md#recent_events), a held-out check is its kinds and their words, and no held-out case is named.
+**The champion's check**, in a goal campaign, is the owner's as an attempt's is: on the run's page under its goals, in a block titled `Held-out checks of champion #<n>`; in **History** (`Champion #<n> failed its held-out check: big timed out. The run does not close.`, or `Champion #<n> passed its held-out check: 3 cases.`); as `champion_held_out` of the run in [`get_run`](mcp-tools.md#get_run) and `GET /v1/rigs/<rig>/view`, the same fields with `champion_seq`; and in a `held_out_checked` event whose subject is the run and whose body also has `champion_seq`. The `held_out` table keeps it with its run and champion, and no attempt.
+
+**The agents** read only that a held-out check failed, and its kind, in the words above, each kind once: in the verdict's reasons (which a lane's brief shows), as `held_out` in the planner's and the teachers' evidence, and as `held_out` in a worker's `status` of the attempt. Of the champion's check they read the goal report: `not_confirmed`, and which goal was not confirmed with its kinds, so the lanes can work on it. They never get a held-out case's name, its values, its inputs, its output or the check's words, and the `held_out_checked` event reaches control, never an agent: no brief, tool or knowledge base item is built from it. Control's agent token, for an agent that works over MCP, reads them as the agents do: in [`get_run`](mcp-tools.md#get_run) and [`recent_events`](mcp-tools.md#recent_events), a held-out check, the champion's too, is its kinds and their words, and no held-out case is named.
 
 A kind comes from how the judge saw the run fail, never from what the run or the check printed. [Goal 082](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/082-judge-findings-in-view.goal) says what a kind reveals, and why that is safe.
 
@@ -219,7 +223,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | | The judge's time on the run reaches `budget.device_hours` | `the device-hours budget is spent` |
 | | The agents' model spending reaches `budget.llm_usd` | `the model budget is spent ($<amount>)` |
 | | A full reset is about to wipe the rig | `wiping` |
-| `closed` | A goal campaign meets its goals, and a second, independent check agrees ([The goal report](#the-goal-report)) | `every required goal is met` |
+| `closed` | A goal campaign meets its goals, and a second, independent check agrees, with the held-out cases of the goals met ([The goal report](#the-goal-report)) | `every required goal is met` |
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
 | | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
 | | A research campaign's time is over | `the research window is over` |

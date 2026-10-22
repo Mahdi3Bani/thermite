@@ -128,6 +128,11 @@ export interface PlannerPast {
 export interface GoalReport {
   champion_seq: number;
   goals: { goal: string; status: string; reasons: string }[];
+  /**
+   * The champion met every required goal, and its held-out check failed (goal 086): the run goes
+   * on. Fixed words of the kinds of failure alone, never which case, its values or its texts.
+   */
+  not_confirmed?: string | undefined;
 }
 
 export interface NewFamily {
@@ -723,7 +728,9 @@ message's id and family set to the rule's direction. A message names a direction
 fits, or design a new one in new_families. In a goal campaign, goal_report is the judge's check of the champion: aim lanes at
 goals it does not meet yet (a goal "not run" waits on a goal it requires), never at work the
 champion already does. Each goal's reasons give the values the judge measured on each case, met
-or not: how far a goal is from its line, or how much room a change has before it loses one. campaign_brief, when there is one, comes from the campaign's author: its
+or not: how far a goal is from its line, or how much room a change has before it loses one. When
+goal_report has not_confirmed, the champion met the goals on the measured cases but failed a
+held-out check, whose cases no one here sees: a goal "not confirmed" is not met yet. campaign_brief, when there is one, comes from the campaign's author: its
 additional_information (background, links, what was tried, limits, what good looks like),
 starting_links, ideas_to_try and hypotheses. Use them as starting points, not rules: turn ideas that fit into
 experiments, and design experiments that test the hypotheses. field_notes holds the newest notes the lanes, the advisors and you wrote,

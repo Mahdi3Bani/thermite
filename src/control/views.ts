@@ -97,6 +97,9 @@ export interface HeldOutView {
   cells_total: number;
 }
 
+/** A held-out check of a goal run's champion (goal 086), from the judge's event. */
+export type ChampionHeldOutView = HeldOutView & { champion_seq: number };
+
 /** A held-out check from its event's body, each field checked: the rig's report is data. */
 function heldOutView(at: string, b: Record<string, unknown>): HeldOutView {
   const txt = (v: unknown, n = 200) => (typeof v === "string" ? clip(v, n) : null);
@@ -234,6 +237,12 @@ export interface RunView {
    * check is still to come (goal 086): the run's lanes start no new trial until it is done.
    */
   goals_confirming: boolean;
+  /**
+   * The newest held-out check of the run's champion, for the owner (goal 086): the second
+   * validation of a champion that met every required goal runs the held-out cells of the goals
+   * met. As an attempt's `held_out`, with the champion it checked. Null when none ran.
+   */
+  champion_held_out: ChampionHeldOutView | null;
   /**
    * How each goal is really checked, as the rig's kit runs it (goal 082): from the rig's
    * `goal_checks` event when the run started. Null for a run an older harness started.
@@ -716,6 +725,7 @@ export function rigView(
         goals_at: null,
         goals_seq: null,
         goals_confirming: false,
+        champion_held_out: null,
         goal_checks: null,
         audits: [],
         promotion_waits: {},
@@ -906,6 +916,14 @@ export function rigView(
         break;
       }
       case "held_out_checked": {
+        // A goal run's champion's check names its champion (goal 086); else it is an attempt's.
+        if (typeof b.champion_seq === "number") {
+          inst(typeof b.run === "string" ? b.run : String(e.subject)).champion_held_out = {
+            ...heldOutView(e.at, b),
+            champion_seq: b.champion_seq,
+          };
+          break;
+        }
         const a = attempts.get(String(e.subject));
         if (a) a.held_out = heldOutView(e.at, b);
         break;

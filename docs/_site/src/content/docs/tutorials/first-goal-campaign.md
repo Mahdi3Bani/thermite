@@ -177,7 +177,7 @@ It takes less than a minute. Stay on the page of `goal-1`. Press **refresh** unt
 1. The judge screens your change: it builds it and checks the goal. It says the change `looked like goal progress; being confirmed on fresh runs. Newly met: faster.`
 2. It checks the change again on fresh runs: `confirmed: it meets more goals and loses none. Newly met: faster.` Then your change `became champion #2`. Champion #1 was the project as it started.
 3. The judge checks the goals of the new champion: `The judge checked champion #2: 1 of 1 goals met, every required goal. It checks the champion a second time before the run closes; no new trial starts until then.`
-4. It checks them a second time, because ending a campaign is final and one check is not enough. The last three lines come at the same moment: `Run goal-1 closed: every required goal is met.`, `Every required goal is met: the campaign is complete.`, and the second check's `1 of 1 goals met, every required goal`.
+4. It checks them a second time, because ending a campaign is final and one check is not enough. The last three lines come at the same moment: `Run goal-1 closed: every required goal is met.`, `Every required goal is met: the campaign is complete.`, and the second check's `1 of 1 goals met, every required goal`. This campaign has no hidden test cases. In one that has them, the second check also runs those of each goal met, and the run closes only if they pass.
 
 To see the whole story, from `Run goal-1 started`, open the run's **History** tab: it keeps every line, also newest first.
 

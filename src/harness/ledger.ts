@@ -959,6 +959,34 @@ export class Ledger {
   }
 
   /**
+   * A goal run's champion's held-out record (goal 086): the confirming validation of a champion
+   * that met every required goal runs its held-out cells too. It is kept as an attempt's is, by
+   * run and champion and with no attempt, so heldOutFailure never reads it as an attempt's own.
+   */
+  recordChampionHeldOut(
+    jobId: number,
+    fence: number,
+    run: string,
+    championSeq: number,
+    pass: boolean,
+    detail: unknown,
+  ): void {
+    this.tx(() => {
+      this.assertFence(jobId, fence);
+      this.run(
+        "insert into held_out (job, fence, attempt, run, champion_seq, pass, detail, created_at) values (?, ?, null, ?, ?, ?, ?, ?)",
+        jobId,
+        fence,
+        run,
+        championSeq,
+        pass ? 1 : 0,
+        canonicalJson(detail ?? {}),
+        this.now(),
+      );
+    });
+  }
+
+  /**
    * What the agents may know of an attempt's newest held-out record (goal 082): undefined when
    * it has none or it passed; else the kinds of failure it found, each once ([] for a record from
    * before goal 082, which kept no kinds). Never a cell's name, values or texts.

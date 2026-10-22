@@ -182,6 +182,16 @@ describe("a goal report keeps what it measured (goal 086)", () => {
     assert.deepEqual((held.body as { cells: unknown[] }).cells, [
       { cell: HIDDEN, verifier: "speedy", ok: true },
     ]);
+    // The champion's second validation ran the held-out case too, and it passed (goal 086).
+    const championHeld = env.events("held_out_checked").filter((e) => e.subject === "js-1");
+    assert.deepEqual(
+      championHeld.map((e) => [
+        (e.body as { champion_seq: number }).champion_seq,
+        (e.body as { pass: boolean }).pass,
+        (e.body as { cells: unknown[] }).cells,
+      ]),
+      [[2, true, [{ cell: HIDDEN, verifier: "speedy", ok: true }]]],
+    );
     const last = env.reports().at(-1);
     assert.equal(last?.complete, true);
     const met = last?.goals.find((g) => g.goal === "speedy");
@@ -297,6 +307,8 @@ describe("a goal report keeps what it measured (goal 086)", () => {
     await env.drain();
     assert.equal(env.ledger.getRun("js-1")?.status, "closed");
     assert.equal(env.events("goal_complete").length, 1);
+    // The contract has a held-out case, but no goal met has it: nothing to check (goal 086).
+    assert.equal(env.events("held_out_checked").length, 0);
   });
 });
 

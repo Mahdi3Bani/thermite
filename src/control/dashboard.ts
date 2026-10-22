@@ -282,6 +282,7 @@ import {
   attemptHref,
   attemptRows,
   cap,
+  championHeldOutBlock,
   confirmingWords,
   type Forms,
   goalState,
@@ -1096,7 +1097,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                   : `<p class="run-said" data-part="run-said">${said}</p>
 <div data-part="run-needs">${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}</div>
 <div class="cols run-cols"><div>
-${goals}${research}${ladder}
+${goals}${championHeldOutBlock(i, now)}${research}${ladder}
 <div class="block" data-part="attempts"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
 </div><div class="side">
 <div class="block" data-part="now"><div class="head"><h2>Now</h2></div>${now_}</div>
