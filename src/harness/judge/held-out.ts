@@ -60,6 +60,14 @@ export const HELD_OUT_WORDS: Record<HeldOutKind, string> = {
   no_cell: "a held-out check names a cell the kit does not have",
 };
 
+/**
+ * The agents' words when a held-out pass could not finish: an error in the judge's own work (a
+ * kit that fails its runs, a tampered build, a lost lease). An error's text can carry a held-out
+ * cell's name, parameters or time, so the agents get only these words; the error itself goes to
+ * the rig's log, for the owner.
+ */
+export const HELD_OUT_INFRA = "a held-out check could not finish (an infrastructure failure)";
+
 /** The owner's words for each kind, after the cell's name. */
 export const HELD_OUT_OWNER_WORDS: Record<HeldOutKind, string> = {
   threshold_missed: "missed its threshold",

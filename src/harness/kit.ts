@@ -276,5 +276,50 @@ export function kitProblems(contract: Contract, kit: Kit, targetType?: string): 
       }
     }
   }
+  // Every run works out every metric of the kit, and a rate divides its cell's `work` parameter
+  // by the run's time. A cell the contract runs without that parameter, as a number above zero,
+  // would fail every run as an infrastructure error (whose words would carry the cell's
+  // parameters and time), so it is refused here.
+  const rates = Object.entries(kit.metrics).flatMap(([name, m]) =>
+    "work" in m ? [{ name, work: m.work }] : [],
+  );
+  for (const c of rates.length ? cellsRun(contract, kit) : []) {
+    const params = cellParams(kit, c);
+    if (!params) continue;
+    for (const r of rates) {
+      const amount = Number(params[r.work]);
+      if (!Number.isFinite(amount) || amount <= 0)
+        out.push(
+          `cell ${c} has no parameter ${r.work} above zero, which rate metric ${r.name} divides by the run's time`,
+        );
+    }
+  }
   return out;
+}
+
+/** The cells a contract's runs may measure: screened, held out, or checked for a goal. */
+function cellsRun(contract: Contract, kit: Kit): string[] {
+  const cells = new Set<string>();
+  if (contract.mode === "hill_climb") {
+    for (const c of [...contract.cells, ...contract.held_out_cells]) cells.add(c);
+  }
+  if (contract.mode === "goal") {
+    for (const c of contract.held_out_cells) cells.add(c);
+    // A code goal's verifier, and the gates it requires, each run their cells.
+    const seen = new Set<string>();
+    const verifier = (name: string) => {
+      const v = Object.hasOwn(kit.verifiers, name) ? kit.verifiers[name] : undefined;
+      if (!v || seen.has(name)) return;
+      seen.add(name);
+      for (const c of v.cells) cells.add(c);
+      for (const r of v.requires) verifier(r);
+    };
+    for (const g of contract.goals) {
+      const v = g.verify;
+      if (v.type === "code") verifier(v.verifier);
+      if (v.type === "metric_threshold")
+        for (const c of v.cells ?? Object.keys(kit.cells)) cells.add(c);
+    }
+  }
+  return [...cells];
 }

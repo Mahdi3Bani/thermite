@@ -184,6 +184,25 @@ describe("the new-campaign page's builder", () => {
         min_effect: 0.05,
       });
     }
+    // A hidden case runs too, at confirmation: without its work, the score is time, never a rate
+    // that every run of the hidden case would fail to work out.
+    const hiddenLazy = buildCampaign({
+      ...hillClimb,
+      kit: { ...here, cases: [...here.cases.slice(0, 2), { name: "held", params: { n: 300 } }] },
+      score: { kind: "time" },
+    });
+    assert.ok(hiddenLazy.ok, JSON.stringify(!hiddenLazy.ok && hiddenLazy.errors));
+    if (hiddenLazy.ok) {
+      const kit = KitSchema.parse(JSON.parse(String(hiddenLazy.kit?.files["kit.json"])));
+      assert.deepEqual(kit.metrics, { seconds: { unit: "s", from: "time" } });
+      assert.deepEqual(hiddenLazy.contract.held_out_cells, ["held"]);
+    }
+    const rated = buildCampaign({ ...hillClimb, score: { kind: "time" } });
+    assert.ok(rated.ok, JSON.stringify(!rated.ok && rated.errors));
+    if (rated.ok) {
+      const kit = KitSchema.parse(JSON.parse(String(rated.kit?.files["kit.json"])));
+      assert.deepEqual(Object.values(kit.metrics), [{ unit: "per s", work: "work" }]);
+    }
     const checked = buildCampaign({
       ...hillClimb,
       kit: {

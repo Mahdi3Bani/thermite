@@ -155,7 +155,7 @@ export const CampaignDraft = z.strictObject({
   kit: z.discriminatedUnion("source", [KitHere, KitRepo, KitUploaded]).optional(),
   /**
    * The score. "time": how long a run takes, from the judge's clock (a rate instead when every
-   * measured case says how much work it does). "check": a number the check works out from the
+   * case, hidden ones too, says how much work it does). "check": a number the check works out from the
    * run's output and prints in its JSON line, under `field`.
    */
   score: z
@@ -467,7 +467,8 @@ export function buildCampaign(
       files[`run/inputs/${f.name}`] = body;
       files[`check/inputs/${f.name}`] = body;
     }
-    // Time, or a rate when every measured case says how much work it does, or the check's number.
+    // Time, or a rate when every case says how much work it does, or the check's number. A
+    // hidden case runs too, at confirmation, and a rate needs its work as much as any other's.
     const kind = d.score?.kind ?? "time";
     const measured = k.cases.filter((c) => !heldOut.includes(c.name));
     let metricDef: Record<string, unknown>;
@@ -475,7 +476,7 @@ export function buildCampaign(
       const field = d.score?.field;
       if (!field) errors.push("name the number your check reports (for example accuracy)");
       metricDef = { unit: d.score?.unit ?? "", from: "check", field: field ?? "score" };
-    } else if (measured.length && measured.every((c) => c.work)) {
+    } else if (measured.length && k.cases.every((c) => c.work)) {
       metricDef = { unit: d.score?.unit ?? "per s", work: "work" };
       direction = "max";
     } else {

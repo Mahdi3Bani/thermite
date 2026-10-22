@@ -122,7 +122,7 @@ The contract chooses which cells count: `cells` for every block, `held_out_cells
 | Time | `{"unit": "s", "from": "time"}` | The run's time in seconds, on the judge's clock. `unit` defaults to `s`. A contract improves it with `"direction": "min"` |
 | From the check | `{"unit": "", "from": "check", "field": "<field>"}` | A number the kit's check prints under `<field>` in its result line, for example an accuracy. `unit` defaults to empty |
 
-Every value must be above zero, because the judge compares runs by their ratio. A run whose check prints no number above zero for a check metric is invalid: `the check reported no <field> above zero (got <value>)`. A rate whose `work` parameter is missing, zero or not a number is an infrastructure error: `kit metric <name>: bad work <value> or time <seconds>`.
+Every value must be above zero, because the judge compares runs by their ratio. A run whose check prints no number above zero for a check metric is invalid: `the check reported no <field> above zero (got <value>)`. Every run works out every metric of the kit, so each case the contract runs needs each rate's `work` parameter, a number above zero: the [check against the contract](#the-kit-against-the-contract) refuses a case without it. A rate whose `work` parameter is still missing, zero or not a number at a run is an infrastructure error: `kit metric <name>: bad work <value> or time <seconds>`. On a held-out case, the agents get only `a held-out check could not finish (an infrastructure failure)`, and the rig's log keeps the error.
 
 The device's driver also refuses values it cannot believe. The `cpu` driver refuses values that are not finite; the `cuda-gpu` driver refuses values that are not finite or not above zero.
 
@@ -291,6 +291,7 @@ When a run is assigned, the harness checks the kit against the contract before i
 | A metric named by the objective, a secondary objective, a guard or a `min`/`max` hard constraint (hill climb) | `the objective names metric <metric>, which the kit does not have`, or `a secondary objective …`, `a guard …`, `a hard constraint …` |
 | A goal's verifier | `goal <id> names verifier <verifier>, which the kit does not have` |
 | A goal threshold's metric or cell | `goal <id> names metric <metric>, which the kit does not have`, or `goal <id> names cell <cell>, which the kit does not have` |
+| A case the contract runs (in `cells`, `held_out_cells`, a threshold goal's cells, or all the kit's cases when it names none, or a goal's verifier and the verifiers it requires) without a rate metric's `work` parameter as a number above zero | `cell <cell> has no parameter <work> above zero, which rate metric <metric> divides by the run's time` |
 
 Before each job, the judge checks the target again. A mismatch then is an infrastructure error: `kit <name> measures <target>, this rig has <type>`.
 

@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../control/api.ts";
 import { ControlStore } from "../../control/store.ts";
 import { relayOnce } from "../../supervisor/relay.ts";
-import { makeJudgeEnv } from "../../testing/judge-env.ts";
+import { FAST_KERNEL, makeJudgeEnv } from "../../testing/judge-env.ts";
 import { Registry } from "../agents/registry.ts";
 import { createHarnessApi } from "../api.ts";
 import {
+  HELD_OUT_INFRA,
   HELD_OUT_KINDS,
   heldOutCellsOf,
   heldOutKindOf,
@@ -331,6 +334,52 @@ describe("held-out failures, named safely (goal 082)", () => {
       ),
     );
     assert.match(page, /&gt;= 7\.000e\+7 op\/s/);
+  });
+});
+
+describe("a held-out pass the judge cannot finish (goal 082)", () => {
+  test("its error reaches the agents in fixed words, never the case, its parameters or its time", async () => {
+    const env = await setup({ kitCells: CELLS, contract: { held_out_cells: [HIDDEN] } });
+    const id = await env.submit(FAST_KERNEL, "drop the waste");
+    // Screen it: a win queues its confirmation.
+    const confirming = () =>
+      (
+        env.ledger.db.prepare("select count(*) as n from job where kind = 'confirm'").get() as {
+          n: number;
+        }
+      ).n;
+    for (let i = 0; i < 20 && !confirming(); i++) await env.judge.tick();
+    assert.equal(confirming(), 1, env.explain(id));
+    // The rig's copy of the kit loses the rate's parameter on the held-out case only, as a kit
+    // checked before the kit check refused that could: each held-out run then throws, with the
+    // parameters and the run's time in its words.
+    const file = join(env.paths.stateDir, "kits", env.kitCommit, "kit.json");
+    chmodSync(file, 0o644);
+    const kit = JSON.parse(readFileSync(file, "utf8")) as { cells: Record<string, unknown> };
+    kit.cells[HIDDEN] = { n: 15000000, salt: HIDDEN_PARAM };
+    writeFileSync(file, JSON.stringify(kit));
+    await env.drain();
+    // An infrastructure failure, retried once, never a research loss; its reasons fixed words.
+    const verdicts = env.ledger.db
+      .prepare("select verdict, reasons from verdict where attempt = ? and verdict = 'crash_infra'")
+      .all(id) as { verdict: string; reasons: string }[];
+    assert.equal(verdicts.length, 2, env.explain(id));
+    for (const v of verdicts) assert.equal(v.reasons, HELD_OUT_INFRA);
+    // Nowhere an agent or Live reads: the case, its parameters, or the throw's words and time.
+    const live = JSON.stringify(env.service.live.since(0, 100_000));
+    const jobs = JSON.stringify(env.ledger.db.prepare("select result from job").all());
+    for (const [where, text] of Object.entries({
+      ...env.agentViews(id),
+      reasons: env.reasons(id),
+      events: env.events(),
+      live,
+      jobs,
+    })) {
+      noContent(text, where);
+      assert.ok(!text.includes(HIDDEN), `${where} names the hidden case`);
+      assert.ok(!/bad work|or time \d/.test(text), `${where} holds the error's own words`);
+    }
+    assert.match(live, /could not finish \(an infrastructure failure\)/);
   });
 });
 

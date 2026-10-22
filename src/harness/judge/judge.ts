@@ -26,6 +26,7 @@ import {
 } from "./decide.ts";
 import { GOAL_VALUES_CELLS, type GoalCellValues, runValues, valuesText } from "./goal-values.ts";
 import {
+  HELD_OUT_INFRA,
   type HeldOutCell,
   type HeldOutKind,
   type HeldOutResult,
@@ -99,6 +100,8 @@ export function serial(): <T>(fn: () => Promise<T>) => Promise<T> {
 }
 
 class InfraError extends Error {}
+/** An infrastructure failure in the judge's own fixed words, safe for the agents to read. */
+class FixedInfraError extends InfraError {}
 
 /** A job's outcome, written by finish() in one fenced transaction. */
 interface Finish {
@@ -813,7 +816,7 @@ export class Judge {
         count: contract.acceptance.confirm_blocks,
         runsPerCell: contract.acceptance.runs_per_cell,
       });
-      const ho = await this.heldOut(job, ctx, cand, champ, contract);
+      const ho = await this.heldOutPass(job, () => this.heldOut(job, ctx, cand, champ, contract));
       const d = decideConfirm(contract, blocks, this.guardTotals(run), this.noiseFloor(run));
       let verdict: string = d.verdict ?? "not_confirmed";
       let reasons = d.reasons;
@@ -850,6 +853,25 @@ export class Judge {
   }
 
   /**
+   * Runs a held-out pass. Whatever goes wrong in it reaches the verdict's reasons, Live and so the
+   * agents in fixed words only (goal 082): an error's text can name a held-out cell or carry its
+   * parameters or time. The error itself goes to the rig's log, for the owner.
+   */
+  private async heldOutPass<T>(job: JobRow, pass: () => Promise<T>): Promise<T> {
+    try {
+      return await pass();
+    } catch (err) {
+      if (err instanceof FixedInfraError) throw err;
+      log("judge", "held-out pass failed", {
+        job: job.id,
+        attempt: job.attempt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new InfraError(HELD_OUT_INFRA);
+    }
+  }
+
+  /**
    * Held-out cells: correctness on every one, and no regression beyond twice the equivalence
    * band on the primary metric, judged on the median of three interleaved runs per arm. Each
    * cell's result is recorded with its kind of failure and, for the regression check, its ratio
@@ -881,7 +903,7 @@ export class Judge {
         if (r.kind !== "ok") {
           // An opaque reason: details of held-out cells never leave promotion code.
           log("judge", "champion failed on a held-out cell", { job: job.id, reason: r.reason });
-          throw new InfraError("champion failed on a held-out cell");
+          throw new FixedInfraError("champion failed on a held-out cell");
         }
         if (c.kind !== "ok") failed = heldOutKindOf(c);
         else {
@@ -1501,11 +1523,13 @@ export class Judge {
       let ho: HeldOutResult | undefined;
       if (contract.held_out_cells.length && gained.length) {
         const cells: HeldOutCell[] = [];
-        const checked = await this.verifyGoals(job, contract, ctx, cand, {
-          heldOut: true,
-          goals: gained,
-          heldOutCells: cells,
-        });
+        const checked = await this.heldOutPass(job, () =>
+          this.verifyGoals(job, contract, ctx, cand, {
+            heldOut: true,
+            goals: gained,
+            heldOutCells: cells,
+          }),
+        );
         ho = {
           pass: checked.every((r) => r.status === "met" || r.reasons === "no held-out cells"),
           cells: heldOutResult(cells).cells,

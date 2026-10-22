@@ -224,6 +224,76 @@ describe("kit commands", () => {
       "goal loads names verifier loads, which the kit does not have",
       "goal fast names cell big, which the kit does not have",
     ]);
+
+    // A rate divides each run's `work` parameter by its time: every cell the contract runs needs
+    // it, a number above zero, or every run of that cell would fail as an infrastructure error.
+    const rated = KitSchema.parse({
+      ...base,
+      cells: {
+        small: { work: 1 },
+        none: { n: 2 },
+        zero: { params: { work: 0 }, timeout_s: 60 },
+        text: { work: "lots" },
+        gate: { n: 3 },
+        unused: { n: 4 },
+      },
+      verifiers: {
+        first: { cells: ["gate"] },
+        second: { cells: ["small"], requires: ["first"] },
+      },
+    });
+    const need = (c: string) =>
+      `cell ${c} has no parameter work above zero, which rate metric ops divides by the run's time`;
+    assert.deepEqual(
+      kitProblems(
+        contract({
+          mode: "hill_climb",
+          objective: { primary: { metric: "ops", direction: "max", min_effect: 0.05 } },
+          cells: ["small", "none"],
+          held_out_cells: ["zero"],
+        }),
+        rated,
+      ),
+      [need("none"), need("zero")],
+    );
+    assert.deepEqual(
+      kitProblems(
+        contract({
+          mode: "goal",
+          deliverable: "d",
+          goals: [
+            { id: "v", description: "v", verify: { type: "code", verifier: "second" } },
+            {
+              id: "t",
+              description: "t",
+              verify: {
+                type: "metric_threshold",
+                metric: "ops",
+                op: ">=",
+                value: 1,
+                cells: ["text"],
+              },
+            },
+          ],
+          held_out_cells: ["small"],
+        }),
+        rated,
+      ),
+      // The verifier's gate runs too; a cell no part of the contract runs is not checked.
+      [need("gate"), need("text")],
+    );
+    // A kit with no rate needs no such parameter.
+    assert.deepEqual(
+      kitProblems(
+        contract({
+          mode: "hill_climb",
+          objective: { primary: { metric: "secs", direction: "min", min_effect: 0.05 } },
+          cells: ["none"],
+        }),
+        KitSchema.parse({ ...rated, metrics: { secs: { from: "time" } } }),
+      ),
+      [],
+    );
   });
 
   test("an assignment whose kit does not fit its contract is refused, with the reason, before any run", async () => {
