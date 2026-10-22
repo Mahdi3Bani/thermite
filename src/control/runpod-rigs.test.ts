@@ -104,9 +104,10 @@ describe("rigs on RunPod: the launch", () => {
     assert.equal(body.dataCenterIds, undefined, "RunPod chooses when none is given");
     assert.deepEqual(body.ports, ["8790/http"]);
     assert.equal(body.cmd, undefined, "the image's own entry point runs");
-    // Only pull mode's launch values: public material and the one-time code.
+    // Only pull mode's launch values: public material, the one-time code and the snapshot key.
     assert.deepEqual(Object.keys(body.env).sort(), [
       "THERMITE_RIG_ID",
+      "THERMITE_STATE_SNAPSHOT_KEY",
       "THERMITE_TUNNEL_CONTROL_BOX",
       "THERMITE_TUNNEL_CONTROL_KEY_SHA256",
       "THERMITE_TUNNEL_ENROLL_CODE",
@@ -223,6 +224,84 @@ describe("rigs on RunPod: the launch", () => {
     const ok = setup();
     await ok.rigs.launch("runpod", { gpu: "RTX A4000", rig: "rig-x" }, "owner:api");
     assert.ok(ok.store.tunnelRig("rig-x")?.pod);
+  });
+
+  test("each pod gets its own snapshot key, which goes to RunPod's settings and nowhere else", async () => {
+    const s = setup();
+    const out: string[] = [];
+    const write = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      out.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    let a: Awaited<ReturnType<typeof s.rigs.launch>>;
+    let b: Awaited<ReturnType<typeof s.rigs.launch>>;
+    try {
+      a = await s.rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api");
+      b = await s.rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api");
+      await s.advance(60_000);
+    } finally {
+      process.stdout.write = write;
+    }
+    const keys = s.created().map((c) => c.env.THERMITE_STATE_SNAPSHOT_KEY as string);
+    assert.equal(keys.length, 2);
+    for (const k of keys) assert.equal(Buffer.from(k, "base64url").length, 32);
+    assert.notEqual(keys[0], keys[1], "a new key for each launch");
+    // Not in control's database (any table), its audit, the views or its log.
+    const tables = s.store.db
+      .prepare("select name from sqlite_master where type = 'table'")
+      .all() as { name: string }[];
+    const dump = tables
+      .map((t) => JSON.stringify(s.store.db.prepare(`select * from "${t.name}"`).all()))
+      .join("\n");
+    const views = JSON.stringify([s.rigs.view(a.rig), s.rigs.view(b.rig), a, b]);
+    for (const k of keys) {
+      assert.ok(!dump.includes(k), "not in control's database");
+      assert.ok(!views.includes(k), "not in what control shows");
+      assert.ok(!out.join("").includes(k), "not in control's log");
+    }
+  });
+
+  test("a refusal that echoes the launch's values is told without them", async () => {
+    const s = setup();
+    let sent: Record<string, string> = {};
+    // RunPod refuses the pod, naming the values it was sent: by name, and one bare.
+    const echo = async (init: RequestInit | undefined) => {
+      sent = (JSON.parse(String(init?.body)) as { env: Record<string, string> }).env;
+      return new Response(
+        JSON.stringify({
+          title: "Bad Request",
+          detail: `value ${sent.THERMITE_STATE_SNAPSHOT_KEY} is not allowed`,
+          errors: {
+            THERMITE_STATE_SNAPSHOT_KEY: sent.THERMITE_STATE_SNAPSHOT_KEY,
+            THERMITE_TUNNEL_ENROLL_CODE: sent.THERMITE_TUNNEL_ENROLL_CODE,
+          },
+        }),
+        { status: 400, headers: { "content-type": "application/problem+json" } },
+      );
+    };
+    const rigs = new RunpodRigs(s.store, s.secrets, s.tunnels, {
+      fetch: async (input, init) =>
+        String(input).endsWith("/v2/pods") && init?.method === "POST"
+          ? echo(init)
+          : s.cloud.fetch(input, init),
+      image: IMAGE,
+      privateKeyPem: s.control.privateKeyPem,
+    });
+    const err = await rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api").then(
+      () => undefined,
+      (e: Error) => e,
+    );
+    assert.ok(err, "the launch is refused");
+    assert.match(err.message, /RunPod answered 400/);
+    assert.match(err.message, /value \*\*\* is not allowed/);
+    assert.match(err.message, /"THERMITE_STATE_SNAPSHOT_KEY":"\*\*\*"/);
+    assert.match(err.message, /"THERMITE_TUNNEL_ENROLL_CODE":"\*\*\*"/);
+    for (const name of ["THERMITE_STATE_SNAPSHOT_KEY", "THERMITE_TUNNEL_ENROLL_CODE"]) {
+      const value = sent[name] as string;
+      assert.ok(value.length > 40);
+      assert.ok(!err.message.includes(value.slice(0, 12)), `no part of ${name}'s value`);
+    }
   });
 });
 

@@ -98,7 +98,8 @@ async function runpodCall(
       const p = (await r.json()) as Json;
       // A refused request names the fields at fault in `errors`: kept, so the words say which.
       const fields = p.errors === undefined ? "" : JSON.stringify(p.errors);
-      why = [str(p.title), str(p.detail), fields].filter(Boolean).join(": ");
+      // Before it is cut short: a value it echoes is taken out whole (a launch value, say).
+      why = redact([str(p.title), str(p.detail), fields].filter(Boolean).join(": "));
     } catch {}
     throw new RunpodRefused(
       r.status,

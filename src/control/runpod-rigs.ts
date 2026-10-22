@@ -304,7 +304,15 @@ export class RunpodRigs {
         this.fetchImpl,
       );
     } catch (err) {
-      // No pod: nothing can use the rig's code.
+      // No pod: nothing can use the rig's code. RunPod's refusal may echo what it was sent: the
+      // launch's secret values never go further than this.
+      if (err instanceof Error)
+        for (const secret of [
+          minted.env.THERMITE_STATE_SNAPSHOT_KEY,
+          minted.env.THERMITE_TUNNEL_ENROLL_CODE,
+          minted.env.THERMITE_TUNNEL_PREFIX,
+        ])
+          err.message = err.message.replaceAll(secret, "***");
       this.store.dropTunnelRig(minted.rig, by);
       // RunPod's stock changes by the minute: say so, and what to do, in words.
       const busy = noFreeGpu(err);

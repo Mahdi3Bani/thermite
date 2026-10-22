@@ -298,12 +298,17 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       assert.match(s.rig, RIG_ID);
       assert.deepEqual(Object.keys(s.minted.env).sort(), [
         "THERMITE_RIG_ID",
+        "THERMITE_STATE_SNAPSHOT_KEY",
         "THERMITE_TUNNEL_CONTROL_BOX",
         "THERMITE_TUNNEL_CONTROL_KEY_SHA256",
         "THERMITE_TUNNEL_ENROLL_CODE",
         "THERMITE_TUNNEL_PORT",
         "THERMITE_TUNNEL_PREFIX",
       ]);
+      // The state snapshot's key: 32 random bytes, new for each launch, and control keeps no copy.
+      const snapshotKey = s.minted.env.THERMITE_STATE_SNAPSHOT_KEY;
+      assert.match(snapshotKey, /^[A-Za-z0-9_-]{43}$/);
+      assert.equal(Buffer.from(snapshotKey, "base64url").length, 32);
       assert.equal(s.minted.env.THERMITE_TUNNEL_PORT, "8790");
       assert.equal(
         s.minted.env.THERMITE_TUNNEL_CONTROL_KEY_SHA256,
@@ -319,7 +324,9 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       assert.ok(!dump.includes(s.minted.env.THERMITE_TUNNEL_ENROLL_CODE));
       assert.ok(!dump.includes(s.minted.env.THERMITE_TUNNEL_PREFIX));
       assert.ok(!dump.includes("PRIVATE"));
+      assert.ok(!dump.includes(snapshotKey), "the snapshot key is not kept, sealed or not");
       const timed = s.tunnels.mint({ by: "owner:ui", rig: "rp-timed", codeTtlMs: 30 * 60_000 });
+      assert.notEqual(timed.env.THERMITE_STATE_SNAPSHOT_KEY, snapshotKey, "a new key each launch");
       assert.ok(Date.parse(timed.env.THERMITE_TUNNEL_ENROLL_UNTIL ?? "") > Date.now());
       assert.throws(() => s.tunnels.mint({ by: "owner:ui", rig: s.rig }), /exists already/);
       assert.throws(() => s.tunnels.mint({ by: "owner:ui", rig: "Bad_Name" }), /a rig's name/);

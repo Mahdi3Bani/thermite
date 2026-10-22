@@ -17,6 +17,7 @@ import { generateBoxKeys, keySha256, publicKeyLine } from "../../core/tunnel.ts"
 import { pullModeOptions } from "../../supervisor/tunnel-pod.ts";
 import {
   ENROLLED_MAX_BYTES,
+  isRootOnly,
   isRunpodVariable,
   isSupervisorOnly,
   OPEN_NODES_JS,
@@ -55,10 +56,17 @@ describe("the one-container rig image", () => {
     assert.equal(oneContainer({}), false);
   });
 
-  test("RunPod's variables are left out of an environment", () => {
+  test("RunPod's variables and the snapshot key are left out of an environment", () => {
     assert.equal(isRunpodVariable("RUNPOD_API_KEY"), true);
     assert.equal(isRunpodVariable("THERMITE_TUNNEL_POD"), false);
-    const env = withoutRunpod({ ...RUNPOD, PATH: "/bin", GONE: undefined });
+    assert.equal(isRootOnly("THERMITE_STATE_SNAPSHOT_KEY"), true);
+    assert.equal(isRootOnly("THERMITE_STATE_SNAPSHOT_DIR"), false);
+    const env = withoutRunpod({
+      ...RUNPOD,
+      PATH: "/bin",
+      GONE: undefined,
+      THERMITE_STATE_SNAPSHOT_KEY: "k".repeat(43),
+    });
     assert.deepEqual(env, { PATH: "/bin" });
   });
 
@@ -73,6 +81,8 @@ describe("the one-container rig image", () => {
       THERMITE_INBOX_DIR: "/workspace/thermite/inbox",
       THERMITE_SUPERVISOR_TOKEN_FILE: "/workspace/thermite/secrets/supervisor-token",
       THERMITE_PROPOSER_TOKEN_FILE: "/run/secrets/proposer",
+      // Root's alone, should the broker ever still hold it when it starts the supervisor.
+      THERMITE_STATE_SNAPSHOT_KEY: "k".repeat(43),
       HOME: "/root",
     };
     const paths = supervisorPaths(base);
@@ -89,6 +99,7 @@ describe("the one-container rig image", () => {
     );
     assert.equal(env.THERMITE_SUPERVISOR_TOKEN_FILE, undefined);
     assert.equal(env.THERMITE_PROPOSER_TOKEN_FILE, undefined);
+    assert.equal(env.THERMITE_STATE_SNAPSHOT_KEY, undefined);
     assert.equal(env.THERMITE_HARNESS_TOKEN_FILE, paths.tokenFile);
     assert.equal(env.HOME, SUPERVISOR_PASSWD_HOME);
     assert.equal(env.TMPDIR, paths.tmp);

@@ -40,6 +40,7 @@ import {
 } from "./broker/devices.ts";
 import { emptyScratchKeepingCaches, restoreLaneCaches } from "./broker/lane-caches.ts";
 import {
+  isRootOnly,
   isRunpodVariable,
   isSupervisorOnly,
   oneContainer,
@@ -57,6 +58,7 @@ import {
 } from "./broker/one-container.ts";
 import { killScope, SETPRIV } from "./broker/process.ts";
 import { IDS, type Role, roleIds } from "./broker/runner.ts";
+import { deriveKeys, SnapshotRefused, takeSnapshotKey } from "./broker/seal.ts";
 import { ALL_ROLES, startBrokerServer, timedRunsAtWork } from "./broker/server.ts";
 import {
   CLOSED_PROBE_JS,
@@ -64,6 +66,7 @@ import {
   layoutProblem,
   liveHolds,
   prepareSnapshotDir,
+  removeUnsealed,
   restoreSnapshot,
   SNAPSHOT_RECORD,
   type SnapshotJob,
@@ -94,10 +97,11 @@ import {
  *   restarting it if it exits. In pull mode it starts the controller only once the supervisor's
  *   enrollment has brought control's key: it checks the key against the launch's SHA-256 and
  *   gives the harness a copy of its own, and takes the rig's settings from control as data;
- * - with THERMITE_STATE_SNAPSHOT_DIR (the one-container rig image sets it), keeps the rig's state
- *   over a stop that empties the container's disk: the live state stays on that disk, and a
- *   snapshot of it on the host's volume is restored at a start on an empty disk, and taken every
- *   few minutes, after each export, after enrollment and at a stop (broker/snapshot.ts).
+ * - with THERMITE_STATE_SNAPSHOT_DIR (the one-container rig image sets it) and the launch's
+ *   snapshot key, keeps the rig's state over a stop that empties the container's disk: the live
+ *   state stays on that disk, and a sealed snapshot of it on the host's volume is restored at a
+ *   start on an empty disk, and taken every few minutes, after each export, after enrollment and
+ *   at a stop (broker/snapshot.ts, broker/seal.ts).
  *
  * No process it starts gets RunPod's variables (RUNPOD_*), and only the supervisor gets pull
  * mode's launch values. On SIGTERM or SIGINT it passes the signal on and exits when every part
@@ -110,6 +114,12 @@ const controller = fileURLToPath(new URL("./main.js", import.meta.url));
 const supervisorMain = fileURLToPath(new URL("../supervisor/main.js", import.meta.url));
 const snapshotMain = fileURLToPath(new URL("./broker/snapshot-main.js", import.meta.url));
 const env = process.env;
+/**
+ * The state snapshot's key (THERMITE_STATE_SNAPSHOT_KEY, a launch value), taken out of the
+ * broker's own environment before it starts anything: no part, no role and no program the broker
+ * runs ever has it. Only root's snapshot helper gets it, on its standard input.
+ */
+const snapshotKey = takeSnapshotKey(env);
 /**
  * A fatal error at start: the broker exits, after THERMITE_FATAL_HOLD_SECONDS when it is set (the
  * rig image sets 60). A host that starts a stopped container again at once, such as RunPod, then
@@ -556,7 +566,13 @@ function startController(extraEnv: Record<string, string>): void {
   const startedAt = Date.now();
   const childEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
-    if (v !== undefined && !(k in SECRET_VARS) && !isRunpodVariable(k) && !isSupervisorOnly(k))
+    if (
+      v !== undefined &&
+      !(k in SECRET_VARS) &&
+      !isRunpodVariable(k) &&
+      !isSupervisorOnly(k) &&
+      !isRootOnly(k)
+    )
       childEnv[k] = v;
   }
   for (const [k, v] of Object.entries(beforeStart?.() ?? {})) {
@@ -812,19 +828,23 @@ function startSupervisor(paths: SupervisorPaths): void {
 
 /**
  * THERMITE_STATE_SNAPSHOT_DIR (the one-container rig image sets it; broker/snapshot.ts): the live
- * state stays on the container's disk, and a snapshot of it on the host's volume outlives a stop
- * that empties that disk. At a start, before anything else: the snapshot folder, root's with mode
- * 0700, must be closed to the controller's user, the supervisor's and a role, or no snapshot is
- * taken or restored. Then, when the live state is empty (a fresh disk), the newest complete
- * snapshot is restored, with the owners and modes the live folders need. Returns the record the
- * isolation selftest reads, or nothing without the setting.
+ * state stays on the container's disk, and a sealed snapshot of it on the host's volume outlives
+ * a stop that empties that disk. At a start, before anything else: root makes the snapshot
+ * folder, its own with mode 0700, and records whether the controller's user, the supervisor's and
+ * a role can open it (a volume may ignore the mode: RunPod's does). Without the launch's snapshot
+ * key no snapshot is taken or restored. With it, when the live state is empty (a fresh disk), the
+ * newest snapshot is restored, with the owners and modes the live folders need, once its manifest
+ * and every file verify; one that does not is refused whole and the rig starts empty. Returns the
+ * record the isolation selftest reads, or nothing without the setting.
  */
 let snapshotEvery = 0;
 let snapshotStopMs = 0;
+const rigId = (): string | null => env.THERMITE_RIG_ID || null;
 function prepareSnapshots(): SnapshotRecord | undefined {
   if (!snapDir) return undefined;
   const areas = snapshotAreas(env);
   const at = new Date().toISOString();
+  const keyWhy = "why" in snapshotKey ? snapshotKey.why : undefined;
   try {
     snapshotEvery = snapshotEveryMs(env);
     snapshotStopMs = stopBudgetMs(env);
@@ -852,6 +872,8 @@ function prepareSnapshots(): SnapshotRecord | undefined {
       mode: "",
       users: { root: `failed: ${error}` },
       closed: false,
+      sealed: false,
+      off: `could not make the snapshot folder: ${error}`,
       at,
     };
   }
@@ -873,41 +895,76 @@ function prepareSnapshots(): SnapshotRecord | undefined {
     });
     return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr || String(r.error ?? "") };
   });
+  const closed = Object.values(seen).every((v) => v.startsWith("refused"));
   const record: SnapshotRecord = {
     dir: snapDir,
     owner: `${shown.uid}:${shown.gid}`,
     mode: shown.mode.toString(8),
     users: seen,
-    closed: Object.values(seen).every((v) => v.startsWith("refused")),
+    closed,
+    sealed: !keyWhy,
+    ...(keyWhy ? { off: keyWhy } : {}),
     at,
   };
-  if (!record.closed) {
-    log("broker", "the snapshot folder is open to other users: no snapshot is taken or restored", {
+  // An image before sealing kept its snapshot unsealed: it is never restored.
+  try {
+    const old = removeUnsealed(snapDir, closed);
+    if (old.removed.length)
+      log("broker", "removed an unsealed snapshot an older image left: it is not restored", {
+        dir: snapDir,
+        removed: old.removed,
+      });
+    if (old.left.length)
+      log(
+        "broker",
+        "an unsealed snapshot an older image left is in the snapshot folder, which other users may open: it is not restored, and it stays for the owner to remove",
+        { dir: snapDir, left: old.left },
+      );
+  } catch (err) {
+    log("broker", "could not remove an unsealed snapshot an older image left", {
       dir: snapDir,
-      owner: record.owner,
-      mode: record.mode,
-      users: seen,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  if ("why" in snapshotKey) {
+    log("broker", "no snapshot key: no snapshot is taken or restored", {
+      dir: snapDir,
+      why: snapshotKey.why,
+      hint: "control gives a pod its key at launch; a pod launched by an older control has none, and its state does not outlive a stop",
     });
     return record;
   }
-  log("broker", "the snapshot folder is closed to the parts and the roles", {
-    dir: snapDir,
-    owner: record.owner,
-    mode: record.mode,
-    every_minutes: snapshotEvery / 60_000,
-  });
+  log(
+    "broker",
+    closed
+      ? "the snapshot folder is closed to the parts and the roles"
+      : "the snapshot folder is open to other users: its snapshot is sealed",
+    {
+      dir: snapDir,
+      owner: record.owner,
+      mode: record.mode,
+      ...(closed ? {} : { users: seen }),
+      every_minutes: snapshotEvery / 60_000,
+    },
+  );
   const holds = liveHolds(areas);
   if (holds.length) {
     log("broker", "the live state is on this disk: nothing is restored", { holds });
     return record;
   }
   try {
-    const r = restoreSnapshot({ dir: snapDir, areas });
+    const r = restoreSnapshot({
+      dir: snapDir,
+      areas,
+      keys: deriveKeys(snapshotKey.key),
+      rig: rigId(),
+    });
     if (!r) log("broker", "no snapshot yet: the rig starts with a fresh state", { dir: snapDir });
     else
       log("broker", "restored the rig's state from its snapshot", {
         dir: snapDir,
         snapshot: r.from,
+        seq: r.seq,
         taken_at: r.taken_at,
         taken: r.reason,
         parts: r.areas,
@@ -916,6 +973,15 @@ function prepareSnapshots(): SnapshotRecord | undefined {
           : {}),
       });
   } catch (err) {
+    if (err instanceof SnapshotRefused) {
+      // Refused whole: nothing of it is restored, and the rig starts with an empty state. The
+      // next snapshot takes its place.
+      log("broker", `the snapshot did not verify: ${err.message}`, {
+        dir: snapDir,
+        restored: "nothing: the rig starts with an empty state",
+      });
+      return record;
+    }
     log("broker", "fatal: could not restore the rig's state from its snapshot", {
       dir: snapDir,
       error: err instanceof Error ? err.message : String(err),
@@ -942,24 +1008,24 @@ function snapshotJob(reason: string): SnapshotJob {
     areas: snapshotAreas(env),
     stage: join(scratchDir, ".snapshot-ledger"),
     owner: IDS.thermite,
+    rig: rigId(),
+    key: "key" in snapshotKey ? snapshotKey.key.toString("base64url") : "",
   };
   const gentle = reason === "at the stop" ? [] : [...IONICE, ...NICE];
-  const argv = [
-    ...gentle,
-    process.execPath,
-    ...process.execArgv,
-    snapshotMain,
-    "take",
-    JSON.stringify(job),
-  ];
+  const argv = [...gentle, process.execPath, ...process.execArgv, snapshotMain, "take"];
+  // The job, with the key, on its standard input: a process's arguments are any user's to read.
   const proc = spawn(argv[0] as string, argv.slice(1), {
-    stdio: ["ignore", "inherit", "inherit"],
+    stdio: ["pipe", "inherit", "inherit"],
     env: {
       PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
       ...(env.NODE_OPTIONS ? { NODE_OPTIONS: env.NODE_OPTIONS } : {}),
     },
     detached: true,
   });
+  proc.stdin?.on("error", () => {
+    // it ended before it read its job: its exit says so
+  });
+  proc.stdin?.end(JSON.stringify(job));
   const done = new Promise<boolean>((resolve) => {
     proc.on("exit", (code, signal) => {
       if (code !== 0)
@@ -1007,7 +1073,7 @@ function watchOutbox(onNew: () => void): void {
 
 /** Snapshots from now on: every few minutes, after each export, after enrollment and at a stop. */
 function startSnapshots(record: SnapshotRecord | undefined): void {
-  if (!record?.closed) return;
+  if (!record?.sealed) return;
   snapshots = new Snapshotter({
     take: snapshotJob,
     everyMs: snapshotEvery,

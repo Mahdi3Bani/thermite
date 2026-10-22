@@ -309,11 +309,18 @@ export const ExchangeOut = z.object({
 export type ExchangeOut = z.infer<typeof ExchangeOut>;
 
 /**
- * What a pod launched in pull mode gets in its environment: only public material and the
- * one-time code. Control's own command-signing key is named by its SHA-256 and arrives at
- * enrollment; the pod's ID comes from RunPod (RUNPOD_POD_ID).
+ * What a pod launched in pull mode gets in its environment: public material, the one-time code
+ * and the key its state snapshot is sealed with. Control's own command-signing key is named by
+ * its SHA-256 and arrives at enrollment; the pod's ID comes from RunPod (RUNPOD_POD_ID).
  */
 export interface PodLaunchEnv {
+  /**
+   * 32 random bytes in base64url, new for each launch, that seal the pod's state snapshot on its
+   * volume (src/harness/broker/seal.ts). Control keeps no copy: the pod's settings at RunPod
+   * hold it, as they hold the code, and a stopped pod keeps them. The pod's broker takes it out
+   * of its environment at start, so only root has it.
+   */
+  THERMITE_STATE_SNAPSHOT_KEY: string;
   THERMITE_RIG_ID: string;
   THERMITE_TUNNEL_PORT: string;
   THERMITE_TUNNEL_PREFIX: string;

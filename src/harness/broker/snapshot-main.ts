@@ -1,15 +1,18 @@
 import { spawnSync } from "node:child_process";
-import { chownSync, lstatSync, mkdirSync, rmSync } from "node:fs";
+import { chownSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../../common/env.ts";
+import { deriveKeys, parseSnapshotKey } from "./seal.ts";
 import { backupLedger, TakeJob, takeSnapshot } from "./snapshot.ts";
 
 /**
  * The broker's helper for the rig's state snapshot (snapshot.ts), started as its own process so
  * the copying never holds up the broker, which times the judge's runs:
  *
- *   take <job>                as root: takes a snapshot (the job as JSON: SnapshotJob below);
+ *   take                      as root: takes a sealed snapshot. The job comes on its standard
+ *                             input, as JSON (TakeJob), with the snapshot key: never in its
+ *                             arguments, which any user may read, nor in its environment;
  *   ledger <source> <copy>    as the controller's user: copies the ledger with SQLite's backup.
  *
  * Its output is the broker's log: what it took, or why it could not.
@@ -20,7 +23,8 @@ const self = fileURLToPath(import.meta.url);
 /**
  * The ledger's copy, made as its owner (never as root: SQLite may make the write-ahead files of a
  * ledger no controller has open, and they must stay the controller's), into a folder root made.
- * It must be a plain file of the owner's own with one link.
+ * It must be a plain file of the owner's own with one link. Its environment has nothing but the
+ * path: never the snapshot key.
  */
 function stageLedger(source: string, job: TakeJob): string {
   rmSync(job.stage, { recursive: true, force: true });
@@ -54,28 +58,52 @@ async function main(): Promise<number> {
     await backupLedger(a, b);
     return 0;
   }
-  if (cmd !== "take" || !a) {
-    process.stderr.write("usage: snapshot-main take <job> | ledger <source> <copy>\n");
+  if (cmd !== "take") {
+    process.stderr.write("usage: snapshot-main take < job | ledger <source> <copy>\n");
     return 2;
   }
-  const job = TakeJob.parse(JSON.parse(a));
+  let job: TakeJob;
+  try {
+    job = TakeJob.parse(JSON.parse(readFileSync(0, "utf8")));
+  } catch (err) {
+    log("broker", "could not take a snapshot of the rig's state: the last one stays", {
+      error: `the job is not valid: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`,
+    });
+    return 1;
+  }
+  const key = parseSnapshotKey(job.key);
+  if ("why" in key) {
+    log("broker", "could not take a snapshot of the rig's state: the last one stays", {
+      dir: job.dir,
+      error: key.why,
+    });
+    return 1;
+  }
   try {
     const r = await takeSnapshot({
       dir: job.dir,
       areas: job.areas,
       reason: job.reason,
+      keys: deriveKeys(key.key),
+      rig: job.rig,
       backupLedger: async (source) => stageLedger(source, job),
     });
     log("broker", "took a snapshot of the rig's state", {
       dir: job.dir,
       reason: r.reason,
+      seq: r.seq,
       files: r.files,
       folders: r.dirs,
       bytes: r.bytes,
-      linked: r.linked,
-      copied: r.copied,
+      sealed: r.sealed,
+      reused: r.reused,
+      removed: r.removed,
       ledger: r.ledger,
-      ...(r.links ? {} : { links: "the volume refuses hard links: every file was copied" }),
+      ...(r.before_refused
+        ? {
+            before: `the last snapshot did not verify (${r.before_refused}): every file was sealed again`,
+          }
+        : {}),
       ...(r.skipped.length
         ? { skipped: r.skipped.length, skipped_first: r.skipped.slice(0, 5) }
         : {}),

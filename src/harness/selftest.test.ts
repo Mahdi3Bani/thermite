@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -16,7 +17,7 @@ import { describe, test } from "node:test";
 import { keySha256 } from "../core/tunnel.ts";
 import { SUPERVISOR_RECORD } from "./broker/one-container.ts";
 import type { Role } from "./broker/runner.ts";
-import { SNAPSHOT_RECORD } from "./broker/snapshot.ts";
+import { inspectSnapshotFolder, SEALED, SNAPSHOT_RECORD } from "./broker/snapshot.ts";
 import {
   callsBusy,
   containerChecks,
@@ -34,6 +35,7 @@ import {
   researchProbeFolder,
   runpodCheck,
   setIdCheck,
+  snapshotKeyCheck,
   stateSnapshotCheck,
   supervisorGpuCheck,
   supervisorUserCheck,
@@ -350,34 +352,6 @@ describe("the one-container image's checks of the container", () => {
     assert.equal(supervisorGpuCheck(dir), "OPENED /dev/nvidia0");
   });
 
-  test("the state snapshot's folder, as the broker found it at start", () => {
-    const dir = mkdtempSync(join(tmpdir(), "broker-"));
-    assert.match(stateSnapshotCheck(dir), /^MISSING: no record from the broker/);
-    const record = (users: Record<string, string>, closed: boolean) =>
-      writeFileSync(
-        join(dir, SNAPSHOT_RECORD),
-        JSON.stringify({ dir: "/workspace/thermite", owner: "0:0", mode: "700", users, closed }),
-      );
-    record(
-      {
-        thermite: "refused (EACCES)",
-        supervisor: "refused (EACCES)",
-        "agent-1": "refused (EACCES)",
-      },
-      true,
-    );
-    const closed = stateSnapshotCheck(dir);
-    assert.equal(closed, "closed to thermite, supervisor, agent-1 (owner 0:0, mode 700)");
-    assert.equal(isFailure(closed), false);
-    // A volume that lets every user in, whatever the folder's mode says: the selftest fails.
-    record({ thermite: "refused (EACCES)", "agent-1": "OPENED: lists it and writes in it" }, false);
-    const open = stateSnapshotCheck(dir);
-    assert.equal(open, "OPENED: agent-1 lists it and writes in it");
-    assert.equal(isFailure(open), true);
-    record({ root: "failed: EROFS" }, false);
-    assert.equal(isFailure(stateSnapshotCheck(dir)), true);
-  });
-
   test("set-id files are found, outside the folders left out", () => {
     const root = mkdtempSync(join(tmpdir(), "root-"));
     mkdirSync(join(root, "usr", "bin"), { recursive: true });
@@ -474,7 +448,8 @@ describe("the one-container image's checks of the container", () => {
     });
     assert.match(pull["control-key"] ?? "", /^MISSING: /);
     assert.equal(isFailure(pull["control-key"] ?? ""), true);
-    // A rig that keeps a snapshot of its state adds its folder: no record yet fails too.
+    // A rig that keeps a snapshot of its state adds its folder, where no record yet fails, and
+    // its key, which only root's processes may hold.
     const kept = await containerChecks({
       brokerDir: broker,
       procDir: proc,
@@ -483,5 +458,171 @@ describe("the one-container image's checks of the container", () => {
       snapshotDir: "/workspace/thermite",
     });
     assert.match(kept["state-snapshot"] ?? "", /^MISSING: no record from the broker/);
+    assert.equal(kept["snapshot-key"], "none (read 2 of 2 processes)");
+  });
+});
+
+describe("the state snapshot in the isolation check", () => {
+  const record = (
+    brokerDir: string,
+    r: { users: Record<string, string>; closed: boolean; sealed?: boolean; off?: string },
+  ) =>
+    writeFileSync(
+      join(brokerDir, SNAPSHOT_RECORD),
+      JSON.stringify({ dir: "/no/such/volume", owner: "0:0", mode: "700", sealed: true, ...r }),
+    );
+  const refused = {
+    thermite: "refused (EACCES)",
+    supervisor: "refused (EACCES)",
+    "agent-1": "refused (EACCES)",
+  };
+  const opened = {
+    thermite: "OPENED: lists it and writes in it",
+    supervisor: "OPENED: lists it and writes in it",
+    "agent-1": "OPENED: lists it and writes in it",
+  };
+  /** A snapshot folder as sealing leaves it: the manifest and `n` sealed files. */
+  const sealedFolder = (n: number) => {
+    const dir = mkdtempSync(join(tmpdir(), "volume-"));
+    writeFileSync(join(dir, SEALED.manifest), `THMSEAL1M${"x".repeat(40)}`);
+    for (let i = 0; i < n; i++)
+      writeFileSync(join(dir, String(i).repeat(64).slice(0, 64)), `THMSEAL1B${"y".repeat(40)}`);
+    return dir;
+  };
+
+  test("the folder: sealed and closed, sealed and open, or no key; plaintext or another name fails", () => {
+    const broker = mkdtempSync(join(tmpdir(), "broker-"));
+    assert.match(stateSnapshotCheck(broker), /^MISSING: no record from the broker/);
+    // Closed to every user, and to this process: what it holds can't be seen, and needn't be.
+    record(broker, { users: refused, closed: true });
+    const closed = stateSnapshotCheck(broker, "/no/such/volume");
+    assert.equal(closed, "sealed, closed to thermite, supervisor, agent-1 (owner 0:0, mode 700)");
+    assert.equal(isFailure(closed), false);
+    // Seen from root: only sealed files.
+    const dir = sealedFolder(2);
+    assert.equal(
+      stateSnapshotCheck(broker, dir),
+      "sealed, closed to thermite, supervisor, agent-1 (owner 0:0, mode 700); holds the manifest and 2 sealed files",
+    );
+    // A volume that lets every user in, as RunPod's does: open, sealed, not a failure.
+    record(broker, { users: opened, closed: false });
+    const open = stateSnapshotCheck(broker, dir);
+    assert.equal(
+      open,
+      "open, sealed: thermite lists it and writes in it; supervisor lists it and writes in it; agent-1 lists it and writes in it (owner 0:0, mode 700); holds the manifest and 2 sealed files",
+    );
+    assert.equal(isFailure(open), false);
+    // A plaintext file, an unsealed snapshot an older image left, or another name: it fails.
+    writeFileSync(join(dir, "a".repeat(64)), '{"sign":"private"}');
+    const plain = stateSnapshotCheck(broker, dir);
+    assert.equal(plain, `FOUND a file that is not sealed: ${"a".repeat(64)}`);
+    assert.equal(isFailure(plain), true);
+    rmSync(join(dir, "a".repeat(64)));
+    mkdirSync(join(dir, "snapshot"));
+    assert.equal(
+      stateSnapshotCheck(broker, dir),
+      "FOUND an unsealed snapshot an older image left: snapshot",
+    );
+    rmSync(join(dir, "snapshot"), { recursive: true });
+    // No key from the launch: nothing is written there, which is no failure; the log says why.
+    record(broker, {
+      users: opened,
+      closed: false,
+      sealed: false,
+      off: "the launch gave no THERMITE_STATE_SNAPSHOT_KEY",
+    });
+    const off = stateSnapshotCheck(broker, mkdtempSync(join(tmpdir(), "volume-")));
+    assert.equal(
+      off,
+      "no snapshot: the launch gave no THERMITE_STATE_SNAPSHOT_KEY (owner 0:0, mode 700); holds no snapshot yet",
+    );
+    assert.equal(isFailure(off), false);
+    // Root could not make the folder.
+    record(broker, { users: { root: "failed: EROFS" }, closed: false, sealed: false });
+    assert.equal(isFailure(stateSnapshotCheck(broker)), true);
+  });
+
+  test("the key: only root's processes may hold it", () => {
+    const key = { THERMITE_STATE_SNAPSHOT_KEY: "k".repeat(43) };
+    const clean = fakeProc([
+      // PID 1 and the broker, root's, start with it; the broker's helper is root's too.
+      { pid: 1, ppid: 0, env: key },
+      { pid: 2, ppid: 1, env: key },
+      { pid: 3, ppid: 2, env: { PATH: "/bin" } },
+      { pid: 7, ppid: 2, argv: SUPERVISOR, uid: 10001, gid: 10001, env: { PATH: "/bin" } },
+      { pid: 9, ppid: 2, uid: 10010, gid: 10010, env: { PATH: "/bin" } },
+    ]);
+    assert.equal(snapshotKeyCheck(clean), "none (read 5 of 5 processes)");
+    const leaked = fakeProc([
+      { pid: 1, ppid: 0, env: key },
+      { pid: 7, ppid: 1, argv: SUPERVISOR, uid: 10001, gid: 10001, env: key },
+      { pid: 9, ppid: 1, uid: 10010, gid: 10010, env: key },
+    ]);
+    const found = snapshotKeyCheck(leaked);
+    assert.equal(
+      found,
+      "FOUND THERMITE_STATE_SNAPSHOT_KEY in pid 7 (uid 10001), pid 9 (uid 10010)",
+    );
+    assert.equal(isFailure(found), true);
+  });
+
+  test("a role's probes: the folder refused, or open and sealed; the key in no environment it can read", () => {
+    const dir = sealedFolder(3);
+    const out = probe([{ name: "state-snapshot", op: "sealed", path: dir }]);
+    assert.equal(
+      out["state-snapshot"],
+      "open, sealed: lists it and writes in it; the manifest and 3 sealed files",
+    );
+    assert.equal(isFailure(out["state-snapshot"] as string), false);
+    assert.deepEqual(
+      readdirSync(dir).filter((n) => n.startsWith("probe-")),
+      [],
+      "its file goes",
+    );
+    if (!asRoot) {
+      chmodSync(dir, 0o000);
+      const shut = probe([{ name: "state-snapshot", op: "sealed", path: dir }]);
+      chmodSync(dir, 0o700);
+      assert.equal(shut["state-snapshot"], "EACCES");
+    }
+    // The role's look and the isolation check's agree, file for file.
+    const cases: [string, string, boolean][] = [
+      ["probe-10013", "", false],
+      [`.new-${"c".repeat(32)}`, "", false],
+      ["probe-10014", "x", true],
+      ["d".repeat(64), "plain text", true],
+      [SEALED.next, `THMSEAL1B${"z".repeat(30)}`, true],
+      ["notes.txt", "", true],
+    ];
+    for (const [name, content, fails] of cases) {
+      writeFileSync(join(dir, name), content);
+      const role = probe([{ name: "state-snapshot", op: "sealed", path: dir }])["state-snapshot"];
+      const look = inspectSnapshotFolder(dir);
+      assert.equal(role?.startsWith("FOUND "), fails, `${name}: ${role}`);
+      assert.equal(role, look.problem ? `FOUND ${look.problem}` : role, name);
+      rmSync(join(dir, name));
+    }
+    // The key: in its own environment, or in any process environment it can read.
+    const proc = fakeProc([
+      { pid: 1, ppid: 0, env: { PATH: "/bin" } },
+      { pid: 42, ppid: 1, env: { THERMITE_STATE_SNAPSHOT_KEY: "k".repeat(43) } },
+    ]);
+    const probeKey: Probe = {
+      name: "snapshot-key",
+      op: "environ",
+      path: proc,
+      expect: "THERMITE_STATE_SNAPSHOT_KEY",
+    };
+    assert.equal(probe([probeKey])["snapshot-key"], "FOUND THERMITE_STATE_SNAPSHOT_KEY (pid 42)");
+    assert.equal(
+      probe([{ ...probeKey, path: fakeProc([{ pid: 1, ppid: 0 }]) }], {
+        THERMITE_STATE_SNAPSHOT_KEY: "k",
+      })["snapshot-key"],
+      "FOUND THERMITE_STATE_SNAPSHOT_KEY (own)",
+    );
+    assert.equal(
+      probe([{ ...probeKey, path: fakeProc([{ pid: 1, ppid: 0 }]) }])["snapshot-key"],
+      "none",
+    );
   });
 });

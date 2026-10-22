@@ -94,7 +94,7 @@ const RETRY_MAX_MS = 60_000;
 /** What a launch gets: the rig's ID, and what the pod must start with. */
 export interface MintedRig {
   rig: string;
-  /** The pod's environment: public material and the one-time code, nothing else. */
+  /** The pod's environment: public material, the one-time code and the snapshot key, nothing else. */
   env: PodLaunchEnv;
   /** The port the pod serves for control: the launch exposes it as HTTP. */
   port: number;
@@ -179,8 +179,9 @@ export class ControlTunnels {
 
   /**
    * Mints a rig in pull mode for a pod about to be launched: its ID (made here when none is
-   * given), its one-time enrollment code and the pod's environment. The code expires only when
-   * `codeTtlMs` is given. `config` is the rig's settings, given to the pod at enrollment.
+   * given), its one-time enrollment code and the pod's environment, with a new key for its state
+   * snapshot that control does not keep. The code expires only when `codeTtlMs` is given.
+   * `config` is the rig's settings, given to the pod at enrollment.
    */
   mint(o: {
     by: string;
@@ -236,6 +237,8 @@ export class ControlTunnels {
         THERMITE_TUNNEL_CONTROL_BOX: publicKeyLine(box.boxPublicPem),
         THERMITE_TUNNEL_ENROLL_CODE: code,
         ...(until ? { THERMITE_TUNNEL_ENROLL_UNTIL: until } : {}),
+        // New for each launch, and never kept here: only the pod's settings at RunPod hold it.
+        THERMITE_STATE_SNAPSHOT_KEY: randomBytes(32).toString("base64url"),
       },
     };
   }
