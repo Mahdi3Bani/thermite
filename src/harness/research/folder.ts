@@ -435,6 +435,11 @@ export class ResearchFolder {
     return shown;
   }
 
+  /** The folder the kept conversations are shown in, as the agents see it (made when one is kept). */
+  compactionsDir(run: string): string {
+    return join(this.root(run), COMPACTIONS_DIR);
+  }
+
   /** A kept conversation's text (the harness's own copy), for its event. */
   readCompaction(run: string, name: string): string {
     if (!SAFE.test(name)) throw new Error(`not a file name for a compaction: ${name}`);

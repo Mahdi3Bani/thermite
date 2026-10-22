@@ -352,4 +352,4 @@ The images take these build arguments. [Harness image](harness-image.md) says wh
 
 ## Set by Thermite itself
 
-Thermite also sets variables for its own child processes: the harness's address and a trial's token for the agents' tools, the secret values the broker hands to the controller, the build cache of each lane, and the probe a RunPod test pod runs. They are not settings, and setting them yourself has no use.
+Thermite also sets variables for its own child processes: the harness's address and a trial's token for the agents' tools, where Thermite's OpenCode plugin keeps a conversation before a compaction, the secret values the broker hands to the controller, the build cache of each lane, and the probe a RunPod test pod runs. They are not settings, and setting them yourself has no use.

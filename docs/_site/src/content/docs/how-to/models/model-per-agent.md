@@ -96,7 +96,7 @@ Each line's **Context** cell shows its agent's context window and its compaction
 
 Another model on a line keeps the two numbers, and checks them against the new model. Empty fields remove the agent's own cap and point.
 
-The planner with no model of its own uses the workers' cap and point. An advisor in Pi compacts its call's conversation, and the supervisor keeps the conversation with its own records. Every advisor's package, such as an audit's diff, is cut to fit its window, and the advisor is told so. An advisor in Claude Code, OpenCode v2 or Codex gets the window and the point in that program's own settings, as the workers do. [Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
+The planner with no model of its own uses the workers' cap and point. An advisor in Pi compacts its call's conversation, and the supervisor keeps the conversation with its own records. Every advisor's package, such as an audit's diff, is cut to fit its window, and the advisor is told so. An advisor in Claude Code, OpenCode v2 or Codex gets the window and the point in that program's own settings, as the workers do, and the supervisor keeps its conversation before each of that program's compactions with its own records too. [Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
 
 These are the rig's numbers. A campaign can set a smaller window and its own point for all its runs: see [Set a campaign's own context window](#set-a-campaigns-own-context-window).
 

@@ -155,6 +155,44 @@ describe("compactions on the harness (goal 070)", () => {
     );
   });
 
+  test("a program's own conversation is kept where its summary said, and the summary it went on from is recorded", async () => {
+    const s = await setup();
+    const c = s.env.service.compactions as Compactions;
+    const of = compactionOf({ id: "t-0123456789abcdef", run: RUN, lane: "lane-2" });
+    // Where the program's summary is told the file is: the run's folder as the worker sees it.
+    const at = c.keptAt(of, true);
+    assert.equal(at.dir, join(s.env.service.paths.scratchDir, "research", RUN, "compactions"));
+    assert.equal(at.stem, "t-0123456789abcdef");
+    assert.equal(at.readable, true);
+    c.fromHarness(of, "opencode", {
+      number: 1,
+      tokensBefore: null,
+      tokensAfter: null,
+      markdown:
+        "# Trial t-0123456789abcdef (lane-2): the conversation before compaction 1\n\nOpenCode's own.\n",
+      summary: `## Relevant Files\n- ${at.dir}/${at.stem}-1.md: the whole conversation`,
+    });
+    // The file its summary names is the one kept.
+    assert.match(readFileSync(join(at.dir, `${at.stem}-1.md`), "utf8"), /OpenCode's own/);
+    const e = s.events("context_compacted").map((x) => x.body as Record<string, unknown>);
+    assert.equal(e[0]?.harness, "opencode");
+    assert.equal(e[0]?.how, "harness");
+    assert.equal(e[0]?.snapshot, "compactions/t-0123456789abcdef-1.md");
+    assert.match(
+      String(e[0]?.summary),
+      /^## Relevant Files\n- .*compactions\/t-0123456789abcdef-1\.md/,
+    );
+    const lines = s.env.service.live.since(0, 1000).entries.map((l) => l.text);
+    assert.ok(
+      lines.some((l) =>
+        /^OpenCode compacted the conversation \(compaction 1\)\. The trial goes on\. The conversation before it is kept in the run's research folder, compactions\/t-0123456789abcdef-1\.md\./.test(
+          l,
+        ),
+      ),
+    );
+    assert.ok(lines.some((l) => /^The summary after compaction 1:\n\n## Relevant Files/.test(l)));
+  });
+
   test("the kept conversations come back under compactions/ when scratch is cleared, and leave with the run's folder", async () => {
     const s = await setup();
     const c = s.env.service.compactions as Compactions;

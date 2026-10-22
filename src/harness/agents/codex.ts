@@ -7,10 +7,15 @@ import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import {
   CliCompactions,
+  codexCompactPrompt,
   compactionTokens,
   type FoundCompaction,
+  type KeptAt,
   type OnCompacted,
+  type OnceKeeping,
+  reclaim,
 } from "./cli-compaction.ts";
+import { codexOwn } from "./cli-conversation.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { gatewayUrl, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./model.ts";
@@ -353,11 +358,17 @@ export function tomlString(s: string): string {
  * analytics, feedback, update checks or history file. The MCP servers the run's kit gives this
  * agent (goal 068) are each a streamable HTTP server at the harness's gateway, with the gateway's
  * credential from THERMITE_MCP_AUTH (never in the file), and none is required to start.
+ *
+ * `keptAt` (goal 070): where Thermite keeps the conversation before each compaction. Codex 0.162
+ * takes a compaction prompt of its own (`compact_prompt`, which replaces its built-in one): Thermite
+ * gives it its own summary prompt, which names that folder, and reads the conversation from
+ * Codex's rollout of the thread once Codex reports the compaction.
  */
 export function codexConfig(
   m: ModelConfig,
   proxyRoot: string,
   mcp?: Pick<McpAccess, "apiUrl" | "servers"> | undefined,
+  keptAt?: KeptAt | undefined,
 ): string {
   const effort = m.reasoning === "off" ? "none" : m.reasoning;
   const servers = (mcp?.servers ?? []).flatMap((s) => [
@@ -378,6 +389,7 @@ export function codexConfig(
     ...(point !== undefined
       ? [`model_context_window = ${m.contextWindow}`, `model_auto_compact_token_limit = ${point}`]
       : []),
+    ...(keptAt ? [`compact_prompt = ${tomlString(codexCompactPrompt(keptAt))}`] : []),
     'web_search = "disabled"',
     "check_for_update_on_startup = false",
     "",
@@ -486,6 +498,11 @@ export interface CodexTrialDeps {
   afterSubmitMs?: number | undefined;
   /** A compaction Codex reported (goal 070), for the harness to keep and record. */
   compacted?: OnCompacted | undefined;
+  /**
+   * Where the harness keeps the conversation before each compaction (goal 070): with it, Codex's
+   * compaction prompt tells the summary to name the file.
+   */
+  keptAt?: KeptAt | undefined;
   /** Each turn's model usage, as Codex's output reports it (goal 075). */
   modelUsage?: ((u: CallUsage) => void) | undefined;
 }
@@ -528,10 +545,18 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     THERMITE_WORKSPACE: spec.workspace,
     THERMITE_CODEX_EVENTS: events,
   };
+  const title = `Trial ${spec.trialId} (${spec.lane})`;
+  // Each compaction's conversation, from Codex's rollout of the thread in its home (goal 070).
   const compactions = new CliCompactions({
-    title: `Trial ${spec.trialId} (${spec.lane})`,
+    title,
     harness: "Codex",
     on: deps.compacted,
+    own: codexOwn({
+      root: area,
+      home: ["codex-home", ".codex"],
+      title,
+      thread: () => tally.session,
+    }),
   });
   const setup = await deps.runner.run({
     role: spec.lane,
@@ -543,7 +568,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     ],
     cwd: area,
     timeoutMs: 30_000,
-    stdin: codexConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`, mcp),
+    stdin: codexConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`, mcp, deps.keptAt),
     captureBytes: 4096,
   });
   if (setup.exitCode !== 0)
@@ -716,6 +741,8 @@ export async function codexOnce(
     signal?: AbortSignal | undefined;
     /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
     mcp?: Omit<McpAccess, "apiUrl"> | undefined;
+    /** Where its conversation is kept before each compaction, and who records it (goal 070). */
+    compaction?: OnceKeeping | undefined;
   },
 ): Promise<CodexTally> {
   // Codex finds its home by name, so the directory must be reachable by name: under the lanes'
@@ -739,6 +766,7 @@ export async function codexOnce(
         model,
         `${deps.apiUrl}/v1/model-proxy`,
         o.mcp?.servers.length ? { apiUrl: deps.apiUrl, servers: o.mcp.servers } : undefined,
+        o.compaction?.keptAt,
       ),
       captureBytes: 4096,
     });
@@ -762,7 +790,24 @@ export async function codexOnce(
       timeoutMs: o.timeoutMs,
       captureBytes: 8 * 1024 * 1024,
     });
-    readCodexEvents(r.stdout.split("\n"), tally);
+    const live = readCodexEvents(r.stdout.split("\n"), tally);
+    // Each compaction it reported, kept and recorded once the call is over (goal 070), from its
+    // rollout, which the controller takes the call's folder back to read.
+    const keeping = o.compaction;
+    if (keeping && tally.compactions.length) {
+      await reclaim(deps.runner, dir);
+      new CliCompactions({
+        title: keeping.title,
+        harness: "Codex",
+        on: keeping.compacted,
+        own: codexOwn({
+          root: dir,
+          home: ["home", ".codex"],
+          title: keeping.title,
+          thread: () => tally.session,
+        }),
+      }).take(live, tally.compactions.splice(0));
+    }
     if (r.killedFor === "timeout")
       tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)

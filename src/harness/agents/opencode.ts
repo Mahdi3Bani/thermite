@@ -1,12 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
-import { compactionTokens } from "./cli-compaction.ts";
+import {
+  CliCompactions,
+  compactionTokens,
+  type FoundCompaction,
+  type KeptAt,
+  keptLine,
+  type OnCompacted,
+  type OnceKeeping,
+  reclaim,
+} from "./cli-compaction.ts";
+import { opencodeEnded, opencodeOwn } from "./cli-conversation.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
@@ -40,6 +51,41 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 export const opencodeBin = () => process.env.THERMITE_OPENCODE_BIN ?? "opencode";
 export const OPENCODE_BIN = opencodeBin();
 export const TRIAL_CLI = "thermite-trial";
+
+/** This module's own extension: `.js` when built, `.ts` when run from the source. */
+const OWN_EXT = extname(fileURLToPath(import.meta.url));
+/** Thermite's OpenCode plugin (opencode-plugin.ts, beside this module), which OpenCode loads. */
+export const OPENCODE_PLUGIN = fileURLToPath(
+  new URL(`./opencode-plugin${OWN_EXT}`, import.meta.url),
+);
+/** Where OpenCode finds the plugin, under its home: a link in its own settings' plugins folder. */
+export const OPENCODE_PLUGIN_LINK = `.config/opencode/plugins/thermite-compaction${OWN_EXT}`;
+/** The folder in an OpenCode run's own area where the plugin keeps each compaction's session. */
+export const OPENCODE_DROPS = "opencode-compactions";
+
+/**
+ * What Thermite's plugin reads from OpenCode's environment (goal 070): its folder, and the line
+ * that tells the summary where the harness keeps the conversation.
+ */
+export function opencodeKeepEnv(drops: string, at: KeptAt): Record<string, string> {
+  return { THERMITE_COMPACTION_DROPS: drops, THERMITE_COMPACTION_LINE: keptLine(at) };
+}
+
+/**
+ * The compactions Thermite's plugin saw end since the last read, given to `c` with the read's live
+ * entries (goal 070). OpenCode's own output does not report them; the plugin's records do.
+ */
+function takeEnded(
+  c: CliCompactions,
+  root: string,
+  drops: string[],
+  live: { kind: LiveKind; text: string }[],
+): void {
+  const found: FoundCompaction[] = opencodeEnded(root, drops)
+    .filter((n) => n > c.count)
+    .map(() => ({ at: live.length, tokensBefore: null, tokensAfter: null }));
+  c.take(live, found);
+}
 
 /** The model as OpenCode names it: its own models, or the rig's provider as "thermite". */
 export function opencodeModelId(m: ModelConfig): string {
@@ -419,6 +465,13 @@ export interface OpencodeTrialDeps {
   afterSubmitMs?: number | undefined;
   /** Each step's model usage, as OpenCode's output reports it (goal 075). */
   modelUsage?: ((u: CallUsage) => void) | undefined;
+  /**
+   * Where the harness keeps the conversation before each compaction (goal 070): with it,
+   * Thermite's plugin keeps OpenCode's session before each compaction and tells the summary to
+   * name the file, and each compaction it sees end is kept and recorded (`compacted`).
+   */
+  keptAt?: KeptAt | undefined;
+  compacted?: OnCompacted | undefined;
 }
 
 /** Hands the usage the tally gathered to `usage`, once each (goal 075). */
@@ -454,7 +507,10 @@ export function runEnv(home: string, apiUrl: string, auth: string, extra: Record
   };
 }
 
-/** OpenCode's home, configuration and events file in a lane's area, made as the lane's user. */
+/**
+ * OpenCode's home, configuration and events file in a lane's area, made as the lane's user; with
+ * `keep`, Thermite's compaction plugin linked into its settings and the plugin's folder (goal 070).
+ */
 async function setUpInArea(
   runner: Runner,
   role: Role,
@@ -462,6 +518,7 @@ async function setUpInArea(
   model: ModelConfig,
   proxyRoot: string,
   mcp?: McpAccess | undefined,
+  keep = false,
 ): Promise<string | undefined> {
   const setup = await runner.run({
     role,
@@ -470,7 +527,8 @@ async function setUpInArea(
     argv: [
       "sh",
       "-c",
-      "mkdir -p opencode-home/.config/opencode opencode-tmp && umask 077 && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl",
+      `mkdir -p opencode-home/.config/opencode opencode-tmp && umask 077 && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl${keep ? ` && mkdir -p opencode-home/.config/opencode/plugins ${OPENCODE_DROPS} && chmod 0755 ${OPENCODE_DROPS} && ln -sf "$1" opencode-home/${OPENCODE_PLUGIN_LINK}` : ""}`,
+      ...(keep ? ["sh", OPENCODE_PLUGIN] : []),
     ],
     cwd: area,
     timeoutMs: 30_000,
@@ -551,12 +609,29 @@ export async function runOpencodeTrial(
     // Its own temp directory: the shared /tmp is not the lane's.
     TMPDIR: tmp,
     THERMITE_OPENCODE_EVENTS: events,
+    ...(deps.keptAt ? opencodeKeepEnv(join(area, OPENCODE_DROPS), deps.keptAt) : {}),
   };
   const mcp = spec.mcpServers?.length
     ? { apiUrl: deps.apiUrl, auth, servers: spec.mcpServers }
     : undefined;
-  const setupError = await setUpInArea(deps.runner, spec.lane, area, deps.model, proxyRoot, mcp);
+  const setupError = await setUpInArea(
+    deps.runner,
+    spec.lane,
+    area,
+    deps.model,
+    proxyRoot,
+    mcp,
+    deps.keptAt !== undefined,
+  );
   if (setupError) return { ...result, stopped: "error", error: setupError };
+  const title = `Trial ${spec.trialId} (${spec.lane})`;
+  // Each compaction Thermite's plugin saw end, with the session it kept before it (goal 070).
+  const compactions = new CliCompactions({
+    title,
+    harness: "OpenCode",
+    on: deps.compacted,
+    own: opencodeOwn({ root: area, drops: [OPENCODE_DROPS], title }),
+  });
   const started = Date.now();
   const deadline = started + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
@@ -568,6 +643,7 @@ export async function runOpencodeTrial(
     offset = r.next;
     const live = readOpencodeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    takeEnded(compactions, area, [OPENCODE_DROPS], live);
     takeUsage(tally, deps.modelUsage);
     carried.check(tally);
     if (r.lines.length)
@@ -672,6 +748,7 @@ export async function runOpencodeTrial(
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;
   result.tokensOut = tally.tokensOut;
+  if (compactions.count) result.compactions = compactions.count;
   return result;
 }
 
@@ -740,12 +817,29 @@ export async function runOpencodeResearchTrial(
     ...runEnv(join(area, "opencode-home"), deps.apiUrl, auth, deps.env ?? {}),
     TMPDIR: join(area, "opencode-tmp"),
     THERMITE_OPENCODE_EVENTS: events,
+    ...(deps.keptAt ? opencodeKeepEnv(join(area, OPENCODE_DROPS), deps.keptAt) : {}),
   };
   const mcp = spec.mcpServers?.length
     ? { apiUrl: deps.apiUrl, auth, servers: spec.mcpServers }
     : undefined;
-  const setupError = await setUpInArea(deps.runner, role, area, deps.model, proxyRoot, mcp);
+  const setupError = await setUpInArea(
+    deps.runner,
+    role,
+    area,
+    deps.model,
+    proxyRoot,
+    mcp,
+    deps.keptAt !== undefined,
+  );
   if (setupError) return { ...result, stopped: "error", error: setupError };
+  const title = `Trial ${spec.trialId} (${spec.lane})`;
+  // Each compaction Thermite's plugin saw end, with the session it kept before it (goal 070).
+  const compactions = new CliCompactions({
+    title,
+    harness: "OpenCode",
+    on: deps.compacted,
+    own: opencodeOwn({ root: area, drops: [OPENCODE_DROPS], title }),
+  });
   const deadline = Date.now() + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
   let message = `${researchPrompt(limits, spec.brief, minutes, deps.folder)}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}`;
@@ -756,6 +850,7 @@ export async function runOpencodeResearchTrial(
     offset = r.next;
     const live = readOpencodeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    takeEnded(compactions, area, [OPENCODE_DROPS], live);
     takeUsage(tally, deps.modelUsage);
     carried.check(tally);
     if (r.lines.length)
@@ -863,6 +958,7 @@ export async function runOpencodeResearchTrial(
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;
   result.tokensOut = tally.tokensOut;
+  if (compactions.count) result.compactions = compactions.count;
   return result;
 }
 
@@ -879,6 +975,8 @@ export interface OpencodeAskDeps {
   signal?: AbortSignal | undefined;
   /** The MCP servers the call may use (a planner's), at the harness's gateway. */
   mcp?: McpAccess | undefined;
+  /** Where its conversation is kept before each compaction, and who records it (goal 070). */
+  compaction?: OnceKeeping | undefined;
 }
 
 /**
@@ -887,13 +985,20 @@ export interface OpencodeAskDeps {
  */
 export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promise<OpencodeTally> {
   const home = join(deps.dir, "home");
-  const env = { ...runEnv(home, deps.apiUrl, deps.proxyAuth, {}), TMPDIR: join(deps.dir, "tmp") };
+  const keeping = deps.compaction;
+  const env = {
+    ...runEnv(home, deps.apiUrl, deps.proxyAuth, {}),
+    TMPDIR: join(deps.dir, "tmp"),
+    // Thermite's compaction plugin, when the call's conversation is kept (goal 070).
+    ...(keeping ? opencodeKeepEnv(join(deps.dir, "compactions"), keeping.keptAt) : {}),
+  };
   const setup = await deps.runner.run({
     role: deps.role,
     argv: [
       "sh",
       "-c",
-      "mkdir -p home/.config/opencode tmp && umask 077 && cat > home/.config/opencode/opencode.jsonc",
+      `mkdir -p home/.config/opencode tmp && umask 077 && cat > home/.config/opencode/opencode.jsonc${keeping ? ` && mkdir -p home/.config/opencode/plugins compactions && ln -sf "$1" home/${OPENCODE_PLUGIN_LINK}` : ""}`,
+      ...(keeping ? ["sh", OPENCODE_PLUGIN] : []),
     ],
     cwd: deps.dir,
     timeoutMs: 30_000,
@@ -926,7 +1031,23 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
       timeoutMs: deps.timeoutMs,
       captureBytes: 8 * 1024 * 1024,
     });
-    readOpencodeEvents(r.stdout.split("\n"), tally);
+    const live = readOpencodeEvents(r.stdout.split("\n"), tally);
+    // Each compaction the plugin saw end, kept and recorded once the call is over (goal 070):
+    // the controller takes the call's folder back to read the plugin's records.
+    if (keeping) {
+      await reclaim(deps.runner, deps.dir);
+      takeEnded(
+        new CliCompactions({
+          title: keeping.title,
+          harness: "OpenCode",
+          on: keeping.compacted,
+          own: opencodeOwn({ root: deps.dir, drops: ["compactions"], title: keeping.title }),
+        }),
+        deps.dir,
+        ["compactions"],
+        live,
+      );
+    }
     if (r.killedFor === "timeout")
       tally.errors.push(`no answer in ${Math.round(deps.timeoutMs / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
@@ -966,6 +1087,8 @@ export async function opencodeOnce(
     signal?: AbortSignal | undefined;
     /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
     mcp?: Omit<McpAccess, "apiUrl"> | undefined;
+    /** Where its conversation is kept before each compaction, and who records it (goal 070). */
+    compaction?: OnceKeeping | undefined;
   },
 ): Promise<OpencodeTally> {
   // OpenCode finds its home by name, so the directory must be reachable by name: under the lanes'
@@ -987,6 +1110,7 @@ export async function opencodeOnce(
       timeoutMs: o.timeoutMs,
       signal: o.signal,
       ...(o.mcp?.servers.length ? { mcp: { apiUrl: deps.apiUrl, ...o.mcp } } : {}),
+      ...(o.compaction ? { compaction: o.compaction } : {}),
     });
   } finally {
     await deps.runner.remove(dir).catch(() => undefined);

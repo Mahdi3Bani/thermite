@@ -1,12 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
-import { CliCompactions, type FoundCompaction, type OnCompacted } from "./cli-compaction.ts";
+import {
+  CliCompactions,
+  type FoundCompaction,
+  type KeptAt,
+  keptLine,
+  type OnCompacted,
+  type OnceKeeping,
+  reclaim,
+} from "./cli-compaction.ts";
+import { claudeOwn } from "./cli-conversation.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { claudeMcpConfig, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
@@ -446,7 +456,45 @@ export function claudeModelId(m: ModelConfig): string {
   return m.model;
 }
 
-/** The flags every headless Claude Code run here has: no settings, no MCP, permissions bypassed. */
+/** Claude Code's PreCompact hook, as a program (compaction-hook.ts, beside this module). */
+export const CLAUDE_HOOK = fileURLToPath(
+  new URL(`./compaction-hook${extname(fileURLToPath(import.meta.url))}`, import.meta.url),
+);
+
+/** The folder in a Claude Code run's own area where its PreCompact hook copies the transcript. */
+export const CLAUDE_DROPS = "claude-compactions";
+
+/**
+ * Claude Code's settings for a run that keeps its conversation before each compaction (goal 070),
+ * given with `--settings` (Claude Code reads them whatever `--setting-sources` says): one
+ * PreCompact hook, Thermite's own program run by Node without a shell, with the folder for its
+ * copies (`drops`, in the run's own area) and the line that tells the summary where Thermite keeps
+ * the conversation. Claude Code 2.1.305 appends what a PreCompact hook prints to the compaction's
+ * instructions.
+ */
+export function claudeHookSettings(drops: string, at: KeptAt): string {
+  return JSON.stringify({
+    hooks: {
+      PreCompact: [
+        {
+          hooks: [
+            {
+              type: "command",
+              command: process.execPath,
+              args: [CLAUDE_HOOK, "claude", drops, keptLine(at)],
+              timeout: 60,
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
+/**
+ * The flags every headless Claude Code run here has: no settings files, no MCP, permissions
+ * bypassed; `settings`, Thermite's own (its PreCompact hook), when given.
+ */
 export function claudeArgs(
   m: ModelConfig,
   o: {
@@ -454,6 +502,8 @@ export function claudeArgs(
     session?: string | undefined;
     /** A file with the MCP servers it may use (at the harness's gateway), and only those. */
     mcpConfig?: string | undefined;
+    /** Thermite's settings for the run, as JSON (claudeHookSettings). */
+    settings?: string | undefined;
   },
 ) {
   return [
@@ -468,6 +518,7 @@ export function claudeArgs(
     "",
     "--strict-mcp-config",
     ...(o.mcpConfig ? ["--mcp-config", o.mcpConfig] : []),
+    ...(o.settings ? ["--settings", o.settings] : []),
     ...(o.tools !== undefined ? ["--tools", o.tools] : []),
     ...(m.effort
       ? ["--effort", m.effort]
@@ -510,6 +561,11 @@ export interface ClaudeTrialDeps {
   afterSubmitMs?: number | undefined;
   /** A compaction Claude Code reported (goal 070), for the harness to keep and record. */
   compacted?: OnCompacted | undefined;
+  /**
+   * Where the harness keeps the conversation before each compaction (goal 070): with it, Claude
+   * Code's PreCompact hook copies the transcript and tells the summary to name the file.
+   */
+  keptAt?: KeptAt | undefined;
   /** Each run's model usage, as Claude Code's output reports it (goal 075). */
   modelUsage?: ((u: CallUsage) => void) | undefined;
 }
@@ -549,10 +605,24 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     THERMITE_WORKSPACE: spec.workspace,
     THERMITE_CLAUDE_EVENTS: events,
   };
+  const title = `Trial ${spec.trialId} (${spec.lane})`;
+  // Before each compaction, Claude Code's hook copies its transcript into the run's own area and
+  // tells the summary where the harness keeps it; the harness reads the copy, or else the
+  // transcript itself, once Claude Code reports the compaction (goal 070).
+  const settings = deps.keptAt
+    ? claudeHookSettings(join(area, CLAUDE_DROPS), deps.keptAt)
+    : undefined;
   const compactions = new CliCompactions({
-    title: `Trial ${spec.trialId} (${spec.lane})`,
+    title,
     harness: "Claude Code",
     on: deps.compacted,
+    own: claudeOwn({
+      root: area,
+      drops: [CLAUDE_DROPS],
+      home: ["claude-home"],
+      title,
+      session: () => tally.session,
+    }),
   });
   // The MCP servers the run's kit gives its workers (goal 068), at the harness's gateway with
   // the trial's own token: in a file only the lane reads.
@@ -567,7 +637,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     argv: [
       "sh",
       "-c",
-      `mkdir -p claude-home claude-tmp && : > claude-events.jsonl && chmod 0644 claude-events.jsonl${mcp ? " && umask 077 && cat > claude-home/mcp.json" : ""}`,
+      `mkdir -p claude-home claude-tmp ${CLAUDE_DROPS} && chmod 0755 ${CLAUDE_DROPS} && : > claude-events.jsonl && chmod 0644 claude-events.jsonl${mcp ? " && umask 077 && cat > claude-home/mcp.json" : ""}`,
     ],
     cwd: area,
     timeoutMs: 30_000,
@@ -622,7 +692,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
           exe,
           "-p",
           message,
-          ...claudeArgs(deps.model, { session: tally.session, mcpConfig: mcpFile }),
+          ...claudeArgs(deps.model, { session: tally.session, mcpConfig: mcpFile, settings }),
         ],
         ' >> "$THERMITE_CLAUDE_EVENTS" 2>&1',
       ),
@@ -753,6 +823,8 @@ export async function claudeOnce(
     role: Role;
     /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
     mcp?: Omit<McpAccess, "apiUrl"> | undefined;
+    /** Where its conversation is kept before each compaction, and who records it (goal 070). */
+    compaction?: OnceKeeping | undefined;
   },
 ): Promise<ClaudeTally> {
   const role = o.role;
@@ -769,9 +841,14 @@ export async function claudeOnce(
     const mcp = claudeMcpConfig(
       o.mcp?.servers.length ? { apiUrl: deps.apiUrl, ...o.mcp } : undefined,
     );
+    const keeping = o.compaction;
     const setup = await deps.runner.run({
       role,
-      argv: ["sh", "-c", `mkdir -p home tmp${mcp ? " && umask 077 && cat > home/mcp.json" : ""}`],
+      argv: [
+        "sh",
+        "-c",
+        `mkdir -p home tmp${keeping ? " compactions" : ""}${mcp ? " && umask 077 && cat > home/mcp.json" : ""}`,
+      ],
       cwd: dir,
       timeoutMs: 30_000,
       ...(mcp ? { stdin: mcp } : {}),
@@ -790,6 +867,10 @@ export async function claudeOnce(
         ...claudeArgs(model, {
           tools: o.tools,
           mcpConfig: mcp ? join(dir, "home", "mcp.json") : undefined,
+          // Its PreCompact hook, when the call's conversation is kept (goal 070).
+          settings: keeping
+            ? claudeHookSettings(join(dir, "compactions"), keeping.keptAt)
+            : undefined,
         }),
       ]),
       cwd: dir,
@@ -809,9 +890,26 @@ export async function claudeOnce(
       timeoutMs: o.timeoutMs,
       captureBytes: 8 * 1024 * 1024,
     });
-    readClaudeEvents(r.stdout.split("\n"), tally);
+    const live = readClaudeEvents(r.stdout.split("\n"), tally);
     // A run cut off before its result keeps the usage its stream showed (goal 075).
     closeClaudeRun(tally);
+    // Each compaction it reported, kept and recorded once the call is over (goal 070): the
+    // controller takes the call's folder back to read the hook's copies.
+    if (keeping && tally.compactions.length) {
+      await reclaim(deps.runner, dir);
+      new CliCompactions({
+        title: keeping.title,
+        harness: "Claude Code",
+        on: keeping.compacted,
+        own: claudeOwn({
+          root: dir,
+          drops: ["compactions"],
+          home: ["home"],
+          title: keeping.title,
+          session: () => tally.session,
+        }),
+      }).take(live, tally.compactions.splice(0));
+    }
     if (r.killedFor === "timeout")
       tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)

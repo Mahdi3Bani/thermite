@@ -163,18 +163,37 @@ export function advisorKeeper(
   say?: ((text: string) => void) | undefined,
 ): AdvisorKeeper {
   const folder = `compactions/${fileSafe(run ?? "no-run")}`;
+  const stem = (advisor: string, call: string) => `${fileSafe(call)}-${fileSafe(advisor)}`;
+  const program = { "claude-code": "Claude Code", codex: "Codex", opencode: "OpenCode" } as const;
   return {
     keep: (advisor, call, n, markdown) => {
       const dir = join(home, "advisors", folder);
       mkdirSync(dir, { recursive: true });
-      const name = `${fileSafe(call)}-${fileSafe(advisor)}-${n}.md`;
+      const name = `${stem(advisor, call)}-${n}.md`;
       writeFileSync(join(dir, name), markdown);
       return `the supervisor's records, advisors/${folder}/${name}`;
     },
-    done: (c) =>
+    // Where it will be kept, in the same words, for the summary of the advisor's own program.
+    at: (advisor, call) => ({
+      dir: `advisors/${folder}`,
+      stem: stem(advisor, call),
+      readable: false,
+      place: "the supervisor's records",
+    }),
+    done: (c) => {
+      const tokens =
+        c.tokens_before !== null
+          ? ` at about ${c.tokens_before.toLocaleString("en-US")} tokens${c.tokens_after !== null ? `, down to about ${c.tokens_after.toLocaleString("en-US")}` : ""}`
+          : "";
+      const by = c.harness ? ` by ${program[c.harness]}` : "";
       say?.(
-        `advisor ${c.advisor}: its conversation was compacted (compaction ${c.number}) at about ${c.tokens_before.toLocaleString("en-US")} tokens, down to about ${c.tokens_after.toLocaleString("en-US")}. It goes on.${c.how === "trimmed" ? " The summary failed, so the bodies of older tool results were left out." : ""}${c.kept ? ` The conversation before it is kept in ${c.kept}.` : " The conversation before it was not kept."}${c.error ? ` (${clip(c.error, 300)})` : ""}`,
-      ),
+        `advisor ${c.advisor}: its conversation was compacted${by} (compaction ${c.number})${tokens}. It goes on.${c.how === "trimmed" ? " The summary failed, so the bodies of older tool results were left out." : ""}${c.kept ? ` The conversation before it is kept in ${c.kept}.` : " The conversation before it was not kept."}${c.error ? ` (${clip(c.error, 300)})` : ""}`,
+      );
+      if (c.summary)
+        say?.(
+          `advisor ${c.advisor}: the summary after compaction ${c.number}:\n\n${clip(c.summary, 4000)}`,
+        );
+    },
   };
 }
 

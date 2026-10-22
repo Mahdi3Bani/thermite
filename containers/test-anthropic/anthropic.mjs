@@ -6,6 +6,9 @@
 //   - each "call the TOOL tool with input {...}END", in order: one call each, then "done: " and
 //     the last tool's output;
 //   - "ADVISOR-CHECK": the JSON answer an advisor gives;
+//   - "COMPACT-CHECK": a Bash call that says the conversation is large, so Claude Code compacts;
+//     the compaction's summary request, which carries the line of Thermite's PreCompact hook, is
+//     answered with a summary that names the kept file (goal 070);
 //   - anything else (Claude Code's own side requests): "ok".
 // It answers only a request signed in with the token it was given (Authorization: Bearer, as
 // Claude Code sends a subscription's token), and counts the others. It keeps no token and no
@@ -33,6 +36,31 @@ export function reply(body) {
     Array.isArray(m.content) ? m.content.filter((b) => b.type === "tool_result") : [],
   );
   const offered = new Set((body.tools ?? []).map((t) => t.name));
+  // Goal 070: a compaction's summary request that carries the line Thermite's PreCompact hook
+  // added to Claude Code's instructions. The summary names the file, as the line asks.
+  const kept = /Thermite keeps the whole conversation before this compaction in (\S+\.md)/.exec(
+    prompt,
+  )?.[1];
+  if (kept)
+    return {
+      content: [{ type: "text", text: `The value is checked. The whole conversation is kept in ${kept}.` }],
+      stop: "end_turn",
+    };
+  // "COMPACT-CHECK": a trial that compacts. Its first reply says the conversation is already
+  // large, so Claude Code compacts it before its next request; after the compaction, it is done.
+  if (
+    /COMPACT-CHECK/.test(prompt) &&
+    !/The whole conversation is kept in/.test(prompt) &&
+    !results.length &&
+    offered.has("Bash")
+  )
+    return {
+      content: [
+        { type: "tool_use", id: "toolu_compact", name: "Bash", input: { command: "echo compact-check" } },
+      ],
+      stop: "tool_use",
+      usage: { input_tokens: 60_000 },
+    };
   const steps = [...prompt.matchAll(/call the (\w+) tool with input (\{.*?\})END/gs)].map((m) => ({
     name: m[1],
     input: JSON.parse(m[2]),
@@ -105,7 +133,7 @@ export function startAnthropicStandIn(o) {
             content: r.content,
             stop_reason: r.stop,
             stop_sequence: null,
-            usage: { input_tokens: 10, output_tokens: 5 },
+            usage: { input_tokens: r.usage?.input_tokens ?? 10, output_tokens: 5 },
           }),
         );
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
@@ -120,7 +148,7 @@ export function startAnthropicStandIn(o) {
           content: [],
           stop_reason: null,
           stop_sequence: null,
-          usage: { input_tokens: 10, output_tokens: 1 },
+          usage: { input_tokens: r.usage?.input_tokens ?? 10, output_tokens: 1 },
         },
       });
       r.content.forEach((b, index) => {
@@ -141,7 +169,7 @@ export function startAnthropicStandIn(o) {
       });
       ev("message_delta", {
         delta: { stop_reason: r.stop, stop_sequence: null },
-        usage: { output_tokens: 5 },
+        usage: { output_tokens: 5, ...(r.usage ? { input_tokens: r.usage.input_tokens } : {}) },
       });
       ev("message_stop", {});
       res.end();
