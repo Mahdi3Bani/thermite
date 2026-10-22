@@ -1,7 +1,7 @@
 ---
 id: "019"
 title: "Control reaches RunPod rigs through RunPod's proxy"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 019 · Control reaches RunPod rigs through RunPod's proxy
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
 
 ## What
 
@@ -59,13 +59,13 @@ Only control can use that port. Everyone else, a lane inside the same pod includ
 
 ## Done when
 
-- [ ] A RunPod rig enrolls, reports and takes commands through control's pulls only.
+- [x] A RunPod rig enrolls, reports and takes commands through control's pulls only.
 - [x] Tests:
   - an unsigned, wrongly signed, stale, replayed, other-rig or other-pod request gets the same 404 and changes nothing;
   - a changed or replayed answer is dropped by control;
   - a second enrollment, or one after the code expired, is refused;
   - secrets never cross the wire in plain text (checked with a recording proxy in the test).
-- [ ] A scan of a test pod's address from outside finds nothing but 404s.
+- [x] A scan of a test pod's address from outside finds nothing but 404s.
 - [x] The docs describe the model, the defenses and what stays out of scope.
 
 ## Decisions
@@ -100,6 +100,7 @@ None.
 - 2026-10-20: Pull mode built on both ends and wired in: control's loop connects to each rig in pull mode (`src/control/tunnel.ts`, `main.ts`); the supervisor starts pull mode from its launch values (`src/supervisor/tunnel-pod.ts`, `main.ts`); the rig's page shows **Pull mode** (enrollment, last exchange, refused requests, last error); `GET /v1/rigs` lists the rigs in pull mode; the isolation self-test checks the pod's keys. Tests (`src/core/tunnel.test.ts`, `src/control/tunnel.test.ts`), with a recording proxy, a real pod end and control's API in-process: every refusal (unsigned, wrong key, stale, future, other rig, other pod, replayed, too large, wrong path, a lane on either port) gets the same empty 404 and changes nothing; a replay after a restart is refused; a changed or old answer is dropped and its call retried; a pull from start to end with a harness and the supervisor's own relay (a report pins the harness's key; a command reaches the harness and its outcome reaches control; a model route with its key); no secret, code, token or plain JSON crosses the proxy; a 2.5 MB answer crosses in parts. Pages: Trust between control and rigs (Rigs in pull mode), Settings (Pull mode), Ports, volumes and secret files, Rig checks, REST API, Who holds your keys, the glossary.
 - 2026-10-20: Next: the first rig on RunPod (goals 020 and 022), then the scan of a test pod's address from outside.
 - 2026-10-20: The one-container rig image (goal 020) runs pull mode end to end on this machine: control's code enrolls the image over its port, root gives the harness control's key only after checking it against the launch's SHA-256, and the rig's reports reach control through control's pulls only (`scripts/rig-image-acceptance.mjs`, passed under rootless Podman). Left: the first rig on RunPod (goal 022's launch, which waits for the owner's OK to spend), and then the scan of its address.
+- 2026-10-22: On RunPod. A rig the owner launched from the dashboard (an RTX A4000 on Secure cloud) enrolled through control's pulls, reported, and took commands only that way: a smoke check asked for through control, and the export control asked for before its idle stop. A scan of the pod's public address from outside, on 20 paths, got only empty 404s. Verified.
 
 ---
 
