@@ -67,6 +67,43 @@ describe("a provider's model list", () => {
     assert.equal(listedPrice({ pricing: { prompt: "free", completion: "0" } }), undefined);
   });
 
+  test("a model's maximum output, as each provider's list names it: the route's reply limit (goal 079)", async () => {
+    const openRouter = await listModels(
+      "openai",
+      "https://p.example/v1",
+      "sk-1",
+      answer(200, {
+        data: [
+          { id: "routed", top_provider: { context_length: 200000, max_completion_tokens: 64000 } },
+          { id: "gateway", max_output_tokens: 32768 },
+          { id: "other", max_completion_tokens: 16384 },
+          // An OpenAI-compatible list's max_tokens is not taken: it names no one meaning.
+          { id: "unknown", max_tokens: 4096 },
+          { id: "odd", max_output_tokens: -1 },
+        ],
+      }) as typeof fetch,
+    );
+    assert.deepEqual(
+      (openRouter as { id: string; max_output?: number }[]).map((m) => [m.id, m.max_output]),
+      [
+        ["gateway", 32768],
+        ["odd", undefined],
+        ["other", 16384],
+        ["routed", 64000],
+        ["unknown", undefined],
+      ],
+    );
+    // Anthropic's list: max_input_tokens is the window, max_tokens the output cap.
+    const anthropic = await listModels("anthropic", "", "sk-ant", (async () =>
+      Response.json({
+        data: [{ id: "claude-x", max_input_tokens: 1_000_000, max_tokens: 128_000 }],
+        has_more: false,
+      })) as typeof fetch);
+    assert.deepEqual(anthropic, [
+      { id: "claude-x", context_window: 1_000_000, max_output: 128_000 },
+    ]);
+  });
+
   test("Anthropic's /v1/models, paged, with its own key header", async () => {
     const seen: { url: string; headers: Headers }[] = [];
     let n = 0;

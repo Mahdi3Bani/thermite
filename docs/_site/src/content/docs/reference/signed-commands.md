@@ -284,9 +284,9 @@ The dashboard calls directives **rules**. It sends no `redirect`: on a run's **P
 | `run` | lowercase id | The run |
 | `reseed_commit` | commit | Accepted by the schema, but the harness refuses it: `re-seeding lanes is not available in this version; reset without it` |
 
-The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. The experiment each ended trial was on ends with the result `interrupted`, and a copy of it goes to the top of the run's queue, with the same author and the reason `tried again: its trial on <lane> was interrupted (<old id>)`, followed by the old reason. The copy's `experiment_added` event also has `requeued_from`: `{experiment, trial, lane, result}`, the experiment it repeats, its trial, the lane and `interrupted`. Result: `{"run", "reset": true}`.
+The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. The experiment each ended trial was on goes back to the top of the run's queue, the same experiment with its author and its why, and counts the return (`returns`) with its cause; its `experiment_returned` event has `{id, lane, trial, result: "interrupted", cause, returns, position: "top"}`. Result: `{"run", "reset": true}`.
 
-The run page's **History** says "You restarted the lanes: their trials ended, and every lane starts again from the champion." (with the issuer's name in place of "You" for the agent's token), and, for each copy, `<author>'s experiment "<title>" went back in the queue: its trial was interrupted.`, such as "The planner's experiment …" or "Your experiment …". The dashboard offers **Restart the lanes** only on a running run with agents: a run without agents (a try, a rig check) has no lanes.
+The run page's **History** says "You restarted the lanes: their trials ended, and every lane starts again from the champion." (with the issuer's name in place of "You" for the agent's token), and, for each experiment, `"<title>" went back to the top of the queue: its trial on <lane> was interrupted (<cause>).` The dashboard offers **Restart the lanes** only on a running run with agents: a run without agents (a try, a rig check) has no lanes.
 
 ### `message_agent`
 
@@ -537,7 +537,7 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 | `teachers` | boolean | The teachers, and their merged by model, run in the supervisor, where configured |
 | `review` | boolean | The review panel runs in the supervisor, where configured |
 | `exports` | boolean | Hourly exports for the supervisor to push |
-| `trial_minutes` | 1 to 10080 | A trial's length when its contract sets none |
+| `trial_minutes` | 1 to 1440, or `null` | A trial's length when its contract sets none. `null`: none |
 | `max_turns` | 1 to 100000, or `null` | A limit on each trial's model turns. `null`: no limit |
 | `promotion` | `auto` or `owner_approval` | The rig's promotion rule, for runs that set none |
 | `judge_gpus` | 1 to 8, or `null` | On a rig given its set of GPUs, how many are the judge's. `null`: the rig's default. A change restarts the harness to regroup the cards |

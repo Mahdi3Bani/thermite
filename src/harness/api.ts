@@ -136,10 +136,9 @@ export function createHarnessApi(
   // its own route: the planner's, when control gave the planner a model of its own (goal 073).
   const openTrial = (token: string) => {
     try {
-      registry.openTrial(token);
-      return true;
+      return registry.openTrial(token).id;
     } catch {
-      return false;
+      return undefined;
     }
   };
   app.all("/v1/model-proxy/*", bodyLimit({ maxSize: 64 * 1024 * 1024 }), async (c) => {
@@ -148,7 +147,8 @@ export function createHarnessApi(
       ? bearer.slice(7)
       : (c.req.header("x-api-key") ?? "");
     const trial = given.startsWith("trial.");
-    const ok = trial ? openTrial(given.slice("trial.".length)) : service.proxyTokenValid(given);
+    const trialId = trial ? openTrial(given.slice("trial.".length)) : undefined;
+    const ok = trial ? trialId !== undefined : service.proxyTokenValid(given);
     if (!ok) return c.json({ error: "unauthorized" }, 401);
     const m = (trial ? undefined : service.proxyTokenModel(given)) ?? service.models?.current();
     // OpenCode's own models need no proxy; a Claude subscription is used only by Claude Code.
@@ -167,6 +167,8 @@ export function createHarnessApi(
       },
       { api: m.api, baseUrl: m.baseUrl, key: m.keyNow?.() ?? m.apiKey },
       () => service.noteUsageLimit(),
+      // Each error answer, for the trial (or the check or plan) to tell its kind (goal 079).
+      (a) => service.noteProviderAnswer(trialId ?? "proxy", a),
     );
   });
 
@@ -471,9 +473,18 @@ export function createHarnessApi(
             tokens_out: z.number().int().min(0),
           })
           .optional(),
+        /** The trial waits for its provider, then goes on in the same conversation (goal 079). */
+        wait: z
+          .object({
+            until: z.iso.datetime(),
+            kind: z.enum(["rate_limit", "server", "model", "context", "credits", "auth", "route"]),
+            words: z.string().max(2000),
+          })
+          .optional(),
       })
       .parse(await c.req.json());
     service.trialReport(trial, body);
+    if (body.wait) service.trialWait(trial, body.wait);
     return c.json({ ok: true });
   });
 

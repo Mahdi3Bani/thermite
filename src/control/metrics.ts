@@ -48,13 +48,11 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
         lines.push(`thermite_run_attempts{${l},verdict="${label(verdict)}"} ${n}`);
       }
       const ag = i.agents;
-      if (ag.epochs) {
-        lines.push(
-          `thermite_planner_valid_ratio{${l}} ${(ag.planner_valid / ag.epochs).toFixed(4)}`,
-        );
-        lines.push(
-          `thermite_planner_fallback_ratio{${l}} ${(ag.fallbacks / ag.epochs).toFixed(4)}`,
-        );
+      // Only rounds a planner could plan: a research run's are set by its research plan (goal 079).
+      const planned = ag.epochs - ag.research_rounds;
+      if (planned > 0) {
+        lines.push(`thermite_planner_valid_ratio{${l}} ${(ag.planner_valid / planned).toFixed(4)}`);
+        lines.push(`thermite_planner_fallback_ratio{${l}} ${(ag.fallbacks / planned).toFixed(4)}`);
       }
       if (ag.attempts) {
         lines.push(`thermite_duplicate_ratio{${l}} ${(ag.duplicates / ag.attempts).toFixed(4)}`);

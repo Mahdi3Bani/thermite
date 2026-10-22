@@ -652,6 +652,10 @@ export function createControlApi(
       p.models.find((m) => m.id === model)?.context_window ?? 0,
       cap,
     );
+    // The reply limit: the model's maximum output from the provider's list; 0, none sent and the
+    // provider's own applies (goal 079).
+    const maxOutput = p.models.find((m) => m.id === model)?.max_output ?? 0;
+    const outputRev = maxOutput ? [`max_output ${maxOutput}`] : [];
     if (p.type === "chatgpt") {
       const access = await chatgpt.access(p);
       if (typeof access !== "string") return undefined;
@@ -664,7 +668,7 @@ export function createControlApi(
         model,
         context_window: contextWindow,
         ...compact,
-        max_tokens: 0,
+        max_tokens: maxOutput,
         reasoning,
         key_hint: p.key_hint,
         // A renewed token is a new revision: the rig takes it on its next round. So is a cap.
@@ -679,6 +683,7 @@ export function createControlApi(
             access,
             ...(cap ? [contextWindow] : []),
             ...compactRev,
+            ...outputRev,
           ].join("\n"),
         ).slice(0, 16),
         api_key: access,
@@ -703,7 +708,7 @@ export function createControlApi(
         model: claudeModelName(model),
         context_window: contextWindow,
         ...compact,
-        max_tokens: 0,
+        max_tokens: maxOutput,
         reasoning: null,
         effort: effort ?? null,
         key_hint: p.key_hint,
@@ -717,6 +722,7 @@ export function createControlApi(
             effort ?? "",
             p.key_sealed,
             ...compactRev,
+            ...outputRev,
           ].join("\n"),
         ).slice(0, 16),
         api_key: key,
@@ -736,7 +742,7 @@ export function createControlApi(
       model,
       context_window: contextWindow,
       ...compact,
-      max_tokens: 0,
+      max_tokens: maxOutput,
       reasoning,
       key_hint: p.key_hint,
       // Changes with anything about the route, even a provider deleted and made again.
@@ -753,6 +759,7 @@ export function createControlApi(
           reasoning ?? "",
           p.key_sealed,
           ...compactRev,
+          ...outputRev,
         ].join("\n"),
       ).slice(0, 16),
       api_key: key,

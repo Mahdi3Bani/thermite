@@ -477,6 +477,110 @@ describe("agent scheduler", () => {
     await dev.settle("lane-1");
   });
 
+  test("a dev run behind another lane's waits with no time limit, and gives up when its trial ends (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    const { DevRuns } = await import("./devrun.ts");
+    const dev = new DevRuns({
+      runner: new LocalRunner(env.paths.scratchDir),
+      ledger: env.ledger,
+      scratchDir: env.paths.scratchDir,
+      gpu: false,
+      dedicated: true,
+    });
+    const registry = scheduler0(env).registry;
+    const { mkdirSync } = await import("node:fs");
+    const cwd = (lane: string) => {
+      const d = `${env.paths.scratchDir}/lanes/${lane}/ws/repo`;
+      mkdirSync(d, { recursive: true });
+      return d;
+    };
+    for (const lane of ["lane-1", "lane-2"])
+      registry.startTrial({
+        id: `t-${lane}`,
+        run: "js-1",
+        lane,
+        epoch: 1,
+        family: "f",
+        parent: env.seed,
+        token: `tok-${lane}`,
+      });
+    const long = dev.run({ lane: "lane-1", command: "sleep 1", cwd: cwd("lane-1") }, "t-lane-1");
+    let settled = false;
+    const behind = dev
+      .run({ lane: "lane-2", command: "echo ran", cwd: cwd("lane-2") }, "t-lane-2")
+      .then((r) => {
+        settled = true;
+        return r as { ran: boolean; reason: string };
+      });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(settled, false, "it waits: no time limit of its own");
+    // Its trial ends: it gives up at once, and the trial's end does not wait behind lane-1.
+    const t0 = Date.now();
+    await dev.settle("lane-2");
+    assert.ok(Date.now() - t0 < 500);
+    const r = await behind;
+    assert.equal(r.ran, false);
+    assert.match(r.reason, /the trial ended before a device was free/);
+    assert.equal(((await long) as { ran: boolean }).ran, true);
+  });
+
+  test("no time cap on a round or a trial unless one is set (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    const walls: (number | undefined)[] = [];
+    let release: () => void = () => undefined;
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: {
+        baseUrl: "http://127.0.0.1:9",
+        model: "m",
+        apiKey: "k",
+        contextWindow: 1,
+        maxTokens: 1,
+      },
+      owner: "s",
+      backoffBaseMs: 0,
+      runTrial: (spec) => {
+        walls.push(spec.wallMs);
+        return new Promise((resolve) => {
+          release = () =>
+            resolve({
+              stopped: "no_submission",
+              turns: 1,
+              toolCalls: 0,
+              tokensIn: 0,
+              tokensOut: 0,
+            });
+        });
+      },
+    });
+    assert.ok(await scheduler.tick());
+    while (!walls.length) await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(walls, [undefined], "no trial length unless set");
+    // The round started four hours ago and its trial still runs: the round stays open.
+    env.ledger.db
+      .prepare("update epoch set started_at = ?")
+      .run(new Date(Date.now() - 4 * 3_600_000).toISOString());
+    await scheduler.tick();
+    assert.equal(scheduler.registry.currentEpoch("js-1")?.ended_at, null);
+    release();
+    await scheduler.idle();
+    // Its trial is done: the round ends because it is complete, not at a time.
+    await scheduler.tick();
+    assert.notEqual(scheduler.registry.currentEpoch("js-1")?.ended_at, null);
+    // A trial length the rig sets reaches the trial.
+    scheduler.configure({ trialWallMs: 45 * 60_000 });
+    for (let i = 0; i < 200 && walls.length < 2; i++) {
+      await scheduler.tick();
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.equal(walls[1], 45 * 60_000);
+    release();
+    await scheduler.idle();
+  });
+
   test("with a dedicated development card, dev runs and the judge do not wait for each other", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
     await env.service.applyCommand(env.assign);
@@ -767,10 +871,15 @@ describe("agent scheduler", () => {
     assert.equal(started, 1);
   });
 
-  test("after six failed trials the agents wait; a new model or a resume ends the wait at once", async () => {
-    const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 10 } });
-    await env.service.applyCommand(env.assign);
-    let started = 0;
+  /** A scheduler whose trials return `result`, counting the trials it starts (goal 079). */
+  function provider(
+    env: ReturnType<typeof makeJudgeEnv>,
+    result: () => Awaited<
+      ReturnType<NonNullable<ConstructorParameters<typeof Scheduler>[0]["runTrial"]>>
+    >,
+    more: Partial<ConstructorParameters<typeof Scheduler>[0]> = {},
+  ) {
+    const started = { n: 0 };
     const scheduler = new Scheduler({
       service: env.service,
       runner: new LocalRunner(env.paths.scratchDir),
@@ -784,47 +893,197 @@ describe("agent scheduler", () => {
       owner: "s",
       backoffBaseMs: 0,
       runTrial: async () => {
-        started++;
-        return {
-          stopped: "error",
-          turns: 0,
-          toolCalls: 0,
-          tokensIn: 0,
-          tokensOut: 0,
-          error: "no model route configured",
-        };
+        started.n++;
+        return result();
       },
+      ...more,
     });
     const round = async () => {
       await scheduler.tick();
       await scheduler.idle();
-      // Distinct end times: the streak is ordered by when trials ended.
       await new Promise((r) => setTimeout(r, 5));
     };
-    for (let i = 0; i < 6 && started < 6; i++) await round();
-    assert.ok(started >= 6, `six trials failed (${started})`);
-    const failed = started;
-    await round();
-    await round();
-    assert.equal(started, failed, "the agents wait");
-    const run = (env.assign.envelope.payload as { run: string }).run;
-    assert.ok(
+    const events = (kind: string) =>
       env.ledger.db
-        .prepare("select 1 from event where kind = 'agents_cooldown' and subject = ?")
-        .get(run),
+        .prepare("select body from event where kind = ? order by id")
+        .all(kind)
+        .map((e) => JSON.parse(String(e.body)) as Record<string, unknown>);
+    return { scheduler, started, round, events };
+  }
+
+  test("a trial that finds no credits stops the run's agents until a model check passes (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 10 } });
+    await env.service.applyCommand(env.assign);
+    const run = (env.assign.envelope.payload as { run: string }).run;
+    let checks = 0;
+    let checkPasses = false;
+    env.service.rigChecks.model = {
+      run: async () => {
+        checks++;
+        return checkPasses
+          ? { ok: true, summary: "m answered with a tool call" }
+          : { ok: false, summary: "m failed the check: 404 insufficient_credits_for_paid_model" };
+      },
+    };
+    let credits = false;
+    const { started, round, events } = provider(env, () =>
+      credits
+        ? { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 }
+        : {
+            stopped: "error",
+            turns: 0,
+            toolCalls: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            error: "404 insufficient_credits_for_paid_model",
+            errorKind: "credits",
+          },
     );
-    // The owner gives the rig a model: the wait ends at once.
-    env.ledger.appendEvent("supervisor", "model_route_set", null, { model: "m2" });
     await round();
-    assert.ok(started > failed, "a new model ends the wait");
-    // Six more failures, then a resume ends the wait too.
-    for (let i = 0; i < 6 && started < failed + 7; i++) await round();
-    const again = started;
+    const first = started.n;
+    assert.ok(first >= 1);
+    const stop = events("agents_stopped");
+    assert.equal(stop.length, 1);
+    assert.equal(stop[0]?.kind, "credits");
+    assert.match(String(stop[0]?.words), /insufficient_credits_for_paid_model/);
+    // Stopped: no trial and no new plan, however many ticks; the model is not checked again
+    // before its first pause (a minute).
     await round();
-    assert.equal(started, again, "waiting again");
+    await round();
+    assert.equal(started.n, first, "no trial starts while the agents are stopped");
+    assert.equal(checks, 0);
+    // The owner resumes the run: the model is checked at once. It still fails: still stopped.
     env.ledger.appendEvent("control:owner", "run_status", run, { status: "running", reason: null });
     await round();
-    assert.ok(started > again, "a resume ends the wait");
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(checks, 1);
+    await round();
+    assert.equal(started.n, first, "a failing check keeps them stopped");
+    assert.equal(events("agents_stopped").length, 1, "the stop is recorded once");
+    // Credits added: the next check passes, the agents go on.
+    credits = true;
+    checkPasses = true;
+    env.ledger.appendEvent("control:owner", "run_status", run, { status: "running", reason: null });
+    await round();
+    await new Promise((r) => setTimeout(r, 20));
+    await round();
+    assert.equal(events("agents_resumed").length, 1);
+    assert.ok(started.n > first, "a passing check lets trials start again");
+  });
+
+  test("no trial starts while the workers' model check fails; a new route ends it (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
+    await env.service.applyCommand(env.assign);
+    const { started, round, events } = provider(env, () => ({
+      stopped: "no_submission",
+      turns: 1,
+      toolCalls: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+    }));
+    // The route was set, and its check failed after it (as at 03:02:49 in the audit).
+    env.ledger.appendEvent("supervisor", "model_route_set", null, { model: "m" });
+    env.ledger.appendEvent("harness", "rig_check_finished", null, {
+      id: "chk-1",
+      check: "model",
+      ok: false,
+      summary: "m failed the tool-call check: 404 insufficient_credits_for_paid_model",
+    });
+    await round();
+    await round();
+    assert.equal(started.n, 0, "no trial on a failing check");
+    assert.equal(events("agents_stopped")[0]?.kind, "credits");
+    // A check of another kind of failure stops them too, as "check".
+    // The owner gives the rig another model: the stop ends at once.
+    env.ledger.appendEvent("supervisor", "model_route_set", null, { model: "m2" });
+    await round();
+    assert.ok(started.n >= 1, "a new route ends the stop");
+    assert.equal(events("agents_resumed")[0]?.why, "the rig's model route changed");
+  });
+
+  test("a rate limit with a time makes the agents wait until then; a passing fault does not stop them (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
+    await env.service.applyCommand(env.assign);
+    let error = "429 Rate limit reached. Please try again in 30s.";
+    const { started, round, events } = provider(env, () => ({
+      stopped: "error",
+      turns: 0,
+      toolCalls: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      error,
+    }));
+    await round();
+    assert.equal(started.n, 1);
+    const wait = events("agents_wait_for_limit")[0];
+    const ms = Date.parse(String(wait?.until)) - Date.now();
+    assert.ok(ms > 25_000 && ms <= 30_000, `waits about 30 s (${ms})`);
+    await round();
+    assert.equal(started.n, 1, "no trial before the provider's time");
+    // A provider's 5xx ends no run and stops no agents: the lane's own backoff alone.
+    const env2 = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
+    await env2.service.applyCommand(env2.assign);
+    error = "503 Service Unavailable";
+    const two = provider(env2, () => ({
+      stopped: "error",
+      turns: 0,
+      toolCalls: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      error,
+    }));
+    for (let i = 0; i < 8; i++) await two.round();
+    assert.ok(two.started.n >= 8, `trials go on (${two.started.n})`);
+    assert.equal(two.events("agents_stopped").length, 0);
+    assert.equal(two.events("agents_cooldown").length, 0, "no cooldown after failures in a row");
+  });
+
+  test("a draining rig starts no trial and no plan; shutdown stops trials and keeps their counters (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 3 } });
+    await env.service.applyCommand(env.assign);
+    let draining = true;
+    let id = "";
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: {
+        baseUrl: "http://127.0.0.1:9",
+        model: "m",
+        apiKey: "k",
+        contextWindow: 1,
+        maxTokens: 1,
+      },
+      owner: "s",
+      draining: () => draining,
+      runTrial: (spec, signal) =>
+        new Promise((resolve) => {
+          id = spec.trialId;
+          // The worker reports its counters as it goes.
+          env.service.trialReport(
+            { id: spec.trialId, run: spec.run, lane: spec.lane },
+            { progress: { turns: 7, tool_calls: 12, tokens_in: 9000, tokens_out: 800 } },
+          );
+          signal.addEventListener("abort", () =>
+            resolve({ stopped: "interrupted", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 }),
+          );
+        }),
+    });
+    assert.equal(await scheduler.tick(), false);
+    assert.equal(env.ledger.db.prepare("select count(*) as n from epoch").get()?.n, 0);
+    draining = false;
+    assert.ok(await scheduler.tick());
+    assert.equal(scheduler.trialsRunning, 1);
+    // Its workspace is ready and its worker at work.
+    while (!id) await new Promise((r) => setTimeout(r, 10));
+    await scheduler.shutdown("the harness is stopping");
+    const t = env.ledger.db
+      .prepare("select stopped, turns, tool_calls, tokens_in, tokens_out from trial where id = ?")
+      .get(id);
+    assert.deepEqual(
+      [t?.stopped, t?.turns, t?.tool_calls, t?.tokens_in, t?.tokens_out],
+      ["interrupted", 7, 12, 9000, 800],
+    );
+    assert.equal(await scheduler.tick(), false, "no new work after shutdown");
   });
 
   test("after a restart, trials a dead controller left open are closed and their lanes go on", async () => {
@@ -847,9 +1106,14 @@ describe("agent scheduler", () => {
     });
     await first.tick(); // plans (fallback: no reachable model) and starts a trial that never ends
     const open = env.ledger.db
-      .prepare("select count(*) as n from trial where ended_at is null")
-      .get();
-    assert.equal(Number(open?.n), 1);
+      .prepare("select id, run, lane from trial where ended_at is null")
+      .all();
+    assert.equal(open.length, 1);
+    // Its worker reported its counters before the controller died (goal 079).
+    env.service.trialReport(
+      { id: String(open[0]?.id), run: String(open[0]?.run), lane: String(open[0]?.lane) },
+      { progress: { turns: 4, tool_calls: 9, tokens_in: 5000, tokens_out: 300 } },
+    );
     let started = 0;
     const second = new Scheduler({
       service: env.service,
@@ -862,10 +1126,13 @@ describe("agent scheduler", () => {
       },
     });
     const stopped = env.ledger.db
-      .prepare("select stopped from trial order by started_at")
+      .prepare(
+        "select stopped, turns, tool_calls, tokens_in, tokens_out from trial order by started_at",
+      )
       .all()
-      .map((t) => t.stopped);
-    assert.deepEqual(stopped, ["interrupted"]);
+      .map((t) => [t.stopped, t.turns, t.tool_calls, t.tokens_in, t.tokens_out]);
+    // Interrupted, with the counters its worker last reported: the work it did still counts.
+    assert.deepEqual(stopped, [["interrupted", 4, 9, 5000, 300]]);
     assert.ok(await second.tick()); // the lane's next trial starts
     await second.idle();
     assert.equal(started, 1);

@@ -12,6 +12,7 @@ import { UsageSender } from "./usage-meter.ts";
 import {
   type CompactionLink,
   type McpForAgent,
+  type ProviderWait,
   runTrial,
   type TrialResult,
   type TrialSpec,
@@ -76,6 +77,11 @@ async function main(): Promise<void> {
     read: (ids: number[]) => call("POST", "/v1/trial/messages/read", { ids }),
     progress: (p: TrialProgress) => call("POST", "/v1/trial/live", { entries: [], progress: p }),
   };
+  // Each wait for the provider (goal 079): a line in the trial's session, and a rate limit's
+  // wait for the scheduler and the research clock. Best effort: the trial waits either way.
+  const waiting = (w: ProviderWait) => {
+    void call("POST", "/v1/trial/live", { entries: [], wait: w }).catch(() => undefined);
+  };
   // Each model call's usage, handed to the harness as it is made (goal 075); the trial's token
   // decides the run, the trial and the route.
   const usage = new UsageSender((calls) => call("POST", "/v1/trial/usage", { calls }));
@@ -136,6 +142,7 @@ async function main(): Promise<void> {
       idea: (req) => call("POST", "/v1/trial/idea", req),
       note: (req) => call("POST", "/v1/trial/note", req),
       modelUsage: usage.add,
+      waiting,
     });
     process.stdout.write(`\n${JSON.stringify(await withUsage(result, usage))}\n`);
     return;
@@ -171,6 +178,7 @@ async function main(): Promise<void> {
     mcp,
     compaction,
     modelUsage: usage.add,
+    waiting,
   });
   process.stdout.write(`\n${JSON.stringify(await withUsage(result, usage))}\n`);
 }

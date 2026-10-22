@@ -114,6 +114,13 @@ export interface ExperimentRow {
   dropped_why: string | null;
   from_run: string | null;
   from_id: string | null;
+  /**
+   * Why its trial ended without trying it, or (done) how its trial ended, in words (goal 079).
+   * Null: nothing to say.
+   */
+  cause?: string | null | undefined;
+  /** How many times its trial ended without really trying it, and it came back (goal 079). */
+  returns?: number | undefined;
   created_at: string;
   updated_at: string;
 }
@@ -1324,13 +1331,15 @@ export class Ledger {
       const now = this.now();
       const upsert = this.db.prepare(
         `insert into experiment (id, run, title, details, family, why, added_by, state, place, lane,
-           trial, attempt, result, dropped_by, dropped_why, from_run, from_id, created_at, updated_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           trial, attempt, result, dropped_by, dropped_why, from_run, from_id, cause, returns,
+           created_at, updated_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          on conflict (id) do update set title = excluded.title, details = excluded.details,
            family = excluded.family, why = excluded.why, state = excluded.state,
            place = excluded.place, lane = excluded.lane, trial = excluded.trial,
            attempt = excluded.attempt, result = excluded.result, dropped_by = excluded.dropped_by,
-           dropped_why = excluded.dropped_why, updated_at = excluded.updated_at
+           dropped_why = excluded.dropped_why, cause = excluded.cause, returns = excluded.returns,
+           updated_at = excluded.updated_at
          where experiment.run = excluded.run`,
       );
       for (const r of rows) {
@@ -1352,6 +1361,8 @@ export class Ledger {
           r.dropped_why,
           r.from_run,
           r.from_id,
+          r.cause ?? null,
+          r.returns ?? 0,
           now,
           now,
         );
@@ -1519,7 +1530,12 @@ function toRun(r: Row): RunRow {
 }
 
 function toExperiment(r: ExperimentRow): ExperimentRow {
-  return { ...r, place: r.place === null ? null : Number(r.place) };
+  return {
+    ...r,
+    place: r.place === null ? null : Number(r.place),
+    cause: r.cause ?? null,
+    returns: Number(r.returns ?? 0),
+  };
 }
 
 function toJob(r: Row): JobRow {

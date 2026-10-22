@@ -39,6 +39,33 @@ describe("the rig's own settings (Edit rig)", () => {
     assert.equal(store.set({ max_turns: null }).max_turns, null);
   });
 
+  test("no trial length unless someone sets one: the environment, Edit rig, or a file from before (goal 079)", async () => {
+    const { trialMinutesFromEnv } = await import("./rig-settings.ts");
+    assert.equal(trialMinutesFromEnv(undefined), null);
+    assert.equal(trialMinutesFromEnv(""), null);
+    assert.equal(trialMinutesFromEnv("45"), 45);
+    assert.throws(() => trialMinutesFromEnv("0"), /THERMITE_TRIAL_MINUTES must be/);
+    const none = { ...defaults, trial_minutes: null };
+    const dir = mkdtempSync(join(tmpdir(), "thermite-settings-"));
+    // A file written before kept every setting, the old 20-minute default too: not a choice.
+    const { writeFileSync, readFileSync } = await import("node:fs");
+    const old = join(dir, "old.json");
+    writeFileSync(old, JSON.stringify({ ...defaults, lanes: 3, trial_minutes: 20 }));
+    const s = new RigSettingsStore(none, old).get();
+    assert.equal(s.trial_minutes, null, "the old default is dropped");
+    assert.equal(s.lanes, 3, "what else it kept stays");
+    // From now on, only what someone set is kept, and named.
+    const file = join(dir, "rig-settings.json");
+    const store = new RigSettingsStore(none, file);
+    store.set({ trial_minutes: 20 });
+    const kept = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    assert.deepEqual(kept, { set_keys: ["trial_minutes"], trial_minutes: 20 });
+    assert.equal(new RigSettingsStore(none, file).get().trial_minutes, 20, "a choice stays");
+    // Edit rig's empty field clears it.
+    assert.equal(store.set({ trial_minutes: null }).trial_minutes, null);
+    assert.equal(new RigSettingsStore(none, file).get().trial_minutes, null);
+  });
+
   test("only a signed owner command changes them; the rig reports what it runs with", async () => {
     const env = makeJudgeEnv({ promotion: "owner_approval" });
     const r = await env.service.applyCommand(

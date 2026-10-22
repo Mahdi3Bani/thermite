@@ -114,10 +114,12 @@ const Runtime = z.discriminatedUnion("runtime", [
      * on (goal 070). Unset: COMPACT_AT_DEFAULT.
      */
     compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
-    max_tokens: z.number().int().positive().default(8192),
-    max_turns: z.number().int().positive().max(100).default(24),
-    /** Wall-clock limit for one call. */
-    timeout_s: z.number().int().positive().max(7200).default(900),
+    /** The most tokens one reply may take. Unset: none is sent; the provider's own applies (goal 079). */
+    max_tokens: z.number().int().positive().optional(),
+    /** The most model turns one call may take. Unset: none (goal 079). */
+    max_turns: z.number().int().positive().max(100).optional(),
+    /** Wall-clock limit for one call. Unset: none (goal 079). */
+    timeout_s: z.number().int().positive().max(7200).optional(),
     /** Prices per million tokens, for the cost reported to control. */
     usd_per_mtok_in: z.number().nonnegative().default(0),
     usd_per_mtok_out: z.number().nonnegative().default(0),
@@ -134,7 +136,8 @@ const Runtime = z.discriminatedUnion("runtime", [
      */
     argv: z.array(z.string().min(1)).min(1),
     restricted: z.literal(true),
-    timeout_s: z.number().int().positive().max(7200).default(1800),
+    /** Wall-clock limit for one call. Unset: none (goal 079). */
+    timeout_s: z.number().int().positive().max(7200).optional(),
   }),
   z.strictObject({
     name: z.string().min(1).max(60),
@@ -149,7 +152,8 @@ const Runtime = z.discriminatedUnion("runtime", [
      */
     context_window: z.number().int().positive().optional(),
     compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
-    timeout_s: z.number().int().positive().max(7200).default(1800),
+    /** Wall-clock limit for one call. Unset: none (goal 079). */
+    timeout_s: z.number().int().positive().max(7200).optional(),
     provider: ProviderName,
   }),
   z.strictObject({
@@ -172,7 +176,8 @@ const Runtime = z.discriminatedUnion("runtime", [
      * (`compaction.buffer`: the window less the point). Unset: COMPACT_AT_DEFAULT.
      */
     compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
-    timeout_s: z.number().int().positive().max(7200).default(1800),
+    /** Wall-clock limit for one call. Unset: none (goal 079). */
+    timeout_s: z.number().int().positive().max(7200).optional(),
     provider: ProviderName,
   }),
   z.strictObject({
@@ -196,7 +201,8 @@ const Runtime = z.discriminatedUnion("runtime", [
      * (`model_auto_compact_token_limit`). Unset: COMPACT_AT_DEFAULT.
      */
     compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
-    timeout_s: z.number().int().positive().max(7200).default(1800),
+    /** Wall-clock limit for one call. Unset: none (goal 079). */
+    timeout_s: z.number().int().positive().max(7200).optional(),
     provider: ProviderName,
   }),
 ]);
@@ -697,7 +703,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     model: rt.model,
     apiKey,
     contextWindow: rt.context_window,
-    maxTokens: rt.max_tokens,
+    maxTokens: rt.max_tokens ?? 0,
     reasoning: rt.reasoning,
   };
   const { models, model, thinkingLevel } = buildModel(cfg);
@@ -766,17 +772,22 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   });
   agent.prepareRequest = compactor.hook(agent);
   let turns = 0;
-  const deadline = setTimeout(() => {
-    result.error = `timed out after ${rt.timeout_s} s`;
-    agent.abort();
-  }, rt.timeout_s * 1000);
+  // No time or turn limit on a call unless the advisors file sets one (goal 079).
+  const timeout = rt.timeout_s;
+  const deadline =
+    timeout !== undefined
+      ? setTimeout(() => {
+          result.error = `timed out after ${timeout} s`;
+          agent.abort();
+        }, timeout * 1000)
+      : undefined;
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       turns++;
       const usage = (event.message as { usage?: { input?: number; output?: number } }).usage;
       result.tokensIn += usage?.input ?? 0;
       result.tokensOut += usage?.output ?? 0;
-      if (turns >= rt.max_turns && !result.output) agent.abort();
+      if (rt.max_turns !== undefined && turns >= rt.max_turns && !result.output) agent.abort();
     }
   });
   try {
@@ -784,7 +795,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   } catch (err) {
     result.error ??= err instanceof Error ? err.message : String(err);
   } finally {
-    clearTimeout(deadline);
+    if (deadline) clearTimeout(deadline);
   }
   if (tooBig && !result.output) result.error ??= tooBig;
   if (compactions.length) result.compactions = compactions;
@@ -928,7 +939,8 @@ async function runCliHarness<S extends z.ZodType>(
 function runCli<S extends z.ZodType>(
   rt: {
     argv: string[];
-    timeout_s: number;
+    /** None: no time limit (goal 079). */
+    timeout_s?: number | undefined;
     env?: Record<string, string> | undefined;
     /**
      * Claude Code's sign-in token: written to the command's file descriptor CLAUDE_TOKEN_FD, then
@@ -1011,7 +1023,8 @@ function runCli<S extends z.ZodType>(
     child.stderr.on("data", (d: Buffer) => {
       err = (err + d.toString("utf8")).slice(-20_000);
     });
-    const timer = setTimeout(killGroup, rt.timeout_s * 1000);
+    const timer =
+      rt.timeout_s !== undefined ? setTimeout(killGroup, rt.timeout_s * 1000) : undefined;
     const cleanup = () => {
       clearTimeout(timer);
       killGroup();

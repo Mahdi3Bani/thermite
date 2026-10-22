@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { laneLimits } from "../../core/contract.ts";
 import { startFakeModel } from "../../testing/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../../testing/judge-env.ts";
 import { LocalRunner } from "../broker/runner.ts";
@@ -84,7 +85,7 @@ describe("worker trial", () => {
     assert.equal(env.ledger.currentVerdict(String(a?.id))?.verdict, "win_confirmed");
   });
 
-  test("a model that stops early is told to go on, twice at most; why it stopped is recorded", async () => {
+  test("a model that stops early is told to go on while it works; a nudge it answers without work ends it; why it stopped is recorded (goal 079)", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const runner = new LocalRunner(env.paths.scratchDir);
@@ -96,7 +97,7 @@ describe("worker trial", () => {
       commit: champion.commit_sha,
       lane: "lane-1",
     });
-    const trial = (url: string) =>
+    const trial = (url: string, nudges?: number) =>
       runTrial(
         {
           trialId: "t-nudge",
@@ -107,7 +108,10 @@ describe("worker trial", () => {
           editablePaths: ["src/kernel/**"],
           brief: "Make work() faster without changing its result.",
           wallMs: 60_000,
-          maxTurns: 20,
+          maxTurns: 40,
+          ...(nudges !== undefined
+            ? { limits: { ...laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }), nudges } }
+            : {}),
         },
         {
           runner,
@@ -146,7 +150,8 @@ describe("worker trial", () => {
     const r = await trial(late.url);
     await late.close();
     assert.equal(r.stopped, "submitted", JSON.stringify(r));
-    // Never uses a tool: two nudges, then no submission, with the reason.
+    // Never uses a tool: one nudge, answered without any work, then no submission, with the
+    // reason. Its own choice: no number of nudges ends it.
     let requests = 0;
     const idle = await startFakeModel(() => {
       requests++;
@@ -155,8 +160,41 @@ describe("worker trial", () => {
     const r2 = await trial(idle.url);
     await idle.close();
     assert.equal(r2.stopped, "no_submission");
-    assert.equal(requests, 3);
+    assert.equal(requests, 2);
     assert.match(String(r2.error), /the model stopped \(stop\)/);
+    // Works after each nudge (a tool call), then stops again: told to go on past two nudges, as
+    // long as it works, and its fifth stop ends in a submission.
+    const worker = () =>
+      startFakeModel(({ messages }) => {
+        const nudged = messages.filter(
+          (m) =>
+            m.role === "user" && String(JSON.stringify(m.content)).includes("not called submit"),
+        ).length;
+        const last = messages.at(-1);
+        if (nudged >= 4)
+          return messages.filter((m) => m.role === "tool").length > 4
+            ? { toolCalls: [{ name: "submit", args: { hypothesis: "h", known_flaws: [] } }] }
+            : {
+                toolCalls: [
+                  {
+                    name: "write_file",
+                    args: { path: "src/kernel/work.mjs", content: FAST_KERNEL },
+                  },
+                ],
+              };
+        return last?.role === "tool"
+          ? { text: "I stop here." }
+          : { toolCalls: [{ name: "list_files", args: {} }] };
+      });
+    const busy = await worker();
+    const r3 = await trial(busy.url);
+    await busy.close();
+    assert.equal(r3.stopped, "submitted", JSON.stringify(r3));
+    // With the campaign's nudges of 2, the third stop ends it.
+    const capped = await worker();
+    const r4 = await trial(capped.url, 2);
+    await capped.close();
+    assert.equal(r4.stopped, "no_submission");
   });
 
   test("a configured turn cap is stated, warned of once, and reported as a limit, not a model error", async () => {
@@ -524,12 +562,19 @@ describe("worker trial", () => {
       { stopReason: "error", errorMessage: "400 maximum context length is 32768 tokens" },
     ]);
     assert.equal((await keepGoing(tooLong.agent, never, 32_768))?.stopped, "context");
-    // Cut off 5 times running with real output: stuck, the trial ends.
+    // Cut off 5 times running with real output, under the campaign's cutoffs_in_a_row of 5: the
+    // trial ends.
     const stuck = fake([{ stopReason: "length" }]);
-    const s5 = await keepGoing(stuck.agent, never, 32_768);
+    const s5 = await keepGoing(stuck.agent, never, 32_768, undefined, { cutoffsInARow: 5 });
     assert.equal(s5?.stopped, "error");
-    assert.match(String(s5?.error), /cut off 5 times/);
+    assert.match(String(s5?.error), /cut off 5 times in a row .*cutoffs_in_a_row/);
     assert.equal(stuck.calls(), 5);
+    // Without a limit (the default, goal 079), cut-offs never end a trial: it goes on until its
+    // own end (done).
+    const many = fake([{ stopReason: "length" }]);
+    let left = 40;
+    assert.equal(await keepGoing(many.agent, () => --left <= 0, 32_768), undefined);
+    assert.ok(many.calls() >= 19, `went on (${many.calls()} calls)`);
     // Two cut-offs, then a reply that stops of its own accord: back to the caller.
     const ok = fake([{ stopReason: "length" }, { stopReason: "length" }, { stopReason: "stop" }]);
     assert.equal(await keepGoing(ok.agent, never, 32_768), undefined);
@@ -542,6 +587,72 @@ describe("worker trial", () => {
     // The trial's time running out ends it quietly.
     const late = fake([{ stopReason: "length" }]);
     assert.equal(await keepGoing(late.agent, () => true, 32_768), undefined);
+
+    // Provider errors by kind (goal 079). Waits are recorded, not slept.
+    const waits: number[] = [];
+    const told: { kind: string; until: string }[] = [];
+    const quick = {
+      sleep: async (ms: number) => void waits.push(ms),
+      onWait: (w: { kind: string; until: string }) => void told.push(w),
+    };
+    // No credits: the trial ends at once with the kind, and the provider's words.
+    const broke = fake([
+      { stopReason: "error", errorMessage: "404 insufficient_credits_for_paid_model" },
+      { stopReason: "stop" },
+    ]);
+    const nc = await keepGoing(broke.agent, never, 32_768, undefined, quick);
+    assert.deepEqual([nc?.stopped, nc?.kind], ["error", "credits"]);
+    assert.match(String(nc?.error), /insufficient_credits_for_paid_model/);
+    assert.equal(broke.calls(), 1, "no call after it");
+    // A refused key: the same.
+    const key = fake([{ stopReason: "error", errorMessage: "401 Incorrect API key provided" }]);
+    assert.equal((await keepGoing(key.agent, never, 32_768, undefined, quick))?.kind, "auth");
+    // A rate limit: the trial waits for the provider's time (its Retry-After, as Pi's watch saw
+    // it) and goes on in the same conversation; it never counts as a failure.
+    const { ProviderWatch } = await import("./provider-errors.ts");
+    const watch = new ProviderWatch();
+    watch.last = { status: 429, headers: { "retry-after": "7" }, at: Date.now() };
+    const limited = fake([
+      { stopReason: "error", errorMessage: "429 Rate limit reached" },
+      { stopReason: "stop" },
+    ]);
+    waits.length = 0;
+    told.length = 0;
+    assert.equal(
+      await keepGoing(limited.agent, never, 32_768, undefined, { ...quick, watch }),
+      undefined,
+    );
+    assert.equal(limited.calls(), 2, "it went on after the wait");
+    assert.ok(waits[0] !== undefined && waits[0] > 6000 && waits[0] <= 7000, String(waits));
+    assert.equal(told[0]?.kind, "rate_limit");
+    // Its words give the time when no header does: "try again in 1m30s".
+    const said = fake([
+      { stopReason: "error", errorMessage: "Rate limit exceeded. Please try again in 1m30s." },
+      { stopReason: "stop" },
+    ]);
+    waits.length = 0;
+    await keepGoing(said.agent, never, 32_768, undefined, quick);
+    assert.ok(waits[0] !== undefined && waits[0] > 89_000 && waits[0] <= 90_000, String(waits));
+    // A provider's 5xx: a growing pause, and the trial goes on, however many in a row (no limit
+    // by default).
+    const down = fake([{ stopReason: "error", errorMessage: "503 Service Unavailable" }]);
+    waits.length = 0;
+    let more = 40;
+    assert.equal(
+      await keepGoing(down.agent, () => --more <= 0, 32_768, undefined, quick),
+      undefined,
+    );
+    assert.deepEqual(waits.slice(0, 5), [5000, 10_000, 20_000, 40_000, 60_000]);
+    assert.ok(down.calls() >= 10, "it kept going");
+    // With the campaign's failures_in_a_row, that many failures end it.
+    const capped = fake([{ stopReason: "error", errorMessage: "503 Service Unavailable" }]);
+    const f3 = await keepGoing(capped.agent, never, 32_768, undefined, {
+      ...quick,
+      failuresInARow: 3,
+    });
+    assert.equal(f3?.stopped, "error");
+    assert.match(String(f3?.error), /failed 3 times in a row .*failures_in_a_row/);
+    assert.equal(capped.calls(), 3);
   });
 
   test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn, read once the agent takes it", async () => {

@@ -1,0 +1,102 @@
+---
+id: "079"
+title: "Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 079 · Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+1. **Provider errors by kind.** A model provider's error is sorted by its kind, and each kind has its own answer:
+   - a rate limit waits for the time the provider gives (its `Retry-After`, its reset headers, or its words), else a growing pause, and goes on in the same conversation;
+   - no credits, a refused key or a model the provider does not serve on the key stops the run's agents and puts the run in **Needs you** with the provider's own words;
+   - a 5xx or a broken connection backs off and goes on;
+   - the model's own errors go on, as before.
+
+   No trial or plan starts while the workers' model check fails. The model is checked again on a change, or after a back-off. The research clock stops while the agents cannot run. A trial keeps its conversation over a retry where the harness can: Pi, and the session of OpenCode, Codex or Claude Code.
+2. **Restarts keep work.** A trial interrupted by a restart keeps the counters its worker last reported. Control's **Update to these images** and `update_rig_images` can drain the rig first: wait for the running trials to end and for the judge's current job to finish, shown on the rig's page with a way to skip the wait. A lane's cache folder survives a restart in Thermite's own manifests and compose, and the pages say where it lives.
+3. **Research rounds** are counted as research rounds, never as planner fallbacks.
+4. **The planner's limits** are in its tool's schema and its prompt, and each fallback records its real cause: timeout, text only, cut off, the provider's error, or invalid with which rule.
+5. **The fallback plan** skips directions whose goals are all met.
+6. **No hidden default caps.** Each default below is removed, or becomes a setting you can see with no default value:
+   - the 20-minute trial length;
+   - the 8,192-token reply cap: a route carries the model's maximum output from the provider's model list, else none is sent;
+   - the planner's 180-second abort, and Codex's 300 seconds;
+   - the 3-hour round cap;
+   - the 10-minute dev-run wait;
+   - the "5 cut-offs" and "6 failures" rules, and the worker's 2 nudges;
+   - the 60-turn cap, if one still exists;
+   - a research run with no maximum stopping at its minimum: the minimum is a floor, never a stop;
+   - the 30-minute cool-down;
+   - the teachers' 24 turns, 900 seconds and 8,192 output tokens when their model comes from control.
+7. **The queue keeps its history.** An experiment whose trial ended on the provider's error or a restart is not marked failed and copied to the top of the queue: the same row goes back, and waits while the agents are stopped. The planner's and the teachers' briefs show each tried experiment's cause in words, not only "error".
+8. **Hands-off promotion.** The default promotion is automatic in every mode. A win the judge confirms is promoted with no owner step; an auditor, when one is set up, is the last step, and its block stops the win and says why. Nothing waits for the owner by default, unless the campaign is set to ask. The owner's "ask me" settings (always, above a gain, on declared flaws) are off by default, and shown on the campaign's settings and in New campaign.
+
+## Why
+
+An audit of the lab's campaigns found that Thermite itself, not the models, cost about 29% of one goal campaign's input tokens and 19% of its trial time, and its handling of provider errors another 14%, and most of one research run's 8-hour window.
+
+- **All provider errors were treated as passing faults.** After 6 failed trials the agents cooled down for 30 minutes (`src/harness/agents/scheduler.ts`). Only ChatGPT's limit code got a wait-until time (`model.ts`). A failed first call ended an OpenCode trial at once (`opencode.ts`), and after 6 failures a Pi trial ended and lost its conversation (`worker.ts`). Trials started even after a failed model check: the provider answered 404 `insufficient_credits_for_paid_model`, the model check failed, and a trial started 14 seconds later and died on the same 404, again and again. The research clock counted through the cool-downs (`research.ts`): one run lost about 6.5 of its 8.3 hours.
+- **Restarts lost work.** Interrupted trials were recorded with 0 turns and 0 tokens (`registry.ts`). Leases were reclaimed, so a judge job started over (`main.ts`), and shutdown did not drain. On one rig, lane caches were wiped on restart: its own manifests may put `/scratch` off the volume.
+- **Research rounds were counted as planner fallbacks** ("planner valid 0, fallbacks N of N"), although research mode never calls the planner.
+- **The planner refused a `focus` over 600 characters,** but `submit_plan`'s schema and prompt never said so, and every failure was recorded as "did not call submit_plan".
+- **The fallback plan picked directions whose goals were all met.**
+- **Hidden defaults** capped trials, replies, planner calls, rounds and dev-run waits, against the settled rule that Thermite ships no default turn, submission, failure or wall caps.
+- **The queue lost its history.** A second audit found that in one campaign 21 of 36 queue rows were copies of experiments whose trials ended on provider errors, and the brief's 20 newest tried rows pushed the real history out.
+- **Owner gates by default.** Declared flaws always went to the owner, even after an auditor cleared them, and gains above 15% always did too.
+
+## Done when
+
+- [x] Provider errors are sorted by kind (rate limit, no credits, refused key, unserved model, 5xx, context, the model's own) from the status, the headers and the words, in Pi and through the harness's model proxy for OpenCode, Codex and Claude Code.
+- [x] A rate limit waits for the provider's time, else a growing pause, and the trial goes on in the same conversation; no new trial starts on the rig before that time.
+- [x] No credits, a refused key or an unserved model stops the run's agents (`agents_stopped`) and shows the run in **Needs you** with the provider's words; the model is checked again after a growing pause, at once on a resume or **Check the model now**, and a passing check or a new route ends the stop (`agents_resumed`).
+- [x] No trial or plan starts while the workers' model check fails.
+- [x] The research clock does not count time the agents could not run.
+- [x] A trial interrupted by a restart keeps the counters its worker last reported.
+- [ ] A drain mode for image updates, on the rig's page and over `update_rig_images`, with a way to skip the wait; shutdown records running trials with their counters.
+- [ ] A lane's cache folder survives a restart in Thermite's manifests and compose: a test, and the pages say where it lives.
+- [x] Research rounds count as research rounds, not fallbacks, in the run's figures, the metrics and the daily report.
+- [x] Every limit of the planner's answer is in its tool's schema and its prompt; each try that gives no plan records its real cause.
+- [x] The fallback plan skips directions whose goals the champion already meets.
+- [x] Every default listed under What, item 6, is gone or a setting with no default value; Anthropic's API, which needs a reply limit, gets the model's maximum output or a stated 32,000.
+- [x] An experiment whose trial never really tried it goes back as the same row, with its cause; the briefs show each tried experiment's cause.
+- [ ] Hands-off promotion in every mode, with the "ask me" settings off by default, on the campaign's settings and in New campaign; contracts and runs that explicitly asked for owner approval keep it.
+- [x] Tests: the error kinds and the no-credit stop; no trial on a failed check; the research clock; counters after a restart; the planner's causes and schema limits; the fallback skipping met goals; each removed default; the queue's same row.
+- [ ] Tests: the drain; promotion with no owner in each mode, an auditor's block, "ask me" settings, and old runs that asked for approval.
+- [ ] The pages: Limits and pacing, the contract and settings references, Promotion and audits, the research pages, troubleshooting, Update to these images, and the changelog.
+
+## Decisions
+
+- 2026-10-22, owner, in the lead's brief, verbatim choice: "Auditor's clear promotes", meaning: "When the auditor clears a win, it follows the promotion policy without you, even above 15% or with flaws the lane declared."
+- 2026-10-22, owner, replacing the decision above, in the owner's words: "The system is supposed to be hands off for me. Theres no need for me to step in an confirm every win... cause thats why we have judges and auditors... I shouldn't ahve to do anything (Unless I set it to ask me) by default it should auto... research..." Settled: hands-off by default; the owner is asked only where they set it. It replaces the decision of 2026-10-15 that a gain above the contract's absolute audit trigger waits for the owner after its audit ([decisions.md](../decisions.md)).
+- 2026-10-22, lead: the teachers' limits, the worker's 2 nudges, and the queue's copies are part of this goal. Another goal takes the teachers' prompt, teachers reading code, and a queue-depth target.
+- 2026-10-22, builder, within the brief:
+  - **Kinds.** `rate_limit`, `credits`, `auth`, `route` (a model the provider does not serve on the key, or a 404 with no other words), `server`, `context` and `model`. No credits comes first: OpenAI says so with a 429. The words come from the error, and, where the harness saw it, the provider's answer (its status, its headers and its body): Pi's own fetch, or the model proxy for OpenCode, Codex and Claude Code.
+  - **Pauses** are pacing, stated in Limits and pacing: a rate limit with no time, 30 s doubling to 10 minutes; a failed call, 5 s doubling to 60 s; a stopped run's model check, 1 minute doubling to 30 minutes.
+  - **A stop** is per run, from the rig-wide model route: an `agents_stopped` event when a trial finds a stop kind or the workers' model check fails after the route was set, ended by `agents_resumed` when a check passes or the route changes. Trials already running end as they would.
+  - **Nudges.** No number by default: a worker is told to go on for as long as it keeps working (a tool call since the last nudge). A nudge it answers without any work ends the trial: the agent's own choice, not a cap. `lanes.limits.nudges` sets a number.
+  - **The reply limit.** A route's `max_tokens` is the model's maximum output from the provider's list: Anthropic's `max_tokens`, OpenRouter's `top_provider.max_completion_tokens`, or `max_output_tokens`, `max_completion_tokens` or `output_token_limit`. With none, none is sent; Anthropic's API, which needs one, gets 32,000.
+  - **A rig's settings file** now keeps only the settings someone set, with their names. A file from before kept every setting; its 20-minute trial length was the old default and is dropped.
+  - **The queue's same row** is a schema change of the harness's ledger (version 18): `experiment.cause` and `experiment.returns`, and the event `experiment_returned`. A trial that failed for another reason (a memory limit, a setup failure) tried its experiment: it is `done`, with its cause.
+  - **The planner's focus** may be 4,000 characters, as details: the text past its title goes into details anyway.
+  - **No mockup** for the screens' changes: the **Agents stopped** card is one more card in **Needs you**, in the same form as the others; the Experiments tab adds a line to a row; Edit rig's trial length field says "no limit" when empty.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-22: Provider errors by kind, the agents' stop and its card, no trial on a failing check, the research clock, counters after a restart, the queue's same row with causes, the planner's limits and causes, research rounds, the fallback's skipped directions, and every hidden default removed or made a setting. Next: the drain and the lane cache, then hands-off promotion.
+
+---
+
+Run with `/goal Complete docs/plan/goals/079-thermite-overhead.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

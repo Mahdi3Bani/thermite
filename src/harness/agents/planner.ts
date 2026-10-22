@@ -30,6 +30,7 @@ import { type CompactionReport, Compactor, summarizer } from "./compaction.ts";
 import { mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { JOURNAL_FIELD } from "./notes-tool.ts";
+import { classifyProviderError, KIND_WORDS } from "./provider-errors.ts";
 import type { Assignment, Evidence, FamilyView } from "./registry.ts";
 import { PiMeter } from "./usage-meter.ts";
 
@@ -145,9 +146,32 @@ export interface QueuePlan {
   handout: { lane: string; experiment: string; parent: "champion" | "lane_best"; why: string }[];
 }
 
+/**
+ * Why a try gave no usable plan (goal 079): it ran out of time (only with a time limit someone
+ * set), it answered in text without calling submit_plan, its reply was cut off at the output
+ * limit, the provider failed (with its kind), it was cancelled (its run paused), or code refused
+ * the plan (with which rules).
+ */
+export type PlanCause =
+  | "timeout"
+  | "text_only"
+  | "cut_off"
+  | "provider_error"
+  | "cancelled"
+  | "invalid";
+
+export interface PlanTry {
+  try: number;
+  cause: PlanCause;
+  /** In words: the provider's, or each rule the plan broke. */
+  detail: string;
+}
+
 export interface PlanResult {
   source: "planner" | "fallback";
   tries: number;
+  /** Why each try that gave no usable plan gave none (goal 079). */
+  causes?: PlanTry[] | undefined;
   /** True when the model's plan was valid (on any try). */
   valid: boolean;
   /** What was wrong with the model's raw output, per try (the directive-compliance record). */
@@ -165,42 +189,86 @@ export interface PlanResult {
   journal?: NoteInput[] | undefined;
 }
 
-const Why = z.string().trim().min(1).max(2000);
+/**
+ * The limits of the planner's answer (goal 079): the one place the checks, the tool's schema and
+ * the prompt take them from, so the planner is told each limit it is held to.
+ */
+export const PLAN_LIMITS = {
+  /** An experiment's title. */
+  title: 200,
+  /** An experiment's details, and an inline one's focus (the text past its title goes there). */
+  details: 4000,
+  focus: 4000,
+  /** A direction's name in a family field. */
+  family: 80,
+  /** Every why and rationale. */
+  why: 2000,
+  /** A ref an added experiment is named by. */
+  ref: 40,
+  /** An experiment's id. */
+  id: 64,
+  /** A new direction's description. */
+  description: 300,
+  notes: 2000,
+  /** How many experiments one answer adds. */
+  add: 20,
+  /** How many moves, drops and accepted ideas each. */
+  changes: 40,
+  rules: 5,
+  convert: CONVERT_PER_ROUND,
+  newFamilies: 8 + CONVERT_PER_ROUND,
+} as const;
+
+/** The limits in words, for the prompt (goal 079). */
+export const PLAN_LIMITS_TEXT = `Limits (an answer over one is refused): title ${PLAN_LIMITS.title} characters; details and focus ${PLAN_LIMITS.details}; family ${PLAN_LIMITS.family}; each why and rationale ${PLAN_LIMITS.why}; a ref ${PLAN_LIMITS.ref}; a new direction's description 3 to ${PLAN_LIMITS.description}; notes ${PLAN_LIMITS.notes}; at most ${PLAN_LIMITS.add} added experiments, ${PLAN_LIMITS.changes} moves, ${PLAN_LIMITS.changes} drops and ${PLAN_LIMITS.changes} accepted ideas, ${PLAN_LIMITS.rules} rules, ${PLAN_LIMITS.convert} conversions and ${PLAN_LIMITS.newFamilies} new directions.`;
+
+const Why = z.string().trim().min(1).max(PLAN_LIMITS.why);
 const PlanSchema = z.object({
   /**
    * New directions: the name (plain words or :name:, kept as its name) and what it means. Room
    * for one more for each old rule in words the round converts, so each can get a new one.
    */
   new_families: z
-    .array(z.object({ id: DirectionRef, description: z.string().trim().min(3).max(300) }))
-    .max(8 + CONVERT_PER_ROUND)
+    .array(
+      z.object({
+        id: DirectionRef,
+        description: z.string().trim().min(3).max(PLAN_LIMITS.description),
+      }),
+    )
+    .max(PLAN_LIMITS.newFamilies)
     .default([]),
   add: z
     .array(
       z.object({
-        ref: z.string().trim().min(1).max(40).optional(),
-        title: z.string().trim().min(1).max(200),
-        details: z.string().max(4000).optional(),
-        family: z.string().trim().min(1).max(80).optional(),
+        ref: z.string().trim().min(1).max(PLAN_LIMITS.ref).optional(),
+        title: z.string().trim().min(1).max(PLAN_LIMITS.title),
+        details: z.string().max(PLAN_LIMITS.details).optional(),
+        family: z.string().trim().min(1).max(PLAN_LIMITS.family).optional(),
         why: Why,
         position: QueuePosition.optional(),
       }),
     )
-    .max(20)
+    .max(PLAN_LIMITS.add)
     .default([]),
   move: z
-    .array(z.object({ id: z.string().min(1).max(64), position: QueuePosition, why: Why }))
-    .max(40)
+    .array(
+      z.object({ id: z.string().min(1).max(PLAN_LIMITS.id), position: QueuePosition, why: Why }),
+    )
+    .max(PLAN_LIMITS.changes)
     .default([]),
   drop: z
-    .array(z.object({ id: z.string().min(1).max(64), why: Why }))
-    .max(40)
+    .array(z.object({ id: z.string().min(1).max(PLAN_LIMITS.id), why: Why }))
+    .max(PLAN_LIMITS.changes)
     .default([]),
   accept: z
     .array(
-      z.object({ id: z.string().min(1).max(64), why: Why, position: QueuePosition.optional() }),
+      z.object({
+        id: z.string().min(1).max(PLAN_LIMITS.id),
+        why: Why,
+        position: QueuePosition.optional(),
+      }),
     )
-    .max(40)
+    .max(PLAN_LIMITS.changes)
     .default([]),
   rules: z
     .array(
@@ -210,11 +278,11 @@ const PlanSchema = z.object({
         family: z.string().trim().max(200).optional(),
         /** Words: a rule no longer takes them, and one that gives them is refused with why. */
         match: z.unknown().optional(),
-        rationale: z.string().trim().min(1).max(2000),
+        rationale: z.string().trim().min(1).max(PLAN_LIMITS.why),
         from_message: z.coerce.number().int().positive(),
       }),
     )
-    .max(5)
+    .max(PLAN_LIMITS.rules)
     .default([]),
   /** Old rules in words, each with the direction its words mean (goal 066). */
   convert: z
@@ -225,23 +293,23 @@ const PlanSchema = z.object({
         family: z.string().trim().max(200),
       }),
     )
-    .max(CONVERT_PER_ROUND)
+    .max(PLAN_LIMITS.convert)
     .default([]),
   assignments: z.array(
     z.object({
       lane: z.string(),
       /** An experiment from the queue (its id) or one this answer adds (its ref). */
-      experiment: z.string().trim().min(1).max(64).optional(),
+      experiment: z.string().trim().min(1).max(PLAN_LIMITS.id).optional(),
       /** Or a new experiment inline: what to try (title or focus), its direction and details. */
-      title: z.string().trim().min(1).max(200).optional(),
-      focus: z.string().trim().min(3).max(600).optional(),
-      family: z.string().trim().min(1).max(80).optional(),
-      details: z.string().max(4000).optional(),
+      title: z.string().trim().min(1).max(PLAN_LIMITS.title).optional(),
+      focus: z.string().trim().min(3).max(PLAN_LIMITS.focus).optional(),
+      family: z.string().trim().min(1).max(PLAN_LIMITS.family).optional(),
+      details: z.string().max(PLAN_LIMITS.details).optional(),
       parent: z.enum(["champion", "lane_best"]).default("champion"),
-      why: z.string().max(2000).optional(),
+      why: z.string().max(PLAN_LIMITS.why).optional(),
     }),
   ),
-  notes: z.string().max(2000).optional(),
+  notes: z.string().max(PLAN_LIMITS.notes).optional(),
 });
 
 export function lanesOf(n: number): string[] {
@@ -508,6 +576,21 @@ export function attribute(
 }
 
 /**
+ * The goals of the judge's report a direction names (goal 079): a goal whose id is a word of the
+ * direction's name or of its description, such as the goal `fast` in `make-it-fast`.
+ */
+export function goalsNamed(
+  f: { id: string; description: string },
+  report: GoalReport,
+): GoalReport["goals"] {
+  const text = `${f.id} ${f.description}`.toLowerCase();
+  return report.goals.filter((g) => {
+    const id = g.goal.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9])${id}($|[^a-z0-9])`).test(text);
+  });
+}
+
+/**
  * The fixed plan: mandated families first, then tried, then the least explored. With the queue,
  * it only fills an empty one: a lane with no queued experiment to take gets one in this
  * direction, added by the planner.
@@ -518,7 +601,27 @@ export function fallbackPlan(input: PlannerInput): {
 } {
   const { avoid, mandate, tryFam } = directiveSets(input);
   const newFamilies: NewFamily[] = [];
-  const live = input.families.filter((f) => f.status === "live" && !avoid.has(f.id));
+  // In a goal campaign, a direction whose goals the champion already meets all of is skipped
+  // (goal 079): lanes go after what is not met yet. A mandated one stays: a rule asks for it.
+  const report = input.goalReport;
+  const allMet = (f: { id: string; description: string }) => {
+    if (!report || mandate.has(f.id)) return false;
+    const named = goalsNamed(f, report);
+    return named.length > 0 && named.every((g) => g.status === "met");
+  };
+  const live = input.families.filter((f) => f.status === "live" && !avoid.has(f.id) && !allMet(f));
+  // With every direction's goals met, a direction for each goal still unmet.
+  if (report && !live.length) {
+    for (const g of report.goals.filter((x) => x.status !== "met")) {
+      const id = directionName(g.goal);
+      if (!id || avoid.has(id) || newFamilies.some((n) => n.id === id)) continue;
+      if (input.families.some((f) => f.id === id && f.status !== "live")) continue;
+      newFamilies.push({
+        id,
+        description: `the goal "${g.goal}", which the champion does not meet yet`,
+      });
+    }
+  }
   for (const m of mandate) {
     if (!live.some((f) => f.id === m)) {
       const d = input.directives.find((x) => x.body.kind === "mandate" && x.body.family === m);
@@ -541,10 +644,13 @@ export function fallbackPlan(input: PlannerInput): {
     newFamilies.push(general);
     pool.push({ ...general, attempts: 0 });
   }
-  const rank = (id: string) => (mandate.has(id) ? 0 : tryFam.has(id) ? 1 : 2);
-  pool.sort(
-    (a, b) => rank(a.id) - rank(b.id) || a.attempts - b.attempts || a.id.localeCompare(b.id),
-  );
+  // Mandated first, then tried; then a direction that names a goal not met yet; then the least
+  // explored.
+  const unmet = (f: { id: string; description: string }) =>
+    report ? goalsNamed(f, report).some((g) => g.status !== "met") : false;
+  const rank = (f: { id: string; description: string }) =>
+    mandate.has(f.id) ? 0 : tryFam.has(f.id) ? 1 : unmet(f) ? 2 : 3;
+  pool.sort((a, b) => rank(a) - rank(b) || a.attempts - b.attempts || a.id.localeCompare(b.id));
   const assignments = lanesOf(input.laneCount).map((lane, i) => {
     const f = pool[i % pool.length] as { id: string; description: string };
     return {
@@ -594,10 +700,10 @@ instructions.
 ${NOTES_GUIDE} Put yours in journal, for example a key decision of this round and why.`;
 
 /** In Pi, the planner answers with its one tool. */
-const SYSTEM = `${TASK} Answer only by calling submit_plan once.`;
+const SYSTEM = `${TASK} ${PLAN_LIMITS_TEXT} Answer only by calling submit_plan once.`;
 
 /** Through another harness (OpenCode), it answers with the plan as JSON text and no tools. */
-const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "a direction's name", "rationale": "...", "from_message": 1}], "convert": [{"rule": 4, "family": "the direction the old rule's words mean"}], "new_families": [{"id": "a new direction's name", "description": "what it means, in your words"}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. Use no tools.`;
+const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "a direction's name", "rationale": "...", "from_message": 1}], "convert": [{"rule": 4, "family": "the direction the old rule's words mean"}], "new_families": [{"id": "a new direction's name", "description": "what it means, in your words"}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. ${PLAN_LIMITS_TEXT} Use no tools.`;
 
 /**
  * A planner call through another harness (OpenCode, Claude Code, Codex): the prompt in, the model's
@@ -685,6 +791,7 @@ export async function plan(
   usage?: (u: CallUsage) => void,
 ): Promise<PlanResult> {
   const rawViolations: string[] = [];
+  const causes: PlanTry[] = [];
   // The field notes of every answer, read leniently: a refused plan keeps its notes.
   const journal: NoteInput[] = [];
   const keepNotes = (raw: unknown) => {
@@ -711,7 +818,9 @@ export async function plan(
               usage,
             );
       } catch (err) {
-        rawViolations.push(`try ${tries}: ${err instanceof Error ? err.message : String(err)}`);
+        const why = err instanceof PlannerCallError ? err : causeOf(err);
+        causes.push({ try: tries, cause: why.planCause, detail: why.message.slice(0, 600) });
+        rawViolations.push(`try ${tries}: ${causeWords[why.planCause]}: ${why.message}`);
         continue;
       }
       keepNotes(raw);
@@ -723,6 +832,7 @@ export async function plan(
           tries,
           valid: true,
           rawViolations,
+          ...(causes.length ? { causes } : {}),
           ...(journal.length ? { journal } : {}),
           assignments: queue.handout.map((h) => {
             const x = familyAndTitle(h.experiment, input, queue);
@@ -740,7 +850,8 @@ export async function plan(
           queue,
         };
       }
-      rawViolations.push(...errors.map((e) => `try ${tries}: ${e}`));
+      causes.push({ try: tries, cause: "invalid", detail: errors.join("; ").slice(0, 600) });
+      rawViolations.push(...errors.map((e) => `try ${tries}: refused: ${e}`));
       feedback = `\n\nYour previous plan was refused:\n- ${errors.join("\n- ")}\n${ask ? "Answer again with a corrected plan." : "Call submit_plan again with a corrected plan."}`;
     }
   }
@@ -750,6 +861,7 @@ export async function plan(
     tries: model ? 2 : 0,
     valid: false,
     rawViolations,
+    ...(causes.length ? { causes } : {}),
     assignments: f.assignments,
     newFamilies: f.newFamilies,
     ...(journal.length ? { journal } : {}),
@@ -804,8 +916,40 @@ async function askPlanner(
   try {
     return JSON.parse(body);
   } catch {
-    throw new Error(`the planner's answer was not a JSON plan: ${text.slice(0, 200)}`);
+    throw new PlannerCallError(
+      "text_only",
+      `the planner's answer was not a JSON plan: ${text.slice(0, 200)}`,
+    );
   }
+}
+
+/** A planner call that gave no plan, and why (goal 079). */
+export class PlannerCallError extends Error {
+  readonly planCause: PlanCause;
+  constructor(cause: PlanCause, message: string) {
+    super(message);
+    this.planCause = cause;
+  }
+}
+
+/** Each cause in words, for the epoch's record and History. */
+export const causeWords: Record<PlanCause, string> = {
+  timeout: "it ran out of time",
+  text_only: "it answered in text without a plan",
+  cut_off: "its reply was cut off at the output limit",
+  provider_error: "the provider failed",
+  cancelled: "it was cancelled",
+  invalid: "the plan was refused",
+};
+
+/** The cause of a failed call another harness threw (OpenCode, Claude Code, Codex): its words. */
+function causeOf(err: unknown): PlannerCallError {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/no answer in \d+ s|timed? ?out/i.test(message))
+    return new PlannerCallError("timeout", message);
+  if (/aborted|cancel/i.test(message)) return new PlannerCallError("cancelled", message);
+  if (/gave no answer/i.test(message)) return new PlannerCallError("text_only", message);
+  return new PlannerCallError("provider_error", message);
 }
 
 const Position = Type.Union([Type.String(), Type.Number()], {
@@ -874,12 +1018,14 @@ async function callPlanner(
           label: "submit_plan",
           description:
             "Submit this round's plan: each lane's experiment, and your changes to the queue.",
+          // Every limit the checks hold the plan to, in the schema (goal 079).
           parameters: Type.Object({
             assignments: Type.Array(
               Type.Object({
                 lane: Type.String(),
                 experiment: Type.Optional(
                   Type.String({
+                    maxLength: PLAN_LIMITS.id,
                     description:
                       "An id from queue.up_next or queue.proposed, or the ref of an experiment you add",
                   }),
@@ -887,38 +1033,66 @@ async function callPlanner(
                 parent: Type.Optional(
                   Type.Union([Type.Literal("champion"), Type.Literal("lane_best")]),
                 ),
-                why: Type.Optional(Type.String({ description: "Why this lane gets it" })),
-                title: Type.Optional(Type.String({ description: "A new experiment, inline" })),
-                focus: Type.Optional(Type.String()),
-                family: Type.Optional(Type.String()),
-                details: Type.Optional(Type.String()),
+                why: Type.Optional(
+                  Type.String({ maxLength: PLAN_LIMITS.why, description: "Why this lane gets it" }),
+                ),
+                title: Type.Optional(
+                  Type.String({
+                    maxLength: PLAN_LIMITS.title,
+                    description: "A new experiment, inline",
+                  }),
+                ),
+                focus: Type.Optional(
+                  Type.String({
+                    minLength: 3,
+                    maxLength: PLAN_LIMITS.focus,
+                    description: "Or what to try, in words: past its title, it goes in details",
+                  }),
+                ),
+                family: Type.Optional(Type.String({ maxLength: PLAN_LIMITS.family })),
+                details: Type.Optional(Type.String({ maxLength: PLAN_LIMITS.details })),
               }),
             ),
             add: Type.Optional(
               Type.Array(
                 Type.Object({
-                  ref: Type.Optional(Type.String()),
-                  title: Type.String(),
-                  details: Type.Optional(Type.String()),
-                  family: Type.Optional(Type.String()),
-                  why: Type.String(),
+                  ref: Type.Optional(Type.String({ maxLength: PLAN_LIMITS.ref })),
+                  title: Type.String({ minLength: 1, maxLength: PLAN_LIMITS.title }),
+                  details: Type.Optional(Type.String({ maxLength: PLAN_LIMITS.details })),
+                  family: Type.Optional(Type.String({ maxLength: PLAN_LIMITS.family })),
+                  why: Type.String({ minLength: 1, maxLength: PLAN_LIMITS.why }),
                   position: Type.Optional(Position),
                 }),
+                { maxItems: PLAN_LIMITS.add },
               ),
             ),
             move: Type.Optional(
               Type.Array(
-                Type.Object({ id: Type.String(), position: Position, why: Type.String() }),
+                Type.Object({
+                  id: Type.String({ maxLength: PLAN_LIMITS.id }),
+                  position: Position,
+                  why: Type.String({ minLength: 1, maxLength: PLAN_LIMITS.why }),
+                }),
+                { maxItems: PLAN_LIMITS.changes },
               ),
             ),
-            drop: Type.Optional(Type.Array(Type.Object({ id: Type.String(), why: Type.String() }))),
+            drop: Type.Optional(
+              Type.Array(
+                Type.Object({
+                  id: Type.String({ maxLength: PLAN_LIMITS.id }),
+                  why: Type.String({ minLength: 1, maxLength: PLAN_LIMITS.why }),
+                }),
+                { maxItems: PLAN_LIMITS.changes },
+              ),
+            ),
             accept: Type.Optional(
               Type.Array(
                 Type.Object({
-                  id: Type.String(),
-                  why: Type.String(),
+                  id: Type.String({ maxLength: PLAN_LIMITS.id }),
+                  why: Type.String({ minLength: 1, maxLength: PLAN_LIMITS.why }),
                   position: Type.Optional(Position),
                 }),
+                { maxItems: PLAN_LIMITS.changes },
               ),
             ),
             rules: Type.Optional(
@@ -926,12 +1100,14 @@ async function callPlanner(
                 Type.Object({
                   kind: Type.String({ description: "avoid | try | mandate" }),
                   family: Type.String({
+                    maxLength: 200,
                     description:
                       "The rule's direction: one in directions, or a new one you design in new_families. A message's :name: names one exactly",
                   }),
-                  rationale: Type.String(),
+                  rationale: Type.String({ minLength: 1, maxLength: PLAN_LIMITS.why }),
                   from_message: Type.Number(),
                 }),
+                { maxItems: PLAN_LIMITS.rules },
               ),
             ),
             convert: Type.Optional(
@@ -939,26 +1115,35 @@ async function callPlanner(
                 Type.Object({
                   rule: Type.Number({ description: "An old rule in words, by its id" }),
                   family: Type.String({
+                    maxLength: 200,
                     description:
                       "The direction its words mean: one in directions, or a new one you design in new_families",
                   }),
                 }),
-                { description: "Each old rule in words in to_convert, with its direction" },
+                {
+                  maxItems: PLAN_LIMITS.convert,
+                  description: "Each old rule in words in to_convert, with its direction",
+                },
               ),
             ),
             new_families: Type.Optional(
               Type.Array(
                 Type.Object({
                   id: Type.String({ description: "A new direction's name, in a few words" }),
-                  description: Type.String({ description: "What it means, in your words" }),
+                  description: Type.String({
+                    minLength: 3,
+                    maxLength: PLAN_LIMITS.description,
+                    description: "What it means, in your words",
+                  }),
                 }),
                 {
+                  maxItems: PLAN_LIMITS.newFamilies,
                   description:
                     "New directions you design: each one in to_design, and any a rule or a conversion of yours names",
                 },
               ),
             ),
-            notes: Type.Optional(Type.String()),
+            notes: Type.Optional(Type.String({ maxLength: PLAN_LIMITS.notes })),
             journal: JOURNAL_FIELD,
           }),
           execute: async (_id, params) => {
@@ -1007,16 +1192,39 @@ async function callPlanner(
     goesOn: "Your planning goes on: call submit_plan when your plan is ready.",
   });
   agent.prepareRequest = compactor.hook(agent);
-  const timer = setTimeout(() => agent.abort(), 180_000);
+  // No time limit (goal 079): the call ends when the planner answers, or when its run is paused
+  // or closed (the scheduler cancels it).
   const cancel = () => agent.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   try {
     if (!signal?.aborted) await agent.prompt(context);
   } finally {
-    clearTimeout(timer);
     signal?.removeEventListener("abort", cancel);
   }
-  if (tooBig) throw new Error(tooBig);
-  if (captured === undefined) throw new Error("the planner did not call submit_plan");
+  if (tooBig) throw new PlannerCallError("provider_error", tooBig);
+  if (captured === undefined) {
+    if (signal?.aborted) throw new PlannerCallError("cancelled", "the run stopped during the call");
+    // Why it gave no plan, from its last reply (goal 079).
+    const last = [
+      ...(agent.state.messages as { role?: string; stopReason?: string; errorMessage?: string }[]),
+    ]
+      .reverse()
+      .find((m) => m.role === "assistant");
+    if (last?.stopReason === "length")
+      throw new PlannerCallError(
+        "cut_off",
+        "its reply was cut off at the output limit before it called submit_plan",
+      );
+    if (last?.stopReason === "error") {
+      const words = last.errorMessage ?? "no detail";
+      throw new PlannerCallError(
+        "provider_error",
+        `${KIND_WORDS[classifyProviderError(words).kind]}: ${words.slice(0, 400)}`,
+      );
+    }
+    if (last?.stopReason === "aborted")
+      throw new PlannerCallError("cancelled", "the call was stopped");
+    throw new PlannerCallError("text_only", "it answered in text and did not call submit_plan");
+  }
   return captured;
 }

@@ -711,8 +711,8 @@ Each rig's harness has an API of its own on `THERMITE_LISTEN`, by default `0.0.0
 | `thermite_run_champion_seq` | gauge | `rig`, `run`, `campaign` | The current champion's number. 1 is the starting point |
 | `thermite_run_champion_gain` | gauge | `rig`, `run`, `campaign` | The champion's relative gain over the run's baseline |
 | `thermite_run_attempts` | gauge | `rig`, `run`, `campaign`, `verdict` | Attempts by verdict, or by lifecycle when not judged |
-| `thermite_planner_valid_ratio` | none given | `rig`, `run`, `campaign` | The planner's valid plans per epoch. Only for runs with epochs |
-| `thermite_planner_fallback_ratio` | none given | `rig`, `run`, `campaign` | Fallback plans per epoch: rounds in which the lanes took queued experiments by fixed rules, not from the planner's model. Every research round counts as one. Only for runs with epochs |
+| `thermite_planner_valid_ratio` | none given | `rig`, `run`, `campaign` | The planner's valid plans per epoch a planner could plan. Only for runs with such epochs: a research run's rounds are set by its research plan, and count in neither ratio |
+| `thermite_planner_fallback_ratio` | none given | `rig`, `run`, `campaign` | Fallback plans per epoch a planner could plan: rounds in which the lanes took queued experiments by fixed rules, not from the planner's model. Only for runs with such epochs |
 | `thermite_duplicate_ratio` | none given | `rig`, `run`, `campaign` | Duplicate attempts per attempt. Only for runs with attempts |
 | `thermite_trials_total` | none given | `rig`, `run`, `campaign` | Agent trials |
 | `thermite_tokens_total` | none given | `rig`, `run`, `campaign`, `direction` | Model tokens, `in` or `out` |

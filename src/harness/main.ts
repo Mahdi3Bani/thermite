@@ -55,7 +55,7 @@ import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { ResearchFolder } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
-import { lanesFromEnv, RigSettingsStore } from "./rig-settings.ts";
+import { lanesFromEnv, RigSettingsStore, trialMinutesFromEnv } from "./rig-settings.ts";
 import {
   busyReason,
   isolationBusy,
@@ -69,6 +69,9 @@ import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver, smiAs, smiAsRun } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
 import { routeOf } from "./usage.ts";
+
+/** Minutes as milliseconds; none stays none. */
+const minutesMs = (m: number | null) => (m === null ? undefined : m * 60_000);
 
 /** The harness controller: owns the ledger, serves the API and drives the executor. */
 async function main(): Promise<void> {
@@ -226,7 +229,8 @@ async function main(): Promise<void> {
       teachers: true,
       review: true,
       exports: true,
-      trial_minutes: Number(env.THERMITE_TRIAL_MINUTES ?? "20"),
+      // No trial length unless one is set (goal 079).
+      trial_minutes: trialMinutesFromEnv(env.THERMITE_TRIAL_MINUTES),
       max_turns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : null,
       promotion,
       judge_gpus: null,
@@ -541,7 +545,7 @@ async function main(): Promise<void> {
     model,
     owner: "scheduler",
     maxConcurrent: settings.get().lanes,
-    trialWallMs: settings.get().trial_minutes * 60_000,
+    trialWallMs: minutesMs(settings.get().trial_minutes),
     // No cap on a trial's turns unless one is configured.
     maxTurns: settings.get().max_turns ?? undefined,
     workersOn: () => settings.get().workers,
@@ -564,6 +568,9 @@ async function main(): Promise<void> {
           compacted: compactedIn(spec, "codex"),
           keptAt: keptAtFor(spec),
           modelUsage: workerUsage(spec, m),
+          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+          waiting: (w) => service.trialWait(trialOf(spec), w),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -583,6 +590,9 @@ async function main(): Promise<void> {
           compacted: compactedIn(spec, "claude-code"),
           keptAt: keptAtFor(spec),
           modelUsage: workerUsage(spec, m),
+          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+          waiting: (w) => service.trialWait(trialOf(spec), w),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -601,6 +611,9 @@ async function main(): Promise<void> {
         compacted: compactedIn(spec, "opencode"),
         keptAt: keptAtFor(spec),
         modelUsage: workerUsage(spec, m),
+        // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+        providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+        waiting: (w) => service.trialWait(trialOf(spec), w),
         env: laneCacheEnv(paths.scratchDir, spec.lane),
         signal,
       });
@@ -611,7 +624,6 @@ async function main(): Promise<void> {
     askOpencode: async (m, prompt, signal, o) => {
       const t = await opencodeOnce(m, prompt, once, {
         role: PLANNER_ROLE,
-        timeoutMs: 300_000,
         signal,
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
@@ -630,7 +642,6 @@ async function main(): Promise<void> {
     askClaude: async (m, prompt, signal, o) => {
       const t = await claudeOnce(m, prompt, once, {
         tools: o?.read ? "Read,Grep,Glob" : "",
-        timeoutMs: 300_000,
         signal,
         role: PLANNER_ROLE,
         mcp: o?.mcp,
@@ -649,7 +660,6 @@ async function main(): Promise<void> {
     askCodex: async (m, prompt, signal, o) => {
       const t = await codexOnce(m, prompt, once, {
         role: PLANNER_ROLE,
-        timeoutMs: 300_000,
         signal,
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
@@ -725,6 +735,9 @@ async function main(): Promise<void> {
           compacted: compactedIn(spec, "opencode"),
           keptAt: keptAtFor(spec),
           modelUsage: m ? workerUsage(spec, m) : undefined,
+          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+          waiting: (w) => service.trialWait(trialOf(spec), w),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -747,7 +760,7 @@ async function main(): Promise<void> {
   settings.onChange((s) => {
     scheduler.configure({
       maxConcurrent: s.lanes,
-      trialWallMs: s.trial_minutes * 60_000,
+      trialWallMs: minutesMs(s.trial_minutes),
       maxTurns: s.max_turns ?? undefined,
     });
     log("harness", "settings changed", { ...s });

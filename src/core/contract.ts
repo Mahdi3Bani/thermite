@@ -66,8 +66,24 @@ const LaneLimits = z.strictObject({
    */
   dev_run_timeout_s: z.number().int().min(10).max(3600).optional(),
   dev_run_rss_mib: z.number().int().min(256).max(16_384).optional(),
-  /** A worker's whole trial. Unset: the rig's default (THERMITE_TRIAL_MINUTES). */
+  /**
+   * A worker's whole trial. Unset: the rig's own (Edit rig, THERMITE_TRIAL_MINUTES), which is none
+   * unless someone set one (goal 079).
+   */
   trial_minutes: z.number().int().min(1).max(1440).optional(),
+  /**
+   * A trial ends after this many failed model calls in a row (a provider's 5xx, a broken
+   * connection, a request it refused). Unset: none; a rate limit's waits never count (goal 079).
+   */
+  failures_in_a_row: z.number().int().min(1).max(10_000).optional(),
+  /** A trial ends after this many replies in a row cut off at the output limit. Unset: none. */
+  cutoffs_in_a_row: z.number().int().min(1).max(10_000).optional(),
+  /**
+   * How many times a worker that stops without submitting is told to go on. Unset: no number; it
+   * is told for as long as it keeps working, and a nudge it answers without any work ends the
+   * trial (goal 079). 0: never.
+   */
+  nudges: z.number().int().min(0).max(10_000).optional(),
   /**
    * Processes and threads each of a lane's users may have at once (RLIMIT_NPROC): its commands
    * and OpenCode or Claude Code, its development runs, and its Pi worker. Unset: 256.
@@ -387,6 +403,12 @@ export interface LaneLimitValues {
   trialMinutes?: number | undefined;
   /** RLIMIT_NPROC for each of the lane's users (lane, development and agent). */
   processes: number;
+  /** Failed model calls in a row that end a trial; unset: none (goal 079). */
+  failuresInARow?: number | undefined;
+  /** Replies in a row cut off at the output limit that end a trial; unset: none (goal 079). */
+  cutoffsInARow?: number | undefined;
+  /** Nudges to a worker that stopped without submitting; unset: no number (goal 079). */
+  nudges?: number | undefined;
 }
 
 /** A dev run's limit on a device the judge shares, when the contract sets none. */
@@ -406,6 +428,9 @@ export function laneLimits(contract: Pick<Contract, "lanes">): LaneLimitValues {
     devRunRssMib: l.dev_run_rss_mib ?? 4096,
     trialMinutes: l.trial_minutes,
     processes: l.processes ?? LANE_PROCESSES,
+    failuresInARow: l.failures_in_a_row,
+    cutoffsInARow: l.cutoffs_in_a_row,
+    nudges: l.nudges,
   };
 }
 

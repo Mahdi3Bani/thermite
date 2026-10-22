@@ -525,7 +525,8 @@ export function summarizer(cfg: ModelConfig, meter?: PiMeter | undefined) {
         ],
       },
       {
-        maxTokens: cfg.maxTokens || 8192,
+        // The model's own reply limit, or (none known) none sent (goal 079).
+        ...(cfg.maxTokens ? { maxTokens: cfg.maxTokens } : {}),
         ...(signal ? { signal } : {}),
         ...(thinkingLevel !== "off" ? { reasoning: thinkingLevel } : {}),
         ...(meter ? { fetch: meter.fetch } : {}),

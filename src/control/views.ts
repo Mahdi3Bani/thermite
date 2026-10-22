@@ -106,7 +106,10 @@ export interface RunView {
   agents: {
     epochs: number;
     planner_valid: number;
+    /** Rounds the fixed rules planned because the planner gave no usable plan (or was off). */
     fallbacks: number;
+    /** A research run's rounds: planned by the research plan, never by the planner (goal 079). */
+    research_rounds: number;
     epochs_with_violations: number;
     trials: number;
     submitted: number;
@@ -115,6 +118,20 @@ export interface RunView {
     duplicates: number;
     attempts: number;
   };
+  /**
+   * The run's agents stopped (goal 079): the provider refused (no credits, a refused key, an
+   * unserved model) or the workers' model check fails. Null while they can run.
+   */
+  agents_stopped: {
+    kind: string;
+    /** The provider's or the check's own words. */
+    words: string;
+    /** The kind in plain words. */
+    said: string;
+    /** What found it: a trial, the model check. */
+    by: string;
+    since: string;
+  } | null;
   /** Research mode: the newest digest's figures and report. */
   research: Record<string, unknown> | null;
   goals: { goal: string; description: string | null; status: string; reasons: string }[];
@@ -291,6 +308,13 @@ export interface ExperimentView {
   dropped_why: string | null;
   dropped_by: string | null;
   from_run: string | null;
+  /**
+   * How its trial ended, in words; or, back in the queue, why its last trial never really tried
+   * it (goal 079). Null: nothing said.
+   */
+  cause: string | null;
+  /** How many times its trial ended without really trying it, and it came back (goal 079). */
+  returns: number;
   at: string;
   updated_at: string;
 }
@@ -335,7 +359,8 @@ export interface RigSettingsView {
   teachers: boolean;
   review: boolean;
   exports: boolean;
-  trial_minutes: number;
+  /** A trial's length when its contract sets none; null: none (goal 079). */
+  trial_minutes: number | null;
   max_turns: number | null;
   promotion: "auto" | "owner_approval";
   /** The judge's share of a rig's GPU set, if set on the rig; null: its default. */
@@ -355,7 +380,7 @@ function readSettings(v: unknown): RigSettingsView | null {
     teachers: b("teachers"),
     review: b("review"),
     exports: b("exports"),
-    trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : 20,
+    trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : null,
     max_turns: typeof o.max_turns === "number" ? o.max_turns : null,
     promotion: o.promotion === "auto" ? "auto" : "owner_approval",
     judge_gpus: typeof o.judge_gpus === "number" ? o.judge_gpus : null,
@@ -522,6 +547,7 @@ export function rigView(
           epochs: 0,
           planner_valid: 0,
           fallbacks: 0,
+          research_rounds: 0,
           epochs_with_violations: 0,
           trials: 0,
           submitted: 0,
@@ -530,6 +556,7 @@ export function rigView(
           duplicates: 0,
           attempts: 0,
         },
+        agents_stopped: null,
         research: null,
         goals: [],
         goals_at: null,
@@ -629,6 +656,21 @@ export function rigView(
           cumulative: 1,
           reopened: false,
         });
+        break;
+      }
+      case "agents_stopped": {
+        const v = inst(String(e.subject));
+        v.agents_stopped = {
+          kind: String(b.kind ?? ""),
+          words: String(b.words ?? ""),
+          said: String(b.said ?? b.kind ?? ""),
+          by: String(b.by ?? ""),
+          since: e.at,
+        };
+        break;
+      }
+      case "agents_resumed": {
+        inst(String(e.subject)).agents_stopped = null;
         break;
       }
       case "run_status": {
@@ -768,7 +810,9 @@ export function rigView(
         const a = v.agents;
         a.epochs++;
         if (b.planner_valid === true) a.planner_valid++;
-        if (b.source === "fallback") a.fallbacks++;
+        // A research round is planned by the research plan on purpose: not a fallback (goal 079).
+        if (b.plan === "research") a.research_rounds++;
+        else if (b.source === "fallback") a.fallbacks++;
         if (Number(b.raw_violations ?? 0) > 0) a.epochs_with_violations++;
         break;
       }
@@ -1011,7 +1055,8 @@ export function rigView(
       case "experiment_edited":
       case "experiment_dropped":
       case "experiment_assigned":
-      case "experiment_finished": {
+      case "experiment_finished":
+      case "experiment_returned": {
         queueEvent(inst(String(e.subject)), e);
         break;
       }
@@ -1375,6 +1420,8 @@ function queueEvent(v: RunView, e: StoredEvent): void {
       dropped_why: null,
       dropped_by: null,
       from_run: str("from_run") ?? null,
+      cause: null,
+      returns: 0,
       at: e.at,
       updated_at: e.at,
     };
@@ -1417,6 +1464,18 @@ function queueEvent(v: RunView, e: StoredEvent): void {
       x.lane = str("lane") ?? x.lane;
       x.attempt = str("attempt") ?? null;
       x.result = str("result") ?? str("stopped") ?? null;
+      x.cause = str("cause") ?? null;
+      break;
+    // Its trial never really tried it (goal 079): the same experiment, back at the top.
+    case "experiment_returned":
+      x.state = "queued";
+      x.lane = null;
+      x.trial = null;
+      x.attempt = null;
+      x.result = null;
+      x.cause = str("cause") ?? null;
+      x.returns = Number(b.returns) || x.returns + 1;
+      place(x, b.position ?? "top");
       break;
   }
 }

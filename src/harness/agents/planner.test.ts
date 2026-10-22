@@ -306,7 +306,8 @@ describe("planner", () => {
       new_families: [{ id: "simd", description: "vector instructions" }],
     };
     const wrong = {
-      assignments: [{ lane: "lane-1", family: "nonexistent", focus: "?", parent: "lane_best" }],
+      // Within the tool's schema (goal 079), refused by the checks.
+      assignments: [{ lane: "lane-1", family: "nonexistent", focus: "guess", parent: "lane_best" }],
     };
     const fake = await startFakeModel(() => {
       call++;
@@ -328,6 +329,142 @@ describe("planner", () => {
     assert.equal(q.valid, false);
     assert.equal(q.assignments.length, 2);
     await never.close();
+  });
+
+  test("each try that gives no plan is recorded with its real cause (goal 079)", async () => {
+    // Text only: it answered without calling submit_plan.
+    const talk = await startFakeModel(() => ({ text: "I would rather not plan." }));
+    const t = await plan(base, model(talk.url));
+    await talk.close();
+    assert.deepEqual(
+      t.causes?.map((c) => c.cause),
+      ["text_only", "text_only"],
+    );
+    assert.match(String(t.rawViolations[0]), /answered in text without a plan/);
+    // Refused by a rule: invalid, with which rule.
+    const wrong = await startFakeModel(() => ({
+      toolCalls: [
+        {
+          name: "submit_plan",
+          args: { assignments: [{ lane: "lane-1", experiment: "x-none", parent: "champion" }] },
+        },
+      ],
+    }));
+    const w = await plan(base, model(wrong.url));
+    await wrong.close();
+    assert.equal(w.causes?.[0]?.cause, "invalid");
+    assert.match(String(w.causes?.[0]?.detail), /assign each of lane-1, lane-2 exactly once/);
+    // The provider's error: provider_error, with the provider's kind and words.
+    const down = await startFakeModel(() => ({ fail: 402, failMessage: "insufficient credits" }));
+    const d = await plan(base, model(down.url));
+    await down.close();
+    assert.equal(d.causes?.[0]?.cause, "provider_error");
+    assert.match(String(d.causes?.[0]?.detail), /no credits left at the provider/);
+    // Through another harness: an answer that is not a JSON plan is text only; a harness that
+    // gave no answer in its time is a timeout; any other failure is the provider's.
+    const asked = async (o: { answer?: string; fail?: string }) =>
+      plan(base, model("http://unused"), undefined, async () => {
+        if (o.fail) throw new Error(o.fail);
+        return o.answer ?? "";
+      });
+    assert.equal((await asked({ answer: "no plan today" })).causes?.[0]?.cause, "text_only");
+    assert.equal((await asked({ fail: "no answer in 300 s" })).causes?.[0]?.cause, "timeout");
+    assert.equal(
+      (await asked({ fail: "OpenCode: 503 upstream" })).causes?.[0]?.cause,
+      "provider_error",
+    );
+  });
+
+  test("every limit the plan is held to is in the tool's schema and in the prompt (goal 079)", async () => {
+    const { PLAN_LIMITS, PLAN_LIMITS_TEXT } = await import("./planner.ts");
+    let tool: Record<string, unknown> | undefined;
+    let system = "";
+    const fake = await startFakeModel(({ messages, tools }) => {
+      system = JSON.stringify(messages[0]);
+      tool = (
+        tools.find((x) => x.function.name === "submit_plan")?.function as
+          | { parameters?: Record<string, unknown> }
+          | undefined
+      )?.parameters;
+      return { text: "no" };
+    });
+    await plan(base, model(fake.url));
+    await fake.close();
+    const props = (tool?.properties ?? {}) as Record<string, { items?: { properties?: unknown } }>;
+    const a = (props.assignments?.items?.properties ?? {}) as Record<
+      string,
+      { maxLength?: number }
+    >;
+    assert.equal(a.focus?.maxLength, PLAN_LIMITS.focus);
+    assert.equal(a.title?.maxLength, PLAN_LIMITS.title);
+    assert.equal((props.add as { maxItems?: number }).maxItems, PLAN_LIMITS.add);
+    assert.ok(system.includes(PLAN_LIMITS_TEXT.slice(0, 60)), "the prompt states the limits");
+    // A focus of 3,000 characters is a plan now: past its title, it goes in details.
+    const long = "x".repeat(3000);
+    const ok = validatePlan(
+      {
+        assignments: [
+          { lane: "lane-1", focus: long, family: "unroll" },
+          { lane: "lane-2", focus: "tile by 32", family: "tiling" },
+        ],
+      },
+      base,
+    );
+    assert.deepEqual(ok.errors, []);
+  });
+
+  test("the fallback plan skips directions whose goals the champion already meets (goal 079)", () => {
+    const fam = (id: string, description: string, attempts = 0) => ({
+      id,
+      description,
+      status: "live" as const,
+      attempts,
+      verdicts: {},
+      best_delta: null,
+    });
+    const input: PlannerInput = {
+      ...base,
+      laneCount: 2,
+      families: [
+        fam("make-it-fast", "reach the fast goal", 0),
+        fam("correctness", "keep the correct goal", 0),
+        fam("tidy", "small clean-ups", 5),
+      ],
+      goalReport: {
+        champion_seq: 2,
+        goals: [
+          { goal: "fast", status: "unmet", reasons: "" },
+          { goal: "correct", status: "met", reasons: "" },
+        ],
+      },
+    };
+    const f = fallbackPlan(input);
+    const given = f.assignments.map((x) => x.family);
+    assert.ok(!given.includes("correctness"), "its only goal is met");
+    // The direction for the unmet goal comes first, then the rest.
+    assert.deepEqual(given, ["make-it-fast", "tidy"]);
+    // With every direction's goals met, a direction for each goal still unmet.
+    const done = fallbackPlan({
+      ...input,
+      families: [fam("make-it-fast", "reach the fast goal")],
+      goalReport: {
+        champion_seq: 3,
+        goals: [
+          { goal: "fast", status: "met", reasons: "" },
+          { goal: "small", status: "unmet", reasons: "" },
+        ],
+      },
+    });
+    assert.deepEqual(
+      done.newFamilies.map((x) => x.id),
+      ["small"],
+    );
+    assert.deepEqual(
+      done.assignments.map((x) => x.family),
+      ["small", "small"],
+    );
+    // Without a goal report, nothing is skipped.
+    assert.equal(fallbackPlan({ ...input, goalReport: undefined }).assignments.length, 2);
   });
 
   test("through OpenCode, the planner is asked for the plan as JSON, never for its Pi tool", async () => {

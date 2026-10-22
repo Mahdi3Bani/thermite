@@ -637,6 +637,11 @@ export interface ProviderModel {
   added?: boolean | undefined;
   /** Its price as the provider's list gives it, per million tokens (goal 075); none: not listed. */
   price?: ModelPrice | undefined;
+  /**
+   * The most tokens one reply may take, as the provider's list gives it (goal 079): the rig's route
+   * carries it as its reply limit. None: none is sent, and the provider's own applies.
+   */
+  max_output?: number | undefined;
 }
 
 /** A model provider as stored: its key only sealed, and a hint of it for the dashboard. */

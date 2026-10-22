@@ -26,10 +26,11 @@ import { routeOf } from "../usage.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { mcpAgentTools } from "./mcp-tools.ts";
-import { type ModelConfig, usageLimitRetry, withAgentsContext } from "./model.ts";
+import { type ModelConfig, withAgentsContext } from "./model.ts";
 import {
   type Ask,
   attribute,
+  causeWords,
   fallbackPlan,
   type GoalReport,
   lanesOf,
@@ -40,6 +41,12 @@ import {
   plan,
   toDesign,
 } from "./planner.ts";
+import {
+  classifyProviderError,
+  KIND_WORDS,
+  type ProviderErrorKind,
+  stopsAgents,
+} from "./provider-errors.ts";
 import { type Assignment, type EpochRecord, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
@@ -55,8 +62,13 @@ const BRIEF_GOAL_CHARS = 600;
  * trials, one at a time, each on an experiment of its own (the round's first, then the next in
  * the queue): a fresh workspace at the champion (or the lane's best), one worker invocation, at
  * most one submission, and the next trial only after that submission is judged. An epoch ends
- * when its lanes' trials are judged (or at a time cap). Agents never judge: the scheduler only
- * reads verdicts.
+ * when its lanes' trials are judged; it has no time cap (goal 079). Agents never judge: the
+ * scheduler only reads verdicts.
+ *
+ * The model provider decides when agents can work (goal 079): no trial or plan starts while the
+ * workers' model check fails or after a trial found no credits, a refused key or an unserved
+ * model (the run's agents stop, and the model is checked again after a growing pause), nor while
+ * the provider's rate limit asked for a pause.
  */
 
 const SETTLED = new Set([
@@ -162,12 +174,19 @@ export interface SchedulerOptions {
   devRuns?: { settle(lane: string): Promise<void> } | undefined;
   owner: string;
   maxConcurrent?: number | undefined;
+  /** A trial's length when its contract sets none: none unless the rig sets one (goal 079). */
   trialWallMs?: number | undefined;
   /** A cap on each trial's turns: none unless configured (THERMITE_MAX_TURNS). */
   maxTurns?: number | undefined;
   /** The rig's settings: whether workers start trials and the planner plans (default on). */
   workersOn?: (() => boolean) | undefined;
   plannerOn?: (() => boolean) | undefined;
+  /**
+   * The rig drains (goal 079): before its images change, no new trial or plan starts, and those
+   * running end as they would.
+   */
+  draining?: (() => boolean) | undefined;
+  /** A round's time cap: none unless given (tests only; goal 079). */
   epochCapMs?: number | undefined;
   /** Goal mode: how long an epoch waits for the judge's goal report on a new champion. */
   goalReportWaitMs?: number | undefined;
@@ -189,9 +208,19 @@ const OPEN_LIFECYCLES = [
   "awaiting_audit",
   "awaiting_approval",
 ];
-/** After this many trials in a row end in errors, agents cool down (a model outage, usually). */
-const ERROR_STREAK = 6;
-const COOLDOWN_MS = 30 * 60_000;
+/** The first pause before the model is checked again after the run's agents stopped (goal 079). */
+const RECHECK_FIRST_MS = 60_000;
+/** The longest pause between those checks: they double up to it. */
+const RECHECK_MAX_MS = 30 * 60_000;
+
+/** Why the run's agents are stopped (goal 079): the provider's kind and words. */
+export interface AgentsStopped {
+  kind: ProviderErrorKind | "check";
+  words: string;
+  /** What found it: a trial, the model check. */
+  by: string;
+  since: string;
+}
 
 type Optional =
   | "model"
@@ -199,7 +228,10 @@ type Optional =
   | "runResearchTrial"
   | "devRuns"
   | "usdPerMTokIn"
-  | "usdPerMTokOut";
+  | "usdPerMTokOut"
+  | "trialWallMs"
+  | "epochCapMs"
+  | "draining";
 
 export class Scheduler {
   readonly registry: Registry;
@@ -216,14 +248,13 @@ export class Scheduler {
   private watcher: ReturnType<typeof setInterval> | undefined;
   /** The newest workers_reset event acted on. */
   private resetSeen: number;
-  private cooldownNoted = "";
   private reportNoted = "";
+  /** Shutting down: no new plan or trial (goal 079). */
+  private stopping = false;
 
   constructor(opts: SchedulerOptions) {
     this.o = {
       maxConcurrent: 1,
-      trialWallMs: 20 * 60_000,
-      epochCapMs: 3 * 3_600_000,
       goalReportWaitMs: 2 * 3_600_000,
       backoffBaseMs: 15_000,
       backoffMaxMs: 10 * 60_000,
@@ -358,43 +389,141 @@ export class Scheduler {
   }
   private limitNoted: string | undefined;
 
-  /**
-   * A run of errors across the run (a model outage): no new trials for a while. A new model
-   * route, or the owner resuming the run, after the last error ends the wait at once: the
-   * errors may have been the missing model.
-   */
-  private coolingDown(run: string): boolean {
-    const recent = this.registry.recentTrials(run, null, ERROR_STREAK);
-    if (recent.length < ERROR_STREAK || !recent.every((t) => t.stopped === "error")) return false;
-    const last = recent[0] as { ended_at: string; error: string | null };
-    const until = Date.parse(last.ended_at) + COOLDOWN_MS;
-    if (Date.now() >= until) return false;
-    const since = this.ledger.db
+  /** The newest event of these kinds (for this subject, when given). */
+  private newest(
+    kinds: string[],
+    subject?: string,
+  ): { id: number; at: string; body: Record<string, unknown> } | undefined {
+    const r = this.ledger.db
       .prepare(
-        `select max(at) as at from event where at > ? and (kind = 'model_route_set'
-           or (kind = 'run_status' and subject = ? and json_extract(body, '$.status') = 'running'))`,
+        `select id, at, body from event where kind in (${kinds.map(() => "?").join(",")})${subject !== undefined ? " and subject = ?" : ""} order by id desc limit 1`,
       )
-      .get(last.ended_at, run) as { at: string | null } | undefined;
-    if (since?.at) return false;
-    if (this.cooldownNoted !== last.ended_at) {
-      this.cooldownNoted = last.ended_at;
-      this.ledger.appendEvent(this.o.owner, "agents_cooldown", run, {
-        until: new Date(until).toISOString(),
-        trials: ERROR_STREAK,
-        last_error: last.error?.slice(0, 300) ?? null,
-      });
-    }
-    return true;
+      .get(...kinds, ...(subject !== undefined ? [subject] : [])) as
+      | { id: number; at: string; body: string }
+      | undefined;
+    return r
+      ? {
+          id: Number(r.id),
+          at: String(r.at),
+          body: JSON.parse(r.body) as Record<string, unknown>,
+        }
+      : undefined;
+  }
+
+  /** The workers' model checks finished after event `after`, newest first. */
+  private modelChecks(after: number): { id: number; at: string; ok: boolean; summary: string }[] {
+    return (
+      this.ledger.db
+        .prepare(
+          "select id, at, body from event where kind = 'rig_check_finished' and id > ? and json_extract(body, '$.check') = 'model' order by id desc",
+        )
+        .all(after) as { id: number; at: string; body: string }[]
+    ).map((r) => {
+      const b = JSON.parse(r.body) as { ok?: boolean; summary?: string };
+      return { id: Number(r.id), at: String(r.at), ok: b.ok === true, summary: String(b.summary) };
+    });
   }
 
   /**
-   * The epoch cap: about 6% of the wall budget (Fork-and-Flush's per-branch exploration budget),
-   * between 30 minutes and 3 hours; the configured cap without a wall budget.
+   * The run's agents stop (goal 079): no new trial or plan, until a model check passes or the
+   * route changes. Recorded once, with the provider's words, for History and Needs you.
    */
-  private epochCap(contract: Contract): number {
-    const w = contract.budget.wall_hours;
-    if (w === undefined) return this.o.epochCapMs;
-    return Math.min(3 * 3_600_000, Math.max(30 * 60_000, 0.06 * w * 3_600_000));
+  stopAgents(run: string, why: { kind: AgentsStopped["kind"]; words: string; by: string }): void {
+    const stop = this.newest(["agents_stopped", "agents_resumed"], run);
+    if (stop && this.ledgerKind(stop.id) === "agents_stopped") return;
+    this.ledger.appendEvent(this.o.owner, "agents_stopped", run, {
+      kind: why.kind,
+      words: why.words.slice(0, 600),
+      by: why.by,
+      said: why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind],
+    });
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text: `the agents stop: ${why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind]} (${why.words.slice(0, 300)}). No trial starts until a model check passes; the model is checked again in a minute, then less often.`,
+      run,
+    });
+  }
+
+  private ledgerKind(id: number): string {
+    return String(
+      (this.ledger.db.prepare("select kind from event where id = ?").get(id) as { kind: string })
+        .kind,
+    );
+  }
+
+  /**
+   * Why the run's agents are stopped now, if they are (goal 079). A failing model check of the
+   * workers' route (newer than the route) stops them; so does a trial that found no credits, a
+   * refused key or an unserved model. They go on once a model check passes after the stop, or the
+   * route changes. While stopped, the model is checked again after a pause that doubles from a
+   * minute to 30 minutes; at once after the owner resumes the run.
+   */
+  private agentsStopped(run: string): AgentsStopped | undefined {
+    const stop = this.newest(["agents_stopped", "agents_resumed"], run);
+    const change = this.newest(["model_route_set", "model_route_cleared"]);
+    const open = stop && this.ledgerKind(stop.id) === "agents_stopped" ? stop : undefined;
+    if (open) {
+      const checks = this.modelChecks(open.id);
+      const passed = checks.find((c) => c.ok);
+      const changed = change && change.id > open.id;
+      if (passed || changed) {
+        this.ledger.appendEvent(this.o.owner, "agents_resumed", run, {
+          why: passed ? "a model check passed" : "the rig's model route changed",
+        });
+        this.o.service.live.append({
+          source: "planner",
+          kind: "status",
+          text: `the agents go on: ${passed ? "a model check passed" : "the rig's model route changed"}`,
+          run,
+        });
+        return undefined;
+      }
+      this.maybeRecheck(run, open, checks);
+      return {
+        kind: open.body.kind as AgentsStopped["kind"],
+        words: String(open.body.words ?? ""),
+        by: String(open.body.by ?? ""),
+        since: open.at,
+      };
+    }
+    // A failing model check of the workers' route, newer than the route and than the last time
+    // the agents went on: no trial starts on a model that fails it.
+    const last = this.modelChecks(Math.max(change?.id ?? 0, stop?.id ?? 0))[0];
+    if (last && !last.ok) {
+      const kind = classifyProviderError(last.summary).kind;
+      this.stopAgents(run, {
+        kind: stopsAgents(kind) ? kind : "check",
+        words: last.summary,
+        by: "the model check",
+      });
+      return {
+        kind: stopsAgents(kind) ? kind : "check",
+        words: last.summary,
+        by: "the model check",
+        since: last.at,
+      };
+    }
+    return undefined;
+  }
+
+  /** While stopped: the model is checked again after a growing pause, at once after a resume. */
+  private maybeRecheck(
+    run: string,
+    open: { id: number; at: string },
+    checks: { id: number; at: string }[],
+  ): void {
+    if (this.o.service.modelCheckRunning()) return;
+    const resumed = this.ledger.db
+      .prepare(
+        `select max(id) as id from event where kind = 'run_status' and subject = ? and id > ?
+           and json_extract(body, '$.status') = 'running'`,
+      )
+      .get(run, Math.max(open.id, checks[0]?.id ?? 0)) as { id: number | null };
+    const pause = Math.min(RECHECK_MAX_MS, RECHECK_FIRST_MS * 2 ** checks.length);
+    const due = Date.parse(checks[0]?.at ?? open.at) + pause;
+    if (!resumed.id && Date.now() < due) return;
+    this.o.service.checkModelNow("scheduler");
   }
 
   /**
@@ -464,6 +593,28 @@ export class Scheduler {
   /** Trials still running (awaited by tests and on shutdown). */
   async idle(): Promise<void> {
     await Promise.all([...this.running.values()]);
+  }
+
+  /**
+   * The harness is stopping (goal 079): no new plan or trial, the planner's call is cancelled, and
+   * running trials stop and are recorded as interrupted, with the counters their workers last
+   * reported, before this returns.
+   */
+  async shutdown(reason: string): Promise<void> {
+    this.stopping = true;
+    for (const [lane, ctrl] of this.aborts) {
+      const run = this.laneRun.get(lane);
+      if (run && !ctrl.signal.aborted)
+        this.ledger.appendEvent(this.o.owner, "trial_stopped", run, { lane, reason });
+      ctrl.abort();
+    }
+    this.planning?.ctrl.abort();
+    await this.idle();
+  }
+
+  /** Trials running now (for a drain's report). */
+  get trialsRunning(): number {
+    return this.running.size;
   }
 
   private run(): { id: string; contract: Contract } | undefined {
@@ -653,7 +804,7 @@ export class Scheduler {
   /** New limits from the rig's settings; they apply from the next trial or check. */
   configure(p: {
     maxConcurrent?: number;
-    trialWallMs?: number;
+    trialWallMs?: number | undefined;
     maxTurns?: number | undefined;
   }): void {
     Object.assign(this.o, p);
@@ -893,7 +1044,16 @@ export class Scheduler {
               `old rules in words converted: ${p.queue.convert.map((c) => `rule ${c.rule} to ${asToken(c.family)}`).join("; ")}`,
             ]
           : []),
-        ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),
+        // Why the model's tries gave no usable plan, each by its real cause (goal 079).
+        ...(p.causes?.length
+          ? [
+              `no usable plan: ${p.causes
+                .map((c) => `try ${c.try}: ${causeWords[c.cause]} (${c.detail.slice(0, 200)})`)
+                .join("; ")}`,
+            ]
+          : p.rawViolations.length
+            ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`]
+            : []),
         ...(skipped.length ? [`skipped: ${skipped.slice(0, 3).join("; ")}`] : []),
       ].join("\n"),
       run,
@@ -905,6 +1065,7 @@ export class Scheduler {
       tries: p.tries,
       valid: p.valid,
       rawViolations: p.rawViolations,
+      causes: p.causes,
       assignments: attribute(assignments, directives),
       directives: directives.map((d) => d.id),
       notes: p.notes,
@@ -1081,6 +1242,8 @@ export class Scheduler {
   async tick(): Promise<boolean> {
     this.stopIfNotRunning();
     await this.applyResets();
+    // Stopping or draining: no new plan or trial; those running end as they would.
+    if (this.stopping || this.o.draining?.()) return false;
     const inst = this.run();
     if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
@@ -1103,7 +1266,7 @@ export class Scheduler {
       if (!this.running.size) this.ledger.setRunStatus(inst.id, "paused", spent, this.o.owner);
       return false;
     }
-    if (this.coolingDown(inst.id)) return false;
+    if (this.agentsStopped(inst.id)) return false;
     if (this.waitingForLimit(inst.id)) return false;
     if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
@@ -1147,7 +1310,10 @@ export class Scheduler {
       this.startTrial(id, contract, epoch.n, a, k, perEpoch, got);
       started = true;
     }
-    const capped = Date.now() - Date.parse(epoch.started_at) > this.epochCap(contract);
+    // No time cap on a round unless one is given (tests): it ends when its trials are judged.
+    const capped =
+      this.o.epochCapMs !== undefined &&
+      Date.now() - Date.parse(epoch.started_at) > this.o.epochCapMs;
     if ((complete || capped) && !this.running.size)
       this.registry.endEpoch(id, epoch.n, this.o.owner);
     return started;
@@ -1372,7 +1538,7 @@ export class Scheduler {
     contract: ResearchContract,
     epoch: number,
     round: Assignment,
-    clock: { elapsed_ms: number; min_ms: number; max_ms: number },
+    clock: { elapsed_ms: number; min_ms: number; max_ms: number | null },
     got: { x: Experiment; why: string },
   ): void {
     // A research task from the queue: its task kind is the trial's family, its text the focus.
@@ -1467,7 +1633,8 @@ export class Scheduler {
         r = this.withProgress(id, r);
         this.o.service.trialEnded(id, r.turns > 0 || r.tokensIn > 0);
         this.registry.finishTrial(id, r, this.o.owner);
-        this.finishExperiment(id, r.stopped);
+        this.finishExperiment(id, r);
+        this.afterTrial(id, run, r);
         this.trialLine(
           id,
           run,
@@ -1601,18 +1768,8 @@ export class Scheduler {
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
-        this.finishExperiment(id, r.stopped, r.submitted?.attempt);
-        // A full ChatGPT plan gives no reset time: the agents wait a while and try again.
-        if (!r.retryAfter && r.stopped === "error") {
-          const until = usageLimitRetry(r.error);
-          if (until) r = { ...r, retryAfter: until };
-        }
-        if (r.retryAfter)
-          this.ledger.appendEvent(this.o.owner, "agents_wait_for_limit", run, {
-            until: r.retryAfter,
-            trial: id,
-            reason: r.error ?? null,
-          });
+        this.finishExperiment(id, r, r.submitted?.attempt);
+        this.afterTrial(id, run, r);
         this.trialLine(
           id,
           run,
@@ -1634,15 +1791,49 @@ export class Scheduler {
   }
 
   /**
-   * A trial ended: its experiment is done (and goes back to the queue if the trial was
-   * interrupted or failed). A failure here is logged; the trial's own record stands.
+   * A trial ended: its experiment is done, with how its trial ended in words, or goes back to the
+   * top of the queue when the trial never really tried it (interrupted, or the provider's error:
+   * goal 079). A failure here is logged; the trial's own record stands.
    */
-  private finishExperiment(trial: string, stopped: string, attempt?: string | undefined): void {
+  private finishExperiment(trial: string, r: TrialResult, attempt?: string | undefined): void {
     try {
-      this.coordinator.finish(trial, { result: resultOf(stopped, attempt), attempt }, this.o.owner);
+      const kind =
+        r.errorKind ??
+        (r.stopped === "error" && r.error ? classifyProviderError(r.error).kind : undefined);
+      this.coordinator.finish(
+        trial,
+        {
+          result: resultOf(r.stopped, attempt),
+          attempt,
+          cause: r.error ?? (r.stopped === "interrupted" ? "its trial was stopped" : undefined),
+          kind,
+        },
+        this.o.owner,
+      );
     } catch (err) {
       log("scheduler", "the trial's experiment was not finished", { trial, error: String(err) });
     }
+  }
+
+  /**
+   * What a trial's provider error means for the run (goal 079): no credits, a refused key or an
+   * unserved model stop the run's agents; a rate limit with a time makes them wait until then.
+   */
+  private afterTrial(id: string, run: string, r: TrialResult): void {
+    if (r.stopped !== "error" || !r.error) return;
+    const e = classifyProviderError(r.error);
+    const kind = r.errorKind ?? e.kind;
+    if (stopsAgents(kind)) {
+      this.stopAgents(run, { kind, words: r.error, by: `trial ${id}` });
+      return;
+    }
+    const until = r.retryAfter ?? (kind === "rate_limit" ? e.retryAt : undefined);
+    if (until)
+      this.ledger.appendEvent(this.o.owner, "agents_wait_for_limit", run, {
+        until,
+        trial: id,
+        reason: r.error,
+      });
   }
 
   /**

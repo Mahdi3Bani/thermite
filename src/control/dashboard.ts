@@ -7274,7 +7274,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, an agent uses the rig default.</p>
 <div class="card">${agents}</div>
 <div class="g3" style="margin-top:14px">
-<label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
+<label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit. Empty: no limit; a trial lasts until the worker submits or stops.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 </div></div>
 <div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
@@ -7443,8 +7443,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       };
       const lanes = num("lanes");
       if (lanes !== null && lanes !== s.lanes) change.lanes = lanes;
+      // Empty: no limit (goal 079).
       const minutes = num("trial_minutes");
-      if (minutes !== null && minutes !== s.trial_minutes) change.trial_minutes = minutes;
+      if (minutes !== s.trial_minutes) change.trial_minutes = minutes;
       const turns = num("max_turns");
       if (turns !== s.max_turns) change.max_turns = turns;
       const promotion = String(f.promotion ?? s.promotion);

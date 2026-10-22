@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { log } from "../common/env.ts";
 import type { McpConnect } from "../common/mcp-client.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
@@ -27,6 +28,7 @@ import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
+import { KIND_WORDS, type ProviderErrorKind } from "./agents/provider-errors.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import type { Compactions } from "./compactions.ts";
@@ -48,6 +50,7 @@ import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import { type McpCaller, McpGateway } from "./mcp-gateway.ts";
 import { type AdvisorRole, messageText, OwnerMessages } from "./messages.ts";
+import type { ProviderErrorAnswer } from "./model-forward.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
@@ -327,6 +330,26 @@ export class HarnessService {
     this.usageLimitAt = now;
   }
 
+  /** The newest error answer the model proxy saw for each trial (or "proxy"): goal 079. */
+  private readonly providerAnswers = new Map<string, ProviderErrorAnswer & { at: number }>();
+
+  /** The model proxy saw a provider's error answer for a trial (or a check or a plan). */
+  noteProviderAnswer(who: string, a: ProviderErrorAnswer, now = Date.now()): void {
+    this.providerAnswers.delete(who);
+    this.providerAnswers.set(who, { ...a, at: now });
+    // The newest few hundred: a trial reads its own soon after its program stops.
+    for (const k of this.providerAnswers.keys()) {
+      if (this.providerAnswers.size <= 256) break;
+      this.providerAnswers.delete(k);
+    }
+  }
+
+  /** The newest error answer the proxy saw for a trial, if it came at or after `since` (ms). */
+  providerAnswerSince(who: string, since: number): ProviderErrorAnswer | undefined {
+    const a = this.providerAnswers.get(who);
+    return a && a.at >= since ? { status: a.status, headers: a.headers, body: a.body } : undefined;
+  }
+
   /**
    * When agents may try the ChatGPT plan again, if the proxy saw it full at or after `since` (ms):
    * OpenAI gives no reset time, so a fixed wait (CHATGPT_LIMIT_WAIT_MS). Undefined: it did not.
@@ -380,7 +403,7 @@ export class HarnessService {
         teachers: true,
         review: true,
         exports: true,
-        trial_minutes: 20,
+        trial_minutes: null,
         max_turns: null,
         promotion: input.promotion ?? "owner_approval",
         judge_gpus: null,
@@ -1158,6 +1181,26 @@ export class HarnessService {
   private checkRun: Promise<void> | undefined;
   private modelCheckWaits = false;
 
+  /** Whether a rig check runs now (a model check would have to wait). */
+  modelCheckRunning(): boolean {
+    return this.checking !== undefined;
+  }
+
+  /**
+   * Checks the workers' model now, unless a check runs or this rig has none (goal 079: the
+   * scheduler checks again while the agents are stopped). True when it started one.
+   */
+  checkModelNow(by: string): boolean {
+    if (!this.rigChecks.model || this.checking) return false;
+    try {
+      this.startRigCheck({ check: "model" }, by);
+      return true;
+    } catch (err) {
+      log("harness", "the model check did not start", { error: String(err) });
+      return false;
+    }
+  }
+
   /**
    * A check at start, run before anything else and awaited. Forced: at start no trial or judge
    * job of this controller can be running. Never fatal: its result is its own event.
@@ -1313,7 +1356,8 @@ export class HarnessService {
         .all(run) as Record<string, unknown>[]
     ).map((e) => ({
       n: Number(e.n),
-      source: String(e.source),
+      // A research run's rounds are set by its research plan, never by the planner (goal 079).
+      source: contract.mode === "research" ? "research plan" : String(e.source),
       planner_valid: Number(e.planner_valid) === 1,
       violations: (JSON.parse(String(e.raw_violations)) as unknown[]).length,
       directives: JSON.parse(String(e.directives ?? "[]")) as number[],
@@ -1854,7 +1898,22 @@ export class HarnessService {
         | undefined;
     },
   ): void {
-    if (r.progress) this.trialProgress.set(trial.id, r.progress);
+    if (r.progress) {
+      this.trialProgress.set(trial.id, r.progress);
+      // Kept in the trial's record too, so a restart that interrupts it keeps its counters
+      // (goal 079).
+      this.ledger.db
+        .prepare(
+          "update trial set turns = ?, tool_calls = ?, tokens_in = ?, tokens_out = ? where id = ? and ended_at is null",
+        )
+        .run(
+          r.progress.turns,
+          r.progress.tool_calls,
+          r.progress.tokens_in,
+          r.progress.tokens_out,
+          trial.id,
+        );
+    }
     for (const e of r.entries ?? [])
       this.live.append({
         source: `trial:${trial.id}`,
@@ -1864,6 +1923,33 @@ export class HarnessService {
         run: trial.run,
       });
     if (r.entries?.length || r.progress?.turns || r.progress?.tokens_in) this.trialAtWork(trial.id);
+  }
+
+  /**
+   * A trial waits for its provider and then goes on in the same conversation (goal 079): a line in
+   * its session, and for a rate limit, a wait the scheduler and the research clock read: no new
+   * trial starts before it ends, and a research run's clock stops meanwhile.
+   */
+  trialWait(
+    trial: { id: string; run: string; lane: string },
+    w: { until: string; kind: string; words: string },
+  ): void {
+    const at = new Date(w.until);
+    const when = Number.isNaN(at.getTime()) ? w.until : at.toISOString().slice(11, 19);
+    this.live.append({
+      source: `trial:${trial.id}`,
+      kind: "status",
+      text: `waiting until ${when} UTC: ${KIND_WORDS[w.kind as ProviderErrorKind] ?? w.kind} (${w.words.slice(0, 300)}). The trial goes on in the same conversation.`,
+      lane: trial.lane,
+      run: trial.run,
+    });
+    if (w.kind === "rate_limit" && !Number.isNaN(at.getTime()))
+      this.ledger.appendEvent("scheduler", "agents_wait_for_limit", trial.run, {
+        until: at.toISOString(),
+        trial: trial.id,
+        reason: w.words.slice(0, 600),
+        in_trial: true,
+      });
   }
 
   /** A trial's waiting messages, given to it now (each read at once). */

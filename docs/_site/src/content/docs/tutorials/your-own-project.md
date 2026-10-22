@@ -184,7 +184,7 @@ As in [Hand the work to agents](agents-with-a-free-model.md#9-watch-the-agent-wo
 To watch the agent:
 
 1. At the top of the run's page, press **Live**. Live opens on `primes-speed-1` and shows its lines as they come, newest at the bottom. Above them are filters: **Everyone**, **lane-1**, **Planner**, **Judge**, **Advisors** and **You**. (**lane-1** shows once the planner has given the lane its first experiment.)
-2. Choose **lane-1**. It has a green dot while its agent works. Now you see only the agent: it reads `primes.c`, changes it, builds it and tries it. Each trial lasts at most 20 minutes.
+2. Choose **lane-1**. It has a green dot while its agent works. Now you see only the agent: it reads `primes.c`, changes it, builds it and tries it. Each trial lasts until the agent submits its change or stops.
 
 The box at the bottom of Live now says **To lane-1**, and its grey text says when the agent would read a message from you. You don't need it in this tutorial: [Steer a run](../how-to/campaigns/steer-a-run.md) says how to use it.
 

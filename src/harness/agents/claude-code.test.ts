@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { laneLimits } from "../../core/contract.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import {
@@ -359,16 +360,22 @@ describe("Claude Code", () => {
       const a = area();
       const f = fakeRunner(events(), { submit: o.submit });
       const owner = inbox(["look at the inner loop"]);
-      const r = await runClaudeTrial(spec(a, join(a, "repo")), {
-        runner: f.runner,
-        model,
-        apiUrl: "http://127.0.0.1:8700",
-        live: () => undefined,
-        progress: () => undefined,
-        submitted: () => (f.submitted() ? { attempt: "a-1", lifecycle: "queued" } : undefined),
-        messages: { waiting: owner.waiting, given: owner.given_ },
-        pollMs: 5,
-      });
+      // The worker keeps working each run: the campaign's nudges of 2 (goal 079: none by default).
+      const r = await runClaudeTrial(
+        spec(a, join(a, "repo"), {
+          limits: { ...laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }), nudges: 2 },
+        }),
+        {
+          runner: f.runner,
+          model,
+          apiUrl: "http://127.0.0.1:8700",
+          live: () => undefined,
+          progress: () => undefined,
+          submitted: () => (f.submitted() ? { attempt: "a-1", lifecycle: "queued" } : undefined),
+          messages: { waiting: owner.waiting, given: owner.given_ },
+          pollMs: 5,
+        },
+      );
       const runs = f.runs.filter((x) => x.argv.includes("-p"));
       const prompts = runs.map((x) => String(x.argv[x.argv.indexOf("-p") + 1]));
       return { r, runs, prompts, given: owner.given };

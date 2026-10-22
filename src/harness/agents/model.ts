@@ -48,6 +48,11 @@ export interface ModelConfig {
   model: string;
   apiKey: string;
   contextWindow: number;
+  /**
+   * The most tokens one reply may take (goal 079): the model's maximum output from the provider's
+   * model list. 0: unknown, and none is sent; the provider's own applies. Anthropic's API needs
+   * one: there, ANTHROPIC_UNKNOWN_MAX_TOKENS.
+   */
   maxTokens: number;
   /**
    * The compaction point (goal 070): the share of `contextWindow`, in percent, at which an agent's
@@ -189,7 +194,8 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
     // token once a conversation nears it.
     contextWindow: Number(setting(env, MODEL_SETTINGS.contextWindow) ?? "0"),
     compactAt: compactAtFromEnv(setting(env, MODEL_SETTINGS.compactAt)),
-    maxTokens: Number(setting(env, MODEL_SETTINGS.maxTokens) ?? "8192"),
+    // Unset: 0, none is sent and the provider's own limit applies (goal 079).
+    maxTokens: Number(setting(env, MODEL_SETTINGS.maxTokens) ?? "0"),
     reasoning: reasoningFromEnv(setting(env, MODEL_SETTINGS.reasoning)),
   };
 }
@@ -213,6 +219,46 @@ export function modelEnv(cfg: ModelConfig): Record<string, string> {
   };
 }
 
+/**
+ * The reply limit Anthropic's Messages API gets for a model whose maximum output the provider's
+ * list does not give (goal 079): that API refuses a request without one.
+ */
+export const ANTHROPIC_UNKNOWN_MAX_TOKENS = 32_000;
+
+/**
+ * pi-ai's figure for a reply limit that is not known: large, and never sent (uncapped below takes
+ * it out of each request).
+ */
+const NOT_SENT = 1_000_000_000;
+
+/** pi-ai's models, with each request's reply limit left out (none known: the provider's applies). */
+function uncapped<T extends ReturnType<typeof createModels>>(models: T): T {
+  const strip = (p: unknown) => {
+    if (p && typeof p === "object") {
+      const o = p as Record<string, unknown>;
+      delete o.max_tokens;
+      delete o.max_completion_tokens;
+      delete o.max_output_tokens;
+    }
+    return p;
+  };
+  type Options = { onPayload?: (p: unknown, m: unknown) => unknown } | undefined;
+  const wrap = (o: Options) => ({
+    ...o,
+    onPayload: async (p: unknown, m: unknown) => strip((await o?.onPayload?.(p, m)) ?? p),
+  });
+  return new Proxy(models, {
+    get(target, key) {
+      if (key === "streamSimple" || key === "completeSimple") {
+        const f = Reflect.get(target, key) as (m: unknown, c: unknown, o: Options) => unknown;
+        return (m: unknown, c: unknown, o: Options) => f.call(target, m, c, wrap(o));
+      }
+      const v = Reflect.get(target, key);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+}
+
 export function buildModel(cfg: ModelConfig) {
   if (cfg.api === "anthropic") return buildAnthropic(cfg);
   if (cfg.api === "chatgpt") return buildChatGPT(cfg);
@@ -228,7 +274,7 @@ export function buildModel(cfg: ModelConfig) {
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: cfg.contextWindow,
-    maxTokens: cfg.maxTokens,
+    maxTokens: cfg.maxTokens || NOT_SENT,
     // LiteLLM and vLLM-style servers: no `store`, no `developer` role; reasoning_effort only
     // when configured.
     compat: {
@@ -257,7 +303,12 @@ export function buildModel(cfg: ModelConfig) {
   const resolved = models.getModel(provider, cfg.model);
   if (!resolved) throw new Error(`model ${cfg.model} did not register`);
   // The agents' thinking level: "off" sends reasoning_effort "none" when reasoning is configured.
-  return { models, model: resolved, thinkingLevel: cfg.reasoning ?? ("off" as const) };
+  // With no known reply limit, none is sent (goal 079).
+  return {
+    models: cfg.maxTokens ? models : uncapped(models),
+    model: resolved,
+    thinkingLevel: cfg.reasoning ?? ("off" as const),
+  };
 }
 
 /** An Anthropic route: the Messages API; its base URL has no /v1 (the client adds it). */
@@ -273,7 +324,9 @@ function buildAnthropic(cfg: ModelConfig) {
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: cfg.contextWindow,
-    maxTokens: cfg.maxTokens,
+    // Anthropic's API needs a reply limit: the model's maximum output when the provider's list
+    // gives one, else ANTHROPIC_UNKNOWN_MAX_TOKENS (goal 079).
+    maxTokens: cfg.maxTokens || ANTHROPIC_UNKNOWN_MAX_TOKENS,
   };
   const models = createModels();
   models.setProvider(
@@ -316,7 +369,8 @@ function buildChatGPT(cfg: ModelConfig) {
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: cfg.contextWindow,
-    maxTokens: cfg.maxTokens,
+    // This route sends no reply limit (supportsMaxOutputTokens is off).
+    maxTokens: cfg.maxTokens || NOT_SENT,
     compat: { supportsMaxOutputTokens: false, supportsLongCacheRetention: false },
   };
   const models = createModels();

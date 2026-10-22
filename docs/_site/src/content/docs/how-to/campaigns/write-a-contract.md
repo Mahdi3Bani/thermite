@@ -171,7 +171,7 @@ The judge first checks which goals the starting point already meets. If it meets
 ```
 
 - `project.repo` is required in every mode. A research campaign fetches no repository, so any short name does, such as `research`.
-- `min_duration` is required. The run ends after `max_duration` of running time, or after `min_duration` when there is no `max_duration`. Paused time doesn't count. Durations look like `30m`, `8h` or `2d`.
+- `min_duration` is required: the time the run works at least, a floor, never a stop. The run ends after `max_duration` of running time; without `max_duration` it runs until you stop it. Paused time doesn't count, nor time its agents could not work because of the model provider. Durations look like `30m`, `8h` or `2d`.
 - A claim can name the question it answers. The report counts the verified claims for each of the `questions`, and lists a question with none as open. There is no web search: agents start from the `seeds` and follow links.
 - `scope.include_domains`, when not empty, limits fetching to those domains. `scope.exclude_domains` are never fetched.
 - `quality.min_independent_sources` (2): the report lists a verified claim whose quotes come from at least this many domains apart from the others, and says for each finding how many of its claims do.

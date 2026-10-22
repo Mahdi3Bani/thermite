@@ -197,13 +197,14 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 
 | Event | What it records |
 | --- | --- |
-| `experiment_added` | A new experiment: its title, details, direction, why, who added it and its state (`queued`, or `proposed` for a lane's idea). A copied one also names the run it came from. One put back after its trial was interrupted or failed names the experiment it repeats, with that trial, its lane and how it ended (`requeued_from`) |
+| `experiment_added` | A new experiment: its title, details, direction, why, who added it and its state (`queued`, or `proposed` for a lane's idea). A copied one also names the run it came from. In a ledger from before goal 079, one put back after its trial was interrupted or failed names the experiment it repeats (`requeued_from`) |
 | `experiment_accepted` | A lane's idea, queued |
 | `experiment_moved` | A new place in the queue |
 | `experiment_edited` | New text |
 | `experiment_dropped` | Dropped, with who dropped it and why |
 | `experiment_assigned` | Given to a lane's trial |
-| `experiment_finished` | Its trial ended, with the attempt or the reason there is none |
+| `experiment_finished` | Its trial ended, with the attempt or the reason there is none, and how the trial ended in words (`cause`) |
+| `experiment_returned` | Its trial never really tried it (interrupted, or the model provider's error): the same experiment back at the top, with the trial, its lane, the cause and how many times it came back (`returns`) |
 | `planner_handout` | One hand-out: which experiment went to which lane, and why |
 | `directive` | A rule for the plan: its kind, its direction, why and who set it. One the planner made from an owner's message names that message (`from_message`). One converted from an old rule in words names that rule and its words (`converted_from`) and keeps its author |
 | `directives_superseded` | Rules replaced by their author's next set |
@@ -212,7 +213,7 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 | `directive_converted` | An old rule in words that the planner converted at its round: the old rule, the new rule in its place (`to`), its kind, its direction and the old words |
 | `directives_left_out` | Rules a new set named that the rig left out, with why: rules the owner had removed, named by the advisors, the planner or an agent's token; and, in a research run, an advisor's rule for a direction that is not a task kind |
 
-Control builds a run's **Experiments** and **Planner** tabs, and the MCP tool `run_queue`, from these events and the messages' events above. The run's **History** tab tells each change in words, such as "You dropped "…": why.", "The planner moved "…" to place 1." or "The planner's experiment "…" went back in the queue: its trial was interrupted." [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change the queue.
+Control builds a run's **Experiments** and **Planner** tabs, and the MCP tool `run_queue`, from these events and the messages' events above. The run's **History** tab tells each change in words, such as "You dropped "…": why.", "The planner moved "…" to place 1." or ""…" went back to the top of the queue: its trial on lane-1 was interrupted (…)." [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change the queue.
 
 ## The model usage records
 

@@ -10,7 +10,7 @@ In this tutorial you give your rig a free AI model, then start a campaign in whi
 
 At the end you'll have seen Thermite's whole loop: agents propose, the judge measures, and only a change that is confirmed better can become the new best version.
 
-It takes half an hour to an hour, most of it waiting. An agent may work for up to 20 minutes on one thing to try, and the judge then measures what it made. New words are explained as they come, and the [glossary](../reference/glossary.md) has them all.
+It takes half an hour to an hour, most of it waiting. An agent works on one thing to try until it submits a change, often for a quarter of an hour or more, and the judge then measures what it made. New words are explained as they come, and the [glossary](../reference/glossary.md) has them all.
 
 ## What you need
 
@@ -154,7 +154,7 @@ Open **Live** in the sidebar. It shows the run at work, `matmul-agents-1`. The l
 Under the header is a row of filters, which choose whose lines you see:
 
 - **Everyone** is chosen at first, and shows every line.
-- **lane-1** is the agent itself. Its filter appears only when the planner has given the lane its work, a few minutes in. The agent gets a fresh copy of the project, works on the one thing the planner gave it to try, and ends by submitting its change. This is one **trial**, and it lasts at most 20 minutes.
+- **lane-1** is the agent itself. Its filter appears only when the planner has given the lane its work, a few minutes in. The agent gets a fresh copy of the project, works on the one thing the planner gave it to try, and ends by submitting its change. This is one **trial**. It has no time limit unless someone sets one: it ends when the agent submits, or when it stops and has nothing more to do.
 - **Planner** works first. Before each round of work, it reads what has happened so far and gives each lane an **experiment**: one thing to try. It takes experiments from the run's **queue**, the list of what to try next, and adds new ones of its own.
 - **Judge** is the code that measures each change. It is not an agent, and takes no messages.
 - **Advisors** shows the rig's advisors, models that review the work, and **You** shows your own messages. You won't need them here.
@@ -167,7 +167,7 @@ The box under the lines sends the agents a message, and its grey text says when 
 
 ## 10. Watch the judge decide
 
-The first change takes a while. The planner works for a few minutes, a trial can last up to 20 minutes, and the judge then needs a minute or more to measure what it made. Expect the first verdict between 5 and 30 minutes after the run starts, depending on how fast the model works.
+The first change takes a while. The planner works for a few minutes, a trial often takes a quarter of an hour or more, and the judge then needs a minute or more to measure what it made. Expect the first verdict between 5 and 30 minutes after the run starts, depending on how fast the model works.
 
 When the agent submits its change, the judge takes over. Open **Overview** in the sidebar and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 
@@ -219,7 +219,7 @@ The item leaves **Needs you** at once. On the change's own page, **Your decision
 
 A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `matmul-agents › matmul-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**. A small menu opens. It says that the lanes' running trials stop, and that the run's jobs waiting for the judge wait until you resume. In its field **why (optional)**, type `seen enough for now`, then press **Pause the run**.
 
-A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and a copy of its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the line under the run's name ends `· Paused`, and the button says **Resume**. On the run's **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
+A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the line under the run's name ends `· Paused`, and the button says **Resume**. On the run's **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
 
 The rig keeps its model. [Your own project](your-own-project.md) uses it.
 

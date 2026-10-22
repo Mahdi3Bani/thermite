@@ -370,7 +370,8 @@ export const CommandPayloads = {
     teachers: z.boolean().optional(),
     review: z.boolean().optional(),
     exports: z.boolean().optional(),
-    trial_minutes: z.number().int().min(1).max(10_080).optional(),
+    /** A trial's length when its contract sets none; null: none (goal 079). */
+    trial_minutes: z.number().int().min(1).max(1440).nullable().optional(),
     max_turns: z.number().int().min(1).max(100_000).nullable().optional(),
     promotion: z.enum(["auto", "owner_approval"]).optional(),
     /** How many of the rig's GPUs are the judge's (a rig configured with its GPU set). */

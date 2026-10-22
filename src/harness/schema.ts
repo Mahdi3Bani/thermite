@@ -775,4 +775,11 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   `
   create index event_kind on event (kind, subject);
   `,
+  // 18: an experiment whose trial never really tried it (the provider failed, the harness
+  // restarted, the run was paused) goes back to the queue as the same row (goal 079): how many
+  // times it came back, and why. A tried experiment keeps why its trial ended (its cause).
+  `
+  alter table experiment add column cause text;
+  alter table experiment add column returns integer not null default 0;
+  `,
 ];

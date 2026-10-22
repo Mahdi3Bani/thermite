@@ -1,0 +1,365 @@
+import { CHATGPT_LIMIT_CODE, CHATGPT_LIMIT_WAIT_MS } from "./model.ts";
+
+/**
+ * A model provider's errors, by kind (goal 079). Each kind has its own answer:
+ *
+ * - `rate_limit`: the provider asks for a pause. The agent waits for the time the provider gives
+ *   (Retry-After, a reset header, or "try again in 20s" in its words), else a growing pause, and
+ *   goes on in the same conversation.
+ * - `credits`, `auth`, `route`: no credits left, a key the provider refuses, or a model it does not
+ *   serve on this key. Nothing gets better by trying again: the run's agents stop and the run shows
+ *   in Needs you with the provider's own words, until a model check passes again.
+ * - `server`: the provider (or the way to it) failed for now, a 5xx or a broken connection. The
+ *   agent waits a growing pause and goes on in the same conversation.
+ * - `context`: the request was longer than the model's window: the conversation is compacted.
+ * - `model`: anything else, such as a request the provider refused as malformed. The agent is told
+ *   the call failed and goes on.
+ *
+ * None of these ends research. A trial ends after failures in a row only when the campaign sets
+ * `lanes.limits.failures_in_a_row`.
+ */
+export type ProviderErrorKind =
+  | "rate_limit"
+  | "credits"
+  | "auth"
+  | "route"
+  | "server"
+  | "context"
+  | "model";
+
+export interface ProviderError {
+  kind: ProviderErrorKind;
+  /** The HTTP status, when the error or the answer gave one. */
+  status?: number | undefined;
+  /** The provider's own words, shortened. */
+  words: string;
+  /** When the provider said to try again (ISO), for a rate limit that gave one. */
+  retryAt?: string | undefined;
+}
+
+/** What a provider's answer showed besides its text: its status and its headers. */
+export interface ProviderAnswer {
+  status?: number | undefined;
+  headers?: Record<string, string | undefined> | undefined;
+}
+
+/** The kinds after which the run's agents stop until a model check passes. */
+export const STOP_KINDS: ReadonlySet<ProviderErrorKind> = new Set(["credits", "auth", "route"]);
+
+export function stopsAgents(kind: ProviderErrorKind | undefined): boolean {
+  return kind !== undefined && STOP_KINDS.has(kind);
+}
+
+/** Each kind in plain words, for the live view, History and Needs you. */
+export const KIND_WORDS: Record<ProviderErrorKind, string> = {
+  rate_limit: "the provider's rate limit",
+  credits: "no credits left at the provider",
+  auth: "the provider refuses the key",
+  route: "the provider does not serve this model on this key",
+  server: "the provider failed for now",
+  context: "the conversation is longer than the model's window",
+  model: "the provider refused the request",
+};
+
+const CREDITS =
+  /insufficient[_ ]?(credits?|quota|balance|funds)|credit balance|out of credits|not enough credits|no credits|add (more )?credits|purchase (more )?credits|payment required|billing|exceeded your current quota|quota exceeded|requires? (more )?credits/i;
+const AUTH =
+  /invalid[_ ]?(api[_ ]?)?key|incorrect api key|invalid x-api-key|unauthori[sz]ed|authentication|permission[_ ]denied|api key (is )?(invalid|expired|revoked|disabled)|key (has been )?(revoked|disabled)|token (has )?expired|access denied/i;
+const ROUTE =
+  /model[_ ]not[_ ]found|no such model|unknown model|model .{0,80}(does not exist|not found|is not (available|supported))|does not have access to (the )?model|not available on your plan/i;
+const RATE =
+  /rate[_ ]?limit|too many requests|resource[_ ]exhausted|slow down|usage limit|requests per (minute|day)|tokens per (minute|day)/i;
+const CONTEXT =
+  /context[_ ]?(length|window)|too long|maximum (context )?length|prompt is too long|exceeds? (the )?(model'?s? )?(context|maximum)|too many tokens/i;
+const SERVER =
+  /overloaded|bad gateway|service unavailable|gateway time-?out|internal server error|server error|upstream|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|fetch failed|network|could not be reached|connection (error|reset|refused|closed)|timed? ?out|deadline exceeded|terminated|broke off|temporarily unavailable/i;
+
+/** The HTTP status an error's text gives: "429 …", "HTTP 503", "status code 402". */
+export function statusIn(text: string): number | undefined {
+  const m =
+    /^\s*(?:Error:\s*)?(\d{3})\b/.exec(text) ??
+    /\b(?:HTTP|status(?: code)?|code)[\s:=]*(\d{3})\b/i.exec(text) ??
+    /\b(\d{3}) status code\b/i.exec(text);
+  const n = m ? Number(m[1]) : Number.NaN;
+  return n >= 400 && n < 600 ? n : undefined;
+}
+
+/** A duration such as "20s", "1m30s", "6m0s", "250ms" or "1.5h", in milliseconds. */
+export function durationMs(raw: string): number | undefined {
+  const s = raw.trim();
+  if (/^\d+(\.\d+)?$/.test(s)) return Number(s) * 1000;
+  const units: Record<string, number> = {
+    ms: 1,
+    s: 1000,
+    sec: 1000,
+    secs: 1000,
+    second: 1000,
+    seconds: 1000,
+    m: 60_000,
+    min: 60_000,
+    mins: 60_000,
+    minute: 60_000,
+    minutes: 60_000,
+    h: 3_600_000,
+    hr: 3_600_000,
+    hour: 3_600_000,
+    hours: 3_600_000,
+  };
+  let total = 0;
+  let any = false;
+  const re = /(\d+(?:\.\d+)?)\s*(ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hr|h)(?![a-z])/gi;
+  for (const m of s.matchAll(re)) {
+    const unit = units[(m[2] as string).toLowerCase()];
+    if (unit === undefined) continue;
+    total += Number(m[1]) * unit;
+    any = true;
+  }
+  return any ? Math.round(total) : undefined;
+}
+
+function header(h: ProviderAnswer["headers"], name: string): string | undefined {
+  if (!h) return undefined;
+  const v = h[name] ?? h[name.toLowerCase()];
+  return v === undefined || v === "" ? undefined : v;
+}
+
+/**
+ * When the provider said to try again, from its answer's headers (Retry-After in seconds or as a
+ * date, retry-after-ms, OpenAI's x-ratelimit-reset-*, Anthropic's anthropic-ratelimit-*-reset, an
+ * epoch in x-ratelimit-reset) or its words ("try again in 20s", "retry after 30 seconds", "resets
+ * at 2026-10-22T03:00:00Z"). The latest time any of them names: the limit that was hit is not said.
+ */
+export function retryAtFrom(
+  text: string,
+  headers?: ProviderAnswer["headers"],
+  now = Date.now(),
+): string | undefined {
+  const times: number[] = [];
+  const ra = header(headers, "retry-after");
+  if (ra) {
+    if (/^\d+(\.\d+)?$/.test(ra.trim())) times.push(now + Number(ra) * 1000);
+    else if (!Number.isNaN(Date.parse(ra))) times.push(Date.parse(ra));
+  }
+  const ms = header(headers, "retry-after-ms");
+  if (ms && /^\d+(\.\d+)?$/.test(ms.trim())) times.push(now + Number(ms));
+  if (!times.length) {
+    for (const k of ["x-ratelimit-reset-requests", "x-ratelimit-reset-tokens"]) {
+      const v = header(headers, k);
+      const d = v ? durationMs(v) : undefined;
+      if (d !== undefined) times.push(now + d);
+    }
+    for (const k of [
+      "anthropic-ratelimit-requests-reset",
+      "anthropic-ratelimit-tokens-reset",
+      "anthropic-ratelimit-input-tokens-reset",
+      "anthropic-ratelimit-output-tokens-reset",
+    ]) {
+      const v = header(headers, k);
+      const t = v ? Date.parse(v) : Number.NaN;
+      if (!Number.isNaN(t) && t > now) times.push(t);
+    }
+    const epoch = header(headers, "x-ratelimit-reset");
+    if (epoch && /^\d{10,13}$/.test(epoch.trim())) {
+      const n = Number(epoch);
+      const t = n < 1e12 ? n * 1000 : n;
+      if (t > now) times.push(t);
+    }
+  }
+  if (!times.length) {
+    const said =
+      /(?:try again|retry|retrying|wait)\s*(?:in|after|for)\s*((?:\d+(?:\.\d+)?\s*(?:ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hr|h)(?![a-z])\s*)+)/i.exec(
+        text,
+      );
+    const d = said ? durationMs(said[1] as string) : undefined;
+    if (d !== undefined) times.push(now + d);
+    const at =
+      /\breset(?:s)?\s*(?:at|on)?\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}))/i.exec(
+        text,
+      );
+    const t = at ? Date.parse(at[1] as string) : Number.NaN;
+    if (!Number.isNaN(t) && t > now) times.push(t);
+  }
+  if (text.includes(CHATGPT_LIMIT_CODE) && !times.length) times.push(now + CHATGPT_LIMIT_WAIT_MS);
+  if (!times.length) return undefined;
+  return new Date(Math.max(...times)).toISOString();
+}
+
+/**
+ * The kind of a provider's error, from its words and, when the caller saw it, the provider's
+ * answer (its status and headers). No credits comes first: OpenAI says so with a 429.
+ */
+export function classifyProviderError(
+  text: string,
+  answer?: ProviderAnswer | undefined,
+  now = Date.now(),
+): ProviderError {
+  const words = text.replace(/\s+/g, " ").trim().slice(0, 600) || "no detail";
+  const status = answer?.status ?? statusIn(text);
+  const base = { words, ...(status !== undefined ? { status } : {}) };
+  if (status === 402 || CREDITS.test(text)) return { ...base, kind: "credits" };
+  if (text.includes(CHATGPT_LIMIT_CODE))
+    return { ...base, kind: "rate_limit", retryAt: retryAtFrom(text, answer?.headers, now) };
+  if (status === 401 || status === 403 || AUTH.test(text)) return { ...base, kind: "auth" };
+  if (ROUTE.test(text)) return { ...base, kind: "route" };
+  if (status === 429 || RATE.test(text))
+    return { ...base, kind: "rate_limit", retryAt: retryAtFrom(text, answer?.headers, now) };
+  if (CONTEXT.test(text) && !/deadline exceeded/i.test(text)) return { ...base, kind: "context" };
+  if (status === 404) return { ...base, kind: "route" };
+  if ((status !== undefined && (status >= 500 || status === 408)) || SERVER.test(text))
+    return { ...base, kind: "server" };
+  return { ...base, kind: "model" };
+}
+
+/** The pause before trying again after the `n`th failure in a row (1, 2, …): 5 s doubling to 60 s. */
+export function failurePauseMs(n: number): number {
+  return Math.min(60_000, 5_000 * 2 ** Math.max(0, n - 1));
+}
+
+/**
+ * The pause before trying again after the `n`th rate limit in a row that gave no time: 30 s
+ * doubling to 10 minutes.
+ */
+export function ratePauseMs(n: number): number {
+  return Math.min(10 * 60_000, 30_000 * 2 ** Math.max(0, n - 1));
+}
+
+/**
+ * A program's run in a trial (OpenCode, Codex, Claude Code) or Pi's model call ended with a
+ * provider's error: what the trial does next. `failures` counts failures in a row that are not
+ * rate limits; `rateWaits` rate limits in a row. A stop kind ends the trial; a limit the campaign
+ * set (`failuresInARow`) ends it after that many failures; anything else waits and goes on.
+ */
+export function nextStep(
+  e: ProviderError,
+  count: { failures: number; rateWaits: number },
+  failuresInARow?: number | undefined,
+  now = Date.now(),
+):
+  | { end: true; error: string }
+  | { end: false; waitMs: number; until: string; why: string; kind: ProviderErrorKind } {
+  if (stopsAgents(e.kind)) return { end: true, error: e.words };
+  if (e.kind === "rate_limit") {
+    count.rateWaits++;
+    const until = e.retryAt ? Date.parse(e.retryAt) : now + ratePauseMs(count.rateWaits);
+    const waitMs = Math.max(1000, until - now);
+    return {
+      end: false,
+      waitMs,
+      until: new Date(now + waitMs).toISOString(),
+      why: `${KIND_WORDS.rate_limit}${e.retryAt ? "" : " (it gave no time)"}`,
+      kind: e.kind,
+    };
+  }
+  count.rateWaits = 0;
+  count.failures++;
+  if (failuresInARow !== undefined && count.failures >= failuresInARow)
+    return {
+      end: true,
+      error: `the model call failed ${count.failures} times in a row (the campaign's failures_in_a_row): ${e.words}`,
+    };
+  const waitMs = failurePauseMs(count.failures);
+  return {
+    end: false,
+    waitMs,
+    until: new Date(now + waitMs).toISOString(),
+    why: KIND_WORDS[e.kind],
+    kind: e.kind,
+  };
+}
+
+/**
+ * A trial in a program of its own (OpenCode, Codex, Claude Code) ended a run with an error (goal
+ * 079): its kind, from the program's words and the error answer the harness's model proxy saw.
+ * A stop kind or the campaign's limit ends the trial. Otherwise the trial waits (the provider's
+ * time, or a growing pause, never past its own end) and goes on in the program's same session:
+ * `goOn` holds the words to tell the agent.
+ */
+export async function afterProgramFailure(input: {
+  error: string;
+  /** The error answer the model proxy saw during the run, if any. */
+  answer?: (ProviderAnswer & { body?: string | undefined }) | undefined;
+  count: { failures: number; rateWaits: number };
+  failuresInARow?: number | undefined;
+  /** The trial's end (ms), or Infinity. */
+  deadline: number;
+  signal?: AbortSignal | undefined;
+  waiting?: ((w: { until: string; kind: ProviderErrorKind; words: string }) => void) | undefined;
+  /** How long a wait really lasts (tests shorten it). */
+  pauseMs?: ((ms: number) => number) | undefined;
+}): Promise<
+  | { end: { error: string; kind: ProviderErrorKind } }
+  | { goOn: string }
+  | { interrupted: true }
+  | { wall: true }
+> {
+  const text = input.answer?.body ? `${input.error} (${input.answer.body})` : input.error;
+  const e = classifyProviderError(text, input.answer);
+  // A program compacts its own conversation: a context error here is the model's refusal.
+  const step = nextStep(
+    e.kind === "context" ? { ...e, kind: "model" } : e,
+    input.count,
+    input.failuresInARow,
+  );
+  if (step.end) return { end: { error: step.error, kind: e.kind } };
+  input.waiting?.({ until: step.until, kind: e.kind, words: e.words });
+  const until = Math.min(input.deadline, Date.now() + (input.pauseMs ?? ((ms) => ms))(step.waitMs));
+  while (Date.now() < until && !input.signal?.aborted)
+    await new Promise((r) => setTimeout(r, Math.min(500, Math.max(1, until - Date.now()))));
+  if (input.signal?.aborted) return { interrupted: true };
+  if (Date.now() >= input.deadline) return { wall: true };
+  return {
+    goOn: `The model call failed (${e.words.slice(0, 200)}). Continue where you left off.`,
+  };
+}
+
+/** What a trial in a program of its own learns of its provider through the harness (goal 079). */
+export interface ProviderLink {
+  /** The newest error answer the harness's model proxy saw for this trial, since `since` (ms). */
+  providerAnswer?:
+    | ((since: number) => (ProviderAnswer & { body?: string | undefined }) | undefined)
+    | undefined;
+  /** Told of each wait for the provider, before it. */
+  waiting?: ((w: { until: string; kind: ProviderErrorKind; words: string }) => void) | undefined;
+  /** How long a wait really lasts (tests shorten it); by default, as long as it says. */
+  pauseMs?: ((ms: number) => number) | undefined;
+}
+
+/** Lowercase header names and values of a fetch answer, for retryAtFrom. */
+export function headersOf(h: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  h.forEach((v, k) => {
+    out[k.toLowerCase()] = v;
+  });
+  return out;
+}
+
+/**
+ * Pi's calls to the provider pass through here: an error answer's status and headers are kept, so
+ * the trial reads a rate limit's Retry-After, which pi-ai's error message leaves out.
+ */
+export class ProviderWatch {
+  last: (ProviderAnswer & { at: number }) | undefined;
+
+  /** A fetch that notes each error answer, around another one. */
+  wrap(inner: typeof globalThis.fetch = globalThis.fetch): typeof globalThis.fetch {
+    return async (input, init) => {
+      const res = await inner(input, init);
+      if (res.status >= 400)
+        this.last = { status: res.status, headers: headersOf(res.headers), at: Date.now() };
+      return res;
+    };
+  }
+
+  /** The newest error answer, if it came at or after `since` (ms). */
+  since(since: number): ProviderAnswer | undefined {
+    const l = this.last;
+    return l && l.at >= since ? { status: l.status, headers: l.headers } : undefined;
+  }
+
+  /** The newest error answer not taken yet, taken. */
+  take(): ProviderAnswer | undefined {
+    const l = this.last;
+    this.last = undefined;
+    return l ? { status: l.status, headers: l.headers } : undefined;
+  }
+}
