@@ -172,6 +172,17 @@ export const CampaignDraft = z.strictObject({
     })
     .optional(),
   lanes: z.number().int().min(1).max(MAX_LANES, MAX_LANES_REASON).default(2),
+  /**
+   * Ideas kept ready (goal 081): the contract's lanes.queue_target, the experiments the queue
+   * keeps ready for a hill climb's or a goal's lanes. A target, never a cap. Left out: two for
+   * each lane.
+   */
+  queue_target: z
+    .number()
+    .int("Ideas kept ready is a whole number")
+    .min(0, "Ideas kept ready is 0 or more")
+    .max(1000, "Ideas kept ready is at most 1000")
+    .optional(),
   limits: z
     .strictObject({
       trial_minutes: z.number().int().min(1).max(1440).optional(),
@@ -316,6 +327,10 @@ export function buildCampaign(
     lanes: {
       count: d.lanes,
       ...(Object.keys(d.limits).length ? { limits: d.limits } : {}),
+      // A research campaign has its research plan: no target (goal 081).
+      ...(d.queue_target !== undefined && d.mode !== "research"
+        ? { queue_target: d.queue_target }
+        : {}),
     },
     ...(d.notes ? { notes: d.notes } : {}),
     ...(d.wall_hours ? { budget: { wall_hours: d.wall_hours } } : {}),

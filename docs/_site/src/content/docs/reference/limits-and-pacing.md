@@ -246,11 +246,13 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | A place in the queue | `top`, `end`, or an index from 0 to 100,000 among the queued experiments, 0 first. An index past the last puts it last |
 | A lane's idea | One request of at most 64 KiB. No limit on how many |
 | Experiments copied into a new run by **Start a run**, its twins (`thermite run start`, `POST /v1/campaigns/<campaign>/runs`, MCP's `start_run`) or `thermite assign --queue-from` (`assign_campaign`'s `queue`) | 500. Each copies at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, **Start a run** copies none, and its twins and `thermite assign` refuse a run to copy from |
-| The planner's answer | At most 20 experiments added, 40 moves, 40 drops, 40 ideas accepted, 5 rules, 5 old rules in words converted and 13 new directions |
+| The planner's answer | At most 40 moves, 40 drops, 5 rules, 5 old rules in words converted and 13 new directions. No limit on the experiments it adds or the ideas it accepts |
 | Old rules in words converted in one planner's round | 5, the oldest first. The rest convert at the next rounds |
-| A teacher's or the merged by model's answer | Up to 10 experiments and 10 moves, each with a why. One that doesn't fit is left out; a list of more than 50 is ignored. Its review still counts |
+| A teacher's or the merged by model's answer | No limit on the opportunities in its portfolio, or on its plain experiments; up to 10 moves, each with a why. One that doesn't fit is left out. Its review still counts |
 | The auditor's answer | One check |
-| The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves |
+| The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves. The supervisor sends the teachers' portfolio in as many requests as it needs |
+| **Ideas kept ready**, a campaign's target queue depth | A target, not a limit: 0 to 1,000, two for each lane by default. The queue may hold more, and nothing stops when it holds fewer |
+| The teachers' code and evidence reads | One listing: 2,000 files. One read of a file: 400 lines by default, at most 2,000; a file over 8 MiB is not read. One read of a diff: 40,000 characters, then the next part |
 | The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts. Details are cut to 600 characters and whys to 400 |
 | The **Planner** tab's **What the planner did** | The newest 30 entries: hand-outs, the planner's changes to the queue and the rules, and the messages it read. Control keeps the newest 50 hand-outs for each run |
 | The messages under **Tell the planner** | Your newest 10 to the planner or to everyone working. Control keeps the newest 200 messages for each run |

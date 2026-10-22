@@ -11,6 +11,7 @@ import {
 import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
+import { queueTarget, ruleRefusal } from "../../core/queue-target.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -19,7 +20,7 @@ import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
 import type { McpCaller } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
-import type { Experiment } from "../queue.ts";
+import { type Experiment, inFamily } from "../queue.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
@@ -487,11 +488,16 @@ export class Scheduler {
   private directives(run: string): { id: number; body: StoredRule }[] {
     // An old rule in words (legacy, goal 066) stays in force for the planner's model until its
     // round converts it; it has no family, so the code below and the fixed rules never keep it.
-    const all = this.ledger.activeDirectives(run).map((d) => ({
-      id: d.id,
-      owner: d.author.startsWith("control:"),
-      body: d.body as StoredRule,
-    }));
+    // An advisor's rule that freezes the queue's size or pins an experiment, set before code
+    // refused them (goal 081), never reaches the plan.
+    const all = this.ledger
+      .activeDirectives(run)
+      .filter((d) => !d.author.startsWith("supervisor") || !ruleRefusal(d.body as StoredRule))
+      .map((d) => ({
+        id: d.id,
+        owner: d.author.startsWith("control:"),
+        body: d.body as StoredRule,
+      }));
     const ownerFamilies = new Set(
       all.filter((d) => d.owner && d.body.family).map((d) => d.body.family),
     );
@@ -686,6 +692,8 @@ export class Scheduler {
       // past research is: all data for the planner to weigh.
       notes: notesData(this.o.service.journal.newest(run, 20)),
       briefing: this.ledger.briefing(run),
+      // The queue's target (goal 081): the planner tops the queue up to it with distinct ideas.
+      queueTarget: queueTarget(contract, laneCount),
     };
     const live = this.o.service.live;
     live.append({
@@ -838,6 +846,26 @@ export class Scheduler {
       p.queue?.rules.length || p.queue?.convert.length ? this.directives(run) : input.directives;
     if (lanes.some((l) => !handout.some((h) => h.lane === l)))
       this.coordinator.ensureMandates(run, directives);
+    // The queue's target (goal 081): when up next would hold fewer than the target after the
+    // hand-out, the lanes' distinct ideas go up next first, oldest first, as the planner's.
+    const target = input.queueTarget ?? 0;
+    const avoided = (x: Experiment) =>
+      directives.some(
+        (d) => d.body.kind === "avoid" && d.body.family && inFamily(x, d.body.family),
+      );
+    const ready = () =>
+      this.o.service.queue.queued(run).filter((x) => !given.has(x.id) && !avoided(x)).length;
+    const waitingLanes = lanes.filter((l) => !handout.some((h) => h.lane === l)).length;
+    // A target of 0 asks for no ideas: the lanes' ideas then wait, as before (goal 081).
+    const ideas =
+      target > 0
+        ? this.coordinator.acceptIdeas(
+            run,
+            target + waitingLanes - ready(),
+            avoided,
+            `the queue had fewer than its target of ${target} experiments ready: a lane's distinct idea goes up next`,
+          )
+        : [];
     for (const lane of lanes) {
       if (handout.some((h) => h.lane === lane)) continue;
       const fixed = p.assignments.find((a) => a.lane === lane);
@@ -895,6 +923,11 @@ export class Scheduler {
           : []),
         ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),
         ...(skipped.length ? [`skipped: ${skipped.slice(0, 3).join("; ")}`] : []),
+        ...(ideas.length
+          ? [
+              `the lanes' ideas queued to reach the target of ${target}: ${ideas.map((x) => x.title).join("; ")}`,
+            ]
+          : []),
       ].join("\n"),
       run,
     });
@@ -925,6 +958,24 @@ export class Scheduler {
         ...(skipped.length ? [`skipped: ${skipped.join("; ")}`] : []),
       ].join(". "),
     );
+    // Still below the target (goal 081): the planner could not top the queue up, so the teachers
+    // are asked for ideas at once (the supervisor reads queue_low), not on their clock.
+    const left = ready();
+    if (target > 0 && left < target) {
+      this.ledger.appendEvent(PLANNER, "queue_low", run, {
+        round: n,
+        ready: left,
+        target,
+        lanes: laneCount,
+        source: p.source,
+      });
+      live.append({
+        source: "planner",
+        kind: "status",
+        text: `after round ${n} the queue has ${left} of its target of ${target} experiments ready: the teachers are asked for ideas now`,
+        run,
+      });
+    }
     // The planner's field notes, also when the rest of its answer was refused; a note about an
     // experiment it added names the experiment's id, not the ref it used.
     this.plannerNotes(
@@ -1837,6 +1888,8 @@ export class Scheduler {
       ...this.notesAndPast(run, a.lane, "worker").map((s) => `${s}\n`),
       "# How to work",
       "Read the relevant code, make one focused change in the editable paths, build and test it with run, then call submit once. The judge measures it on the real target; your own timings never count.",
+      // Lanes propose (goal 081): the planner queues the distinct ideas.
+      "Before you submit (submitting ends your trial), or before you stop without submitting, propose each distinct follow-up experiment your work suggests as an idea for the run's queue (the idea tool, or thermite-trial idea), each with why: what you saw that makes it worth trying. The planner queues the distinct ones for the lanes. Propose none that repeats your own assignment.",
       "Your lane keeps a cache directory between trials, $THERMITE_LANE_CACHE (ccache uses it as CCACHE_DIR): use it for build caches so a fresh workspace does not rebuild everything.",
     ]
       .filter((l) => l !== "")

@@ -163,6 +163,7 @@ Under **Advanced**, at the foot of step 4:
 | **Memory per agent (MiB)** | 256 to 16384. Empty: 2048 |
 | **Disk per agent (MiB)** | For one trial's copy of the code and its builds, 256 to 65536. Empty: 2048 |
 | **Stop after (hours)** | Empty: no limit. When the time is up, no new trial starts and the run is paused. See [Set a budget or a stop time](budget-and-stop-time.md) |
+| **Ideas kept ready** | How many experiments each run's queue keeps ready for the agents, 0 to 1000. A target that drives ideas, not a cap: below it, the planner and then the teachers are asked for more. Empty: 2 for each agent. 0: ask for none. Hill climbs and goals only. See [Keep ideas ready](choose-what-runs-next.md#keep-ideas-ready) |
 | **GPUs for the judge** | For a rig with several GPUs: how many the judge measures on. The rig's harness, its container that holds the judge and the agents, restarts to apply it. Empty: the rig's current split |
 | **Notes for the agents** | Anything the agents should know |
 

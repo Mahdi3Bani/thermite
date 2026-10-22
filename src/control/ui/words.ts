@@ -361,14 +361,30 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       const named = rules
         .map((r) => `${r.kind ?? ""} ${r.family ? asToken(r.family) : (r.match ?? "")}`.trim())
         .join("; ");
+      // A rule that freezes the queue's size or pins an experiment (goal 081): left out, with why.
+      const refused =
+        b.reason === "freezes_queue"
+          ? "that would freeze the queue's size"
+          : b.reason === "pins_experiment"
+            ? "that would pin an experiment"
+            : "";
       return s(
         b.reason === "unknown_direction"
           ? `${who(e.actor)} named ${rules.length === 1 ? "a direction" : "directions"} this research run doesn't have (${named}): left out. ${String(b.why ?? "")}`.trim()
-          : `${who(e.actor)} named ${rules.length === 1 ? "a rule" : `${rules.length} rules`} you removed (${named}): left out.`,
-        "",
+          : refused
+            ? `${who(e.actor)} gave ${rules.length === 1 ? "a rule" : `${rules.length} rules`} ${refused} (${named || "a note"}): left out. ${clip(String(b.why ?? ""), 300)}`.trim()
+            : `${who(e.actor)} named ${rules.length === 1 ? "a rule" : `${rules.length} rules`} you removed (${named}): left out.`,
+        refused ? "warn" : "",
         { run: String(e.subject) },
       );
     }
+    // The planner's round left the queue below its target (goal 081): the teachers are asked.
+    case "queue_low":
+      return s(
+        `After round ${String(b.round ?? "?")}, the queue had ${String(b.ready ?? "?")} of its target of ${String(b.target ?? "?")} experiments ready: the teachers were asked for ideas at once.`,
+        "",
+        { run: String(e.subject) },
+      );
     case "family_added": {
       const name = asToken(String(b.family ?? ""));
       const what =

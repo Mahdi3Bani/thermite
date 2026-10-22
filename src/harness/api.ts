@@ -301,6 +301,9 @@ export function createHarnessApi(
         // The campaign's own context settings, which the advisors' calls for the run take too
         // (goal 070); null: none.
         agents_context: service.ledger.getContract(i.campaign, i.version)?.agents_context ?? null,
+        // The planner's round left the queue below its target (goal 081): the teachers' round
+        // starts at once, not on the clock. Null: the queue is at its target, or none applies.
+        queue_low: service.queueLow(i.id),
       })),
     }),
   );
@@ -308,6 +311,43 @@ export function createHarnessApi(
   app.get("/v1/brief", supervisor, (c) => {
     const run = z.string().min(1).parse(c.req.query("run"));
     return c.json(service.brief(run) as object);
+  });
+
+  // The teachers' reads of a run's code and evidence (goal 081), read only: the champion's tree,
+  // one of its files by lines, an attempt's diff in parts, and the judge's public findings.
+  // Nothing here reads the kit, held-out results or a measurement, and nothing writes.
+  const runOf = (c: { req: { query(k: string): string | undefined } }) =>
+    z.string().min(1).max(100).parse(c.req.query("run"));
+  const numberOf = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
+  app.get("/v1/code/files", supervisor, async (c) =>
+    c.json(await service.codeFiles(runOf(c), c.req.query("path") ?? "")),
+  );
+  app.get("/v1/code/file", supervisor, async (c) => {
+    const q = z
+      .object({
+        path: z.string().min(1).max(500),
+        offset: z.number().int().min(1).optional(),
+        limit: z.number().int().min(1).max(100_000).optional(),
+      })
+      .parse({
+        path: c.req.query("path"),
+        offset: numberOf(c.req.query("offset")),
+        limit: numberOf(c.req.query("limit")),
+      });
+    return c.json(await service.codeFile(runOf(c), q.path, q.offset, q.limit));
+  });
+  app.get("/v1/code/diff", supervisor, async (c) => {
+    const q = z
+      .object({
+        attempt: z.string().min(1).max(64),
+        offset: z.number().int().min(0).optional(),
+      })
+      .parse({ attempt: c.req.query("attempt"), offset: numberOf(c.req.query("offset")) });
+    return c.json(await service.attemptDiff(runOf(c), q.attempt, q.offset));
+  });
+  app.get("/v1/evidence", supervisor, (c) => {
+    const attempt = z.string().min(1).max(64).optional().parse(c.req.query("attempt"));
+    return c.json(service.evidence(runOf(c), attempt) as object);
   });
 
   app.get("/v1/audits/pending", supervisor, async (c) =>

@@ -34,15 +34,15 @@ An audit compared the two:
 
 ## Done when
 
-- [ ] The teachers' instructions and answer put a portfolio first, with no count; each opportunity becomes an experiment in the queue, with its mechanism, gain bound, experiment and control, stop condition, why it is new and its evidence. One without evidence is left out, with why.
-- [ ] Rules come second. The supervisor and the harness both refuse a rule that freezes the queue's size or pins an experiment, each with why in History and Live. Such a rule of the teachers', in force from before, no longer reaches the planner.
-- [ ] The merged by model merges two portfolios without dropping a distinct idea; code adds back what it left out. Without a merged by model, every teacher's distinct ideas are kept.
-- [ ] The teachers read the champion's tree, a file of it, an attempt's diff and the judge's public findings: tools in Pi, and the same tools on localhost for Claude Code, OpenCode and Codex. None for teachers with an open web fetch. Held-out content stays out, by what is read.
-- [ ] A target queue depth: the contract's `lanes.queue_target`, two for each lane by default, set in New campaign and shown on the campaign's page, with a description that says it is a target, not a cap.
-- [ ] Below the target, the planner is asked to top the queue up; the lanes' distinct ideas go up next; a queue still below it starts the teachers' round at once.
-- [ ] A worker's brief asks for its follow-up ideas before it submits or stops; the planner queues the distinct ones.
-- [ ] Tests for each: the prompts, the refusal of freezing rules, the portfolio written as experiments, the code and diff tools, held-out content kept out, the top-up below the target, the teachers' round started by a low queue, and lane proposals reaching the queue.
-- [ ] The pages that describe the advisors, the advisors file, supervision, the planner and the queue, the contract and the changelog describe it.
+- [x] The teachers' instructions and answer put a portfolio first, with no count; each opportunity becomes an experiment in the queue, with its mechanism, gain bound, experiment and control, stop condition, why it is new and its evidence. One without evidence is left out, with why.
+- [x] Rules come second. The supervisor and the harness both refuse a rule that freezes the queue's size or pins an experiment, each with why in History and Live. Such a rule of the teachers', in force from before, no longer reaches the planner.
+- [x] The merged by model merges two portfolios without dropping a distinct idea; code adds back what it left out. Without a merged by model, every teacher's distinct ideas are kept.
+- [x] The teachers read the champion's tree, a file of it, an attempt's diff and the judge's public findings: tools in Pi, and the same tools on localhost for Claude Code, OpenCode and Codex. None for teachers with an open web fetch. Held-out content stays out, by what is read.
+- [x] A target queue depth: the contract's `lanes.queue_target`, two for each lane by default, set in New campaign and shown on the campaign's page, with a description that says it is a target, not a cap.
+- [x] Below the target, the planner is asked to top the queue up; the lanes' distinct ideas go up next; a queue still below it starts the teachers' round at once.
+- [x] A worker's brief asks for its follow-up ideas before it submits or stops; the planner queues the distinct ones.
+- [x] Tests for each: the prompts, the refusal of freezing rules, the portfolio written as experiments, the code and diff tools, held-out content kept out, the top-up below the target, the teachers' round started by a low queue, and lane proposals reaching the queue.
+- [x] The pages that describe the advisors, the advisors file, supervision, the planner and the queue, the contract and the changelog describe it.
 - [ ] The steering and agents acceptances pass on this branch.
 
 ## Decisions
@@ -65,7 +65,7 @@ None.
 
 ## Progress
 
-- 2026-10-22: Goal written from the owner's request and the audit. Building.
+- 2026-10-22: Goal written from the owner's request and the audit. Built: the teachers' portfolio and its merge (`src/supervisor/advisors.ts`), the code and evidence reads (`src/harness/evidence.ts`, `src/supervisor/code-tools.ts`, the harness's `/v1/code/*` and `/v1/evidence`), the refusals (`src/core/queue-target.ts`), the target and the top-up (`src/harness/agents/scheduler.ts`, `coordinator.ts`, `planner.ts`), the low queue's teachers' round (`src/supervisor/advise.ts`), the follow-up line in the worker's brief, New campaign's field and the campaign's page. Tests: `src/core/queue-target.test.ts`, `src/harness/evidence.test.ts`, `src/supervisor/advise-ideas.test.ts`, `src/harness/agents/scheduler-queue.test.ts`, `src/control/new-campaign-page.test.ts`, `src/control/ui/campaigns.test.ts`. Next: the steering and agents acceptances.
 
 ---
 

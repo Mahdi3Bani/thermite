@@ -83,6 +83,27 @@ export interface PlannerInput {
   briefing?: BriefingItem[] | undefined;
   /** Where the run's past research is and how to search it, when its folder has some (one line). */
   pastResearch?: string | undefined;
+  /**
+   * The run's target queue depth (goal 081): how many experiments up next should hold after the
+   * round's hand-out. Below it, the planner is asked to top the queue up with distinct ideas.
+   */
+  queueTarget?: number | undefined;
+}
+
+/**
+ * The queue's target as the planner reads it (goal 081): the target, what up next holds, and at
+ * least how many to add (or accept from the lanes' ideas) to reach it after this hand-out.
+ */
+export function queueTargetContext(
+  input: Pick<PlannerInput, "queue" | "laneCount" | "queueTarget">,
+) {
+  if (input.queueTarget === undefined) return undefined;
+  const upNext = input.queue?.up_next.length ?? 0;
+  return {
+    target: input.queueTarget,
+    up_next: upNext,
+    add_at_least: Math.max(0, input.queueTarget - Math.max(0, upNext - input.laneCount)),
+  };
 }
 
 /**
@@ -186,7 +207,7 @@ const PlanSchema = z.object({
         position: QueuePosition.optional(),
       }),
     )
-    .max(20)
+    // No count (goal 081): the queue's target drives ideas, and nothing caps them.
     .default([]),
   move: z
     .array(z.object({ id: z.string().min(1).max(64), position: QueuePosition, why: Why }))
@@ -200,7 +221,6 @@ const PlanSchema = z.object({
     .array(
       z.object({ id: z.string().min(1).max(64), why: Why, position: QueuePosition.optional() }),
     )
-    .max(40)
     .default([]),
   rules: z
     .array(
@@ -566,7 +586,14 @@ newest experiments tried with their results (the judge's verdict and change), so
 what failed. Never give two lanes the same experiment. You may give a lane an experiment close to
 its last direction (lane_state) so it builds on what it learned. You may change the queue, each
 change with a reason in why: add experiments (each with a ref that a lane's assignment may name),
-move or drop queued ones, and accept proposed ideas into up next or drop them. Obey the
+move or drop queued ones, and accept proposed ideas into up next or drop them. Keep the queue
+full of ideas: queue_target.target is how many experiments up_next should hold after your
+hand-out, for the lanes' later trials. When it would hold fewer (queue_target.add_at_least says
+at least how many are missing), top it up: accept each proposed idea that is distinct from what is
+up next, in progress and tried, and add new experiments, each distinct and with why, until the
+target is reached. The target drives ideas; it is not a cap: add more when you have more distinct,
+evidenced ideas. Drop a proposed idea that repeats one queued or tried, saying which. No rule
+stops you from keeping the queue at its target. Obey the
 directives (the rules for the plan): never give out an experiment whose family an AVOID
 directive names, give at least one lane an experiment of every MANDATE family (add one if the
 queue has none), and prefer TRY families. A directive marked legacy is an old rule in the
@@ -643,6 +670,8 @@ export function plannerContext(input: PlannerInput): string {
     families: input.families,
     evidence: input.evidence,
     queue: input.queue ?? { up_next: [], proposed: [], in_progress: [], tried: [] },
+    // The target the queue is kept at (goal 081): a target that drives ideas, not a cap.
+    ...(queueTargetContext(input) ? { queue_target: queueTargetContext(input) } : {}),
     ...(input.laneState ? { lane_state: input.laneState } : {}),
     // An old rule in words is marked legacy: code does not keep it until it is converted, and
     // to_convert lists those this round converts (goal 066).
