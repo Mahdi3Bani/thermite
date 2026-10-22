@@ -47,6 +47,8 @@ import {
 } from "./planner.ts";
 import {
   classifyProviderError,
+  FAILING_SAID,
+  failedTooLong,
   KIND_WORDS,
   type ProviderErrorKind,
   stopsAgents,
@@ -257,6 +259,11 @@ export class Scheduler {
   private reportNoted = "";
   /** Shutting down: no new plan or trial (goal 079). */
   private stopping = false;
+  /**
+   * Each run's model calls failing with no call that worked, since when (ms), from its trials'
+   * results (goal 079): a trial that ends at its own time limit while its calls fail passes it on.
+   */
+  private readonly failingSince = new Map<string, number>();
 
   constructor(opts: SchedulerOptions) {
     this.o = {
@@ -432,21 +439,27 @@ export class Scheduler {
 
   /**
    * The run's agents stop (goal 079): no new trial or plan, until a model check passes or the
-   * route changes. Recorded once, with the provider's words, for History and Needs you.
+   * route changes. Recorded once, with the provider's words, for History and Needs you. `said`
+   * replaces the kind's own words (a failure that never cleared).
    */
-  stopAgents(run: string, why: { kind: AgentsStopped["kind"]; words: string; by: string }): void {
+  stopAgents(
+    run: string,
+    why: { kind: AgentsStopped["kind"]; words: string; by: string; said?: string | undefined },
+  ): void {
     const stop = this.newest(["agents_stopped", "agents_resumed"], run);
     if (stop && this.ledgerKind(stop.id) === "agents_stopped") return;
+    const said =
+      why.said ?? (why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind]);
     this.ledger.appendEvent(this.o.owner, "agents_stopped", run, {
       kind: why.kind,
       words: why.words.slice(0, 600),
       by: why.by,
-      said: why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind],
+      said,
     });
     this.o.service.live.append({
       source: "planner",
       kind: "status",
-      text: `the agents stop: ${why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind]} (${why.words.slice(0, 300)}). No trial starts until a model check passes; the model is checked again in a minute, then less often.`,
+      text: `the agents stop: ${said} (${why.words.slice(0, 300)}). No trial starts until a model check passes; the model is checked again in a minute, then less often.`,
       run,
     });
   }
@@ -1944,20 +1957,21 @@ export class Scheduler {
   /**
    * A trial ended: its experiment is done, with how its trial ended in words, or goes back to the
    * top of the queue when the trial never really tried it (interrupted, or the provider's error:
-   * goal 079). A failure here is logged; the trial's own record stands.
+   * goal 079). Only an error that came from a call to the provider counts as the provider's: its
+   * kind (`errorKind`) is set where the call was made, never read from a local failure's words. A
+   * failure here is logged; the trial's own record stands.
    */
   private finishExperiment(trial: string, r: TrialResult, attempt?: string | undefined): void {
     try {
-      const kind =
-        r.errorKind ??
-        (r.stopped === "error" && r.error ? classifyProviderError(r.error).kind : undefined);
       this.coordinator.finish(
         trial,
         {
           result: resultOf(r.stopped, attempt),
           attempt,
           cause: r.error ?? (r.stopped === "interrupted" ? "its trial was stopped" : undefined),
-          kind,
+          kind: r.errorKind,
+          // Its calls failed until the run's agents stopped: it never really tried it either.
+          agentsStopped: r.stopped === "error" && !!r.failing && failedTooLong(r.failing.since),
         },
         this.o.owner,
       );
@@ -1968,23 +1982,60 @@ export class Scheduler {
 
   /**
    * What a trial's provider error means for the run (goal 079): no credits, a refused key or an
-   * unserved model stop the run's agents; a rate limit with a time makes them wait until then.
+   * unserved model stop the run's agents; so do model calls that failed with the provider's
+   * passing faults or the model's own errors, with no call that worked, for 30 minutes; a rate
+   * limit with a time makes them wait until then. Only the kind the provider's call set counts
+   * (`errorKind`): a local failure (a workspace that could not be set up, a worker process that
+   * gave no result, a program that exited) never stops the agents, whatever its words.
    */
   private afterTrial(id: string, run: string, r: TrialResult): void {
+    if (this.stopOnLongFailure(id, run, r)) return;
     if (r.stopped !== "error" || !r.error) return;
-    const e = classifyProviderError(r.error);
-    const kind = r.errorKind ?? e.kind;
+    const kind = r.errorKind;
     if (stopsAgents(kind)) {
-      this.stopAgents(run, { kind, words: r.error, by: `trial ${id}` });
+      this.stopAgents(run, { kind: kind as ProviderErrorKind, words: r.error, by: `trial ${id}` });
       return;
     }
-    const until = r.retryAfter ?? (kind === "rate_limit" ? e.retryAt : undefined);
+    const until =
+      r.retryAfter ?? (kind === "rate_limit" ? classifyProviderError(r.error).retryAt : undefined);
     if (until)
       this.ledger.appendEvent(this.o.owner, "agents_wait_for_limit", run, {
         until,
         trial: id,
         reason: r.error,
       });
+  }
+
+  /**
+   * The run's model calls have failed with the provider's passing faults or the model's own
+   * errors, with no call that worked, for 30 minutes (goal 079): within one trial, or over trials
+   * that each ended at their own time limit while their calls failed. The run's agents stop as
+   * for no credits, with the newest failure's words. Pacing, so that the owner sees a failure
+   * that never clears; the model is checked again as for any stop. A trial whose calls worked at
+   * its end clears the run's count. True when the agents stopped.
+   */
+  private stopOnLongFailure(id: string, run: string, r: TrialResult): boolean {
+    const f = r.failing;
+    if (!f) {
+      if (r.submitted || r.tokensIn > 0 || r.tokensOut > 0) this.failingSince.delete(run);
+      return false;
+    }
+    const since = Math.min(
+      this.failingSince.get(run) ?? Number.POSITIVE_INFINITY,
+      Date.parse(f.since),
+    );
+    if (!failedTooLong(since)) {
+      this.failingSince.set(run, since);
+      return false;
+    }
+    this.failingSince.delete(run);
+    this.stopAgents(run, {
+      kind: f.kind,
+      words: f.words,
+      by: `trial ${id}`,
+      said: `${FAILING_SAID} (${KIND_WORDS[f.kind]})`,
+    });
+    return true;
   }
 
   /**

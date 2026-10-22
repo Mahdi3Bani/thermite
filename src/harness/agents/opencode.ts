@@ -22,7 +22,12 @@ import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
-import { afterProgramFailure, type ProviderLink } from "./provider-errors.ts";
+import {
+  afterProgramFailure,
+  type FailureCount,
+  failingOf,
+  type ProviderLink,
+} from "./provider-errors.ts";
 import {
   CODE_RESEARCH_TOOLS,
   codeResearchNote,
@@ -639,8 +644,8 @@ export async function runOpencodeTrial(
   const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
   const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
   let message = `${SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${minutes !== undefined ? `This trial lasts ${minutes} minutes. Submit before it ends.` : "Submit once your change works."}`;
-  // Failed model calls in a row, and rate limits in a row (goal 079).
-  const count = { failures: 0, rateWaits: 0 };
+  // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
+  const count: FailureCount = { failures: 0, rateWaits: 0 };
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -706,6 +711,8 @@ export async function runOpencodeTrial(
     const outcome = await running;
     pump();
     carried.drop();
+    // A run that made progress had calls that worked: the calls no longer fail (goal 079).
+    if (tally.turns + tally.toolCalls > progressBefore) count.failing = undefined;
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
       break;
@@ -783,6 +790,8 @@ export async function runOpencodeTrial(
   } else if (result.stopped === "no_submission" && tally.errors.length) {
     result.error = tally.errors.at(-1);
   }
+  const failing = failingOf(count);
+  if (failing && !sub) result.failing = failing;
   result.turns = tally.turns;
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;
@@ -906,8 +915,8 @@ export async function runOpencodeResearchTrial(
       });
   };
   const capped = () => spec.maxTurns !== undefined && tally.turns >= spec.maxTurns;
-  // Failed model calls in a row, and rate limits in a row (goal 079).
-  const count = { failures: 0, rateWaits: 0 };
+  // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
+  const count: FailureCount = { failures: 0, rateWaits: 0 };
   for (;;) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
@@ -953,6 +962,8 @@ export async function runOpencodeResearchTrial(
     const outcome = await running;
     pump();
     carried.drop();
+    // A run that made progress had calls that worked: the calls no longer fail (goal 079).
+    if (tally.turns > turnsBefore || tally.toolCalls > callsBefore) count.failing = undefined;
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
       break;
@@ -1017,6 +1028,8 @@ export async function runOpencodeResearchTrial(
     message = ["Continue your research.", ...ownerLines(carried.take(tally))].join("\n\n");
   }
   if (result.stopped === "wall") result.error = `the trial reached its ${minutes}-minute limit`;
+  const failing = failingOf(count);
+  if (failing) result.failing = failing;
   result.turns = tally.turns;
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;

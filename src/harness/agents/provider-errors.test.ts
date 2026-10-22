@@ -5,6 +5,9 @@ import {
   afterProgramFailure,
   classifyProviderError,
   durationMs,
+  FAILING_STOP_MS,
+  type FailureCount,
+  failingOf,
   nextStep,
   retryAtFrom,
   statusIn,
@@ -178,5 +181,88 @@ describe("provider errors by kind (goal 079)", () => {
       signal: ctrl.signal,
     });
     assert.deepEqual(stopped, { interrupted: true });
+  });
+
+  test("a quota 429 the provider marks a rate limit is one; OpenAI's insufficient_quota and a 402 stay no credits", () => {
+    const quota =
+      "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.";
+    // Google's per-minute quota: a 429 with RESOURCE_EXHAUSTED, in the words of a quota.
+    assert.equal(
+      kind(`429: {"error":{"code":429,"message":"${quota}","status":"RESOURCE_EXHAUSTED"}}`),
+      "rate_limit",
+    );
+    // A 429 with a time to try again in its headers: a rate limit, and its time is kept.
+    const timed = classifyProviderError(
+      quota,
+      { status: 429, headers: { "retry-after": "20" } },
+      NOW,
+    );
+    assert.equal(timed.kind, "rate_limit");
+    assert.equal(Date.parse(String(timed.retryAt)) - NOW, 20_000);
+    assert.equal(
+      kind(quota, { status: 429, headers: { "x-ratelimit-reset-requests": "1s" } }),
+      "rate_limit",
+    );
+    // OpenAI's no credits, in the same words: its code says so, even with reset headers.
+    assert.equal(
+      kind(
+        '429: {"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}',
+        { status: 429, headers: { "x-ratelimit-reset-requests": "1s" } },
+      ),
+      "credits",
+    );
+    assert.equal(kind(quota, { status: 402, headers: { "retry-after": "20" } }), "credits");
+    // The same words with nothing that marks a rate limit: still no credits.
+    assert.equal(kind(`429 ${quota}`), "credits");
+  });
+
+  test("a passing fault or the model's error with no call that worked for 30 minutes ends the trial; a rate limit between does not reset it (goal 079)", () => {
+    const count: FailureCount = { failures: 0, rateWaits: 0 };
+    const server = classifyProviderError("503 Service Unavailable", undefined, NOW);
+    const at = (min: number) => NOW + min * 60_000;
+    assert.equal(nextStep(server, count, undefined, at(0)).end, false);
+    assert.equal(failingOf(count)?.since, new Date(NOW).toISOString());
+    assert.equal(nextStep(server, count, undefined, at(10)).end, false);
+    // A rate limit between the failures: it waits, and the count goes on.
+    const rate = classifyProviderError("429", { headers: { "retry-after": "60" } }, at(15));
+    assert.equal(nextStep(rate, count, undefined, at(15)).end, false);
+    const model = classifyProviderError("400 Invalid tool call arguments", undefined, at(29));
+    assert.equal(nextStep(model, count, undefined, at(29)).end, false);
+    const last = nextStep(model, count, undefined, at(30));
+    assert.ok(last.end, "30 minutes with no call that worked: the trial ends");
+    assert.match(
+      last.error,
+      /^no model call worked for 30 minutes \(the provider refused the request\): 400 Invalid tool call arguments/,
+    );
+    assert.deepEqual(failingOf(count), {
+      since: new Date(NOW).toISOString(),
+      kind: "model",
+      words: "400 Invalid tool call arguments",
+    });
+    assert.equal(FAILING_STOP_MS, 30 * 60_000);
+    // A call that worked clears it (the trial's loop does): the count starts again.
+    count.failing = undefined;
+    assert.equal(nextStep(server, count, undefined, at(31)).end, false);
+    assert.equal(failingOf(count)?.since, new Date(at(31)).toISOString());
+  });
+
+  test("a program's run that keeps failing for 30 minutes ends with the kind; the trial's failing calls are kept", async () => {
+    const count: FailureCount = {
+      failures: 3,
+      rateWaits: 0,
+      failing: { since: Date.now() - FAILING_STOP_MS, kind: "server", words: "503" },
+    };
+    const end = await afterProgramFailure({
+      error: "502 Bad Gateway",
+      count,
+      deadline: Number.POSITIVE_INFINITY,
+    });
+    assert.ok("end" in end);
+    assert.equal(end.end.kind, "server");
+    assert.match(
+      end.end.error,
+      /no model call worked for 30 minutes \(the provider failed for now\)/,
+    );
+    assert.equal(failingOf(count)?.words, "502 Bad Gateway");
   });
 });

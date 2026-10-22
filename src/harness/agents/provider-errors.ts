@@ -16,7 +16,12 @@ import { CHATGPT_LIMIT_CODE, CHATGPT_LIMIT_WAIT_MS } from "./model.ts";
  *   the call failed and goes on.
  *
  * None of these ends research. A trial ends after failures in a row only when the campaign sets
- * `lanes.limits.failures_in_a_row`.
+ * `lanes.limits.failures_in_a_row`. A `server` or `model` failure that never clears, with no call
+ * that worked for FAILING_STOP_MS, stops the run's agents as no credits does, until a model check
+ * passes: pacing, so that the owner sees it, not a cap.
+ *
+ * Only an error that came from a call to the provider is sorted here: the words of a local failure
+ * (a workspace that could not be set up, a program that exited) are not the provider's.
  */
 export type ProviderErrorKind =
   | "rate_limit"
@@ -46,6 +51,57 @@ export interface ProviderAnswer {
 /** The kinds after which the run's agents stop until a model check passes. */
 export const STOP_KINDS: ReadonlySet<ProviderErrorKind> = new Set(["credits", "auth", "route"]);
 
+/**
+ * How long a trial's model calls may keep failing with the provider's passing faults (`server`)
+ * or the model's own errors (`model`), with no call that worked between them, before the run's
+ * agents stop as they do for no credits (goal 079). It is pacing, not a cap on research: the model
+ * is then checked again, after a minute and then less often (at most every 30 minutes), at once
+ * when the owner resumes the run, and a passing check lets the agents go on, each lane with a
+ * fresh trial. A rate limit between those failures does not end the count: only a call that
+ * worked does.
+ */
+export const FAILING_STOP_MS = 30 * 60_000;
+
+/** What such a stop says, in words. */
+export const FAILING_SAID = `no model call worked for ${FAILING_STOP_MS / 60_000} minutes`;
+
+/**
+ * A trial's failing model calls when it ended (goal 079): since when they failed with no call that
+ * worked between them (ISO), and the newest one's kind and the provider's words.
+ */
+export interface TrialFailing {
+  since: string;
+  kind: ProviderErrorKind;
+  words: string;
+}
+
+/** A trial's failed model calls in a row, and since when they have failed (goal 079). */
+export interface FailureCount {
+  /** Failures in a row that are not rate limits. */
+  failures: number;
+  /** Rate limits in a row. */
+  rateWaits: number;
+  /**
+   * Since when (ms) the calls have failed with `server` or `model` errors, with no call that
+   * worked since, and the newest one's kind and words. A call that worked clears it.
+   */
+  failing?: { since: number; kind: ProviderErrorKind; words: string } | undefined;
+}
+
+/** The failing calls a trial ended with, for its result; none when its last call worked. */
+export function failingOf(count: FailureCount): TrialFailing | undefined {
+  const f = count.failing;
+  return f
+    ? { since: new Date(f.since).toISOString(), kind: f.kind, words: f.words.slice(0, 600) }
+    : undefined;
+}
+
+/** Whether failing calls since `since` (ISO or ms) have lasted FAILING_STOP_MS. */
+export function failedTooLong(since: string | number, now = Date.now()): boolean {
+  const t = typeof since === "number" ? since : Date.parse(since);
+  return !Number.isNaN(t) && now - t >= FAILING_STOP_MS;
+}
+
 export function stopsAgents(kind: ProviderErrorKind | undefined): boolean {
   return kind !== undefined && STOP_KINDS.has(kind);
 }
@@ -61,8 +117,15 @@ export const KIND_WORDS: Record<ProviderErrorKind, string> = {
   model: "the provider refused the request",
 };
 
+/** No credits, by a code or words that mean nothing else (OpenAI's `insufficient_quota`). */
 const CREDITS =
-  /insufficient[_ ]?(credits?|quota|balance|funds)|credit balance|out of credits|not enough credits|no credits|add (more )?credits|purchase (more )?credits|payment required|billing|exceeded your current quota|quota exceeded|requires? (more )?credits/i;
+  /insufficient[_ ]?(credits?|quota|balance|funds)|credit balance|out of credits|not enough credits|no credits|add (more )?credits|purchase (more )?credits|payment required|requires? (more )?credits/i;
+/**
+ * Words a quota error shares with a rate limit: OpenAI's no-credits answer and Google's
+ * per-minute quota both say "You exceeded your current quota, please check your plan and billing
+ * details". No credits only when nothing marks the answer a rate limit.
+ */
+const QUOTA = /billing|exceeded your current quota|quota exceeded/i;
 const AUTH =
   /invalid[_ ]?(api[_ ]?)?key|incorrect api key|invalid x-api-key|unauthori[sz]ed|authentication|permission[_ ]denied|api key (is )?(invalid|expired|revoked|disabled)|key (has been )?(revoked|disabled)|token (has )?expired|access denied/i;
 const ROUTE =
@@ -186,7 +249,10 @@ export function retryAtFrom(
 
 /**
  * The kind of a provider's error, from its words and, when the caller saw it, the provider's
- * answer (its status and headers). No credits comes first: OpenAI says so with a 429.
+ * answer (its status and headers). No credits comes first: OpenAI says so with a 429. A 429 that
+ * marks itself a rate limit (Google's `RESOURCE_EXHAUSTED`, or a time to try again in its
+ * headers) is one, even in a quota's words; OpenAI's `insufficient_quota` and a 402 stay no
+ * credits.
  */
 export function classifyProviderError(
   text: string,
@@ -196,13 +262,22 @@ export function classifyProviderError(
   const words = text.replace(/\s+/g, " ").trim().slice(0, 600) || "no detail";
   const status = answer?.status ?? statusIn(text);
   const base = { words, ...(status !== undefined ? { status } : {}) };
+  const rate = (): ProviderError => ({
+    ...base,
+    kind: "rate_limit",
+    retryAt: retryAtFrom(text, answer?.headers, now),
+  });
   if (status === 402 || CREDITS.test(text)) return { ...base, kind: "credits" };
-  if (text.includes(CHATGPT_LIMIT_CODE))
-    return { ...base, kind: "rate_limit", retryAt: retryAtFrom(text, answer?.headers, now) };
+  if (text.includes(CHATGPT_LIMIT_CODE)) return rate();
+  if (
+    /resource[_ ]exhausted/i.test(text) ||
+    (status === 429 && retryAtFrom("", answer?.headers, now) !== undefined)
+  )
+    return rate();
+  if (QUOTA.test(text)) return { ...base, kind: "credits" };
   if (status === 401 || status === 403 || AUTH.test(text)) return { ...base, kind: "auth" };
   if (ROUTE.test(text)) return { ...base, kind: "route" };
-  if (status === 429 || RATE.test(text))
-    return { ...base, kind: "rate_limit", retryAt: retryAtFrom(text, answer?.headers, now) };
+  if (status === 429 || RATE.test(text)) return rate();
   if (CONTEXT.test(text) && !/deadline exceeded/i.test(text)) return { ...base, kind: "context" };
   if (status === 404) return { ...base, kind: "route" };
   if ((status !== undefined && (status >= 500 || status === 408)) || SERVER.test(text))
@@ -226,12 +301,15 @@ export function ratePauseMs(n: number): number {
 /**
  * A program's run in a trial (OpenCode, Codex, Claude Code) or Pi's model call ended with a
  * provider's error: what the trial does next. `failures` counts failures in a row that are not
- * rate limits; `rateWaits` rate limits in a row. A stop kind ends the trial; a limit the campaign
- * set (`failuresInARow`) ends it after that many failures; anything else waits and goes on.
+ * rate limits; `rateWaits` rate limits in a row; `failing` says since when the calls have failed
+ * with no call that worked. A stop kind ends the trial; a limit the campaign set
+ * (`failuresInARow`) ends it after that many failures; so does a failure that has lasted
+ * FAILING_STOP_MS, and the run's agents then stop (the scheduler reads the trial's `failing`).
+ * Anything else waits and goes on.
  */
 export function nextStep(
   e: ProviderError,
-  count: { failures: number; rateWaits: number },
+  count: FailureCount,
   failuresInARow?: number | undefined,
   now = Date.now(),
 ):
@@ -252,11 +330,14 @@ export function nextStep(
   }
   count.rateWaits = 0;
   count.failures++;
+  count.failing = { since: count.failing?.since ?? now, kind: e.kind, words: e.words };
   if (failuresInARow !== undefined && count.failures >= failuresInARow)
     return {
       end: true,
       error: `the model call failed ${count.failures} times in a row (the campaign's failures_in_a_row): ${e.words}`,
     };
+  if (failedTooLong(count.failing.since, now))
+    return { end: true, error: `${FAILING_SAID} (${KIND_WORDS[e.kind]}): ${e.words}` };
   const waitMs = failurePauseMs(count.failures);
   return {
     end: false,
@@ -278,7 +359,7 @@ export async function afterProgramFailure(input: {
   error: string;
   /** The error answer the model proxy saw during the run, if any. */
   answer?: (ProviderAnswer & { body?: string | undefined }) | undefined;
-  count: { failures: number; rateWaits: number };
+  count: FailureCount;
   failuresInARow?: number | undefined;
   /** The trial's end (ms), or Infinity. */
   deadline: number;

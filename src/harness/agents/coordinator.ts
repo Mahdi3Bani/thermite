@@ -332,7 +332,8 @@ export class Coordinator {
    * trial ended in words (its cause). One whose trial never really tried it goes back to the top
    * of the queue, the same row with its cause (goal 079): a trial interrupted (a reset, a pause, a
    * restart), or one that ended on the provider's error (a rate limit, a 5xx, no credits, a
-   * refused key or an unserved model). Any other failure is a tried experiment, with its cause.
+   * refused key or an unserved model, or calls that failed until the run's agents stopped). Any
+   * other failure is a tried experiment, with its cause.
    */
   finish(
     trial: string,
@@ -342,13 +343,16 @@ export class Coordinator {
       cause?: string | undefined;
       /** The provider's error's kind, when the trial ended on one. */
       kind?: string | undefined;
+      /** The trial ended because its model calls failed until the run's agents stopped. */
+      agentsStopped?: boolean | undefined;
     },
     actor: string,
   ): void {
     const never =
       !r.attempt &&
       (r.result === "interrupted" ||
-        (r.result === "error" && r.kind !== undefined && PROVIDER_KINDS.has(r.kind)));
+        (r.result === "error" &&
+          (r.agentsStopped === true || (r.kind !== undefined && PROVIDER_KINDS.has(r.kind)))));
     if (never) {
       this.queue.returnToQueue(
         trial,

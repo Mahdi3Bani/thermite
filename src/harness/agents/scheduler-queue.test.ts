@@ -748,6 +748,8 @@ describe("the planner as the queue's coordinator", () => {
 
   test("a trial that ends on the provider's error gives its experiment back; another failure is tried, with its cause (goal 079)", async (t) => {
     let error = "503 Service Unavailable";
+    // The provider's call says it was the provider's (its kind); a local failure has none.
+    let errorKind: "server" | undefined = "server";
     const s = await setup(t, {
       lanes: 1,
       trial: async () => ({
@@ -757,6 +759,7 @@ describe("the planner as the queue's coordinator", () => {
         tokensIn: 0,
         tokensOut: 0,
         error,
+        errorKind,
       }),
     });
     const x = await s.add("waits for the provider");
@@ -768,6 +771,7 @@ describe("the planner as the queue's coordinator", () => {
     assert.match(String(back?.cause), /503 Service Unavailable/);
     // A failure of the trial itself (not the provider's): tried, and the brief says how it ended.
     error = "the lane's memory limit of 2048 MiB was reached";
+    errorKind = undefined;
     for (let i = 0; i < 50 && s.q.get(x)?.state !== "done"; i++) {
       await s.scheduler.tick();
       await s.scheduler.idle();

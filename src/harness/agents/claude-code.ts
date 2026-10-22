@@ -34,7 +34,12 @@ import {
   SYSTEM,
   takeUsage,
 } from "./opencode.ts";
-import { afterProgramFailure, type ProviderLink } from "./provider-errors.ts";
+import {
+  afterProgramFailure,
+  type FailureCount,
+  failingOf,
+  type ProviderLink,
+} from "./provider-errors.ts";
 import {
   type SubmitOutcome,
   stopNudging,
@@ -660,8 +665,8 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   // A trial's length only when the campaign or the rig sets one (goal 079).
   const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
   const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
-  // Failed model calls in a row, and rate limits in a row (goal 079).
-  const count = { failures: 0, rateWaits: 0 };
+  // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
+  const count: FailureCount = { failures: 0, rateWaits: 0 };
   const maxTurns = spec.maxTurns;
   let message = `${CLAUDE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one")}`;
   let offset = 0;
@@ -746,6 +751,8 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     closeClaudeRun(tally);
     takeUsage(tally, deps.modelUsage);
     carried.drop();
+    // A run that made progress had calls that worked: the calls no longer fail (goal 079).
+    if (tally.turns + tally.toolCalls > progressBefore) count.failing = undefined;
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
       break;
@@ -761,6 +768,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     // A full usage window: the trial ends, and the lane waits for the reset (never paid credits).
     if (tally.limitedUntil) {
       result.stopped = "error";
+      result.errorKind = "rate_limit";
       result.retryAfter = tally.limitedUntil;
       result.error = `the Claude subscription's usage window is full until ${tally.limitedUntil}`;
       break;
@@ -838,6 +846,8 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   } else if (result.stopped === "no_submission" && tally.errors.length) {
     result.error = tally.errors.at(-1);
   }
+  const failing = failingOf(count);
+  if (failing && !sub) result.failing = failing;
   result.turns = tally.turns;
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;

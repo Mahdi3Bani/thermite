@@ -6,6 +6,7 @@ import { laneLimits } from "../../core/contract.ts";
 import { startFakeModel } from "../../testing/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../../testing/judge-env.ts";
 import { LocalRunner } from "../broker/runner.ts";
+import type { FailureCount } from "./provider-errors.ts";
 import { keepGoing, runTrial } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
 
@@ -653,6 +654,63 @@ describe("worker trial", () => {
     assert.equal(f3?.stopped, "error");
     assert.match(String(f3?.error), /failed 3 times in a row .*failures_in_a_row/);
     assert.equal(capped.calls(), 3);
+  });
+
+  test("Pi: calls that fail for 30 minutes with no reply that worked end the trial with their kind; a reply between starts the count again (goal 079)", async () => {
+    // A stand-in agent whose each prompt appends the next scripted reply (or replies: a run of
+    // turns), and a clock that moves a minute for each wait.
+    type Reply = { stopReason: string; errorMessage?: string };
+    const fake = (replies: (Reply | Reply[])[]) => {
+      const messages: unknown[] = [];
+      const listeners = new Set<(e: unknown) => void>();
+      let i = 0;
+      const next = () => {
+        const step = replies[Math.min(i++, replies.length - 1)] as Reply | Reply[];
+        for (const r of Array.isArray(step) ? step : [step]) {
+          const message = { role: "assistant", ...r, usage: { input: 10, output: 10 } };
+          messages.push(message);
+          for (const l of listeners) l({ type: "turn_end", message, toolResults: [] });
+        }
+      };
+      next();
+      return {
+        state: { messages },
+        prompt: async () => next(),
+        subscribe: (l: (e: unknown) => void) => {
+          listeners.add(l);
+          return () => listeners.delete(l);
+        },
+      } as never;
+    };
+    let clock = Date.parse("2026-10-22T03:00:00Z");
+    const o = {
+      sleep: async () => {
+        clock += 60_000;
+      },
+      now: () => clock,
+    };
+    const down = { stopReason: "error", errorMessage: "503 Service Unavailable" };
+    const count: FailureCount = { failures: 0, rateWaits: 0 };
+    const end = await keepGoing(fake([down]), () => false, 32_768, undefined, { ...o, count });
+    assert.equal(end?.stopped, "error");
+    assert.equal(end?.kind, "server");
+    assert.match(String(end?.error), /^no model call worked for 30 minutes/);
+    assert.equal(clock - Date.parse("2026-10-22T03:00:00Z"), 30 * 60_000);
+    assert.deepEqual(
+      [count.failing?.since, count.failing?.kind],
+      [Date.parse("2026-10-22T03:00:00Z"), "server"],
+    );
+    // A reply that came through after 20 minutes of failures: the count starts again from the
+    // next failure (25 minutes more is not 30), and the trial goes on to the model's own stop.
+    clock = Date.parse("2026-10-22T03:00:00Z");
+    const replies: (Reply | Reply[])[] = [
+      ...Array.from({ length: 20 }, () => down),
+      [{ stopReason: "toolUse" }, down],
+      ...Array.from({ length: 25 }, () => down),
+      { stopReason: "stop" },
+    ];
+    assert.equal(await keepGoing(fake(replies), () => false, 32_768, undefined, o), undefined);
+    assert.ok(clock - Date.parse("2026-10-22T03:00:00Z") >= 45 * 60_000, "it went on");
   });
 
   test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn, read once the agent takes it", async () => {

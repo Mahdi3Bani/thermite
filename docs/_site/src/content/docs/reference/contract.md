@@ -299,7 +299,7 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | `fetch_policy.max_bytes` | integer ≥ 1 | 5000000 | The largest response fetched, in bytes. A larger one is refused: `larger than <n> bytes` |
 | `fetch_policy.allow_logins` | `false` | `false` | Always off |
 
-A research run closes when its running time reaches `max_duration`, and then writes its final report. Without `max_duration` it runs until someone stops it: `min_duration` is a floor, never a stop. Time while the run is paused does not count, and neither does time its agents could not run: while they were stopped by the provider (no credits, a refused key, a failing model check) or waited for its rate limit ([Limits and pacing](limits-and-pacing.md#the-model-provider)). A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
+A research run closes when its running time reaches `max_duration`, and then writes its final report. Without `max_duration` it runs until someone stops it: `min_duration` is a floor, never a stop. Time while the run is paused does not count, and neither does time its agents could not run: while they were stopped by the provider (no credits, a refused key, no model call that worked for 30 minutes, a failing model check) or waited for its rate limit ([Limits and pacing](limits-and-pacing.md#the-model-provider)). A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
 
 ## Accepted, not used yet
 

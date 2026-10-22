@@ -13,9 +13,12 @@ import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
 import {
   classifyProviderError,
+  type FailureCount,
+  failingOf,
   nextStep,
   type ProviderErrorKind,
   ProviderWatch,
+  type TrialFailing,
 } from "./provider-errors.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { CODE_RESEARCH_TOOLS, codeResearchNote } from "./research-tools.ts";
@@ -200,6 +203,13 @@ export interface TrialResult {
   errorKind?: ProviderErrorKind | undefined;
   /** The model's provider refused for now (a subscription's full usage window): not before this (ISO). */
   retryAfter?: string | undefined;
+  /**
+   * The trial ended while its model calls were failing with the provider's passing faults or the
+   * model's own errors, with no call that worked since (goal 079): since when, and the newest
+   * failure. Once that has lasted 30 minutes, in this trial or across the run's trials, the
+   * scheduler stops the run's agents as for no credits.
+   */
+  failing?: TrialFailing | undefined;
 }
 
 const SYSTEM = `You are a research worker in an automated research harness. You get one assignment and
@@ -585,6 +595,8 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           agent.abort();
         }, wallMs)
       : undefined;
+  // The trial's failed model calls in a row, and since when (goal 079), over all its replies.
+  const failures: FailureCount = { failures: 0, rateWaits: 0 };
   try {
     await agent.prompt(
       `${spec.brief}\n\n${trialBudget(minutes, maxTurns, "each model reply is one")}`,
@@ -607,6 +619,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           cutoffsInARow: spec.limits?.cutoffsInARow,
           watch,
           onWait: deps.waiting,
+          count: failures,
         },
       );
       if (end && !result.submitted) {
@@ -647,6 +660,8 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       result.errorKind ??= classifyProviderError(last.errorMessage ?? "").kind;
     }
   }
+  const failing = failingOf(failures);
+  if (failing && !result.submitted) result.failing = failing;
   return result;
 }
 
@@ -749,6 +764,13 @@ export interface KeepGoingOptions {
   onWait?: ((w: ProviderWait) => void) | undefined;
   /** How a wait is spent (tests give their own); by default, real time, cut short by done(). */
   sleep?: ((ms: number, done: () => boolean) => Promise<void>) | undefined;
+  /**
+   * The trial's failed calls in a row and since when (goal 079), kept over this call and the
+   * trial's next ones; a reply that came through clears them. By default, this call's own.
+   */
+  count?: FailureCount | undefined;
+  /** The clock (tests give their own). */
+  now?: (() => number) | undefined;
 }
 
 /** Said to the agent after the harness compacted a full conversation. */
@@ -763,9 +785,10 @@ const COMPACTED =
  * a context-length error) is compacted and the trial goes on (goal 070); only a conversation that
  * the compactor cannot make fit, twice running, ends it. Returns undefined when the model stops of
  * its own accord (or once `done()`), or why the trial must end: a full context that compaction
- * cannot help; no credits, a refused key or an unserved model (the run's agents then stop until a
- * model check passes); or the campaign's own limit on failures or cut-offs in a row. Nothing here
- * ends research.
+ * cannot help; no credits, a refused key or an unserved model, or a passing fault or the model's
+ * own error with no call that worked for 30 minutes (the run's agents then stop until a model
+ * check passes); or the campaign's own limit on failures or cut-offs in a row. Nothing here ends
+ * research.
  */
 export async function keepGoing(
   agent: Agent,
@@ -774,7 +797,8 @@ export async function keepGoing(
   compactor?: Pick<Compactor, "force" | "count"> | undefined,
   o: KeepGoingOptions = {},
 ): Promise<TrialEnd | undefined> {
-  const count = { failures: 0, rateWaits: 0 };
+  const count: FailureCount = o.count ?? { failures: 0, rateWaits: 0 };
+  const now = o.now ?? Date.now;
   let cutoffs = 0;
   // Compactions forced in a row by a full context, with no finished reply between them.
   let forced = 0;
@@ -785,6 +809,9 @@ export async function keepGoing(
     if (e.type !== "turn_end") return;
     const stop = (e.message as { stopReason?: string }).stopReason;
     if (stop === "stop" || stop === "toolUse") replies++;
+    // A call that worked (a reply cut off at the output limit came through too): the calls no
+    // longer fail.
+    if (stop === "stop" || stop === "toolUse" || stop === "length") count.failing = undefined;
   });
   /** A full context: compacted and continued, or the trial's end when that cannot help. */
   const full = async (why: string): Promise<TrialEnd | undefined> => {
@@ -834,7 +861,7 @@ export async function keepGoing(
           if (end) return end;
           continue;
         }
-        const step = nextStep(e, count, o.failuresInARow);
+        const step = nextStep(e, count, o.failuresInARow, now());
         if (step.end) return { stopped: "error", error: step.error, kind: e.kind };
         o.onWait?.({ until: step.until, kind: e.kind, words: e.words });
         await (o.sleep ?? sleepUnlessDone)(step.waitMs, done);

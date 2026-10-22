@@ -8,7 +8,7 @@ import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
-import { ProviderWatch } from "./provider-errors.ts";
+import { type FailureCount, failingOf, ProviderWatch } from "./provider-errors.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import {
@@ -215,12 +215,15 @@ export async function runResearchTrial(
           agent.abort();
         }, spec.wallMs)
       : undefined;
+  // The trial's failed model calls in a row, and since when (goal 079).
+  const failures: FailureCount = { failures: 0, rateWaits: 0 };
   try {
     // With the note tool, the brief says how to keep field notes, and how they differ from
     // research notes.
     await agent.prompt(deps.note ? `${spec.brief}\n\n${RESEARCH_NOTES}` : spec.brief);
     // A cut-off reply, a failed call or a full context (compacted) does not end a research trial
-    // before its time; only a conversation that does not fit even compacted does.
+    // before its time; only a conversation that does not fit even compacted does, and failures
+    // that stop the run's agents.
     const end = await keepGoing(
       agent,
       () => result.stopped !== "no_submission",
@@ -231,6 +234,7 @@ export async function runResearchTrial(
         cutoffsInARow: spec.limits?.cutoffsInARow,
         watch,
         onWait: deps.waiting,
+        count: failures,
       },
     );
     if (end) {
@@ -248,6 +252,8 @@ export async function runResearchTrial(
     if (wall) clearTimeout(wall);
   }
   if (compactor.count) result.compactions = compactor.count;
+  const failing = failingOf(failures);
+  if (failing) result.failing = failing;
   return result;
 }
 

@@ -628,11 +628,13 @@ export function needs(
           }),
         });
       }
-      // The run's agents stopped on the provider's refusal or a failing model check (goal 079):
-      // a real failure, not a decision; it ends by itself once a model check passes.
+      // The run's agents stopped on the provider's refusal, model calls that kept failing for 30
+      // minutes, or a failing model check (goal 079): a real failure, not a decision; it ends by
+      // itself once a model check passes.
       const stop = r.agents_stopped;
       if (stop && r.status !== "closed") {
         const check = stop.kind === "check";
+        const failing = stop.kind === "server" || stop.kind === "model";
         out.push({
           kind: "agents",
           rig: u.id,
@@ -645,7 +647,9 @@ export function needs(
             question: "The agents of this run cannot work",
             headline: check
               ? "The model check of the workers' model fails"
-              : `The model provider refuses: ${esc(stop.said)}`,
+              : failing
+                ? `The model's calls keep failing: ${esc(stop.said)}`
+                : `The model provider refuses: ${esc(stop.said)}`,
             why: `No trial or plan starts until a model check passes. The provider said: ${esc(stop.words.slice(0, 200))}`,
             key: `agents-${u.id}-${r.id}`,
             u,
@@ -654,7 +658,7 @@ export function needs(
             now,
             facts: `<dt>What</dt><dd>${check ? "The workers' model failed its check." : `A ${esc(stop.by)} found that ${esc(stop.said)}.`} No new trial or plan starts. Trials in progress end as they would. The judge goes on with the changes it has. A research run's clock stops.</dd>
 <dt>The provider's words</dt><dd><code>${esc(stop.words)}</code></dd>
-<dt>Check</dt><dd>${stop.kind === "credits" ? "Add credits at the provider, or give the rig another model on Edit rig." : stop.kind === "auth" ? "The provider's key in Settings › Providers: it may be wrong, expired or revoked." : stop.kind === "route" ? "The model's name, and whether this key may use it, in Settings › Providers; or give the rig another model on Edit rig." : "The check's result on the rig's page, and the provider in Settings › Providers."}</dd>
+<dt>Check</dt><dd>${stop.kind === "credits" ? "Add credits at the provider, or give the rig another model on Edit rig." : stop.kind === "auth" ? "The provider's key in Settings › Providers: it may be wrong, expired or revoked." : stop.kind === "route" ? "The model's name, and whether this key may use it, in Settings › Providers; or give the rig another model on Edit rig." : failing ? "Whether the provider is up, and the provider in Settings › Providers; or give the rig another model on Edit rig. The trial whose calls kept failing has ended: when the agents go on, its lane starts a fresh one, so a conversation the provider kept refusing is left behind." : "The check's result on the rig's page, and the provider in Settings › Providers."}</dd>
 <dt>When it ends</dt><dd>Thermite checks the model again after a minute, then less often (at most every 30 minutes). The agents go on once a check passes, or when the rig gets another model.</dd>`,
             choices: [
               {

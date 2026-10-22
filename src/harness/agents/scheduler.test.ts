@@ -1005,6 +1005,7 @@ describe("agent scheduler", () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
     await env.service.applyCommand(env.assign);
     let error = "429 Rate limit reached. Please try again in 30s.";
+    // The kind comes from the provider's call (Pi's worker, the model proxy), never the words.
     const { started, round, events } = provider(env, () => ({
       stopped: "error",
       turns: 0,
@@ -1012,6 +1013,7 @@ describe("agent scheduler", () => {
       tokensIn: 0,
       tokensOut: 0,
       error,
+      errorKind: "rate_limit",
     }));
     await round();
     assert.equal(started.n, 1);
@@ -1031,11 +1033,143 @@ describe("agent scheduler", () => {
       tokensIn: 0,
       tokensOut: 0,
       error,
+      errorKind: "server",
     }));
     for (let i = 0; i < 8; i++) await two.round();
     assert.ok(two.started.n >= 8, `trials go on (${two.started.n})`);
     assert.equal(two.events("agents_stopped").length, 0);
     assert.equal(two.events("agents_cooldown").length, 0, "no cooldown after failures in a row");
+  });
+
+  test("model calls that fail for 30 minutes with no call that worked stop the run's agents as no credits does (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
+    await env.service.applyCommand(env.assign);
+    const run = (env.assign.envelope.payload as { run: string }).run;
+    let checks = 0;
+    env.service.rigChecks.model = {
+      run: async () => {
+        checks++;
+        return { ok: true, summary: "m answered with a tool call" };
+      },
+    };
+    let failing = true;
+    const { started, round, events } = provider(env, () =>
+      failing
+        ? {
+            stopped: "error",
+            turns: 3,
+            toolCalls: 2,
+            tokensIn: 900,
+            tokensOut: 90,
+            error: "no model call worked for 30 minutes (the provider failed for now): 503",
+            errorKind: "server",
+            failing: {
+              since: new Date(Date.now() - 31 * 60_000).toISOString(),
+              kind: "server",
+              words: "503 Service Unavailable",
+            },
+          }
+        : { stopped: "no_submission", turns: 1, toolCalls: 1, tokensIn: 10, tokensOut: 1 },
+    );
+    await round();
+    assert.equal(started.n, 1);
+    const stop = events("agents_stopped");
+    assert.equal(stop.length, 1);
+    assert.equal(stop[0]?.kind, "server");
+    assert.equal(stop[0]?.words, "503 Service Unavailable");
+    assert.equal(
+      stop[0]?.said,
+      "no model call worked for 30 minutes (the provider failed for now)",
+    );
+    // The trial never really tried its experiment: it goes back to the queue.
+    assert.equal(events("experiment_returned").length, 1);
+    await round();
+    await round();
+    assert.equal(started.n, 1, "no trial starts while the agents are stopped");
+    // The owner resumes the run: the model is checked at once; it passes, and a fresh trial starts.
+    failing = false;
+    env.ledger.appendEvent("control:owner", "run_status", run, { status: "running", reason: null });
+    await round();
+    await new Promise((r) => setTimeout(r, 20));
+    await round();
+    assert.equal(checks, 1);
+    assert.equal(events("agents_resumed").length, 1);
+    assert.ok(started.n > 1, "a passing check lets trials start again");
+  });
+
+  test("model calls that keep failing over trials that end at their own time limit stop the agents once 30 minutes pass; a call that worked starts the count again (goal 079)", async () => {
+    // Each trial ends at its own limit while its calls fail since `ago` before its end.
+    const wall = (agoMs: number) => ({
+      stopped: "wall" as const,
+      turns: 2,
+      toolCalls: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      error: "the trial reached its 20-minute limit before a submission",
+      failing: {
+        since: new Date(Date.now() - agoMs).toISOString(),
+        kind: "model" as const,
+        words: "400 the provider refused the request",
+      },
+    });
+    const almost = 30 * 60_000 - 300;
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
+    await env.service.applyCommand(env.assign);
+    const results = [wall(almost), wall(60_000)];
+    const one = provider(env, () => results.shift() ?? wall(60_000));
+    await one.round();
+    assert.equal(one.events("agents_stopped").length, 0, "not yet 30 minutes");
+    await new Promise((r) => setTimeout(r, 400));
+    await one.round();
+    assert.equal(one.started.n, 2);
+    const stop = one.events("agents_stopped");
+    assert.equal(stop.length, 1, "the run's calls have failed for 30 minutes over two trials");
+    assert.equal(stop[0]?.kind, "model");
+    // A trial between them whose calls worked: the run's count starts again.
+    const env2 = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
+    await env2.service.applyCommand(env2.assign);
+    const worked = {
+      stopped: "no_submission" as const,
+      turns: 4,
+      toolCalls: 3,
+      tokensIn: 500,
+      tokensOut: 50,
+    };
+    const results2 = [wall(almost), worked, wall(60_000)];
+    const two = provider(env2, () => results2.shift() ?? worked);
+    await two.round();
+    await two.round();
+    await new Promise((r) => setTimeout(r, 400));
+    await two.round();
+    assert.equal(two.started.n, 3);
+    assert.equal(two.events("agents_stopped").length, 0);
+  });
+
+  test("a local failure in a provider's words neither stops the agents nor makes them wait; its experiment was tried (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
+    await env.service.applyCommand(env.assign);
+    const errors = [
+      // The workspace could not be set up.
+      "EACCES: permission denied, mkdir '/scratch/lanes/lane-1'",
+      // Pi's worker process died: its stderr is not the provider's answer.
+      "worker process gave no result (1): fetch failed: 429 Too Many Requests, try again in 30s",
+      // A program that exited.
+      "OpenCode exited 1: access denied to the network",
+    ];
+    const { started, round, events } = provider(env, () => ({
+      stopped: "error",
+      turns: 0,
+      toolCalls: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      error: errors.shift() ?? "the lane's memory limit was reached",
+    }));
+    for (let i = 0; i < 4; i++) await round();
+    assert.ok(started.n >= 3, `trials go on (${started.n})`);
+    assert.equal(events("agents_stopped").length, 0, "not a refused key");
+    assert.equal(events("agents_wait_for_limit").length, 0, "not the provider's rate limit");
+    assert.equal(events("experiment_returned").length, 0, "each experiment was tried");
+    assert.ok(events("experiment_finished").length >= 3);
   });
 
   test("a draining rig starts no trial and no plan; shutdown stops trials and keeps their counters (goal 079)", async () => {
