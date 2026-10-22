@@ -37,9 +37,10 @@ On a machine, a GPU that another rig control set up there already uses shows "us
 
 ## Change the split later
 
-Once a rig has its GPU set, four places change the judge's share. When the share changes, the rig's harness restarts to regroup the GPUs, so running trials and judge jobs start again.
+Once a rig has its GPU set, these places change the judge's share. When the share changes, the rig's harness restarts to regroup the GPUs, so running trials and judge jobs start again.
 
 - **Edit rig**: on the rig's page press **Edit rig**, then under **4 · Where it runs** set **GPUs for the judge**. It says "Now: 2 for the judge, 2 for the agents." The box **What changes when you save** lists the restart. Press **Save changes**.
+- **Edit rig from a script or an agent**: `judge_gpus` in `POST /v1/rigs/<rig>/settings`, or the owner's MCP `set_rig_settings` ([A rig's settings](../../reference/rest-api.md#a-rigs-settings)). `GET` on the same address, or MCP's `rig_settings`, reads the split now as `gpu_split`. An operator's `set_rig_settings` can't change it.
 - **New campaign**: under **Where it runs** › **Advanced**, **GPUs for the judge**.
 - **A campaign's page**: press **Start a run** at the top. The panel has **GPUs for the judge** under **More options**.
 - **From a script or an agent**: `--judge-gpus` on `thermite run start`, `judge_gpus` in `POST /v1/campaigns/<campaign>/runs`, or the owner's MCP `start_run` ([Start a run from a script or an agent](../campaigns/start-from-dashboard.md#start-a-run-from-a-script-or-an-agent)). An operator's `start_run` can't change it.

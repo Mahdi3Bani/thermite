@@ -24,6 +24,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
   - control tracks each rig's hourly price and spend, and applies a spend limit or an idle stop only when you set one. The dashboard's launch form fills in an idle stop of 30 minutes, which you can change or clear, and a new run wakes a pod its idle stop stopped;
   - stop, start, restart, full reset and terminate, where terminate waits until every result has left the pod.
 - The Rigs list is a table: each rig's state, where it runs, its version, the run at work and, on RunPod, its price.
+- Edit rig works without the browser: besides each agent's model, a rig's parts on or off, workers at a time, a trial's length and turns, its promotion rule and its GPU split change with `POST /v1/rigs/<rig>/settings` and the MCP tool `set_rig_settings`, and read with `GET /v1/rigs/<rig>/settings` and `rig_settings`. They send only what differs from what the rig reports and refuse in the page's words. An operator's token changes all but the promotion rule and the GPU split.
 - A rig takes model files by URL and checksum, with progress. It sends its exports to control when the project has no results repository.
 
 ### Campaigns

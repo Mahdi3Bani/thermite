@@ -29,8 +29,8 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `max_duration` | A research contract | None | The research campaign closes after `max_duration` of running time: `the research window is over`. Paused time does not count, and neither does time its agents could not run: while they were [stopped](#the-model-provider) or waited for the provider's rate limit. Without it, the campaign runs until someone stops it. `min_duration` (required) is a floor, never a stop: it is what a worker's brief calls "at least". Other modes ignore both |
 | `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teachers starts no round until then. Research goes on. It counts only advisors with prices set |
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
-| Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
-| A trial's length | The contract's `lanes.limits.trial_minutes` (1 to 1,440), else **Edit rig** › **One trial lasts (minutes)** or `THERMITE_TRIAL_MINUTES` | None | One trial ends at that time, and its worker is told when 85% of it is used. Without it, a trial lasts until its worker submits, or stops and answers a nudge without any work. The lane's next trial starts afresh |
+| Turns per trial (`max_turns`) | **Edit rig** (or its twins, `POST /v1/rigs/<rig>/settings` and MCP's `set_rig_settings`), or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
+| A trial's length | The contract's `lanes.limits.trial_minutes` (1 to 1,440), else **Edit rig** › **One trial lasts (minutes)** (`trial_minutes` over REST and MCP), or `THERMITE_TRIAL_MINUTES` | None | One trial ends at that time, and its worker is told when 85% of it is used. Without it, a trial lasts until its worker submits, or stops and answers a nudge without any work. The lane's next trial starts afresh |
 | Failed model calls in a row (`failures_in_a_row`) | The contract's `lanes.limits` | None | One trial ends after that many failed model calls in a row: a provider's 5xx, a broken connection or a request it refused. A rate limit's waits never count. The lane's next trial starts afresh |
 | Replies cut off in a row (`cutoffs_in_a_row`) | The contract's `lanes.limits` | None | One trial ends after that many replies in a row cut off at the output limit without a tool call (Pi) |
 | Nudges (`nudges`) | The contract's `lanes.limits` | None | A worker that stops without submitting is told to go on at most that many times; then its trial ends. `0`: never. Without it, the worker is told for as long as it keeps working |
@@ -50,7 +50,7 @@ None of these ends research.
 
 | What | Default | Set by |
 | --- | --- | --- |
-| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` (0 to 16; 0: the rig starts no trials) |
+| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16; `lanes` over REST and MCP), or `THERMITE_MAX_TRIALS` (0 to 16; 0: the rig starts no trials) |
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap, when those [caps](#caps) are set. None about the context window: a conversation that grows is compacted (below) | Fixed |

@@ -209,6 +209,50 @@ curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
 
 Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why. A model given to the workers, or cleared, is `rig_model_given`, by `owner:api`, with `context_cap` (the cap, or `null`) and `compact_at` (the compaction point, or `null`). One given to another agent, or cleared, is `agent_model_given`, by `owner:api`, with `role` and, for a model given, its `harness`, `context_cap` and `compact_at`: one record for each model the request changes. `role` is `planner`, `teachers` (the first teacher's model), `second_teacher`, `merged_by`, `auditor` or `review_panel`. MCP's [`set_rig_model`](mcp-tools.md#set_rig_model) does the same. [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) says when to use the cap, and [Set when a conversation is compacted](../how-to/models/connect-a-provider.md#set-when-a-conversation-is-compacted) the compaction point.
 
+### A rig's settings
+
+The rest of **Edit rig**: the rig's parts, workers at a time, its limits, its promotion rule and its GPU split.
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `GET /v1/rigs/<rig>/settings` | Owner | The settings the rig reports, and its GPU split, as its **Edit rig** page shows them | None | `{rig, settings, gpu_split}`, as MCP's [`rig_settings`](mcp-tools.md#rig_settings) returns it. `settings` is `null` for a rig whose harness is older and reports none; `gpu_split` is `{set, judge}`, or `null` for a rig with no GPU set to split. 404 `{"error":"no rig <rig>"}` |
+| `POST /v1/rigs/<rig>/settings` | Owner | Changes the rig's settings as **Save changes** on **Edit rig** does, through the same checks: only the fields that differ from what the rig reports go to the rig, as one [`rig_settings`](signed-commands.md#rig_settings) command issued by `owner:api` | Any of `{judge, workers, planner, teachers, auditor, review, exports, lanes, trial_minutes, max_turns, promotion, judge_gpus}`, below | `{rig, id, sent, restarts, said}`, below. 400, 404 or 409 `{"error":"<why>"}`, below |
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `judge`, `workers`, `planner`, `teachers`, `auditor`, `review`, `exports` | boolean | Each part on or off, as its switch in **1 · Parts of the rig**. `review` is the review panel. A part turned off keeps all its data |
+| `lanes` | whole number, 1 to 16 | **Workers at a time** |
+| `trial_minutes` | whole number, 1 to 1440, or `null` | **One trial lasts (minutes)**, for a campaign whose contract sets no `trial_minutes`. `null`: no limit; a trial lasts until its worker submits or stops |
+| `max_turns` | whole number, 1 to 100000, or `null` | **Turns per trial**. `null`: no limit |
+| `promotion` | `auto` or `owner_approval` | **3 · When a change becomes the champion**: **Automatically** or **Ask me for each change**. A campaign's own rule comes first for its runs |
+| `judge_gpus` | whole number, or `null` | **GPUs for the judge**, on a rig set up with its set of GPUs: from 1 to the lower of 8 and one less than the set, with at most 8 left for the agents. `null`: the rig's default split. A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again |
+
+Every field is optional, and one left out stays as the rig has it. Control compares each field given with what the rig last reported (`judge_gpus` with the judge's share now, or, for `null`, with the share the rig keeps) and sends only those that differ, so a script may send back what `GET` read with one field changed. Nothing differing sends nothing.
+
+In the answer, `id` is the `rig_settings` command's id, for [`GET /v1/commands/<id>`](#signed-commands), or `null` when nothing was sent. `sent` is the fields sent, in the command's order, or `{}`. `restarts` is `true` when `sent` has `judge_gpus`. `said` is **Edit rig**'s words: `Control sent 2 settings to rig-1. The rig takes the change in less than one minute.` (`1 setting` for one), followed by `A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again.` when `restarts` is `true`; or `Nothing changed.`. The rig takes the change within a minute, and the run at work on it shows it in its **History**. For example, to give a rig three workers at a time and switch its review panel off:
+
+```sh
+curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
+  -H "content-type: application/json" -d '{"lanes":3,"review":false}' \
+  "https://control.example.com/v1/rigs/rig-1/settings"
+```
+
+```json
+{"rig":"rig-1","id":"…","sent":{"lanes":3,"review":false},"restarts":false,"said":"Control sent 2 settings to rig-1. The rig takes the change in less than one minute."}
+```
+
+| Status | Error |
+| --- | --- |
+| 404 | `no rig <rig>` |
+| 409 | `<rig>'s harness is older: it does not report its settings and cannot take them. They work after its next roll.` |
+| 409 | `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](#when-control-refuses-a-rig) |
+| 400 | `Not saved: with <n> GPUs the judge takes 1 to <m> of them, and the agents at most 8.` |
+| 400 | `Not saved: <rig> has no GPU set to split: its GPUs are set where it is deployed.`: a number for `judge_gpus` |
+| 400 | `Not saved: <field>: <problem>`: a value the `rig_settings` command refuses, such as `Not saved: lanes: at most 16: a rig has users for lanes 1 to 16 only` or `Not saved: trial_minutes: Too small: expected number to be >=1` |
+| 400 | `bad request: <field>: <message>`: a body that is not these fields, has others, or has a value of the wrong type |
+
+Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why; the command sent is `command_issued`, by `owner:api`. MCP's [`set_rig_settings`](mcp-tools.md#set_rig_settings) does the same with the owner's or the operator's token; the operator's may not change `promotion` or `judge_gpus`.
+
 ### Signed commands
 
 [Signed commands](signed-commands.md) lists every kind and its payload.
@@ -759,7 +803,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 | Group | Actions |
 | --- | --- |
-| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs`, `POST /v1/campaigns/<campaign>/copy`, `POST /v1/campaigns/<campaign>/context`, or a route that archives a campaign or changes a folder, it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
+| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs`, `POST /v1/campaigns/<campaign>/copy`, `POST /v1/campaigns/<campaign>/context` or `POST /v1/rigs/<rig>/settings`, or a route that archives a campaign or changes a folder, it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
 | Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `rig_refused` and `rig_refusal_ended` (by `rig:<rig>`: control started or stopped refusing the rig for its protocol, with the reason and the builds; see [Rig versions](#rig-versions)), `git_access_handed` |
@@ -775,4 +819,4 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 ## Not in the API yet
 
-The dashboard does some things no route does yet: **New campaign**, **Settings › Providers** (its MCP servers aside, which have [routes](#mcp-servers)), **Edit rig** (except the agents' models, which [have a route](#the-agents-model)), join commands, **Add a rig**, the **Knowledge** page and a campaign's **Knowledge** section, and the buttons on the page of a rig control set up on a machine or a cluster: stop, start, restart and remove it, update it to control's version, check where it runs, and, on a cluster, update its images. A rig's setup steps, stopping, starting and restarting a cluster rig, and updating its images are also on [MCP](mcp-tools.md) (`rig_setup`, `cluster_rig`, `update_rig_images`), and so are the knowledge base's folders, search and grants (`kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`). There is no OpenAPI file. Both are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal).
+The dashboard does some things no route does yet: **New campaign**, **Settings › Providers** (its MCP servers aside, which have [routes](#mcp-servers)), join commands, **Add a rig**, the **Knowledge** page and a campaign's **Knowledge** section, and the buttons on the page of a rig control set up on a machine or a cluster: stop, start, restart and remove it, update it to control's version, check where it runs, and, on a cluster, update its images. A rig's setup steps, stopping, starting and restarting a cluster rig, and updating its images are also on [MCP](mcp-tools.md) (`rig_setup`, `cluster_rig`, `update_rig_images`), and so are the knowledge base's folders, search and grants (`kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`). There is no OpenAPI file. Both are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal).

@@ -57,6 +57,13 @@ import {
   rigModelRequest,
   rigModelsAnswer,
 } from "./rig-model.ts";
+import {
+  type RigSettingsBody,
+  rigSettingsAnswer,
+  rigSettingsFields,
+  rigSettingsRead,
+  setRigSettings,
+} from "./rig-settings.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
   DEFAULT_IDLE_STOP_MINUTES,
@@ -815,6 +822,41 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           const r = await give(rig, req, actor);
           if ("error" in r) throw new Error(r.error);
           return rigModelAnswer(rig, req, r);
+        }),
+      );
+    }
+    // The rest of Edit rig (goal 029): the settings a rig reports, read by every token but the
+    // agent's, as rig_models; changed by the owner's token and an operator's, through the same
+    // checks as Save changes. The promotion rule and the GPU split stay the owner's: the rule
+    // decides whether a win waits for the owner, and a new split restarts the rig's harness.
+    server.registerTool(
+      "rig_settings",
+      {
+        title: "A rig's settings",
+        description:
+          "The settings a rig reports, as Edit rig shows them. Returns {rig, settings, gpu_split}. settings holds each part on or off (judge, workers, planner, teachers, auditor, review for the review panel, exports), lanes (workers at a time), trial_minutes (how long one trial lasts when the campaign sets no limit; null: no limit), max_turns (turns per trial; null: no limit), promotion (auto or owner_approval) and judge_gpus (the judge's share the rig keeps; null: its default); settings is null for a rig whose harness is older and reports none. gpu_split is {set, judge}, the rig's GPU set and the judge's share now, or null for a rig with no GPU set to split. Change them with set_rig_settings; each agent's model is rig_models'.",
+        inputSchema: { rig: z.string().min(1) },
+      },
+      audited("rig_settings", (a: { rig: string }) => {
+        const read = rigSettingsRead(store, a.rig);
+        if (!read) throw new Error(`no rig ${a.rig}`);
+        return read;
+      }),
+    );
+    if (canCommand) {
+      const owner = role === "owner";
+      server.registerTool(
+        "set_rig_settings",
+        {
+          title: "Change a rig's settings",
+          description: `As Save changes on a rig's Edit rig page does, with the same checks and refusals in words: switch the rig's parts on or off (judge, workers, planner, teachers, auditor, review for the review panel, exports), and set lanes (workers at a time), trial_minutes, max_turns, promotion and judge_gpus; each agent's model is set_rig_model's. Give only what to change; a field left out stays as the rig has it. Control compares each field with what the rig reports (rig_settings) and sends only what differs, as one signed rig_settings command, which the rig takes within a minute; a part turned off keeps all its data. Nothing differing sends nothing: said is "Nothing changed." and id null. judge_gpus is for a rig set up with its set of GPUs (gpu_split in rig_settings): 1 to min(8, set - 1) for the judge, the rest the agents', at most 8; a new split restarts the rig's harness, so running trials and judge jobs start again, and restarts is true. Returns {rig, id, sent, restarts, said}: id, the command's (follow it with command_status); sent, the fields sent. Refused in words: no such rig, a rig whose harness is older and reports no settings, a judge's share out of range or on a rig with no GPU set, and a value the rig_settings command refuses (such as lanes above 16).${owner ? "" : " promotion and judge_gpus are the owner's alone: a change to either is refused."}`,
+          inputSchema: { rig: z.string().min(1), ...rigSettingsFields },
+        },
+        audited("set_rig_settings", (a: RigSettingsBody & { rig: string }) => {
+          const { rig, ...body } = a;
+          const out = setRigSettings(store, opts.privateKeyPem, rig, body, actor, owner);
+          if (out.state === "refused") throw new Error(out.error);
+          return rigSettingsAnswer(rig, out);
         }),
       );
     }

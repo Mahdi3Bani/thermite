@@ -50,8 +50,9 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
-| `control_log`, `providers`, `rig_models`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders` | Yes | Yes | No | Yes |
+| `control_log`, `providers`, `rig_models`, `rig_settings`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders` | Yes | Yes | No | Yes |
 | `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `set_campaign_context`, `archive_campaign`, `unarchive_campaign`, `create_campaign_folder`, `rename_campaign_folder`, `delete_campaign_folder`, `move_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `set_rig_settings` | Yes | Yes, but not the promotion rule or the GPU split | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -65,7 +66,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept`, `drop_directive` | Yes | Yes | No |
 | `approve_promotion`, `decline_promotion` | Yes | No | No |
 
-The six queue kinds change a run's [experiment queue](signed-commands.md#queue_add) and remove its rules; the harness takes them only from the owner, and the operator acts for the owner. No token issues `rig_settings`, `accept_review`, `conclude`, `propagate` or `wipe_state` with `issue_command`. The owner changes a rig's settings and accepts reviews and "not possible" endings on the dashboard; the one exception is a new GPU split, which the owner's [`start_run`](#start_run) sends as a `rig_settings`, as **Start a run** does. `propagate` goes through `propagate_champion`, and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
+The six queue kinds change a run's [experiment queue](signed-commands.md#queue_add) and remove its rules; the harness takes them only from the owner, and the operator acts for the owner. No token issues `rig_settings`, `accept_review`, `conclude`, `propagate` or `wipe_state` with `issue_command`. A rig's settings change through [`set_rig_settings`](#set_rig_settings), with **Edit rig**'s checks, and a new GPU split also through the owner's [`start_run`](#start_run), as **Start a run** does: each sends a `rig_settings`. The owner accepts reviews and "not possible" endings on the dashboard. `propagate` goes through `propagate_champion`, and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
 
 While the owner fully resets a rig, `issue_command` with the agent's token refuses that rig: `<rig> is being reset by the owner`.
 
@@ -673,6 +674,71 @@ Errors:
 
 Its REST twin is [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model), and [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) and [Set when a conversation is compacted](../how-to/models/connect-a-provider.md#set-when-a-conversation-is-compacted) say how the cap and the compaction point work.
 
+### rig_settings
+
+**A rig's settings.** Owner, operator and reader.
+
+> The settings a rig reports, as Edit rig shows them. Returns {rig, settings, gpu_split}. settings holds each part on or off (judge, workers, planner, teachers, auditor, review for the review panel, exports), lanes (workers at a time), trial_minutes (how long one trial lasts when the campaign sets no limit; null: no limit), max_turns (turns per trial; null: no limit), promotion (auto or owner_approval) and judge_gpus (the judge's share the rig keeps; null: its default); settings is null for a rig whose harness is older and reports none. gpu_split is {set, judge}, the rig's GPU set and the judge's share now, or null for a rig with no GPU set to split. Change them with set_rig_settings; each agent's model is rig_models'.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig |
+
+Returns `{rig, settings, gpu_split}`, from the rig's last signed report, as its **Edit rig** page shows them:
+
+| Field | Type | On **Edit rig** | Meaning |
+| --- | --- | --- | --- |
+| `settings.judge`, `.workers`, `.planner`, `.teachers`, `.auditor`, `.review`, `.exports` | boolean | **1 · Parts of the rig** | Each part on or off. `review` is the review panel |
+| `settings.lanes` | whole number, 1 to 16 | **Workers at a time** | Trials at the same time |
+| `settings.trial_minutes` | whole number, 1 to 1440, or `null` | **One trial lasts (minutes)** | A trial's length when the campaign's contract sets none. `null`: no limit |
+| `settings.max_turns` | whole number, 1 to 100000, or `null` | **Turns per trial** | Model turns in one trial. `null`: no limit |
+| `settings.promotion` | `auto` or `owner_approval` | **3 · When a change becomes the champion**: **Automatically** or **Ask me for each change** | The rig's promotion rule, for runs that set none |
+| `settings.judge_gpus` | whole number or `null` | | The judge's share of the GPUs that the rig keeps. `null`: the rig's default |
+| `gpu_split` | `{set, judge}` or `null` | **GPUs for the judge**, under **4 · Where it runs** | The rig's set of GPUs, and how many are the judge's now. `null`: the rig has no GPU set to split |
+
+`settings` is `null` for a rig whose harness is older and reports no settings. [`rig_settings`](signed-commands.md#rig_settings) in Signed commands says what each setting does. Errors: `no rig <rig>`. Its REST twin is [`GET /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings).
+
+### set_rig_settings
+
+**Change a rig's settings.** Owner and operator. The operator's token can't change the promotion rule or the GPU split.
+
+> As Save changes on a rig's Edit rig page does, with the same checks and refusals in words: switch the rig's parts on or off (judge, workers, planner, teachers, auditor, review for the review panel, exports), and set lanes (workers at a time), trial_minutes, max_turns, promotion and judge_gpus; each agent's model is set_rig_model's. Give only what to change; a field left out stays as the rig has it. Control compares each field with what the rig reports (rig_settings) and sends only what differs, as one signed rig_settings command, which the rig takes within a minute; a part turned off keeps all its data. Nothing differing sends nothing: said is "Nothing changed." and id null. judge_gpus is for a rig set up with its set of GPUs (gpu_split in rig_settings): 1 to min(8, set - 1) for the judge, the rest the agents', at most 8; a new split restarts the rig's harness, so running trials and judge jobs start again, and restarts is true. Returns {rig, id, sent, restarts, said}: id, the command's (follow it with command_status); sent, the fields sent. Refused in words: no such rig, a rig whose harness is older and reports no settings, a judge's share out of range or on a rig with no GPU set, and a value the rig_settings command refuses (such as lanes above 16).
+
+The operator's description ends with one more sentence: `promotion and judge_gpus are the owner's alone: a change to either is refused.`
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig |
+| `judge`, `workers`, `planner`, `teachers`, `auditor`, `review`, `exports` | boolean, optional | as the rig has it | Each part on or off, as its switch in **1 · Parts of the rig**. `review` is the review panel. A part turned off keeps all its data |
+| `lanes` | whole number, optional | as the rig has it | **Workers at a time**: 1 to 16 |
+| `trial_minutes` | whole number or `null`, optional | as the rig has it | **One trial lasts (minutes)**: 1 to 1440, for a campaign whose contract sets no `trial_minutes`. `null`: no limit; a trial lasts until its worker submits or stops |
+| `max_turns` | whole number or `null`, optional | as the rig has it | **Turns per trial**: 1 to 100000. `null`: no limit |
+| `promotion` | `auto` or `owner_approval`, optional | as the rig has it | **3 · When a change becomes the champion**: `auto` keeps a confirmed change at once (an audit the campaign asks for still waits); `owner_approval` makes each one wait for the owner in **Needs you**. A campaign's own rule comes first for its runs. The owner's token only |
+| `judge_gpus` | whole number or `null`, optional | as the rig has it | **GPUs for the judge**, on a rig set up with its set of GPUs: from 1 to the lower of 8 and one less than the set, with at most 8 left for the agents. `null`: the rig's default split. A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again. The owner's token only |
+
+Control compares each field given with what the rig reports ([`rig_settings`](#rig_settings)): `judge_gpus` with the judge's share now (`gpu_split.judge`), or, for `null`, with the share the rig keeps. It sends only the fields that differ, as one [`rig_settings`](signed-commands.md#rig_settings) command issued by the caller's actor, `owner:mcp` or `owner:operator`, which the rig takes within a minute. A field the same as the rig's is no change. So a call may send back what `rig_settings` read with one field changed, and an operator's call may carry the rig's own `promotion` and `judge_gpus`. The rig's harness takes `rig_settings` only from the owner; the operator acts for the owner, so its `owner:operator` passes, as for the queue's kinds.
+
+Returns `{rig, id, sent, restarts, said}`:
+
+- `id` is the `rig_settings` command's id, for [`command_status`](#command_status), or `null` when nothing differs.
+- `sent` is the fields sent, in the command's order, or `{}`.
+- `restarts` is `true` when `sent` has `judge_gpus`: the rig's harness restarts to regroup its GPUs.
+- `said` is **Edit rig**'s words: `Control sent 2 settings to rig-1. The rig takes the change in less than one minute.` (`1 setting` for one), followed by `A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again.` when `restarts` is `true`; or `Nothing changed.`
+
+Besides `mcp:set_rig_settings`, the audit log has `command_issued` with the caller's actor. The run at work on the rig shows the change in its **History** ([`rig_settings`](signed-commands.md#rig_settings)).
+
+Errors, in **Edit rig**'s words:
+
+- `no rig <rig>`
+- `<rig>'s harness is older: it does not report its settings and cannot take them. They work after its next roll.`
+- `Not saved: with <n> GPUs the judge takes 1 to <m> of them, and the agents at most 8.`
+- `Not saved: <rig> has no GPU set to split: its GPUs are set where it is deployed.` (a number for `judge_gpus`)
+- `Not saved: <field>: <problem>`, for a value the `rig_settings` command refuses, such as `Not saved: lanes: at most 16: a rig has users for lanes 1 to 16 only` or `Not saved: trial_minutes: Too small: expected number to be >=1`
+- `Only the owner's token changes a rig's promotion rule: leave out promotion.` and `Only the owner's token changes a rig's GPU split: leave out judge_gpus.` (the operator's token, when the call would change either)
+- `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](rest-api.md#when-control-refuses-a-rig)
+
+Its REST twin is [`POST /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings). Each agent's model is [`set_rig_model`](#set_rig_model)'s.
+
 ### start_run
 
 **Start a run of a campaign.** Owner and operator.
@@ -1077,4 +1143,4 @@ Control writes every tool call to its audit log before the tool runs, reads incl
 
 ## Not in MCP yet
 
-Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' models (`set_rig_model`) and its GPU split (the owner's `start_run`), restarting a rig's containers and resetting a rig (`runpod_rig` does both for a rig on RunPod), removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).
+Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, restarting a rig's containers and resetting a rig (`runpod_rig` does both for a rig on RunPod), removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).

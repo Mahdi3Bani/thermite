@@ -5,12 +5,7 @@ import { join } from "node:path";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
-import {
-  type BriefingSeed,
-  COMMAND_KINDS,
-  type CommandKind,
-  CommandPayloads,
-} from "../core/commands.ts";
+import { type BriefingSeed, COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import {
   type AgentsContext,
   COMPACT_AT_DEFAULT,
@@ -173,6 +168,13 @@ import {
   rigModelChanges,
   rigModelShapeRefusal,
 } from "./rig-model.ts";
+import {
+  type RigPart,
+  type RigSettingsChange,
+  rigSettingsChange,
+  SPLIT_RESTARTS,
+  settingsCount,
+} from "./rig-settings.ts";
 import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -334,7 +336,6 @@ import {
   leaderboard,
   OFFLINE_AFTER_MS,
   podStopped,
-  type RigSettingsView,
   type RigView,
   type RunView,
   rigView,
@@ -7770,7 +7771,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   // What runs on a rig and how, from its page: parts on or off, workers at once, limits, the
   // workers' model, the promotion policy. The harness parts go as one signed owner command
   // (rig_settings) with only what changed; the rig reports the settings it runs with.
-  const PARTS: { id: keyof RigSettingsView; name: string; does: string; off: string }[] = [
+  const PARTS: { id: RigPart; name: string; does: string; off: string }[] = [
     {
       id: "judge",
       name: "Judge",
@@ -7943,7 +7944,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 </div><div class="muted small" style="margin-top:6px">A campaign can set its own rule when it starts; that rule comes first for its runs.</div></div>
 <div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl>${
         u.gpu_split && u.gpu_split.set >= 2
-          ? `<label class="fd" style="max-width:260px;margin-top:10px">${infoLabel("GPUs for the judge", `How many of the rig's ${u.gpu_split.set} GPUs the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. A campaign started on this rig can set it too.`)}<input name="judge_gpus" type="number" min="1" max="${Math.min(8, u.gpu_split.set - 1)}" value="${u.gpu_split.judge}" data-restarts></label><div class="muted small">Now: ${u.gpu_split.judge} for the judge, ${u.gpu_split.set - u.gpu_split.judge} for the agents. A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again.</div>`
+          ? `<label class="fd" style="max-width:260px;margin-top:10px">${infoLabel("GPUs for the judge", `How many of the rig's ${u.gpu_split.set} GPUs the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. A campaign started on this rig can set it too.`)}<input name="judge_gpus" type="number" min="1" max="${Math.min(8, u.gpu_split.set - 1)}" value="${u.gpu_split.judge}" data-restarts></label><div class="muted small">Now: ${u.gpu_split.judge} for the judge, ${u.gpu_split.set - u.gpu_split.judge} for the agents. ${SPLIT_RESTARTS}</div>`
           : ""
       }</div></div>
 <div class="card hl" style="margin-top:16px"><b>What changes when you save</b><ul class="chg" id="chg"><li>Nothing changes.</li></ul><div class="act"><button class="primary big" id="save">Save changes</button><a class="btn" href="/ui/rigs/${rName}">Cancel</a></div></div>
@@ -8087,48 +8088,28 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       if (why) return refuse("workers", why);
     }
 
-    // The harness's settings: only what changed, checked here and sent below as one signed
-    // command.
+    // The harness's settings: only what changed, checked here (as REST's and MCP's twins check
+    // them: rig-settings.ts) and sent below as one signed command. An empty Workers at a time
+    // keeps what the rig has; an empty One trial lasts or Turns per trial is no limit.
     const s = u.settings;
-    let settings: Record<string, unknown> | undefined;
+    let settings: RigSettingsChange | undefined;
     if (s) {
-      const change: Record<string, unknown> = {};
-      for (const p of PARTS) {
-        const on = f[p.id] === "1";
-        if (on !== s[p.id]) change[p.id] = on;
-      }
       const num = (k: string) => {
         const v = String(f[k] ?? "").trim();
         return v === "" ? null : Number(v);
       };
-      const lanes = num("lanes");
-      if (lanes !== null && lanes !== s.lanes) change.lanes = lanes;
-      // Empty: no limit (goal 079).
-      const minutes = num("trial_minutes");
-      if (minutes !== s.trial_minutes) change.trial_minutes = minutes;
-      const turns = num("max_turns");
-      if (turns !== s.max_turns) change.max_turns = turns;
-      const promotion = String(f.promotion ?? s.promotion);
-      if (promotion !== s.promotion) change.promotion = promotion;
-      const judge = num("judge_gpus");
-      if (u.gpu_split && judge !== null && judge !== u.gpu_split.judge) {
-        const top = Math.min(8, u.gpu_split.set - 1);
-        if (!Number.isInteger(judge) || judge < 1 || judge > top || u.gpu_split.set - judge > 8)
-          return back(
-            "error",
-            `Not saved: with ${u.gpu_split.set} GPUs the judge takes 1 to ${top} of them, and the agents at most 8.`,
-          );
-        change.judge_gpus = judge;
-      }
-      if (Object.keys(change).length) {
-        const parsed = CommandPayloads.rig_settings.safeParse(change);
-        if (!parsed.success)
-          return back(
-            "error",
-            `Not saved: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
-          );
-        settings = parsed.data;
-      }
+      const out = rigSettingsChange(rig, s, u.gpu_split, {
+        ...Object.fromEntries(PARTS.map((p) => [p.id, f[p.id] === "1"])),
+        lanes: num("lanes") ?? undefined,
+        // Empty: no limit (goal 079).
+        trial_minutes: num("trial_minutes"),
+        max_turns: num("max_turns"),
+        promotion: String(f.promotion ?? s.promotion),
+        // The field shows only on a rig with a GPU set.
+        judge_gpus: u.gpu_split ? (num("judge_gpus") ?? undefined) : undefined,
+      });
+      if ("error" in out) return back("error", out.error);
+      settings = out.change;
     }
 
     // Everything is checked: save the models, then send the settings.
@@ -8156,8 +8137,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         payload: settings,
         issuedBy: "owner:ui",
       }).id;
-      const n = Object.keys(settings).length;
-      said.push(`${n} setting${n === 1 ? "" : "s"}`);
+      said.push(settingsCount(Object.keys(settings).length));
     }
     if (!said.length) return back("ok", "Nothing changed.");
     // The rig's page follows the settings' command, and the rig as it takes a model (goal 080).
