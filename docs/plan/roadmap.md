@@ -101,6 +101,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 - [088](goals/088-new-campaign-button-progress.goal) New campaign's buttons show they were pressed · `PROPOSED`
 - [090](goals/090-info-tab.goal) An Info tab for campaigns and runs: everything they were started with · `PROPOSED`
+- [091](goals/091-needs-you-stuck-rigs.goal) Needs you shows a rig that is stuck · `PROPOSED`
 
 ## v0.2.0
 

@@ -1,0 +1,50 @@
+---
+id: "091"
+title: "Needs you shows a rig that is stuck"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 091 · Needs you shows a rig that is stuck
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+**Needs you** on the home page, and its count in the left nav, show a rig that is stuck, with what is wrong in words and a link to its page:
+
+- a rig launched on RunPod that has not enrolled some minutes after its pod runs (the pod's log on its page says why; it costs money meanwhile);
+- a rig whose setup, start or image update failed, or waits longer than it should;
+- a rig whose last report is old (stale) while it has runs that should be at work;
+- a rig whose isolation check at start failed, or whose model check fails so that its agents are stopped.
+
+Each item says what it costs while it waits (a RunPod pod's price per hour), and goes away by itself once the rig is well.
+
+## Why
+
+The owner, 2026-10-22, with a rig on RunPod whose pod restarted every few seconds and never enrolled: "currently "needs you" home doesn't show anything for this starting up rig being stuck. So I'd have no idea it was broken unless I went to rigs to look."
+
+## Done when
+
+- [ ] Each case above shows in Needs you, with its words and link, and leaves once fixed.
+- [ ] Tests for each case, and for the count.
+- [ ] The pages that describe Needs you.
+
+## Decisions
+
+- 2026-10-22, owner: a bug fix for v0.1.1.
+
+## Open questions
+
+- How many minutes a launched pod may take to enroll before it shows (its image pull can take several).
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's feedback.
+
+---
+
+Run with `/goal Complete docs/plan/goals/091-needs-you-stuck-rigs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
