@@ -144,6 +144,13 @@ In the [one-container rig image](harness-image.md#the-one-container-rig-image), 
 | `supervisor-environ` | Read | The environment of the supervisor's process. Skipped when no supervisor runs |
 | `control-key-write` | Write | Root's copy of control's key, which the harness trusts. In pull mode only |
 
+Where the rig keeps a snapshot of its state on the host's volume (`THERMITE_STATE_SNAPSHOT_DIR`, which the one-container rig image sets), every role must also be refused these, whatever owner the volume shows for root's files:
+
+| Probe | Tries to | What |
+| --- | --- | --- |
+| `state-snapshot-list` | List | The snapshot folder ([Where the state lives](harness-image.md#where-the-state-lives)) |
+| `state-snapshot-create` | Create a file | The snapshot folder |
+
 ### Probes that must succeed
 
 | Probe | Who | What |
@@ -167,6 +174,7 @@ In the [one-container rig image](harness-image.md#the-one-container-rig-image) (
 | `runpod-variables` | `none (read <n> of <m> processes)` | No `RUNPOD_` variable in the environment of PID 1 or any process started under it. A shell opened in the container from outside is left out. Without `CAP_SYS_PTRACE` a process can read only the environments of its own user's processes: as root, PID 1 and the broker; as the controller, its own. When PID 1 is not the image's own `tini` but an init the platform runs (RunPod does, with the image's entry point as its child), PID 1 is left out, because it keeps the environment the platform gave the container, and the result adds `PID 1 is the platform's own init (<program>), not the rig's, and keeps the container's first environment`. The roles' `pid1-environ` probes show that no role can read it |
 | `enroll-code` | `none (read <n> of <m> processes)` | No process of the rig started with pull mode's enrollment code (`THERMITE_TUNNEL_ENROLL_CODE`), but root's and the supervisor's own first process. The supervisor takes the code out of its environment at start, so nothing it starts has it, and the controller never gets it |
 | `control-key` | `root's, the key the launch named` | In pull mode only (`THERMITE_TUNNEL_CONTROL_KEY_SHA256` set): the key the harness trusts, `THERMITE_CONTROL_PUBKEY_FILE`, is a plain file, and it and every folder above it are root's and writable by no other user, so neither the supervisor nor a role can change it. Its SHA-256 is the one the launch named |
+| `state-snapshot` | `closed to thermite, supervisor, agent-1 (owner <uid>:<gid>, mode 700)` | With `THERMITE_STATE_SNAPSHOT_DIR` set: the controller's user, the supervisor's and `agent-1` were each refused listing the snapshot folder and writing in it, when the broker tried as each at start. It records what each met in `snapshot.json` in its socket's folder, with the owner and mode the volume shows. `OPENED: <user> lists it` (or `writes in it`) fails the check, and the broker then neither takes nor restores a snapshot |
 
 ### Results
 

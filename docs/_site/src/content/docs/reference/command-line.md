@@ -474,7 +474,7 @@ It prints the rig on one line, then `Launched: RunPod bills the pod from now. Co
 | `--datacenter DC` | No | any | A data center's id |
 | `--image I` | No | control's `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image |
 | `--disk GB` | No | `40` | The container's own disk |
-| `--volume GB` | No | `100` | The pod's volume at `/workspace`, which keeps the rig's state |
+| `--volume GB` | No | `100` | The pod's volume at `/workspace`, which keeps a snapshot of the rig's state |
 | `--rig NAME` | No | `rp-` and 8 hexadecimal characters | The rig's name |
 | `--enroll-within MIN` | No | no expiry | The enrollment code expires this many minutes after the launch |
 | `--setting NAME=VALUE` | No | a GPU rig on all the pod's GPUs | One of the rig's settings at enrollment; give it again for each |

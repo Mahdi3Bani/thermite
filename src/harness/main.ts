@@ -391,6 +391,7 @@ async function main(): Promise<void> {
           force,
           controllerPid: process.pid,
           oneContainer: oneContainerTargets(env),
+          snapshotDir: env.THERMITE_STATE_SNAPSHOT_DIR || undefined,
         });
         return { ok: report.ok, summary: isolationSummary(report), detail: { ...report } };
       },

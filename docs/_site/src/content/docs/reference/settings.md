@@ -115,6 +115,16 @@ The [one-container rig image](harness-image.md#the-one-container-rig-image) sets
 | --- | --- | --- | --- | --- |
 | `THERMITE_ONE_CONTAINER` | `1` | off | no | `1`: the rig's supervisor runs in this container. The broker prepares its places and its token, and starts it as its own user. A broker that is not root then stops with `fatal: the one-container image must run as root`, and one without `THERMITE_SUPERVISOR_TOKEN_FILE` with `fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE`. With `THERMITE_TUNNEL_PORT` set too, it starts the harness only once root has checked control's key from enrollment against the launch's SHA-256 and copied it to `THERMITE_CONTROL_PUBKEY_FILE` |
 
+### The state's snapshot
+
+Where a host empties the container's disk when it stops, as RunPod does, the broker keeps the rig's state on that disk and a snapshot of it on the host's volume. The [one-container rig image](harness-image.md#where-the-state-lives) sets `THERMITE_STATE_SNAPSHOT_DIR`; compose and Kubernetes rigs keep their state on volumes and take no snapshot.
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_STATE_SNAPSHOT_DIR` | path | not set: no snapshot | no | The folder, on the host's volume, where root keeps a snapshot of the harness's state and outbox (in the one-container rig image also the inbox, the supervisor's state and root's copy of its token). Root makes it with mode 0700 and never gives anything in it another owner. Every live folder must be outside it, or the broker stops with `fatal: the state snapshot can't be set up`. At a start on an empty disk the broker restores the newest snapshot. A broker that is not root takes and restores none |
+| `THERMITE_STATE_SNAPSHOT_MINUTES` | minutes | `5` | no | How often the broker takes a snapshot. It also takes one after each export, after enrollment and at a stop. Fractions work; 0 or less stops the broker with `fatal: a snapshot setting is not valid` |
+| `THERMITE_STATE_SNAPSHOT_STOP_SECONDS` | seconds | `8` | no | How long a stop waits for its snapshot before the broker stops the two parts. Keep it, and the seconds the parts need to stop, within the time the host gives a stop. A snapshot cut short leaves the last complete one |
+
 ### GPUs and CPUs
 
 | Variable | Type | Default | Secret | Meaning |
@@ -275,7 +285,8 @@ Two commands read variables. `thermite doctor` reads `THERMITE_CONTROL_PORT`, th
 - the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`, and, when `THERMITE_TUNNEL_DIR` is set, the pull mode keys in it (`keys.json`);
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
 - the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`;
-- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`; in pull mode also `THERMITE_CONTROL_PUBKEY_FILE` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, to check the key the harness trusts.
+- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`; in pull mode also `THERMITE_CONTROL_PUBKEY_FILE` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, to check the key the harness trusts;
+- `THERMITE_STATE_SNAPSHOT_DIR`, the state's snapshot folder, which no role may list or write in.
 
 ## Rigs that control sets up
 

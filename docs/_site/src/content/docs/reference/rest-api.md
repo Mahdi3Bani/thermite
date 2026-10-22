@@ -528,8 +528,8 @@ What a launch takes:
 | `cloud_type` | `SECURE` | `SECURE` | Secure cloud on demand. `COMMUNITY` is refused: Community cloud comes in a later version. The GPU type must be offered on Secure cloud |
 | `datacenter` | string | any: RunPod chooses | A data center's id from RunPod's list |
 | `image` | string | control's `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image (CUDA), at a registry RunPod can pull from |
-| `container_disk_gb` | 10 to 2000 | `40` | The container's own disk, which RunPod empties when the pod stops |
-| `volume_gb` | 10 to 10000 | `100` | The pod's volume at `/workspace`, which keeps the rig's state, inbox and outbox when the pod stops. Model files need about twice their size free |
+| `container_disk_gb` | 10 to 2000 | `40` | The container's own disk, which RunPod empties when the pod stops. The rig works on it: its state, model files and builds among it, and scratch |
+| `volume_gb` | 10 to 10000 | `100` | The pod's volume at `/workspace`, which keeps a snapshot of the rig's state, inbox and outbox when the pod stops ([Where the state lives](harness-image.md#where-the-state-lives)). Model files need about twice their size free on the container's disk, and their size on the volume |
 | `rig` | string | `rp-` and 8 hexadecimal characters | The rig's name: 2 to 40 characters of a-z, 0-9 and -, a name no other rig has |
 | `enroll_within_minutes` | number above 0 | none: the code does not expire | The one-time enrollment code expires this long after the launch |
 | `settings` | object | `{"THERMITE_TARGET":"cuda-gpu","THERMITE_GPUS":"0,…"}`, one index for each GPU | The rig's [settings](settings.md) at enrollment, over the defaults. Only `THERMITE_TARGET`, `THERMITE_TARGET_CLASS`, `THERMITE_GPUS`, `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_JUDGE_GPUS`, `THERMITE_MAX_TRIALS`, `THERMITE_TRIAL_MINUTES` and `THERMITE_PROMOTION`, with values of letters, digits and `. _ , : -` |

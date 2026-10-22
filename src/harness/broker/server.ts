@@ -36,6 +36,10 @@ const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
 const RUN_ROLES: Role[] = ["run", ...Array.from({ length: 7 }, (_, i) => `run-${i + 1}` as Role)];
 export const ALL_ROLES: Role[] = ["builder", ...RUN_ROLES, "planner", "model-check", ...LANE_ROLES];
 
+/** Runs of the timing users (run, run-1, ...) at work now: the judge may be timing one. */
+let timedAtWork = 0;
+export const timedRunsAtWork = (): number => timedAtWork;
+
 /**
  * Changes a tree's owner with coreutils: `chown -R -P` never follows symlinks and walks trees of
  * any depth (a candidate can make paths far longer than PATH_MAX). The top becomes 0700.
@@ -85,6 +89,9 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       const lane = /^lane-\d+$/.test(r.role);
       // A root process using CUDA (an operator's exec, say) can reset a node to 0666.
       opts.assertDevices?.();
+      // The state snapshot waits while one runs (snapshot.ts), so its copying stays out of timing.
+      const timed = RUN_ROLES.includes(r.role);
+      if (timed) timedAtWork++;
       const outcome = await runSupervised({
         argv: r.argv,
         cwd: r.cwd,
@@ -116,6 +123,8 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         // A lane's user runs both its plain commands and its dev runs: each is supervised and
         // cleaned up within its own group, and only plain commands may leave work running.
         ...(lane ? { scopeGid: gid, leaveBackground: !r.gpu && r.keepBackground === true } : {}),
+      }).finally(() => {
+        if (timed) timedAtWork--;
       });
       // A lane's dev runs have the gpu group: a setgid file left behind would let its plain
       // runs reach the device outside the judge's gate. Such bits are cleared after every lane

@@ -1,12 +1,12 @@
 ---
 title: "Ports, volumes and secret files"
-description: "Every port, network, volume and secret file of control and a rig, under compose, on machines, on clusters and on RunPod test pods."
+description: "Every port, network, volume and secret file of control and a rig, under compose, on machines, on clusters and on RunPod."
 type: reference
 sidebar:
   order: 14
 ---
 
-This page lists where each part of Thermite listens, which networks join them, where they keep their state, and which secret files they read. It covers each way of running Thermite: the local compose stack, rigs that control sets up on machines over SSH or with a join command, rigs on Kubernetes clusters, and RunPod test pods. The [glossary](glossary.md) explains the terms; [How the parts fit together](../explanation/how-it-fits-together.md) and [Trust between control and rigs](../explanation/trust.md) explain the design.
+This page lists where each part of Thermite listens, which networks join them, where they keep their state, and which secret files they read. It covers each way of running Thermite: the local compose stack, rigs that control sets up on machines over SSH or with a join command, rigs on Kubernetes clusters, and rigs and test pods on RunPod. The [glossary](glossary.md) explains the terms; [How the parts fit together](../explanation/how-it-fits-together.md) and [Trust between control and rigs](../explanation/trust.md) explain the design.
 
 ## Ports
 
@@ -156,6 +156,15 @@ Both pods run on the same node, so they can share the volume. An update to contr
 ### RunPod test pods
 
 A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control removes the pod, and its disk, when the test ends.
+
+### Rigs on RunPod
+
+| What | Where | Holds |
+| --- | --- | --- |
+| The pod's container disk | 40 GB unless set (`container_disk_gb`), emptied when the pod stops | The rig's live state in `/var/lib/thermite-rig`, and `/scratch` |
+| The pod's volume | `/workspace`, 100 GB unless set (`volume_gb`), kept while the pod is stopped and removed with it | A snapshot of the rig's state, in `/workspace/thermite`, root's alone |
+
+The [one-container rig image](harness-image.md#where-the-state-lives) says when the snapshot is taken and how a start restores it.
 
 ## Secret files
 

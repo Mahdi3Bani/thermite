@@ -16,6 +16,7 @@ import { describe, test } from "node:test";
 import { keySha256 } from "../core/tunnel.ts";
 import { SUPERVISOR_RECORD } from "./broker/one-container.ts";
 import type { Role } from "./broker/runner.ts";
+import { SNAPSHOT_RECORD } from "./broker/snapshot.ts";
 import {
   callsBusy,
   containerChecks,
@@ -33,6 +34,7 @@ import {
   researchProbeFolder,
   runpodCheck,
   setIdCheck,
+  stateSnapshotCheck,
   supervisorGpuCheck,
   supervisorUserCheck,
 } from "./selftest.ts";
@@ -348,6 +350,34 @@ describe("the one-container image's checks of the container", () => {
     assert.equal(supervisorGpuCheck(dir), "OPENED /dev/nvidia0");
   });
 
+  test("the state snapshot's folder, as the broker found it at start", () => {
+    const dir = mkdtempSync(join(tmpdir(), "broker-"));
+    assert.match(stateSnapshotCheck(dir), /^MISSING: no record from the broker/);
+    const record = (users: Record<string, string>, closed: boolean) =>
+      writeFileSync(
+        join(dir, SNAPSHOT_RECORD),
+        JSON.stringify({ dir: "/workspace/thermite", owner: "0:0", mode: "700", users, closed }),
+      );
+    record(
+      {
+        thermite: "refused (EACCES)",
+        supervisor: "refused (EACCES)",
+        "agent-1": "refused (EACCES)",
+      },
+      true,
+    );
+    const closed = stateSnapshotCheck(dir);
+    assert.equal(closed, "closed to thermite, supervisor, agent-1 (owner 0:0, mode 700)");
+    assert.equal(isFailure(closed), false);
+    // A volume that lets every user in, whatever the folder's mode says: the selftest fails.
+    record({ thermite: "refused (EACCES)", "agent-1": "OPENED: lists it and writes in it" }, false);
+    const open = stateSnapshotCheck(dir);
+    assert.equal(open, "OPENED: agent-1 lists it and writes in it");
+    assert.equal(isFailure(open), true);
+    record({ root: "failed: EROFS" }, false);
+    assert.equal(isFailure(stateSnapshotCheck(dir)), true);
+  });
+
   test("set-id files are found, outside the folders left out", () => {
     const root = mkdtempSync(join(tmpdir(), "root-"));
     mkdirSync(join(root, "usr", "bin"), { recursive: true });
@@ -444,5 +474,14 @@ describe("the one-container image's checks of the container", () => {
     });
     assert.match(pull["control-key"] ?? "", /^MISSING: /);
     assert.equal(isFailure(pull["control-key"] ?? ""), true);
+    // A rig that keeps a snapshot of its state adds its folder: no record yet fails too.
+    const kept = await containerChecks({
+      brokerDir: broker,
+      procDir: proc,
+      rootDir: root,
+      waitMs: 0,
+      snapshotDir: "/workspace/thermite",
+    });
+    assert.match(kept["state-snapshot"] ?? "", /^MISSING: no record from the broker/);
   });
 });

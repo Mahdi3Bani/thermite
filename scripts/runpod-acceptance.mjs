@@ -6,12 +6,16 @@
 // /workspace that a stop keeps, and the pull mode port, which the fake's stand-in for RunPod's
 // proxy reaches. A stop removes the container and keeps the volume, as RunPod empties a stopped
 // pod's disk; a start makes the container again on the same volume; a terminate removes both.
+// The rig's live state is on the container's disk; root keeps a snapshot of it on the volume.
 //
 //   launch     the owner launches a rig over REST: the pod starts with only the launch values;
 //   enroll     control enrolls the pod through the proxy and pins its keys;
 //   report     the rig's reports reach control through control's pulls only;
-//   stop       the runs are paused, an export leaves the pod for control, then the pod stops;
-//   start      the pod runs again from its volume: the same keys and enrollment, and it reports;
+//   stop       the runs are paused, an export leaves the pod for control, the stop takes a
+//              snapshot of the state onto the volume, then the pod stops; nothing on the volume
+//              was ever given an owner but root;
+//   start      the pod runs again: root restores its state from the snapshot on its fresh disk,
+//              and it reports with the same keys, enrollment and token;
 //   terminate  a full export leaves the pod, then the pod and its volume are removed, and the
 //              rig is retired.
 //
@@ -271,6 +275,38 @@ try {
     !has("container", container(pod)) && has("volume", volume(pod)),
     "the pod's disk is gone and its volume stays",
   );
+  // The live state was on the pod's disk; the stop took a snapshot of it onto the volume first.
+  const stopSnap = pod.stopLog
+    .split("\n")
+    .filter((l) => l.includes('"reason":"at the stop"'))
+    .map((l) => JSON.parse(l))[0];
+  check(
+    stopSnap?.msg === "took a snapshot of the rig's state" && stopSnap.ledger === true,
+    "the stop took a snapshot of the rig's state, with its ledger, onto the volume",
+    JSON.stringify(stopSnap),
+  );
+  // RunPod's volume refuses root a change of owner: nothing on it was ever given one, and its
+  // snapshot folder is root's alone.
+  const onVolume = (
+    await run([
+      "run",
+      "--rm",
+      "-v",
+      `${volume(pod)}:/workspace`,
+      "--entrypoint",
+      "sh",
+      rigImage,
+      "-c",
+      "stat -c '%u %a' /workspace/thermite; find /workspace ! -uid 0 | head -5",
+    ])
+  )
+    .trim()
+    .split("\n");
+  check(
+    onVolume.length === 1 && onVolume[0] === "0 700",
+    "nothing on the volume belongs to anyone but root, and the snapshot folder is root's, 0700",
+    onVolume.join("; "),
+  );
   check(stopped.stopped_by === "owner", "the rig shows who stopped it", stopped.stopped_by);
 
   // Start: the pod runs again from its volume, with its keys, and reports.
@@ -288,6 +324,22 @@ try {
     store.tunnelRig(rig)?.enrolled_at === enrolled &&
       store.tunnelRig(rig)?.pod_sign_public === keysBefore,
     "the pod reports again with the keys and the enrollment on its volume",
+  );
+  // On its fresh disk, root restored the state from the snapshot: the ledger, the supervisor's
+  // keys and enrollment, and the token between the two parts, which is not made again.
+  const startLog = logsOf(container(pod));
+  const restored = startLog
+    .split("\n")
+    .filter((l) => l.includes("restored the rig's state from its snapshot"))
+    .map((l) => JSON.parse(l))[0];
+  check(
+    restored?.parts?.harness?.files > 0 &&
+      restored.parts.supervisor?.files > 0 &&
+      restored.parts.secrets?.files === 1 &&
+      !restored.refused &&
+      !startLog.includes("made the token between the supervisor and the harness"),
+    "the start restored the rig's state from the snapshot, with the same token",
+    JSON.stringify(restored),
   );
 
   // Terminate: a full export leaves the pod, then the pod and its volume go.
