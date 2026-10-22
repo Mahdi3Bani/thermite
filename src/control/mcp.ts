@@ -331,16 +331,19 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     {
       title: "Model usage",
       description:
-        "The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC), 7d (the last 7 days) or all (the default). Gives the total, by_agent (each agent by its id, with its name: workers, planner, teachers, combiner for the teachers' merged by model, auditor, and panel for the review panel), by_model (each harness, provider and model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one. cost, in US dollars: usd (null when nothing has a price and no pod spent), input_usd, cached_input_usd and output_usd (the tokens at each model's price: the provider's listed one, else the owner's, set_model_price), pod_usd (a RunPod rig's pod spend while its rig ran these runs; null: none), and the records priced, on_plan (a subscription's) and no_price (no price known).",
+        "The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC, or in the time zone tz, such as Europe/Paris), 7d (the last 7 days) or all (the default). Gives the total, by_agent (each agent by its id, with its name: workers, planner, teachers, combiner for the teachers' merged by model, auditor, and panel for the review panel), by_model (each harness, provider and model), by_agent_model (each agent's calls to each model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one. cost, in US dollars: usd (null when nothing has a price and no pod spent), input_usd, cached_input_usd and output_usd (the tokens at each model's price: the provider's listed one, else the owner's, set_model_price), pod_usd (a RunPod rig's pod spend while its rig ran these runs; null: none), the records priced, on_plan (a subscription's), no_price (no price known) and free (priced at 0), the tokens on_plan_tokens, no_price_tokens and free_tokens, and priced_as_not_cached (tokens in priced as not cached: their records do not report the cache).",
       inputSchema: {
         run: z.string().min(1).max(100).optional(),
         rig: z.string().min(1).max(100).optional(),
         campaign: z.string().min(1).max(200).optional(),
         period: z.enum(USAGE_PERIODS).default("all"),
+        tz: z.string().min(1).max(64).optional(),
       },
     },
-    audited("model_usage", (a: { run?: string; rig?: string; campaign?: string; period: string }) =>
-      modelUsage(store, a),
+    audited(
+      "model_usage",
+      (a: { run?: string; rig?: string; campaign?: string; period: string; tz?: string }) =>
+        modelUsage(store, a),
     ),
   );
 

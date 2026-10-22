@@ -182,18 +182,64 @@ export function callUsage(u: {
 
 // ------------------------------------------------------------------------------------ sums
 
-/** The periods the sums are read for: since midnight UTC, the last 7 days, or all. */
+/**
+ * The periods the sums are read for: since midnight (UTC, or in a time zone the reader gives),
+ * the last 7 days, or all.
+ */
 export const USAGE_PERIODS = ["today", "7d", "all"] as const;
 export const UsagePeriod = z.enum(USAGE_PERIODS);
 export type UsagePeriod = z.infer<typeof UsagePeriod>;
 
-/** Where a period starts (ISO); null: all. */
-export function usageSince(period: UsagePeriod, now = new Date()): string | null {
+/** Whether this runtime knows a time zone by that name (an IANA name such as Europe/Paris, or UTC). */
+export function knownTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A time zone's wall clock less UTC at an instant, in milliseconds. */
+function zoneOffset(tz: string, at: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  }).formatToParts(new Date(at));
+  const part = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  const wall = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute"),
+    part("second"),
+  );
+  return wall - Math.floor(at / 1000) * 1000;
+}
+
+/**
+ * The midnight that starts the day an instant falls on, in a time zone, in milliseconds. The
+ * offset at midnight is read again: it differs from the instant's on a day the clocks change.
+ */
+export function startOfDay(at: number, tz = "UTC"): number {
+  const wall = new Date(at + zoneOffset(tz, at));
+  const midnight = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate());
+  const guess = midnight - zoneOffset(tz, at);
+  return midnight - zoneOffset(tz, guess);
+}
+
+/** Where a period starts (ISO); null: all. Today starts at midnight in the time zone given. */
+export function usageSince(period: UsagePeriod, now = new Date(), tz = "UTC"): string | null {
   if (period === "all") return null;
   if (period === "7d") return new Date(now.getTime() - 7 * 24 * 3_600_000).toISOString();
-  const d = new Date(now);
-  d.setUTCHours(0, 0, 0, 0);
-  return d.toISOString();
+  return new Date(startOfDay(now.getTime(), tz)).toISOString();
 }
 
 /** A model's price in US dollars per million tokens: input, cached input and output. */
@@ -244,6 +290,8 @@ export interface UsageRow {
   rig: string;
   run: string;
   campaign: string | null;
+  /** The worker's trial it was made in; null or none: not a trial's. */
+  trial?: string | null | undefined;
   agent: string;
   harness: string;
   provider: string | null;
@@ -274,7 +322,22 @@ export interface UsageCost {
   priced: number;
   on_plan: number;
   no_price: number;
+  /** Priced records whose model is free: its price is 0 in every part. */
+  free: number;
+  /** The tokens, in and out, of the records on a plan, with no price, and free. */
+  on_plan_tokens: number;
+  no_price_tokens: number;
+  free_tokens: number;
+  /**
+   * Input tokens priced as not cached because their records do not report the cache, where the
+   * model's cached price differs from its input price.
+   */
+  priced_as_not_cached: number;
 }
+
+/** Whether a price is 0 in every part: a free model. */
+export const isFree = (p: ModelPrice) =>
+  p.input === 0 && p.output === 0 && (p.cached_input ?? 0) === 0;
 
 /** The sums of some records. Each figure a record may not report says how many did not. */
 export interface UsageSums {
@@ -333,11 +396,28 @@ export function sumCost(rows: readonly UsageRow[], pods: readonly PodSpendRow[] 
   let output = 0;
   let priced = 0;
   let onPlan = 0;
+  let free = 0;
+  const tokens = { plan: 0, none: 0, free: 0 };
+  let asNotCached = 0;
   for (const r of rows) {
     const p = r.pricing;
-    if (p?.kind === "plan") onPlan++;
+    const all = r.tokens_in + r.tokens_out;
+    if (p?.kind === "plan") {
+      onPlan++;
+      tokens.plan += all;
+    }
+    if (p === undefined || p.kind === "none") tokens.none += all;
     if (p?.kind !== "priced") continue;
     priced++;
+    if (isFree(p.price)) {
+      free++;
+      tokens.free += all;
+    } else if (
+      r.cached_in === null &&
+      p.price.cached_input !== null &&
+      p.price.cached_input !== p.price.input
+    )
+      asNotCached += r.tokens_in;
     const c = costOf(r, p.price);
     input += c.input;
     cachedInput += c.cached_input;
@@ -354,6 +434,11 @@ export function sumCost(rows: readonly UsageRow[], pods: readonly PodSpendRow[] 
     priced,
     on_plan: onPlan,
     no_price: rows.length - priced - onPlan,
+    free,
+    on_plan_tokens: tokens.plan,
+    no_price_tokens: tokens.none,
+    free_tokens: tokens.free,
+    priced_as_not_cached: asNotCached,
   };
 }
 
@@ -427,6 +512,8 @@ export type UsageScope =
 export interface UsageReport {
   scope: UsageScope;
   period: UsagePeriod;
+  /** The time zone whose midnight starts today (an IANA name; UTC when the reader gives none). */
+  tz: string;
   /** Where the period starts; null: all. */
   since: string | null;
   total: UsageSums;
@@ -434,6 +521,17 @@ export interface UsageReport {
   by_agent: ({ agent: string; name: string } & UsageSums)[];
   /** Each model, by the harness it ran in and its provider, most tokens first. */
   by_model: ({ harness: string; provider: string | null; model: string } & UsageSums)[];
+  /**
+   * Each agent's calls to each model (by harness and provider), in the agents' order, then most
+   * tokens first: the lines of a run page's table.
+   */
+  by_agent_model: ({
+    agent: string;
+    name: string;
+    harness: string;
+    provider: string | null;
+    model: string;
+  } & UsageSums)[];
   /** A campaign's runs, each with its share of the tokens (in and out), most first. */
   by_run?: ({ rig: string; run: string; share: number } & UsageSums)[] | undefined;
   /** The whole system's campaigns, each with its share of the tokens, most first. */
@@ -467,6 +565,7 @@ export function usageReport(
   period: UsagePeriod,
   since: string | null,
   pods: readonly PodSpendRow[] = [],
+  tz = "UTC",
 ): UsageReport {
   const total = sumUsage(rows, pods);
   const share = (s: UsageSums) =>
@@ -493,13 +592,34 @@ export function usageReport(
   )
     .map((g) => ({ ...g.key, ...sumUsage(g.rows) }))
     .sort((a, b) => tokensOf(b) - tokensOf(a) || a.model.localeCompare(b.model));
+  const byAgentModel = groups(
+    rows,
+    (r) => JSON.stringify([r.agent, r.harness, r.provider, r.model]),
+    (r) => ({
+      agent: r.agent,
+      name: AGENT_WORDS[r.agent as UsageAgent] ?? r.agent,
+      harness: r.harness,
+      provider: r.provider,
+      model: r.model,
+    }),
+  )
+    .map((g) => ({ ...g.key, ...sumUsage(g.rows) }))
+    .sort(
+      (a, b) =>
+        order(a.agent) - order(b.agent) ||
+        a.agent.localeCompare(b.agent) ||
+        tokensOf(b) - tokensOf(a) ||
+        a.model.localeCompare(b.model),
+    );
   const report: UsageReport = {
     scope,
     period,
+    tz,
     since,
     total,
     by_agent: byAgent,
     by_model: byModel,
+    by_agent_model: byAgentModel,
   };
   if (scope.kind === "campaign") {
     const runKey = (x: { rig: string; run: string | null }) => JSON.stringify([x.rig, x.run]);

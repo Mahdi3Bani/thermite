@@ -4,8 +4,10 @@ import {
   CallUsage,
   callUsage,
   costOf,
+  knownTimeZone,
   type PodSpendRow,
   quantile,
+  startOfDay,
   sumUsage,
   type UsageRow,
   usageReport,
@@ -141,6 +143,64 @@ describe("model usage sums", () => {
     assert.equal(usageSince("all", now), null);
   });
 
+  test("today in a time zone: from its midnight, also on a day its clocks change", () => {
+    const at = (iso: string) => new Date(iso);
+    // 03:00 UTC is still the evening before in Chicago (UTC-5 in October).
+    assert.equal(
+      usageSince("today", at("2026-10-21T03:00:00Z"), "America/Chicago"),
+      "2026-10-20T05:00:00.000Z",
+    );
+    // Half an hour off the hour, ahead of UTC.
+    assert.equal(
+      usageSince("today", at("2026-10-21T15:30:00Z"), "Asia/Kolkata"),
+      "2026-10-20T18:30:00.000Z",
+    );
+    // Paris: the day summer time starts began at midnight in winter time (UTC+1)...
+    assert.equal(
+      usageSince("today", at("2026-03-29T12:00:00Z"), "Europe/Paris"),
+      "2026-03-28T23:00:00.000Z",
+    );
+    // ...and the day it ends, at midnight in summer time (UTC+2).
+    assert.equal(
+      new Date(startOfDay(Date.parse("2026-10-25T20:00:00Z"), "Europe/Paris")).toISOString(),
+      "2026-10-24T22:00:00.000Z",
+    );
+    // The last 7 days do not depend on the zone.
+    assert.equal(
+      usageSince("7d", at("2026-10-21T15:30:00Z"), "Asia/Kolkata"),
+      "2026-10-14T15:30:00.000Z",
+    );
+    assert.equal(knownTimeZone("Europe/Paris"), true);
+    assert.equal(knownTimeZone("UTC"), true);
+    assert.equal(knownTimeZone("Nowhere/Town"), false);
+  });
+
+  test("by agent and model: each agent's calls to each model, in the agents' order, then most tokens first", () => {
+    const r = usageReport(
+      [
+        row({ agent: "combiner", model: "m-3" }),
+        row({ agent: "teachers", model: "m-2", tokens_in: 10 }),
+        row({ agent: "teachers", model: "m-1", tokens_in: 5000 }),
+        row({ agent: "workers", harness: "codex", model: "m-1" }),
+        row({ agent: "workers", model: "m-1", tokens_in: 9000 }),
+      ],
+      { kind: "run", run: "run-1", rig: null },
+      "all",
+      null,
+    );
+    assert.deepEqual(
+      r.by_agent_model.map((l) => [l.agent, l.name, l.harness, l.model, l.records]),
+      [
+        ["workers", "Workers", "pi", "m-1", 1],
+        ["workers", "Workers", "codex", "m-1", 1],
+        ["teachers", "Teachers", "pi", "m-1", 1],
+        ["teachers", "Teachers", "pi", "m-2", 1],
+        ["combiner", "Teachers (merged by)", "pi", "m-3", 1],
+      ],
+    );
+    assert.equal(r.tz, "UTC");
+  });
+
   test("a report: by agent in the agents' order, by model most tokens first, a campaign's runs with their shares", () => {
     const rows = [
       row({ agent: "panel", tokens_in: 100, tokens_out: 0 }),
@@ -222,6 +282,11 @@ describe("model usage cost", () => {
       priced: 1,
       on_plan: 1,
       no_price: 2,
+      free: 0,
+      on_plan_tokens: 1100,
+      no_price_tokens: 2200,
+      free_tokens: 0,
+      priced_as_not_cached: 0,
     });
     // Nothing priced and no pod: no cost, never 0.
     const none = sumUsage([row({ pricing: { kind: "plan" } }), row()]);
@@ -231,6 +296,39 @@ describe("model usage cost", () => {
     assert.equal(none.cost.no_price, 1);
     // A pod alone is a cost.
     assert.equal(sumUsage([], pods).cost.usd, 0.25);
+  });
+
+  test("a free model is priced at 0 and counted apart; tokens in priced as not cached are counted where it matters", () => {
+    const free = {
+      kind: "priced" as const,
+      price: { input: 0, cached_input: null, output: 0 },
+      source: "list" as const,
+    };
+    const s = sumUsage([
+      row({ pricing: free, tokens_in: 500, tokens_out: 50 }),
+      // No cache figure, and a cached price below the input price: priced as not cached.
+      priced({ tokens_in: 1_000_000, cached_in: null, tokens_out: 0 }),
+      // No cached price: the cache does not change the cost, so nothing to say.
+      row({
+        pricing: {
+          kind: "priced",
+          price: { input: 1, cached_input: null, output: 1 },
+          source: "owner",
+        },
+        tokens_in: 7,
+        cached_in: null,
+      }),
+      row({ pricing: { kind: "plan" }, tokens_in: 40, tokens_out: 2 }),
+    ]);
+    assert.equal(s.cost.free, 1);
+    assert.equal(s.cost.free_tokens, 550);
+    assert.equal(s.cost.priced, 3);
+    assert.equal(s.cost.priced_as_not_cached, 1_000_000);
+    assert.equal(s.cost.on_plan_tokens, 42);
+    assert.equal(s.cost.no_price_tokens, 0);
+    // A free model alone costs $0, and says it is free: never "no price".
+    const alone = sumUsage([row({ pricing: free })]);
+    assert.deepEqual([alone.cost.usd, alone.cost.free, alone.cost.no_price], [0, 1, 0]);
   });
 
   test("a pod's spend goes to its run and campaign, not to an agent or a model; idle spend only to the total", () => {
