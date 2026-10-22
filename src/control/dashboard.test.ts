@@ -498,9 +498,9 @@ describe("control dashboard", () => {
       new RegExp(`data-runs-in="${role}"[^>]*>(?:(?!</select>)[\\s\\S])*`).exec(page)?.[0] ?? "";
     assert.match(runsIn("teachers"), /<option value="opencode" selected>OpenCode v2<\/option>/);
     // The auditor on a Claude subscription: Claude Code. The merged by model, with no model of
-    // its own: the rig default.
+    // its own: the advisors file's, which the supervisor has not reported here.
     assert.match(runsIn("auditor"), /<option value="claude-code" selected>Claude Code<\/option>/);
-    assert.match(runsIn("merged_by"), /<option value="" selected>rig default<\/option>/);
+    assert.match(runsIn("merged_by"), /<option value="" selected>rig's file<\/option>/);
     // The Codex CLI speaks only OpenAI's Responses API: not with Anthropic's.
     const noCodex = await s.post("/ui/rigs/rig-a/edit", { ...form, harness: "codex" });
     assert.match(

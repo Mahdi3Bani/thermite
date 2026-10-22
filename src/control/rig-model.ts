@@ -64,7 +64,7 @@ export const ROLE_WORDS: Record<
     label: "teachers",
     who: "the teachers",
     given: "a model for the teachers",
-    cleared: "the teachers back to the rig default",
+    cleared: "the teachers back to the rig's advisors file",
     whose: "The first teacher's",
   },
   second_teacher: {
@@ -78,21 +78,21 @@ export const ROLE_WORDS: Record<
     label: "merged by",
     who: "the teachers' merged by model",
     given: "a merged by model for the teachers",
-    cleared: "the teachers' merged by model back to the rig default",
+    cleared: "the teachers' merged by model back to the rig's advisors file",
     whose: "The merged by model's",
   },
   auditor: {
     label: "auditor",
     who: "the auditor",
     given: "a model for the auditor",
-    cleared: "the auditor back to the rig default",
+    cleared: "the auditor back to the rig's advisors file",
     whose: "The auditor's",
   },
   review_panel: {
     label: "review panel",
     who: "the review panel",
     given: "a model for the review panel",
-    cleared: "the review panel back to the rig default",
+    cleared: "the review panel back to the rig's advisors file",
     whose: "The review panel's",
   },
 };
@@ -130,7 +130,7 @@ export interface RigModelRequest {
   compactAt?: number | undefined;
   /** The teachers only: a second teacher's model; null, one teacher only (goal 074). */
   secondModel?: ModelChoice | null | undefined;
-  /** The teachers only: the model that merges two teachers' advice; null, the rig default. */
+  /** The teachers only: the model that merges two teachers' advice; null, the advisors file's. */
   mergedBy?: ModelChoice | null | undefined;
 }
 
@@ -153,7 +153,7 @@ export interface AgentModel {
 export type WorkersModel = AgentModel;
 /**
  * The teachers' models on control (goal 074): one or two teachers, and the model that merges the
- * advice of two. No models: the rig default; merged_by null: the rig default.
+ * advice of two. No models: the rig's advisors file's; merged_by null: the file's.
  */
 export interface TeachersModels {
   models: AgentModel[];
@@ -228,7 +228,7 @@ export const rigModelFields = {
     .boolean()
     .optional()
     .describe(
-      "true: the agent goes back to its default, with no provider or model: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig default (the rig's advisors file); the teachers with their second and merged by models",
+      "true: the agent goes back to its default, with no provider or model: the workers to the rig's own settings, the planner to the workers' model, an advisor to the one in the rig's advisors file (off when the file names none); the teachers with their second and merged by models",
     ),
   harness: harnessField.optional(),
   effort: effortField.optional(),
@@ -242,7 +242,7 @@ export const rigModelFields = {
   merged_by: TeacherModelBody.nullable()
     .optional()
     .describe(
-      "The teachers only: the model that merges the advice of two teachers into one set: {provider, model, harness?, effort?, context_window?, compact_at?}. null: the rig default. Left out: as it is. Two teachers without a merged by model: the first review that comes back is the set",
+      "The teachers only: the model that merges the advice of two teachers into one set: {provider, model, harness?, effort?, context_window?, compact_at?}. null: the one in the rig's advisors file. Left out: as it is. Two teachers without a merged by model: the first review that comes back is the set",
     ),
 };
 
@@ -411,7 +411,7 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
       compact_at: r.compactAt ?? null,
     };
   };
-  // A second teacher only with a first: without one, the teachers are the rig default's.
+  // A second teacher only with a first: without one, the teachers are the advisors file's.
   const first = of("teachers");
   const second = first ? of("second_teacher") : null;
   return {
@@ -434,6 +434,68 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
     review_panel: of("review_panel"),
   };
 }
+
+/**
+ * One advisor of a rig's advisors file, as its supervisor reports it (goal 074): where it runs
+ * (pi, claude-code, opencode, codex, or cli for a command-line agent), its model (null: a
+ * command-line agent names none), its provider's name and kind (its API, or claude), its window
+ * (null: none) and its compaction point (null: the default). The supervisor sends no key, token or
+ * address. Read loosely: a field this control does not know is dropped.
+ */
+const AdvisorSetupSchema = z.object({
+  harness: z.string().min(1).max(40),
+  model: z.string().max(200).nullable(),
+  provider: z.string().max(200).nullable(),
+  api: z.string().max(40).nullable(),
+  context_window: z.number().int().min(0).max(100_000_000).nullable(),
+  compact_at: z.number().int().min(0).max(100).nullable(),
+});
+export type AdvisorSetupView = z.infer<typeof AdvisorSetupSchema>;
+
+/**
+ * What a rig's advisors file sets up for each advisor, as its supervisor reports it in
+ * `advisors.file` (goal 074): the teachers (none, one or two), their merged by model, the auditor
+ * and the review panel (two to five reviewers). An advisor with no model from control uses the
+ * file's; with none there either, it is off.
+ */
+export const AdvisorsFileSchema = z.object({
+  teachers: z.array(AdvisorSetupSchema).max(2),
+  merged_by: AdvisorSetupSchema.nullable(),
+  auditor: AdvisorSetupSchema.nullable(),
+  review_panel: z.array(AdvisorSetupSchema).max(5),
+});
+export type AdvisorsFileView = z.infer<typeof AdvisorsFileSchema>;
+
+/** A file that names no advisor: what a supervisor that reports no advisors at all has. */
+const NO_ADVISORS: AdvisorsFileView = {
+  teachers: [],
+  merged_by: null,
+  auditor: null,
+  review_panel: [],
+};
+
+/**
+ * What a rig's advisors file sets up, from its supervisor's last report; undefined when control
+ * can't tell: no report yet, or a supervisor older than this field. A supervisor that reports no
+ * advisors (`advisors: null`, every version) has none in its file, nor from control.
+ */
+export function advisorsFileOf(
+  supervisor: Record<string, unknown> | null | undefined,
+): AdvisorsFileView | undefined {
+  if (!supervisor || !("advisors" in supervisor)) return undefined;
+  const advisors = supervisor.advisors;
+  if (advisors === null) return NO_ADVISORS;
+  const file = AdvisorsFileSchema.safeParse((advisors as { file?: unknown } | undefined)?.file);
+  return file.success ? file.data : undefined;
+}
+
+/** The answer of `rig_models` and its REST twin: each agent's model, and the advisors file's. */
+export const rigModelsAnswer = (store: ControlStore, rig: string, agents: AgentModels) => ({
+  rig,
+  agents,
+  // null: the supervisor has not reported it (none yet, or an older supervisor).
+  advisors_file: advisorsFileOf(store.supervisor(rig)) ?? null,
+});
 
 /**
  * The answer over REST and MCP: the agent as asked (an old name too), and the window and point

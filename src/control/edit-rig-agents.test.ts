@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { generateSigningKeys } from "../core/commands.ts";
+import { AdvisorsConfig, advisorsFileReport } from "../supervisor/advisors.ts";
 import { createControlApi } from "./api.ts";
 import { agentModelsOf } from "./rig-model.ts";
 import { SecretBox } from "./secrets.ts";
@@ -93,7 +94,7 @@ async function stack() {
     (await (
       await api.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } })
     ).json()) as Record<string, unknown>;
-  return { store, page, post, asRig };
+  return { store, api, page, post, asRig };
 }
 
 const unesc = (s: string) =>
@@ -149,7 +150,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
     const table = agentsOf(html);
     assert.match(
       html,
-      /<h2>2 · The agents<\/h2><p class="lead">Each agent runs in the harness you choose, with its own context\. With no model here, an agent uses the rig default\.<\/p>/,
+      /<h2>2 · The agents<\/h2><p class="lead">Each agent runs in the harness you choose, with its own context\. With no model here, the workers use the rig's own settings, and the planner uses the workers' model\. An advisor uses the model in the rig's advisors file\. If the file has none, that advisor is off\.<\/p>/,
     );
     // The two groups, then each agent with its job on one line, in order.
     const order = [
@@ -173,7 +174,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       assert.ok(i >= from, `"${t}" comes next in the table`);
       from = i;
     }
-    assert.doesNotMatch(html, /Teacher pair|Combiner|the rig's advisors file/);
+    assert.doesNotMatch(html, /Teacher pair|Combiner|rig default/);
     // Every label in the table has its info icon: the headers, the groups, each agent, merged by
     // and the two Context fields of every line.
     const labels = table.match(/<span class="lb">/g) ?? [];
@@ -203,10 +204,12 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
         /<option value="pi"[^>]*>Pi<\/option><option value="opencode"[^>]*>OpenCode v2<\/option><option value="claude-code"[^>]*>Claude Code<\/option><option value="codex"[^>]*>Codex<\/option>/,
       );
     assert.match(lineOf(html, "planner"), /<option value="" selected>as the workers<\/option>/);
-    assert.match(lineOf(html, "auditor"), /<option value="" selected>rig default<\/option>/);
+    assert.match(lineOf(html, "auditor"), /<option value="" selected>rig's file<\/option>/);
     assert.doesNotMatch(lineOf(html, "workers"), /data-runs-in="workers"[^>]*><option value=""/);
-    // An empty model reads "rig default"; the planner's "same as the workers".
-    assert.match(lineOf(html, "workers"), /<option value="" data-kind="">rig default<\/option>/);
+    // An empty model says what the agent uses then: the rig's own settings (not reported here),
+    // the workers' model for the planner, the advisors file (not reported yet) for an advisor.
+    assert.match(lineOf(html, "workers"), /<option value="" data-kind="">rig's settings<\/option>/);
+    assert.match(lineOf(html, "auditor"), /<option value="" data-kind="">rig's file<\/option>/);
     assert.match(
       lineOf(html, "planner"),
       /<option value="" data-kind="">same as the workers<\/option>/,
@@ -214,7 +217,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
     // The Context cell opens without the script: a details element with its two fields.
     assert.match(
       lineOf(html, "workers"),
-      /<details class="ctx-w" data-ctx="workers"><summary class="ctx-b"[^>]*>.*rig default/,
+      /<details class="ctx-w" data-ctx="workers"><summary class="ctx-b"[^>]*>.*rig's settings/,
     );
     // Each model says what the page's script checks: where it runs, its window, Codex.
     assert.match(
@@ -331,7 +334,7 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
       ],
       [undefined, undefined],
     );
-    // A line on the rig default again: its model goes, and its context with it.
+    // A line with no model again: its model goes, and its context with it.
     await s.post({ ...formOf(await s.page()), role_auditor: "", harness_auditor: "" });
     assert.equal(s.store.roleModels("rig-a").auditor, undefined);
   });
@@ -500,10 +503,10 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
     assert.match(agentsOf(html), /data-line="second_teacher"[^>]* hidden/);
     assert.match(
       await s.post(formOf(html)),
-      /ok=Control sent the teachers back to one teacher and the teachers' merged by model back to the rig default to rig-a\./,
+      /ok=Control sent the teachers back to one teacher and the teachers' merged by model back to the rig's advisors file to rig-a\./,
     );
     assert.deepEqual(Object.keys(s.store.roleModels("rig-a")), ["teachers"]);
-    // Two teachers again, then the first on the rig default: all three go, said once.
+    // Two teachers again, then the first with no model: all three go, said once.
     html = await s.page("/ui/rigs/rig-a/edit?teachers=2");
     await s.post({
       ...formOf(html),
@@ -522,8 +525,199 @@ describe("Edit rig's agents (goals 070, 073 and 074)", () => {
         role_second_teacher: "",
         role_merged_by: "",
       }),
-      /ok=Control sent the teachers back to the rig default to rig-a\./,
+      /ok=Control sent the teachers back to the rig's advisors file to rig-a\./,
     );
     assert.deepEqual(s.store.roleModels("rig-a"), {});
+  });
+});
+
+/**
+ * What a line with no model says it uses (goal 074; the owner, 2026-10-21: "what is default of
+ * default?"): the advisors file as the rig's supervisor reports it, or none (off), or "rig's
+ * file" until it has reported; the rig's own model as its harness reports it, for the workers.
+ */
+describe("Edit rig's empty model names the real fallback (goal 074)", () => {
+  const STATS = {
+    teacher_runs: 0,
+    directive_sets: 0,
+    directives: 0,
+    audits: 0,
+    reviews: 0,
+    errors: 0,
+    tokens_in: 0,
+    tokens_out: 0,
+    usd: 0,
+  };
+  const report = async (s: Awaited<ReturnType<typeof stack>>, body: Record<string, unknown>) =>
+    (
+      await s.api.request("/v1/rigs/rig-a/supervisor", {
+        method: "POST",
+        headers: { authorization: "Bearer rig-token-abcdef", "content-type": "application/json" },
+        body: JSON.stringify({ at: new Date().toISOString(), ...body }),
+      })
+    ).status;
+  /** A line's empty Model choice, its empty Runs in choice and its Context cell, as text. */
+  const cells = (html: string, id: string) => {
+    const l = lineOf(html, id);
+    return {
+      model: unesc(
+        /data-role="[^"]+"[^>]*><option value="" data-kind="">([^<]*)<\/option>/.exec(l)?.[1] ?? "",
+      ),
+      runs: unesc(
+        /data-runs-in="[^"]+"[^>]*><option value=""[^>]*>([^<]*)<\/option>/.exec(l)?.[1] ?? "",
+      ),
+      ctx: unesc(
+        /<span data-ctx-sum="[^"]+"><span class="muted">([^<]*)<\/span>/.exec(l)?.[1] ?? "",
+      ),
+      say: unesc(/data-fb-say="([^"]*)"/.exec(l)?.[1] ?? ""),
+      off: /data-fb-off="1"/.test(l),
+    };
+  };
+
+  test("not reported yet: each advisor says rig's file; the workers, rig's settings", async () => {
+    const s = await stack();
+    const html = await s.page();
+    for (const id of ["teachers", "merged_by", "auditor", "review_panel"])
+      assert.deepEqual(cells(html, id), {
+        model: "rig's file",
+        runs: "rig's file",
+        ctx: "rig's file",
+        say: "the one in the rig's advisors file, if it has one",
+        off: false,
+      });
+    assert.equal(cells(html, "workers").model, "rig's settings");
+    assert.equal(cells(html, "workers").ctx, "rig's settings");
+    assert.equal(cells(html, "planner").model, "same as the workers");
+    assert.equal(cells(html, "second_teacher").model, "choose a model");
+    // Effort says whose default it is.
+    assert.match(lineOf(html, "auditor"), /<option value="" selected>model's default<\/option>/);
+    assert.doesNotMatch(html, /rig default/);
+  });
+
+  test("a file that names models: the model, its harness and its window, greyed", async () => {
+    const s = await stack();
+    const file = AdvisorsConfig.parse({
+      teachers: [
+        { name: "teacher-a", runtime: "claude-code", model: "opus-5.5", token: "token-for-tests" },
+      ],
+      auditor: {
+        name: "auditor",
+        runtime: "openai",
+        base_url: "https://llm.example.com/v1",
+        model: "model-a",
+        api_key_file: "/etc/thermite/advisors/llm-key",
+        context_window: 131_072,
+        compact_at: 70,
+      },
+      review_panel: [
+        {
+          name: "reviewer-a",
+          runtime: "codex",
+          base_url: "https://llm.example.com/v1",
+          model: "model-a",
+          api_key_file: "/etc/thermite/advisors/llm-key",
+        },
+        {
+          name: "reviewer-b",
+          runtime: "codex",
+          base_url: "https://llm.example.com/v1",
+          model: "model-b",
+          api_key_file: "/etc/thermite/advisors/llm-key",
+        },
+      ],
+    });
+    const roles = { teachers: 1, combiner: false, auditor: true, panel: 2 };
+    assert.equal(
+      await report(s, { advisors: { ...STATS, roles, file: advisorsFileReport(file) } }),
+      200,
+    );
+    const html = await s.page();
+    assert.deepEqual(cells(html, "teachers"), {
+      model: "rig's file: opus-5.5",
+      runs: "Claude Code",
+      ctx: "no window · 80%",
+      say: "the one in the rig's advisors file (opus-5.5)",
+      off: false,
+    });
+    assert.deepEqual(cells(html, "auditor"), {
+      model: "rig's file: model-a",
+      runs: "Pi",
+      ctx: "131,072 · 70%",
+      say: "the one in the rig's advisors file (model-a)",
+      off: false,
+    });
+    assert.deepEqual(cells(html, "review_panel"), {
+      model: "rig's file: model-a, model-b",
+      runs: "Codex",
+      ctx: "no window · 80%",
+      say: "the one in the rig's advisors file (model-a, model-b)",
+      off: false,
+    });
+    // The file names no merged by model: two teachers' first review is the set.
+    assert.deepEqual(cells(html, "merged_by"), {
+      model: "none: off",
+      runs: "—",
+      ctx: "—",
+      say: "none: the rig's advisors file has none, so the first review that comes back is the set",
+      off: true,
+    });
+    // A model given here still shows as given; its empty choice keeps the file's words.
+    s.store.assignRoleModel("rig-a", "auditor", { provider: "lab", model: "wide-model" });
+    const given = lineOf(await s.page(), "auditor");
+    assert.match(given, /<option value="lab\|wide-model"[^>]* selected>wide-model<\/option>/);
+    assert.match(given, /<option value="" data-kind="">rig's file: model-a<\/option>/);
+  });
+
+  test("no advisors at all: each advisor is none: off, and its cells say —", async () => {
+    const s = await stack();
+    // Every version of the supervisor reports no advisors as null.
+    assert.equal(await report(s, { advisors: null }), 200);
+    const html = await s.page();
+    assert.deepEqual(cells(html, "auditor"), {
+      model: "none: off",
+      runs: "—",
+      ctx: "—",
+      say: "none: the rig's advisors file has none, so there is no auditor",
+      off: true,
+    });
+    assert.equal(cells(html, "teachers").model, "none: off");
+    assert.equal(cells(html, "review_panel").model, "none: off");
+    assert.equal(cells(html, "merged_by").model, "none: off");
+    // The page's lead and info icons say what an empty model means.
+    assert.match(
+      lineOf(html, "auditor"),
+      /If the file has none, there is no auditor, and audits wait for you\./,
+    );
+  });
+
+  test("an older supervisor (roles only): rig's file, as not reported", async () => {
+    const s = await stack();
+    const roles = { teachers: 2, combiner: true, auditor: true, panel: 0 };
+    assert.equal(await report(s, { advisors: { ...STATS, roles } }), 200);
+    const html = await s.page();
+    assert.equal(cells(html, "auditor").model, "rig's file");
+    assert.equal(cells(html, "review_panel").runs, "rig's file");
+  });
+
+  test("the workers: the rig's own model, or none: can't run", async () => {
+    const s = await stack();
+    const ingest = (model: unknown) =>
+      s.store.ingest({
+        rig: "rig-a",
+        ledger_id: "ledger-rig-a",
+        cursor: 0,
+        next: 0,
+        generated_at: new Date().toISOString(),
+        events: [],
+        summary: { model },
+      });
+    ingest({ source: "environment", model: "local-coder", harness: "pi" });
+    let w = cells(await s.page(), "workers");
+    assert.equal(w.model, "rig's settings: local-coder");
+    assert.equal(w.say, "the rig's own settings (local-coder)");
+    ingest({ source: "none" });
+    w = cells(await s.page(), "workers");
+    assert.equal(w.model, "none: can't run");
+    assert.equal(w.ctx, "—");
   });
 });
