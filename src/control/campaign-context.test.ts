@@ -315,7 +315,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     const words = (out.notes as string[]).join(" ");
     assert.match(
       words,
-      /^This campaign sets a context window of 100,000 tokens, compaction at 70% of the window\. The lower window wins on each agent\. Workers: 100,000 tokens \(wide-model\), compacted at 70% of the window\. Planner: 65,536 tokens \(wide-model\), compacted at 70% of the window\. Teachers: at most 100,000 tokens \(rig default\), compacted at 70% of the window\. Teachers \(merged by\): at most 100,000 tokens \(rig default\), compacted at 70% of the window\./,
+      /^This campaign sets a context window of 100,000 tokens, compaction at 70% of the window\. The lower window wins on each agent\. Workers: 100,000 tokens \(wide-model\), compacted at 70% of the window\. Planner: 65,536 tokens \(wide-model\), compacted at 70% of the window\. Teachers: at most 100,000 tokens \(the rig's advisors file\), compacted at 70% of the window\. Teachers \(merged by\): at most 100,000 tokens \(the rig's advisors file\), compacted at 70% of the window\./,
     );
     // Two teachers with their own models: the second one shows too.
     await s.give({

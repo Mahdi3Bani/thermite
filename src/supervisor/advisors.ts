@@ -215,6 +215,78 @@ export function advisorRoute(rt: AdvisorRuntime): UsageRoute | undefined {
   };
 }
 
+/**
+ * One advisor of the rig's advisors file, as the supervisor reports it to control (goal 074), so
+ * that Edit rig can say what an advisor with no model from control uses: where it runs, its model,
+ * its provider's name and kind, its window and its compaction point. Never a key, a token, a key
+ * file's path, a base address or a command line: none of them is read here. A value that holds
+ * an address (`://`) is left out too, so that a model or provider name with credentials in it
+ * never leaves the supervisor.
+ */
+export interface AdvisorSetup {
+  /** Where it runs: pi (the `openai` runtime), claude-code, opencode, codex, or cli. */
+  harness: "pi" | "claude-code" | "opencode" | "codex" | "cli";
+  /** The model id; null for a command-line agent, which names none. */
+  model: string | null;
+  /** The provider's name, as the file gives it; null: none given. */
+  provider: string | null;
+  /** The provider's kind: its API (openai, anthropic, chatgpt, opencode), or claude. */
+  api: string | null;
+  /** The context window in tokens; null: none (the program's own, or unknown). */
+  context_window: number | null;
+  /** The compaction point in percent; null: the default (COMPACT_AT_DEFAULT). */
+  compact_at: number | null;
+}
+
+/** What the advisors file sets up for each role; empty or null where it names none. */
+export interface AdvisorsFileReport {
+  teachers: AdvisorSetup[];
+  merged_by: AdvisorSetup | null;
+  auditor: AdvisorSetup | null;
+  review_panel: AdvisorSetup[];
+}
+
+/** A short name the report may carry: no address, no control characters, at most 200 chars. */
+const plainName = (v: string | undefined): string | null =>
+  v &&
+  v.length <= 200 &&
+  !v.includes("://") &&
+  ![...v].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)
+    ? v
+    : null;
+
+/** One advisor of the file, as the report gives it. */
+export function advisorSetup(rt: AdvisorRuntime): AdvisorSetup {
+  if (rt.runtime === "cli")
+    return {
+      harness: "cli",
+      model: null,
+      provider: null,
+      api: null,
+      context_window: null,
+      compact_at: null,
+    };
+  const window = rt.context_window ?? 0;
+  return {
+    harness: rt.runtime === "openai" ? "pi" : rt.runtime,
+    model: plainName(rt.model),
+    provider: plainName(rt.provider),
+    api: rt.runtime === "claude-code" ? "claude" : (rt.api ?? "openai"),
+    context_window: window > 0 ? window : null,
+    compact_at: rt.compact_at ?? null,
+  };
+}
+
+/** What the rig's advisors file sets up, by role (no file: none). */
+export function advisorsFileReport(file: AdvisorsConfig | undefined): AdvisorsFileReport {
+  return {
+    teachers: (file?.teachers ?? []).map(advisorSetup),
+    merged_by: file?.merged_by ? advisorSetup(file.merged_by) : null,
+    auditor: file?.auditor ? advisorSetup(file.auditor) : null,
+    review_panel: (file?.review_panel ?? []).map(advisorSetup),
+  };
+}
+
 /** An advisor call's model usage (goal 075): where it ran, and each record. */
 export interface AdvisorUsage extends UsageRoute {
   calls: CallUsage[];

@@ -33,6 +33,15 @@ import {
   rigContext,
   setCampaignContext,
 } from "./campaign-context.ts";
+import {
+  archiveCampaign,
+  createFolder,
+  deleteFolder,
+  moveCampaign,
+  renameFolder,
+  type ShelfOutcome,
+  unarchiveCampaign,
+} from "./campaign-folders.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
   type ClusterFacts,
@@ -135,6 +144,7 @@ import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import {
+  advisorsFileOf,
   agentModelsOf,
   HARNESS_NAMES,
   harnessRefusal,
@@ -211,6 +221,7 @@ import {
   meter,
   modeAvatar,
   modeName,
+  moreText,
   num,
   pct,
   type RunTab,
@@ -588,20 +599,71 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
    */
   const needs = (c: Ctx, vs: RigView[], now: number, back = "/ui"): Need[] =>
     operatorNeeds(store, vs, forms(c), now, back).filter((n) => !n.decided);
-  /** The page shell with the sidebar's rigs and campaigns. */
+  /** The archived campaigns (goal 077): out of the navigation, Needs you and the Overview. */
+  const archivedNames = () => new Set(store.archivedCampaigns().map((a) => a.campaign));
+  /** A run's campaign, as the views name it (a run without one is its own). */
+  const campaignOfRun = (vs: RigView[], rig: string, run: string) => {
+    const r = vs.find((u) => u.id === rig)?.runs.find((x) => x.id === run);
+    return r ? r.campaign || r.id : undefined;
+  };
+  /** Leaves out what belongs to an archived campaign's runs: for Needs you and the lists. */
+  const notArchived = <T extends { rig: string; run?: string | undefined }>(
+    vs: RigView[],
+    xs: T[],
+    archived = archivedNames(),
+  ) =>
+    archived.size
+      ? xs.filter((x) => !x.run || !archived.has(campaignOfRun(vs, x.rig, x.run) ?? ""))
+      : xs;
+  /** The run an event is about: its body's run, the run it names, or its attempt's run. */
+  const eventRun = (u: RigView, e: RigView["recent"][number]): string | undefined => {
+    const b = e.body?.run;
+    if (typeof b === "string") return b;
+    if (!e.subject) return undefined;
+    if (u.runs.some((r) => r.id === e.subject)) return e.subject;
+    return u.runs.find((r) => r.attempts.some((a) => a.id === e.subject))?.id;
+  };
+  /** Where a page's forms in the navigation return: the page, without the notes it showed. */
+  const backHere = (c: Ctx) => {
+    const u = new URL(c.req.url);
+    for (const k of ["sent", "error", "on", "ok"]) u.searchParams.delete(k);
+    return `${u.pathname}${u.search}`;
+  };
+  /** The page shell with the navigation's campaigns and their folders. */
   const page = (c: Ctx, s: Omit<Shell, "rigs" | "needs" | "now">, body: string, vs = views()) => {
     const now = Date.now();
     // A command just sent from this page (POST /ui/commands): say so at the top.
     const sent = c.req.query("sent");
-    if (sent)
+    // What a folder's form or Archive refused (on=shelf): at the top, in words.
+    const shelfError = c.req.query("on") === "shelf" ? c.req.query("error") : undefined;
+    if (shelfError) {
+      const [head, ...rest] = shelfError.split(/(?<=\.) /);
+      body = `<div class="card warn" style="margin-bottom:16px"><b class="bad">${esc(head)}</b> ${esc(rest.join(" "))}</div>${body}`;
+    } else if (sent)
       body = `<div class="card sent-note" style="margin-bottom:16px"><b class="ok">${esc(sent)}</b></div>${body}`;
+    const archived = archivedNames();
+    const path = new URL(c.req.url).pathname;
+    const current = path.startsWith("/ui/campaigns/")
+      ? decodeURIComponent(path.slice("/ui/campaigns/".length).split("/")[0] ?? "")
+      : undefined;
     return c.html(
       shell(
         {
           ...s,
           rigs: vs,
-          needs: needs(c, vs, now).filter((n) => n.kind !== "stale").length,
+          needs: notArchived(
+            vs,
+            needs(c, vs, now).filter((n) => n.kind !== "stale"),
+            archived,
+          ).length,
           now,
+          nav: {
+            folders: store.campaignFolders(),
+            archived,
+            csrf: csrf(c),
+            back: backHere(c),
+            current,
+          },
         },
         body,
       ),
@@ -678,7 +740,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${i.goals.filter((g) => g.status === "met").length} of ${i.goals.length} met</span><span class="right">the judge's check of champion #${esc(i.goals_seq ?? "?")}${i.goals_at ? `, ${esc(ago(i.goals_at, now))} ago` : ""}</span></div><div class="card flat">${i.goals
           .map((g) => {
             const st = goalState(g);
-            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<span class="muted">${esc(clip(g.description, 200))}</span>` : ""}${g.status === "met" ? "" : `<span class="gl-why ${st.tone}">${esc(g.reasons.slice(0, 400))}</span>`}</span></div>`;
+            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${g.status === "met" ? "" : `<div class="gl-why ${st.tone}">${moreText(g.reasons, 400)}</div>`}</span></div>`;
           })
           .join("")}</div></div>`
       : i.mode === "goal"
@@ -999,19 +1061,28 @@ ${body}
   app.get("/ui", (c) => {
     const now = Date.now();
     const vs = views();
-    const feed = needs(c, vs, now);
+    // An archived campaign (goal 077) leaves Needs you and the lists here.
+    const archived = archivedNames();
+    const feed = notArchived(vs, needs(c, vs, now), archived);
     const urgent = feed.filter((n) => n.kind !== "stale");
     const camps = campaignViews(vs);
+    const shelved = (u: RigView, run: string | undefined) =>
+      run !== undefined && archived.has(campaignOfRun([u], u.id, run) ?? "");
     // What happened lately, across rigs, in words.
     const activity = timeline(
-      vs.flatMap((u) => u.recent.slice(0, 40).map((e) => ({ u, e }))),
+      vs.flatMap((u) =>
+        u.recent
+          .slice(0, 40)
+          .filter((e) => !archived.size || !shelved(u, eventRun(u, e)))
+          .map((e) => ({ u, e })),
+      ),
       now,
       { limit: 10, showRig: true },
     );
     // One scan, top to bottom: what needs you, what is at work, what happened.
     const live = vs.flatMap((u) =>
       u.runs
-        .filter((i) => i.status === "running")
+        .filter((i) => i.status === "running" && !archived.has(i.campaign || i.id))
         .map((i) =>
           runBrief(store, u, i, now, {
             heading: true,
@@ -1049,24 +1120,39 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   app.get("/ui/campaigns", (c) => {
     const now = Date.now();
     const vs = views();
-    const camps = campaignViews(vs);
-    const feed = needs(c, vs, now, "/ui/campaigns");
+    // Archived campaigns (goal 077) have their own filter, with Unarchive; one with no runs too.
+    const shelf = new Map(store.archivedCampaigns().map((a) => [a.campaign, a]));
+    const reported = campaignViews(vs);
+    const modes = shelf.size ? campaignModes(store, vs) : new Map<string, string | null>();
+    const camps: CampaignView[] = [
+      ...reported,
+      ...[...shelf.keys()]
+        .filter((name) => !reported.some((k) => k.name === name))
+        .map((name) => ({ name, mode: modes.get(name) ?? null, runs: [] })),
+    ];
+    const feed = notArchived(vs, needs(c, vs, now, "/ui/campaigns"), new Set(shelf.keys()));
     const waitingFor = (u: RigView, r: RunView) =>
       feed.filter((n) => n.rig === u.id && n.run === r.id).length;
     // Rig checks have their own filter: At work counts the campaigns' runs only.
     const atWork = vs.flatMap((u) =>
       u.runs
-        .filter((r) => r.status === "running" && !isRigCheck(r.campaign ?? ""))
+        .filter(
+          (r) =>
+            r.status === "running" &&
+            !isRigCheck(r.campaign ?? "") &&
+            !shelf.has(r.campaign || r.id),
+        )
         .map((r) => workCardFor(c, u, r, now, waitingFor(u, r), "/ui/campaigns")),
     );
     const waiting = vs
       .flatMap((u) => u.runs.map((r) => ({ rig: u, run: r, n: waitingFor(u, r) })))
       .filter((w) => w.n > 0);
+    const shown = camps.length - shelf.size;
     return page(
       c,
       {
         title: "Campaigns",
-        summary: `${atWork.length} at work · ${waiting.reduce((a, w) => a + w.n, 0)} decision${waiting.reduce((a, w) => a + w.n, 0) === 1 ? " waits" : "s wait"} for you · ${camps.length} campaign${camps.length === 1 ? "" : "s"}`,
+        summary: `${atWork.length} at work · ${waiting.reduce((a, w) => a + w.n, 0)} decision${waiting.reduce((a, w) => a + w.n, 0) === 1 ? " waits" : "s wait"} for you · ${shown} campaign${shown === 1 ? "" : "s"}${shelf.size ? ` · ${shelf.size} archived` : ""}`,
         active: "campaigns",
         actions: opts.kits
           ? `<a class="btn primary" href="/ui/campaigns/new">New campaign</a>`
@@ -1077,6 +1163,17 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             camps,
             atWork,
             waiting,
+            archived: new Map(
+              [...shelf].map(([name, a]) => {
+                const folder = store.campaignFolderOf(name);
+                return [
+                  name,
+                  `${ago(a.at, now)} ago by ${copiedBy(a.by)}${folder ? ` · in ${folder.name}` : ""}`,
+                ];
+              }),
+            ),
+            unarchive: (name) =>
+              `<form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><input type="hidden" name="back" value="/ui/campaigns?f=archived"><button class="sm">Unarchive</button></form>`,
             filter: campaignFilter(c.req.query("f")),
             query: c.req.query("q") ?? "",
             now,
@@ -1573,7 +1670,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   };
   const startPanel = (c: Ctx, campaign: string, vs: RigView[], open: boolean) => {
     const from = startFrom(campaign);
-    if (!from) return "";
+    // An archived campaign starts no run (goal 077): its page offers Unarchive instead.
+    if (!from || store.campaignArchived(campaign)) return "";
     const kb = store.kb();
     const pastQ = (c.req.query("past") ?? "").slice(0, 300);
     return startDrawer({
@@ -1843,10 +1941,33 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       typed: tried?.context,
     });
   };
-  /** A campaign's buttons at the top of its page: Copy, then Start a run, as control can. */
-  const campaignActions = (name: string) =>
-    `${copySource(name) ? `<a class="btn" href="${campaignHref(name)}?copy=1" data-open="#copy">${icon.copy}Copy</a>` : ""}${startFrom(name) ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>` : ""}` ||
-    undefined;
+  /**
+   * A campaign's buttons at the top of its page: Copy, then Start a run, as control can, then ⋯
+   * with Move to folder and Archive (goal 077). An archived campaign starts no run: its ⋯ has
+   * Unarchive.
+   */
+  const campaignActions = (c: Ctx, name: string) => {
+    const archived = store.campaignArchived(name);
+    const hidden = `<input type="hidden" name="csrf" value="${esc(csrf(c))}">`;
+    const folders = store.campaignFolders();
+    const here = store.campaignFolderOf(name);
+    const move = folders.length
+      ? `<form class="sfd" method="post" action="${campaignHref(name)}/folder">${hidden}${infoLabel("Move to folder", archived ? "The folder this campaign keeps while it is archived, and comes back into when you unarchive it. Its runs, results and folder in the knowledge base do not change." : "Where this campaign shows in the left navigation. You can also drag it there. Its runs, results and folder in the knowledge base do not change.")}<span class="kmove"><select name="folder" aria-label="Folder"><option value=""${here ? "" : " selected"}>No folder</option>${folders.map((f) => `<option value="${f.id}"${f.id === here?.id ? " selected" : ""}>${esc(f.name)}</option>`).join("")}</select><button class="sm">Move</button></span></form>`
+      : `<div class="sfd">${infoLabel("Move to folder", "Where this campaign shows in the left navigation. Make a folder with the folder button beside Campaigns there.")}<span class="muted small">No folder yet: make one with the folder button beside Campaigns in the navigation.</span></div>`;
+    const more = `<details class="menu" data-campaign-more><summary class="btn" title="More" aria-label="More">${icon.dots}</summary><div class="menu-pop kmore-pop">${
+      archived
+        ? `${move}<div class="fsep"></div><form method="post" action="${campaignHref(name)}/unarchive">${hidden}<button class="sm">Unarchive</button></form><span class="muted small">It comes back to the navigation, ${here ? `in ${esc(here.name)}` : "in no folder"}.</span>`
+        : `${move}<div class="fsep"></div><form method="post" action="${campaignHref(name)}/archive">${hidden}<button class="sm">${icon.archive}Archive</button></form><span class="muted small">Out of the navigation, Needs you and the Overview. Its runs, results and kits stay.</span>`
+    }</div></details>`;
+    return `${copySource(name) ? `<a class="btn" href="${campaignHref(name)}?copy=1" data-open="#copy">${icon.copy}Copy</a>` : ""}${!archived && startFrom(name) ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>` : ""}${more}`;
+  };
+  /** An archived campaign's line at the top of its page, with Unarchive. */
+  const archivedLine = (c: Ctx, name: string) => {
+    const a = store.campaignArchived(name);
+    if (!a) return "";
+    const folder = store.campaignFolderOf(name);
+    return `<div class="card" style="margin-bottom:16px"><b>${icon.archive} Archived</b> ${esc(ago(a.at, Date.now()))} ago by ${esc(copiedBy(a.by))}. <span class="muted">It is out of the navigation, Needs you and the Overview. Its runs, results and kits stay${folder ? `, and it keeps its folder, ${esc(folder.name)}` : ""}. Control starts no run of it until you unarchive it.</span> <form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><button class="sm">Unarchive</button></form></div>`;
+  };
   // The Copy panel's form: the copy's page, or the panel again with control's words.
   app.post("/ui/campaigns/:campaign/copy", async (c) => {
     const from = c.req.param("campaign");
@@ -2122,18 +2243,22 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const kbFailed = c.req.query("on") === "kb" ? c.req.query("error") : undefined;
     // So does what the Agents' context's Save did, in its own block.
     const onContext = c.req.query("on") === "context";
-    const failed = kbFailed || onContext ? undefined : c.req.query("error");
+    // Archive and Move to folder (on=shelf) say what they refused at the top of every page.
+    const failed =
+      kbFailed || onContext || c.req.query("on") === "shelf" ? undefined : c.req.query("error");
     const okNote = onContext ? undefined : c.req.query("ok");
     const context = () => contextSection(c, name, vs, onContext);
     // The campaign's brief from its contract (goal 078): what its agents know.
     const brief = () => (isRigCheck(name) ? "" : campaignBriefBlock(campaignContract(store, name)));
-    const note = failed
-      ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
-      : okNote
-        ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
-        : "";
-    const canStart = Boolean(startFrom(name));
-    const buttons = campaignActions(name);
+    const note = `${
+      failed
+        ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
+        : okNote
+          ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
+          : ""
+    }${archivedLine(c, name)}`;
+    const canStart = Boolean(startFrom(name)) && !store.campaignArchived(name);
+    const buttons = campaignActions(c, name);
     const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1")}${copyPanel(c, name, vs, tried)}`;
     // A run just started (Start a run sends here with ?run=), until its rig reports it.
     const startingCard = (key: string) =>
@@ -2141,7 +2266,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaignVersions(name);
-      if (!saved.length && !canStart)
+      if (!saved.length && !startFrom(name) && !store.campaignArchived(name))
         return page(
           c,
           {
@@ -2313,6 +2438,125 @@ ${
     );
   };
   app.get("/ui/campaigns/:campaign", (c) => campaignPage(c));
+
+  // ---------------------------------------- Archive, and the navigation's folders (goal 077)
+  /**
+   * Where Archive or a folder's form returns: its page, with what control did (sent) or what it
+   * refused (error, on=shelf), in words. The navigation's script asks for JSON instead.
+   */
+  const shelfAnswer = <T>(
+    c: Ctx,
+    f: Record<string, unknown>,
+    out: ShelfOutcome<T>,
+    done: (a: T) => string,
+    not: string,
+    fallback: string,
+  ) => {
+    if (c.req.header("accept")?.includes("application/json")) {
+      if (out.ok) return c.json({ ...out.answer, said: done(out.answer) });
+      // A redirect's refusal is audited from its address; this answer says it itself.
+      store.audit("owner:ui", "refused", { path: new URL(c.req.url).pathname, why: out.error });
+      return c.json({ error: `${not} ${out.error}` });
+    }
+    const to = backTo(f, fallback);
+    const [path = fallback, hash] = to.split("#");
+    const q = out.ok
+      ? `sent=${encodeURIComponent(done(out.answer))}`
+      : `error=${encodeURIComponent(`${not} ${out.error}`)}&on=shelf`;
+    return c.redirect(`${path}${path.includes("?") ? "&" : "?"}${q}${hash ? `#${hash}` : ""}`, 303);
+  };
+  /** A folder of the navigation by the id its forms carry. */
+  const folderById = (id: string) => store.campaignFolders().find((x) => String(x.id) === id);
+  const goneFolder = {
+    ok: false,
+    error: "That folder is not there any more.",
+    status: 404,
+  } as const;
+  app.post("/ui/campaigns/:campaign/archive", async (c) => {
+    const name = c.req.param("campaign");
+    return shelfAnswer(
+      c,
+      await c.req.parseBody(),
+      archiveCampaign(store, views(), name, "owner:ui"),
+      (a) =>
+        a.changed
+          ? `Archived ${name}. It left the navigation, Needs you and the Overview.`
+          : `${name} is archived already.`,
+      "Not archived.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaigns/:campaign/unarchive", async (c) => {
+    const name = c.req.param("campaign");
+    return shelfAnswer(
+      c,
+      await c.req.parseBody(),
+      unarchiveCampaign(store, views(), name, "owner:ui"),
+      (a) =>
+        a.changed
+          ? `Unarchived ${name}. It is back in the navigation, ${a.folder ? `in ${a.folder}` : "in no folder"}.`
+          : `${name} is not archived.`,
+      "Not unarchived.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaigns/:campaign/folder", async (c) => {
+    const name = c.req.param("campaign");
+    const f = await c.req.parseBody();
+    const id = String(f.folder ?? "");
+    const to = id ? folderById(id) : undefined;
+    return shelfAnswer(
+      c,
+      f,
+      id && !to ? goneFolder : moveCampaign(store, views(), name, to?.name ?? null, "owner:ui"),
+      (a) =>
+        !a.changed
+          ? a.folder
+            ? `${name} is in ${a.folder} already.`
+            : `${name} is in no folder already.`
+          : a.folder
+            ? `Moved ${name} to ${a.folder}.`
+            : `Moved ${name} out of its folder.`,
+      "Not moved.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaign-folders", async (c) => {
+    const f = await c.req.parseBody();
+    return shelfAnswer(
+      c,
+      f,
+      createFolder(store, String(f.name ?? ""), "owner:ui"),
+      (a) =>
+        `Made the folder ${a.folder.name}. Drag a campaign onto it, or use Move to folder on a campaign's page.`,
+      "No folder made.",
+      "/ui/campaigns",
+    );
+  });
+  app.post("/ui/campaign-folders/:id/rename", async (c) => {
+    const f = await c.req.parseBody();
+    const folder = folderById(c.req.param("id"));
+    return shelfAnswer(
+      c,
+      f,
+      folder ? renameFolder(store, folder.name, String(f.name ?? ""), "owner:ui") : goneFolder,
+      (a) => (a.changed ? `Renamed ${a.was} to ${a.folder.name}.` : "Nothing to rename."),
+      "Not renamed.",
+      "/ui/campaigns",
+    );
+  });
+  app.post("/ui/campaign-folders/:id/delete", async (c) => {
+    const f = await c.req.parseBody();
+    const folder = folderById(c.req.param("id"));
+    return shelfAnswer(
+      c,
+      f,
+      folder ? deleteFolder(store, folder.name, "owner:ui") : goneFolder,
+      (a) => `Deleted the folder ${a.deleted}.`,
+      "Not deleted.",
+      "/ui/campaigns",
+    );
+  });
 
   // The folders a campaign's agents may read besides its own (goal 065): the owner's, any time.
   const grantBack = (c: Ctx, campaign: string, k: "ok" | "error", m: string) =>
@@ -7009,7 +7253,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   /**
    * Checks a model for one of a rig's other agents (or one of the teachers' models), as its row on
    * Edit rig does, or (an empty choice) its default again: the workers' model for the planner,
-   * the rig default for an advisor. Nothing changes here: applyAgentModel saves what this
+   * the one in the rig's advisors file for an advisor. Nothing changes here: applyAgentModel saves what this
    * allows. `harness` (goal 073): where it runs; left out (a line's Runs in on its empty choice, or
    * a form without it), the one it has while it keeps the same model, else what the model needs.
    * `cap` and `at`: the agent's own cap on its model's window and its compaction point (goal 070),
@@ -7252,6 +7496,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       now,
       two: second === "2" || (second !== "1" && hasSecond),
       href: `/ui/rigs/${rName}/edit`,
+      // What an agent with no model uses (goal 074): the rig's own model, as its harness reports
+      // it, and its advisors file, as its supervisor reports it.
+      defaults: {
+        workers:
+          u.model?.source === "environment"
+            ? (u.model.model ?? undefined)
+            : u.model?.source === "none"
+              ? null
+              : undefined,
+        advisors: advisorsFileOf(u.supervisor),
+      },
     });
     const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
     const where = placed
@@ -7274,7 +7529,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <form id="edit-rig" method="post" action="/ui/rigs/${rName}/edit"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Parts of the rig</h2><div class="card flat">${PARTS.map(sw).join("")}
 <div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
-<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, an agent uses the rig default.</p>
+<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, the workers use the rig's own settings, and the planner uses the workers' model. An advisor uses the model in the rig's advisors file. If the file has none, that advisor is off.</p>
 <div class="card">${agents}</div>
 <div class="g3" style="margin-top:14px">
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
@@ -7366,8 +7621,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 
     // The other agents' lines (goals 070, 073 and 074): each one's model, effort, harness, window
     // and point. Only the lines the form has: a line it lacks keeps its model. The first teacher
-    // on the rig default takes the second teacher and the merged by model with it, as
-    // set_rig_model's clear does; a second teacher needs a first.
+    // with no model (the advisors file's) takes the second teacher and the merged by model with
+    // it, as set_rig_model's clear does; a second teacher needs a first.
     const roles = store.roleModels(rig);
     const noTeachers = "role_teachers" in f && !String(f.role_teachers ?? "");
     if (noTeachers && twoTeachers)
@@ -7487,7 +7742,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const teachersCleared = plans.some((p) => p.role === "teachers" && p.clear);
     for (const plan of plans) {
       const ok = applyAgentModel(rig, plan).ok;
-      // The teachers back to the rig default: said once, for their three models.
+      // The teachers back to the advisors file: said once, for their three models.
       if (!(teachersCleared && plan.clear && plan.role !== "teachers")) said.push(ok);
     }
     if (settings) {

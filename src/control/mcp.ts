@@ -22,6 +22,17 @@ import {
   setCampaignContext,
 } from "./campaign-context.ts";
 import {
+  archiveCampaign,
+  campaignFoldersAnswer,
+  createFolder,
+  deleteFolder,
+  FOLDER_NAME_MAX,
+  moveCampaign,
+  renameFolder,
+  type ShelfOutcome,
+  unarchiveCampaign,
+} from "./campaign-folders.ts";
+import {
   type CopyCampaignRequest,
   copyCampaignAnswer,
   copyCampaignFields,
@@ -39,7 +50,13 @@ import {
 import { redirectUriOf, ServerBody, serverJson } from "./mcp-server-routes.ts";
 import type { McpServers } from "./mcp-servers.ts";
 import { copiedFromRecords } from "./queue-copy.ts";
-import { type RigModelBody, rigModelAnswer, rigModelFields, rigModelRequest } from "./rig-model.ts";
+import {
+  type RigModelBody,
+  rigModelAnswer,
+  rigModelFields,
+  rigModelRequest,
+  rigModelsAnswer,
+} from "./rig-model.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
   DEFAULT_IDLE_STOP_MINUTES,
@@ -773,13 +790,13 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         "rig_models",
         {
           title: "Each agent's model on a rig",
-          description: `Each agent's model on a rig: the work (workers, planner) and the advisors (teachers, auditor, review_panel). A model is {provider, model, effort, harness, context_cap, compact_at} (harness: where it runs, pi, opencode, claude-code or codex; context_cap null: the provider's window; compact_at null: the default, ${COMPACT_AT_DEFAULT}% of the window). workers, planner, auditor and review_panel are each a model, or null for the default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig default (the rig's advisors file). teachers is {models, merged_by}: models holds one teacher's model or two teachers' (empty: the rig default), and merged_by the model that merges the advice of two teachers (null: the rig default). It is what control gives the rig; set it with set_rig_model.`,
+          description: `Each agent's model on a rig: the work (workers, planner) and the advisors (teachers, auditor, review_panel). A model is {provider, model, effort, harness, context_cap, compact_at} (harness: where it runs, pi, opencode, claude-code or codex; context_cap null: the provider's window; compact_at null: the default, ${COMPACT_AT_DEFAULT}% of the window). workers, planner, auditor and review_panel are each a model, or null for the default: the workers use the rig's own settings, the planner the workers' model, an advisor the one in the rig's advisors file (off when the file names none). teachers is {models, merged_by}: models holds one teacher's model or two teachers' (empty: the teachers in the advisors file), and merged_by the model that merges the advice of two teachers (null: the one in the advisors file). agents is what control gives the rig; set it with set_rig_model. advisors_file is what the rig's advisors file sets up, as its supervisor reports it: {teachers, merged_by, auditor, review_panel}, each advisor {harness, model, provider, api, context_window, compact_at} (harness: pi, claude-code, opencode, codex, or cli for a command-line agent, whose model is null; provider: the provider's name the file gives, or null; api: the provider's kind, such as openai, anthropic, chatgpt, opencode or claude; context_window null: none; compact_at null: the default). An empty list or null: the file names none, so that advisor is off until control gives it a model. advisors_file is null when the supervisor has not reported it: none yet, or an older supervisor. It never holds a key, a token or an address.`,
           inputSchema: { rig: z.string().min(1) },
         },
         audited("rig_models", (a: { rig: string }) => {
           const agents = read(a.rig);
           if ("error" in agents) throw new Error(agents.error);
-          return { rig: a.rig, agents };
+          return rigModelsAnswer(store, a.rig, agents);
         }),
       );
     }
@@ -789,7 +806,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         "set_rig_model",
         {
           title: "Give a rig's agents a model",
-          description: `As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers, auditor or review_panel; the other agents keep their models. The teachers take one or two models: provider and model give the first teacher's; second_model, {provider, model, harness?, effort?, context_window?, compact_at?}, gives a second teacher (null: one teacher only); merged_by, the same shape, gives the model that merges the advice of two teachers into one set (null: the rig default). Two teachers without a merged by model: the first review that comes back is the set. A call may give second_model or merged_by alone; a second teacher needs a first. The old names are still taken in v0.1.0 and the answer says what each is now: combiner is the teachers' merged_by, panel is review_panel. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig default (the rig's advisors file); for the teachers, their second and merged by models too. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. harness, for any agent: where it runs, pi, opencode (OpenCode v2), claude-code or codex (the Codex CLI); left out, what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). A Claude subscription runs only in claude-code and claude-code only with one; codex only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in opencode: another harness is refused in words. A planner with no model of its own follows the workers' (in Codex when the workers run in Codex). Advisors run in the supervisor: in pi with read-only tools; in claude-code, opencode or codex with none of the program's own tools, only the search of the run's past research and the kit's MCP tools. Every agent takes context_window and compact_at, kept with its model; a planner with no model of its own uses the workers'. context_window caps the agent's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one; an advisor's one-call package is cut to fit it. compact_at is the share of the window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}; default ${COMPACT_AT_DEFAULT}), at which the agent's conversation is compacted: the conversation is kept as a document, summarized, and the agent goes on. It never ends a trial. Each call sets the agent's cap and compact_at anew: a call without them removes a cap and returns to the default point. A campaign may set its own (set_campaign_context): the lower window wins. Returns context_window, the window the agent's model route carries (for the teachers, the first teacher's; null: the provider lists none, the model was cleared, or the call gave only second_model or merged_by), compact_at (null: the default), and agents, each agent's model after the change, as rig_models reads them.`,
+          description: `As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers, auditor or review_panel; the other agents keep their models. The teachers take one or two models: provider and model give the first teacher's; second_model, {provider, model, harness?, effort?, context_window?, compact_at?}, gives a second teacher (null: one teacher only); merged_by, the same shape, gives the model that merges the advice of two teachers into one set (null: the one in the rig's advisors file). Two teachers without a merged by model: the first review that comes back is the set. A call may give second_model or merged_by alone; a second teacher needs a first. The old names are still taken in v0.1.0 and the answer says what each is now: combiner is the teachers' merged_by, panel is review_panel. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the one in the rig's advisors file (off when the file names none; rig_models shows the file's); for the teachers, their second and merged by models too. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. harness, for any agent: where it runs, pi, opencode (OpenCode v2), claude-code or codex (the Codex CLI); left out, what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). A Claude subscription runs only in claude-code and claude-code only with one; codex only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in opencode: another harness is refused in words. A planner with no model of its own follows the workers' (in Codex when the workers run in Codex). Advisors run in the supervisor: in pi with read-only tools; in claude-code, opencode or codex with none of the program's own tools, only the search of the run's past research and the kit's MCP tools. Every agent takes context_window and compact_at, kept with its model; a planner with no model of its own uses the workers'. context_window caps the agent's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one; an advisor's one-call package is cut to fit it. compact_at is the share of the window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}; default ${COMPACT_AT_DEFAULT}), at which the agent's conversation is compacted: the conversation is kept as a document, summarized, and the agent goes on. It never ends a trial. Each call sets the agent's cap and compact_at anew: a call without them removes a cap and returns to the default point. A campaign may set its own (set_campaign_context): the lower window wins. Returns context_window, the window the agent's model route carries (for the teachers, the first teacher's; null: the provider lists none, the model was cleared, or the call gave only second_model or merged_by), compact_at (null: the default), and agents, each agent's model after the change, as rig_models reads them.`,
           inputSchema: { rig: z.string().min(1), ...rigModelFields },
         },
         audited("set_rig_model", async (a: RigModelBody & { rig: string }) => {
@@ -913,6 +930,116 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             if (out.state === "refused") throw new Error(out.error);
             return campaignContextAnswer(out);
           },
+        ),
+      );
+    }
+    // Archive a campaign, and the dashboard navigation's folders (goal 077): the same functions as
+    // the dashboard and REST. The reader may read them; the owner and an operator change them.
+    const allViews = () =>
+      store
+        .rigs()
+        .map((u) =>
+          rigView(store, u.id, {
+            staleAfterMs: opts.staleAfterMs,
+            offlineAfterMs: opts.offlineAfterMs,
+            control: opts.control,
+          }),
+        )
+        .filter((v): v is NonNullable<typeof v> => v !== undefined);
+    const shelved = <T>(out: ShelfOutcome<T>): T => {
+      if (!out.ok) throw new Error(out.error);
+      return out.answer;
+    };
+    server.registerTool(
+      "campaign_folders",
+      {
+        title: "Campaign folders and archived campaigns",
+        description:
+          "How the owner arranged the campaigns in the dashboard's left navigation: each folder, by name, with the campaigns in it ({name, campaigns, created_at, created_by}), archived ones too, and the archived campaigns ({campaign, at, by, folder}), which are out of the navigation, Needs you and the Overview. An archived campaign keeps its folder (folder: its name, or null), but the navigation neither shows nor counts it there until it is unarchived. A campaign in no folder and not archived shows on its own in the navigation. These folders only group campaigns there: they are not the campaigns' folders in the knowledge base (kb_folders).",
+        inputSchema: {},
+      },
+      audited("campaign_folders", () => campaignFoldersAnswer(store)),
+    );
+    if (canCommand) {
+      const campaignInput = {
+        campaign: z.string().min(1).describe("The campaign, as on its page"),
+      };
+      server.registerTool(
+        "archive_campaign",
+        {
+          title: "Archive a campaign",
+          description:
+            "As Archive on a campaign's page: the campaign leaves the dashboard's left navigation, Needs you and the Overview's lists, and the Campaigns page lists it under Archived. Its runs, results, kits and folder in the knowledge base stay, and it keeps its folder in the navigation, where it comes back when unarchived. Control starts and resumes no run of an archived campaign until unarchive_campaign. Returns {campaign, archived: true, at, by, folder, changed} (changed: false when it was archived already). Refused in words while a run of it is at work or waits to start (a start or resume control sent that the rig has not taken yet): \"Pause or close its runs first.\", with each such run; and for a campaign control does not know.",
+          inputSchema: campaignInput,
+        },
+        audited("archive_campaign", (a: { campaign: string }) =>
+          shelved(archiveCampaign(store, allViews(), a.campaign, actor)),
+        ),
+      );
+      server.registerTool(
+        "unarchive_campaign",
+        {
+          title: "Unarchive a campaign",
+          description:
+            "As Unarchive on the Campaigns page's Archived list: the campaign comes back to the dashboard's left navigation, in the folder it kept, and its runs may start again. Returns {campaign, archived: false, at: null, by: null, folder, changed} (changed: false when it was not archived). Refused in words for a campaign control does not know.",
+          inputSchema: campaignInput,
+        },
+        audited("unarchive_campaign", (a: { campaign: string }) =>
+          shelved(unarchiveCampaign(store, allViews(), a.campaign, actor)),
+        ),
+      );
+      const folderName = z.string().max(200).describe(`At most ${FOLDER_NAME_MAX} characters`);
+      server.registerTool(
+        "create_campaign_folder",
+        {
+          title: "Make a folder for campaigns",
+          description: `A folder in the dashboard's left navigation, to group campaigns there (move_campaign puts one in it). Not a folder of the knowledge base. A name is one line of at most ${FOLDER_NAME_MAX} characters, and two folders can't have the same one, whatever its case. Returns {folder: {name, campaigns, created_at, created_by}}. Refused in words: an empty name, a name too long, a taken one.`,
+          inputSchema: { name: folderName },
+        },
+        audited("create_campaign_folder", (a: { name: string }) =>
+          shelved(createFolder(store, a.name, actor)),
+        ),
+      );
+      server.registerTool(
+        "rename_campaign_folder",
+        {
+          title: "Rename a folder for campaigns",
+          description:
+            "Renames a folder of the dashboard's left navigation; its campaigns stay in it. Returns {folder, was, changed}. Refused in words: no such folder, an empty name, a name too long, a taken one.",
+          inputSchema: {
+            folder: z.string().min(1).max(200).describe("The folder's name now"),
+            name: folderName.describe("Its new name"),
+          },
+        },
+        audited("rename_campaign_folder", (a: { folder: string; name: string }) =>
+          shelved(renameFolder(store, a.folder, a.name, actor)),
+        ),
+      );
+      server.registerTool(
+        "delete_campaign_folder",
+        {
+          title: "Delete an empty folder for campaigns",
+          description:
+            "Deletes a folder of the dashboard's left navigation that has no campaign in it, archived ones included. Returns {deleted}. Refused in words: no such folder, or one with campaigns in it, each archived one marked (archived) (move them out first with move_campaign, folder: null).",
+          inputSchema: { folder: z.string().min(1).max(200).describe("The folder's name") },
+        },
+        audited("delete_campaign_folder", (a: { folder: string }) =>
+          shelved(deleteFolder(store, a.folder, actor)),
+        ),
+      );
+      server.registerTool(
+        "move_campaign",
+        {
+          title: "Move a campaign to a folder",
+          description:
+            "Puts a campaign in a folder of the dashboard's left navigation (folder: its name), or in none (folder: null). Only the navigation changes: not its runs, results or folder in the knowledge base. An archived campaign may move too: it comes back into its new folder when it is unarchived. Returns {campaign, folder, changed}. Refused in words: no such campaign or folder.",
+          inputSchema: {
+            ...campaignInput,
+            folder: z.string().max(200).nullable().describe("The folder's name, or null for none"),
+          },
+        },
+        audited("move_campaign", (a: { campaign: string; folder: string | null }) =>
+          shelved(moveCampaign(store, allViews(), a.campaign, a.folder, actor)),
         ),
       );
     }

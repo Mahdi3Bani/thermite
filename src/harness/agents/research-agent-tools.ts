@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { researchOutput, researchTool } from "./research-tools.ts";
+import { researchOutput, researchTool, SOURCE_PARAM } from "./research-tools.ts";
 
 /**
  * The research tools as Pi offers them: a research trial has all of them, a hill-climb or goal
@@ -19,10 +19,21 @@ const PARAMS: Record<string, TSchema> = {
   search: Type.Object({ query: Type.String() }),
   search_corpus: Type.Object({ text: Type.String() }),
   add_claim: Type.Object({
-    text: Type.String(),
-    quotes: Type.Array(Type.Object({ source: Type.String(), quote: Type.String() })),
+    text: Type.String({
+      description:
+        "The claim, in your words, with no heading or label. Every number in it must be in its quotes.",
+    }),
+    quotes: Type.Array(
+      Type.Object({
+        source: Type.String({ description: SOURCE_PARAM }),
+        quote: Type.String({ description: "Words copied exactly from that source's text." }),
+      }),
+    ),
     question: Type.Optional(
-      Type.Number({ description: "Index of the campaign question it answers (0-based)." }),
+      Type.Number({
+        description:
+          "Index of the campaign question it answers (0-based). Give it here, not in the text.",
+      }),
     ),
     confidence: Type.Optional(Type.Number()),
   }),

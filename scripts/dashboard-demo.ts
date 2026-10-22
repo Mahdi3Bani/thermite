@@ -593,7 +593,37 @@ for (const [u, usd] of [
 ] as const) {
   store.setSupervisor(u, {
     export: { exports: 31, remote: true, last_push_at: iso(0.4) },
-    advisors: { teacher_runs: 28, directive_sets: 9, audits: 2, reviews: 0, errors: 0, usd },
+    advisors: {
+      teacher_runs: 28,
+      directive_sets: 9,
+      audits: 2,
+      reviews: 0,
+      errors: 0,
+      usd,
+      // What the rig's advisors file sets up: Edit rig's empty Model choices name it.
+      file: {
+        teachers: [
+          {
+            harness: "pi",
+            model: "glm-5.1",
+            provider: null,
+            api: "openai",
+            context_window: 204_800,
+            compact_at: null,
+          },
+        ],
+        merged_by: null,
+        auditor: {
+          harness: "pi",
+          model: "glm-5.1",
+          provider: null,
+          api: "openai",
+          context_window: 204_800,
+          compact_at: null,
+        },
+        review_panel: [],
+      },
+    },
   });
 }
 store.setSupervisor("cpu-1", { export: { exports: 10, remote: false } });

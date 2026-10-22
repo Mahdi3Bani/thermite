@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fetchControlAdvisors, mergeAdvisors, runtimeOf } from "./advisor-routes.ts";
-import { AdvisorsConfig } from "./advisors.ts";
+import { AdvisorsConfig, advisorsFileReport } from "./advisors.ts";
 
 const route = (o: Partial<Record<string, unknown>> = {}) => ({
   name: "p",
@@ -300,5 +300,129 @@ process.stdin.on("end", () => {
       r.output?.reasons,
       'token=fd3 env=clean tools="" settings="" strict=true model=claude-opus-5-5 effort=high scrub=undefined prompt=true',
     );
+  });
+});
+
+/**
+ * What the supervisor tells control of its advisors file (goal 074), so that Edit rig can say what
+ * an advisor with no model from control uses: for each role, where it runs, its model, its
+ * provider's name and kind, its window and its point. Never a key, a token, a key file's path, a
+ * base address or a command line.
+ */
+describe("the supervisor's report of its advisors file", () => {
+  test("each role's model, harness, provider and window, and no key, token, address or path", () => {
+    const secrets = [
+      "secret-password",
+      "teacher-key-for-tests",
+      "token-for-claude-tests",
+      "merged-key-for-tests",
+      "cli-token-for-tests",
+      "/run/secrets/",
+      "llm.example.com",
+      "kb.example.com",
+      "user:pw",
+    ];
+    const file = AdvisorsConfig.parse({
+      teachers: [
+        {
+          name: "teacher-a",
+          runtime: "openai",
+          api: "anthropic",
+          base_url: "https://user:secret-password@llm.example.com/v1",
+          model: "model-a",
+          api_key: "teacher-key-for-tests",
+          provider: "my-litellm",
+          compact_at: 70,
+        },
+        {
+          name: "teacher-b",
+          runtime: "claude-code",
+          model: "opus-5.5",
+          token: "token-for-claude-tests",
+          context_window: 200_000,
+        },
+      ],
+      merged_by: {
+        name: "merged-by",
+        runtime: "codex",
+        api: "chatgpt",
+        base_url: "https://llm.example.com/v1",
+        model: "gpt-sol",
+        api_key: "merged-key-for-tests",
+      },
+      auditor: {
+        name: "auditor",
+        runtime: "cli",
+        argv: ["my-agent", "--token", "cli-token-for-tests"],
+        restricted: true,
+      },
+      review_panel: [
+        {
+          name: "reviewer-a",
+          runtime: "opencode",
+          base_url: "https://llm.example.com/v1",
+          // A model value with credentials in it is left out, not sent.
+          model: "https://user:pw@llm.example.com/model-b",
+          api_key_file: "/run/secrets/llm-key",
+        },
+      ],
+      kb: { mcp_url: "https://kb.example.com/mcp", token_file: "/run/secrets/kb-token" },
+    });
+    const report = advisorsFileReport(file);
+    assert.deepEqual(report, {
+      teachers: [
+        {
+          harness: "pi",
+          model: "model-a",
+          provider: "my-litellm",
+          api: "anthropic",
+          context_window: 200_000,
+          compact_at: 70,
+        },
+        {
+          harness: "claude-code",
+          model: "opus-5.5",
+          provider: null,
+          api: "claude",
+          context_window: 200_000,
+          compact_at: null,
+        },
+      ],
+      merged_by: {
+        harness: "codex",
+        model: "gpt-sol",
+        provider: null,
+        api: "chatgpt",
+        context_window: null,
+        compact_at: null,
+      },
+      auditor: {
+        harness: "cli",
+        model: null,
+        provider: null,
+        api: null,
+        context_window: null,
+        compact_at: null,
+      },
+      review_panel: [
+        {
+          harness: "opencode",
+          model: null,
+          provider: null,
+          api: "openai",
+          context_window: null,
+          compact_at: null,
+        },
+      ],
+    });
+    const sent = JSON.stringify(report);
+    for (const secret of secrets)
+      assert.ok(!sent.includes(secret), `the report leaves out ${secret}`);
+  });
+
+  test("no file, or a file that names no advisor: every role empty", () => {
+    const none = { teachers: [], merged_by: null, auditor: null, review_panel: [] };
+    assert.deepEqual(advisorsFileReport(undefined), none);
+    assert.deepEqual(advisorsFileReport(AdvisorsConfig.parse({ teacher_minutes: 30 })), none);
   });
 });

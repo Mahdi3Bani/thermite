@@ -25,7 +25,7 @@ There are two ways to give them models, and you can mix them:
 | MCP servers that the run's kit gives the advisors | Yes, in the supervisor and in Claude Code | Yes, for `openai` and `claude-code` runtimes; not for `cli` |
 | Counted toward a spending limit | No: these models count as $0 | Yes, with prices set ([Spending](#spending)) |
 
-A role given a model on **Edit rig** uses it, and the other roles keep the rig default: what the file says.
+A role given a model on **Edit rig** uses it, and the other roles keep what the file says. On **Edit rig**, the first choice in each advisor's **Model** list names what the file gives that role, such as `rig's file: model-a`, or says `none: off` when the file gives it none.
 
 :::caution[What limits the advisors' spending]
 Advisors with a paid key spend money for as long as runs are running. Thermite sets no spending limit of its own.
@@ -50,7 +50,7 @@ You need a provider on control. See [Connect a model provider](../models/connect
    The published supervisor image carries OpenCode and the Codex CLI. A program that can't run the model is refused under the line, such as "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
 5. Press **Save changes**.
 
-The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To go back to the rig default (the file) for a role, choose **rig default** in its **Model** list. Each advisor's **Context** cell sets its context window and compaction point: see [Set an agent's context window and compaction](../models/model-per-agent.md#set-an-agents-context-window-and-compaction).
+The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To give a role back to the file, choose the first choice in its **Model** list. It says what the role then uses: `rig's file: model-a` when the file has a model for it; `none: off` when the file has none, or the rig has no file, so the role does not run; or `rig's file` alone until the rig's supervisor has reported its file. Each advisor's **Context** cell sets its context window and compaction point: see [Set an agent's context window and compaction](../models/model-per-agent.md#set-an-agents-context-window-and-compaction).
 
 ## In the advisors file
 
@@ -102,7 +102,7 @@ The page says, for example, "Control sent a model for the teachers to rig-1. The
 
 4. Start the supervisor again with the setting: `docker compose up -d` (or `podman compose up -d`), with your `-f` options if you start the stack with override files. With the `two-rigs` profile, `local-2`'s supervisor reads the same `.env` and folder, so both rigs get the same advisors.
 
-The supervisor reads the file only when it starts, so after each change run `docker compose restart supervisor`.
+The supervisor reads the file only when it starts, so after each change run `docker compose restart supervisor`. At its next report to control, within a minute, **Edit rig** names the file's models in the first choice of each advisor's **Model** list, such as `rig's file: model-a`, with the file's program under **Runs in** and its window under **Context**. The supervisor tells control only each role's model, program, provider name and window: never a key, a key file, an address or a command.
 
 :::caution[A mistake in the file stops the rig's reports]
 A file with a mistake stops the supervisor: its log has a `fatal` line with the reason, and it starts again and stops again until you fix the file. The supervisor is also the rig's link to control, so meanwhile the rig shows **Stale**, then **Offline**, on **Rigs**. There is no command that checks the file first. At least check that it is valid JSON before you restart, for example with `node -e 'JSON.parse(require("fs").readFileSync(".dev/advisors/advisors.json", "utf8"))'`, then watch `docker compose logs supervisor`.

@@ -6,7 +6,7 @@ sidebar:
   order: 20
 ---
 
-**Rigs**, in the dashboard's sidebar, lists every [rig](glossary.md) in one table, one row for each rig. Its address is `/ui/rigs`. The table says what state each rig is in, where it runs, its version, the run at work and the rig's last report. A rig's checks, keys, history and its update are on [the rig's page](rig-page.md).
+**Rigs**, in the dashboard's sidebar, lists every [rig](glossary.md) in one table, one row for each rig. Its address is `/ui/rigs`. It is the dashboard's one list of rigs: the sidebar itself lists campaigns, not rigs, and the status bar along the bottom counts the rigs. The table says what state each rig is in, where it runs, its version, the run at work and the rig's last report. A rig's checks, keys, history and its update are on [the rig's page](rig-page.md).
 
 ## The top
 

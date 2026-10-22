@@ -13,7 +13,7 @@ This page lists what Thermite needs and what it has been tested with. Each row s
 | Where | Version | How it is tested |
 | --- | --- | --- |
 | Your computer, for the `thermite` command, the tests and the scripts | 22.19 or later (`engines` in `package.json`). The agent libraries need it | CI runs the type check, lint and tests on Node.js 22 and 24 |
-| Inside the images | The Node.js 22 of `node:22-bookworm-slim`, pinned by digest. The exact 22.x release is whatever that digest holds | Every image build |
+| Inside the images | Node.js 22.23.4, from `node:22.23.4-bookworm-slim` pinned by digest | Every image build |
 
 The images carry their own copy of Thermite, so a release's compose stack needs no Node.js on your computer. Node.js is needed only for the command line, and in a checkout of the source code for `npm run dev:init` and the test scripts.
 

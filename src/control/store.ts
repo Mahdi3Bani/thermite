@@ -454,6 +454,27 @@ create table if not exists pod_spend (
   at text not null,
   usd real not null
 );
+-- Folders for campaigns in the dashboard's left navigation (goal 077): a name the owner gives,
+-- unique whatever its case. They group campaigns there and nowhere else: they are not the
+-- campaigns' folders in the knowledge base.
+create table if not exists campaign_folder (
+  id integer primary key autoincrement,
+  name text not null unique collate nocase,
+  created_at text not null,
+  created_by text not null
+);
+-- The folder a campaign shows in (goal 077). A campaign in no folder has no row.
+create table if not exists campaign_in_folder (
+  campaign text primary key,
+  folder integer not null references campaign_folder (id)
+);
+-- Archived campaigns (goal 077): out of the left navigation, Needs you and the Overview's
+-- lists. Their runs, results and kits stay; unarchiving removes the row.
+create table if not exists campaign_archived (
+  campaign text primary key,
+  archived_at text not null,
+  archived_by text not null
+);
 create index if not exists pod_spend_run on pod_spend (run, at);
 create index if not exists pod_spend_campaign on pod_spend (campaign, at);
 create index if not exists model_call_run on model_call (run, at);
@@ -3552,6 +3573,189 @@ export class ControlStore {
       created_by: String(r.created_by),
       copied_from: r.copied_from ? (JSON.parse(String(r.copied_from)) as CopiedFrom) : null,
     }));
+  }
+
+  // ------------------------------------------------ campaign folders and archive (goal 077)
+
+  /** The navigation's folders, by name, each with the campaigns in it (by name). */
+  campaignFolders(): {
+    id: number;
+    name: string;
+    created_at: string;
+    created_by: string;
+    campaigns: string[];
+  }[] {
+    const inFolder = new Map<number, string[]>();
+    for (const r of this.db
+      .prepare("select campaign, folder from campaign_in_folder order by campaign")
+      .all() as Row[]) {
+      const list = inFolder.get(Number(r.folder)) ?? [];
+      list.push(String(r.campaign));
+      inFolder.set(Number(r.folder), list);
+    }
+    return (
+      this.db.prepare("select * from campaign_folder order by name collate nocase").all() as Row[]
+    ).map((r) => ({
+      id: Number(r.id),
+      name: String(r.name),
+      created_at: String(r.created_at),
+      created_by: String(r.created_by),
+      campaigns: inFolder.get(Number(r.id)) ?? [],
+    }));
+  }
+
+  /** A folder of the navigation by its name, whatever its case. */
+  campaignFolder(name: string): { id: number; name: string } | undefined {
+    const r = this.db
+      .prepare("select id, name from campaign_folder where name = ? collate nocase")
+      .get(name) as Row | undefined;
+    return r ? { id: Number(r.id), name: String(r.name) } : undefined;
+  }
+
+  addCampaignFolder(name: string, by: string): number {
+    const r = this.db
+      .prepare("insert into campaign_folder (name, created_at, created_by) values (?, ?, ?)")
+      .run(name, new Date().toISOString(), by);
+    return Number(r.lastInsertRowid);
+  }
+
+  renameCampaignFolder(id: number, name: string): void {
+    this.db.prepare("update campaign_folder set name = ? where id = ?").run(name, id);
+  }
+
+  /** Deletes a folder (campaign-folders.ts deletes only an empty one). */
+  deleteCampaignFolder(id: number): void {
+    this.db.prepare("delete from campaign_in_folder where folder = ?").run(id);
+    this.db.prepare("delete from campaign_folder where id = ?").run(id);
+  }
+
+  /** Puts a campaign in a folder of the navigation, or (null) in none. */
+  setCampaignFolder(campaign: string, folder: number | null): void {
+    if (folder === null)
+      this.db.prepare("delete from campaign_in_folder where campaign = ?").run(campaign);
+    else
+      this.db
+        .prepare(
+          "insert into campaign_in_folder (campaign, folder) values (?, ?) on conflict (campaign) do update set folder = excluded.folder",
+        )
+        .run(campaign, folder);
+  }
+
+  /** The folder a campaign shows in, or undefined for none. */
+  campaignFolderOf(campaign: string): { id: number; name: string } | undefined {
+    const r = this.db
+      .prepare(
+        "select f.id, f.name from campaign_in_folder c join campaign_folder f on f.id = c.folder where c.campaign = ?",
+      )
+      .get(campaign) as Row | undefined;
+    return r ? { id: Number(r.id), name: String(r.name) } : undefined;
+  }
+
+  /** Every archived campaign, the newest first. */
+  archivedCampaigns(): { campaign: string; at: string; by: string }[] {
+    return (
+      this.db
+        .prepare("select * from campaign_archived order by archived_at desc, campaign")
+        .all() as Row[]
+    ).map((r) => ({
+      campaign: String(r.campaign),
+      at: String(r.archived_at),
+      by: String(r.archived_by),
+    }));
+  }
+
+  /** When and by whom a campaign was archived, or undefined when it is not. */
+  campaignArchived(campaign: string): { at: string; by: string } | undefined {
+    const r = this.db
+      .prepare("select archived_at, archived_by from campaign_archived where campaign = ?")
+      .get(campaign) as Row | undefined;
+    return r ? { at: String(r.archived_at), by: String(r.archived_by) } : undefined;
+  }
+
+  /**
+   * Archives a campaign. It keeps its folder (the owner, 2026-10-21): the navigation leaves it out
+   * while it is archived, and unarchiving brings it back into the same folder.
+   */
+  archiveCampaign(campaign: string, by: string): { at: string; by: string } {
+    const at = new Date().toISOString();
+    this.db
+      .prepare(
+        "insert into campaign_archived (campaign, archived_at, archived_by) values (?, ?, ?) on conflict (campaign) do nothing",
+      )
+      .run(campaign, at, by);
+    return this.campaignArchived(campaign) ?? { at, by };
+  }
+
+  unarchiveCampaign(campaign: string): boolean {
+    return (
+      Number(
+        this.db.prepare("delete from campaign_archived where campaign = ?").run(campaign).changes,
+      ) > 0
+    );
+  }
+
+  /**
+   * The runs of a campaign that control has sent a rig to start or resume, and that the rig has
+   * not taken yet: its pending assign_campaign commands, and pending resume_run commands of its
+   * runs. Expired ones are left out. An assignment the rig took in the last ten minutes, whose run
+   * it has not reported yet, waits too.
+   */
+  pendingStarts(campaign: string): { rig: string; run: string; kind: string }[] {
+    const now = Date.now();
+    const out: { rig: string; run: string; kind: string }[] = [];
+    const assigned = new Map<string, Map<string, string>>();
+    const since = new Date(now - 10 * 60_000).toISOString();
+    for (const r of this.db
+      .prepare(
+        `select rig, kind, status, signed from command where kind in ('assign_campaign', 'resume_run')
+           and (status = 'pending' or (status = 'delivered' and kind = 'assign_campaign' and acked_at > ?))
+         order by issued_at`,
+      )
+      .all(since) as Row[]) {
+      let env: {
+        expires_at?: string;
+        payload?: { run?: unknown; contract?: { campaign?: unknown } };
+      };
+      try {
+        env = (JSON.parse(String(r.signed)) as { envelope?: typeof env }).envelope ?? {};
+      } catch {
+        continue;
+      }
+      const rig = String(r.rig);
+      const run = typeof env.payload?.run === "string" ? env.payload.run : "";
+      if (!run) continue;
+      if (r.status === "pending" && Date.parse(env.expires_at ?? "") < now) continue;
+      // Taken: it waits only until the rig reports the run.
+      if (r.status === "delivered" && this.campaignOfRun(rig, run) !== undefined) continue;
+      let of: string | undefined;
+      if (r.kind === "assign_campaign") {
+        of =
+          typeof env.payload?.contract?.campaign === "string"
+            ? env.payload.contract.campaign
+            : undefined;
+      } else {
+        if (!assigned.has(rig)) assigned.set(rig, this.assignedCampaigns(rig));
+        of = assigned.get(rig)?.get(run) ?? this.campaignOfRun(rig, run);
+      }
+      if (of === campaign) out.push({ rig, run, kind: String(r.kind) });
+    }
+    return out;
+  }
+
+  /** A run's campaign, from the rig's own run_created event on any of its ledgers. */
+  campaignOfRun(rig: string, run: string): string | undefined {
+    const r = this.db
+      .prepare(
+        "select body from rig_event where rig = ? and kind in ('run_created', 'instance_created') and subject = ? order by seq desc limit 1",
+      )
+      .get(rig, run) as Row | undefined;
+    if (!r) return undefined;
+    try {
+      const c = (JSON.parse(String(r.body)) as { campaign?: unknown }).campaign;
+      return typeof c === "string" ? c : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

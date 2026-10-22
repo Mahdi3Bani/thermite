@@ -77,7 +77,7 @@ Who sets each agent's window and point:
 | --- | --- | --- |
 | Workers | The workers' model on **Edit rig**, or the rig's own settings | The workers' **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the workers' model over MCP or REST, or `THERMITE_MODEL_CONTEXT_WINDOW` and `THERMITE_MODEL_COMPACT_AT` |
 | Planner | Its own model, when it has one; else the workers' | The planner's **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the planner's model |
-| Teachers (each of their one or two models, and their merged by model), auditor, review panel | Each one's own model, when control gives it one; else the rig default, the [advisors file](advisors-file.md) | The line's **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the advisor's model, or the file's `context_window` and `compact_at` |
+| Teachers (each of their one or two models, and their merged by model), auditor, review panel | Each one's own model, when control gives it one; else the [advisors file](advisors-file.md)'s | The line's **Context** cell on **Edit rig**, or `context_window` and `compact_at` with the advisor's model, or the file's `context_window` and `compact_at` |
 | All of a campaign's runs | The campaign's own, over each agent's | The contract's [`agents_context`](contract.md#agents-context): **Agents' context** on the campaign's page, on **New campaign** and in the **Copy** panel; `set_campaign_context`, `POST /v1/campaigns/<campaign>/context`, `thermite campaign context` |
 
 Each harness compacts in its own way. Thermite sets what each one takes:

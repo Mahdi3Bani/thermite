@@ -74,6 +74,10 @@ export interface ResearchTool {
   usage: string;
 }
 
+/** What a claim's quote names as its source, for Pi's parameters and the command's usage. */
+export const SOURCE_PARAM =
+  "The archived source's id, s-…, as fetch returned it. The page's URL is taken too, when that page was archived.";
+
 const str = (field: string): ResearchArg => ({ field, kind: "string" });
 const num = (field: string): ResearchArg => ({ field, kind: "number" });
 const list = (field: string): ResearchArg => ({ field, kind: "list" });
@@ -120,7 +124,7 @@ export const RESEARCH_TOOLS: ResearchTool[] = [
     usage: `thermite-trial research add_claim - <<'EOF'
 {"text": "the claim", "quotes": [{"source": "SOURCE", "quote": "exact words from it"}], "question": 0, "confidence": 0.8}
 EOF
-("question" is the index of the campaign question it answers, from 0.)`,
+(SOURCE is the archived source's id, s-…, as fetch returned it; the page's URL is taken too, when that page was archived. "question" is the index of the campaign question it answers, from 0: give it there, not in "text", and put no heading or label in "text".)`,
   },
   {
     name: "add_note",

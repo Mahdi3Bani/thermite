@@ -302,6 +302,92 @@ export const CLIENT_JS = `
     if (words) words.addEventListener("input", apply);
   }
 
+  // ------------------------------------------------ the navigation's campaigns and folders (goal 077)
+  // A folder folds and opens, and this browser remembers which are folded. A campaign dragged
+  // onto a folder, or onto "no folder", moves there with the same post as Move to folder on its
+  // page; the row then moves in place. Without this script, every folder shows open.
+  const sc = $("#side-camps");
+  if (sc) {
+    const KEY = "thermite.nav.folded";
+    let folded = [];
+    try { folded = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch {}
+    if (!Array.isArray(folded)) folded = [];
+    sc.querySelectorAll("details.side-folder[data-fold]").forEach((d) => { if (folded.includes(d.dataset.fold)) d.open = false; });
+    sc.addEventListener("toggle", (ev) => {
+      const d = ev.target;
+      if (!(d instanceof Element) || !d.matches("details.side-folder[data-fold]")) return;
+      folded = folded.filter((x) => x !== d.dataset.fold);
+      if (!d.open) folded.push(d.dataset.fold);
+      try { localStorage.setItem(KEY, JSON.stringify(folded)); } catch {}
+    }, true);
+    const say = $("#side-say");
+    const tell = (text, bad) => { if (!say) return; say.textContent = text; say.classList.toggle("bad", !!bad); };
+    let dragged = null;
+    // A folder takes the drop; "no folder", or a campaign in none, takes it out of its folder.
+    const dropAt = (ev) => {
+      const t = ev.target instanceof Element ? ev.target : null;
+      if (!t) return null;
+      const fold = t.closest(".side-fold");
+      if (fold) return fold;
+      if (t.closest(".side-drop") || t.closest(".side-row")) return sc.querySelector(".side-drop");
+      return null;
+    };
+    const unmark = () => sc.querySelectorAll(".drop-over").forEach((x) => x.classList.remove("drop-over"));
+    const done = () => { if (dragged) dragged.classList.remove("dragging"); dragged = null; sc.classList.remove("side-dragging"); unmark(); };
+    const count = (fold) => {
+      const d = fold.querySelector("details.side-folder");
+      const n = d.querySelectorAll(".side-row").length;
+      fold.querySelector("summary .n").textContent = String(n);
+      const empty = d.querySelector(".side-empty");
+      if (n && empty) empty.remove();
+      // A folder that holds only archived campaigns says so, as control draws it.
+      const shelved = Number(d.dataset.archived || "0");
+      if (!n && !empty) { const e = document.createElement("div"); e.className = "side-empty"; e.textContent = shelved ? shelved + " archived " + (shelved === 1 ? "campaign" : "campaigns") + ", not shown." : "Empty. Drag a campaign here."; d.append(e); }
+    };
+    sc.addEventListener("dragstart", (ev) => {
+      const r = ev.target instanceof Element ? ev.target.closest(".side-row[data-campaign]") : null;
+      // With no folder there is nowhere to drop it.
+      if (!r || !sc.querySelector(".side-fold")) return;
+      dragged = r;
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("text/plain", r.dataset.campaign);
+      requestAnimationFrame(() => { if (dragged) { dragged.classList.add("dragging"); sc.classList.add("side-dragging"); } });
+    });
+    sc.addEventListener("dragend", done);
+    sc.addEventListener("dragover", (ev) => {
+      if (!dragged) return;
+      const t = dropAt(ev);
+      if (!t) return;
+      ev.preventDefault();
+      if (!t.classList.contains("drop-over")) { unmark(); t.classList.add("drop-over"); }
+    });
+    sc.addEventListener("drop", async (ev) => {
+      if (!dragged) return;
+      const t = dropAt(ev);
+      if (!t) return;
+      ev.preventDefault();
+      const row = dragged, from = row.closest(".side-fold");
+      done();
+      const folder = t.classList.contains("side-fold") ? t.dataset.folder : "";
+      if ((from ? from.dataset.folder : "") === folder) return;
+      const body = new URLSearchParams({ csrf: sc.dataset.csrf || "", folder });
+      let out = null;
+      try {
+        const res = await fetch("/ui/campaigns/" + encodeURIComponent(row.dataset.campaign) + "/folder", { method: "POST", body, credentials: "same-origin", headers: { accept: "application/json" } });
+        out = res.ok ? await res.json() : null;
+      } catch {}
+      if (!out || out.error) { tell((out && out.error) || "Not moved: control did not answer. Load the page again.", true); return; }
+      if (folder) {
+        const d = t.querySelector("details.side-folder");
+        d.open = true;
+        d.append(row);
+        count(t);
+      } else sc.insertBefore(row, sc.querySelector(".side-drop"));
+      if (from) count(from);
+      tell(out.said || "", false);
+    });
+  }
+
   // ------------------------------------------------ the experiment queue: drag to reorder
   // A dropped experiment's new place goes to the rig as a signed owner command (queue_move),
   // through the same form post as the buttons; the page then shows the rig's order.

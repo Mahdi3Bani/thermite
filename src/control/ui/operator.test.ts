@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Decision } from "../store.ts";
+import { moreText } from "./components.ts";
 import { decidedState } from "./operator.ts";
 
 const NOW = Date.parse("2026-10-21T21:00:00Z");
@@ -63,5 +64,17 @@ describe("a decision the owner made", () => {
     // The item began waiting after the owner's choice: the old choice is not this wait's.
     const again = decidedState([decision({})], item, "2026-10-21T20:59:55Z", label, NOW);
     assert.equal(again, undefined);
+  });
+});
+
+describe("a long text on the dashboard", () => {
+  test("shows its start and, with more, all of it, without the page's script", () => {
+    assert.equal(moreText("short <b>", 200), "short &lt;b&gt;");
+    const long = `GK-PN.1: ${"every PN MUL_MAT uses an fp32 reference path; ".repeat(8)}the end <i>`;
+    const html = moreText(long, 200);
+    assert.match(html, /^<details class="more"><summary><span class="more-part">GK-PN\.1: /);
+    assert.match(html, /…<\/span> <span class="more-tog"><\/span><\/summary>/);
+    assert.ok(html.endsWith("the end &lt;i&gt;</details>"), "the whole text, escaped");
+    assert.doesNotMatch(html, /<i>/);
   });
 });

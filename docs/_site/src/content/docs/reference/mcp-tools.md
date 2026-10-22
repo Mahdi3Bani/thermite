@@ -50,8 +50,8 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
-| `control_log`, `providers`, `rig_models`, `mcp_servers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
-| `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `set_campaign_context`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `control_log`, `providers`, `rig_models`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders` | Yes | Yes | No | Yes |
+| `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `set_campaign_context`, `archive_campaign`, `unarchive_campaign`, `create_campaign_folder`, `rename_campaign_folder`, `delete_campaign_folder`, `move_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -525,13 +525,13 @@ It refuses with the same words as **Add a rig**:
 
 **Each agent's model on a rig.** Owner, operator and reader.
 
-> Each agent's model on a rig: the work (workers, planner) and the advisors (teachers, auditor, review_panel). A model is {provider, model, effort, harness, context_cap, compact_at} (harness: where it runs, pi, opencode, claude-code or codex; context_cap null: the provider's window; compact_at null: the default, 80% of the window). workers, planner, auditor and review_panel are each a model, or null for the default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig default (the rig's advisors file). teachers is {models, merged_by}: models holds one teacher's model or two teachers' (empty: the rig default), and merged_by the model that merges the advice of two teachers (null: the rig default). It is what control gives the rig; set it with set_rig_model.
+> Each agent's model on a rig: the work (workers, planner) and the advisors (teachers, auditor, review_panel). A model is {provider, model, effort, harness, context_cap, compact_at} (harness: where it runs, pi, opencode, claude-code or codex; context_cap null: the provider's window; compact_at null: the default, 80% of the window). workers, planner, auditor and review_panel are each a model, or null for the default: the workers use the rig's own settings, the planner the workers' model, an advisor the one in the rig's advisors file (off when the file names none). teachers is {models, merged_by}: models holds one teacher's model or two teachers' (empty: the teachers in the advisors file), and merged_by the model that merges the advice of two teachers (null: the one in the advisors file). agents is what control gives the rig; set it with set_rig_model. advisors_file is what the rig's advisors file sets up, as its supervisor reports it: {teachers, merged_by, auditor, review_panel}, each advisor {harness, model, provider, api, context_window, compact_at} (harness: pi, claude-code, opencode, codex, or cli for a command-line agent, whose model is null; provider: the provider's name the file gives, or null; api: the provider's kind, such as openai, anthropic, chatgpt, opencode or claude; context_window null: none; compact_at null: the default). An empty list or null: the file names none, so that advisor is off until control gives it a model. advisors_file is null when the supervisor has not reported it: none yet, or an older supervisor. It never holds a key, a token or an address.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | The rig |
 
-Returns `{rig, agents}`. `agents` has one key for each agent: the work, `workers` and `planner`, and the advisors, `teachers`, `auditor` and `review_panel`. `workers`, `planner`, `auditor` and `review_panel` are each a model, `{provider, model, effort, harness, context_cap, compact_at}`, or `null` when the agent has no model of its own on control. `teachers` is `{models, merged_by}`: `models` holds the model of one teacher, or of each of two teachers, and is empty when control gives the teachers none; `merged_by` is the model that merges the advice of two teachers into one set, or `null`. `harness` is where the agent runs: `pi`, `opencode`, `claude-code` or `codex`, as [`set_rig_model`](#set_rig_model) set it, or what its model needs when none was named. `context_cap` is the agent's [cap](#set_rig_model) on its model's context window, or `null`; `compact_at` is the share of the window, in percent, at which its conversations are [compacted](limits-and-pacing.md#compaction), or `null` for the default, 80. `effort` is `null` for the model's own default. For example, two teachers on two subscriptions, merged by a model with an API key:
+Returns `{rig, agents, advisors_file}`. `agents` has one key for each agent: the work, `workers` and `planner`, and the advisors, `teachers`, `auditor` and `review_panel`. `workers`, `planner`, `auditor` and `review_panel` are each a model, `{provider, model, effort, harness, context_cap, compact_at}`, or `null` when the agent has no model of its own on control. `teachers` is `{models, merged_by}`: `models` holds the model of one teacher, or of each of two teachers, and is empty when control gives the teachers none; `merged_by` is the model that merges the advice of two teachers into one set, or `null`. `harness` is where the agent runs: `pi`, `opencode`, `claude-code` or `codex`, as [`set_rig_model`](#set_rig_model) set it, or what its model needs when none was named. `context_cap` is the agent's [cap](#set_rig_model) on its model's context window, or `null`; `compact_at` is the share of the window, in percent, at which its conversations are [compacted](limits-and-pacing.md#compaction), or `null` for the default, 80. `effort` is `null` for the model's own default. For example, two teachers on two subscriptions, merged by a model with an API key:
 
 ```json
 "teachers": {
@@ -549,9 +549,33 @@ Returns `{rig, agents}`. `agents` has one key for each agent: the work, `workers
 | --- | --- |
 | `workers` | The rig's own settings |
 | `planner` | The workers' model |
-| `teachers` (its `models` and its `merged_by`), `auditor`, `review_panel` | The rig default: the rig's advisors file. Without one, the advisor does not run. Two teachers without a merged by model: the first review that comes back is the set |
+| `teachers` (its `models` and its `merged_by`), `auditor`, `review_panel` | The model of the rig's advisors file for that role, which `advisors_file` gives. Without one, the advisor does not run. Two teachers without a merged by model: the first review that comes back is the set |
 
 On **Edit rig**, section **2 · The agents**, the line **Teachers** shows the first teacher's model, the line under it the second teacher's, and **merged by** the merged by model.
+
+`advisors_file` is what the rig's [advisors file](advisors-file.md) sets up for each advisor, as the rig's supervisor reports it: `{teachers, merged_by, auditor, review_panel}`. `teachers` and `review_panel` are lists (empty: none), and `merged_by` and `auditor` an advisor or `null` (none). Each advisor is:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `harness` | string | Where it runs: `pi` (the file's `openai` runtime), `claude-code`, `opencode`, `codex`, or `cli` for a command-line agent |
+| `model` | string or `null` | Its model; `null` for a command-line agent, and for a model name that holds an address |
+| `provider` | string or `null` | The provider's name, as the file gives it in `provider`; `null`: none given |
+| `api` | string or `null` | The provider's kind: `openai`, `anthropic`, `chatgpt` or `opencode`, or `claude` for Claude Code; `null` for a command-line agent |
+| `context_window` | number or `null` | Its context window in tokens; `null`: none set (the program's own) |
+| `compact_at` | number or `null` | Its compaction point in percent; `null`: the default, 80 |
+
+The supervisor never reports a key, a token, a key file, a base address or a command line. An advisor with no model from control uses the file's: on **Edit rig**, the first choice of its **Model** list says `rig's file: <model>`, or `none: off` when the file has none. `advisors_file` is `null` until the supervisor has reported it, and from a supervisor older than this field: **Edit rig** then says `rig's file` alone. A supervisor that reports no advisors at all gives every role empty. For example, a file with one teacher and an auditor:
+
+```json
+"advisors_file": {
+  "teachers": [
+    { "harness": "claude-code", "model": "opus-5.5", "provider": null, "api": "claude", "context_window": 200000, "compact_at": null }
+  ],
+  "merged_by": null,
+  "auditor": { "harness": "pi", "model": "my-model", "provider": "my-litellm", "api": "openai", "context_window": 131072, "compact_at": 70 },
+  "review_panel": []
+}
+```
 
 These are the models control gives the rig. [Give each agent its own model](../how-to/models/model-per-agent.md) says when the rig takes each one. Errors: `no rig <rig>`. Its REST twin is [`GET /v1/rigs/<rig>/model`](rest-api.md#the-agents-model).
 
@@ -576,7 +600,7 @@ Returns `{provider, model, price, said}`, as [`POST /v1/model-prices`](rest-api.
 
 **Give a rig's agents a model.** Owner and operator.
 
-> As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers, auditor or review_panel; the other agents keep their models. The teachers take one or two models: provider and model give the first teacher's; second_model, {provider, model, harness?, effort?, context_window?, compact_at?}, gives a second teacher (null: one teacher only); merged_by, the same shape, gives the model that merges the advice of two teachers into one set (null: the rig default). Two teachers without a merged by model: the first review that comes back is the set. A call may give second_model or merged_by alone; a second teacher needs a first. The old names are still taken in v0.1.0 and the answer says what each is now: `combiner` is the teachers' merged_by, `panel` is review_panel. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig default (the rig's advisors file); for the teachers, their second and merged by models too. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. harness, for any agent: where it runs, pi, opencode (OpenCode v2), claude-code or codex (the Codex CLI); left out, what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). A Claude subscription runs only in claude-code and claude-code only with one; codex only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in opencode: another harness is refused in words. A planner with no model of its own follows the workers' (in Codex when the workers run in Codex). Advisors run in the supervisor: in pi with read-only tools; in claude-code, opencode or codex with none of the program's own tools, only the search of the run's past research and the kit's MCP tools. Every agent takes context_window and compact_at, kept with its model; a planner with no model of its own uses the workers'. context_window caps the agent's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one; an advisor's one-call package is cut to fit it. compact_at is the share of the window, in percent (50 to 95; default 80), at which the agent's conversation is compacted: the conversation is kept as a document, summarized, and the agent goes on. It never ends a trial. Each call sets the agent's cap and compact_at anew: a call without them removes a cap and returns to the default point. A campaign may set its own (set_campaign_context): the lower window wins. Returns context_window, the window the agent's model route carries (for the teachers, the first teacher's; null: the provider lists none, the model was cleared, or the call gave only second_model or merged_by), compact_at (null: the default), and agents, each agent's model after the change, as rig_models reads them.
+> As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers, auditor or review_panel; the other agents keep their models. The teachers take one or two models: provider and model give the first teacher's; second_model, {provider, model, harness?, effort?, context_window?, compact_at?}, gives a second teacher (null: one teacher only); merged_by, the same shape, gives the model that merges the advice of two teachers into one set (null: the one in the rig's advisors file). Two teachers without a merged by model: the first review that comes back is the set. A call may give second_model or merged_by alone; a second teacher needs a first. The old names are still taken in v0.1.0 and the answer says what each is now: `combiner` is the teachers' merged_by, `panel` is review_panel. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the one in the rig's advisors file (off when the file names none; rig_models shows the file's); for the teachers, their second and merged by models too. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. harness, for any agent: where it runs, pi, opencode (OpenCode v2), claude-code or codex (the Codex CLI); left out, what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). A Claude subscription runs only in claude-code and claude-code only with one; codex only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in opencode: another harness is refused in words. A planner with no model of its own follows the workers' (in Codex when the workers run in Codex). Advisors run in the supervisor: in pi with read-only tools; in claude-code, opencode or codex with none of the program's own tools, only the search of the run's past research and the kit's MCP tools. Every agent takes context_window and compact_at, kept with its model; a planner with no model of its own uses the workers'. context_window caps the agent's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one; an advisor's one-call package is cut to fit it. compact_at is the share of the window, in percent (50 to 95; default 80), at which the agent's conversation is compacted: the conversation is kept as a document, summarized, and the agent goes on. It never ends a trial. Each call sets the agent's cap and compact_at anew: a call without them removes a cap and returns to the default point. A campaign may set its own (set_campaign_context): the lower window wins. Returns context_window, the window the agent's model route carries (for the teachers, the first teacher's; null: the provider lists none, the model was cleared, or the call gave only second_model or merged_by), compact_at (null: the default), and agents, each agent's model after the change, as rig_models reads them.
 
 The quote shows the old names in code; the tool's own description has them in plain words.
 
@@ -588,7 +612,7 @@ The quote shows the old names in code; the tool's own description has them in pl
 | `model` | string, optional | | A model id, as [`providers`](#providers) lists it under `models`. Needed with `provider` |
 | `clear` | boolean, optional | false | `true`: the agent goes back to its default, as the first choice in its row on **Edit rig**. Give it with `agent` alone. For the teachers it clears their second and merged by models too |
 | `second_model` | object or `null`, optional | as it is | The teachers only. A second teacher, with its own model: `{provider, model, harness?, effort?, context_window?, compact_at?}`, each field as for the first teacher's. `null`: one teacher only. A second teacher needs a first: given in the same call, or one the teachers have |
-| `merged_by` | object or `null`, optional | as it is | The teachers only. The model that merges the advice of two teachers into one set, in the same shape as `second_model`. `null`: back to the rig default. With one teacher it is not called; two teachers without one give the first review that comes back as the set |
+| `merged_by` | object or `null`, optional | as it is | The teachers only. The model that merges the advice of two teachers into one set, in the same shape as `second_model`. `null`: back to the rig's advisors file. With one teacher it is not called; two teachers without one give the first review that comes back as the set |
 | `harness` | `pi`, `opencode`, `claude-code` or `codex`, optional | what the model needs: `claude-code` for a Claude subscription, `opencode` for OpenCode's free models, else `pi` (a ChatGPT subscription too) | Any agent. The [harness](glossary.md) it runs in: Pi, OpenCode v2, Claude Code or the Codex CLI. `claude-code` only with a Claude subscription, and a Claude subscription only in `claude-code`; `codex` only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in `opencode`. Workers in `codex` take a planner with no model of its own into Codex too. The advisors run in the supervisor whatever the harness: see [Where each agent runs](../how-to/models/model-per-agent.md#where-each-agent-runs) |
 | `effort` | `low`, `medium`, `high`, `xhigh` or `max`, optional | none | How long the model thinks, as **Effort** on **Edit rig** |
 | `context_window` | whole number, optional | none: the provider's window | Any agent. A cap on its model's [context window](glossary.md), in tokens, from 4,096 to the window the provider lists (to 100,000,000 when it lists none). Each call sets it anew for the agent: a call without it removes a cap the agent had. A planner with no model of its own uses the workers' route, so their cap too |
@@ -613,10 +637,10 @@ Returns `{rig, agent, model, context_window, compact_at, said, agents}`:
 | The teachers' second or merged by model alone | `Control sent a model for a second teacher to <rig>. …` or `Control sent a merged by model for the teachers to <rig>. …`, with the same two sentences |
 | Several models for the teachers in one call | The parts the call gave, such as `Control sent a model for the teachers, a model for a second teacher and a merged by model for the teachers to <rig>. The rig takes the change in less than one minute.`. Each model with a cap or a point then has its own sentences, which name it: `The second teacher's context window: 65,536 tokens (capped; the provider allows 272,000).`, `The merged by model's conversations are compacted at 70% of the window.` (`The first teacher's` for the first) |
 | `second_model: null` | `Control sent the teachers back to one teacher to <rig>. The rig takes the change in less than one minute.` |
-| `merged_by: null` | `Control sent the teachers' merged by model back to the rig default to <rig>. The rig takes the change in less than one minute.` |
+| `merged_by: null` | `Control sent the teachers' merged by model back to the rig's advisors file to <rig>. The rig takes the change in less than one minute.` |
 | `clear` for the planner | `Control sent the planner back to the workers' model to <rig>. The rig takes the change in less than one minute.` |
-| `clear` for the teachers | `Control sent the teachers back to the rig default to <rig>. The rig takes the change in less than one minute.` |
-| `clear` for the auditor or the review panel | `Control sent the auditor back to the rig default to <rig>. The rig takes the change in less than one minute.`, or `the review panel` |
+| `clear` for the teachers | `Control sent the teachers back to the rig's advisors file to <rig>. The rig takes the change in less than one minute.` |
+| `clear` for the auditor or the review panel | `Control sent the auditor back to the rig's advisors file to <rig>. The rig takes the change in less than one minute.`, or `the review panel` |
 | An old name | The same words, after `The name combiner is now the teachers' merged by model: agent teachers, with merged_by.` or `The name panel is now review_panel.` |
 
 The workers and the planner take a new model within a minute. An advisor reads its model from control each time it runs, so it uses a new one from its next round.
@@ -664,7 +688,7 @@ The new run's queue holds at most 500 experiments: the copied ones first, then t
 It returns one of these:
 
 - The run started: `{started: true, campaign, rig, run, command, status: "pending", woke?, notes?, agents_context?}`. `run` is the new run's name, such as `gemv-speed-2`, or `gemv-speed-try-1` for a try. `command` is the `assign_campaign` command's id, for [`command_status`](#command_status). `woke` is there when control started the rig's stopped RunPod pod first, as for [`issue_command`](#issue_command). `notes` is there when there is more to know: `<run> is at work on <rig>, and pauses when this run starts (a rig runs one run at a time).`, `<run> on <rig> has no untried experiments: the new run's queue starts empty.`, or what applies to the agents' context, below.
-- `agents_context` is there when the campaign sets its own context window or compaction point ([`set_campaign_context`](#set_campaign_context)) and the run has agents: `{campaign, agents}`. `campaign` is the campaign's settings; `agents` has one key for each model the run's agents work with: `workers`, `planner`, `teachers`, `second_teacher` (only when control gives two teachers), `merged_by`, `auditor` and `review_panel` (a research run has no planner, auditor or review panel), each `{model, context_window, compact_at}`. `model` is the model control gives that agent, or `null` for the rig's own settings or the rig default. `context_window` is the lower of the campaign's window and the agent's own (its provider's window, or the rig's cap on it); with no model from control, it is the campaign's, as the most the agent works with, or `null`. `compact_at` is the campaign's point, else the agent's own, else 80; `null` when control does not know it. One of the notes says the same in words: `This campaign sets a context window of 131,072 tokens, compaction at 70% of the window. The lower window wins on each agent. Workers: 131,072 tokens (wide-model), compacted at 70% of the window. …`, with `Teachers: …`, `Teachers (second model): …`, `Teachers (merged by): …`, `Auditor: …` and `Review panel: …` after it, and `(rig default)` for an advisor with no model from control
+- `agents_context` is there when the campaign sets its own context window or compaction point ([`set_campaign_context`](#set_campaign_context)) and the run has agents: `{campaign, agents}`. `campaign` is the campaign's settings; `agents` has one key for each model the run's agents work with: `workers`, `planner`, `teachers`, `second_teacher` (only when control gives two teachers), `merged_by`, `auditor` and `review_panel` (a research run has no planner, auditor or review panel), each `{model, context_window, compact_at}`. `model` is the model control gives that agent, or `null` for the rig's own settings or its advisors file. `context_window` is the lower of the campaign's window and the agent's own (its provider's window, or the rig's cap on it); with no model from control, it is the campaign's, as the most the agent works with, or `null`. `compact_at` is the campaign's point, else the agent's own, else 80; `null` when control does not know it. One of the notes says the same in words: `This campaign sets a context window of 131,072 tokens, compaction at 70% of the window. The lower window wins on each agent. Workers: 131,072 tokens (wide-model), compacted at 70% of the window. …`, with `Teachers: …`, `Teachers (second model): …`, `Teachers (merged by): …`, `Auditor: …` and `Review panel: …` after it, and `(the rig's advisors file)` for an advisor with no model from control
 - The rig was given a model first: `{started: false, said}`, with `said` `<rig> takes <model> within a minute; Settings › Providers shows it taking the model until then. Then start the run again.` Call `start_run` again, without `agents_model`, once [`list_rigs`](#list_rigs) or **Settings › Providers** shows the rig runs the model.
 
 Errors, in the words of **Start a run**:
@@ -748,6 +772,84 @@ Errors:
 - `A context window is a whole number of tokens from 4,096 to 100,000,000.`
 - `The compaction point is a whole percent of the context window, from 50 to 95.`
 - `The contract of <campaign> is not valid, so control cannot save a new version:` and the contract's errors
+
+### campaign_folders
+
+**Campaign folders and archived campaigns.** Owner, operator and reader.
+
+> How the owner arranged the campaigns in the dashboard's left navigation: each folder, by name, with the campaigns in it ({name, campaigns, created_at, created_by}), archived ones too, and the archived campaigns ({campaign, at, by, folder}), which are out of the navigation, Needs you and the Overview. An archived campaign keeps its folder (folder: its name, or null), but the navigation neither shows nor counts it there until it is unarchived. A campaign in no folder and not archived shows on its own in the navigation. These folders only group campaigns there: they are not the campaigns' folders in the knowledge base (kb_folders).
+
+No inputs. It returns what [`GET /v1/campaign-folders`](rest-api.md#archive-a-campaign-and-folders) returns: `{folders, archived}`, the folders by name, each with its campaigns, archived ones too, and the archived campaigns, the newest first, each with the folder it keeps. `by` is the actor that archived the campaign, such as `owner:ui` or `owner:operator`.
+
+### archive_campaign
+
+**Archive a campaign.** Owner and operator.
+
+> As Archive on a campaign's page: the campaign leaves the dashboard's left navigation, Needs you and the Overview's lists, and the Campaigns page lists it under Archived. Its runs, results, kits and folder in the knowledge base stay, and it keeps its folder in the navigation, where it comes back when unarchived. Control starts and resumes no run of an archived campaign until unarchive_campaign. Returns {campaign, archived: true, at, by, folder, changed} (changed: false when it was archived already). Refused in words while a run of it is at work or waits to start (a start or resume control sent that the rig has not taken yet): "Pause or close its runs first.", with each such run; and for a campaign control does not know.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `campaign` | string | | The campaign, as on its page |
+
+It does what [`POST /v1/campaigns/<campaign>/archive`](rest-api.md#archive-a-campaign-and-folders) does, with the same refusals, such as `Pause or close its runs first. sort-speed-2 is at work on rig-1.` While the campaign is archived, `issue_command` and `start_run` refuse to start or resume a run of it: `sort-speed is archived. Unarchive it first.` Besides `mcp:archive_campaign`, the audit log has `campaign_archived`, by the caller's actor.
+
+### unarchive_campaign
+
+**Unarchive a campaign.** Owner and operator.
+
+> As Unarchive on the Campaigns page's Archived list: the campaign comes back to the dashboard's left navigation, in the folder it kept, and its runs may start again. Returns {campaign, archived: false, at: null, by: null, folder, changed} (changed: false when it was not archived). Refused in words for a campaign control does not know.
+
+It takes `campaign`, as `archive_campaign` does. The audit log has `campaign_unarchived` when it changed something.
+
+### create_campaign_folder
+
+**Make a folder for campaigns.** Owner and operator.
+
+> A folder in the dashboard's left navigation, to group campaigns there (move_campaign puts one in it). Not a folder of the knowledge base. A name is one line of at most 40 characters, and two folders can't have the same one, whatever its case. Returns {folder: {name, campaigns, created_at, created_by}}. Refused in words: an empty name, a name too long, a taken one.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | | The folder's name, trimmed |
+
+The audit log has `campaign_folder_created`.
+
+### rename_campaign_folder
+
+**Rename a folder for campaigns.** Owner and operator.
+
+> Renames a folder of the dashboard's left navigation; its campaigns stay in it. Returns {folder, was, changed}. Refused in words: no such folder, an empty name, a name too long, a taken one.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `folder` | string | | The folder's name now, whatever its case |
+| `name` | string | | Its new name |
+
+The audit log has `campaign_folder_renamed`, with the old name and the new.
+
+### delete_campaign_folder
+
+**Delete an empty folder for campaigns.** Owner and operator.
+
+> Deletes a folder of the dashboard's left navigation that has no campaign in it, archived ones included. Returns {deleted}. Refused in words: no such folder, or one with campaigns in it, each archived one marked (archived) (move them out first with move_campaign, folder: null).
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `folder` | string | | The folder's name |
+
+A folder with campaigns is refused, such as `Kernels is not empty. Move its 2 campaigns out first: sort-speed, gemv-speed (archived).` An archived campaign is in its folder, though the navigation does not show it there. The audit log has `campaign_folder_deleted`.
+
+### move_campaign
+
+**Move a campaign to a folder.** Owner and operator.
+
+> Puts a campaign in a folder of the dashboard's left navigation (folder: its name), or in none (folder: null). Only the navigation changes: not its runs, results or folder in the knowledge base. An archived campaign may move too: it comes back into its new folder when it is unarchived. Returns {campaign, folder, changed}. Refused in words: no such campaign or folder.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `campaign` | string | | The campaign, as on its page |
+| `folder` | string or `null` | | The folder's name, whatever its case, or `null` for none |
+
+It does what [`POST /v1/campaigns/<campaign>/folder`](rest-api.md#archive-a-campaign-and-folders) and **Move to folder** on the campaign's page do. The audit log has `campaign_moved`, with the folder and the one it came from.
 
 ### cluster_rig
 

@@ -51,6 +51,54 @@ function numbersIn(s: string): string[] {
   return [...s.matchAll(/\d[\d,.]*\d|\d/g)].map((m) => m[0]);
 }
 
+/** A label at a line's start that numbers a question or a claim: "Question 0:", "Claim c-005:". */
+const LABEL = /^[*_]*(?:question|claim)\s*#?\s*[\w.-]*\d[\w-]*\s*[:.)\]]/i;
+
+/**
+ * The heading or label of a claim's text that a number comes from, if it comes from one: a
+ * Markdown heading line ("# Claim c-verify-005") or a label at a line's start ("Question 0:").
+ * Such a number counts like any other (the check is the same); the problem only says where it is.
+ */
+function headingWith(text: string, num: string): string | undefined {
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    const head = /^#{1,6}\s/.test(t) ? t : LABEL.exec(t)?.[0];
+    if (head && numbersIn(head).includes(num)) return head;
+  }
+  return undefined;
+}
+
+/** A URL as the archive stores it (parsed, without its fragment); undefined when it is not one. */
+export function archiveUrl(s: string): string | undefined {
+  try {
+    const u = new URL(s);
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/** A URL loosely, to name what a source could be: no scheme, no "www.", no fragment or end slash. */
+const looseUrl = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/#.*$/, "")
+    .replace(/\/+$/, "");
+
+/** A quote as a claim keeps it: its source's id, and what the worker cited when that was not it. */
+interface ClaimQuote {
+  source: string;
+  quote: string;
+  resolved_from?: string;
+}
+
+/** The most draft reasons a `claim_added` event carries (the claim's record keeps them all). */
+const EVENT_PROBLEMS = 20;
+
 /** A claim's identity for deduplication: its words, case and punctuation folded. */
 function claimKey(s: string): string {
   return normalizeQuote(s)
@@ -207,15 +255,9 @@ export class Research {
   }
 
   async fetch(run: string, lane: string | null, url: string) {
-    // Look up the URL in the form it is stored in (no fragment, normalized by URL).
-    let key = url;
-    try {
-      const u = new URL(url);
-      u.hash = "";
-      key = u.toString();
-    } catch {
-      // not a URL: the fetcher refuses it below
-    }
+    // Look up the URL in the form it is stored in (no fragment, normalized by URL); not a URL:
+    // the fetcher refuses it below.
+    const key = archiveUrl(url) ?? url;
     const existing = this.get("select * from source where run = ? and url = ?", run, key);
     if (existing) return this.view(existing, "already archived");
     const used = Number(
@@ -345,6 +387,68 @@ export class Research {
     return { results: [], note: reason };
   }
 
+  /**
+   * The archived source a quote cites. A quote names it by the id fetch returned. A URL it was
+   * archived from (as fetched, or as its redirects ended; compared as the archive stores URLs) or
+   * its file name in the research folder (`sources/s-….txt`) names it too, when it names exactly
+   * one: the quote is then checked against that source, and the claim records what was cited.
+   * Anything else is a problem that says what the source could be. The check itself is the same.
+   */
+  private resolveSource(
+    run: string,
+    cited: string,
+  ): { row: Row; from?: string | undefined } | { problem: string } {
+    const byId = (id: string) => this.get("select * from source where run = ? and id = ?", run, id);
+    const said = clip(cited, 200);
+    const s = cited.trim();
+    const exact = byId(s);
+    if (exact) return { row: exact, from: s === cited ? undefined : cited };
+    const file = /^(?:.*\/)?(s-[0-9a-f]+)\.(?:txt|md)$/.exec(s)?.[1];
+    if (file) {
+      const row = byId(file);
+      return row
+        ? { row, from: cited }
+        : {
+            problem: `no archived source ${said}: the research folder has no sources/${file}.txt; cite the s-… id that fetch returned`,
+          };
+    }
+    const url = /^https?:\/\//i.test(s) ? archiveUrl(s) : undefined;
+    if (url) {
+      const rows = this.all(
+        "select id from source where run = ? and (url = ? or final_url = ?) order by fetched_at",
+        run,
+        url,
+        url,
+      );
+      if (rows.length === 1) return { row: byId(String(rows[0]?.id)) as Row, from: cited };
+      if (rows.length > 1)
+        return {
+          problem: `no archived source ${said}: that URL is archived as ${rows.length} sources (${rows.map((r) => String(r.id)).join(", ")}); cite the id of the one the quote is from`,
+        };
+    }
+    // Not archived as written. A URL archived in another form (http for https, without its
+    // scheme or "www.", with an end slash) is named, never taken.
+    const loose = looseUrl(s);
+    const near: { id: string; at: string }[] = [];
+    for (const r of this.all(
+      "select id, url, final_url from source where run = ? order by fetched_at",
+      run,
+    )) {
+      const at = [r.url, r.final_url].find((u) => u !== null && looseUrl(String(u)) === loose);
+      if (at !== undefined) near.push({ id: String(r.id), at: String(at) });
+      if (near.length === 3) break;
+    }
+    if (near.length)
+      return {
+        problem: `no archived source ${said}: that URL is not archived as written, but ${near.map((r) => `${r.id} is archived from ${clip(r.at, 200)}`).join(", and ")}; cite ${near.length === 1 ? "that id" : "the id of the page the quote is from"} if it is the same page`,
+      };
+    return {
+      problem: url
+        ? `no archived source ${said}: no source was archived from that URL; fetch it first, then cite the s-… id that fetch returns`
+        : `no archived source ${said}: a quote's source is the s-… id that fetch returned`,
+    };
+  }
+
   addClaim(run: string, lane: string | null, input: unknown) {
     const c = ClaimInput.parse(input);
     const key = claimKey(c.text);
@@ -361,35 +465,55 @@ export class Research {
       };
     }
     const problems: string[] = [];
+    const quotes: ClaimQuote[] = [];
+    const resolved: { cited: string; source: string }[] = [];
     for (const q of c.quotes) {
-      const s = this.get("select * from source where run = ? and id = ?", run, q.source);
-      if (!s) {
-        problems.push(`no archived source ${q.source}`);
+      const s = this.resolveSource(run, q.source);
+      if ("problem" in s) {
+        problems.push(s.problem);
+        quotes.push({ source: q.source, quote: q.quote });
         continue;
       }
-      if (!normalizeQuote(this.text(s)).includes(normalizeQuote(q.quote))) {
-        problems.push(`quote not found verbatim in ${q.source}: "${q.quote.slice(0, 80)}"`);
+      const id = String(s.row.id);
+      quotes.push({
+        source: id,
+        quote: q.quote,
+        ...(s.from === undefined ? {} : { resolved_from: s.from }),
+      });
+      if (s.from !== undefined) resolved.push({ cited: s.from, source: id });
+      if (!normalizeQuote(this.text(s.row)).includes(normalizeQuote(q.quote))) {
+        problems.push(`quote not found verbatim in ${id}: "${q.quote.slice(0, 80)}"`);
       }
     }
-    // A claim may not state numbers its own quotes do not contain.
+    // A claim may not state numbers its own quotes do not contain. One from a heading or a label
+    // ("Question 0:", "# Claim …") counts the same; the problem says where it comes from.
     const quoted = c.quotes.map((q) => normalizeQuote(q.quote)).join(" ");
     for (const num of numbersIn(c.text)) {
-      if (!quoted.includes(num)) problems.push(`the number ${num} is not in the claim's quotes`);
+      if (quoted.includes(num)) continue;
+      const head = headingWith(c.text, num);
+      problems.push(
+        head
+          ? `the number ${num} is not in the claim's quotes: it comes from the heading "${clip(head, 80)}". Give a question's number in "question", not in the claim's text, and leave headings and labels out of the text`
+          : `the number ${num} is not in the claim's quotes`,
+      );
     }
     const verified = problems.length === 0;
+    // Each URL or file name taken as a source's id, so the worker cites the id next time.
+    const how = resolved.length ? { resolved } : {};
     // The same claim with the same quotes, refused before: answered again, not recorded again, so
     // a worker that resubmits it in a loop learns what to change and fills no records.
     if (!verified) {
-      const quotes = canonicalJson(c.quotes);
+      const same = canonicalJson(quotes);
       const before = this.all(
         "select id, text, quotes from claim where run = ? and verified = 0 order by created_at",
         run,
-      ).find((r) => claimKey(String(r.text)) === key && String(r.quotes) === quotes);
+      ).find((r) => claimKey(String(r.text)) === key && String(r.quotes) === same);
       if (before)
         return {
           claim: String(before.id),
           verified: false,
           problems,
+          ...how,
           note: "this same claim, with the same quotes, was refused before for the same reasons: read_source the passage and copy its words exactly into the quote, or record what you learned as a note (add_note) instead",
         };
     }
@@ -405,23 +529,29 @@ export class Research {
           lane,
           c.question ?? null,
           c.text,
-          canonicalJson(c.quotes),
+          canonicalJson(quotes),
           verified ? 1 : 0,
           canonicalJson(problems),
           c.confidence ?? null,
           new Date().toISOString(),
         );
-      // The claim's words and its first quote, bounded: the record of what the source says.
+      // The claim's words and its first quote, bounded: the record of what the source says. Its
+      // quotes' sources, and why a draft is one, so the owner sees it as the worker did.
       this.ledger.appendEvent(lane ?? "research", "claim_added", run, {
         claim: id,
         verified,
         question: c.question ?? null,
         text: clip(c.text, 500),
         quote: clip(c.quotes[0]?.quote ?? "", 500),
+        sources: quotes.map((q) => clip(q.source, 200)),
+        problems: problems.slice(0, EVENT_PROBLEMS).map((p) => clip(p, 300)),
+        ...(problems.length > EVENT_PROBLEMS
+          ? { more_problems: problems.length - EVENT_PROBLEMS }
+          : {}),
       });
     });
     this.changed(run);
-    return { claim: id, verified, problems };
+    return { claim: id, verified, problems, ...how };
   }
 
   /**
