@@ -19,10 +19,10 @@ There are two ways to give them models, and you can mix them:
 | | **On Edit rig** | **In the advisors file** |
 | --- | --- | --- |
 | Rigs | Every rig | Only the local compose stack. The units and manifests that control writes for the rigs it sets up, and for rigs you join, have no setting for the file ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)) |
-| Models | A model from **Settings › Providers** for each role | An OpenAI-compatible or Anthropic API, a command-line agent, or Claude Code |
+| Models | A model from **Settings › Providers** for each role | An OpenAI-compatible or Anthropic API, a command-line agent, Claude Code, OpenCode v2 or the Codex CLI |
 | Web fetch | No | Yes |
 | Knowledge-base search, for the teachers | No | The file's own `kb`, for `openai` teachers |
-| MCP servers that the run's kit gives the advisors | Yes, in the supervisor and in Claude Code | Yes, for `openai` and `claude-code` runtimes; not for `cli` |
+| MCP servers that the run's kit gives the advisors | Yes, in every program an advisor runs in | Yes, for the `openai`, `claude-code`, `opencode` and `codex` runtimes; not for `cli` |
 | Counted toward a spending limit | No: these models count as $0 | Yes, with prices set ([Spending](#spending)) |
 
 A role given a model on **Edit rig** uses it, and the other roles keep what the file says. On **Edit rig**, the first choice in each advisor's **Model** list names what the file gives that role, such as `rig's file: model-a`, or says `none: off` when the file gives it none.
@@ -102,7 +102,7 @@ The page says, for example, "Control sent a model for the teachers to rig-1. The
 
 4. Start the supervisor again with the setting: `docker compose up -d` (or `podman compose up -d`), with your `-f` options if you start the stack with override files. With the `two-rigs` profile, `local-2`'s supervisor reads the same `.env` and folder, so both rigs get the same advisors.
 
-The supervisor reads the file only when it starts, so after each change run `docker compose restart supervisor`. At its next report to control, within a minute, **Edit rig** names the file's models in the first choice of each advisor's **Model** list, such as `rig's file: model-a`, with the file's program under **Runs in** and its window under **Context**. The supervisor tells control only each role's model, program, provider name and window: never a key, a key file, an address or a command.
+The supervisor reads the file only when it starts, so after each change run `docker compose restart supervisor`. At its next report to control, within a minute, **Edit rig** names the file's models in the first choice of each advisor's **Model** list, such as `rig's file: model-a`, with the file's program under **Runs in** and its window under **Context**. The supervisor tells control only each role's model, program, provider name and kind of API, window and compaction point: never a key, a key file, an address or a command.
 
 :::caution[A mistake in the file stops the rig's reports]
 A file with a mistake stops the supervisor: its log has a `fatal` line with the reason, and it starts again and stops again until you fix the file. The supervisor is also the rig's link to control, so meanwhile the rig shows **Stale**, then **Offline**, on **Rigs**. There is no command that checks the file first. At least check that it is valid JSON before you restart, for example with `node -e 'JSON.parse(require("fs").readFileSync(".dev/advisors/advisors.json", "utf8"))'`, then watch `docker compose logs supervisor`.

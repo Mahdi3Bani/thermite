@@ -22,7 +22,7 @@ Control has an MCP server, so an AI agent such as Claude Code can watch rigs and
 | **Agent** | An agent that only coordinates runs | Read; start runs from a contract with `issue_command`, pause and resume runs, give them rules (`redirect`) and restart their lanes (`reset_workers`); export; run rig checks; send champions to other rigs. Not `start_run` or `copy_campaign`, archive or folders, the experiment queue's commands, the knowledge base, control's log, providers, MCP servers, how rigs were set up, the tools that set rigs up, or RunPod. While you fully reset a rig, `issue_command` refuses it for that rig |
 | **Reader** | An agent that only watches | Read, including control's log, providers, MCP servers, how rigs were set up (without each step's details), and the navigation's folders and archived campaigns. Not the knowledge base |
 
-The reader's token reads control's log, providers, MCP servers and how rigs were set up, and the agent's token doesn't: they describe control itself, not the campaigns, and are for whoever runs control.
+The reader's token reads control's log, providers, MCP servers, how rigs were set up and the navigation's folders (`campaign_folders`), and the agent's token doesn't: they describe control itself, not the campaigns, and are for whoever runs control.
 
 Give the agent the token with the least it needs: it acts with that token's rights, and nothing more. Don't give an agent the owner's token. The owner's token also approves and declines promotions over MCP, retires rigs, works on the whole REST API and signs in to the dashboard.
 

@@ -51,7 +51,7 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap. None about the context window: a conversation that grows is compacted (below) | Fixed |
-| Compaction of an agent's conversation | At 80% of the model's [context window](glossary.md). The conversation is kept as a document, summarized, and the agent goes on. It never ends a trial and never asks for a submission | `compact_at` (50 to 95) with each agent's model, over [`set_rig_model`](mcp-tools.md#set_rig_model) or [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model); the campaign's own `agents_context.compact_at`; or `THERMITE_MODEL_COMPACT_AT`. See [Compaction](#compaction) |
+| Compaction of an agent's conversation | At 80% of the model's [context window](glossary.md). The conversation is kept as a document, summarized, and the agent goes on. It never ends a trial and never asks for a submission | **Compact at** in each agent's **Context** cell on **Edit rig**; `compact_at` (50 to 95) with each agent's model, over [`set_rig_model`](mcp-tools.md#set_rig_model) or [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model); the campaign's own `agents_context.compact_at`; or `THERMITE_MODEL_COMPACT_AT`. See [Compaction](#compaction) |
 | Nudges when a worker stops without submitting | 2. An OpenCode, Claude Code or Codex worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode, Claude Code and Codex). Then the trial ends; the trial's time limit still applies |
 | Time to finish after a submission | 5 s after the submission is recorded, the lane's agent is stopped. Its closing reply is not waited for, and a note or idea it has not written by then is not recorded | Fixed (OpenCode, Claude Code and Codex; Pi stops at once: no tool call runs after its submission) |
 | Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, or 5 cut-off replies in a row. A full context is compacted, and the trial goes on | Fixed |
@@ -69,7 +69,7 @@ Near the model's [context window](glossary.md), an agent's conversation is compa
 | The compaction point | 80% of the window. `compact_at` sets it, from 50 to 95 percent, for each agent with its model; a campaign's own `agents_context.compact_at` replaces it for the campaign's runs |
 | Why 80% | The summary is asked of the same model, with the conversation as its input. A fifth of the window is left for that call's answer and for the next reply |
 | Before each compaction | The whole conversation is kept as Markdown, whichever program the agent runs in. A worker's and the planner's: in the run's research folder, `compactions/<trial>-<n>.md` for a trial, `compactions/planner-<id>-<n>.md` for a planner call; every agent of the run may read it, and none may change it. An advisor's: with the supervisor's records of the advisors' rounds, below. The summary names the file |
-| What records it | A worker's or the planner's: a `context_compacted` event, in **History**; lines in the trial's **Live** view, with the summary; the trial's count of compactions in `trial_finished`. An advisor's: lines in the run's **Live** view, with the summary, and the round's record in the supervisor |
+| What records it | A worker's or the planner's: a `context_compacted` event, in **History**; lines with the summary in the run's **Live** view, under the lane's filter or **Planner**; a document of the run on **Knowledge** with the kept conversation, cut to 20,000 characters; a trial's count of compactions in `trial_finished`. An advisor's: lines in the run's **Live** view, with the summary, and the round's record in the supervisor |
 
 Who sets each agent's window and point:
 
@@ -106,7 +106,7 @@ How the conversation is kept, and how the summary is told to name it, with what 
 - **In Pi**, the conversation becomes the system prompt, the brief, one message with the summary and the kept conversation's path, and the most recent turns that fit: at most 6, within a quarter of the window. A tool call keeps its result. The summary is the same model's answer to a fixed prompt: the task, what was tried and measured, the state of the files, what failed and why, and what is next.
 - **If the summary call fails**, the bodies of the oldest tool results are left out instead, each with a one-line stub, until the conversation is at most half the window.
 - **Only a conversation that the provider says is full, and that cannot fit the window even compacted,** ends a trial, as `context`, with the reason in words: for example, a brief larger than the window. So does a context the provider calls full again right after two compactions in a row. Thermite's own token counts are estimates: they alone never end a trial.
-- **A model whose window is unknown** (`0`) is compacted only when the provider says the context is full.
+- **A worker whose model's window is unknown** (`0`) is compacted only when the provider says the context is full. The planner and an advisor in Pi with no window are not compacted.
 - **OpenCode's own models** keep the window and the compaction point OpenCode knows for them.
 - **A Pi planner call** has no file tool: its summary names where the run keeps the conversation, for the owner.
 - **An advisor's call in Pi** (a teacher's review, the merged by model's set, an audit, a review by a reviewer of the review panel) compacts as the planner's does: what its tools return, such as past research and the kit's MCP tools, can fill its window. The supervisor keeps the conversation before each compaction in its own home, beside its record of the round: `advisors/compactions/<run>/<call>-<advisor>-<n>.md`, and the round's record (`advisors/<time>-<kind>.json`) lists the compactions. It does not go in the run's research folder: an advisor's conversation can hold what an outside knowledge base or a fetched page said, which the run's workers must not read. The advisor's summary names where it is kept, and the run's **Live** view has a line: `advisor <name>: its conversation was compacted (compaction <n>) at about <tokens> tokens, down to about <tokens>. It goes on. …`
@@ -182,6 +182,8 @@ The [kit manifest](kit-manifest.md) sets these; the defaults apply when it does 
 | Build (`build`) | 600 s | 4,096 MiB | 4,096 MiB | 512 |
 | Run (`run`) | 300 s | 1,024 MiB | 256 MiB | 256 |
 | Check (`check`) | 120 s | none | none | none |
+
+A cell may set its own run time, `timeout_s` in its entry in `cells`, which replaces the run's for that cell's runs only ([Cells](kit-manifest.md#cells)).
 
 Memory is the sum over all the processes the build or run started, sampled every 100 ms. Disk is the working directory, sampled every 500 ms; more than 50,000 files and folders, or more than 128 levels, also counts as over the disk limit. Only the last 64 KiB of output is kept. Tasks are the processes and threads the build's or run's user may have at once (`RLIMIT_NPROC`); the kit does not set them.
 
@@ -271,7 +273,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | Field notes in the planner's and the teachers' brief | The run's newest 20 |
 | The run page's **Journal** tab | The newest 500 field notes; the rest are in the campaign's folder and the run's export |
 | A briefing (`assign_campaign`'s `briefing`) | Up to 200 items, each 1 to 4,000 characters |
-| A campaign's brief (the contract's `notes`, `links` or a research campaign's `seeds`, `ideas` and `hypotheses`) | No limit of its own: the whole contract goes to a rig in one signed command of at most 3.5 MiB. The planner and the advisors get it whole; each worker's brief carries its first 32,000 characters and says where the rest is (`BRIEF.md` in the run's folder). See [The campaign's brief](contract.md#the-campaigns-brief) |
+| A campaign's brief (the contract's `notes`, `links` (a research campaign's `seeds`), `ideas` and `hypotheses`) | No limit of its own: the whole contract goes to a rig in one signed command of at most 3.5 MiB. The planner gets it whole, and the advisors whole unless their package's own cut reaches it; each worker's brief carries its first 32,000 characters and says where the rest is (`BRIEF.md` in the run's folder). See [The campaign's brief](contract.md#the-campaigns-brief) |
 | A research question | No limit of its own. A research task in the queue holds its first 4,000 characters, and says the whole question is in the worker's brief |
 | An item of the knowledge base | Title 300 characters, text 20,000 |
 | Search words | The first 8 words of 2 or more characters; at most 300 characters in all |
