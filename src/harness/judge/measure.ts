@@ -12,7 +12,7 @@ import {
 import { dirname, join } from "node:path";
 import { runSupervised } from "../broker/process.ts";
 import { type Role, type Runner, type RunOutcome, walk } from "../broker/runner.ts";
-import { expandArgv, type Kit, paramsText } from "../kit.ts";
+import { cellParams, cellTimeoutS, expandArgv, type Kit, paramsText } from "../kit.ts";
 import type { BuildManifest, BuildStore } from "./builds.ts";
 import { clipReason } from "./reasons.ts";
 
@@ -123,7 +123,7 @@ export async function runArm(ctx: MeasureContext, arm: Arm, cell: string): Promi
 }
 
 async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise<ArmRun> {
-  const params = ctx.kit.cells[cell];
+  const params = cellParams(ctx.kit, cell);
   if (!params) throw new Error(`kit ${ctx.kit.name} has no cell ${cell}`);
   // The build must be exactly what was verified at build time.
   const tampered = ctx.store.verify(arm.dir, arm.manifest);
@@ -159,7 +159,8 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
       }),
       cwd: work,
       env: {},
-      timeoutMs: ctx.kit.run.timeout_s * 1000,
+      // The cell's own limit when it sets one, else the kit's.
+      timeoutMs: cellTimeoutS(ctx.kit, cell) * 1000,
       rssLimitBytes: ctx.kit.run.rss_mib * 1024 * 1024,
       disk: { path: work, limitBytes: ctx.kit.run.disk_mib * 1024 * 1024 },
     });

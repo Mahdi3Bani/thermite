@@ -248,6 +248,33 @@ export function work() {
     assert.equal((event?.body as { reasons?: string } | undefined)?.reasons, reasons);
   });
 
+  test("a cell's own time limit ends a run that the kit's limit would allow", async () => {
+    // small has a 2 s limit of its own; big keeps the kit's 30 s.
+    const env = await setup({
+      kitCells: {
+        small: { params: { n: 20000000, work: 20000000 }, timeout_s: 2 },
+        held: { n: 15000000, work: 15000000 },
+        big: { n: 100000000, work: 100000000 },
+      },
+    });
+    // Correct, but it idles 6 s: past small's own limit, well within the kit's.
+    const slow = `export function work(n) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6000);
+  let s = 0;
+  for (let i = 0; i < n; i++) s += i % 7;
+  return s;
+}
+`;
+    const id = await env.submit(slow, "idle before the work");
+    await env.drain();
+    assert.equal(env.ledger.currentVerdict(id)?.verdict, "crash_candidate", why(env, id));
+    const { reasons } = env.ledger.db
+      .prepare("select reasons from verdict where attempt = ? order by id desc limit 1")
+      .get(id) as { reasons: string };
+    assert.match(reasons, /^killed: timeout/);
+    assert.equal(env.ledger.currentChampion("js-1").seq, 1);
+  });
+
   test("a change that does not build is invalid", async () => {
     const env = await setup();
     const id = await env.submit("export function work( {\n", "syntax error");
