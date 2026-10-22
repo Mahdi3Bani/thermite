@@ -6,9 +6,9 @@
 //   - each "call the TOOL tool with input {...}END", in order: one call each, then "done: " and
 //     the last tool's output;
 //   - "ADVISOR-CHECK": the JSON answer an advisor gives;
-//   - "COMPACT-CHECK": a Bash call that says the conversation is large, so Claude Code compacts;
-//     the compaction's summary request, which carries the line of Thermite's PreCompact hook, is
-//     answered with a summary that names the kept file (goal 070);
+//   - "COMPACT-CHECK": two Bash calls, the second of which says the conversation is large, so
+//     Claude Code compacts; the compaction's summary request, which carries the line of
+//     Thermite's PreCompact hook, is answered with a summary that names the kept file (goal 070);
 //   - anything else (Claude Code's own side requests): "ok".
 // It answers only a request signed in with the token it was given (Authorization: Bearer, as
 // Claude Code sends a subscription's token), and counts the others. It keeps no token and no
@@ -43,23 +43,37 @@ export function reply(body) {
   )?.[1];
   if (kept)
     return {
-      content: [{ type: "text", text: `The value is checked. The whole conversation is kept in ${kept}.` }],
+      content: [
+        {
+          type: "text",
+          text: `<summary>\nThe value is checked. The whole conversation is kept in ${kept}.\n</summary>`,
+        },
+      ],
       stop: "end_turn",
     };
-  // "COMPACT-CHECK": a trial that compacts. Its first reply says the conversation is already
-  // large, so Claude Code compacts it before its next request; after the compaction, it is done.
+  // "COMPACT-CHECK": a trial that compacts, in two rounds of one Bash call each. The second reply
+  // says the conversation is already large, so Claude Code compacts it before its next request.
+  // Two rounds, because Claude Code 2.1.305 (its window from CLAUDE_CODE_AUTO_COMPACT_WINDOW)
+  // keeps the newest round whole and summarizes only earlier rounds with a reply in them: with
+  // one round it has nothing to summarize ("no assistant messages in summarize set, bailing").
+  // After the compaction, it is done.
   if (
     /COMPACT-CHECK/.test(prompt) &&
     !/The whole conversation is kept in/.test(prompt) &&
-    !results.length &&
+    results.length < 2 &&
     offered.has("Bash")
   )
     return {
       content: [
-        { type: "tool_use", id: "toolu_compact", name: "Bash", input: { command: "echo compact-check" } },
+        {
+          type: "tool_use",
+          id: `toolu_compact_${results.length + 1}`,
+          name: "Bash",
+          input: { command: `echo compact-check-${results.length + 1}` },
+        },
       ],
       stop: "tool_use",
-      usage: { input_tokens: 60_000 },
+      ...(results.length === 1 ? { usage: { input_tokens: 60_000 } } : {}),
     };
   const steps = [...prompt.matchAll(/call the (\w+) tool with input (\{.*?\})END/gs)].map((m) => ({
     name: m[1],
