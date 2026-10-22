@@ -66,6 +66,7 @@ None.
 ## Progress
 
 - 2026-10-22: Goal written from the owner's request and the audit. Built: the teachers' portfolio and its merge (`src/supervisor/advisors.ts`), the code and evidence reads (`src/harness/evidence.ts`, `src/supervisor/code-tools.ts`, the harness's `/v1/code/*` and `/v1/evidence`), the refusals (`src/core/queue-target.ts`), the target and the top-up (`src/harness/agents/scheduler.ts`, `coordinator.ts`, `planner.ts`), the low queue's teachers' round (`src/supervisor/advise.ts`), the follow-up line in the worker's brief, New campaign's field and the campaign's page. Tests: `src/core/queue-target.test.ts`, `src/harness/evidence.test.ts`, `src/supervisor/advise-ideas.test.ts`, `src/harness/agents/scheduler-queue.test.ts`, `src/control/new-campaign-page.test.ts`, `src/control/ui/campaigns.test.ts`. Next: the steering and agents acceptances.
+- 2026-10-22: Checks passed: the typecheck, the lint, the touched test files, `docs:build`, `docs:check`, the quick start's page test and the public check. The full `npm run check` passed every test but one of goal 075's, which fails only in the first hour after midnight in the zone it names (its "today" has no hour's bar yet) and touches nothing here; run again after that hour, it passed. The **Experiments** tab's screenshot was taken again from the dashboard demo, for the ideas card's new words. Next: the steering and agents acceptances.
 
 ---
 
