@@ -78,7 +78,7 @@ The provider decides when the agents can work. Each error a model call gets is s
 
 - **Pi, OpenCode, Claude Code and Codex** answer the same way. OpenCode, Claude Code and Codex go on in the same session after a wait; the harness's model proxy tells their errors' kinds from the provider's answers.
 - **Only the provider's own answers are sorted.** An error counts as the provider's only when it came from a call to the provider: Pi's model call, or the error answer the model proxy saw for OpenCode, Claude Code or Codex. A trial that failed on its own (a workspace that could not be set up, a worker process that gave no result, a program that exited) never stops the agents or makes them wait, whatever its words, such as `permission denied` or `timed out`. It tried its experiment, with how it ended as the cause.
-- **A trial that never really tried its experiment** (it ended on the provider's error, or it was interrupted by a pause, a reset or a restart) gives the experiment back: the same row goes to the top of the [queue](glossary.md), with how many times and why (`experiment_returned`). It is the next one given out when the agents go on.
+- **A trial that never really tried its experiment** (it ended on the provider's error, or it was interrupted by a pause, a reset or a restart, before it submitted a change) gives the experiment back: the same row goes to the top of the [queue](glossary.md), with how many times and why (`experiment_returned`). It is the next one given out when the agents go on.
 - **A trial interrupted by a restart** keeps the turns and tokens its worker last reported.
 
 ### Compaction
@@ -172,7 +172,7 @@ The dashboard calls an epoch a **round**.
 | A rig shown as stale | After 180 s without a report | `THERMITE_CONTROL_STALE_SECONDS` |
 | A rig shown as offline on **Rigs**, in the REST API, MCP and `thermite rig list` | After 900 s without a report, never before it is stale | `THERMITE_CONTROL_OFFLINE_SECONDS` |
 | A GPU cloud in **Providers** read again: prices, pods and spend | Every 15 minutes, and on **Read again** | Fixed |
-| A draining rig's reports looked at, for its image update | Every 10 s: its pods restart once its report says nothing runs. The drain has no time limit; **Update now, without waiting** skips it | Fixed |
+| A draining rig's reports looked at, for its image update | Every 10 s: its pods restart once its report says nothing runs: no open trial, and no judge job under a lease still in force (a lease that ran out is taken back, while draining too). The drain has no time limit; **Update now, without waiting** skips it | Fixed |
 | Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teachers ends the wait (below) | `THERMITE_POLL_SECONDS` |
 | Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teachers, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
 | A new owner's message to the teachers, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teachers** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |

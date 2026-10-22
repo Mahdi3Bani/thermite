@@ -1220,6 +1220,23 @@ describe("agent scheduler", () => {
     assert.equal(await scheduler.tick(), false, "no new work after shutdown");
   });
 
+  test("a drain that begins while the planner works: the round is recorded, and no trial starts (goal 079)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 3 } });
+    await env.service.applyCommand(env.assign);
+    // Not draining when the step starts; draining from the planner's call on.
+    let asked = 0;
+    const { scheduler, started } = provider(
+      env,
+      () => ({ stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 }),
+      { draining: () => ++asked > 1 },
+    );
+    assert.equal(await scheduler.tick(), false);
+    await scheduler.idle();
+    assert.equal(env.ledger.db.prepare("select count(*) as n from epoch").get()?.n, 1);
+    assert.equal(started.n, 0, "no trial starts once the rig drains");
+    assert.equal(env.ledger.db.prepare("select count(*) as n from trial").get()?.n, 0);
+  });
+
   test("after a restart, trials a dead controller left open are closed and their lanes go on", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
     await env.service.applyCommand(env.assign);

@@ -191,10 +191,18 @@ export class Judge {
     this.store = new BuildStore(stateDir, scratchDir, opts.runner, this.ledger);
   }
 
+  /**
+   * Takes back the jobs whose lease ran out: queued again, or blocked after their third lost lease.
+   * It starts no work, so the harness does it while draining too (goal 079).
+   */
+  expireLeases(): number[] {
+    return this.ledger.expireLeases(this.o.owner);
+  }
+
   /** One scheduling step. Returns true when a job was processed. */
   async tick(): Promise<boolean> {
     if (this.o.deviceGate?.active) return false;
-    this.ledger.expireLeases(this.o.owner);
+    this.expireLeases();
     this.maybeScheduleCalibration();
     this.maybeScheduleValidation();
     const job = this.ledger.leaseJob(

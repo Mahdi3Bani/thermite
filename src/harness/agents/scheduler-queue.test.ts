@@ -6,7 +6,7 @@ import { parseContract } from "../../core/contract.ts";
 import { startFakeModel } from "../../testing/fake-model.ts";
 import { researchFixture } from "../../testing/fixtures.ts";
 import { makeHarnessEnv } from "../../testing/harness-env.ts";
-import { makeJudgeEnv } from "../../testing/judge-env.ts";
+import { FAST_KERNEL, makeJudgeEnv } from "../../testing/judge-env.ts";
 import { LocalRunner } from "../broker/runner.ts";
 import type { LedgerEvent } from "../ledger.ts";
 import { Research } from "../research/research.ts";
@@ -744,6 +744,50 @@ describe("the planner as the queue's coordinator", () => {
     assert.equal(brief.up_next[0]?.id, x);
     assert.equal(brief.up_next[0]?.returned?.times, 1);
     assert.equal(brief.tried.length, 0);
+  });
+
+  test("a trial interrupted after it submitted keeps its experiment done with its attempt: it does not come back (goal 079)", async (t) => {
+    // A Pi worker in its own process submits, then is stopped before it can hand its result
+    // over: the scheduler learns of the submission only from the attempt linked to the trial.
+    let attempt = "";
+    const s = await setup(t, {
+      lanes: 1,
+      trial: async (spec, signal) => {
+        const r = await s.env.service.submitForTrial(String(spec.token), {
+          patch_base64: s.env.patch(FAST_KERNEL),
+          hypothesis: "the fast kernel",
+          known_flaws: [],
+        });
+        attempt = r.attempt;
+        return new Promise((resolve) =>
+          signal.addEventListener("abort", () =>
+            resolve({
+              stopped: "error",
+              turns: 0,
+              toolCalls: 0,
+              tokensIn: 0,
+              tokensOut: 0,
+              error: "worker process gave no result (SIGKILL): ",
+            }),
+          ),
+        );
+      },
+    });
+    const x = await s.add("submits, then is stopped");
+    assert.ok(await s.scheduler.tick());
+    while (!attempt) await new Promise((r) => setTimeout(r, 10));
+    await command(s.env, "pause_run", { run: RUN, reason: "test" });
+    await s.scheduler.idle();
+    const done = s.q.get(x);
+    assert.equal(done?.state, "done", "its attempt is with the judge: not back in the queue");
+    assert.equal(done?.result, "submitted");
+    assert.equal(done?.attempt, attempt);
+    assert.equal(events(s.env, "experiment_returned").length, 0);
+    assert.equal(
+      s.env.ledger.db.prepare("select attempt from trial").get()?.attempt,
+      attempt,
+      "the trial keeps its attempt",
+    );
   });
 
   test("a trial that ends on the provider's error gives its experiment back; another failure is tried, with its cause (goal 079)", async (t) => {

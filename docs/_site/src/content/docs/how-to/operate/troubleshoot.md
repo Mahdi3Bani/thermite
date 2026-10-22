@@ -141,7 +141,7 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
 ### An image update waits while the rig drains
 
 - **You see:** on the page of a rig on a cluster, after **Update to these images**, the status `draining` and `Draining before its pods restart on control's images:` with the new images.
-- **Why:** the rig was at work. It starts no new trial, plan or judge job, and its pods restart once its running trials and the judge's job end. A trial has no time limit unless someone set one, so this can take a while. If the rig's harness started again during the drain, it forgot the drain and went back to work; after two reports without the drain, control sends it again, and the rig's history has the step `its harness started again and was not draining: asked again`.
+- **Why:** the rig was at work. It starts no new trial, plan or judge job, and its pods restart once its running trials and the judge's job end. A trial has no time limit unless someone set one, so this can take a while. A judge job whose lease ran out (its holder is gone) is not waited for: the rig takes it back to its queue. If the rig's harness started again during the drain, it forgot the drain and went back to work; after two reports without the drain, control sends it again, and the rig's history has the step `its harness started again and was not draining: asked again`.
 - **Do:** wait; or press **Update now, without waiting**: its pods restart at once, and the running trials are recorded as interrupted, their experiments back at the top of the queue; or press **Call the update off**, and the rig goes back to work on its images. See [Update to these images](rig-lifecycle.md).
 
 ### A rig on a cluster never reports
@@ -331,7 +331,7 @@ A reason about one experiment names its state, then the rule: `only queued exper
 
 - **You see:** an experiment that a lane already worked on is first under **Up next** again, with `Came back once: its trial never really tried it` and why. The run's **History** says, for example, `"…" went back to the top of the queue: its trial on lane-2 was interrupted (its trial was stopped).` or `… ended on the provider's error (503 Service Unavailable).`
 - **Why:** when a trial ends because it was interrupted, by **Pause**, **Restart the lanes** or a restart of the harness, or on the model provider's error (a rate limit, an outage, no credits, a refused key, or calls that failed until the agents stopped), its experiment was not really tried. It goes back to the top of the queue, with how many times and why.
-- **Do:** nothing, or press **Drop** on it if it should not be tried again. It is the same experiment, not a copy: the queue does not fill up with repeats. A trial that ended for another reason, such as its time running out, a memory limit or a workspace it could not set up, doesn't come back: the experiment is tried, and **Tried** says how its trial ended.
+- **Do:** nothing, or press **Drop** on it if it should not be tried again. It is the same experiment, not a copy: the queue does not fill up with repeats. A trial that ended for another reason, such as its time running out, a memory limit or a workspace it could not set up, doesn't come back: the experiment is tried, and **Tried** says how its trial ended. Nor does one interrupted after it submitted its change: the experiment is done with that change, which the judge goes on with.
 
 ### History says a round followed the fixed rules
 

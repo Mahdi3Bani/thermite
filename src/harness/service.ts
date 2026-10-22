@@ -388,17 +388,24 @@ export class HarnessService {
    */
   draining: { since: string; reason: string; by: string } | undefined;
 
-  /** What still runs, for a drain's report: open trials and the judge's leased jobs. */
+  /**
+   * What still runs, for a drain's report: open trials and the judge's jobs under a lease still in
+   * force (goal 079). A lease that ran out is no work: its holder is gone, the judge takes it back
+   * (while draining too), and a drain never waits on it.
+   */
   work(): {
     trials: number;
     judge_jobs: number;
     draining: { since: string; reason: string } | null;
   } {
-    const n = (sql: string) =>
-      Number((this.ledger.db.prepare(sql).get() as { n: number } | undefined)?.n ?? 0);
+    const n = (sql: string, ...params: string[]) =>
+      Number((this.ledger.db.prepare(sql).get(...params) as { n: number } | undefined)?.n ?? 0);
     return {
       trials: n("select count(*) as n from trial where ended_at is null"),
-      judge_jobs: n("select count(*) as n from job where state = 'leased'"),
+      judge_jobs: n(
+        "select count(*) as n from job where state = 'leased' and lease_until > ?",
+        this.clock().toISOString(),
+      ),
       draining: this.draining ? { since: this.draining.since, reason: this.draining.reason } : null,
     };
   }

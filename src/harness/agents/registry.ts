@@ -375,6 +375,12 @@ export class Registry {
     });
   }
 
+  /** The attempt linked to a trial as it submitted, if any. */
+  attemptOf(trial: string): string | undefined {
+    const r = this.get("select attempt from trial where id = ?", trial);
+    return r?.attempt ? String(r.attempt) : undefined;
+  }
+
   /** The lane's newest finished trials, newest first (for backoff). */
   recentTrials(
     run: string,

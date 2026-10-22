@@ -136,4 +136,36 @@ describe("the rig's own settings (Edit rig)", () => {
     assert.equal(env.service.draining, undefined);
     assert.equal((work() as { draining: unknown }).draining, null);
   });
+
+  test("a drain waits on a judge job only while its lease is in force; one that ran out is taken back (goal 079)", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const work = () =>
+      (env.service.snapshot(0, 10) as { summary: { work: { judge_jobs: number } } }).summary.work;
+    const lease = (minutes: number) =>
+      Number(
+        env.ledger.db
+          .prepare(
+            "insert into job (kind, state, lease_owner, lease_until, fence, created_at, updated_at) values ('evaluate', 'leased', 'executor-0', ?, 1, ?, ?)",
+          )
+          .run(
+            new Date(Date.now() + minutes * 60_000).toISOString(),
+            new Date().toISOString(),
+            new Date().toISOString(),
+          ).lastInsertRowid,
+      );
+    await env.service.applyCommand(env.sign("drain_rig", { drain: true, reason: "new images" }));
+    // A job whose holder renews its lease: the drain waits for it.
+    const live = lease(10);
+    assert.equal(work().judge_jobs, 1);
+    // A job whose lease ran out (its holder died): not work, so the drain does not wait on it.
+    const dead = lease(-1);
+    assert.equal(work().judge_jobs, 1, "the lease that ran out is not counted");
+    // Taking it back starts nothing, so a draining rig does it: the job is queued again.
+    assert.deepEqual(env.judge.expireLeases(), [dead]);
+    const state = (id: number) =>
+      String(env.ledger.db.prepare("select state from job where id = ?").get(id)?.state);
+    assert.equal(state(dead), "queued");
+    assert.equal(state(live), "leased");
+  });
 });

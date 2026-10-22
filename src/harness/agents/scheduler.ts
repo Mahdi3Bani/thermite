@@ -1365,12 +1365,20 @@ export class Scheduler {
     return typeof m === "function" ? m() : m;
   }
 
+  /**
+   * Stopping or draining (goal 079): no new plan or trial starts; those running end as they
+   * would. Asked at the top of a step, again after a planner call, and before each trial.
+   */
+  private halted(): boolean {
+    return this.stopping || this.o.draining?.() === true;
+  }
+
   /** One scheduling step: plan when needed, start trials that may start. */
   async tick(): Promise<boolean> {
     this.stopIfNotRunning();
     await this.applyResets();
     // Stopping or draining: no new plan or trial; those running end as they would.
-    if (this.stopping || this.o.draining?.()) return false;
+    if (this.halted()) return false;
     const inst = this.run();
     if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
@@ -1407,6 +1415,9 @@ export class Scheduler {
       await this.planEpoch(id, contract, (epoch?.n ?? 0) + 1);
       epoch = this.registry.currentEpoch(id);
       if (!epoch) return false;
+      // A drain or a stop that began while the planner worked (goal 079): the round is
+      // recorded, and no trial starts.
+      if (this.halted()) return false;
     }
     this.updateLaneBests(
       id,
@@ -1429,6 +1440,8 @@ export class Scheduler {
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.openAttempts(id) >= contract.budget.max_open_attempts) continue;
       if (this.laneWaitMs(id, a.lane, false) > 0) continue;
+      // Each trial asks again: no trial starts once the rig drains or stops.
+      if (this.halted()) return started;
       const k = trials.length + 1;
       const got = this.experimentFor(id, epoch, a, k, {
         perEpoch,
@@ -1487,6 +1500,7 @@ export class Scheduler {
       if (this.running.size >= this.o.maxConcurrent) continue;
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.laneWaitMs(run, a.lane, true) > 0) continue;
+      if (this.halted()) return started;
       const got = this.experimentFor(run, epoch, a, trials.length + 1, {
         perEpoch: contract.lanes.trials_per_epoch,
         laneCount: 1,
@@ -1932,14 +1946,18 @@ export class Scheduler {
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
-        this.finishExperiment(id, r, r.submitted?.attempt);
+        // Its attempt is the one linked to the trial as it submitted, also when its worker was
+        // stopped before it could say so (goal 079): an interrupted Pi trial that submitted has
+        // its attempt with the judge, and its experiment is done, not back in the queue.
+        const attempt = r.submitted?.attempt ?? this.registry.attemptOf(id);
+        this.finishExperiment(id, r, attempt);
         this.afterTrial(id, run, r);
         this.trialLine(
           id,
           run,
           a.lane,
           "status",
-          `trial ended: ${r.submitted ? `submitted ${r.submitted.attempt}` : r.stopped}${r.error ? ` (${r.error.slice(0, 200)})` : ""}`,
+          `trial ended: ${attempt ? `submitted ${attempt}${r.submitted ? "" : ` (then ${r.stopped})`}` : r.stopped}${r.error ? ` (${r.error.slice(0, 200)})` : ""}`,
         );
         await this.o.runner.killRole(lane).catch(() => 0);
         await this.o.devRuns?.settle(lane).catch(() => undefined);

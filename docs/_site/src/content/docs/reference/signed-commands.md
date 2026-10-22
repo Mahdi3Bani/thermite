@@ -518,7 +518,7 @@ Control issues it before it moves a rig at work onto new images or a new address
 | `drain` | boolean | `true`: the rig drains; `false`: the drain ends |
 | `reason` | text, 1 to 500 characters, optional | Why, as the event records it |
 
-While a rig drains, its harness starts no new trial, plan or judge job, and those running end as they would. Its report's `work` says what still runs, `{trials, judge_jobs, draining}`, and control restarts its pods once nothing does. A drain lasts until the harness restarts, which ends it. The event `rig_drain` records each change with the same figures. Result: `{"trials", "judge_jobs", "draining"}`.
+While a rig drains, its harness starts no new trial, plan or judge job, and those running end as they would; a plan that ends during the drain records its round and starts no trial. Its report's `work` says what still runs, `{trials, judge_jobs, draining}`, and control restarts its pods once nothing does. `judge_jobs` counts only jobs under a lease still in force: a lease that ran out is taken back to the queue while the rig drains, which starts nothing. A drain lasts until the harness restarts, which ends it. The event `rig_drain` records each change with the same figures. Result: `{"trials", "judge_jobs", "draining"}`.
 
 ### `wipe_state`
 

@@ -794,8 +794,10 @@ async function main(): Promise<void> {
       let worked = false;
       try {
         // The judge off (Edit rig): jobs wait in the queue, nothing is measured. A draining rig
-        // takes no new job (goal 079): the one under way finishes first.
-        worked = settings.get().judge && !service.draining ? await executor.tick() : false;
+        // takes no new job (goal 079): the one under way finishes first. It still takes back a
+        // lease that ran out, which starts nothing: its holder is gone.
+        if (settings.get().judge && !service.draining) worked = await executor.tick();
+        else if (service.draining) executor.expireLeases();
       } catch (err) {
         log("harness", "executor error", { executor: id, error: String(err) });
       }
