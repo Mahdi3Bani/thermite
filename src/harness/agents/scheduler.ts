@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { log } from "../../common/env.ts";
-import type { StoredRule } from "../../core/commands.ts";
+import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief.ts";
+import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
 import {
   type Contract,
   laneLimits,
@@ -20,6 +21,7 @@ import type { Ledger } from "../ledger.ts";
 import type { McpCaller } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
 import type { Experiment } from "../queue.ts";
+import { writeAtomic } from "../research/folder.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
@@ -208,6 +210,8 @@ export class Scheduler {
   private readonly o: Required<Omit<SchedulerOptions, Optional>> & Pick<SchedulerOptions, Optional>;
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
+  /** Research runs whose starting links this scheduler has begun to archive (goal 078). */
+  private readonly seeded = new Set<string>();
   private readonly aborts = new Map<string, AbortController>();
   /** The run each running trial (by lane) works for. */
   private readonly laneRun = new Map<string, string>();
@@ -679,7 +683,8 @@ export class Scheduler {
       directives: this.directives(run),
       directions: this.o.service.queue.directions(run),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(run, l)])),
-      campaignNotes: contract.notes,
+      // The campaign's brief from its author, whole (goal 078).
+      campaignBrief: briefData(contract),
       ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
       goalReport: contract.mode === "goal" ? this.goalReport(run, champion.seq) : undefined,
       // The run's newest field notes, the owner's picks from past research, and where the run's
@@ -964,6 +969,23 @@ export class Scheduler {
   }
 
   /**
+   * The campaign's brief for a worker's trial brief (goal 078): BRIEF.md in the run's folder, the
+   * whole text, and the section the trial brief carries (whole, or cut with where the rest is).
+   * "" when the contract has none.
+   */
+  private campaignBrief(run: string, contract: Contract): string {
+    const file = briefFile(contract);
+    if (!file) return "";
+    const path = join(this.o.service.knowledge.folder(run), BRIEF_FILE);
+    try {
+      writeAtomic(path, file);
+    } catch (err) {
+      log("scheduler", "the brief's file not written", { run, error: String(err) });
+    }
+    return briefSection(contract, path) ?? "";
+  }
+
+  /**
    * What a worker's brief adds from the run's record and from past research: the background the
    * owner picked, where the run's past research is, and the field notes (its lane's newest 10,
    * and the newest 5 decisions and lessons of other writers). All of it is marked as data.
@@ -1172,6 +1194,11 @@ export class Scheduler {
     if (!last || Date.now() - Date.parse(last) >= contract.report_cadence.digest_minutes * 60_000) {
       research.report(run, "digest");
     }
+    // The campaign's starting links, archived by the harness, beside the first trials.
+    if (!this.seeded.has(run)) {
+      this.seeded.add(run);
+      void this.archiveSeeds(run, contract);
+    }
     let epoch = this.registry.currentEpoch(run);
     if (!epoch || epoch.ended_at) {
       this.planResearchEpoch(run, contract, (epoch?.n ?? 0) + 1);
@@ -1199,6 +1226,34 @@ export class Scheduler {
     }
     if (complete && !this.running.size) this.registry.endEpoch(run, epoch.n, this.o.owner);
     return started;
+  }
+
+  /**
+   * A research run's starting links (goal 078), fetched and archived by the harness when the run
+   * starts (and again after a restart, when an archived link is found at once), one after
+   * another, beside the first trials. A link the fetcher refuses is an event with its reason
+   * (fetch_refused) and a line in Live; the run goes on without it.
+   */
+  private async archiveSeeds(run: string, contract: ResearchContract): Promise<void> {
+    if (!contract.seeds.length) return;
+    const research = this.o.research as Research;
+    let archived = 0;
+    const refused: string[] = [];
+    for (const url of contract.seeds) {
+      try {
+        const r = (await research.fetch(run, null, url)) as { refused?: string };
+        if (r.refused) refused.push(`${url} (${r.refused})`);
+        else archived++;
+      } catch (err) {
+        refused.push(`${url} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text: `starting links: ${archived} of ${contract.seeds.length} archived${refused.length ? `; not archived: ${refused.join("; ").slice(0, 1000)}` : ""}`,
+      run,
+    });
   }
 
   private static readonly RESEARCH_TASKS: { id: string; description: string }[] = [
@@ -1353,7 +1408,7 @@ export class Scheduler {
           run,
           {
             title: `Question ${q.i}: ${task.description}`,
-            details: `Question ${q.i}: ${contract.questions[q.i]}`,
+            details: questionDetails(q.i, contract.questions[q.i] ?? ""),
             family: task.id,
             why: stalled
               ? "the research plan: novelty fell, so primary sources and contradictions first"
@@ -1393,13 +1448,16 @@ export class Scheduler {
       `Topic: ${contract.topic}`,
       "Questions:",
       ...contract.questions.map(
-        (q, i) => `${i}. ${q} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
+        (q, i) =>
+          `${i}. ${q.replace(/\n/g, "\n   ")} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
       ),
+      "",
+      // The campaign's brief from its author (goal 078): whole, or cut with where the rest is.
+      this.campaignBrief(run, contract),
       "",
       `Your focus: ${a.focus}`,
       `Time: ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h elapsed of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h (the campaign continues after your trial).`,
       `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts, ${stats.findings} findings.`,
-      contract.seeds.length ? `Starting URLs: ${contract.seeds.join(" ")}` : "",
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",
       "Record claims only with exact quotes from archived sources, and say which question each answers.",
@@ -1797,6 +1855,7 @@ export class Scheduler {
       contract.mode === "goal"
         ? this.goalReport(run, this.ledger.currentChampion(run).seq)
         : undefined;
+    const campaignBrief = this.campaignBrief(run, contract);
     return [
       `# Assignment (epoch ${epoch}, trial ${k} of ${perEpoch}, ${a.lane})`,
       `Campaign: ${contract.title} (${contract.mode})`,
@@ -1833,7 +1892,8 @@ export class Scheduler {
       "# Your lane's recent attempts and the judge's findings",
       feedback,
       "",
-      contract.notes ? `# Notes from the campaign's author\n${contract.notes}\n` : "",
+      // The campaign's brief from its author (goal 078): whole, or cut with where the rest is.
+      campaignBrief ? `${campaignBrief}\n` : "",
       ...this.notesAndPast(run, a.lane, "worker").map((s) => `${s}\n`),
       "# How to work",
       "Read the relevant code, make one focused change in the editable paths, build and test it with run, then call submit once. The judge measures it on the real target; your own timings never count.",
@@ -1842,6 +1902,18 @@ export class Scheduler {
       .filter((l) => l !== "")
       .join("\n");
   }
+}
+
+/**
+ * A research task's details: its question. A question has no length limit (goal 078); an
+ * experiment's details hold at most EXPERIMENT_DETAILS characters, so a longer one is cut there
+ * and says where the whole question is: in the trial brief's Questions.
+ */
+export function questionDetails(i: number, q: string): string {
+  const whole = `Question ${i}: ${q}`;
+  if (whole.length <= EXPERIMENT_DETAILS) return whole;
+  const note = ` … (cut: the whole question is under Questions in your brief)`;
+  return `${whole.slice(0, EXPERIMENT_DETAILS - note.length)}${note}`;
 }
 
 function objectiveOf(c: Contract): string {

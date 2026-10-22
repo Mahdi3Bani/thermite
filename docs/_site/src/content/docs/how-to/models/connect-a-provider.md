@@ -64,7 +64,7 @@ The rig's row now says "Its agents run under Pi with my-model from my-litellm." 
 
 You can also give a rig its agents' model where you start a run:
 
-- under **The agents' model** on the **New campaign** page ([Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#4-where-it-runs));
+- under **The agents' model** on the **New campaign** page ([Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#5-where-it-runs));
 - in a campaign's **Start a run** panel, which shows **The agents' model** when the chosen rig has no model and **Agents** is **On**. Its ⓘ says: "For a rig with no model for its agents: the model to give it, as on its Edit rig page. Control gives it to the rig, which takes it within a minute; then start the run again here." Control gives the rig the model and says "rig-1 takes my-model within a minute; Settings › Providers shows it taking the model until then. Then start the run again." The run doesn't start yet: when the rig's row here says it runs the model, open **Start a run** again and press **Start the run**.
 
 An agent can do it over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model). All three work like **Use** here.

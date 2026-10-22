@@ -88,7 +88,7 @@ Each line is a number and how many primes there are below it: 9,592 below 100,00
 
 ## 4. Name the campaign
 
-In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** at the top right of the page. The page has five steps: **1 Aim**, **2 Project**, **3 How to measure**, **4 Where it runs** and **5 Review and start**. Each field's ⓘ says more about it.
+In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** at the top right of the page. The page has six steps: **1 Aim**, **2 The brief**, **3 Project**, **4 How to measure**, **5 Where it runs** and **6 Review and start**. Each field's ⓘ says more about it.
 
 On **1 Aim**:
 
@@ -97,9 +97,11 @@ On **1 Aim**:
 3. **Title**: `Count primes faster`
 4. Press **Next**.
 
+On **2 The brief**, leave every field empty and press **Next**. The brief is optional: it is where you give the agents background, links, ideas and hypotheses.
+
 ## 5. Point it at your project
 
-On **2 Project**:
+On **3 Project**:
 
 1. **Repository**: your repository's `https` address from step 2.
 2. **Start from**: `main`
@@ -113,7 +115,7 @@ On **2 Project**:
 
 ## 6. Tell the judge how to measure it
 
-On **3 How to measure**, keep **Describe it here** chosen. You are describing the **kit**: the judge's recipe for building your project, running it and checking each answer. Control writes the kit from what you type and keeps it.
+On **4 How to measure**, keep **Describe it here** chosen. You are describing the **kit**: the judge's recipe for building your project, running it and checking each answer. Control writes the kit from what you type and keeps it.
 
 Fill in these fields, in the order the page shows them. Leave every field that this list doesn't name empty, such as **Input files**.
 
@@ -137,7 +139,7 @@ Fill in these fields, in the order the page shows them. Leave every field that t
 
 ## 7. Choose where it runs
 
-On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
+On **5 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
 
 1. **Agents working at once**: `1`
 2. **The agents' model**: keep **the rig's model**. `local-1` goes on with the free model you gave it.
@@ -146,7 +148,7 @@ On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's har
 
 ## 8. Try the kit first
 
-On **5 Review and start**, a sentence sums up the campaign. It starts with `primes-speed will make its runs faster`, names `primes.c` as the only file to change, and ends `1 agent works on local-1.`
+On **6 Review and start**, a sentence sums up the campaign. It starts with `primes-speed will make its runs faster`, names `primes.c` as the only file to change, and ends `1 agent works on local-1.`
 
 Press **Try the kit first**. This starts a run with no agents: the judge builds your project and runs it, so you see the kit work before an agent spends any time on it.
 

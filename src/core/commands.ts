@@ -166,9 +166,12 @@ export const QueuePosition = z.union([
 export type QueuePosition = z.infer<typeof QueuePosition>;
 
 /** An experiment's text: what to try, its details, its direction and why it is worth trying. */
+/** The most characters of an experiment's details. */
+export const EXPERIMENT_DETAILS = 4000;
+
 export const ExperimentText = {
   title: z.string().trim().min(1).max(200),
-  details: z.string().max(4000),
+  details: z.string().max(EXPERIMENT_DETAILS),
   /**
    * The direction (approach family): a direction's name, or words, whose direction is the name
    * they make (directionOf). Written `:name:`, it is kept without the colons.

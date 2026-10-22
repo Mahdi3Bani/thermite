@@ -47,8 +47,8 @@ You see a line such as `"project-deploy" reads git@git.example.com:you/project.g
 
 On **Campaigns › New campaign**:
 
-- for the project, in **2 Project**, write the address in **Repository** and choose the access in **Repository access**;
-- for a kit in a repository, in **3 How to measure**, choose it in **Kit repository access**.
+- for the project, in **3 Project**, write the address in **Repository** and choose the access in **Repository access**;
+- for a kit in a repository, in **4 How to measure**, choose it in **Kit repository access**.
 
 **Look it up** then reads the project with the access. A deploy key needs an `ssh://` or `git@host:path` address: an `https://` one gives `with an SSH deploy key, the repository is an ssh:// or git@host:path address`. See [Start a campaign from the dashboard](start-from-dashboard.md) for the other fields.
 

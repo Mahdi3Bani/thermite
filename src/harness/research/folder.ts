@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { BRIEF_FILE, briefFile } from "../../core/brief.ts";
 import { COMPACTIONS_DIR } from "../../core/compaction.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import type { ResearchFolderPaths } from "../agents/research-tools.ts";
@@ -202,6 +203,10 @@ export class ResearchFolder {
       : ["sources", "claims", "notes"])
       mkdirSync(join(root, d), { recursive: true });
     this.showCompactions(run);
+    // The campaign's brief from its author, whole (goal 078).
+    const brief = briefFile(contract);
+    if (brief) this.changed(join(root, BRIEF_FILE), brief);
+    const briefLine = brief ? [`- ${BRIEF_FILE}: the campaign's brief from its author, whole`] : [];
     this.knowledge?.show(run);
     const knowledge = this.knowledge?.summary(run);
     const knowledgeLine = knowledge
@@ -337,6 +342,7 @@ export class ResearchFolder {
           `- sources/: ${sources.length} archived pages as text, one file each (claims quote these words)`,
           `- claims/: ${claims.length} claims, ${verified} verified and ${claims.length - verified} drafts (the first line says which)`,
           `- notes/: ${notes.length}`,
+          ...briefLine,
           ...knowledgeLine,
           "",
         ].join("\n"),
@@ -382,12 +388,13 @@ export class ResearchFolder {
         "",
         ...questions.map(
           (q, i) =>
-            `${i}. ${q} (${claims.filter((c) => Number(c.verified) === 1 && Number(c.question) === i).length} verified claims)`,
+            `${i}. ${q.replace(/\n/g, "\n   ")} (${claims.filter((c) => Number(c.verified) === 1 && Number(c.question) === i).length} verified claims)`,
         ),
         "",
         "## What is here",
         "",
         "- REPORT.md: the newest report (a digest, or the final report)",
+        ...briefLine,
         `- sources/: ${sources.length} archived pages as text, one file each (claims quote these words)`,
         `- claims/: ${claims.length} claims, ${verified} verified and ${claims.length - verified} drafts (the first line says which)`,
         `- findings/: ${findings.length} findings (${findings.filter((f) => Number(f.supported) === 1).length} supported)`,

@@ -71,6 +71,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [074 · One name for each agent](goals/074-one-name-for-each-agent.goal) | `VERIFIED` | [073](goals/073-harness-for-each-agent.goal) |
 | [075 · Model usage for each run, campaign and the whole system](goals/075-model-usage.goal) | `VERIFIED` | — |
 | [077 · Archive a campaign; folders in the left navigation; no rigs there](goals/077-archive-and-folders.goal) | `VERIFIED` | — |
+| [078 · A campaign's brief: additional information, ideas and hypotheses for every mode](goals/078-campaign-brief.goal) | `IN_PROGRESS` | — |
 
 ### Install from images
 

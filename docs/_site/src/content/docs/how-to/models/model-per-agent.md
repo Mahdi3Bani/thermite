@@ -158,7 +158,7 @@ The answer adds "Its context window: 131,072 tokens (capped; the provider allows
 
 The rig sets each agent's window and point. A campaign can set its own for all its runs, for example to run two rigs on different models at the same window. Each agent's window is then the lower of the campaign's and its own, and the campaign's point replaces the rig's.
 
-On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **4 · Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
+On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **5 · Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
 
 - **MCP**: [`set_campaign_context`](../../reference/mcp-tools.md#set_campaign_context) with `{ "campaign": "sort-speed", "context_window": 131072, "compact_at": 70 }`.
 - **REST**: [`POST /v1/campaigns/<campaign>/context`](../../reference/rest-api.md#a-campaigns-context-settings) with `{"context_window": 131072, "compact_at": 70}`.

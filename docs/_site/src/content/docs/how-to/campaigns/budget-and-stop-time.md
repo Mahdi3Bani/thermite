@@ -28,7 +28,7 @@ Where `llm_usd` can't count what you spend, set a stop time, and set a spending 
 
 ## Set a stop time on the dashboard
 
-On **Campaigns › New campaign**, step **4 Where it runs**, open **Advanced** and enter the hours in **Stop after (hours)**, such as `48`. Empty means no limit. The page has no field for money or device hours: for those, write a contract.
+On **Campaigns › New campaign**, step **5 Where it runs**, open **Advanced** and enter the hours in **Stop after (hours)**, such as `48`. Empty means no limit. The page has no field for money or device hours: for those, write a contract.
 
 ## Set limits in the contract
 

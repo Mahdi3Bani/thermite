@@ -26,6 +26,7 @@ export function researchFolderNote(f: ResearchFolderPaths): string {
   return `Everything this campaign has learned so far is in its research folder, ${f.root}. Start with INDEX.md there. The harness writes it from its records, and keeps it current while you work:
 - INDEX.md: the questions, what is known, and where everything is
 - REPORT.md: the newest report
+- BRIEF.md, when there is one: the campaign's brief from its author, whole
 - sources/: every archived page as text (the words a claim's quotes must match)
 - claims/, findings/, hypotheses/, notes/, report/: every claim (verified or draft), finding, hypothesis, note and report section
 - lanes/: the files each lane wrote, as they were when its last trial ended

@@ -604,6 +604,32 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 .sec > p.lead { margin: 0 0 12px; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; max-width: 820px; }
 .nc-does { border-left: 3px solid var(--border); padding: 4px 0 4px 12px; margin: 12px 0 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
 .nc-does b { color: var(--foreground); font-weight: 600; }
+/* A campaign's brief (goal 078): New campaign's boxes and preview, and its page's block */
+.nc-brief { max-width: 1040px; }
+.bl { display: grid; gap: 6px; }
+.bl-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.bl-k { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-top: 6px; border-radius: 50%; background: var(--accent); color: var(--muted-foreground); font-size: 11px; font-weight: 600; }
+.fd .bl-row textarea { height: 54px; min-height: 34px; max-height: 480px; padding: 7px 10px; font: 13px/1.45 var(--font-sans); resize: vertical; }
+.bl-row button { margin-top: 4px; }
+.bl-act { margin-top: 2px; }
+.md-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 900px) { .md-two { grid-template-columns: 1fr; } }
+.fd .md-two textarea.md-in { height: 260px; min-height: 120px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5; }
+.md-out { height: 260px; overflow: auto; padding: 6px 12px; border: 1px dashed var(--input); border-radius: var(--control-radius); background: var(--muted); }
+[data-md-say].bad, [data-bl-n].bad { color: var(--error-foreground); }
+.md { font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.md h3, .md h4, .md h5, .md h6 { margin: 12px 0 4px; font-size: 14px; } .md h3 { font-size: 15px; }
+.md > :first-child { margin-top: 6px; }
+.md p { margin: 6px 0; } .md ul, .md ol { margin: 6px 0; padding-left: 22px; } .md li { margin: 2px 0; }
+.md a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.md pre { margin: 6px 0; padding: 8px 10px; background: var(--code-background); border-radius: var(--control-radius); overflow: auto; white-space: pre-wrap; }
+.md blockquote { margin: 6px 0; padding: 0 0 0 10px; border-left: 3px solid var(--border); color: var(--muted-foreground); }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+.kbrief { display: grid; gap: 14px; }
+.kb-part .lb { margin-bottom: 4px; }
+.kb-list { margin: 4px 0 0; padding-left: 22px; font-size: 13.5px; line-height: 1.5; } .kb-list li { margin: 3px 0; }
+.kb-info > summary { cursor: pointer; font-size: 13px; }
+.kb-info .md { margin-top: 6px; padding: 4px 12px; border-left: 3px solid var(--border); }
 .sum { font-size: 15px; line-height: 1.6; margin: 0 0 12px; }
 .act { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .big { height: 38px; padding: 0 18px; font-size: 14px; }
