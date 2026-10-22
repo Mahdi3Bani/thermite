@@ -31,7 +31,7 @@ A kit is a git repository with a manifest, `kit.json`, and whatever scripts the 
 | --- | --- |
 | **Target** | The kind of hardware the kit measures on: `cpu` or `cuda-gpu` |
 | **Build** | A command that builds a changed version from its source, the files that make up the result, and limits on time, memory and disk |
-| **Cells** | The test cases, which the dashboard calls **cases**. Each is a name and the parameters that make it different, such as a problem size, a seed or an input file |
+| **Cells** | The test cases, which the dashboard calls **cases**. Each is a name and the parameters that make it different, such as a problem size, a seed or an input file, and, if it needs one, its own time limit |
 | **Run** | A command that runs one build on one cell and writes its outputs, with its own limits |
 | **Metrics** | The scores: a rate from the judge's own clock (work divided by seconds), the run time itself, or a number that the check reports |
 | **Check** | A program that the judge runs on a run's outputs to decide whether they are correct. The last line it prints decides, not its exit code; a kit described on the **New campaign** page is wrapped so that its exit code decides |
@@ -77,7 +77,7 @@ The kit directory, the check and the judge's copy of the parameters are out of t
 
 The kit defines every cell. The contract chooses which cells count, and which of them are **hidden** (the contract calls them held-out cells). The judge runs hidden cells only to confirm a change that already looks better, never while it screens. Their results go to the code that decides promotion and, for the owner, to the dashboard: each hidden cell's name, how it failed and its value against its threshold. The agents see only that a hidden check failed, and its kind, such as "a held-out check timed out": never the cells' names, parameters or outputs, so a change tuned to the visible cells has to work on unseen ones too ([Held-out failures](../reference/verdicts.md#held-out-failures)).
 
-In a goal campaign, a goal's status comes from its visible cells, and its hidden cells are checked before a gain is promoted. A goal that should have a hidden check needs at least one visible cell and one hidden cell in its verifier.
+In a goal campaign, a goal's status comes from its visible cells, and its hidden cells are checked before a gain is promoted. A goal that should have a hidden check needs at least one visible cell and one hidden cell in its verifier, or among its threshold's cells.
 
 ## How a kit reaches a rig
 

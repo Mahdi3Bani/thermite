@@ -759,7 +759,7 @@ thermite-trial research add_claim - <<'EOF'
 EOF
 ```
 
-`SOURCE` is the id `fetch` returned, such as `s-3f2a9c41d0b7`. The harness also takes, as that source's id:
+In a claim's quote, `SOURCE` is the id `fetch` returned, such as `s-3f2a9c41d0b7`. There the harness also takes, as that source's id (`read_source` and `add_note --source` take the id only):
 
 - the address the page was archived from, as fetched or where its redirects ended, written as the archive keeps it (without a `#` part);
 - its file name in the research folder, `s-….txt` or `s-….md`, alone or at the end of a path, such as `sources/s-3f2a9c41d0b7.txt`.
@@ -770,7 +770,7 @@ When the address or file name names exactly one archived source, the quote is ch
 | --- | --- |
 | An address no source was archived from | `no source was archived from that URL; fetch it first, then cite the s-… id that fetch returns` |
 | An address two or more sources were archived from | `that URL is archived as <n> sources (<ids>); cite the id of the one the quote is from` |
-| An archived address written another way: `http` for `https`, without its scheme or `www.`, with a `/` at the end, or with other capital letters | `that URL is not archived as written, but <id> is archived from <address>; cite that id if it is the same page` |
+| An archived address written another way: `http` for `https`, without its scheme or `www.`, with a `/` at the end, or with other capital letters | `that URL is not archived as written, but <id> is archived from <address>; cite that id if it is the same page`. With two or three near matches it names each, `<id> is archived from <address>, and <id> is archived from <address>`, and ends `cite the id of the page the quote is from if it is the same page` |
 | The file name of no source | `the research folder has no sources/<id>.txt; cite the s-… id that fetch returned` |
 | Anything else | `a quote's source is the s-… id that fetch returned` |
 

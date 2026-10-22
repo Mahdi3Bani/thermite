@@ -126,7 +126,7 @@ In a slot whose network rules don't keep the harness off the cluster, control re
 
 ## 3. Watch it start
 
-You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page fills in once the rig reports for the first time." Its **Set up by control** block lists each step. Press **refresh** in the status bar (the line along the bottom of the page) to follow:
+You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page fills in once the rig reports for the first time." Its **Set up by control** block lists each step, and shows each one as it comes, with no refresh:
 
 - ✓ Enrolled with control: a token of its own
 - ✓ Its objects applied in the cluster: namespace, secret, volume, deployments

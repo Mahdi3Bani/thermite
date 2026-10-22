@@ -80,7 +80,7 @@ Read that container's log, for example `docker compose logs harness` (or `podman
 
 You see the **Overview**, the first page in the sidebar. Its first line says `nothing needs you · 0 runs at work · 1 of 1 rigs reporting`. If it says `0 of 1`, the rig hasn't reported yet: wait a minute and press **refresh** in the status bar, the line along the bottom of every page. Dashboard pages never reload by themselves.
 
-The sidebar on the left holds the dashboard's pages: **Overview**, **Campaigns**, **Rigs**, **Live** and more.
+The sidebar on the left holds the dashboard's pages: **Overview**, **Campaigns**, **Rigs**, **Metrics**, **Live** and more.
 
 :::tip
 If the sign-in page comes back with no message, the token didn't match. Copy it again, without spaces.

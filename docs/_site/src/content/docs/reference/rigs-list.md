@@ -54,7 +54,7 @@ With no rig, the page says `No rig has reported yet.`; a chip with no rig shows 
 | **Stale** | No report for longer than the stale window. A stale rig may still be at work |
 | **Offline** | No report for longer than the offline window (`THERMITE_CONTROL_OFFLINE_SECONDS`, 900 s by default) |
 | **Refused** | Control refuses the rig's reports: their versions do not work together |
-| **Stopped** | A rig on RunPod whose pod is stopped. It is not called stale, offline or not reporting: not here, in the sidebar, the status bar, **Overview**'s tallies (`rigs reporting, 1 stopped`), **Live**'s **Idle rigs** or a run's page. **Needs you** shows no card for it. **New campaign** and **Start a run** offer it, and a run started there starts the pod first |
+| **Stopped** | A rig on RunPod whose pod is stopped. It is not called stale, offline or not reporting: not here, in the status bar, **Overview**'s tallies (`rigs reporting, 1 stopped`), **Live**'s **Idle rigs** or a run's page. **Needs you** shows no card for it. **New campaign** and **Start a run** offer it, and a run started there starts the pod first |
 | **Key to accept** | A new key from the rig waits for you: see [Accept a rig's key](../how-to/operate/accept-a-rig-key.md) |
 | **Getting ready** | A pod launched on RunPod that has not reported yet. It costs money from its launch, so it is listed with its price |
 

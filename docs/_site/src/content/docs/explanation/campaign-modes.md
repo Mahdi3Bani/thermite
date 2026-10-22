@@ -35,7 +35,7 @@ Such a run's research folder holds `INDEX.md`, `sources/`, `claims/` and `notes/
 
 ### The campaign's brief
 
-In every mode, a campaign can carry its author's **brief**: additional information in Markdown (the project and its links, what was tried, limits, what good looks like), starting links, ideas to try (hill climb and goal) and hypotheses. It is part of the contract. The planner and the advisors read it whole, each worker reads it in its brief, and the run's folder keeps it as `BRIEF.md`. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide. [The campaign's brief](../reference/contract.md#the-campaigns-brief) lists what each agent gets.
+In every mode, a campaign can carry its author's **brief**: additional information in Markdown (the project and its links, what was tried, limits, what good looks like), starting links, ideas to try (hill climb and goal) and hypotheses. It is part of the contract. The planner (in a hill climb or goal campaign) and the advisors read it whole, each worker reads it in its brief, and the run's folder keeps it as `BRIEF.md`. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide. [The campaign's brief](../reference/contract.md#the-campaigns-brief) lists what each agent gets.
 
 ### Field notes and past research
 
@@ -67,7 +67,7 @@ The contract also says what the finished work must be, and can list results that
 
 **What counts as progress.** A change makes progress when it meets a goal that the champion does not, and loses none that the champion meets. A change that could not check a goal the champion meets is not counted as worse, but not as progress either: its verdict is `inconclusive`. A change that makes progress is checked again in fresh runs, and on hidden test cases for the goals it gained, before it is promoted. If the contract has an adversarial checklist, a list of ways a change could fake success for the auditor to look for, every promotion is audited first.
 
-**How each goal is checked.** The contract's words for a goal can drift from what the kit really runs. So the dashboard shows each goal's real check, folded under **How it is checked**, in the run's **Goals** block and on the campaign's page: the kit's verifier or the metric threshold, the cases it runs on with the parameters the kit runs each with, each case's time limit, and the hidden test cases by name only. It comes from the kit as the run's rig reported it when the run started; for a campaign's page, from the kit control keeps when it keeps one. When control has neither, it shows what the contract says, and says why the rest is missing. `get_run` and `GET /v1/rigs/<rig>/view` give the same as each run's `goal_checks`.
+**How each goal is checked.** The contract's words for a goal can drift from what the kit really runs. So the dashboard shows each goal's real check: folded under **How it is checked** below each goal in the run's **Goals** block (and in a campaign's **Goals** block before its first run), and under **How each goal is checked** on a campaign's page once it has runs: the kit's verifier or the metric threshold, the cases it runs on with the parameters the kit runs each with, each case's time limit, and the hidden test cases by name only. It comes from the kit as the run's rig reported it when the run started; for a campaign's page, from the kit control keeps when it keeps one, else from the newest run's rig report. When there is none of these, it shows what the contract says, and says why the rest is missing. `get_run` and `GET /v1/rigs/<rig>/view` give the same as each run's `goal_checks`.
 
 **The goal report.** When the run starts, and after each promotion, the judge checks every goal on the champion. The planner and the workers see that report, so they know which goals are still open, and the next round of work waits for it, for up to two hours.
 
@@ -82,7 +82,7 @@ A goal campaign has no time limit of its own. Budgets pause it, as in any mode.
 
 ## Research
 
-A research campaign studies a topic for a set time. The contract gives the topic, the questions, starting URLs and which web sites to include or leave out. A question can be as long as it needs, with several lines; every research worker's brief has each one whole. The brief adds the background, the starting links and the author's hypotheses. The harness fetches and archives the starting links when the run starts, and the run starts with those hypotheses as its own, so its workers look for sources for and against them. There is no project to change and no kit: the work is reading.
+A research campaign studies a topic for a set time. The contract gives the topic, the questions and which web sites to include or leave out. A question can be as long as it needs, with several lines; every research worker's brief has each one whole. The brief adds the background, the starting links (the contract's `seeds`) and the author's hypotheses. The harness fetches and archives the starting links when the run starts, while the first trials run, and the run starts with those hypotheses as its own, so its workers look for sources for and against them. There is no project to change and no kit: the work is reading.
 
 **How the work is checked.** Workers fetch pages through the rig's archiving fetcher, which keeps a copy of everything it reads. By default it respects `robots.txt`. It limits how fast it fetches from each site and how large a page may be, and never fetches private or local addresses. A page a worker reads any other way verifies nothing until it is fetched through the archiving fetcher. A worker records a **claim** with exact quotes from those archived pages. Code then checks it:
 
@@ -129,7 +129,7 @@ A Claude subscription runs only in Claude Code, which doesn't run research worke
 
 Some things are not built yet:
 
-- Web search in the research tools: workers start from the campaign's starting URLs and follow the links of pages already archived ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal)).
+- Web search in the research tools: workers start from the campaign's starting links and follow the links of pages already archived ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal)).
 - A model planner for research ([goal 047](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/047-research-planner.goal)).
 
 ## Choosing a mode
