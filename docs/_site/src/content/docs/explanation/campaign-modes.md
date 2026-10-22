@@ -67,6 +67,8 @@ The contract also says what the finished work must be, and can list results that
 
 **What counts as progress.** A change makes progress when it meets a goal that the champion does not, and loses none that the champion meets. A change that could not check a goal the champion meets is not counted as worse, but not as progress either: its verdict is `inconclusive`. A change that makes progress is checked again in fresh runs, and on hidden test cases for the goals it gained, before it is promoted. If the contract has an adversarial checklist, a list of ways a change could fake success for the auditor to look for, every promotion is audited first.
 
+**How each goal is checked.** The contract's words for a goal can drift from what the kit really runs. So the dashboard shows each goal's real check, folded under **How it is checked**, in the run's **Goals** block and on the campaign's page: the kit's verifier or the metric threshold, the cases it runs on with the parameters the kit runs each with, each case's time limit, and the hidden test cases by name only. It comes from the kit as the run's rig reported it when the run started; for a campaign's page, from the kit control keeps when it keeps one. When control has neither, it shows what the contract says, and says why the rest is missing. `get_run` and `GET /v1/rigs/<rig>/view` give the same as each run's `goal_checks`.
+
 **The goal report.** When the run starts, and after each promotion, the judge checks every goal on the champion. The planner and the workers see that report, so they know which goals are still open, and the next round of work waits for it, for up to two hours.
 
 **When it ends.** In one of two ways:

@@ -291,6 +291,83 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
           seed: { repo: "decoder", commit: "3c0ffee100112233445566778899aabbccddeeff" },
         },
       ],
+      // How each goal is checked, as the rig's kit runs it (goal 082).
+      [
+        70,
+        "goal_checks",
+        "dec-2",
+        {
+          kit: {
+            name: "opus-kit",
+            repo: "opus-kit",
+            commit: "0ddba11c0ffee00112233445566778899aabbcc",
+          },
+          run_command: ["{kit:run/decode.sh}", "{build:out/decoder}", "{params}", "{out}"],
+          timeout_s: 120,
+          goals: [
+            {
+              goal: "builds",
+              description: "the decoder builds with the SIMD backend",
+              required: true,
+              how: "verifier",
+              verifier: "builds",
+              requires: [],
+              priority: 1,
+              cells: [
+                {
+                  name: "smoke",
+                  held_out: false,
+                  params: { backend: "simd", frames: 10 },
+                  args: "backend=simd\nframes=10",
+                  timeout_s: 120,
+                },
+              ],
+              problems: [],
+            },
+            {
+              goal: "vectors",
+              description: "every conformance vector decodes bit-exact",
+              required: true,
+              how: "verifier",
+              verifier: "vectors",
+              requires: ["builds"],
+              priority: 10,
+              cells: [
+                {
+                  name: "conformance",
+                  held_out: false,
+                  params: { set: "rfc8251", mode: "bit-exact" },
+                  args: "set=rfc8251\nmode=bit-exact",
+                  timeout_s: 900,
+                },
+                { name: "conformance-held", held_out: true, timeout_s: 900 },
+              ],
+              problems: [],
+            },
+            {
+              goal: "realtime",
+              description: "a 20 ms frame decodes in under 20 ms",
+              required: true,
+              how: "threshold",
+              metric: "frame_ms",
+              op: "<",
+              value: 20,
+              unit: "ms",
+              reps: 5,
+              cells: [
+                {
+                  name: "speech-48k",
+                  held_out: false,
+                  params: { input: "speech-48k.opus", frames: 5000 },
+                  args: "input=speech-48k.opus\nframes=5000",
+                  timeout_s: 120,
+                },
+              ],
+              problems: [],
+            },
+          ],
+        },
+      ],
       [70, "job_queued", "1", { attempt: null, kind: "validate" }],
       [69, "job_leased", "1", { fence: 1, until: at(40) }],
       [

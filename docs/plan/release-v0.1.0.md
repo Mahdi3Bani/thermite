@@ -72,6 +72,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [075 · Model usage for each run, campaign and the whole system](goals/075-model-usage.goal) | `VERIFIED` | — |
 | [077 · Archive a campaign; folders in the left navigation; no rigs there](goals/077-archive-and-folders.goal) | `VERIFIED` | — |
 | [078 · A campaign's brief: additional information, ideas and hypotheses for every mode](goals/078-campaign-brief.goal) | `IN_PROGRESS` | — |
+| [082 · The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check](goals/082-judge-findings-in-view.goal) | `VERIFIED` | — |
 
 ### Install from images
 

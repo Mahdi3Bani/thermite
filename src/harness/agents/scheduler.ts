@@ -25,6 +25,7 @@ import { writeAtomic } from "../research/folder.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
+import { violationsOf, violationsText } from "../v0.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { mcpAgentTools } from "./mcp-tools.ts";
@@ -1841,13 +1842,10 @@ export class Scheduler {
                   BRIEF_REASON_CHARS,
                 )
               : "";
-            const v0 = this.ledger.getAttempt(e.attempt)?.v0;
-            const violations = v0
-              ? (JSON.parse(String(v0)) as { violations: string[] }).violations
-              : [];
+            const violations = violationsOf(this.ledger.getAttempt(e.attempt)?.v0);
             return `- ${e.attempt} (${e.hypothesis ?? "no hypothesis"}): ${e.verdict ?? e.lifecycle}${
               e.delta !== null ? `, change ${(e.delta * 100).toFixed(2)}%` : ""
-            }${reasons ? `. Judge: ${reasons}` : ""}${violations.length ? `. Refused before building: ${violations.join("; ")}` : ""}`;
+            }${reasons ? `. Judge: ${reasons}` : ""}${violations.length ? `. Refused before building: ${violationsText(violations)}` : ""}`;
           })
           .join("\n")
       : "- none yet";

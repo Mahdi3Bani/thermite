@@ -155,6 +155,8 @@ export function makeJudgeEnv(
     kitVerifiers?: Record<string, unknown> | undefined;
     /** The kit's metrics, instead of the default rate `ops_per_s`. */
     kitMetrics?: Record<string, unknown> | undefined;
+    /** The kit's cells, instead of the default small, held and big. */
+    kitCells?: Record<string, unknown> | undefined;
     /** The MCP servers the kit's kit.json names (goal 068). */
     kitMcpServers?: unknown[] | undefined;
     share?: { root: string; seed: string; kitCommit: string } | undefined;
@@ -199,6 +201,7 @@ export function makeJudgeEnv(
           ...(opts.runCopy ? RUN_COPY_KIT : KIT),
           ...(opts.kitVerifiers ? { verifiers: opts.kitVerifiers } : {}),
           ...(opts.kitMetrics ? { metrics: opts.kitMetrics } : {}),
+          ...(opts.kitCells ? { cells: opts.kitCells } : {}),
           ...(opts.kitMcpServers ? { mcp_servers: opts.kitMcpServers } : {}),
         },
         null,

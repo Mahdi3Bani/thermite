@@ -83,7 +83,9 @@ On the run's **Overview** tab, the **Goals** block says `0 of 1 met`, and under 
 flops_per_s >= 10000000000: large: 3.44791e+9 [3.32615e+9, 3.56967e+9]
 ```
 
-The first number after `large:` is your computer's speed now: here 3.45 × 10⁹, or 3.45 billion operations a second. The two in brackets are the range the judge is 95% sure of. Your numbers will differ: they depend on your processor. A long goal or line shows only its start: press **more** to read all of it. If the block says `The judge has not checked the goals yet.`, press **refresh** after another minute.
+The first number after `large:` is your computer's speed now: here 3.45 × 10⁹, or 3.45 billion operations a second. The two in brackets are the range the judge is 95% sure of. Your numbers will differ: they depend on your processor. A long goal or line shows only its start: press **more** to read all of it.
+
+Under the goal, press **How it is checked**. It opens to the goal's real check, as your rig's kit runs it: `flops_per_s >= 1.000e10` FLOP/s on each case below, run 5 times; the case `large` with the parameters the kit runs it with, `n=256 reps=40 seed=23 work=1342177280`, and its time limit, `60 s`; and the kit's run command. This is how you check that a goal's words and the kit agree. If the block says `The judge has not checked the goals yet.`, press **refresh** after another minute.
 
 ## 4. Set a goal you can reach
 

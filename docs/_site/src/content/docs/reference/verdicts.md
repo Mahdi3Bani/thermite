@@ -55,7 +55,7 @@ The judge times the change against the champion in **blocks**: each block runs e
 | `win_confirmed` | Confirmation | On fresh blocks alone, the gain's interval is above zero, no guard is broken or unclear, and the held-out cases pass | "confirmed faster on fresh runs" |
 | `not_confirmed` | Confirmation | The gain did not hold on fresh blocks, a guard stayed unclear, or a held-out case failed | "did not hold up on fresh runs" |
 
-Reasons name the metric with its estimate and interval, for example `flops_per_s 12.40% [8.10%, 16.90%] n=6`, and end with `; vs champion seq <n>`. When the contract has held-out cases, a failed confirmation shows only `confirmation failed`, with no figures, so the agents learn nothing about those cases.
+Reasons name the metric with its estimate and interval, for example `flops_per_s 12.40% [8.10%, 16.90%] n=6`, and end with `; vs champion seq <n>`. A confirmation that held on the measured cases but failed on a held-out case is `not_confirmed` with `confirmation failed: <kinds>; on the measured cells: <their reasons>`, such as `confirmation failed: a held-out check timed out; on the measured cells: confirmed on fresh data; flops_per_s 12.40% [8.10%, 16.90%] n=4`. The figures are the measured cases' only. [Held-out failures](#held-out-failures) lists the kinds, and what the owner sees besides.
 
 ### Goal campaigns
 
@@ -68,7 +68,30 @@ The judge checks the change against each goal and compares the result with what 
 | `regress` | Screen | It fails a goal the champion meets | "worse than the champion" |
 | `inconclusive` | Screen | It could not be checked on a goal the champion meets | "too noisy, or not checkable, to tell" |
 | `goal_progress` | Confirmation | In fresh runs the new goals still hold, none is lost or unclear, and the held-out cases pass | "confirmed: it meets more goals and loses none" |
-| `not_confirmed` | Confirmation | Anything else | "did not hold up on fresh runs" |
+| `not_confirmed` | Confirmation | Anything else. Its reasons say why, after `confirmation failed: `: the [held-out kinds](#held-out-failures), `no longer met: <goals>`, `lost: <goals>`, `could not check: <goals>` | "did not hold up on fresh runs" |
+
+A goal checked by a metric threshold whose `cells` name both measured and held-out cases is screened on its measured cases and confirmed on its held-out ones. The held-out pass checks only the goals the change newly met.
+
+### Held-out failures
+
+A **held-out case** (the contract's `held_out_cells`; the dashboard calls them hidden tests) runs only at confirmation. When one fails, the judge records the case's name and its **kind** of failure, from a closed list, and never the case's inputs, its output or the check's words:
+
+| Kind | When | The agents read |
+| --- | --- | --- |
+| `threshold_missed` | A goal's metric threshold: the case's 95% interval is not wholly on the passing side, or it has one value only. A hill climb: the change's median on the case, over the champion's, is not above `1 / (1 + 2 × equivalence_band)` | `a held-out check missed its threshold` |
+| `timed_out` | A run was stopped at its time limit | `a held-out check timed out` |
+| `crashed` | A run exited with an error, or was stopped at its memory or disk limit | `a held-out check crashed` |
+| `check_failed` | The kit's check failed the run's output, or the output was refused | `a held-out check failed the kit's check` |
+| `non_finite` | The value the threshold needs was missing or not a finite number, or a metric the check reports was not a number above zero | `a held-out check gave no finite value` |
+| `no_cell` | The kit has no case of that name | `a held-out check names a cell the kit does not have` |
+
+A build that fails never reaches the held-out cases: its verdict is `invalid` or `crash_candidate`, with its reason. When the champion fails on a held-out case, the job is an infrastructure failure (`crash_infra`).
+
+**The owner** sees each held-out case of the newest confirmation: its name, what it was checked for (a goal, a kit verifier, or "no worse than the champion" in a hill climb), passed or its kind, and, where the check gives one, the measured value against its threshold. A threshold goal's value is the mean of its runs with its interval, in the metric's unit; a hill climb's is the ratio of the medians. It is on the attempt's page under **Held-out checks**, in the run's **History** (`<attempt> failed its held-out check: big timed out.`), in `held_out` of each attempt in [`get_run`](mcp-tools.md#get_run) and `GET /v1/rigs/<rig>/view`, and in the judge's event `held_out_checked`, whose body is `{run, job, pass, cells, cells_total}`: each cell `{cell, goal?, verifier?, ok, kind?, value?, low?, high?, threshold?, op?, measure?, unit?}`, at most 50, and `cells_total` counts them all. The rig's ledger keeps the whole record in its `held_out` table, which no export holds.
+
+**The agents** read only that a held-out check failed, and its kind, in the words above, each kind once: in the verdict's reasons (which a lane's brief shows), as `held_out` in the planner's and the teachers' evidence, and as `held_out` in a worker's `status` of the attempt. They never get a held-out case's name, its values, its inputs, its output or the check's words, and the `held_out_checked` event reaches control, never an agent: no brief, tool or knowledge base item is built from it.
+
+A kind comes from how the judge saw the run fail, never from what the run or the check printed. [Goal 082](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/082-judge-findings-in-view.goal) says what a kind reveals, and why that is safe.
 
 ### Any mode
 
@@ -87,7 +110,7 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | State | Meaning | Dashboard says |
 | --- | --- | --- |
 | `queued` | Waiting for the judge. Also after a screen again or a retry | "waiting for the judge" |
-| `rejected_v0` | Refused by the static checks before any build: a file outside the editable paths, a forbidden pattern in an added line, a binary file, a link or a submodule, or no change at all. Kept, never built, no verdict | "rejected v0" |
+| `rejected_v0` | Refused by the static checks before any build: a file outside the editable paths, a forbidden pattern in an added line, a binary file, a link or a submodule, or no change at all. Kept, never built, no verdict. Its violations, such as `binary change: assets/table.bin`, are in its record: see [Why a change was refused](#why-a-change-was-refused) | "rejected v0" |
 | `duplicate` | The same change as an earlier attempt of the run. Not judged again | "the same change as an earlier attempt" |
 | `building` | The judge is building the change and the champion | "being built" |
 | `gating` | Hill climb: each case runs once for both; the change must pass the kit's check | "gating" |
@@ -103,6 +126,29 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | `errored` | Infrastructure failed twice. Not counted against the research | "failed in the judge" |
 
 A lane's next trial starts only once its last attempt is **settled**: `judged`, `promoted`, `rejected_v0`, `duplicate`, `errored`, `awaiting_approval`, `awaiting_audit` or `audit_blocked`. Attempts in `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` count as **open** against the contract's `budget.max_open_attempts`.
+
+### Why a change was refused
+
+The static checks give one violation for each problem they find:
+
+| Violation | When |
+| --- | --- |
+| `no files changed` | The change changes no file |
+| `binary change: <path>` | A file the checks cannot read as text, so they cannot scan it for forbidden patterns |
+| `symlink or submodule: <path>` | A link, which could point a build or the judge at private files, or a submodule, which pulls in other code |
+| `path not editable: <path>` | A file outside the contract's `editable_paths` |
+| `forbidden pattern <pattern>: <line>` | An added line that matches one of the contract's `forbidden_patterns`, with the line's first 120 characters |
+
+The violations go everywhere the change is looked at, not only to the trial that submitted it:
+
+- **The submitting trial** gets them all in its answer (`violations`).
+- **The attempt's event**, `attempt_recorded`, has the first 20, each cut to 300 characters, in `violations`, and how many there were in `violations_total`. Control reads them from there.
+- **On the dashboard**, the attempt's page lists them under **Refused before building**, with `and <n> more` past the first 20, and the run's **History** says `The static checks refused it: <the first one>, and <n> more.`
+- **Over REST and MCP**, each attempt in [`get_run`](mcp-tools.md#get_run) and in `GET /v1/rigs/<rig>/view` has `violations` and `violations_total`.
+- **In the knowledge base**, the attempt's item says `Refused before building: …` ([Knowledge base](knowledge-base.md)).
+- **The agents** see them too: a lane's brief lists its recent attempts, a refused one with `Refused before building: …` (the first 20); the planner's and the teachers' evidence give each refused attempt's first 5 under `refused`, with `total`; and a worker's `status` of any attempt of its campaign answers with all of them.
+
+An attempt reported by an older harness has none in its event, and shows none.
 
 ### Why a result waits
 
