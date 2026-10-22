@@ -181,8 +181,10 @@ describe("kit commands", () => {
           verify: { type: "metric_threshold", metric: "ops", op: ">=", value: 1, cells: ["big"] },
         },
       ],
+      held_out_cells: ["small", "held"],
     });
     assert.deepEqual(kitProblems(goal, kit), [
+      "held_out_cells names cell held, which the kit does not have",
       "goal loads names verifier loads, which the kit does not have",
       "goal fast names cell big, which the kit does not have",
     ]);

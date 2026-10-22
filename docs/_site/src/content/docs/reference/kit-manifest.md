@@ -286,7 +286,7 @@ When a run is assigned, the harness checks the kit against the contract before i
 | Problem | Message |
 | --- | --- |
 | The kit's `target` is not the rig's | `the kit measures on <kit target>, and this rig's target is <rig target>` |
-| A cell named in `cells` or `held_out_cells` (hill climb) | `cells names cell <cell>, which the kit does not have`, or `held_out_cells names cell …` |
+| A cell named in `cells` (hill climb) or `held_out_cells` (hill climb and goal) | `cells names cell <cell>, which the kit does not have`, or `held_out_cells names cell …` |
 | A metric named by the objective, a secondary objective, a guard or a `min`/`max` hard constraint (hill climb) | `the objective names metric <metric>, which the kit does not have`, or `a secondary objective …`, `a guard …`, `a hard constraint …` |
 | A goal's verifier | `goal <id> names verifier <verifier>, which the kit does not have` |
 | A goal threshold's metric or cell | `goal <id> names metric <metric>, which the kit does not have`, or `goal <id> names cell <cell>, which the kit does not have` |

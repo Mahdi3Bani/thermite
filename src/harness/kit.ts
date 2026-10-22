@@ -257,6 +257,7 @@ export function kitProblems(contract: Contract, kit: Kit, targetType?: string): 
       if (h.kind !== "check") metric(h.metric, "a hard constraint");
   }
   if (contract.mode === "goal") {
+    for (const c of contract.held_out_cells) cell(c, "held_out_cells");
     for (const g of contract.goals) {
       const v = g.verify;
       if (v.type === "code" && !(v.verifier in kit.verifiers))
