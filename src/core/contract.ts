@@ -402,6 +402,18 @@ export const ContractSchema = z
     if (c.mode === "hill_climb" && !c.target) {
       ctx.addIssue({ code: "custom", message: "hill_climb campaigns need a target" });
     }
+    // A held-out cell runs only at confirmation: one in cells too would be measured at
+    // screening, its figures in every verdict.
+    if (c.mode === "hill_climb") {
+      const measured = new Set(c.cells);
+      const both = [...new Set(c.held_out_cells.filter((x) => measured.has(x)))];
+      if (both.length)
+        ctx.addIssue({
+          code: "custom",
+          path: ["held_out_cells"],
+          message: `${both.join(", ")} ${both.length === 1 ? "is" : "are"} in both cells and held_out_cells: a held-out cell is measured only at confirmation, so it can't be one of cells`,
+        });
+    }
   });
 
 export type Contract = z.infer<typeof ContractSchema>;

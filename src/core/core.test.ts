@@ -269,6 +269,17 @@ describe("contracts", () => {
   });
 
   test("rejects unknown modes and missing edit policy", () => {
+    // A hill climb's held-out cell is never one of its measured cells too.
+    const overlap = parseContract({
+      ...hillClimbFixture,
+      held_out_cells: ["n512", "n1024", "n256"],
+    });
+    assert.ok(!overlap.ok);
+    assert.deepEqual(!overlap.ok && overlap.errors, [
+      "held_out_cells: n512, n256 are in both cells and held_out_cells: a held-out cell is measured only at confirmation, so it can't be one of cells",
+    ]);
+    const apart = parseContract({ ...hillClimbFixture, held_out_cells: ["n1024"] });
+    assert.ok(apart.ok, apart.ok ? "" : apart.errors.join("; "));
     assert.ok(!parseContract({ ...hillClimbFixture, mode: "freestyle" }).ok);
     const { editable_paths: _e, ...noEdit } = hillClimbFixture;
     assert.ok(!parseContract(noEdit).ok);

@@ -201,7 +201,7 @@ A **candidate** is a change an agent submits. These two fields are checked befor
 | `hard_constraints` | list of constraints (below) | `[]` | Absolute bounds on a metric |
 | `monitor_only` | list of metric names | `[]` | Accepted, not used yet. Not checked against the kit either |
 | `cells` | list of kit cells, at least one | required | The cells (test cases; the dashboard calls them **cases**) measured in every block |
-| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation. A candidate must be correct on each, and its primary metric no worse than twice `acceptance.equivalence_band`, on the median of three runs. When one fails, the agents learn only its kind, such as `confirmation failed: a held-out check timed out`, and the owner sees which cell, and its ratio against the threshold ([Held-out failures](verdicts.md#held-out-failures)) |
+| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation, never one of `cells`. A candidate must be correct on each, and its primary metric no worse than twice `acceptance.equivalence_band`, on the median of three runs. When one fails, the agents learn only its kind, such as `confirmation failed: a held-out check timed out`, and the owner sees which cell, and its ratio against the threshold ([Held-out failures](verdicts.md#held-out-failures)) |
 | `acceptance` | object | all defaults below | How the judge decides |
 
 A guard:
@@ -332,6 +332,7 @@ These fields pass validation and become part of the contract and its hash, but n
 | `at most 16: a rig has users for lanes 1 to 16 only` | `lanes.count` is more than 16 |
 | `research campaigns need min_duration` | A research contract has no `min_duration` |
 | `hill_climb campaigns need a target` | A hill climb contract has no `target` |
+| `<cells> is in both cells and held_out_cells: a held-out cell is measured only at confirmation, so it can't be one of cells` (`are`, for more than one) | A hill climb names a cell in both `cells` and `held_out_cells`. The path is `held_out_cells` |
 
 ## When a run is assigned
 
