@@ -195,6 +195,7 @@ Attempt lists show one word for each attempt, in this order of precedence:
 | --- | --- |
 | **Champion #N** | It became champion number N: the current champion or an earlier one. The run's starting point is champion #1, so the first change to win is #2 |
 | **Blocked** | The auditor blocked it |
+| **Run closed** | It waited for the owner or for an audit when its run closed: no one decides it now, and it does not become the champion |
 | **Auditing** | The rig's auditor is checking it |
 | **Needs you** | It waits for the owner, or for an audit on a rig with no auditor |
 | **Declined** | The owner declined it |
@@ -232,6 +233,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | | The harness restarted during a smoke check | `its smoke check was interrupted` |
 
 - **A closed run stays closed.** Resuming or pausing it is refused with `run <run> is closed`, and closing it again with `run <run> is already closed (<its reason>): there is nothing to close`. A job the judge was measuring when the run closed finishes, but never closes the run a second time: the first reason stays.
+- **Nothing waits in a closed run.** What waited for the owner or the auditor when it closed stays as it was, out of **Needs you**, and the owner's decisions on it are refused, such as `run <run> is closed: none of its changes can become the champion` ([`close_run`](signed-commands.md#close_run)).
 - **A hill climb never closes on its own.** It runs until someone pauses it or a budget the contract sets pauses it. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) says why.
 - **Budgets pause; they do not close.** They apply only to runs with agents and a model. When one is spent, no new trial starts, and the run is paused once the running trial ends. `wall_hours` counts from the run's creation, paused time included, so a resumed run is paused again. [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) and [Limits and pacing](limits-and-pacing.md) say more.
 - **Judging waits with the run.** The judge works only on running runs. A paused run's queued judge jobs stay queued until it resumes; a closed run's never run.
@@ -250,7 +252,7 @@ A run's page and its **Live** header show the run with one label: the first that
 | **Audit** | An audit is open or has blocked a result |
 | **Running** | Otherwise |
 
-What waits in a paused run still shows in **Needs you**, as for a running one.
+What waits in a paused run still shows in **Needs you**, as for a running one. What waited in a closed run does not.
 
 A campaign's page lists its paused and closed runs under **Earlier runs**, with the state **Paused** or **Finished** and, under **Why it stopped**, the reason the run recorded.
 
@@ -302,7 +304,7 @@ The filter chips above the table each show a count, and group the results by the
 | **Wins** | `Champion #N`, `Promoted` or `Won`, and every attempt that waits for you: `Needs you`, or one that waits for your approval |
 | **Not better** | `Lost`: not better than the champion. A `regress` verdict (slower, or a goal lost) reads `Lost`, so it is here |
 | **Broken or blocked** | `Broken` or `Blocked` |
-| **Other results** | `Unclear`, `Declined`, `Duplicate` and `Judging` |
+| **Other results** | `Unclear`, `Declined`, `Duplicate`, `Run closed` and `Judging` |
 | **Research finished** | `finished: its research is in the run's notes`. Shown only when there are some |
 | **No attempt or dropped** | `no attempt`, `no attempt: <reason>`, `<attempt>: not judged yet` and `dropped by <who>: <why>` |
 

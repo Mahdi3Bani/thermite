@@ -268,7 +268,8 @@ The run becomes `closed` with the reason, as a goal run that met its goals does,
 - its lanes' running trials end, as for [`pause_run`](#pause_run), and its planner call is cancelled; no new round or trial starts;
 - the judge takes no job of a closed run, so its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded; if that job would close the run as complete, the run keeps your reason;
 - a research run's final report is written once its last trial has ended, as at the end of its time;
-- it can't be resumed or paused again: [`resume_run`](#resume_run) and [`pause_run`](#pause_run) refuse it with `run <run> is closed`. Its queue, rules and messages no longer change.
+- it can't be resumed or paused again: [`resume_run`](#resume_run) and [`pause_run`](#pause_run) refuse it with `run <run> is closed`. Its queue, rules and messages no longer change;
+- nothing in it waits for a decision any more. A change waiting for approval or held for an audit, a review the review panel passed and a "not possible" proposal stay as they were when it closed: control leaves them out of **Needs you**, the harness refuses [`approve_promotion`](#approve_promotion), [`decline_promotion`](#decline_promotion), [`accept_review`](#accept_review) and [`conclude`](#conclude) for the run, and the rig's auditor gets none of its audits. None of its changes becomes the champion by a decision.
 
 Its experiments, attempts, champion and journal stay, and the rig's next export carries the close, as after a run that met its goals. Refusals: `run <run> is already closed (<its reason>): there is nothing to close`. Result: `{"run", "status": "closed", "was": "running"}`, with `"paused"` for a run that was paused.
 
@@ -560,7 +561,7 @@ The harness refuses: `no export <export> in this rig`, `export <export> is not a
 | `run` | lowercase id | The run |
 | `attempt` | text, 1 to 64 characters | The attempt |
 
-Promotes a confirmed win that waits for the owner, or overrules an audit that is pending or that blocked it. The judge's verdict must still allow promotion, and approving an attempt with declared flaws accepts them. If the champion moved since the attempt was judged, it is measured again against the new champion. Refusals: `attempt <attempt> is not in <run>`, `attempt <attempt> is <lifecycle>, not awaiting approval`, `no pending promotion for <attempt>`.
+Promotes a confirmed win that waits for the owner, or overrules an audit that is pending or that blocked it. The judge's verdict must still allow promotion, and approving an attempt with declared flaws accepts them. If the champion moved since the attempt was judged, it is measured again against the new champion. Refusals: `run <run> is closed: none of its changes can become the champion` (see [`close_run`](#close_run)), `attempt <attempt> is not in <run>`, `attempt <attempt> is <lifecycle>, not awaiting approval`, `no pending promotion for <attempt>`.
 
 ### `decline_promotion`
 
@@ -570,7 +571,7 @@ Promotes a confirmed win that waits for the owner, or overrules an audit that is
 | `attempt` | text, 1 to 64 characters | The attempt |
 | `note` | text up to 2000 characters | Optional. Why |
 
-The attempt never becomes the champion and stays in the record as `declined`. Refusals: `attempt <attempt> is not in <run>`, `attempt <attempt> is <lifecycle>: there is nothing to decline`. Result: `{"attempt", "declined": true, "was"}`.
+The attempt never becomes the champion and stays in the record as `declined`. Refusals: `run <run> is closed: its changes stay as they were when it closed`, `attempt <attempt> is not in <run>`, `attempt <attempt> is <lifecycle>: there is nothing to decline`. Result: `{"attempt", "declined": true, "was"}`.
 
 ### `rig_settings`
 
@@ -606,7 +607,7 @@ The owner's final word on a goal that the review panel passed.
 | `accept` | boolean | `true` accepts, `false` rejects |
 | `note` | text up to 2000 characters | Optional |
 
-The judge then checks the champion's goals again. Result: `{"review", "decision": "accepted"}` or `"rejected"`.
+The judge then checks the champion's goals again. A closed run is refused: `run <run> is closed: its goals are not checked again`. Result: `{"review", "decision": "accepted"}` or `"rejected"`.
 
 ### `conclude`
 
@@ -618,6 +619,8 @@ The owner's answer to the harness's proposal that a goal campaign's goals cannot
 | `proposal` | positive whole number | The proposal |
 | `accept` | boolean | `true` closes the run as not possible; `false` dismisses the proposal and the agents carry on |
 | `note` | text up to 2000 characters | Optional |
+
+A closed run is refused, whichever the answer: `run <run> is closed: it can't end as not possible or go on`.
 
 ## Imports
 

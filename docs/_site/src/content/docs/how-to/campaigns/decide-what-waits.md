@@ -16,6 +16,8 @@ Open **Overview**, the first page in the sidebar on the left. Its **Needs you** 
 
 The count also shows beside **Overview** in the sidebar, and as **Needs you** in the status bar, the line along the bottom of every page. The **Campaigns** list, under **Waiting for you**, and each campaign's page say how many decisions wait in each run, such as `2 decisions wait for you`, with a **Review** button. It opens the run's page, whose **Overview** tab lists that run's decisions under **Needs you**. A change's own page has a **Your decision** box.
 
+A closed run is finished, and nothing in it waits for you: what waited in it when it closed is not in **Needs you** or in any count, and the rig refuses a decision on it. See [Close a run](steer-a-run.md#close-a-run).
+
 ## Decide
 
 1. Open a row. It says what is asked, why it waits, and where: the campaign, run, rig and lane. For a change, **What the judge found** has the judge's evidence and **Problems that the agent wrote** lists flaws the agent declared.
@@ -117,7 +119,7 @@ All of these take the owner's token. The examples use the owner's token file of 
 | Accept a rig's key | `POST /v1/rigs/<rig>/key/accept?fingerprint=<fingerprint>` | no |
 | Check the model now, for a run whose agents are stopped | `POST /v1/commands`, kind `rig_check`, payload `{"check": "model"}` | `issue_command` |
 
-The `review` and `proposal` numbers are on the run, in `GET /v1/rigs/<rig>/view` or the MCP tool `get_run`: each item of its `reviews` has a `review`, and each item of its `conclusions` a `proposal`. An attempt's id shows at the top of its page on the dashboard, after **attempt**, such as `a-0123456789abcdef`.
+The `review` and `proposal` numbers are on the run, in `GET /v1/rigs/<rig>/view` or the MCP tool `get_run`: each item of its `reviews` has a `review`, and each item of its `conclusions` a `proposal`. A closed run's `pending_promotions` is empty, and the rig refuses `approve_promotion`, `decline_promotion`, `accept_review` and `conclude` for it, such as `run sort-speed-1 is closed: none of its changes can become the champion` ([Signed commands](../../reference/signed-commands.md#close_run) has each refusal). An attempt's id shows at the top of its page on the dashboard, after **attempt**, such as `a-0123456789abcdef`.
 
 `thermite command` sends the same kinds. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)):
 

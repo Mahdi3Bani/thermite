@@ -54,7 +54,9 @@ What happens on the rig:
 - The run's running trials stop, as for a pause, and its planner call is cancelled. No new round or trial starts.
 - Its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded.
 - A research run's final report is written once its last trial has ended.
-- Its experiments, attempts, champion and journal stay, and the rig's next export carries the close. A decision that waits for you in it, such as a change waiting for approval, still shows under **Needs you**.
+- Its experiments, attempts, champion and journal stay, and the rig's next export carries the close.
+- Nothing in it waits for you any more. A decision that waited in it, such as a change waiting for approval, an audit, a review or a "not possible" proposal, leaves **Needs you** and every count of it once the rig has reported the close. Such a change shows **Run closed** in the run's attempts, and its own page says `The run closed while this change waited for a decision. It does not become the champion, and the rig refuses a decision on it.`, with no buttons. The run's **Overview** adds how many there were, such as `When it closed, 1 change waited for a decision.`
+- The rig refuses a decision on it in words, such as one sent from a page opened before the close: `run sort-speed-1 is closed: none of its changes can become the champion`. [Signed commands](../../reference/signed-commands.md#close_run) lists each refusal. The rig's auditor gets none of its audits.
 - **Resume** and **Pause** no longer work on it: the rig refuses them with `run sort-speed-1 is closed`. Closing it again is refused too: `run sort-speed-1 is already closed (another run finished the work): there is nothing to close`.
 
 ## Send the agents a message

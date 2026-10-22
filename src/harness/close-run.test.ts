@@ -3,13 +3,14 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { signEnvelope } from "../core/commands.ts";
+import { type CommandKind, signEnvelope } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
 import { researchFixture } from "../testing/fixtures.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { Scheduler } from "./agents/scheduler.ts";
+import { Audits } from "./audits.ts";
 import { LocalRunner } from "./broker/runner.ts";
 import { Research } from "./research/research.ts";
 
@@ -205,6 +206,125 @@ describe("close_run (goal 087)", () => {
       [env.ledger.getRun("js-1")?.status, env.ledger.getRun("js-1")?.pause_reason],
       ["closed", "done elsewhere"],
     );
+  });
+
+  test("a closed run's waiting decisions are refused in words, and its held audit is no one's to decide (the owner, 2026-10-22)", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const submit = async (kernel: string, flaws: string[] = []) =>
+      (
+        (await env.service.submitAttempt(
+          { run: "js-1", patch_base64: env.patch(kernel), hypothesis: "h", known_flaws: flaws },
+          "proposer",
+        )) as { attempt: string }
+      ).attempt;
+    // A confirmed win that waits for the owner, as the judge leaves one the run asks about.
+    const waiting = await submit(FAST_KERNEL);
+    env.ledger.setAttemptLifecycle(waiting, "awaiting_approval", "judge");
+    env.ledger.appendEvent("judge", "promotion_pending", waiting, {
+      run: "js-1",
+      expected_seq: 1,
+      commit: env.ledger.getAttempt(waiting)?.commit_sha,
+      reason: "you asked to decide every change (promotion: owner approval)",
+    });
+    // A win held for an audit, as the judge holds one with declared flaws.
+    const held = await submit(`${FAST_KERNEL}\n// another way\n`, ["only tested on small inputs"]);
+    new Audits(env.ledger).request({
+      attempt: held,
+      job: 1,
+      run: "js-1",
+      trigger: "known_flaws",
+      reason: "declared flaws",
+      expectedSeq: 1,
+      by: "judge",
+    });
+    env.ledger.setAttemptLifecycle(held, "awaiting_audit", "judge");
+    // A review the panel passed, and a "not possible" proposal, each waiting for the owner.
+    const at = new Date().toISOString();
+    const review = Number(
+      env.ledger.db
+        .prepare(
+          "insert into review (run, goal, attempt, commit_sha, package, requested_at, panel_result, panel_at) values ('js-1', 'readable', null, 'c0ffee', '{}', ?, 'review_passed', ?)",
+        )
+        .run(at, at).lastInsertRowid,
+    );
+    const proposal = Number(
+      env.ledger.db
+        .prepare(
+          "insert into conclusion (run, kind, evidence, proposed_at) values ('js-1', 'not_possible', '{\"approaches\":[]}', ?)",
+        )
+        .run(at).lastInsertRowid,
+    );
+    assert.deepEqual(
+      (await env.service.auditPackages()).map((p) => p.attempt),
+      [held],
+      "the auditor gets it while the run is open",
+    );
+
+    const closed = (await env.service.applyCommand(
+      env.sign("close_run", { run: "js-1", reason: "another run finished the work" }),
+    )) as Applied;
+    assert.equal(closed.accepted, true, JSON.stringify(closed));
+
+    // The owner's decisions on it are refused, in words, and change nothing.
+    const refused = async (kind: CommandKind, payload: unknown, words: string) => {
+      const r = (await env.service.applyCommand(env.sign(kind, payload))) as Applied;
+      assert.equal(r.accepted, false, kind);
+      assert.deepEqual(r.result, { error: `run js-1 is closed: ${words}` }, kind);
+    };
+    await refused(
+      "approve_promotion",
+      { run: "js-1", attempt: waiting },
+      "none of its changes can become the champion",
+    );
+    await refused(
+      "approve_promotion",
+      { run: "js-1", attempt: held },
+      "none of its changes can become the champion",
+    );
+    await refused(
+      "decline_promotion",
+      { run: "js-1", attempt: waiting },
+      "its changes stay as they were when it closed",
+    );
+    await refused(
+      "accept_review",
+      { run: "js-1", review, accept: true },
+      "its goals are not checked again",
+    );
+    await refused(
+      "conclude",
+      { run: "js-1", proposal, accept: false },
+      "it can't end as not possible or go on",
+    );
+    assert.equal(String(env.ledger.getAttempt(waiting)?.lifecycle), "awaiting_approval");
+    assert.equal(
+      env.ledger.db.prepare("select owner_decision from review where id = ?").get(review)
+        ?.owner_decision,
+      null,
+    );
+    assert.equal(
+      env.ledger.db.prepare("select decision from conclusion where id = ?").get(proposal)?.decision,
+      null,
+    );
+
+    // The auditor gets no package of it, and its late answer is refused and not recorded.
+    assert.deepEqual(await env.service.auditPackages(), []);
+    await assert.rejects(
+      env.service.decideAudit({
+        attempt: held,
+        decision: "clear",
+        reasons: "fine",
+        citations: [],
+        auditor: "supervisor:a",
+      }),
+      /run js-1 is closed: none of its changes can become the champion/,
+    );
+    assert.equal(new Audits(env.ledger).get(held)?.decision, null);
+    // A rig that says it has no auditor lets no held audit of it go on.
+    assert.deepEqual(await env.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor"), []);
+    assert.equal(String(env.ledger.getAttempt(held)?.lifecycle), "awaiting_audit");
+    assert.equal(env.ledger.currentChampion("js-1").seq, 1, "the champion stays");
   });
 
   test("a research run closed by the owner gets its final report once its trial ends", async () => {

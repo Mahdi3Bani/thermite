@@ -429,6 +429,10 @@ export function needs(
       });
     }
     for (const r of u.runs) {
+      // A closed run is finished, and nothing in it waits for the owner (goal 087; the owner,
+      // 2026-10-22): its changes, audits, reviews and proposals leave Needs you, and the rig
+      // refuses decisions on them.
+      if (r.status === "closed") continue;
       const find = (id: string) => r.attempts.find((x) => x.id === id);
       for (const id of r.pending_promotions) {
         const a = find(id);
@@ -633,7 +637,7 @@ export function needs(
       // minutes, or a failing model check (goal 079): a real failure, not a decision; it ends by
       // itself once a model check passes.
       const stop = r.agents_stopped;
-      if (stop && r.status !== "closed") {
+      if (stop) {
         const check = stop.kind === "check";
         const failing = stop.kind === "server" || stop.kind === "model";
         out.push({
@@ -828,17 +832,28 @@ export function needs(
 
 /**
  * How many of the owner's decisions a run waits on. With its rig: an audit that the rig's
- * auditor will decide is not one of them (goal 079).
+ * auditor will decide is not one of them (goal 079). A closed run waits on none (goal 087).
  */
 export function waitingOn(r: RunView, u?: RigView): number {
+  if (r.status === "closed") return 0;
   const auditor = u ? hasAdvisors(u) : false;
   return (
     r.pending_promotions.length +
-    (r.agents_stopped && r.status !== "closed" ? 1 : 0) +
+    (r.agents_stopped ? 1 : 0) +
     r.audits.filter((x) => x.decision === "block" || (x.decision === null && !auditor)).length +
     r.reviews.filter((x) => x.panel === "review_passed" && !x.owner).length +
     r.conclusions.filter((x) => x.decision === null).length
   );
+}
+
+/**
+ * The changes that waited for a decision when their run closed (goal 087): none of them becomes
+ * the champion, and the rig refuses a decision on them. None for a run that is not closed.
+ */
+export function leftByClose(r: RunView, u?: RigView): AttemptView[] {
+  return r.status === "closed"
+    ? r.attempts.filter((a) => outcome(r, a, u).word === "Run closed")
+    : [];
 }
 
 /** A run's status for tables: running, paused or closed (with why), and what waits for you. */
@@ -1065,6 +1080,9 @@ export function outcome(r: RunView, a: AttemptView, u?: RigView): { word: string
   if (audit?.decision === "block" || a.lifecycle === "audit_blocked")
     return { word: "Blocked", tone: "bad" };
   const auditing = a.lifecycle === "awaiting_audit" || (audit && audit.decision === null);
+  // A change that waited when its run closed (goal 087): no one decides it now.
+  if (r.status === "closed" && (auditing || a.lifecycle === "awaiting_approval"))
+    return { word: "Run closed", tone: "" };
   if (
     auditing &&
     u &&
@@ -1286,15 +1304,26 @@ export function attemptDetail(
   const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
   const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
   const on = base ? `, on champion #${base.seq}` : "";
+  // It waited for a decision when its run closed (goal 087): no buttons, and why.
+  const leftOpen = o.word === "Run closed";
+  const closedAt = leftOpen
+    ? r.timeline
+        .filter(
+          (e) => e.kind === "run_status" && (e.body as { status?: unknown }).status === "closed",
+        )
+        .at(-1)?.at
+    : undefined;
   const state = champ
     ? `It became champion #${champ.seq}: the lanes build on it.`
     : opts.decision
       ? "It waits for your decision."
-      : a.lifecycle === "declined"
-        ? "You declined it: it never becomes the champion."
-        : audit?.decision === "block"
-          ? "The auditor blocked it."
-          : "";
+      : leftOpen
+        ? "The run closed while this change waited for a decision. It does not become the champion, and the rig refuses a decision on it."
+        : a.lifecycle === "declined"
+          ? "You declined it: it never becomes the champion."
+          : audit?.decision === "block"
+            ? "The auditor blocked it."
+            : "";
   const said = `${esc(a.lane ?? "Someone")} submitted it ${esc(ago(a.recorded_at, now))} ago${a.lane ? "" : " by hand"}${esc(on)}. ${esc(evidence(r, a))}${state ? ` <b class="${o.tone === "ok" ? "ok" : o.tone === "bad" ? "bad" : "warn"}">${esc(state)}</b>` : ""}`;
 
   // What happened to it, in order: submitted, each verdict, its audit, its promotion.
@@ -1334,15 +1363,16 @@ export function attemptDetail(
           },
         ]
       : []),
-    ...(r.pending_promotions.includes(a.id)
+    ...(r.pending_promotions.includes(a.id) || (leftOpen && a.lifecycle === "awaiting_approval")
       ? [
           {
             at: r.promotion_waits[a.id]?.at ?? a.updated_at,
-            text: "Waits for your approval",
-            tone: "warn",
+            text: leftOpen ? "Waited for your approval" : "Waits for your approval",
+            tone: leftOpen ? "" : "warn",
           },
         ]
       : []),
+    ...(closedAt ? [{ at: closedAt, text: "The run closed: no decision now", tone: "" }] : []),
     ...(a.lifecycle === "declined"
       ? [{ at: a.updated_at, text: "Declined by you", tone: "" }]
       : []),
