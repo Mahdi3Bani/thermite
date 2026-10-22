@@ -33,6 +33,9 @@ import type { ArmRun } from "./measure.ts";
 const HIDDEN = "zz-hidden-9";
 const HIDDEN_PARAM = "HIDDEN-PARAM-7731";
 const HIDDEN_STDERR = "HIDDEN-STDERR-MARKER";
+/** Control's agent and reader tokens: the agent reads held-out checks as kinds alone. */
+const AGENT_TOKEN = "agent-token-abcdef";
+const READ_TOKEN = "read-token-abcdef";
 
 const CELLS = {
   small: { n: 20000000, work: 20000000 },
@@ -78,7 +81,12 @@ async function setup(opts: Parameters<typeof makeJudgeEnv>[0]) {
   const ADMIN = "admin-token-abcdef";
   const control = createControlApi(
     store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-abcdef" } },
+    {
+      admin: ADMIN,
+      agent: AGENT_TOKEN,
+      read: READ_TOKEN,
+      rigs: { "rig-a": "rig-token-abcdef" },
+    },
     env.keys.privateKeyPem,
   );
   const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
@@ -111,12 +119,12 @@ async function setup(opts: Parameters<typeof makeJudgeEnv>[0]) {
   const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
   const page = async (path: string) =>
     (await control.request(path, { headers: { cookie } })).text();
-  const mcp = async (tool: string, args: Record<string, unknown>) => {
+  const mcp = async (tool: string, args: Record<string, unknown>, token = ADMIN) => {
     const client = new Client({ name: "test", version: "1.0.0" });
     const f: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${ADMIN}`);
+      headers.set("authorization", `Bearer ${token}`);
       return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
     };
     await client.connect(
@@ -251,6 +259,52 @@ describe("held-out failures, named safely (goal 082)", () => {
     assert.equal(slowHeld?.cell, HIDDEN);
     assert.equal(slowHeld?.kind, "threshold_missed");
     assert.ok(Number(slowHeld?.value) < Number(slowHeld?.threshold), JSON.stringify(slowHeld));
+    // The agent token over MCP: each held-out check as its kinds, never a case, value or
+    // threshold; its events too. The reader keeps the owner's view (goal 082).
+    for (const [tool, args] of [
+      ["get_run", { rig: "rig-a", run: "js-1" }],
+      ["recent_events", { rig: "rig-a", limit: 500 }],
+    ] as const) {
+      const text = await env.mcp(tool, args, AGENT_TOKEN);
+      noContent(text, `the agent's ${tool}`);
+      assert.ok(!text.includes(HIDDEN), `the agent's ${tool} names the hidden case`);
+      assert.doesNotMatch(text, /"threshold"|"value":0\.|"measure"/, `the agent's ${tool}`);
+      assert.match(
+        text,
+        /"kinds":\s*\[\s*"threshold_missed"\s*\],\s*"words":\s*"a held-out check missed its threshold"/,
+        tool,
+      );
+    }
+    const agentRun = JSON.parse(
+      await env.mcp("get_run", { rig: "rig-a", run: "js-1" }, AGENT_TOKEN),
+    ) as {
+      attempts: { id: string; held_out: unknown }[];
+      timeline: { kind: string; body: unknown }[];
+    };
+    assert.deepEqual(
+      { ...(agentRun.attempts.find((a) => a.id === slow)?.held_out as object), at: "" },
+      {
+        at: "",
+        pass: false,
+        kinds: ["threshold_missed"],
+        words: "a held-out check missed its threshold",
+      },
+    );
+    assert.deepEqual(
+      agentRun.timeline.filter((e) => e.kind === "held_out_checked").map((e) => e.body),
+      [
+        { run: "js-1", pass: false, kinds: ["crashed"], words: "a held-out check crashed" },
+        {
+          run: "js-1",
+          pass: false,
+          kinds: ["threshold_missed"],
+          words: "a held-out check missed its threshold",
+        },
+      ],
+    );
+    const viaReader = await env.mcp("get_run", { rig: "rig-a", run: "js-1" }, READ_TOKEN);
+    assert.ok(viaReader.includes(HIDDEN), "the reader keeps the owner's view");
+    noContent(viaReader, "the reader's get_run");
     const attemptPage = await env.page(`/ui/rigs/rig-a/attempts/${slow}`);
     noContent(attemptPage, "the attempt's page");
     assert.match(attemptPage, /<h2>Held-out checks<\/h2><span class="n">1 failed<\/span>/);
@@ -334,6 +388,29 @@ describe("held-out failures, named safely (goal 082)", () => {
       ),
     );
     assert.match(page, /&gt;= 7\.000e\+7 op\/s/);
+    // The agent token: the goal's checks without the held-out case, which the owner sees.
+    const owner = JSON.parse(await env.mcp("get_run", { rig: "rig-a", run: "js-1" })) as {
+      goal_checks: { goals: { goal: string; cells: { name: string }[] }[] };
+    };
+    assert.deepEqual(
+      owner.goal_checks.goals.find((g) => g.goal === "fast")?.cells.map((c) => c.name),
+      ["big", HIDDEN],
+    );
+    for (const [tool, args] of [
+      ["get_run", { rig: "rig-a", run: "js-1" }],
+      ["recent_events", { rig: "rig-a", limit: 500 }],
+    ] as const) {
+      const text = await env.mcp(tool, args, AGENT_TOKEN);
+      noContent(text, `the agent's ${tool}`);
+      assert.ok(!text.includes(HIDDEN), `the agent's ${tool} names the hidden case`);
+    }
+    const agent = JSON.parse(
+      await env.mcp("get_run", { rig: "rig-a", run: "js-1" }, AGENT_TOKEN),
+    ) as { goal_checks: { goals: { goal: string; cells: { name: string }[] }[] } };
+    assert.deepEqual(
+      agent.goal_checks.goals.find((g) => g.goal === "fast")?.cells.map((c) => c.name),
+      ["big"],
+    );
   });
 });
 
