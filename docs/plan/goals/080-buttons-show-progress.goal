@@ -1,0 +1,53 @@
+---
+id: "080"
+title: "A button says at once that it took, and shows its outcome without a refresh"
+status: VERIFIED
+version: "0.1.0"
+depends_on: ["063"]
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 080 · A button says at once that it took, and shows its outcome without a refresh
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics · **Depends on:** [063](063-scan-and-steer.goal)
+
+## What
+
+A dashboard button that sends something to a rig says at once that the click took, then shows the progress until the outcome, without a refresh:
+
+- **Run it** on a rig's checks: the button turns at once into a disabled **Sending…**. When control has queued the command, the check's chip says `sent`, and the line under its name says `Sent to the rig at 03:41 UTC. It starts when the rig takes it.` When the rig takes it, the chip says `running` with the time so far, such as `running · 1 m 12 s`, and the line says what the check pauses. When `rig_check_finished` arrives, the row shows the result in place. A refusal, a failed or an expired command says so in words, and the button comes back.
+- Every other button with the same gap gets the same pattern: each signed command's button, a message to the agents, **Use** on Providers, **Update to** a version and the buttons of a rig that control set up, **Save changes** on **Edit rig**, and **Start a run**.
+
+## Why
+
+The owner, on 2026-10-21: "When I click run it I get no indication that it accepted, its running. I have to wait a bit and then refresh to see if its running."
+
+Control already knew each command's state (pending, delivered, failed, expired) and when the rig's report with it came; the page did not show it until a refresh.
+
+## Done when
+
+- [x] Control answers a form sent by the page's script in JSON, with the route that says how the action stands: a command, a rig check's row, a rig taking a model, an update and a change to a rig that control set up. Each answers a state in words, whether it is final, and whether the page loads again (a started run).
+- [x] The page's script (served with `/ui/assets/app.js`) sends the form, follows its route every 2 seconds (5 after two minutes), and draws again the parts of the page that changed (`data-part`), but not one the owner is typing in. Times count on each second.
+- [x] A rig check's row: not run yet, sent, running with its time, passed or failed, refused or expired with the reason, also when the rig ran the check by itself.
+- [x] Without the script, every form posts as before, and the page it lands on says `Sent to <rig> at <time> UTC.`
+- [x] Tests: the script's parts that touch no page run against control's own answers; the follow routes; the no-script path; a real harness takes each command through the supervisor's relay.
+- [x] The pages that describe the buttons, and those that said to refresh after them, match.
+
+## Decisions
+
+- **2026-10-21:** No server-sent events: a small poll of routes over control's own store, which control already has. No new store tables.
+- **2026-10-21:** The page draws again marked parts only, never the whole page: parts with listeners of their own stay as they are, and Live's ☰ and the experiment queue's drag now listen on the document.
+- **2026-10-21:** A command is done when the rig's signed report with it reaches control: the page then shows the change.
+
+## Open questions
+
+- The sidebar's campaign and rig lines are not drawn again: goal 077 rebuilds that navigation.
+
+## Progress
+
+- 2026-10-21: Built. Run it, Check, every signed command's button, the message box, Use, Update to, the buttons of a rig set up by control, Save changes on Edit rig and Start a run follow their action to its outcome. Checked in a browser against a local control with a real harness.
+
+---
+
+Run with `/goal Complete docs/plan/goals/080-buttons-show-progress.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

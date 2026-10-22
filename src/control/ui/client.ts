@@ -133,9 +133,11 @@ export const CLIENT_JS = `
     });
     const fb = $(".lfollow");
     if (fb) fb.addEventListener("click", () => { follow = !follow; fb.classList.toggle("on", follow); fb.setAttribute("aria-pressed", String(follow)); if (follow) tr.scrollTop = tr.scrollHeight; });
-    const nb = $(".lnav-btn");
+    // On the document: the run's header is drawn again when an action's outcome comes (goal 080).
     const wrap = $("#lwrap");
-    if (nb && wrap) nb.addEventListener("click", () => wrap.classList.toggle(matchMedia("(max-width: 1180px)").matches ? "open" : "closed"));
+    if (wrap) document.addEventListener("click", (ev) => {
+      if (ev.target.closest && ev.target.closest(".lnav-btn")) wrap.classList.toggle(matchMedia("(max-width: 1180px)").matches ? "open" : "closed");
+    });
     if (ta) {
       const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, 160) + "px"; };
       ta.addEventListener("input", grow);
@@ -305,31 +307,36 @@ export const CLIENT_JS = `
   // ------------------------------------------------ the experiment queue: drag to reorder
   // A dropped experiment's new place goes to the rig as a signed owner command (queue_move),
   // through the same form post as the buttons; the page then shows the rig's order.
-  const ql = $("#qlist");
-  if (ql) {
+  // On the document, so the list works after it is drawn again with the rig's order (goal 080).
+  if ($("#qlist")) {
     let dragged = null;
     const csrfIn = $("form.qadd input[name=csrf]");
+    const qi = (ev) => (ev.target.closest ? ev.target.closest("#qlist .qi") : null);
     const send = (el) => {
+      const ql = $("#qlist");
       const pos = [...ql.querySelectorAll(".qi")].indexOf(el);
       const body = new URLSearchParams({ csrf: csrfIn ? csrfIn.value : "", rig: el.dataset.rig, run: el.dataset.run, kind: "queue_move", id: el.dataset.id, position: String(pos), back: location.pathname + location.search });
-      fetch("/ui/commands", { method: "POST", body, credentials: "same-origin" }).then(() => {
-        ql.querySelectorAll(".qn").forEach((n, i) => (n.textContent = String(i + 1)));
-      });
+      ql.querySelectorAll(".qn").forEach((n, i) => (n.textContent = String(i + 1)));
+      // The move is followed like a button's command, until the list shows the rig's order.
+      fetch("/ui/commands", { method: "POST", body, credentials: "same-origin", headers: { accept: "application/json" } })
+        .then((r) => r.json())
+        .then((a) => document.dispatchEvent(new CustomEvent("fw:follow", { detail: a })))
+        .catch(() => {});
     };
-    ql.querySelectorAll(".qi").forEach((el) => {
-      el.addEventListener("dragstart", () => { dragged = el; el.classList.add("drag"); });
-      el.addEventListener("dragend", () => { el.classList.remove("drag"); ql.querySelectorAll(".over").forEach((x) => x.classList.remove("over")); });
-      el.addEventListener("dragover", (ev) => { ev.preventDefault(); el.classList.add("over"); });
-      el.addEventListener("dragleave", () => el.classList.remove("over"));
-      // Dropped on an item's lower half, it goes after that item (so also below the last one).
-      el.addEventListener("drop", (ev) => {
-        ev.preventDefault();
-        el.classList.remove("over");
-        if (!dragged || dragged === el) return;
-        const box = el.getBoundingClientRect();
-        ql.insertBefore(dragged, ev.clientY > box.top + box.height / 2 ? el.nextSibling : el);
-        send(dragged);
-      });
+    document.addEventListener("dragstart", (ev) => { const el = qi(ev); if (el) { dragged = el; el.classList.add("drag"); } });
+    document.addEventListener("dragend", (ev) => { const el = qi(ev); if (el) { el.classList.remove("drag"); document.querySelectorAll("#qlist .over").forEach((x) => x.classList.remove("over")); } });
+    document.addEventListener("dragover", (ev) => { const el = qi(ev); if (el) { ev.preventDefault(); el.classList.add("over"); } });
+    document.addEventListener("dragleave", (ev) => { const el = qi(ev); if (el) el.classList.remove("over"); });
+    // Dropped on an item's lower half, it goes after that item (so also below the last one).
+    document.addEventListener("drop", (ev) => {
+      const el = qi(ev);
+      if (!el) return;
+      ev.preventDefault();
+      el.classList.remove("over");
+      if (!dragged || dragged === el || !dragged.isConnected) return;
+      const box = el.getBoundingClientRect();
+      el.parentElement.insertBefore(dragged, ev.clientY > box.top + box.height / 2 ? el.nextSibling : el);
+      send(dragged);
     });
   }
   // The Tried table's filters, together: the result (chips), the direction and who added it.

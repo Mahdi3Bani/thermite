@@ -54,7 +54,7 @@ On **Campaigns › New campaign**:
 
 ## 5. Check that the rig fetched it
 
-The run shows on the campaign's page, under **At work now**, within a minute or so. Press **refresh** in the status bar, the line along the bottom of the page. If the run doesn't show, open **Commands** in the sidebar: the **assign campaign** row is **failed**, with the reason after `staging:`.
+Stay on the campaign's page: once the rig reports the run, within a minute or so, the page opens the run's own page by itself. If the rig could not fetch the project, the card at the top says `Not started:`, the run, and `rig-1 refused it: staging:` with the reason. On **Commands** in the sidebar, the **assign campaign** row is **failed**, with the same reason.
 
 | Reason | What to do |
 | --- | --- |

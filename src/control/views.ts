@@ -465,6 +465,41 @@ export interface RigCheckView {
   summary: string | null;
   /** A check that passed with a caveat says it here (the smoke check on noisy timing). */
   note: string | null;
+  /** The rig's id for this run of the check (rig_check's answer names it), or null. */
+  id: string | null;
+}
+
+/**
+ * Each check's newest run, from the rig's rig_check_started and rig_check_finished events: the
+ * rig's view, and a check's row on the dashboard, which reads only these events (goal 080).
+ */
+export function foldCheck(
+  checks: Record<string, RigCheckView>,
+  e: { at: string; kind: string; body: unknown },
+): void {
+  const b = (e.body ?? {}) as Record<string, unknown>;
+  const check = String(b.check ?? "");
+  const id = typeof b.id === "string" ? b.id : null;
+  if (e.kind === "rig_check_started")
+    checks[check] = {
+      check,
+      started_at: e.at,
+      finished_at: null,
+      ok: null,
+      summary: null,
+      note: null,
+      id,
+    };
+  else if (e.kind === "rig_check_finished")
+    checks[check] = {
+      check,
+      started_at: checks[check]?.started_at ?? e.at,
+      finished_at: e.at,
+      ok: b.ok === true,
+      summary: typeof b.summary === "string" ? b.summary : null,
+      note: typeof b.note === "string" ? b.note : null,
+      id: id ?? checks[check]?.id ?? null,
+    };
 }
 
 export function rigEvents(
@@ -579,30 +614,10 @@ export function rigView(
   for (const e of events) {
     const b = e.body ?? {};
     switch (e.kind) {
-      case "rig_check_started": {
-        const check = String(b.check ?? "");
-        checks[check] = {
-          check,
-          started_at: e.at,
-          finished_at: null,
-          ok: null,
-          summary: null,
-          note: null,
-        };
+      case "rig_check_started":
+      case "rig_check_finished":
+        foldCheck(checks, e);
         break;
-      }
-      case "rig_check_finished": {
-        const check = String(b.check ?? "");
-        checks[check] = {
-          check,
-          started_at: checks[check]?.started_at ?? e.at,
-          finished_at: e.at,
-          ok: b.ok === true,
-          summary: typeof b.summary === "string" ? b.summary : null,
-          note: typeof b.note === "string" ? b.note : null,
-        };
-        break;
-      }
       case "run_created": {
         const v = inst(String(e.subject));
         v.campaign = String(b.campaign ?? "");

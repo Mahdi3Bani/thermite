@@ -30,12 +30,12 @@ Open **Campaigns** in the sidebar. For a running run, press the run's name on it
 5. In **Details**, you may say more on how to try it, up to 4000 characters, for the lane that takes it.
 6. Press **Add**.
 
-The page says `Control sent the command to rig-1. The rig does it in less than 10 seconds. This page shows the result.`, with your rig's name. Once the rig has reported, within a minute, press **refresh** in the status bar, the line along the bottom of the page. The experiment is in **Up next** at its place, marked **you**, with its direction and why.
+The form empties, and a line under it says `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, with your rig's name. Once the rig has reported, within a minute, the line says `Done. rig-1 took it at 03:41 UTC.`, and the experiment is in **Up next** at its place, marked **you**, with its direction and why. You do not need to refresh the page.
 
 ## Reorder, edit or drop an experiment
 
 - **↑ Top**, beside every experiment but the first, moves it to the top. **History** then says `You moved "…" to the top.`
-- To move an experiment anywhere else, drag it by its handle, `⋮⋮`, and drop it on another experiment. Dropped on the upper half of that experiment, it goes just above it; on the lower half, just below it, so you can also move one below the last. The numbers change at once; press **refresh** after the rig's next report to see the rig's order.
+- To move an experiment anywhere else, drag it by its handle, `⋮⋮`, and drop it on another experiment. Dropped on the upper half of that experiment, it goes just above it; on the lower half, just below it, so you can also move one below the last. The numbers change at once, and **Up next** shows the rig's order by itself after the rig's next report.
 - **Edit** opens a small form with the experiment's **What to try**, **Details**, **Direction** and **Why**. Change them, then press **Save**. An emptied **Details** or **Why** is cleared; an emptied **Direction** keeps the direction it had. **History** then says `You edited "…".`
 - **Drop** opens a small menu. Write why in its field, then press **Drop it**. The experiment leaves **Up next** and shows under **Tried** as `dropped by you:` and your reason.
 

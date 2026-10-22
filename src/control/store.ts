@@ -3587,16 +3587,16 @@ export class ControlStore {
    */
   latestAssignments(): Map<
     string,
-    { rig: string; run: string; payload: Record<string, unknown>; issued_at: string }
+    { id: string; rig: string; run: string; payload: Record<string, unknown>; issued_at: string }
   > {
     const rows = this.db
       .prepare(
-        "select rig, signed, issued_at from command where kind = 'assign_campaign' and status in ('pending', 'delivered') order by issued_at desc",
+        "select id, rig, signed, issued_at from command where kind = 'assign_campaign' and status in ('pending', 'delivered') order by issued_at desc",
       )
-      .all() as { rig: string; signed: string; issued_at: string }[];
+      .all() as { id: string; rig: string; signed: string; issued_at: string }[];
     const out = new Map<
       string,
-      { rig: string; run: string; payload: Record<string, unknown>; issued_at: string }
+      { id: string; rig: string; run: string; payload: Record<string, unknown>; issued_at: string }
     >();
     for (const r of rows) {
       try {
@@ -3606,6 +3606,7 @@ export class ControlStore {
         const campaign = (payload?.contract as { campaign?: unknown } | undefined)?.campaign;
         if (payload && typeof campaign === "string" && !out.has(campaign))
           out.set(campaign, {
+            id: r.id,
             rig: r.rig,
             run: String(payload.run ?? ""),
             payload,
@@ -3864,6 +3865,82 @@ export class ControlStore {
       ? { status: String(r.status), outcome: r.outcome ? JSON.parse(String(r.outcome)) : null }
       : undefined;
   }
+
+  /**
+   * One command as the dashboard follows it (goal 080): its state, the rig's answer, its payload
+   * and when its signature runs out. A pending command past that time is one the rig never took.
+   */
+  commandRow(id: string): CommandRow | undefined {
+    const r = this.db
+      .prepare(
+        "select id, rig, kind, signed, issued_by, issued_at, status, outcome, acked_at from command where id = ?",
+      )
+      .get(id) as Row | undefined;
+    return r ? commandRowOf(r) : undefined;
+  }
+
+  /** A rig's newest commands of one kind, newest first (a check's row follows its newest one). */
+  latestCommands(rig: string, kind: string, limit = 20): CommandRow[] {
+    return (
+      this.db
+        .prepare(
+          "select id, rig, kind, signed, issued_by, issued_at, status, outcome, acked_at from command where rig = ? and kind = ? order by issued_at desc limit ?",
+        )
+        .all(rig, kind, limit) as Row[]
+    ).map(commandRowOf);
+  }
+
+  /** A rig's rig check events on one ledger, oldest first: a check's row reads only these. */
+  rigCheckEvents(
+    rig: string,
+    ledgerId: string | null,
+  ): { at: string; kind: string; body: unknown }[] {
+    const byLedger = ledgerId ? " and ledger_id = ?" : "";
+    return (
+      this.db
+        .prepare(
+          `select at, kind, body from rig_event where rig = ?${byLedger} and kind in ('rig_check_started', 'rig_check_finished') order by seq`,
+        )
+        .all(...(ledgerId ? [rig, ledgerId] : [rig])) as Row[]
+    ).map((r) => ({ at: String(r.at), kind: String(r.kind), body: JSON.parse(String(r.body)) }));
+  }
+}
+
+/** A command control issued, as the dashboard follows it. */
+export interface CommandRow {
+  id: string;
+  rig: string;
+  kind: string;
+  issued_by: string;
+  issued_at: string;
+  /** When its signature runs out: the rig refuses it after that. */
+  expires_at: string;
+  status: "pending" | "delivered" | "rejected" | "failed" | "expired";
+  acked_at: string | null;
+  outcome: unknown;
+  payload: Record<string, unknown>;
+}
+
+function commandRowOf(r: Row): CommandRow {
+  let envelope: { expires_at?: unknown; payload?: unknown } = {};
+  try {
+    envelope = (JSON.parse(String(r.signed)) as { envelope?: typeof envelope }).envelope ?? {};
+  } catch {
+    // not a command this store wrote: no payload, and no time it runs out
+  }
+  const payload = envelope.payload;
+  return {
+    id: String(r.id),
+    rig: String(r.rig),
+    kind: String(r.kind),
+    issued_by: String(r.issued_by),
+    issued_at: String(r.issued_at),
+    expires_at: typeof envelope.expires_at === "string" ? envelope.expires_at : String(r.issued_at),
+    status: String(r.status) as CommandRow["status"],
+    acked_at: r.acked_at === null ? null : String(r.acked_at),
+    outcome: r.outcome ? JSON.parse(String(r.outcome)) : null,
+    payload: payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {},
+  };
 }
 
 /** An audit page's cursor from a query string: a whole number of 0 or more, or none. */

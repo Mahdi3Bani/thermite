@@ -57,6 +57,21 @@ import {
   rigResources,
 } from "./clusters/manifests.ts";
 import {
+  checkProgress,
+  checkRow,
+  checkRows,
+  checkRowsOf,
+  checkWaits,
+  clockUtc,
+  commandFollowUrl,
+  commandProgress,
+  modelFollowUrl,
+  modelProgress,
+  notSent,
+  type Progress,
+  takingModel,
+} from "./command-progress.ts";
+import {
   type CopyCampaignOutcome,
   type CopyCampaignRequest,
   copiedFromWords,
@@ -232,6 +247,7 @@ import {
   agentsTable,
 } from "./ui/edit-rig.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
+import { FOLLOW_JS } from "./ui/follow-client.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
   campaignKnowledge,
@@ -264,6 +280,7 @@ import {
 import { PLANNER_JS } from "./ui/planner-client.ts";
 import { PROVIDERS_JS } from "./ui/providers-client.ts";
 import { experimentsTab, plannerTab } from "./ui/queue.ts";
+import { checkFollowUrl, checkRowHtml, modelCheckHtml } from "./ui/rig-checks.ts";
 import {
   type RigPlace,
   stateBanners,
@@ -314,8 +331,10 @@ import {
  * SameSite=Strict cookie. Sessions are kept in control's store (hashed), so a restart does not
  * sign the owner out; each use renews one, and a new admin token ends them all. Every form
  * carries a token derived from the session and the admin token (CSRF). The only
- * script is control's own (/ui/assets/app.js): it streams the live view. Pages never reload by
- * themselves: the status bar says when the page was made and has a refresh link.
+ * script is control's own (/ui/assets/app.js): it streams the live view, and follows the owner's
+ * actions to their outcome (goal 080: it draws the page's parts again when one comes). Pages never
+ * reload by themselves otherwise: the status bar says when the page was made and has a refresh
+ * link.
  * The look follows Magnesium's design.
  */
 
@@ -529,7 +548,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   });
 
   app.get("/ui/assets/app.js", (c) =>
-    c.body(CLIENT_JS, 200, {
+    c.body(`${CLIENT_JS}${FOLLOW_JS}`, 200, {
       "content-type": "text/javascript; charset=utf-8",
       "cache-control": "no-cache",
     }),
@@ -559,6 +578,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       cls?: string;
       back?: string;
       extra?: string;
+      /** Off while what it sent waits for the rig (a check's Sent, Running…). */
+      disabled?: boolean;
     },
   ) =>
     `<form class="inline" method="post" action="/ui/commands"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(f.rig)}"><input type="hidden" name="kind" value="${esc(f.kind)}">${Object.entries(
@@ -567,7 +588,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
       .join(
         "",
-      )}${f.back ? `<input type="hidden" name="back" value="${esc(f.back)}">` : ""}${f.extra ?? ""}<button class="${f.cls ?? ""}">${esc(f.label)}</button></form>`;
+      )}${f.back ? `<input type="hidden" name="back" value="${esc(f.back)}">` : ""}${f.extra ?? ""}<button class="${f.cls ?? ""}"${f.disabled ? " disabled" : ""}>${esc(f.label)}</button></form>`;
 
   /** Pause, with an optional reason the run keeps (it shows wherever the run's state does). */
   const pauseMenu = (c: Ctx, rig: string, run: string, back: string, cls = "") =>
@@ -956,15 +977,15 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                   ? usage
                     ? runStatsTab(usage)
                     : `<div class="card"><div class="empty">No model use: this run has no agents.</div></div>`
-                  : `<p class="run-said">${said}</p>
-${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}
+                  : `<p class="run-said" data-part="run-said">${said}</p>
+<div data-part="run-needs">${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}</div>
 <div class="cols run-cols"><div>
 ${goals}${research}${ladder}
-<div class="block"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
+<div class="block" data-part="attempts"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
 </div><div class="side">
-<div class="block"><div class="head"><h2>Now</h2></div>${now_}</div>
-<div class="block"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
-<div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
+<div class="block" data-part="now"><div class="head"><h2>Now</h2></div>${now_}</div>
+<div class="block" data-part="facts"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
+<div class="block" data-part="recent"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
     return `${usage ? runUsageTop(usage) : ""}<section class="block" id="${esc(runKey(u.id, i.id))}">
 <nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}${usage ? sub("stats", "Stats") : ""}</nav>
@@ -1035,12 +1056,12 @@ ${body}
         summary: `${urgent.length ? `<span class="warn">${urgent.length} need${urgent.length === 1 ? "s" : ""} you</span>` : "nothing needs you"} · ${running} run${running === 1 ? "" : "s"} at work · ${reporting} of ${expected} rigs reporting${stopped ? ` · ${stopped} stopped` : ""}`,
         active: "overview",
       },
-      `${tallies}
-<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${feed.length}</span><span class="right">open one for its evidence and what each choice does</span></div>
+      `<div data-part="tallies">${tallies}</div>
+<div class="block" id="needs" data-part="needs"><div class="head"><h2>Needs you</h2><span class="n">${feed.length}</span><span class="right">open one for its evidence and what each choice does</span></div>
 ${feed.length ? `<div class="dqs">${feed.map((n) => n.html).join("")}</div>` : `<div class="card"><div class="empty">Nothing waits for you. The campaigns go on by themselves.</div></div>`}</div>
-<div class="block"><div class="head"><h2>At work</h2><span class="n">${running}</span></div>
+<div class="block" data-part="at-work"><div class="head"><h2>At work</h2><span class="n">${running}</span></div>
 ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.length ? "No run is running." : opts.kits ? "No campaign yet. Make one with New campaign on the Campaigns page, or assign one to a rig through control's API, MCP or the CLI." : "No campaign yet. Assign one to a rig through control's API, MCP or the CLI."}</div></div>`}</div>
-<div class="block"><div class="head"><h2>What happened</h2><span class="right">newest first</span></div>${activity}</div>`,
+<div class="block" data-part="happened"><div class="head"><h2>What happened</h2><span class="right">newest first</span></div>${activity}</div>`,
       vs,
     );
   });
@@ -2134,8 +2155,31 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const buttons = campaignActions(name);
     const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1")}${copyPanel(c, name, vs, tried)}`;
     // A run just started (Start a run sends here with ?run=), until its rig reports it.
-    const startingCard = (key: string) =>
-      `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(key)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`;
+    // The card follows the run's command (goal 080): how the start goes, in words, and the run's
+    // own page once the rig reports the run. A start that the rig refused says why.
+    const startingCmd = (key: string) => {
+      const slash = key.indexOf("/");
+      const run = key.slice(slash + 1);
+      return slash > 0
+        ? store
+            .latestCommands(key.slice(0, slash), "assign_campaign")
+            .find(
+              (x) =>
+                x.payload.run === run &&
+                (x.payload.contract as { campaign?: unknown } | undefined)?.campaign === name,
+            )
+        : undefined;
+    };
+    const startingCard = (key: string) => {
+      const cmd = startingCmd(key);
+      const p = cmd ? commandProgress(cmd, Date.now()) : undefined;
+      const failed = p?.state === "refused" || p?.state === "expired";
+      const follow =
+        cmd && p && !p.final
+          ? ` data-follow="${esc(commandFollowUrl(cmd.id))}" data-follow-state="${p.state}"`
+          : "";
+      return `<div class="card" style="margin-bottom:16px" data-part="starting"${follow}><b${failed ? ` class="bad"` : ""}>${failed ? "Not started:" : "Starting"} ${esc(key)}.</b>${p ? ` <span class="${p.tone}">${esc(p.said)}</span>` : ""}${failed ? "" : ` <span class="muted">The rig fetches the project and the kit, and checks both. The run's page opens here when the rig reports the run, usually within a minute.</span>`}</div>`;
+    };
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaignVersions(name);
@@ -2229,9 +2273,16 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     // ---------------------------------------- the campaign
     // A new run of a campaign that has runs: Starting until its rig reports it (only the newest
     // assignment, so an old link to a run that never came says nothing).
+    // An old link to a run that never came says nothing, unless the rig refused its start.
     const latest = wanted ? store.latestAssignments().get(name) : undefined;
+    const startCmd = wanted ? startingCmd(wanted) : undefined;
     const starting =
-      wanted && latest && runKey(latest.rig, latest.run) === wanted ? startingCard(wanted) : "";
+      wanted &&
+      ((latest && runKey(latest.rig, latest.run) === wanted) ||
+        startCmd?.status === "failed" ||
+        startCmd?.status === "rejected")
+        ? startingCard(wanted)
+        : "";
     const running = k.runs.filter((x) => x.run.status === "running");
     const earlier = k.runs
       .filter((x) => x.run.status !== "running")
@@ -2272,40 +2323,40 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           : ""
       }
 <div class="cols run-cols"><div>
-<div class="block"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
+<div class="block" data-part="at-work"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
         running.length
           ? `<div class="kwork one">${running.map((x) => workCardFor(c, x.rig, x.run, now, waitingFor(x.rig, x.run), campaignHref(name))).join("")}</div>`
           : `<div class="card"><div class="empty">No run is at work.${canStart ? ` <a href="${campaignHref(name)}?start=1" data-open="#start">Start one.</a>` : ""}</div></div>`
       }</div>
 ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`).join("")}
-${
-  earlier.length
-    ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
-        earlier.map((x) => ({
-          ...x,
-          // A hill climb's champion that other rigs confirmed (cross-verified).
-          result: (() => {
-            const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
-            return v.length
-              ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
-              : "";
-          })(),
-          action:
-            x.run.status === "paused"
-              ? cmdForm(c, {
-                  rig: x.rig.id,
-                  kind: "resume_run",
-                  fields: { run: x.run.id },
-                  label: "Resume",
-                  cls: "sm",
-                  back: campaignHref(name),
-                })
-              : "",
-        })),
-        now,
-      )}</div>`
-    : ""
-}${context()}${knowledgeSection(c, name, vs, kbFailed)}
+<div data-part="earlier">${
+        earlier.length
+          ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
+              earlier.map((x) => ({
+                ...x,
+                // A hill climb's champion that other rigs confirmed (cross-verified).
+                result: (() => {
+                  const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
+                  return v.length
+                    ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
+                    : "";
+                })(),
+                action:
+                  x.run.status === "paused"
+                    ? cmdForm(c, {
+                        rig: x.rig.id,
+                        kind: "resume_run",
+                        fields: { run: x.run.id },
+                        label: "Resume",
+                        cls: "sm",
+                        back: campaignHref(name),
+                      })
+                    : "",
+              })),
+              now,
+            )}</div>`
+          : ""
+      }</div>${context()}${knowledgeSection(c, name, vs, kbFailed)}
 </div><div class="side">${campaignUsage(k)}</div></div>${drawer}`,
       vs,
     );
@@ -2527,10 +2578,13 @@ ${
     const pulled = store.tunnelRig(c.req.param("rig"));
     const flashOk = c.req.query("ok");
     const flashError = c.req.query("error");
+    // A command the green line is about (Edit rig's settings): the page says how it stands.
+    const flashCmd = flashOk ? store.commandRow(c.req.query("cmd") ?? "") : undefined;
+    const flashing = flashCmd ? commandProgress(flashCmd, Date.now()) : undefined;
     const flash = flashError
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not done.</b> ${esc(flashError)}</div>`
       : flashOk
-        ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(flashOk)}</b></div>`
+        ? `<div class="card" style="margin-bottom:16px"${flashCmd && flashing && !flashing.final ? ` data-follow="${esc(commandFollowUrl(flashCmd.id))}" data-follow-state="${flashing.state}" data-say` : ""}><b class="ok">${esc(flashOk)}</b>${flashing ? ` <span class="${flashing.tone}" data-say>${esc(flashing.said)}</span>` : ""}</div>`
         : "";
     const retired = store.rigRetired(c.req.param("rig"));
     const launched = opts.runpodRigs?.view(c.req.param("rig"));
@@ -2700,25 +2754,30 @@ ${
     ]
       .filter(Boolean)
       .join(" ");
+    // Each check's row in its state now: sent, running, its result, or why it did not run (goal 080).
+    const rows = checkRowsOf(store, u.id, u.checks, now);
     const checkRows = refusedNow
       ? `<div class="empty">Control sends no command to a refused rig, so its checks can't run. Update it first.</div>`
       : checks
-          .map(([k, name, what]) => {
-            const r = u.checks[k];
-            const res = !r
-              ? `<span class="chip">not run yet</span>`
-              : r.finished_at === null
-                ? `<span class="chip info">running</span>`
-                : r.ok
-                  ? `<span class="chip ok">passed</span>`
-                  : `<span class="chip bad">failed</span>`;
-            const when = !r
-              ? ""
-              : r.finished_at === null
-                ? `started ${esc(ago(r.started_at, now))} ago`
-                : `${esc(ago(r.finished_at, now))} ago`;
-            return `<div class="ck"><span class="ck-res">${res}</span><span class="ck-main"><span><b>${esc(name)}</b> <span class="muted small">${when}</span></span>${r?.finished_at && r.summary ? `<span class="ck-sum ${r.ok ? "" : "bad"}">${esc(r.summary)}</span>` : ""}<span class="ck-what">${esc(what)}</span></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: k }, label: r && r.finished_at === null ? "Running…" : "Run it", back })}</div>`;
-          })
+          .map(([k, name, what]) =>
+            checkRowHtml({
+              rig: u.id,
+              check: k,
+              name,
+              what,
+              row: rows[k] ?? checkRow(k, undefined, undefined, now),
+              now,
+              button: (label, disabled) =>
+                cmdForm(c, {
+                  rig: u.id,
+                  kind: "rig_check",
+                  fields: { check: k },
+                  label,
+                  back,
+                  disabled,
+                }),
+            }),
+          )
           .join("");
     const runRows = u.runs.map((i) => runRow(u, i, now, "campaign")).join("");
     const jobs = u.judge.jobs
@@ -2865,18 +2924,18 @@ ${retireForm}</div></details>`;
         actions,
         active: "rigs",
       },
-      `<p class="run-said">${said}</p>
-${flash}${stateBanners(stateIn)}${keyCard}
+      `<p class="run-said" data-part="said">${said}</p>
+${flash}<div data-part="banners"${stateIn.updating ? ` data-follow="${esc(updateFollowUrl(u.id))}" data-follow-state="${esc(updateProgress(u.id).state)}"` : ""}>${stateBanners(stateIn)}</div>${keyCard}
 ${rp ? podSection(c, u.id, now) : ""}
-${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}
+<div data-part="at-work">${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}</div>
 <div class="cols run-cols"><div>
-<div class="block"><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat">${checkRows}</div></div>
-<div class="block"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span>${u.state !== "reporting" || refusedNow ? `<span class="right">as of its last report${neverReported(u) ? "" : `, ${esc(ago(u.last_seen, now))} ago`}</span>` : ""}</div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
+<div class="block" data-part="checks"${takingModel(u.model, store.rigModels()[u.id]) ? ` data-follow="${esc(modelFollowUrl(u.id))}" data-follow-state="taking"` : ""}><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat cks">${checkRows}</div></div>
+<div class="block" data-part="runs"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span>${u.state !== "reporting" || refusedNow ? `<span class="right">as of its last report${neverReported(u) ? "" : `, ${esc(ago(u.last_seen, now))} ago`}</span>` : ""}</div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
 ${rp ? events : ""}
-<div class="block"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
+<div class="block" data-part="jobs"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
-<div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${versionFact(stateIn)}${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
+<div class="block" data-part="rig"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${versionFact(stateIn)}${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
 ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}${pulled ? pullBlock(pulled, now) : ""}
 ${rp ? "" : events}
 </div></div>`,
@@ -2903,6 +2962,15 @@ ${rp ? "" : events}
     });
   });
 
+  /** The follow of the owner's newest decision on a change, while the rig has not done it. */
+  const followDecision = (rig: string, attempt: string, now: number) => {
+    const d = store.decisions().find((x) => x.rig === rig && x.attempt === attempt);
+    const cmd = d ? store.commandRow(d.id) : undefined;
+    const p = cmd ? commandProgress(cmd, now) : undefined;
+    return cmd && p && !p.final
+      ? ` data-follow="${esc(commandFollowUrl(cmd.id))}" data-follow-state="${esc(p.state)}"`
+      : "";
+  };
   app.get("/ui/rigs/:rig/attempts/:attempt", (c) => {
     const now = Date.now();
     const vs = views();
@@ -2937,7 +3005,9 @@ ${rp ? "" : events}
         ],
         active: "campaigns",
       },
-      attemptDetail(u, r, a, now, { decision, patch }),
+      // One part: the owner's decision and what the rig did show without a refresh (goal 080),
+      // followed while the rig has not done it.
+      `<div data-part="attempt"${followDecision(u.id, a.id, now)}>${attemptDetail(u, r, a, now, { decision, patch })}</div>`,
       vs,
     );
   });
@@ -2970,7 +3040,7 @@ ${rp ? "" : events}
     const idle = vs.filter((u) => !u.runs.some((r) => r.status === "running"));
     const runLink = (x: { u: RigView; r: RunView }, sub: string, cls = "") =>
       `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.u.id, x.r.id)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
-    const nav = `<nav class="lruns" aria-label="Runs">
+    const nav = `<nav class="lruns" aria-label="Runs" data-part="lruns">
 <div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r) ? ` · <span class="warn">${waitingOn(x.r)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
 ${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
 ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
@@ -3075,7 +3145,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const box =
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
-        : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
+        : `<form class="lcomposer" method="post" action="/ui/live/message" data-act><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
 <select name="to" aria-label="To" class="lto">${opt("all", "To everyone working", off("all"))}${lanes.map((l) => opt(l, `To ${l}`, off(l))).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("panel", "To the review panel", off("panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
 <textarea name="text" rows="1" required data-words maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
@@ -3095,7 +3165,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       .filter(Boolean)
       .join(" · ");
     const st = runState(r);
-    const head = `<div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
+    const head = `<div data-part="lhead"><div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
       r.status === "running"
         ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm") +
           moreMenu(c, u.id, r, runLiveHref(u.id, r.id), "sm")
@@ -3109,7 +3179,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
               back: runLiveHref(u.id, r.id),
             })
           : ""
-    }</div>`;
+    }</div></div>`;
     return page(
       c,
       {
@@ -3118,9 +3188,9 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         active: "live",
         flush: true,
       },
-      `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div class="lchips">${chips}<span class="grow"></span>${keptBox}<button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
+      `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div data-fw-top></div><div class="lchips">${chips}<span class="grow"></span><span data-part="lkept">${keptBox}</span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
 <div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
-${notice}${box}</section></div>`,
+<div data-part="lnotice">${notice}</div>${box}</section></div>`,
       vs,
     );
   });
@@ -3173,18 +3243,22 @@ ${notice}${box}</section></div>`,
       );
     const to = String(f.to ?? "all");
     const keep = String(f.keep ?? "") === "1" && (to === "all" || to.startsWith("lane-"));
+    // From the page's script (goal 080): JSON, and the message is followed until the rig took it.
+    const json = wantsJson(c);
+    let id: string;
     try {
-      issueCommand(store, opts.privateKeyPem, {
+      ({ id } = issueCommand(store, opts.privateKeyPem, {
         rig,
         kind: "message_agent",
         payload: { run, to, text: String(f.text ?? "").trim(), ...(keep ? { keep: true } : {}) },
         issuedBy: "owner:ui",
-      });
+      }));
     } catch (err) {
-      return back(
-        `&msgerror=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`,
-      );
+      const why = err instanceof Error ? err.message : String(err);
+      return json ? c.json(notSent(why), 400) : back(`&msgerror=${encodeURIComponent(why)}`);
     }
+    const cmd = json ? store.commandRow(id) : undefined;
+    if (cmd) return c.json({ ...commandProgress(cmd, Date.now()), follow: commandFollowUrl(id) });
     return back();
   });
 
@@ -3458,6 +3532,31 @@ ${notice}${box}</section></div>`,
     const b = String(f.back ?? "");
     return b.startsWith("/ui") && !b.startsWith("//") ? b : fallback;
   };
+
+  // ---------------------------------------------------------------- following an action (goal 080)
+  // The page's script sends an action's form with fetch, asking for JSON, then follows it on these
+  // routes until its outcome: a Progress (command-progress.ts) each time.
+  const wantsJson = (c: Ctx) => (c.req.header("accept") ?? "").includes("application/json");
+  app.get("/ui/commands/:file{.+\\.json}", (c) => {
+    const cmd = store.commandRow(c.req.param("file").replace(/\.json$/, ""));
+    return cmd ? c.json(commandProgress(cmd, Date.now())) : c.json({ error: "not found" }, 404);
+  });
+  app.get("/ui/rigs/:rig/checks/:file{.+\\.json}", (c) => {
+    const rig = c.req.param("rig");
+    const check = c.req.param("file").replace(/\.json$/, "");
+    const known = store.rigs().find((x) => x.id === rig);
+    if (!known) return c.json({ error: "not found" }, 404);
+    const row = checkRows(store, rig, Date.now())[check];
+    return row
+      ? c.json(checkProgress(row, known.last_cursor))
+      : c.json({ error: "not found" }, 404);
+  });
+  app.get("/ui/rigs/:rig/model.json", (c) => {
+    const rig = c.req.param("rig");
+    return store.rigs().some((x) => x.id === rig)
+      ? c.json(modelProgress(store, rig, Date.now()))
+      : c.json({ error: "not found" }, 404);
+  });
 
   app.post("/ui/resets/:id/confirm", async (c) => {
     try {
@@ -3860,26 +3959,25 @@ ${
             : m.source === "environment"
               ? `Its agents use the rig's own settings (${m.model}, under ${HARNESSES[m.harness]}).`
               : "Its agents have no model: they wait.";
-        const moving =
-          m &&
-          want &&
-          !(
-            m.source === "control" &&
-            m.name === want.provider &&
-            sameModel(m.model, want.model) &&
-            m.harness === want.harness
-          )
+        const taking = takingModel(m, want);
+        const moving = !taking
+          ? ""
+          : want
             ? ` <span class="chip info">taking ${esc(want.model)} under ${esc(HARNESSES[want.harness])}</span>`
-            : m && !want && m.source === "control"
-              ? ` <span class="chip info">going back to its own settings</span>`
-              : "";
-        const chk = u.checks.model;
-        const checked = !chk
-          ? "Its model check has not run."
-          : chk.finished_at === null
-            ? "Its model check is running."
-            : `Its model check ${chk.ok ? "passed" : "FAILED"} ${ago(chk.finished_at, now)} ago: ${chk.summary ?? ""}`;
-        return `<div class="ck rr-route"><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${chk?.finished_at && !chk.ok ? "bad" : ""}">${esc(checked)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="harness" class="harness" aria-label="harness for ${esc(u.id)}">${(Object.keys(HARNESSES) as Harness[]).map((h) => `<option value="${h}"${(want?.harness ?? "pi") === h ? " selected" : ""}>${HARNESSES[h]}</option>`).join("")}</select><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings" })}</span></div>`;
+            : ` <span class="chip info">going back to its own settings</span>`;
+        // The model check in its state now: sent, running, its result, or why it did not run.
+        const chk =
+          checkRowsOf(store, u.id, u.checks, now).model ??
+          checkRow("model", undefined, undefined, now);
+        const waits = checkWaits(chk);
+        const bad = chk.state === "failed" || chk.state === "refused" || chk.state === "expired";
+        // The page follows the rig while it takes the model, then its check (goal 080).
+        const follow = taking
+          ? ` data-follow="${esc(modelFollowUrl(u.id))}" data-follow-state="taking"`
+          : waits
+            ? ` data-follow="${esc(checkFollowUrl(u.id, "model"))}" data-follow-state="${chk.state}"`
+            : "";
+        return `<div class="ck rr-route"${follow}><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${bad ? "bad" : ""}">${modelCheckHtml(chk, now)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs" data-act><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="harness" class="harness" aria-label="harness for ${esc(u.id)}">${(Object.keys(HARNESSES) as Harness[]).map((h) => `<option value="${h}"${(want?.harness ?? "pi") === h ? " selected" : ""}>${HARNESSES[h]}</option>`).join("")}</select><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings", disabled: waits })}</span></div>`;
       })
       .join("");
     return page(
@@ -3895,7 +3993,7 @@ ${note}
 ${prices}
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
 ${mcpSettingsBlocks(store, mcpServers, t, now, (k) => c.req.query(k))}
-<div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
+<div class="block" data-part="routes"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
 <script src="/ui/assets/providers.js" defer></script>`,
       vs,
     );
@@ -4708,7 +4806,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
   const clusterPlacedBlock = (r: ClusterRig, t: string) => {
     const rName = encodeURIComponent(r.rig);
     const act = (action: string, label: string, extra = "", cls = "sm") =>
-      `<form class="inline" method="post" action="/ui/rigs/${rName}/cluster/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+      `<form class="inline" method="post" action="/ui/rigs/${rName}/cluster/${action}"${action === "remove" ? "" : " data-act"}><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
     const s = r.spec;
     const manage =
       r.status === "removed" || r.status === "deploying"
@@ -4729,7 +4827,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
             : s.controlUrl && controlAddress() && s.controlUrl !== controlAddress()
               ? `<div class="small" style="margin-top:12px">Control's address for rigs changed: the rig reports to <span class="mono">${esc(s.controlUrl)}</span>, control is now at <span class="mono">${esc(controlAddress() ?? "")}</span>.</div><div class="small muted" style="margin:4px 0 6px">Its pods restart with the new address, on the same images. ${keeps}</div>${act("images", "Give it control's new address")}`
               : "";
-    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
+    return `<div class="block" ${placeAttrs(r.rig, r.status)}><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}${update}</div></div>`;
   };
   /** A rig in pull mode: its pod, its enrollment, control's last connection and the refusals. */
@@ -4793,17 +4891,42 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     await awaitFirstReport(r.rig, (s) => store.setClusterRigStatus(r.rig, s));
   };
   /** A rig control set up: where, its setup history, and stop, start, restart and remove. */
+  /**
+   * A rig control set up, on a machine or a cluster, while a change to it is under way (goal 080):
+   * its block follows the change's steps until it ends. Its buttons, but Remove, are sent by the
+   * page's script (data-act).
+   */
+  const PLACE_BUSY = new Set(["deploying", "starting", "updating"]);
+  const placeProgress = (rig: string): Progress => {
+    const status = store.clusterRig(rig)?.status ?? store.machineRig(rig)?.status ?? "removed";
+    return {
+      state: `${status}:${store.rigSetupEvents(rig).length}`,
+      final: !PLACE_BUSY.has(status),
+      said: "",
+      tone: "",
+    };
+  };
+  const placeFollowUrl = (rig: string) => `/ui/rigs/${encodeURIComponent(rig)}/place.json`;
+  const placeAttrs = (rig: string, status: string) =>
+    `data-part="placed"${PLACE_BUSY.has(status) ? ` data-follow="${esc(placeFollowUrl(rig))}" data-follow-state="${esc(placeProgress(rig).state)}"` : ""}`;
+  /** A form's answer: JSON for the page's script, else the rig's page with the words. */
+  const placeBack = (c: Ctx, rig: string, k: "ok" | "error", msg: string) =>
+    wantsJson(c)
+      ? k === "ok"
+        ? c.json({ ...placeProgress(rig), said: msg, tone: "ok", follow: placeFollowUrl(rig) })
+        : c.json(notSent(msg), 400)
+      : c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(msg)}`, 303);
   const placedBlock = (r: MachineRig, t: string) => {
     const rName = encodeURIComponent(r.rig);
     const steps = setupSteps(r.rig);
     const act = (action: string, label: string, extra = "", cls = "sm") =>
-      `<form class="inline" method="post" action="/ui/rigs/${rName}/machine/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+      `<form class="inline" method="post" action="/ui/rigs/${rName}/machine/${action}"${action === "remove" ? "" : " data-act"}><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
     const manage =
       r.status === "removed" || r.status === "deploying"
         ? ""
         : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its services") : act("stop", "Stop its services")}${act("restart", "Restart them")}</div>
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.machine)}</summary><div class="small muted" style="margin:6px 0">Stops its services and deletes its units, files and volumes on the machine, and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
-    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? gpuRoles(r.gpus, r.judge_gpus) : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
+    return `<div class="block" ${placeAttrs(r.rig, r.status)}><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? gpuRoles(r.gpus, r.judge_gpus) : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${steps || `<div class="muted small">No step yet.</div>`}</div>${manage}</div></div>`;
   };
   /** Sets a rig up on a machine, in the background: each step becomes a setup event. */
@@ -5748,14 +5871,16 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         return { error: `Control didn't set ${rig} up on a cluster.` };
       return clusterRigAction(r, action, by);
     };
+  app.get("/ui/rigs/:rig/place.json", (c) => {
+    const rig = c.req.param("rig");
+    return store.clusterRig(rig) || store.machineRig(rig)
+      ? c.json(placeProgress(rig))
+      : c.json({ error: "not found" }, 404);
+  });
   app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
     const r = store.clusterRig(c.req.param("rig"));
     const action = c.req.param("action");
-    const back = (k: "ok" | "error", msg: string) =>
-      c.redirect(
-        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
-        303,
-      );
+    const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
     if (action === "images") {
       const done = await updateClusterRigImages(r.rig, "owner:ui");
@@ -5776,11 +5901,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   app.post("/ui/rigs/:rig/machine/:action", async (c) => {
     const r = store.machineRig(c.req.param("rig"));
     const action = c.req.param("action") as RigAction;
-    const back = (k: "ok" | "error", msg: string) =>
-      c.redirect(
-        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
-        303,
-      );
+    const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
     if (!["stop", "start", "restart", "remove"].includes(action))
       return back("error", "No such action.");
@@ -5961,10 +6082,39 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if ("error" in done) throw new Error(done.error);
     return done.ok;
   };
+  /**
+   * How an update stands, for the page's script (goal 080): a new state with each step, so the
+   * rig's page draws its steps as they come; final once it ended.
+   */
+  const updateProgress = (rig: string): Progress => {
+    const waiting = updates.waiting(rig);
+    const steps = store.rigSetupEvents(rig);
+    const from = steps.map((s) => s.step).lastIndexOf("update_started");
+    const n = from < 0 ? 0 : steps.length - from;
+    return { state: `${n}:${waiting ?? "ended"}`, final: !waiting, said: "", tone: "" };
+  };
+  const updateFollowUrl = (rig: string) => `/ui/rigs/${encodeURIComponent(rig)}/update.json`;
+  app.get("/ui/rigs/:rig/update.json", (c) => {
+    const rig = c.req.param("rig");
+    return store.rigs().some((x) => x.id === rig)
+      ? c.json(updateProgress(rig))
+      : c.json({ error: "not found" }, 404);
+  });
   app.post("/ui/rigs/:rig/update", (c) => {
     const rig = c.req.param("rig");
+    const json = wantsJson(c);
     const back = (k: "ok" | "error", m: string) =>
-      c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}#version`, 303);
+      json
+        ? c.json(
+            k === "ok"
+              ? { ...updateProgress(rig), said: m, tone: "ok", follow: updateFollowUrl(rig) }
+              : notSent(m),
+            k === "ok" ? 200 : 400,
+          )
+        : c.redirect(
+            `/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}#version`,
+            303,
+          );
     const place = placeOf(rig);
     if (!place.update)
       return back(
@@ -5982,7 +6132,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.audit("owner:ui", "rig_update", { rig, to: control.version });
     return back(
       "ok",
-      `The update of ${rig} to ${control.version} began. Its steps show below: press refresh to follow them.`,
+      `The update of ${rig} to ${control.version} began. Its steps show below as they happen.`,
     );
   });
   /** What a cluster's API says about a rig's two deployments, in words: ok when both run. */
@@ -6893,20 +7043,25 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const rig = String(f.rig ?? "");
     const choice = String(f.choice ?? "");
     const harness = harnessOf(f.harness);
-    if (!store.rigs().some((x) => x.id === rig))
-      return c.redirect(settingsUrl("error", "No such rig."), 303);
+    // From the page's script (goal 080): JSON, and the row follows the rig as it takes the model.
+    const answer = (k: "ok" | "error", m: string) =>
+      wantsJson(c)
+        ? k === "ok"
+          ? c.json({
+              ...modelProgress(store, rig, Date.now()),
+              said: m,
+              tone: "ok",
+              follow: modelFollowUrl(rig),
+            })
+          : c.json(notSent(m), 400)
+        : c.redirect(settingsUrl(k, m), 303);
+    if (!store.rigs().some((x) => x.id === rig)) return answer("error", "No such rig.");
     if (!choice) {
       clearRigModel(rig);
-      return c.redirect(
-        settingsUrl("ok", `${rig} goes back to its own settings within a minute.`),
-        303,
-      );
+      return answer("ok", `${rig} goes back to its own settings within a minute.`);
     }
     const given = giveRigModel(rig, choice, harness);
-    return c.redirect(
-      "error" in given ? settingsUrl("error", given.error) : settingsUrl("ok", given.ok),
-      303,
-    );
+    return "error" in given ? answer("error", given.error) : answer("ok", given.ok);
   });
   /**
    * Gives a rig a provider's model under a harness, as Providers and Edit rig both do. `cap`: a cap
@@ -7499,21 +7654,22 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       // The teachers back to the advisors file: said once, for their three models.
       if (!(teachersCleared && plan.clear && plan.role !== "teachers")) said.push(ok);
     }
+    let sent: string | undefined;
     if (settings) {
-      issueCommand(store, opts.privateKeyPem, {
+      sent = issueCommand(store, opts.privateKeyPem, {
         rig,
         kind: "rig_settings",
         payload: settings,
         issuedBy: "owner:ui",
-      });
+      }).id;
       const n = Object.keys(settings).length;
       said.push(`${n} setting${n === 1 ? "" : "s"}`);
     }
-    return back(
-      "ok",
-      said.length
-        ? `Control sent ${said.join(" and ")} to ${rig}. The rig takes the change in less than one minute.`
-        : "Nothing changed.",
+    if (!said.length) return back("ok", "Nothing changed.");
+    // The rig's page follows the settings' command, and the rig as it takes a model (goal 080).
+    return c.redirect(
+      `/ui/rigs/${encodeURIComponent(rig)}?ok=${encodeURIComponent(`Control sent ${said.join(" and ")} to ${rig}. The rig takes the change in less than one minute.`)}${sent ? `&cmd=${encodeURIComponent(sent)}` : ""}`,
+      303,
     );
   });
 
@@ -7570,11 +7726,18 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       drop_directive: { run, id: Number(f.id) },
       unkeep_message: { run, message: Number(f.message) },
     };
-    if (!(kind in payloads)) return c.text("this command is not available from the dashboard", 400);
+    // The page's script sends the form with fetch and follows the command (goal 080): it takes
+    // JSON. A plain form post gets the page again, which says "Sent".
+    const json = wantsJson(c);
+    if (!(kind in payloads)) {
+      const why = "this command is not available from the dashboard";
+      return json ? c.json(notSent(why), 400) : c.text(why, 400);
+    }
     let woke: string | null;
+    let id: string;
     try {
       // A run resumed on a stopped RunPod pod starts the pod first.
-      ({ woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
+      ({ id, woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
         rig: String(f.rig),
         kind,
         payload: payloads[kind],
@@ -7583,14 +7746,29 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       }));
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
-      return c.text(`refused: ${why}`, 400);
+      return json ? c.json(notSent(why), 400) : c.text(`refused: ${why}`, 400);
     }
+    const now = Date.now();
+    const cmd = store.commandRow(id);
+    // A check's row says how it stands itself; any other command says it beside its button.
+    const check = kind === "rig_check" ? String(f.check ?? "") : "";
+    const progress: Progress = check
+      ? checkProgress(
+          checkRows(store, String(f.rig), now)[check] ?? checkRow(check, undefined, cmd, now),
+        )
+      : cmd
+        ? commandProgress(cmd, now)
+        : { state: "sent", final: false, said: "", tone: "" };
+    if (json)
+      return c.json({
+        ...progress,
+        said: [woke ?? "", progress.said].filter(Boolean).join(" "),
+        follow: check ? checkFollowUrl(String(f.rig), check) : commandFollowUrl(id),
+      });
     // The page says the command went; the rig's answer shows where the command was given.
     const to = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`);
     const [path, hash] = to.split("#");
-    const sent = woke
-      ? `${woke} Control sent the command to ${String(f.rig)}: the rig does it once its pod runs. This page shows the result.`
-      : `Control sent the command to ${String(f.rig)}. The rig does it in less than 10 seconds. This page shows the result.`;
+    const sent = `${woke ? `${woke} ` : ""}Sent to ${String(f.rig)} at ${clockUtc(cmd?.issued_at ?? new Date(now).toISOString())}.`;
     return c.redirect(
       `${path}${path?.includes("?") ? "&" : "?"}sent=${encodeURIComponent(sent)}${hash ? `#${hash}` : ""}`,
       303,

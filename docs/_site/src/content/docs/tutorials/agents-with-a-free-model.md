@@ -40,13 +40,13 @@ Find **Harness and model for each rig** at the bottom of the page. The row for `
 2. In its second list, under **opencode (OpenCode harness only)**, choose the first model whose name ends in `-free`. Those are the models OpenCode serves without a key. OpenCode decides which they are, and the list changes over time.
 3. Press **Use**.
 
-A green line says that `local-1` takes your model from `"opencode"` under OpenCode v2 within a minute, and checks it.
+A green line at the top of the page says that `local-1` takes your model from `"opencode"` under OpenCode v2 within a minute, and checks it. The row for `local-1` shows `taking` and your model's name.
 
 ## 3. Check that the model works
 
 The rig checks a new model by itself. It asks the model, through the worker harness, to run one command, and the answer must come back as a correct tool call. That is how agents work: by calling tools.
 
-Wait a minute or two, then press **refresh** in the status bar along the bottom of the page. The row for `local-1` now says that its agents run under OpenCode v2 with your model from `opencode`, and below that:
+Wait a minute or two, and stay on the page: the row follows the rig by itself, with no refresh. Once the rig takes the model, the row says that its agents run under OpenCode v2 with your model from `opencode`. Below that, `Its model check is running ·` and the time so far, then:
 
 `Its model check passed … ago:` your model's name, then `answered with a correct tool call in` some seconds `(OpenCode)`.
 
@@ -132,7 +132,7 @@ On **5 Review and start**, a sentence sums up the campaign. It starts with `matm
 
 Press **Start the campaign**. Control keeps the kit, saves the campaign, and sends its first **run** to `local-1`: this campaign at work on that rig.
 
-The campaign's page opens and says `Starting local-1/matmul-agents-1.` The rig fetches Thermite's repository from GitHub and the kit from control, and checks both. Within a minute, press **refresh**. The address names the run, so once the rig reports the run, the same address opens the run's own page. The line at the top reads `Campaigns › matmul-agents › matmul-agents-1`, then `on local-1 · hill climb · Running`.
+The campaign's page opens and says `Starting local-1/matmul-agents-1.`, then `Sent to local-1 at`, the time, and `Waiting for the rig to take it.` The rig fetches Thermite's repository from GitHub and the kit from control, and checks both. Stay on the page: once the rig reports the run, usually within a minute, the page opens the run's own page by itself, at the same address. The line at the top reads `Campaigns › matmul-agents › matmul-agents-1`, then `on local-1 · hill climb · Running`.
 
 Open **Campaigns** in the sidebar. Under **At work now**, a card shows `matmul-agents › matmul-agents-1`, on `local-1`: the campaign, then its run. Under **All campaigns**, the row `matmul-agents` shows your title, `Make the sample's matrix multiply faster`, and `1 at work` under **Runs**.
 
@@ -213,13 +213,13 @@ An **auditor**, a model that gives such second looks, isn't set up on this rig, 
 1. Open it. It shows what the agent says it did, the problems it wrote, and what the judge measured. Read the problems: they are why the change waits. Some matter, such as a change that only wins because of how the benchmark calls it; some don't, such as a little more memory.
 2. For this tutorial, press **Reject it**, to see what happens to a change you decline. In [Your own project](your-own-project.md) you make a change the champion instead. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) explains each choice.
 
-The item leaves **Needs you** at once. On the change's own page, **Your decision** says `You selected Reject it`. After a **refresh**, **What happened** says `You declined` the change: `it will not become the champion.` The attempt now shows **Declined**.
+The item leaves **Needs you** at once, and a line at the top of the page says `Sent to local-1 at`, the time, then `Done.` when the rig has done it. On the change's own page, **Your decision** says `You selected Reject it`, then what the rig did. Once the rig has reported it, **What happened** says `You declined` the change: `it will not become the champion.` The attempt now shows **Declined**.
 
 ## 11. Pause the campaign
 
 A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `matmul-agents › matmul-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**. A small menu opens. It says that the lanes' running trials stop, and that the run's jobs waiting for the judge wait until you resume. In its field **why (optional)**, type `seen enough for now`, then press **Pause the run**.
 
-A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and a copy of its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the line under the run's name ends `· Paused`, and the button says **Resume**. On the run's **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
+The menu closes, and a line at the top of the page says `Sent to local-1 at`, the time, and `Waiting for the rig to take it.` If `lane-1` was in a trial, the trial stops, and a copy of its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, the line says `Done.`, the line under the run's name ends `· Paused`, and the button says **Resume**, with no refresh. On the run's **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
 
 The rig keeps its model. [Your own project](your-own-project.md) uses it.
 

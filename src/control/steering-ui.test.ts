@@ -654,9 +654,7 @@ describe("Live's lanes", () => {
       ["reset_workers", "js-1", "/ui/live?run=rig-a%2Fjs-1"],
     );
     assert.ok(
-      (await s.submit(restart)).startsWith(
-        "/ui/live?run=rig-a/js-1&sent=Control sent the command to rig-a.",
-      ),
+      (await s.submit(restart)).startsWith("/ui/live?run=rig-a/js-1&sent=Sent to rig-a at "),
     );
     began = new Promise<void>((r) => {
       begun = r;
