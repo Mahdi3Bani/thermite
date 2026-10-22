@@ -6,13 +6,15 @@
 //
 //   node scripts/runpod-paid-acceptance.mjs --control https://control.example.com \
 //     --token-file ~/.thermite/owner-token --gpu "RTX A4000" --spend-limit 2 \
-//     [--cloud runpod] [--image REF] [--rig NAME] --i-accept-the-cost
+//     [--cloud runpod] [--image REF] [--rig NAME] [--skip-smoke] --i-accept-the-cost
 //
 // What it checks, in order:
 //   launch     the launch is accepted, on Secure cloud, with the spend limit;
 //   enroll     control enrolls the pod through RunPod's proxy;
 //   report     the rig's reports reach control;
 //   isolation  the harness's isolation check at start passes on RunPod (goal 020);
+//   smoke      the judge's smoke check passes on the pod's GPU; its no-op is an A/A run, so its
+//              verdict says how noisy the pod's timing is (goal 018). --skip-smoke leaves it out;
 //   outside    requests to the pod's proxy address from here, without control's signature, all
 //              get the same empty 404 (goal 019);
 //   stop       the runs are paused, the export reaches control, and the pod stops;
@@ -33,11 +35,12 @@ const { values: o } = parseArgs({
     image: { type: "string" },
     rig: { type: "string" },
     "spend-limit": { type: "string" },
+    "skip-smoke": { type: "boolean", default: false },
     "i-accept-the-cost": { type: "boolean", default: false },
   },
 });
 const usage =
-  "usage: node scripts/runpod-paid-acceptance.mjs --control URL --token-file F --gpu G --spend-limit USD [--cloud C] [--image REF] [--rig NAME] --i-accept-the-cost";
+  "usage: node scripts/runpod-paid-acceptance.mjs --control URL --token-file F --gpu G --spend-limit USD [--cloud C] [--image REF] [--rig NAME] [--skip-smoke] --i-accept-the-cost";
 if (!o.control || !o["token-file"] || !o.gpu || !o["spend-limit"]) {
   console.error(usage);
   process.exit(2);
@@ -143,6 +146,42 @@ try {
     15,
   );
   check(iso.ok === true, "the isolation check at start passes on RunPod", iso.summary ?? "");
+
+  // The judge's smoke check on the pod's GPU. Its no-op candidate is an A/A run: neutral when the
+  // pod's timing stays inside the contract's equivalence band, inconclusive (with a note) when not.
+  if (!o["skip-smoke"]) {
+    const asked = await api("/v1/commands", {
+      rig,
+      kind: "rig_check",
+      payload: { check: "smoke" },
+      ttl_minutes: 30,
+    });
+    if (
+      check(
+        asked.status === 201,
+        "the smoke check is asked for",
+        JSON.stringify(asked.body).slice(0, 300),
+      )
+    ) {
+      const smokeAt = Date.now();
+      const smoke = await until(
+        "smoke check",
+        async () => {
+          const c = (await api(`/v1/rigs/${encodeURIComponent(rig)}/view`)).body.checks?.smoke;
+          return c && c.ok !== null ? c : undefined;
+        },
+        90,
+      );
+      check(
+        smoke.ok === true,
+        "the judge's smoke check passes on the pod's GPU",
+        `${smoke.summary ?? ""} (${Math.round((Date.now() - smokeAt) / 60_000)} min)`,
+      );
+      console.log(
+        `A/A, the smoke check's no-op: ${smoke.note ?? "neutral, inside the equivalence band"}`,
+      );
+    }
+  }
 
   // From outside, without control's signature: nothing but the same empty 404.
   const base = `https://${pod}-8790.proxy.runpod.net`;

@@ -47,6 +47,7 @@ None.
 - 2026-10-20: Left: the first CI run of the `runpod` job, and the paid run.
 - 2026-10-20: The `runpod` job passed on GitHub (CI run 39479049337 on `v1/build` (85b4de0)). Left: the paid run, with the owner's OK.
 - 2026-10-21: The test pod form's **Image** tip and `runpod_test_start`'s description name the one-container rig image beside the CUDA harness (`659cf42`; test in `src/control/runpod-tests.test.ts`).
+- 2026-10-22: The paid run also runs the judge's smoke check on the pod's GPU, after the isolation check (about 10 to 20 minutes more of the pod). Its no-op candidate is an A/A run, so the same launch answers goal 018's last question, how noisy the pod's timing is. `--skip-smoke` leaves it out.
 
 ---
 
