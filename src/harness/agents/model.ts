@@ -3,6 +3,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { type AgentsContext, compactAtRefusal, contextApplied } from "../../core/compaction.ts";
+import { logStall, modelStallMs, stallGuard } from "./model-stall.ts";
 
 /**
  * The harness's model route: an OpenAI-compatible endpoint (for example a LiteLLM or vLLM
@@ -259,7 +260,39 @@ function uncapped<T extends ReturnType<typeof createModels>>(models: T): T {
   });
 }
 
+/**
+ * pi-ai's models, with every call's stream watched for silence (goal 079): a call that sends no
+ * data for THERMITE_MODEL_STALL_SECONDS is broken off as the provider's `server` error
+ * (model-stall.ts). It wraps whatever fetch the call was given: a trial's watch and meter, or
+ * none. Every Pi call goes through buildModel: workers, research workers, the planner, the
+ * compactions' summaries, the model checks and the supervisor's advisors.
+ */
+function stallGuarded<T extends ReturnType<typeof createModels>>(models: T): T {
+  const ms = modelStallMs();
+  if (ms === undefined) return models;
+  type Options = { fetch?: typeof globalThis.fetch } | undefined;
+  const guard = (o: Options) => ({
+    ...o,
+    fetch: stallGuard(o?.fetch ?? globalThis.fetch, ms, (n) => logStall(n)),
+  });
+  return new Proxy(models, {
+    get(target, key) {
+      if (key === "streamSimple" || key === "completeSimple") {
+        const f = Reflect.get(target, key) as (m: unknown, c: unknown, o: Options) => unknown;
+        return (m: unknown, c: unknown, o: Options) => f.call(target, m, c, guard(o));
+      }
+      const v = Reflect.get(target, key);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+}
+
 export function buildModel(cfg: ModelConfig) {
+  const built = buildUnguarded(cfg);
+  return { ...built, models: stallGuarded(built.models) };
+}
+
+function buildUnguarded(cfg: ModelConfig) {
   if (cfg.api === "anthropic") return buildAnthropic(cfg);
   if (cfg.api === "chatgpt") return buildChatGPT(cfg);
   const provider = "thermite-openai";

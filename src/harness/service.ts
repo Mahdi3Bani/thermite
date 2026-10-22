@@ -32,6 +32,7 @@ import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
+import { logStall, modelStallMs, stalledFor, stallWords } from "./agents/model-stall.ts";
 import { KIND_WORDS, type ProviderErrorKind } from "./agents/provider-errors.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
@@ -370,6 +371,29 @@ export class HarnessService {
       if (this.providerAnswers.size <= 256) break;
       this.providerAnswers.delete(k);
     }
+  }
+
+  /**
+   * How long a model call's stream may send no data before the model proxy breaks it off (ms;
+   * goal 079): THERMITE_MODEL_STALL_SECONDS, 600 s by default. Undefined: never.
+   */
+  modelStallMs: number | undefined = modelStallMs();
+
+  /**
+   * The model proxy broke a call off because its stream went silent (goal 079): the log says so,
+   * and a trial's Live. The trial's program then sees a broken connection or a 504, and the
+   * proxy's answer for it (noteProviderAnswer) makes it the provider's `server` error.
+   */
+  noteModelStall(trial: { id: string; run: string; lane: string } | undefined, ms: number): void {
+    logStall(ms, trial ? { trial: trial.id, run: trial.run, via: "model proxy" } : {});
+    if (trial)
+      this.live.append({
+        source: `trial:${trial.id}`,
+        kind: "status",
+        text: `${stallWords(ms)}: retried. The harness broke the call off; the trial goes on in the same session.`,
+        lane: trial.lane,
+        run: trial.run,
+      });
   }
 
   /** The newest error answer the proxy saw for a trial, if it came at or after `since` (ms). */
@@ -2428,10 +2452,21 @@ export class HarnessService {
   ): void {
     const at = new Date(w.until);
     const when = Number.isNaN(at.getTime()) ? w.until : at.toISOString().slice(11, 19);
+    // A call broken off because its stream went silent (goal 079) says so in its own words.
+    const silent = w.kind === "server" ? stalledFor(w.words) : undefined;
+    if (silent !== undefined)
+      log("harness", "a model call's stream went silent: retried", {
+        trial: trial.id,
+        run: trial.run,
+        seconds: Number(silent),
+      });
     this.live.append({
       source: `trial:${trial.id}`,
       kind: "status",
-      text: `waiting until ${when} UTC: ${KIND_WORDS[w.kind as ProviderErrorKind] ?? w.kind} (${w.words.slice(0, 300)}). The trial goes on in the same conversation.`,
+      text:
+        silent !== undefined
+          ? `the model's stream went silent for ${silent} s: retried at ${when} UTC, in the same conversation.`
+          : `waiting until ${when} UTC: ${KIND_WORDS[w.kind as ProviderErrorKind] ?? w.kind} (${w.words.slice(0, 300)}). The trial goes on in the same conversation.`,
       lane: trial.lane,
       run: trial.run,
     });

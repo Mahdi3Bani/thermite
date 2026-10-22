@@ -135,7 +135,7 @@ export function createHarnessApi(
   // its own route: the planner's, when control gave the planner a model of its own (goal 073).
   const openTrial = (token: string) => {
     try {
-      return registry.openTrial(token).id;
+      return registry.openTrial(token);
     } catch {
       return undefined;
     }
@@ -146,7 +146,8 @@ export function createHarnessApi(
       ? bearer.slice(7)
       : (c.req.header("x-api-key") ?? "");
     const trial = given.startsWith("trial.");
-    const trialId = trial ? openTrial(given.slice("trial.".length)) : undefined;
+    const open = trial ? openTrial(given.slice("trial.".length)) : undefined;
+    const trialId = open?.id;
     const ok = trial ? trialId !== undefined : service.proxyTokenValid(given);
     if (!ok) return c.json({ error: "unauthorized" }, 401);
     const m = (trial ? undefined : service.proxyTokenModel(given)) ?? service.models?.current();
@@ -168,6 +169,8 @@ export function createHarnessApi(
       () => service.noteUsageLimit(),
       // Each error answer, for the trial (or the check or plan) to tell its kind (goal 079).
       (a) => service.noteProviderAnswer(trialId ?? "proxy", a),
+      // A stream that goes silent is broken off, logged and said in the trial's Live (goal 079).
+      { ms: service.modelStallMs, onStall: (ms) => service.noteModelStall(open, ms) },
     );
   });
 

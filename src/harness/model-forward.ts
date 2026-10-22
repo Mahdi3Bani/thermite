@@ -1,6 +1,7 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./agents/model.ts";
+import { DataSeen, ModelStreamSilent, modelStallMs, stallWords } from "./agents/model-stall.ts";
 import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
 
 /**
@@ -39,17 +40,32 @@ export interface ProviderErrorAnswer {
   body: string;
 }
 
+/** How the proxy watches a call's stream for silence (goal 079). */
+export interface ForwardStall {
+  /** How long the provider may send no data (ms); undefined: never broken off. */
+  ms: number | undefined;
+  /** Told when a call is broken off for it, before it ends. */
+  onStall?: ((ms: number) => void) | undefined;
+}
+
 /**
  * Forwards one call to the provider. `onUsageLimit`: OpenAI said a ChatGPT plan's usage is full,
  * which a program that keeps only an error's message (the Codex CLI) would lose. `onError`: any
  * error answer, with its status, headers and body, for the harness to tell a rate limit's time,
  * no credits or a refused key from the rest (goal 079).
+ *
+ * A call whose stream sends no data for THERMITE_MODEL_STALL_SECONDS (model-stall.ts; `stall`
+ * gives another time) is broken off: with no answer yet, the proxy answers 504 with the words, as
+ * a gateway does; during the answer, it breaks the program's connection, which the program sees
+ * as a broken connection. Either way `onError` gets a 504 with the words, so a trial whose
+ * program then stops tells it as the provider's `server` error and goes on in the same session.
  */
 export async function forwardToProvider(
   call: ForwardCall,
   target: ForwardTarget,
   onUsageLimit?: (() => void) | undefined,
   onError?: ((a: ProviderErrorAnswer) => void) | undefined,
+  stall: ForwardStall = { ms: modelStallMs() },
 ): Promise<Response> {
   // A ChatGPT sign-in reaches only OpenAI's Responses API and the account's model list.
   const chatgpt = target.api === "chatgpt";
@@ -81,7 +97,25 @@ export async function forwardToProvider(
   // node:http, not fetch: a long model call must not meet fetch's header timeout.
   return await new Promise<Response>((resolve) => {
     const send = url.protocol === "https:" ? httpsRequest : httpRequest;
+    // The stream's silence (goal 079): armed until the answer's headers, then until each part of
+    // the answer that holds data. Keep-alive comments and pings are not data.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const quiet = () => clearTimeout(timer);
+    const arm = (silent: () => void) => {
+      quiet();
+      if (stall.ms !== undefined) timer = setTimeout(silent, stall.ms);
+    };
+    const silentBody = () =>
+      JSON.stringify({
+        type: "error",
+        error: { type: "model_stream_silent", message: stallWords(stall.ms ?? 0) },
+      });
+    const brokeOff = () => {
+      stall.onStall?.(stall.ms ?? 0);
+      onError?.({ status: 504, headers: {}, body: silentBody() });
+    };
     const req = send(url, { method: call.method, headers, agent: false }, (res) => {
+      quiet();
       const status = res.statusCode ?? 502;
       const out = new Headers();
       for (const k of ["content-type", "cache-control"]) {
@@ -94,12 +128,19 @@ export async function forwardToProvider(
       if (status >= 400) {
         const parts: Buffer[] = [];
         let size = 0;
+        const silent = () => {
+          brokeOff();
+          res.destroy(new ModelStreamSilent(stall.ms ?? 0));
+        };
+        arm(silent);
         res.on("data", (d: Buffer) => {
+          arm(silent);
           if (size >= 1024 * 1024) return;
           parts.push(d);
           size += d.length;
         });
         res.on("end", () => {
+          quiet();
           const all = Buffer.concat(parts);
           const text = all.toString("utf8");
           if (chatgpt && text.includes(CHATGPT_LIMIT_CODE)) onUsageLimit?.();
@@ -114,36 +155,66 @@ export async function forwardToProvider(
           }
           resolve(new Response(new Uint8Array(all), { status, headers: out }));
         });
-        res.on("error", (e) =>
+        res.on("error", (e) => {
+          quiet();
           resolve(
             Response.json(
               { error: `the provider's answer broke off: ${e.message}` },
               { status: 502 },
             ),
-          ),
-        );
+          );
+        });
         return;
       }
+      const data = new DataSeen(res.headers["content-type"]);
+      const silent = () => {
+        brokeOff();
+        res.destroy(new ModelStreamSilent(stall.ms ?? 0));
+      };
       const stream = new ReadableStream<Uint8Array>({
         start(ctrl) {
-          res.on("data", (d: Buffer) => ctrl.enqueue(new Uint8Array(d)));
-          res.on("end", () => ctrl.close());
-          res.on("error", (e) => ctrl.error(e));
+          arm(silent);
+          res.on("data", (d: Buffer) => {
+            if (data.feed(d)) arm(silent);
+            ctrl.enqueue(new Uint8Array(d));
+          });
+          res.on("end", () => {
+            quiet();
+            ctrl.close();
+          });
+          // A silent stream ends here too: the program's connection is broken off.
+          res.on("error", (e) => {
+            quiet();
+            ctrl.error(e);
+          });
         },
         cancel() {
+          quiet();
           res.destroy();
         },
       });
       resolve(new Response(stream, { status, headers: out }));
     });
-    req.on("error", (e) =>
+    // No answer at all, not even its headers: a 504 with the words, as a gateway answers.
+    arm(() => {
+      brokeOff();
+      resolve(
+        new Response(silentBody(), {
+          status: 504,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      req.destroy();
+    });
+    req.on("error", (e) => {
+      quiet();
       resolve(
         Response.json(
           { error: `the provider could not be reached: ${e.message}` },
           { status: 502 },
         ),
-      ),
-    );
+      );
+    });
     if (body) req.write(body);
     req.end();
   });

@@ -12,6 +12,7 @@ import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../comm
 import { untoldKinds } from "../core/kb.ts";
 import type { McpUse } from "../core/mcp.ts";
 import { buildHeaders, buildInfo } from "../core/version.ts";
+import { modelStallMs } from "../harness/agents/model-stall.ts";
 import { McpGateway } from "../harness/mcp-gateway.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
@@ -54,6 +55,8 @@ function notYetExported(outboxDir: string, state: ExportState): number {
  */
 async function main(): Promise<void> {
   const env = process.env;
+  // How long the advisors' model calls may send no data (goal 079): a bad value stops it here.
+  modelStallMs(env);
   const home = env.THERMITE_SUPERVISOR_HOME ?? "/var/lib/thermite-supervisor";
   mkdirSync(home, { recursive: true });
   const statePath = join(home, "relay-state.json");

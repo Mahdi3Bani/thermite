@@ -1,6 +1,6 @@
 ---
 title: "Troubleshoot"
-description: "Check the machine with thermite doctor, then find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread, a queue change doesn't take, past research or an MCP server doesn't work, or a sign-in bounces back, and where the logs are."
+description: "Check the machine with thermite doctor, then find out why a check failed, a port clashes, a build is slow, a rig is quiet, a trial makes no progress, a message goes unread, a queue change doesn't take, past research or an MCP server doesn't work, or a sign-in bounces back, and where the logs are."
 type: how-to
 sidebar:
   order: 9
@@ -280,7 +280,7 @@ Two causes are common on a laptop:
 
 ### Trials wait for the provider
 
-- **You see:** in a trial's **Live**, `waiting until 03:14:20 UTC: the provider's rate limit (429 Rate limit reached …). The trial goes on in the same conversation.`, or `the provider failed for now (503 Service Unavailable)`. The run's **History** may say `The agents wait for the provider's limit until 2026-10-22 03:14 UTC (…)`.
+- **You see:** in a trial's **Live**, `waiting until 03:14:20 UTC: the provider's rate limit (429 Rate limit reached …). The trial goes on in the same conversation.`, or `the provider failed for now (503 Service Unavailable)`, or `the model's stream went silent for 600 s: retried at 03:14:20 UTC, in the same conversation.` ([A trial makes no progress for a long time](#a-trial-makes-no-progress-for-a-long-time)). The run's **History** may say `The agents wait for the provider's limit until 2026-10-22 03:14 UTC (…)`.
 - **Why:** the provider asked for a pause (a rate limit), or failed for now (an outage). The trial waits for the time the provider gives (its `Retry-After`, its rate-limit reset headers, or its words), or a growing pause when it gives none, and then goes on where it was. No new trial starts on the rig until a rate limit's time. Nothing ends the trial for this unless the campaign sets `lanes.limits.failures_in_a_row`, or no model call has worked for 30 minutes: then the agents stop and the run shows in **Needs you** ([The agents stopped](#the-agents-stopped-the-provider-refuses); [Limits and pacing](../../reference/limits-and-pacing.md#the-model-provider)).
 - **Do:** nothing. If it happens all the time, the provider's limits are too low for the rig's workers: lower **Workers at a time** on **Edit rig**, or raise the provider's limits.
 
@@ -304,6 +304,12 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 - **You see:** in a run's **Live**, a lane's trial started, but no "trial ended" line follows it. The lane's next trial may already have started.
 - **Why:** the rig's harness restarted while the trial ran, for example after **Restart them**, **Update now, without waiting**, a restart with your compose tool, or a crash. (**Update to these images** waits for the running trials to end first.) A restart stops the running trials. As it stops, the harness records them as `interrupted`, with the turns and tokens their workers last reported, without a "trial ended" line; after a crash, it does so when it starts again. Control shows a trial as working only while the rig says it is at work, or for 15 minutes after its last line.
 - **Do:** nothing. The lane goes on with a new trial, and a change the trial had already submitted stands. The trial's experiment goes back to the top of the queue: see [An experiment came back at the top of the queue](#an-experiment-came-back-at-the-top-of-the-queue).
+
+### A trial makes no progress for a long time
+
+- **You see:** a lane's trial in **Live** has no new line for many minutes, while the rig reports it at work. Then, after 10 minutes with nothing from the model, `the model's stream went silent for 600 s: retried at 16:40:35 UTC, in the same conversation.` In OpenCode or Codex: `the model's stream went silent for 600 s: retried. The harness broke the call off; the trial goes on in the same session.` The harness's log has `the model's stream went silent for 600 s: the call is broken off and retried`.
+- **Why:** the model provider kept the call open and sent nothing more: no token, no error and no end. A gateway in front of the model may even keep the connection alive with comment lines (`: OPENROUTER PROCESSING`) while the model behind it sends nothing, so no client timeout ever fires. After 600 s with no data, the harness breaks the call off and counts it as the provider's passing fault: the trial waits a few seconds and goes on where it was ([Limits and pacing](../../reference/limits-and-pacing.md#the-model-provider)). A call that keeps sending data is never cut, however long it takes. Claude Code on a subscription reaches Anthropic directly and is not watched this way.
+- **Do:** nothing for one silent call. If it keeps happening, the provider or the way to it is at fault: once no model call has worked for 30 minutes, the run's agents stop and the run shows in **Needs you** ([The agents stopped](#the-agents-stopped-the-provider-refuses)). Check the provider's status, or give the rig another model on **Edit rig**. A model that thinks for longer than 10 minutes without sending anything needs a longer wait: set [`THERMITE_MODEL_STALL_SECONDS`](../../reference/settings.md#the-rigs-own-model) on the harness and the supervisor.
 
 ### A trial's conversation was compacted
 
