@@ -319,6 +319,14 @@ const internalSettings = new Map([
   ["THERMITE_OPENCODE_EVENTS", "the controller's event log path for an OpenCode trial"],
   ["THERMITE_CLAUDE_EVENTS", "the controller's event log path for a Claude Code trial"],
   ["THERMITE_CODEX_EVENTS", "the controller's event log path for a Codex trial"],
+  [
+    "THERMITE_COMPACTION_DROPS",
+    "the controller or the supervisor tells Thermite's OpenCode plugin where to keep a conversation",
+  ],
+  [
+    "THERMITE_COMPACTION_LINE",
+    "the controller or the supervisor gives Thermite's OpenCode plugin the line naming the kept file",
+  ],
   ["THERMITE_LANE_CACHE", "the controller gives each lane's commands its build cache"],
   ["THERMITE_PROBE_TOKEN", "control gives a RunPod test pod its report path"],
   ["THERMITE_PROBE_JS", "control gives a RunPod test pod its probe script"],

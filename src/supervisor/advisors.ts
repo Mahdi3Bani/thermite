@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
@@ -24,14 +24,34 @@ import {
   claudeBin,
   claudeCompactionEnv,
   claudeExe,
+  claudeHookSettings,
   claudeResultUsage,
 } from "../harness/agents/claude-code.ts";
+import type { KeptAt } from "../harness/agents/cli-compaction.ts";
+import {
+  claudeCompactions,
+  claudeOwn,
+  claudeTranscript,
+  codexCompactions,
+  codexOwn,
+  findCodexRollout,
+  type Own,
+  opencodeEnded,
+  opencodeOwn,
+  readUnder,
+} from "../harness/agents/cli-conversation.ts";
 import { codexBin, codexExe } from "../harness/agents/codex.ts";
 import { Compactor, summarizer } from "../harness/agents/compaction.ts";
 import { mcpAgentTools, mcpLine } from "../harness/agents/mcp-tools.ts";
 import { buildModel, type ModelConfig } from "../harness/agents/model.ts";
 import { JOURNAL_FIELD } from "../harness/agents/notes-tool.ts";
-import { opencodeBin, opencodeExe } from "../harness/agents/opencode.ts";
+import {
+  OPENCODE_PLUGIN,
+  OPENCODE_PLUGIN_LINK,
+  opencodeBin,
+  opencodeExe,
+  opencodeKeepEnv,
+} from "../harness/agents/opencode.ts";
 import { PiMeter } from "../harness/agents/usage-meter.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
@@ -269,17 +289,24 @@ export interface AdvisorResult<T> {
   usage?: AdvisorUsage | undefined;
 }
 
-/** One compaction of an advisor's call in Pi (goal 070). */
+/** One compaction of an advisor's call (goal 070): Pi's, or the advisor's own program's. */
 export interface AdvisorCompaction {
   advisor: string;
   number: number;
-  /** The conversation before and after, in tokens (estimated). */
-  tokens_before: number;
-  tokens_after: number;
-  /** summary: the model summarized it; trimmed: the summary failed, old tool results were cut. */
-  how: "summary" | "trimmed";
+  /** The conversation before and after, in tokens (Pi's estimates); null when not said. */
+  tokens_before: number | null;
+  tokens_after: number | null;
+  /**
+   * summary: Pi's model summarized it; trimmed: Pi's summary failed, old tool results were cut;
+   * harness: the advisor's own program (Claude Code, Codex, OpenCode) compacted it.
+   */
+  how: "summary" | "trimmed" | "harness";
+  /** The program that compacted it, when it was not Pi. */
+  harness?: "claude-code" | "codex" | "opencode" | undefined;
   /** Where the conversation before it is kept, in words; null: it could not be kept. */
   kept: string | null;
+  /** The summary the program went on from, when the supervisor could read it. */
+  summary?: string | undefined;
   error?: string | undefined;
 }
 
@@ -292,8 +319,59 @@ export interface AdvisorCompaction {
 export interface AdvisorKeeper {
   /** Keeps the conversation before compaction `n` of call `call`; returns where, in words. */
   keep(advisor: string, call: string, n: number, markdown: string): string;
+  /**
+   * Where the conversation before each compaction of call `call` will be kept, in words, for the
+   * summary of the advisor's own program (Claude Code, Codex, OpenCode) to name it.
+   */
+  at?(advisor: string, call: string): KeptAt;
   /** A compaction is done (a line in the run's live view). */
   done?(c: AdvisorCompaction): void;
+}
+
+/** A call's id, for the names of its kept conversations: when it started. */
+const callId = () => new Date().toISOString().replace(/[:.]/g, "-");
+
+/**
+ * The compactions an advisor's own program made in its call (goal 070), from what its PreCompact
+ * hook, plugin or rollout left in the call's folder: each conversation kept with the supervisor's
+ * records, and each compaction said in the run's live view.
+ */
+function collectCompactions(o: {
+  harness: NonNullable<AdvisorCompaction["harness"]>;
+  advisor: string;
+  call: string;
+  count: number;
+  own: (n: number) => Own | undefined;
+  keeper: AdvisorKeeper | undefined;
+}): AdvisorCompaction[] {
+  const out: AdvisorCompaction[] = [];
+  for (let n = 1; n <= o.count; n++) {
+    let got: Own | undefined;
+    let kept: string | null = null;
+    let error: string | undefined;
+    try {
+      got = o.own(n);
+      if (!got) error = "the conversation could not be read";
+      else if (!o.keeper) error = "this advisor's call has no place to keep it";
+      else kept = o.keeper.keep(o.advisor, o.call, n, got.markdown);
+    } catch (err) {
+      error = `the conversation was not kept: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    const c: AdvisorCompaction = {
+      advisor: o.advisor,
+      number: n,
+      tokens_before: got?.tokensBefore ?? null,
+      tokens_after: null,
+      how: "harness",
+      harness: o.harness,
+      kept,
+      ...(got?.summary ? { summary: got.summary.slice(0, 4000) } : {}),
+      ...(error ? { error } : {}),
+    };
+    out.push(c);
+    o.keeper?.done?.(c);
+  }
+  return out;
 }
 
 /**
@@ -444,9 +522,36 @@ export async function runAdvisor<S extends z.ZodType>(input: {
       t?.pastSearch || t?.mcp?.servers.length
         ? await serveAdvisorTools({ pastSearch: t.pastSearch, mcp: t.mcp })
         : undefined;
+    // Before each of Claude Code's own compactions, its PreCompact hook copies the conversation
+    // into the call's folder and tells the summary where the supervisor keeps it; after the call,
+    // each compaction its transcript shows is kept with the round's records (goal 070).
+    const call = callId();
+    const at = input.keeper?.at?.(rt.name, call);
+    const keeper = input.keeper;
     try {
       return await runCli(
         {
+          extra: at
+            ? (home) => ["--settings", claudeHookSettings(join(home, "compactions"), at)]
+            : undefined,
+          collect: keeper
+            ? (home) => {
+                const said = claudeTranscript(home, []);
+                return collectCompactions({
+                  harness: "claude-code",
+                  advisor: rt.name,
+                  call,
+                  count: said !== undefined ? claudeCompactions(said) : 0,
+                  own: claudeOwn({
+                    root: home,
+                    drops: ["compactions"],
+                    home: [],
+                    title: `Advisor ${rt.name}`,
+                  }),
+                  keeper,
+                });
+              }
+            : undefined,
           argv: [
             claudeExe() ?? claudeBin(),
             "-p",
@@ -703,10 +808,16 @@ async function runCliHarness<S extends z.ZodType>(
     schema: S;
     answerSchema: TSchema;
     tools?: AdvisorTools | undefined;
+    keeper?: AdvisorKeeper | undefined;
   },
 ): Promise<AdvisorResult<z.infer<S>>> {
   const fail = (error: string) => ({ output: undefined, error, tokensIn: 0, tokensOut: 0, usd: 0 });
   const native = rt.runtime === "opencode" && rt.api === "opencode";
+  // Where the conversation is kept before each of the program's own compactions (goal 070):
+  // OpenCode's through Thermite's plugin, Codex's from its rollout, which the call then keeps.
+  const call = callId();
+  const keeper = input.keeper;
+  const at = keeper?.at?.(rt.name, call);
   if (!native && !rt.base_url) return fail(`advisor ${rt.name} has no base_url`);
   const key = native
     ? ""
@@ -741,9 +852,15 @@ async function runCliHarness<S extends z.ZodType>(
     const root = proxy?.root ?? "";
     const opencode = rt.runtime === "opencode";
     const exe = opencode ? (opencodeExe() ?? opencodeBin()) : (codexExe() ?? codexBin());
+    const title = `Advisor ${rt.name}`;
     return await runCli(
       {
-        argv: [exe, ...(opencode ? opencodeAdvisorArgs(model) : codexAdvisorArgs(model))],
+        argv: [
+          exe,
+          ...(opencode
+            ? opencodeAdvisorArgs(model)
+            : codexAdvisorArgs(model, { keep: keeper !== undefined })),
+        ],
         timeout_s: rt.timeout_s,
         env: secrets,
         // Its configuration in its own folder, written by the supervisor; no credential in it.
@@ -756,15 +873,43 @@ async function runCliHarness<S extends z.ZodType>(
               JSON.stringify(opencodeAdvisorConfig(model, root, servers)),
               { mode: 0o600 },
             );
-            return {};
+            if (!at) return {};
+            // Thermite's compaction plugin, linked into OpenCode's own settings (goal 070).
+            mkdirSync(join(dir, "plugins"), { recursive: true, mode: 0o700 });
+            symlinkSync(OPENCODE_PLUGIN, join(home, OPENCODE_PLUGIN_LINK));
+            return opencodeKeepEnv(join(home, "compactions"), at);
           }
           const dir = join(home, ".codex");
           mkdirSync(dir, { recursive: true, mode: 0o700 });
-          writeFileSync(join(dir, "config.toml"), codexAdvisorConfig(model, root, servers), {
+          writeFileSync(join(dir, "config.toml"), codexAdvisorConfig(model, root, servers, at), {
             mode: 0o600,
           });
           return { CODEX_HOME: dir };
         },
+        // Each compaction the program made, kept with the round's records (goal 070).
+        collect: keeper
+          ? (home) => {
+              if (opencode)
+                return collectCompactions({
+                  harness: "opencode",
+                  advisor: rt.name,
+                  call,
+                  count: opencodeEnded(home, ["compactions"]).length,
+                  own: opencodeOwn({ root: home, drops: ["compactions"], title }),
+                  keeper,
+                });
+              const rollout = findCodexRollout(home, [".codex"]);
+              const said = rollout ? readUnder(home, rollout) : undefined;
+              return collectCompactions({
+                harness: "codex",
+                advisor: rt.name,
+                call,
+                count: said !== undefined ? codexCompactions(said) : 0,
+                own: codexOwn({ root: home, home: [".codex"], title }),
+                keeper,
+              });
+            }
+          : undefined,
         read: opencode ? readOpencodeAnswer : readCodexAnswer,
         // Its model usage, as its JSON events report it.
         usage: { route: advisorRoute(rt) as UsageRoute },
@@ -800,6 +945,13 @@ function runCli<S extends z.ZodType>(
      * else `calls`').
      */
     usage?: { route: UsageRoute; calls?: ((out: string) => CallUsage[]) | undefined } | undefined;
+    /** More arguments, which name the call's own folder (Claude Code's `--settings`). */
+    extra?: ((home: string) => string[]) | undefined;
+    /**
+     * The compactions the program made in the call (goal 070), from what it left in its folder:
+     * read once it has ended, before the folder is removed.
+     */
+    collect?: ((home: string) => AdvisorCompaction[]) | undefined;
   },
   system: string,
   prompt: string,
@@ -826,7 +978,7 @@ function runCli<S extends z.ZodType>(
   const stdio: "pipe"[] = ["pipe", "pipe", "pipe"];
   if (rt.token !== undefined) stdio[CLAUDE_TOKEN_FD] = "pipe";
   return new Promise((resolve) => {
-    const child = spawn(rt.argv[0] as string, rt.argv.slice(1), {
+    const child = spawn(rt.argv[0] as string, [...rt.argv.slice(1), ...(rt.extra?.(home) ?? [])], {
       stdio,
       cwd: home,
       detached: true,
@@ -869,9 +1021,19 @@ function runCli<S extends z.ZodType>(
     const finish = (error?: string) => {
       if (done) return;
       done = true;
+      // Its compactions (goal 070): read from its folder before the folder goes.
+      clearTimeout(timer);
+      killGroup();
+      let compactions: AdvisorCompaction[] = [];
+      try {
+        compactions = rt.collect?.(home) ?? [];
+      } catch {
+        compactions = [];
+      }
+      const kept = compactions.length ? { compactions } : {};
       cleanup();
       if (error) {
-        resolve({ output: undefined, error, tokensIn: 0, tokensOut: 0, usd: 0 });
+        resolve({ output: undefined, error, tokensIn: 0, tokensOut: 0, usd: 0, ...kept });
         return;
       }
       // A CLI with JSON events (OpenCode, Codex): its last message is the answer.
@@ -894,7 +1056,7 @@ function runCli<S extends z.ZodType>(
       const why = said?.text || said?.error || err || out;
       resolve(
         parsed.success
-          ? { output: parsed.data, tokensIn, tokensOut, usd: 0, usage }
+          ? { output: parsed.data, tokensIn, tokensOut, usd: 0, usage, ...kept }
           : {
               output: undefined,
               error: `no valid answer: ${why.slice(-300)}`,
@@ -902,6 +1064,7 @@ function runCli<S extends z.ZodType>(
               tokensOut,
               usd: 0,
               usage,
+              ...kept,
             },
       );
     };

@@ -100,6 +100,7 @@ const say = (text) => out({ type: "item.completed", item: item("agent_message", 
       `shell_off=${off("shell_tool") && off("unified_exec")}`,
       `advisor_proxy=${/^http:\/\/127\.0\.0\.1:\d+\/v1\/model-proxy$/.test(baseUrl ?? "") ? "supervisor" : (baseUrl ?? "none")}`,
       `ephemeral=${args.includes("--ephemeral")}`,
+      `compact_prompt=${/^compact_prompt = ".*\(the supervisor's records\)/m.test(config) ? "supervisor" : "none"}`,
       `bypass=${args.includes("--dangerously-bypass-approvals-and-sandbox")}`,
       `own_folder=${/thermite-advisor-/.test(process.cwd()) && fs.realpathSync(process.env.HOME ?? "/") === process.cwd()}`,
       `mcp=${[...config.matchAll(/^\[mcp_servers\."([^"]+)"\]$/gm)].map((m) => m[1]).join(",") || "none"}`,
@@ -123,8 +124,37 @@ const say = (text) => out({ type: "item.completed", item: item("agent_message", 
       }),
     );
   } else if (/thermite-trial submit/.test(prompt)) {
+    // One compaction, as Codex makes one (goal 070): the thread in its rollout, with the summary
+    // its compaction prompt asked for (naming where Thermite keeps the conversation), then the
+    // warning it gives after each compaction.
+    const set = /^compact_prompt = (".*")$/m.exec(config);
+    const where = set
+      ? /before this point in (\S+?)\/(?: \([^)]*\))?, as the newest file named (\S+)-<number>\.md/.exec(
+          JSON.parse(set[1]),
+        )
+      : null;
+    let compacted = "no-prompt";
+    if (where) {
+      const day = path.join(home, "sessions", "2026", "10", "21");
+      fs.mkdirSync(day, { recursive: true });
+      const line = (e) => `${JSON.stringify(e)}\n`;
+      fs.appendFileSync(
+        path.join(day, `rollout-2026-10-21T00-00-00-${thread}.jsonl`),
+        line({ type: "session_meta", payload: { id: thread } }) +
+          line({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: prompt.slice(0, 2000) }] } }) +
+          line({ type: "compacted", payload: { message: `Tidied the kernel. Kept in ${where[1]}/${where[2]}-1.md.` } }),
+      );
+      out({
+        type: "item.completed",
+        item: item("error", {
+          message:
+            "Heads up: Long threads and multiple compactions can cause the model to be less accurate. Start a new thread when possible to keep threads small and targeted.",
+        }),
+      });
+      compacted = "rollout";
+    }
     shell(
-      `printf '\\n/* tidied by codex */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'codex harness: a tidied kernel (${facts})'`,
+      `printf '\\n/* tidied by codex */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'codex harness: a tidied kernel (compacted=${compacted} ${facts})'`,
     );
     say("Submitted.");
   } else {

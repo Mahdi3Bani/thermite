@@ -1,4 +1,5 @@
 import type { CallUsage } from "../core/usage.ts";
+import type { KeptAt } from "../harness/agents/cli-compaction.ts";
 import {
   codexConfig,
   newCodexTally,
@@ -153,12 +154,14 @@ export function codexAdvisorConfig(
   m: ModelConfig,
   proxyRoot: string,
   servers: readonly AdvisorServer[],
+  /** Where the supervisor keeps the conversation before each compaction (goal 070). */
+  keptAt?: KeptAt | undefined,
 ): string {
   return [
     // Top-level keys come before the tables the workers' configuration ends with.
     'sandbox_mode = "read-only"',
     'approval_policy = "never"',
-    codexConfig(m, proxyRoot),
+    codexConfig(m, proxyRoot, undefined, keptAt),
     "[features]",
     ...CODEX_ADVISOR_OFF.map((f) => `${f} = false`),
     "",
@@ -184,14 +187,19 @@ export function codexAdvisorConfig(
   ].join("\n");
 }
 
-/** `codex exec` for an advisor: JSON events, no git check, no rules, no saved session; stdin. */
-export function codexAdvisorArgs(m: ModelConfig): string[] {
+/**
+ * `codex exec` for an advisor: JSON events, no git check, no rules; stdin. No saved session,
+ * unless its conversation is kept (`keep`, goal 070): then Codex keeps its rollout of the thread in
+ * the call's own folder, where the supervisor reads each compaction's conversation from it before
+ * the folder is removed.
+ */
+export function codexAdvisorArgs(m: ModelConfig, o: { keep?: boolean } = {}): string[] {
   return [
     "exec",
     "--json",
     "--skip-git-repo-check",
     "--ignore-rules",
-    "--ephemeral",
+    ...(o.keep ? [] : ["--ephemeral"]),
     "--model",
     m.model,
     "-",

@@ -8,10 +8,13 @@
 //   - the planner plans through Codex, as the planner's own user, with a credential minted for it;
 //   - a worker trial runs Codex as the lane's user, with its own home and configuration, its
 //     approvals and sandbox off, edits the code and submits with thermite-trial;
+//   - it compacts once: its compaction prompt (Thermite's) names where the run keeps the
+//     conversation, and the harness keeps the conversation from Codex's rollout and records it;
 //   - the auditor, given the same model in Codex over REST (goal 073), audits a large gain in
 //     the Codex CLI in the supervisor: in its own folder, with the read-only sandbox, no
 //     approvals asked, no shell, through the supervisor's proxy for the call with a credential
-//     made for it;
+//     made for it, keeping its session there for its compactions, with Thermite's compaction
+//     prompt naming the supervisor's records;
 //   - every model call goes through the harness's proxy or the supervisor's, which adds the
 //     provider's key: the provider sees the key and never a trial's, a check's or a call's
 //     credential;
@@ -218,6 +221,24 @@ try {
     Number(trial.body.turns) >= 1,
     trial.body,
   );
+  // Goal 070: Codex's compaction prompt named where the run keeps the conversation; the harness
+  // read Codex's rollout of the thread from the lane's area and kept it in the run's research
+  // folder, with Codex's summary.
+  const compacted = (await events()).find(
+    (e) => e.kind === "context_compacted" && e.body.harness === "codex",
+  );
+  const kept = String(compacted?.body.snapshot ?? "");
+  check(
+    "Codex's compaction kept its own rollout in the run's research folder, with a summary naming the file",
+    /compacted=rollout /.test(said) &&
+      compacted?.body.number === 1 &&
+      compacted?.body.how === "harness" &&
+      /^compactions\/[A-Za-z0-9._-]+-1\.md$/.test(kept) &&
+      String(compacted?.body.summary ?? "").endsWith(`/${kept}.`) &&
+      /from the Codex CLI's own rollout of the thread/.test(String(compacted?.body.text ?? "")) &&
+      Number(trial.body.compactions) === 1,
+    { said, compacted: compacted?.body, compactions: trial.body.compactions },
+  );
   const good = submit(
     composeEnv,
     "smoke-1",
@@ -242,7 +263,8 @@ try {
       /approvals=never /.test(why) &&
       /shell_off=true /.test(why) &&
       /advisor_proxy=supervisor /.test(why) &&
-      /ephemeral=true /.test(why) &&
+      /ephemeral=false /.test(why) &&
+      /compact_prompt=supervisor /.test(why) &&
       /bypass=false /.test(why) &&
       /own_folder=true /.test(why) &&
       /uid=10001 /.test(why) &&

@@ -23,6 +23,7 @@ import type { Experiment } from "../queue.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
+import type { OnceKeeping } from "./cli-compaction.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { mcpAgentTools } from "./mcp-tools.ts";
 import { type ModelConfig, usageLimitRetry, withAgentsContext } from "./model.ts";
@@ -79,6 +80,11 @@ export interface PlannerCallOptions {
   read?: string | undefined;
   mcp?: { auth: string; servers: string[] } | undefined;
   usage?: ((u: CallUsage) => void) | undefined;
+  /**
+   * Where the call's conversation is kept before each compaction, and who records it (goal 070):
+   * OpenCode's, Codex's or Claude Code's own compactions of a planner call.
+   */
+  compaction?: OnceKeeping | undefined;
 }
 
 /**
@@ -714,12 +720,16 @@ export class Scheduler {
             routeOf(m, via),
           )
         : undefined;
+      // Each call through OpenCode, Claude Code or Codex keeps its conversation before each of its
+      // compactions in the run's research folder, as a Pi call does (goal 070).
+      const keeping = via !== "pi" ? this.cliPlannerCompaction(run, via) : undefined;
       const withMcp = (o: Parameters<Ask>[2]): PlannerCallOptions => ({
         ...(o?.read !== undefined ? { read: o.read } : {}),
         ...(o?.mcp?.length
           ? { mcp: { auth: this.o.service.mintMcpToken(caller), servers: o.mcp } }
           : {}),
         usage,
+        ...(keeping ? { compaction: keeping() } : {}),
       });
       const ask: Ask | undefined =
         via === "opencode" && m && this.o.askOpencode
@@ -1680,6 +1690,34 @@ export class Scheduler {
           error: r.error,
           kept: r.path !== undefined,
         }),
+    };
+  }
+
+  /**
+   * Where a planner call through OpenCode, Claude Code or Codex keeps its conversation before each
+   * of that program's own compactions (goal 070): one place for each call (a plan may take two),
+   * in the run's research folder, named as a Pi call's are. The planner is not told it may read
+   * the file: its summary names it, for the owner.
+   */
+  private cliPlannerCompaction(
+    run: string,
+    harness: "opencode" | "claude-code" | "codex",
+  ): (() => OnceKeeping) | undefined {
+    const store = this.o.service.compactions;
+    if (!store) return undefined;
+    return () => {
+      const of = {
+        run,
+        lane: "planner",
+        trial: null,
+        who: `planner-${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+        source: "planner",
+      };
+      return {
+        keptAt: store.keptAt(of, false),
+        title: "The planner",
+        compacted: (c) => store.fromHarness(of, harness, c),
+      };
     };
   }
 

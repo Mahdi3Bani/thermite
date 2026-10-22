@@ -164,6 +164,63 @@ async function harness() {
     said || live.slice(-4),
   );
   await runner.remove(area);
+
+  // Goal 070: a trial that compacts. The stand-in says the conversation is large after its first
+  // reply, so the real Claude Code compacts before its next request (its window 100,000 tokens,
+  // compacted at 50%). Thermite's PreCompact hook, from Thermite's settings for the run, copies
+  // the transcript as the lane's user and adds its line to the compaction's instructions; the
+  // stand-in's summary names the file, and the harness reads the hook's copy.
+  const area2 = join(scratchDir, "lanes", lane, randomUUID());
+  const repo2 = join(area2, "repo");
+  mkdirSync(join(repo2, "src"), { recursive: true });
+  writeFileSync(join(repo2, "src", "value.txt"), "1\n");
+  execFileSync("git", ["init", "--quiet", "-b", "work"], { cwd: repo2, stdio: "ignore" });
+  await runner.handOver(area2, lane, { harnessReads: true });
+  const compacted = [];
+  const kept = { dir: join(scratchDir, "research", "claude-real-1", "compactions"), stem: "t-compact", readable: true };
+  const ct = await runClaudeTrial(
+    {
+      trialId: "t-compact",
+      token: "trial-compact",
+      run: "claude-real-1",
+      lane,
+      workspace: repo2,
+      workspaceRoot: area2,
+      parentCommit: "0".repeat(40),
+      editablePaths: ["src/**"],
+      brief: "COMPACT-CHECK Look at the value.",
+      wallMs: 150_000,
+    },
+    {
+      runner,
+      model: { ...model, contextWindow: 100_000, compactAt: 50 },
+      apiUrl: "http://127.0.0.1:9",
+      live: () => undefined,
+      progress: () => undefined,
+      submitted: () => undefined,
+      pollMs: 300,
+      keptAt: kept,
+      compacted: (c) => compacted.push(c),
+    },
+  );
+  const first = compacted[0];
+  check(
+    "the real Claude Code compacted a trial's conversation: its PreCompact hook copied the transcript, and the summary names the kept file",
+    first?.number === 1 &&
+      first.own === true &&
+      /from Claude Code's own transcript of the session/.test(first.markdown) &&
+      /COMPACT-CHECK/.test(first.markdown) &&
+      (first.summary ?? "").includes(`${kept.dir}/t-compact-1.md`),
+    {
+      compactions: ct.compactions ?? 0,
+      stopped: ct.stopped,
+      error: ct.error,
+      own: first?.own,
+      summary: first?.summary,
+      head: first?.markdown.slice(0, 300),
+    },
+  );
+  await runner.remove(area2);
   runner.close();
 }
 

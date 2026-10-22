@@ -97,7 +97,7 @@ claims/ findings/ hypotheses/ notes/ report/
                   every claim (verified or draft), finding, hypothesis, note and report section
 lanes/<lane>/     each lane's files, as they were when its last trial ended
 work/<lane>/      the lane's working area: syntheses, outlines, drafts, lists of what to read next
-compactions/      each agent conversation the harness kept whole before it compacted it
+compactions/      each agent conversation the harness kept whole before each compaction
 knowledge/        past research from the folders the campaign may read; its README.md says what is where
 ```
 

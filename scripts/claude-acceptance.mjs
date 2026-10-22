@@ -6,6 +6,8 @@
 //   - the planner plans through Claude Code, with no tools;
 //   - a worker trial runs Claude Code as the lane's user, with the token on file descriptor 3
 //     (in no environment) and the safety flags, edits the code and submits with thermite-trial;
+//   - it compacts once: Thermite's PreCompact hook copies its transcript and names the file in
+//     the summary, and the harness keeps the conversation and records the compaction;
 //   - the auditor, given the subscription's model on Edit rig, audits a large gain in Claude
 //     Code in the supervisor, with no tools, no settings or MCP, its effort, and the token on
 //     file descriptor 3 (in no environment), without the scrub;
@@ -199,6 +201,24 @@ try {
     "the controller followed Claude Code's output (turns counted)",
     Number(trial.body.turns) >= 1,
     trial.body,
+  );
+  // Goal 070: Claude Code's PreCompact hook (Thermite's program, in the image, run as the lane's
+  // user) copied the transcript and told the summary where the run keeps it; the harness kept
+  // that copy in the run's research folder and recorded the compaction.
+  const compacted = (await events()).find(
+    (e) => e.kind === "context_compacted" && e.body.harness === "claude-code",
+  );
+  const kept = String(compacted?.body.snapshot ?? "");
+  check(
+    "Claude Code's compaction kept its own transcript in the run's research folder, with a summary naming the file",
+    /compacted=hook /.test(said) &&
+      compacted?.body.number === 1 &&
+      compacted?.body.how === "harness" &&
+      /^compactions\/[A-Za-z0-9._-]+-1\.md$/.test(kept) &&
+      String(compacted?.body.summary ?? "").includes(`/${kept}. Name that file in your summary`) &&
+      /from Claude Code's own transcript of the session/.test(String(compacted?.body.text ?? "")) &&
+      Number(trial.body.compactions) === 1,
+    { said, compacted: compacted?.body, compactions: trial.body.compactions },
   );
   const good = submit(
     composeEnv,

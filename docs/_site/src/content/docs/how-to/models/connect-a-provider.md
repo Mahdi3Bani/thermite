@@ -117,7 +117,7 @@ Agents in Pi keep to the window: each reply is limited to the room left, and nea
 
 ## Set when a conversation is compacted
 
-A trial's conversation grows with every tool call and result. Near the model's context window, the conversation is **compacted**: the harness keeps the whole conversation as a document in the run's research folder, replaces the older turns with a summary that names that document, and the trial goes on. No trial ends, and no agent is told to submit, because its conversation grew.
+A trial's conversation grows with every tool call and result. Near the model's context window, the conversation is **compacted**: the harness keeps the whole conversation as a document in the run's research folder, replaces the older turns with a summary that names that document, and the trial goes on. In OpenCode v2, Codex and Claude Code the program compacts on its own, and Thermite still keeps its conversation there and tells its summary to name the file. No trial ends, and no agent is told to submit, because its conversation grew.
 
 By default this happens at 80% of the window. To compact at another share, type it in **Compact at** in the agent's **Context** cell on **Edit rig**, or give the rig the model again with `compact_at`, a whole percent from 50 to 95:
 
@@ -135,7 +135,7 @@ Control answers with the point it keeps, and says it in words: `"compact_at":70`
 - **Use** on this page keeps the point while the rig keeps the same model, and another model there removes it. On **Edit rig**, the workers' **Context** cell shows the point and changes it.
 - This point is for the workers' model, and for the planner when it follows the workers. The planner with its own model and each advisor take their own point, and a campaign can set its own for all its runs: see [Give each agent its own model](model-per-agent.md#set-an-agents-context-window-and-compaction).
 
-After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction shows in the run's **History** and in the trial's **Live** view, with the summary. [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
+After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction shows in the run's **History** and in the trial's **Live** view, with the summary, such as "Claude Code compacted the conversation (compaction 1) at about 160,512 tokens, down to about 18,204. The trial goes on. The conversation before it is kept in the run's research folder, compactions/t-…-1.md." [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes, and how each one's conversation is kept: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
 
 ## Add a model the list leaves out
 

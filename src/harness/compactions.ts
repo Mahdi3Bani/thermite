@@ -1,6 +1,7 @@
 import { COMPACTIONS_DIR, compactionFile } from "../core/compaction.ts";
 import { KB_BODY_MAX } from "../core/kb-index.ts";
 import type { LiveLog } from "../core/live.ts";
+import type { CliCompacted, KeptAt } from "./agents/cli-compaction.ts";
 import type { Ledger } from "./ledger.ts";
 
 /**
@@ -68,6 +69,8 @@ export class Compactions {
   private readonly folder: {
     keepCompaction(run: string, name: string, markdown: string): string;
     readCompaction(run: string, name: string): string;
+    /** The folder the kept conversations go in, as the agents see it. */
+    compactionsDir(run: string): string;
   };
 
   constructor(o: {
@@ -83,6 +86,15 @@ export class Compactions {
   /** The kept file's path in the run's folder, for compaction `n`. */
   rel(of: CompactionOf, n: number): string {
     return `${COMPACTIONS_DIR}/${compactionFile(of.who, n)}`;
+  }
+
+  /**
+   * Where the conversation is kept before each compaction, as the agent sees it: for OpenCode's,
+   * Codex's and Claude Code's own summaries to name it, set before the agent starts. `readable`:
+   * the agent has tools to read it (a worker does).
+   */
+  keptAt(of: CompactionOf, readable: boolean): KeptAt {
+    return { dir: this.folder.compactionsDir(of.run), stem: of.who, readable };
   }
 
   /**
@@ -155,18 +167,15 @@ export class Compactions {
   }
 
   /**
-   * A compaction OpenCode, Codex or Claude Code made on its own and reported: the conversation as
-   * Thermite saw it (the trial's live entries until then) is kept, and the compaction recorded.
+   * A compaction OpenCode, Codex or Claude Code made on its own and reported: the conversation
+   * before it is kept (the program's own, which its hook, plugin or rollout gave, else the
+   * trial's live entries until then), and the compaction recorded, with the summary the program
+   * went on from when Thermite could read it.
    */
   fromHarness(
     of: CompactionOf,
     harness: Exclude<CompactionHarness, "pi">,
-    c: {
-      number: number;
-      tokensBefore: number | null;
-      tokensAfter: number | null;
-      markdown: string;
-    },
+    c: Pick<CliCompacted, "number" | "tokensBefore" | "tokensAfter" | "markdown" | "summary">,
   ): void {
     let kept = false;
     let error: string | undefined;
@@ -182,6 +191,7 @@ export class Compactions {
       tokensAfter: c.tokensAfter,
       how: "harness",
       harness,
+      summary: c.summary,
       kept,
       error,
     });

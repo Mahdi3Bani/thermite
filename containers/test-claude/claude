@@ -60,6 +60,40 @@ const facts = [
   `no_settings=${val("--setting-sources") === ""}`,
   `model=${val("--model")}`,
 ].join(" ");
+// One compaction, as Claude Code makes one (goal 070): its transcript in its home, then the
+// PreCompact hook Thermite's settings name (run without a shell, its input on stdin), the
+// PostCompact hook with the summary, which names what the first hook said, then the boundary and
+// the summary in the transcript, and the boundary in its output.
+const compact = () => {
+  const settings = val("--settings");
+  if (!settings) return "no-settings";
+  const hook = JSON.parse(settings).hooks?.PreCompact?.[0]?.hooks?.[0];
+  if (!hook) return "no-hook";
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const transcript = path.join(process.env.HOME, ".claude", "projects", "-workspace", `${session}.jsonl`);
+  fs.mkdirSync(path.dirname(transcript), { recursive: true });
+  const line = (e) => `${JSON.stringify(e)}\n`;
+  fs.appendFileSync(transcript, line({ type: "user", message: { role: "user", content: prompt.slice(0, 2000) } }));
+  const r = require("node:child_process").spawnSync(hook.command, hook.args ?? [], {
+    input: JSON.stringify({ session_id: session, transcript_path: transcript, cwd: process.cwd(), hook_event_name: "PreCompact", trigger: "auto", custom_instructions: null }),
+    encoding: "utf8",
+  });
+  const said = (r.stdout ?? "").trim();
+  const post = JSON.parse(settings).hooks?.PostCompact?.[0]?.hooks?.[0];
+  if (post)
+    require("node:child_process").spawnSync(post.command, post.args ?? [], {
+      input: JSON.stringify({ session_id: session, transcript_path: transcript, cwd: process.cwd(), hook_event_name: "PostCompact", trigger: "auto", compact_summary: `The kernel needs a tidy-up. ${said}` }),
+      encoding: "utf8",
+    });
+  fs.appendFileSync(
+    transcript,
+    line({ type: "system", subtype: "compact_boundary", content: "Conversation compacted", compactMetadata: { trigger: "auto", preTokens: 150000 } }) +
+      line({ type: "user", isCompactSummary: true, message: { role: "user", content: `The kernel needs a tidy-up. ${said}` } }),
+  );
+  out({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 150000, post_tokens: 12000 } });
+  return r.status === 0 && /^Thermite keeps the whole conversation/.test(said) ? "hook" : `hook-failed-${r.status}`;
+};
 out({ type: "system", subtype: "init", tools: val("--tools") === "" ? [] : ["Bash"], mcp_servers: [], model: val("--model") });
 const reset = Math.floor(Date.now() / 1000) + 3 * 3600;
 out({
@@ -93,7 +127,8 @@ if (word) {
   });
   turn([{ type: "text", text: answer }]);
 } else if (/thermite-trial submit/.test(prompt)) {
-  bash(`printf '\\n/* tidied by claude code */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'claude code harness: a tidied kernel (${facts})'`);
+  const kept = compact();
+  bash(`printf '\\n/* tidied by claude code */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'claude code harness: a tidied kernel (compacted=${kept} ${facts})'`);
   turn([{ type: "text", text: "Submitted." }]);
 }
 out({ type: "result", subtype: "success", is_error: false, result: answer, num_turns: n, usage: { input_tokens: 100 * n, output_tokens: 20 * n } });

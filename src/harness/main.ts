@@ -20,6 +20,7 @@ import {
 } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { claudeModelCheck, claudeOnce, runClaudeTrial } from "./agents/claude-code.ts";
+import type { CliCompacted } from "./agents/cli-compaction.ts";
 import { codexModelCheck, codexOnce, runCodexTrial } from "./agents/codex.ts";
 import { DevRuns } from "./agents/devrun.ts";
 import { type ModelConfig, modelConfigFromEnv, withAgentsContext } from "./agents/model.ts";
@@ -504,16 +505,18 @@ async function main(): Promise<void> {
     lane: spec.lane,
   });
   // A compaction OpenCode, Codex or Claude Code reported (goal 070): kept and recorded as a Pi
-  // worker's are.
+  // worker's are, with the program's own conversation where Thermite could read it.
   const compactedIn =
-    (spec: { trialId: string; run: string; lane: string }, harness: "codex" | "claude-code") =>
-    (c: {
-      number: number;
-      tokensBefore: number | null;
-      tokensAfter: number | null;
-      markdown: string;
-    }) =>
+    (
+      spec: { trialId: string; run: string; lane: string },
+      harness: "opencode" | "codex" | "claude-code",
+    ) =>
+    (c: CliCompacted) =>
       service.compactions?.fromHarness(compactionOf(trialOf(spec)), harness, c);
+  // Where a trial's conversation is kept before each compaction, for the program's own summary to
+  // name it: the run's research folder, which the worker may read (goal 070).
+  const keptAtFor = (spec: { trialId: string; run: string; lane: string }) =>
+    service.compactions?.keptAt(compactionOf(trialOf(spec)), true);
   // Each model call's usage (goal 075): the harness records what OpenCode, Codex and Claude Code
   // report of a trial's calls; a Pi worker's own code hands its records over, with the trial's
   // token, while the trial runs.
@@ -559,6 +562,7 @@ async function main(): Promise<void> {
           // A full ChatGPT plan, as the model proxy saw OpenAI say it.
           usageLimitSince: (since) => service.usageLimitSince(since),
           compacted: compactedIn(spec, "codex"),
+          keptAt: keptAtFor(spec),
           modelUsage: workerUsage(spec, m),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
@@ -577,6 +581,7 @@ async function main(): Promise<void> {
             service.subscriptionUsage = { ...u, at: new Date().toISOString() };
           },
           compacted: compactedIn(spec, "claude-code"),
+          keptAt: keptAtFor(spec),
           modelUsage: workerUsage(spec, m),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
@@ -593,6 +598,8 @@ async function main(): Promise<void> {
         progress: (progress) => service.trialReport(trialOf(spec), { progress }),
         submitted: () => service.trialSubmission(spec.trialId),
         messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+        compacted: compactedIn(spec, "opencode"),
+        keptAt: keptAtFor(spec),
         modelUsage: workerUsage(spec, m),
         env: laneCacheEnv(paths.scratchDir, spec.lane),
         signal,
@@ -608,6 +615,8 @@ async function main(): Promise<void> {
         signal,
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
+        // Its conversation before each of the program's own compactions (goal 070).
+        compaction: o?.compaction,
       });
       takeUsage(t, o?.usage);
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
@@ -625,6 +634,8 @@ async function main(): Promise<void> {
         signal,
         role: PLANNER_ROLE,
         mcp: o?.mcp,
+        // Its conversation before each of Claude Code's own compactions (goal 070).
+        compaction: o?.compaction,
       });
       takeUsage(t, o?.usage);
       if (t.usage) service.subscriptionUsage = { ...t.usage, at: new Date().toISOString() };
@@ -642,6 +653,8 @@ async function main(): Promise<void> {
         signal,
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
+        // Its conversation before each of the program's own compactions (goal 070).
+        compaction: o?.compaction,
       });
       takeUsage(t, o?.usage);
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "Codex gave no answer");
@@ -709,6 +722,8 @@ async function main(): Promise<void> {
           live: (entries) => service.trialReport(trialOf(spec), { entries }),
           progress: (progress) => service.trialReport(trialOf(spec), { progress }),
           messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+          compacted: compactedIn(spec, "opencode"),
+          keptAt: keptAtFor(spec),
           modelUsage: m ? workerUsage(spec, m) : undefined,
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,

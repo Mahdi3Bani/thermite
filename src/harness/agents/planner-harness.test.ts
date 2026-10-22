@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,9 +10,11 @@ import { startFakeModel } from "../../testing/fake-model.ts";
 import { makeJudgeEnv } from "../../testing/judge-env.ts";
 import { createHarnessApi } from "../api.ts";
 import { LocalRunner } from "../broker/runner.ts";
+import { Compactions } from "../compactions.ts";
+import { ResearchFolder } from "../research/folder.ts";
 import type { ModelConfig } from "./model.ts";
 import { ModelSource } from "./model-source.ts";
-import { plannerHarness, Scheduler } from "./scheduler.ts";
+import { type PlannerCallOptions, plannerHarness, Scheduler } from "./scheduler.ts";
 
 /**
  * The planner with a model of its own runs in the harness its route names (goal 073): Pi,
@@ -122,6 +124,99 @@ describe("the planner's own harness", () => {
     assert.deepEqual(opencode.asked, []);
     const own = await planWith(undefined, keyed({ api: "opencode", harness: "opencode" }));
     assert.deepEqual(own.asked, ["opencode"]);
+  });
+
+  test("a planner call through Claude Code, Codex or OpenCode keeps its conversation before each of their own compactions in the run's research folder (goal 070)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    const folder = new ResearchFolder({
+      ledger: env.service.ledger,
+      scratchRoot: join(env.paths.scratchDir, "research"),
+      stateRoot: join(env.paths.stateDir, "research-work"),
+      runner: new LocalRunner(env.paths.scratchDir),
+    });
+    env.service.compactions = new Compactions({
+      ledger: env.service.ledger,
+      live: env.service.live,
+      folder,
+    });
+    const given: (PlannerCallOptions | undefined)[] = [];
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: keyed({ api: "claude", harness: "claude-code", model: "claude-opus-5-5" }),
+      owner: "planner-compaction-test",
+      askClaude: async (_m, _prompt, _signal, o) => {
+        given.push(o);
+        // Claude Code compacted the call's conversation once, and the harness keeps it.
+        o?.compaction?.compacted({
+          number: 1,
+          tokensBefore: 120_000,
+          tokensAfter: 9_000,
+          markdown: "# The planner: the conversation before compaction 1\n\nPlanning.\n",
+          own: true,
+          summary: `Planned. Kept in ${o.compaction.keptAt.dir}/${o.compaction.keptAt.stem}-1.md.`,
+        });
+        return PLAN;
+      },
+      runTrial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    });
+    await scheduler.tick();
+    await scheduler.idle();
+    const keeping = given[0]?.compaction;
+    assert.ok(keeping, "the call is told where its conversation is kept");
+    const run = (env.ledger.db.prepare("select id from run").get() as { id: string }).id;
+    assert.equal(keeping.keptAt.dir, join(env.paths.scratchDir, "research", run, "compactions"));
+    assert.match(keeping.keptAt.stem, /^planner-[0-9a-f]{12}$/);
+    assert.equal(keeping.keptAt.readable, false, "the planner is not told it may read it");
+    const e = env.ledger
+      .eventsAfter(0, 100_000)
+      .events.filter((x) => x.kind === "context_compacted")
+      .map((x) => x.body as Record<string, unknown>);
+    assert.equal(e.length, 1);
+    assert.equal(e[0]?.harness, "claude-code");
+    assert.equal(e[0]?.lane, "planner");
+    assert.equal(e[0]?.trial, null);
+    assert.equal(e[0]?.snapshot, `compactions/${keeping.keptAt.stem}-1.md`);
+    assert.match(
+      String(e[0]?.summary),
+      /^Planned\. Kept in .*\/compactions\/planner-[0-9a-f]{12}-1\.md\.$/,
+    );
+    assert.match(
+      readFileSync(join(keeping.keptAt.dir, `${keeping.keptAt.stem}-1.md`), "utf8"),
+      /^# The planner: the conversation before compaction 1/,
+    );
+    // A call through Codex is told too.
+    const viaCodex: (PlannerCallOptions | undefined)[] = [];
+    const codexEnv = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
+    await codexEnv.service.applyCommand(codexEnv.assign);
+    codexEnv.service.compactions = env.service.compactions;
+    const codex = new Scheduler({
+      service: codexEnv.service,
+      runner: new LocalRunner(codexEnv.paths.scratchDir),
+      model: keyed({ harness: "codex" }),
+      owner: "planner-compaction-codex",
+      askCodex: async (_m, _p, _s, o) => {
+        viaCodex.push(o);
+        return PLAN;
+      },
+      runTrial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    });
+    await codex.tick();
+    await codex.idle();
+    assert.match(viaCodex[0]?.compaction?.keptAt.stem ?? "", /^planner-/);
   });
 
   test("each planner call's model usage is in the run's records, with its round, its harness and its provider", async () => {
