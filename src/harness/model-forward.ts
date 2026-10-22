@@ -30,14 +30,26 @@ export interface ForwardCall {
   body: Buffer | undefined;
 }
 
+/** A provider's error answer, as the proxy saw it (goal 079). */
+export interface ProviderErrorAnswer {
+  status: number;
+  /** The answer's headers, lowercase (Retry-After, the rate-limit resets). */
+  headers: Record<string, string>;
+  /** The answer's body, cut to 4,000 characters. */
+  body: string;
+}
+
 /**
  * Forwards one call to the provider. `onUsageLimit`: OpenAI said a ChatGPT plan's usage is full,
- * which a program that keeps only an error's message (the Codex CLI) would lose.
+ * which a program that keeps only an error's message (the Codex CLI) would lose. `onError`: any
+ * error answer, with its status, headers and body, for the harness to tell a rate limit's time,
+ * no credits or a refused key from the rest (goal 079).
  */
 export async function forwardToProvider(
   call: ForwardCall,
   target: ForwardTarget,
   onUsageLimit?: (() => void) | undefined,
+  onError?: ((a: ProviderErrorAnswer) => void) | undefined,
 ): Promise<Response> {
   // A ChatGPT sign-in reaches only OpenAI's Responses API and the account's model list.
   const chatgpt = target.api === "chatgpt";
@@ -76,9 +88,10 @@ export async function forwardToProvider(
         const v = res.headers[k];
         if (typeof v === "string") out.set(k, v);
       }
-      // A ChatGPT plan's refusal is read whole (an error's body is small): OpenAI's code in it
-      // says when the plan's usage is full. The answer goes on as it came.
-      if (chatgpt && status >= 400) {
+      // An error answer is read whole (its body is small): OpenAI's code in a ChatGPT plan's
+      // refusal says when the plan's usage is full, and any provider's status, headers and words
+      // say what kind of error it is (goal 079). The answer goes on as it came.
+      if (status >= 400) {
         const parts: Buffer[] = [];
         let size = 0;
         res.on("data", (d: Buffer) => {
@@ -88,7 +101,17 @@ export async function forwardToProvider(
         });
         res.on("end", () => {
           const all = Buffer.concat(parts);
-          if (all.toString("utf8").includes(CHATGPT_LIMIT_CODE)) onUsageLimit?.();
+          const text = all.toString("utf8");
+          if (chatgpt && text.includes(CHATGPT_LIMIT_CODE)) onUsageLimit?.();
+          const headers: Record<string, string> = {};
+          for (const [k, v] of Object.entries(res.headers))
+            if (typeof v === "string") headers[k.toLowerCase()] = v;
+          onError?.({ status, headers, body: text.slice(0, 4000) });
+          // Its rate-limit headers go on too, for a program that reads them itself.
+          for (const k of ["retry-after", "retry-after-ms"]) {
+            const v = headers[k];
+            if (v) out.set(k, v);
+          }
           resolve(new Response(new Uint8Array(all), { status, headers: out }));
         });
         res.on("error", (e) =>

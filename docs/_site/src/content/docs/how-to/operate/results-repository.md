@@ -122,7 +122,7 @@ Each rig has two branches. Commits are made by `thermite <thermite@localhost>`.
 | | `exports/<export>.json` | The export's manifest: each file with its SHA-256 |
 | | `research/<run>/folder/…` | The [research folder](../../explanation/campaign-modes.md#research) of each run that finished in that export: a research run whose final report it holds, or a hill-climb or goal run that was closed and recorded sources, claims or notes, or compacted a conversation. The past research in the folder's `knowledge/` is left out: those records are in their own runs' exports |
 | | `research/<run>/…`, other files | Only from a full export (a full reset takes one): each run's archive of the web pages it fetched |
-| `thermite/<rig>/ledger` | `ledger.sqlite`, `manifest.json` | A copy of the rig's ledger, at most once a day, and with every full export. Held-out results are left out, so they never leave the rig |
+| `thermite/<rig>/ledger` | `ledger.sqlite`, `manifest.json` | A copy of the rig's ledger, at most once a day, and with every full export. Its table of held-out results is left out. Its events, like `events/<export>.jsonl`, hold the judge's `held_out_checked` events: each held-out case's name, kind and value, never its inputs or output |
 
 The attempts branch only grows: a file already published there is never replaced. The supervisor commits only files that the export's manifest lists, with the SHA-256 it lists. An export that fails that check is never pushed, and the **Results** row says `export … refused: …`.
 

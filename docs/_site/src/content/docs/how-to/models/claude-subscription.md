@@ -94,7 +94,7 @@ The page shows `"claude-max" is saved: its 5 models run only in Claude Code. Cho
 2. Choose a model from the group "claude-max (Claude subscription: runs in Claude Code)". Thermite sets the [worker harness](../../reference/glossary.md), the program the agents run in, to **Claude Code** for you.
 3. Press **Use**.
 
-The page shows `rig-1 takes sonnet-5.5 from "claude-max" under Claude Code within a minute, and checks it.` After a minute, press **refresh** in the status bar, the line along the bottom of the page. The model check's result shows below the rig's row, for example "Its model check passed 1m ago: claude-sonnet-5-5 answered with a correct tool call in 6.1 s (Claude Code)".
+The page shows `rig-1 takes sonnet-5.5 from "claude-max" under Claude Code within a minute, and checks it.` Stay on the page: within a minute or two, the rig's row shows the new model, then the model check's result below it, with no refresh, for example "Its model check passed 1m ago: claude-sonnet-5-5 answered with a correct tool call in 6.1 s (Claude Code)".
 
 To give the planner or an advisor the subscription, and to set an effort, use **Edit rig**: see [Give each agent its own model](model-per-agent.md).
 

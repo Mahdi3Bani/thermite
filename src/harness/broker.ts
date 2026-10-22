@@ -38,6 +38,7 @@ import {
   savedJudgeGpus,
   shareCpus,
 } from "./broker/devices.ts";
+import { emptyScratchKeepingCaches, restoreLaneCaches } from "./broker/lane-caches.ts";
 import {
   isRunpodVariable,
   isSupervisorOnly,
@@ -55,7 +56,7 @@ import {
   writeControlKey,
 } from "./broker/one-container.ts";
 import { killScope, SETPRIV } from "./broker/process.ts";
-import { IDS, roleIds } from "./broker/runner.ts";
+import { IDS, type Role, roleIds } from "./broker/runner.ts";
 import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
 
 /**
@@ -143,19 +144,27 @@ function prepareDirectories(): void {
     );
   }
   chmodSync(stateDir, 0o711);
-  // Scratch is disposable: whatever an earlier run left (including hostile trees) goes now.
+  // Scratch is disposable: whatever an earlier run left (including hostile trees) goes now. The
+  // lanes' cache folders are kept (goal 079): each a real folder its own lane's user owns.
   chownSync(scratchDir, 0, 0);
   chmodSync(scratchDir, 0o755);
-  for (const name of readdirSync(scratchDir)) {
-    tryDo(`clear scratch ${name}`, () =>
-      execFileSync("rm", ["-rf", "--one-file-system", join(scratchDir, name)], { stdio: "ignore" }),
-    );
-  }
+  const kept = emptyScratchKeepingCaches(scratchDir, {
+    keep: (lane, st) => st.uid === roleIds(lane as Role).uid,
+    remove: (path) =>
+      tryDo(`clear scratch ${path}`, () =>
+        execFileSync("rm", ["-rf", "--one-file-system", path], { stdio: "ignore" }),
+      ),
+  });
   const ctl = join(scratchDir, "thermite");
   mkdirSync(join(ctl, "tmp"), { recursive: true });
   execFileSync("chown", ["-R", "-P", `${TU}:${TG}`, ctl], { stdio: "ignore" });
   chmodSync(ctl, 0o711);
   chmodSync(join(ctl, "tmp"), 0o700);
+  // Put back after the controller's folder is its own: each cache stays its lane's.
+  tryDo("keep the lanes' caches", () =>
+    restoreLaneCaches(scratchDir, kept, (dir) => chownSync(dir, TU, TG)),
+  );
+  if (kept.length) log("broker", "kept the lanes' caches over the start", { lanes: kept });
   // Shared temporary places are closed to every role (each gets a TMPDIR of its own); the
   // controller and the judge's kit scripts may still use them (sticky, group thermite).
   for (const d of ["/tmp", "/var/tmp", "/dev/shm"]) {

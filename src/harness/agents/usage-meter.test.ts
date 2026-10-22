@@ -104,7 +104,8 @@ describe("model usage in Pi", () => {
       commit: champion.commit_sha,
       lane: "lane-1",
     });
-    // A model that never submits: the first reply and two nudges.
+    // A model that never submits: the first reply, and one nudge it answers without any work,
+    // which ends the trial (goal 079: no fixed number of nudges).
     const fake = await startFakeModel(() => ({ text: "nothing to change" }));
     const records: CallUsage[] = [];
     const r = await runTrial(
@@ -137,7 +138,7 @@ describe("model usage in Pi", () => {
     await fake.close();
     assert.equal(r.stopped, "no_submission");
     assert.equal(records.length, fake.requests);
-    assert.equal(records.length, 3);
+    assert.equal(records.length, 2);
     assert.ok(records.every((u) => u.tokens_in === 100 && u.tokens_out === 20));
   });
 });

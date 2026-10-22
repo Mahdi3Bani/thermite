@@ -185,7 +185,7 @@ The supervisor carries work into a run as well as out of it. Through its route t
 | Swap a project, kit, model or champion | The harness checks each against the hashes in the signed command |
 | Submit an attempt | Only a trial's token or the proposer token may submit |
 | Set a verdict, a champion or a contract | Its connection to the harness has no way to |
-| Pass an audit or accept a goal | An audit can only block, and only the owner accepts a goal ([Supervision](supervision.md)) |
+| Pass an audit or accept a goal | An auditor clears only what the judge already confirmed, and never sets a verdict; a goal needs a review panel of at least two that all pass it, and the owner's acceptance where the run asks ([Supervision](supervision.md)) |
 | Drop an experiment, give a lane its work, remove a rule, or bring back a rule the owner removed | Its one route to a run's queue only adds and moves experiments for the teachers and the auditor, recorded as theirs. What it adds is work to try, which the judge measures like any other change. Its rules replace only the advisors' own last set, and the harness leaves out any rule the owner removed |
 | Pass a line in Live off as the owner's message, a read receipt or an advisor's answer | Its own lines reach control unsigned, and Live shows an unsigned line as a plain log line |
 | Change the version its harness reports | The harness's build rides in its signed report. The supervisor sends only its own build, in headers. Control uses both to show a rig that is behind and to refuse one it can't work with, never for a verdict ([Rig versions](../reference/rest-api.md#rig-versions)) |

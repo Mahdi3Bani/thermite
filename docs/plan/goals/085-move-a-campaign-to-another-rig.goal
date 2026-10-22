@@ -1,0 +1,48 @@
+---
+id: "085"
+title: "Move a campaign's work to another rig"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["024", "069"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 085 · Move a campaign's work to another rig
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+A new run on one rig can start from a run's champion on another rig, with the same inputs, through control alone:
+
+- **The champion.** **Start a run** (and `start_run`, REST and the command line) takes a run to start from, on any rig. Control gets that run's champion as a Git bundle: from the project's results repository when it has one, else from the source rig's supervisor, which bundles the champion's ref. The new rig's supervisor imports it as it imports a seed today, and checks that the commit is the one asked for.
+- **The inputs.** The new run's imports repeat the source run's: each model by its address and hash ([024](024-runpod-models-and-results.goal)), and each repository by its commit. An input that the source rig got with no address (put in its inbox by hand) is named, and the run does not start until the owner gives an address for it or chooses to go on without it.
+- **What the owner sees.** The new run says where it started from: the rig, the run and the champion's number. The source run is not changed. The owner pauses or closes it, as now.
+
+## Why
+
+On 2026-10-22, a goal campaign moved from a rig with one GPU to a rig with three. Control could not do it. `propagate_champion` sends only a published champion to a run of the same campaign that is already running. The rigs had no results repository, so the champion was not published. Start a run seeds only from the campaign's own repository and commit. The models were in the source rig's inbox, with no address. So whoever ran the infrastructure copied the champion's bundle and the models by hand, once, on the owner's word. The owner wants campaigns managed from Thermite alone: "thermite should be able to be controlled and campaigns etc managed directly from thermite and not external stuff".
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Large files that a lab keeps on shared storage: whether a rig can take a read-only volume for models (set when the rig is added), so that a move names a path on it instead of an address, and control never carries the bytes.
+- Whether a move to a run of the same campaign should stay `propagate_champion`, now able to start from an unpublished champion, or be part of Start a run alone.
+
+## Progress
+
+- 2026-10-22: Goal written as a plan, from the campaign moved by hand that day.
+
+---
+
+Run with `/goal Complete docs/plan/goals/085-move-a-campaign-to-another-rig.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

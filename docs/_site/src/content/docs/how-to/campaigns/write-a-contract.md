@@ -30,10 +30,15 @@ A contract is frozen: to change anything, you write a new version. The [contract
 
 Optional, in every mode:
 
-- `lanes`: `count`, how many [lanes](../../reference/glossary.md) the planner plans (2 when `lanes` is left out), and `trials_per_epoch`, [trials](../../reference/glossary.md) per lane per round (3). How many trials run at the same time is the rig's **Workers at a time**, not `count`: see [Start a campaign from the dashboard](start-from-dashboard.md#4-where-it-runs). If you write `lanes`, write `count` in it. `lanes.limits` raises a lane's memory, disk, time and process limits; `count` is 16 at most.
+- `lanes`: `count`, how many [lanes](../../reference/glossary.md) the planner plans (2 when `lanes` is left out), and `trials_per_epoch`, [trials](../../reference/glossary.md) per lane per round (3). How many trials run at the same time is the rig's **Workers at a time**, not `count`: see [Start a campaign from the dashboard](start-from-dashboard.md#5-where-it-runs). If you write `lanes`, write `count` in it. `lanes.limits` raises a lane's memory, disk, time and process limits; `count` is 16 at most.
 - `budget`: `wall_hours`, `device_hours` and `llm_usd`. None is set unless you set it. See [Set a budget or a stop time](budget-and-stop-time.md).
-- `notes`: anything the planner and the workers should know.
+- `notes`: the campaign's additional information, in Markdown: background, links, what was tried, limits, and what good looks like. The workers and the advisors read it in every mode, and the planner in a hill climb or goal campaign.
+- `hypotheses`: what you think is true, one entry each, for the agents to test. A research run starts with them as its hypotheses.
+- `ideas`, in a hill climb or a goal campaign: ideas to try, one entry each. The planner turns those that fit into experiments.
+- `links`, in a hill climb or a goal campaign: starting links, pages the agents get with the brief. A research campaign's are its `seeds`.
 - `models`: [model files](../../reference/glossary.md) the project needs, each with its `name` and `sha256`: data files your project loads that are not in its repository, such as a model's weights.
+
+[The campaign's brief](../../reference/contract.md#the-campaigns-brief) says what each agent gets. `thermite assign --info-file brief.md` puts a Markdown file in `notes`, so you can keep it beside the contract.
 
 ## 2. Write a hill climb
 
@@ -66,7 +71,7 @@ Optional, in every mode:
 - `objective.primary` names one of the kit's metrics, which way is better (`max` or `min`), and `min_effect`, the smallest gain that counts, as a fraction: `0.05` is 5%.
 - `cells` are measured for every change. `held_out_cells` run only when the judge confirms a change that already looked better, so a change can't win by helping only the cells agents see.
 - `acceptance.runs_per_cell` (1 to 9; 1 unless set) runs each cell several times per measurement and keeps the middle value. The **New campaign** page's **Runs per case** sets 3 unless changed, so write `3` to judge as a campaign made there does. `acceptance.equivalence_band` (0.005) is how close counts as "no change". On a noisy machine, such as a shared CPU, raise both: Thermite's own smoke check uses 3 and 0.05.
-- `acceptance.audit` sets when a confirmed win waits for an audit: a gain above `absolute` (0.15, that is 15%), or above `ratio_to_median` (3) times the median of the run's earlier wins, once it has three. See [Decide what waits for you](decide-what-waits.md#audits).
+- `acceptance.audit` sets when a confirmed win goes to the rig's auditor, if it has one: a gain above `absolute` (0.15, that is 15%), or above `ratio_to_median` (3) times the median of the run's earlier wins, once it has three. See [Decide what waits for you](decide-what-waits.md#audits).
 
 To keep a second metric from getting worse, add a guard. To refuse a change whose metric crosses a line, add a hard constraint. Both name kit metrics:
 
@@ -134,7 +139,7 @@ Each goal has an `id`, a `description` and one way to `verify` it:
 | --- | --- | --- |
 | `code` | The kit's check passes on every cell of the named verifier | `verifier`: a verifier in the kit's `kit.json` |
 | `metric_threshold` | In every cell, the metric's 95% interval over `threshold_reps` runs (5) is wholly on the passing side of `op` and `value` | `metric`: a kit metric. `cells`: leave it out for every cell |
-| `review` | The rig's review panel passes it, and then you accept it. A review panel chosen on **Edit rig** is three reviewers with one model; one in the advisors file has two to five | `criteria`. See [Configure advisors](../operate/advisors.md) |
+| `review` | The rig's review panel passes it; you accept it too when the run asks you about reviews. A review panel chosen on **Edit rig** is three reviewers with one model; one in the advisors file has two to five | `criteria`. See [Configure advisors](../operate/advisors.md) |
 
 The rest of a goal contract:
 
@@ -171,8 +176,8 @@ The judge first checks which goals the starting point already meets. If it meets
 ```
 
 - `project.repo` is required in every mode. A research campaign fetches no repository, so any short name does, such as `research`.
-- `min_duration` is required. The run ends after `max_duration` of running time, or after `min_duration` when there is no `max_duration`. Paused time doesn't count. Durations look like `30m`, `8h` or `2d`.
-- A claim can name the question it answers. The report counts the verified claims for each of the `questions`, and lists a question with none as open. There is no web search: agents start from the `seeds` and follow links.
+- `min_duration` is required: the time the run works at least, a floor, never a stop. The run ends after `max_duration` of running time; without `max_duration` it runs until you stop it. Paused time doesn't count, nor time its agents could not work because of the model provider. Durations look like `30m`, `8h` or `2d`.
+- A question can be long and have several lines. A claim can name the question it answers. The report counts the verified claims for each of the `questions`, and lists a question with none as open. There is no web search: the harness fetches and archives the `seeds` when the run starts, and agents follow links from them.
 - `scope.include_domains`, when not empty, limits fetching to those domains. `scope.exclude_domains` are never fetched.
 - `quality.min_independent_sources` (2): the report lists a verified claim whose quotes come from at least this many domains apart from the others, and says for each finding how many of its claims do.
 

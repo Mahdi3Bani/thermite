@@ -60,7 +60,7 @@ const TIP = {
   in: "Tokens sent to the model. Cached: the provider read them from its cache. Not cached: the provider read them again. Not reported: the harness does not say which.",
   out: "Tokens the model wrote, with its reasoning. Under it: the reasoning tokens, where the provider counts them.",
   speed:
-    "Tokens out a second, from the first token to the last, for each call. The big number is the median of the calls. p10–p90: 8 of 10 calls are in this range. Each model's own speed is in the table.",
+    "Tokens out a second over each call's whole time, from the request to the last token. The big number is the median of the calls. p10–p90: 8 of 10 calls are in this range. Each model's own speed is in the table.",
   time: "All calls added together, from the request to the last token. Calls at the same time each count. Under it: the median time to the first token.",
   model: "The model, then the harness that ran it and the provider that served it.",
   tin: "Tokens in: all that was sent to the model.",
@@ -75,7 +75,7 @@ const TIP = {
   clock:
     "Trials done, rounds, the run's time since it started (to its end, once it is finished), and the time in model calls. The time in calls adds all calls together, from the request to the last token: calls at the same time each count. Code counts every call; agents can't change these numbers. REST and MCP give the same numbers.",
   runSpeed:
-    "Tokens out a second, from the first token to the last, for each call. The big number is the median of the calls. p10–p90: 8 of 10 calls are in this range. Each model's own speed is on the Stats tab.",
+    "Tokens out a second over each call's whole time, from the request to the last token. The big number is the median of the calls. p10–p90: 8 of 10 calls are in this range. Each model's own speed is on the Stats tab.",
 };
 const costTip = (gpu: string) =>
   `Tokens times each model's price for a million tokens: in, cached in, out. Prices: Settings › Providers. “on a plan”: a subscription; its tokens are counted, not priced. “no price”: none is known, so it is never $0. GPU time on RunPod: ${gpu}.`;

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Decision } from "../store.ts";
-import { decidedState } from "./operator.ts";
+import type { AttemptView, RigView, RunView } from "../views.ts";
+import { moreText } from "./components.ts";
+import { decidedState, outcome, waitingOn } from "./operator.ts";
 
 const NOW = Date.parse("2026-10-21T21:00:00Z");
 const item = { rig: "rig-a", run: "run-1", attempt: "a-1" };
@@ -63,5 +65,60 @@ describe("a decision the owner made", () => {
     // The item began waiting after the owner's choice: the old choice is not this wait's.
     const again = decidedState([decision({})], item, "2026-10-21T20:59:55Z", label, NOW);
     assert.equal(again, undefined);
+  });
+});
+
+describe("what waits for the owner (goal 079)", () => {
+  test("an audit the rig's auditor will decide is not counted; a block, or no auditor, is", () => {
+    const audit = (decision: string | null) => ({
+      attempt: "a-1",
+      reason: "gain 20.0% above 15%",
+      decision,
+      at: "2026-10-21T20:00:00Z",
+      expected_seq: 1,
+      reasons: null,
+    });
+    const run = (audits: ReturnType<typeof audit>[]) =>
+      ({
+        status: "running",
+        pending_promotions: [],
+        agents_stopped: null,
+        audits,
+        reviews: [],
+        conclusions: [],
+      }) as unknown as RunView;
+    const rig = (auditor: boolean) =>
+      ({ supervisor: { advisors: { roles: { auditor } } } }) as unknown as RigView;
+    assert.equal(waitingOn(run([audit(null)]), rig(true)), 0);
+    assert.equal(waitingOn(run([audit(null)]), rig(false)), 1);
+    assert.equal(waitingOn(run([audit("block")]), rig(true)), 1);
+    assert.equal(waitingOn(run([audit("skipped")]), rig(false)), 0);
+  });
+});
+
+describe("a long text on the dashboard", () => {
+  test("shows its start and, with more, all of it, without the page's script", () => {
+    assert.equal(moreText("short <b>", 200), "short &lt;b&gt;");
+    const long = `GK-PN.1: ${"every PN MUL_MAT uses an fp32 reference path; ".repeat(8)}the end <i>`;
+    const html = moreText(long, 200);
+    assert.match(html, /^<details class="more"><summary><span class="more-part">GK-PN\.1: /);
+    assert.match(html, /…<\/span> <span class="more-tog"><\/span><\/summary>/);
+    assert.ok(html.endsWith("the end &lt;i&gt;</details>"), "the whole text, escaped");
+    assert.doesNotMatch(html, /<i>/);
+  });
+});
+
+describe("an audit the rig's auditor will decide (goal 079)", () => {
+  const run = (audits: unknown[]) =>
+    ({ champion: [], audits, pending_promotions: [] }) as unknown as RunView;
+  const attempt = { id: "a-1", lifecycle: "awaiting_audit", history: [] } as unknown as AttemptView;
+  const rig = (auditor: boolean) =>
+    ({ supervisor: { advisors: { roles: { auditor } } } }) as unknown as RigView;
+  const held = [{ attempt: "a-1", decision: null, reason: "big_gain", at: "2026-10-22T07:00:00Z" }];
+
+  test("with an auditor it is Auditing, not Needs you; with none, or no rig given, it needs you", () => {
+    assert.deepEqual(outcome(run(held), attempt, rig(true)), { word: "Auditing", tone: "info" });
+    assert.equal(outcome(run(held), attempt, rig(false)).word, "Needs you");
+    assert.equal(outcome(run(held), attempt).word, "Needs you");
   });
 });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { parseContract } from "../core/contract.ts";
 import { makeJudgeEnv } from "../testing/judge-env.ts";
-import { expandArgv, KitSchema, kitProblems } from "./kit.ts";
+import { cellParams, cellTimeoutS, expandArgv, KitSchema, kitProblems } from "./kit.ts";
 
 const base = {
   schema_version: 1,
@@ -48,6 +48,48 @@ describe("kit commands", () => {
         () => KitSchema.parse(withRun({ copy, command: ["python3", arg] })),
         /not in run\.copy/,
         `${JSON.stringify(copy)} ${arg}`,
+      );
+    }
+  });
+
+  test("a cell may set its own time limit; a cell of parameters alone keeps the kit's", () => {
+    const kit = KitSchema.parse({
+      ...base,
+      cells: {
+        small: { work: 1, n: 64 },
+        diag: { params: { work: 1, n: 8192, mode: "full" }, timeout_s: 1800 },
+        plain: { params: { work: 2 } },
+        // A parameter that happens to be called params is still a parameter.
+        named: { params: "fast", work: 3 },
+      },
+      run: { ...base.run, timeout_s: 120 },
+    });
+    assert.deepEqual(cellParams(kit, "small"), { work: 1, n: 64 });
+    assert.deepEqual(cellParams(kit, "diag"), { work: 1, n: 8192, mode: "full" });
+    assert.deepEqual(cellParams(kit, "plain"), { work: 2 });
+    assert.deepEqual(cellParams(kit, "named"), { params: "fast", work: 3 });
+    assert.equal(cellParams(kit, "nope"), undefined);
+    assert.equal(cellParams(kit, "constructor"), undefined);
+    assert.equal(cellTimeoutS(kit, "diag"), 1800);
+    assert.equal(cellTimeoutS(kit, "small"), 120);
+    assert.equal(cellTimeoutS(kit, "plain"), 120);
+    assert.equal(cellTimeoutS(kit, "named"), 120);
+    // The kit's default when run.timeout_s is left out.
+    assert.equal(cellTimeoutS(KitSchema.parse(base), "small"), 300);
+    // An old kit parses exactly as it is written.
+    assert.deepEqual(KitSchema.parse(base).cells, base.cells);
+    for (const [cell, message] of [
+      [{ params: { n: 1 }, timeout_s: 0 }, /too small|>0/i],
+      [{ params: { n: 1 }, timeout_s: 1.5 }, /int/i],
+      [{ params: { n: 1 }, timeout: 30 }, /unrecognized key/i],
+      [{ params: { n: { deep: 1 } } }, /invalid/i],
+    ] as const) {
+      const r = KitSchema.safeParse({ ...base, cells: { bad: cell } });
+      assert.equal(r.success, false, JSON.stringify(cell));
+      assert.match(JSON.stringify(r.error?.issues), message, JSON.stringify(cell));
+      assert.ok(
+        r.error?.issues.some((i) => i.path[0] === "cells" && i.path[1] === "bad"),
+        JSON.stringify(r.error?.issues),
       );
     }
   });
@@ -139,8 +181,10 @@ describe("kit commands", () => {
           verify: { type: "metric_threshold", metric: "ops", op: ">=", value: 1, cells: ["big"] },
         },
       ],
+      held_out_cells: ["small", "held"],
     });
     assert.deepEqual(kitProblems(goal, kit), [
+      "held_out_cells names cell held, which the kit does not have",
       "goal loads names verifier loads, which the kit does not have",
       "goal fast names cell big, which the kit does not have",
     ]);

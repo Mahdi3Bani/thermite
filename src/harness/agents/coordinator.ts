@@ -1,4 +1,5 @@
 import type { StoredRule } from "../../core/commands.ts";
+import { ideaWords } from "../../core/queue-target.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { directionOf, type Experiment, type ExperimentQueue, inFamily } from "../queue.ts";
 import type { NewFamily, QueuePlan } from "./planner.ts";
@@ -39,6 +40,9 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
  * (the worker stopped without submitting), or the trial's stopped reason (interrupted, error,
  * wall, turns, context; a research trial's finished).
  */
+/** The provider's error kinds after which a trial never really tried its experiment (goal 079). */
+const PROVIDER_KINDS = new Set(["rate_limit", "server", "credits", "auth", "route"]);
+
 export function resultOf(stopped: string, attempt?: string | null | undefined): string {
   if (attempt) return "submitted";
   return stopped === "no_submission" || stopped === "submitted" ? "no_attempt" : stopped;
@@ -181,6 +185,32 @@ export class Coordinator {
   }
 
   /**
+   * Tops the queue up from the lanes' ideas (goal 081): the oldest distinct ones go up next, as
+   * the planner's, until `need` are accepted. An idea is distinct when its words repeat no other
+   * experiment of the run (queued, in progress, tried or dropped) and no idea taken before it; an
+   * idea in a direction an AVOID rule names stays where it is. The rest wait, as before, for the
+   * planner's model or the owner.
+   */
+  acceptIdeas(run: string, need: number, avoided: (x: Experiment) => boolean, why: string) {
+    const out: Experiment[] = [];
+    if (need <= 0) return out;
+    const seen = new Set(
+      this.queue
+        .all(run)
+        .filter((x) => x.state !== "proposed")
+        .map((x) => ideaWords(x.title)),
+    );
+    for (const x of this.queue.proposed(run)) {
+      if (out.length >= need) break;
+      const words = ideaWords(x.title);
+      if (!words || seen.has(words) || avoided(x)) continue;
+      seen.add(words);
+      out.push(this.queue.accept(run, x.id, { by: PLANNER, why }, PLANNER));
+    }
+    return out;
+  }
+
+  /**
    * Applies a model's checked answer: accepted ideas and drops, new experiments (their refs
    * become ids), moves, the rules from the owner's messages, and the old rules in words it
    * converted to named directions. A change the queue or the rules no longer allow (the owner
@@ -298,33 +328,41 @@ export class Coordinator {
   }
 
   /**
-   * A trial ended: its experiment is done, with its attempt or why there is none. One whose
-   * trial was interrupted (a reset, a pause, a restart) or failed was not really tried: it goes
-   * back to the top of the queue, as a new experiment by its author, saying so.
+   * A trial ended: its experiment is done, with its attempt or why there is none, and how its
+   * trial ended in words (its cause). One whose trial never really tried it goes back to the top
+   * of the queue, the same row with its cause (goal 079): a trial interrupted (a reset, a pause, a
+   * restart), or one that ended on the provider's error (a rate limit, a 5xx, no credits, a
+   * refused key or an unserved model). Any other failure is a tried experiment, with its cause.
    */
   finish(
     trial: string,
-    r: { result: string; attempt?: string | null | undefined },
+    r: {
+      result: string;
+      attempt?: string | null | undefined;
+      cause?: string | undefined;
+      /** The provider's error's kind, when the trial ended on one. */
+      kind?: string | undefined;
+    },
     actor: string,
   ): void {
-    const x = this.queue.finish(trial, r, actor);
-    if (!x || (r.result !== "interrupted" && r.result !== "error")) return;
-    this.queue.add(
-      x.run,
-      {
-        title: x.title,
-        details: x.details || undefined,
-        family: x.family || undefined,
-        why: clip(
-          `tried again: its trial on ${x.lane ?? "a lane"} ${r.result === "error" ? "failed" : "was interrupted"} (${x.id})${x.why ? `. ${x.why}` : ""}`,
-          2000,
-        ),
-        by: x.added_by,
-        position: "top",
-        requeued: { experiment: x.id, trial, lane: x.lane, result: r.result },
-      },
-      PLANNER,
-    );
+    const never =
+      !r.attempt &&
+      (r.result === "interrupted" ||
+        (r.result === "error" && r.kind !== undefined && PROVIDER_KINDS.has(r.kind)));
+    if (never) {
+      this.queue.returnToQueue(
+        trial,
+        {
+          result: r.result,
+          cause:
+            r.cause ??
+            (r.result === "interrupted" ? "its trial was interrupted" : "the provider failed"),
+        },
+        actor,
+      );
+      return;
+    }
+    this.queue.finish(trial, { result: r.result, attempt: r.attempt, cause: r.cause }, actor);
   }
 
   /**
@@ -334,15 +372,24 @@ export class Coordinator {
   finishOrphans(actor: string): void {
     const rows = this.ledger.db
       .prepare(
-        `select e.trial as trial, t.stopped as stopped, t.attempt as attempt from experiment e
-         left join trial t on t.id = e.trial
+        `select e.trial as trial, t.stopped as stopped, t.attempt as attempt, t.error as error
+         from experiment e left join trial t on t.id = e.trial
          where e.state = 'assigned' and (t.id is null or t.ended_at is not null)`,
       )
-      .all() as { trial: string; stopped: string | null; attempt: string | null }[];
+      .all() as {
+      trial: string;
+      stopped: string | null;
+      attempt: string | null;
+      error: string | null;
+    }[];
     for (const r of rows)
       this.finish(
         r.trial,
-        { result: resultOf(r.stopped ?? "interrupted", r.attempt), attempt: r.attempt },
+        {
+          result: resultOf(r.stopped ?? "interrupted", r.attempt),
+          attempt: r.attempt,
+          cause: r.error ?? "the harness restarted while its trial ran",
+        },
         actor,
       );
   }

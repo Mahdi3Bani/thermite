@@ -498,9 +498,9 @@ describe("control dashboard", () => {
       new RegExp(`data-runs-in="${role}"[^>]*>(?:(?!</select>)[\\s\\S])*`).exec(page)?.[0] ?? "";
     assert.match(runsIn("teachers"), /<option value="opencode" selected>OpenCode v2<\/option>/);
     // The auditor on a Claude subscription: Claude Code. The merged by model, with no model of
-    // its own: the rig default.
+    // its own: the advisors file's, which the supervisor has not reported here.
     assert.match(runsIn("auditor"), /<option value="claude-code" selected>Claude Code<\/option>/);
-    assert.match(runsIn("merged_by"), /<option value="" selected>rig default<\/option>/);
+    assert.match(runsIn("merged_by"), /<option value="" selected>rig's file<\/option>/);
     // The Codex CLI speaks only OpenAI's Responses API: not with Anthropic's.
     const noCodex = await s.post("/ui/rigs/rig-a/edit", { ...form, harness: "codex" });
     assert.match(
@@ -1105,7 +1105,7 @@ describe("control dashboard", () => {
       home,
       /The judge measured the change again on new runs: \+\d+\.\d% compared with the champion\./,
     );
-    assert.match(home, /This rig changes its champion only after you agree/);
+    assert.match(home, /It waits for you because you asked to decide every change/);
     assert.match(home, /The change becomes <b>champion #2<\/b>/);
     assert.match(home, /The champion is the version of the project that the agents start from/);
     // A form without the session's token is refused.
@@ -1127,12 +1127,9 @@ describe("control dashboard", () => {
     assert.equal(ok.status, 303);
     // The page says the command went, and the decision shows as sent, without its buttons.
     const back = String(ok.headers.get("location"));
-    assert.match(back, /sent=Control%20sent%20the%20command%20to%20rig-a/);
+    assert.match(back, /sent=Sent%20to%20rig-a%20at%20\d\d%3A\d\d%20UTC\./);
     const sent = await (await s.get(back)).text();
-    assert.match(
-      sent,
-      /Control sent the command to rig-a\. The rig does it in less than 10 seconds/,
-    );
+    assert.match(sent, /<b class="ok">Sent to rig-a at \d\d:\d\d UTC\.<\/b>/);
     // The decision leaves Needs you at once, before the rig has done it; the change's own page
     // still says what was chosen.
     const home2 = await (await s.get("/ui")).text();
@@ -2380,13 +2377,9 @@ describe("the Rigs list", () => {
     );
     assert.match(stopped, /<span class="rsub">then it stopped<\/span>/);
     assert.match(stopped, /storage only<span class="rsub">\$\d+\.\d\d so far<\/span>/);
-    // The sidebar and the status bar call it stopped, not stale, and Needs you has no card for it.
-    assert.match(
-      list,
-      new RegExp(
-        `<span class="dot "></span><span class="name">${s.idle}</span><span class="right">stopped</span>`,
-      ),
-    );
+    // The status bar calls it stopped, not stale, and Needs you has no card for it. The sidebar
+    // lists no rigs (goal 077): the Rigs page does.
+    assert.doesNotMatch(list, new RegExp(`<span class="name">${s.idle}</span>`));
     assert.match(list, /\d+ rigs(?: · \d+ stale)? · 1 stopped<\/span>/);
     assert.doesNotMatch(
       await s.get("/ui"),

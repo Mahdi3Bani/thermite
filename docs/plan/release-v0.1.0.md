@@ -51,6 +51,7 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 | [008 · Community files and contributor docs](goals/008-community-files.goal) | `VERIFIED` | — |
 | [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `IN_PROGRESS` | — |
 | [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `VERIFIED` | — |
+| [080 · A button says at once that it took, and shows its outcome without a refresh](goals/080-buttons-show-progress.goal) | `VERIFIED` | [063](goals/063-scan-and-steer.goal) |
 
 ### Running campaigns
 
@@ -69,6 +70,11 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [073 · A harness for each agent](goals/073-harness-for-each-agent.goal) | `VERIFIED` | [029](goals/029-api-mcp-coverage.goal), [056](goals/056-codex-harness.goal) |
 | [074 · One name for each agent](goals/074-one-name-for-each-agent.goal) | `VERIFIED` | [073](goals/073-harness-for-each-agent.goal) |
 | [075 · Model usage for each run, campaign and the whole system](goals/075-model-usage.goal) | `VERIFIED` | — |
+| [079 · Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion](goals/079-thermite-overhead.goal) | `VERIFIED` | — |
+| [077 · Archive a campaign; folders in the left navigation; no rigs there](goals/077-archive-and-folders.goal) | `VERIFIED` | — |
+| [078 · A campaign's brief: additional information, ideas and hypotheses for every mode](goals/078-campaign-brief.goal) | `VERIFIED` | — |
+| [082 · The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check](goals/082-judge-findings-in-view.goal) | `VERIFIED` | — |
+| [081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups](goals/081-ideas-first.goal) | `VERIFIED` | [064](goals/064-experiment-queue.goal), [066](goals/066-direction-rules.goal), [074](goals/074-one-name-for-each-agent.goal) |
 
 ### Install from images
 

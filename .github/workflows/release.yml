@@ -207,6 +207,9 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           # An image either way, so the build reports its digest.
           outputs: type=image,push=${{ env.PUSH == 'true' || matrix.cuda }}
+          # A release builds every layer again, so each image has its base's newest system
+          # packages; a dry run reads the cache.
+          no-cache: ${{ env.PUSH == 'true' }}
           cache-from: type=gha,scope=${{ matrix.key }}
           # The CUDA layers would crowd everything else out of the cache.
           cache-to: ${{ !matrix.cuda && format('type=gha,mode=max,scope={0}', matrix.key) || '' }}

@@ -8,6 +8,7 @@ import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import { ProviderWatch } from "./provider-errors.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import {
@@ -18,8 +19,14 @@ import {
   researchOutput,
 } from "./research-tools.ts";
 import { PiMeter } from "./usage-meter.ts";
-import type { CompactionLink, IdeaInput, McpForAgent, TrialResult } from "./worker.ts";
-import { IDEA_TOOL, keepGoing, proposeIdea, withoutPastThinking } from "./worker.ts";
+import type {
+  CompactionLink,
+  IdeaInput,
+  McpForAgent,
+  ProviderWait,
+  TrialResult,
+} from "./worker.ts";
+import { IDEA_TOOL, keepGoing, proposeIdea, watchedStream, withoutPastThinking } from "./worker.ts";
 
 /**
  * A research trial in Pi: a fresh agent session with the research tools and file tools over its
@@ -36,7 +43,8 @@ export interface ResearchTrialSpec {
   run: string;
   lane: string;
   brief: string;
-  wallMs: number;
+  /** The trial's length: none unless the campaign or the rig sets one (goal 079). */
+  wallMs?: number | undefined;
   /** A cap on the trial's turns: none unless configured. */
   maxTurns?: number | undefined;
   /** The lane's limits (an OpenCode trial runs under them; Pi's worker under its own). */
@@ -62,6 +70,8 @@ export interface ResearchDeps {
   compaction?: CompactionLink | undefined;
   /** Each model call's usage, as the trial's code measures it (goal 075). */
   modelUsage?: ((u: CallUsage) => void) | undefined;
+  /** Told of each wait for the provider (a rate limit, a failed call) before it (goal 079). */
+  waiting?: ((w: ProviderWait) => void) | undefined;
 }
 
 /** A research worker's field notes, told apart from its research notes. */
@@ -141,6 +151,8 @@ export async function runResearchTrial(
   const { models, model, thinkingLevel } = buildModel(deps.model);
   // Each model call's usage, the compaction summaries' included (goal 075).
   const meter = deps.modelUsage ? new PiMeter(deps.modelUsage) : undefined;
+  // The provider's error answers, for a rate limit's time (goal 079).
+  const watch = new ProviderWatch();
   const agent = new Agent({
     initialState: {
       systemPrompt: `${
@@ -152,7 +164,7 @@ export async function runResearchTrial(
       tools,
       thinkingLevel,
     },
-    streamFn: meter ? meter.streamFn(models) : models.streamSimple.bind(models),
+    streamFn: watchedStream(models, watch, meter),
     convertToLlm: withoutPastThinking,
     // One tool call at a time: each is a request to the harness, in the order the model chose.
     toolExecution: "sequential",
@@ -195,10 +207,14 @@ export async function runResearchTrial(
   });
   // After the turn cap above: the owner's messages are not fetched on the turn it stops.
   if (deps.link) linkSession(agent, deps.link);
-  const wall = setTimeout(() => {
-    result.stopped = "wall";
-    agent.abort();
-  }, spec.wallMs);
+  // A trial's length only when the campaign or the rig sets one (goal 079).
+  const wall =
+    spec.wallMs !== undefined
+      ? setTimeout(() => {
+          result.stopped = "wall";
+          agent.abort();
+        }, spec.wallMs)
+      : undefined;
   try {
     // With the note tool, the brief says how to keep field notes, and how they differ from
     // research notes.
@@ -210,10 +226,17 @@ export async function runResearchTrial(
       () => result.stopped !== "no_submission",
       deps.model.contextWindow,
       compactor,
+      {
+        failuresInARow: spec.limits?.failuresInARow,
+        cutoffsInARow: spec.limits?.cutoffsInARow,
+        watch,
+        onWait: deps.waiting,
+      },
     );
     if (end) {
       result.stopped = end.stopped;
       result.error = end.error;
+      if (end.kind) result.errorKind = end.kind;
     }
     if (result.stopped === "no_submission") result.stopped = "finished";
   } catch (err) {
@@ -222,7 +245,7 @@ export async function runResearchTrial(
       result.error = err instanceof Error ? err.message : String(err);
     }
   } finally {
-    clearTimeout(wall);
+    if (wall) clearTimeout(wall);
   }
   if (compactor.count) result.compactions = compactor.count;
   return result;

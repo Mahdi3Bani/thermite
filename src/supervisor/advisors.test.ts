@@ -317,7 +317,54 @@ describe("advisors", () => {
     );
   });
 
-  test("the review panel passes a subjective goal, which still waits for the owner", async () => {
+  test("an auditor that fails its last try hands the audit to the owner, with the error (goal 079)", async () => {
+    const env = makeJudgeEnv({
+      contract: {
+        acceptance: {
+          looks: [3, 6],
+          confirm_blocks: 4,
+          audit: { ratio_to_median: 3, absolute: 0.15 },
+        },
+      },
+    });
+    await env.service.applyCommand(env.assign);
+    const id = (
+      await env.service.submitAttempt(
+        { run: "js-1", patch_base64: env.patch(FAST_KERNEL), hypothesis: "h", known_flaws: [] },
+        "t",
+      )
+    ).attempt;
+    await env.drain();
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
+    const script = join(dir, "auditor.mjs");
+    writeFileSync(script, `console.log("no answer today"); process.exit(3);`);
+    const advisors = AdvisorsConfig.parse({
+      auditor: {
+        name: "cli-auditor",
+        runtime: "cli",
+        argv: [process.execPath, script],
+        restricted: true,
+      },
+    });
+    const home = mkdtempSync(join(tmpdir(), "thermite-sup-"));
+    let state = emptyAdviseState();
+    const cfg = { harnessUrl: "http://harness", harnessToken: tokens.supervisor, home, advisors };
+    for (let n = 1; n <= 5; n++) {
+      state = await adviseOnce({ ...cfg, retryMs: 0, fetchImpl: harnessFetch(env) }, state);
+      assert.equal(
+        String(env.ledger.getAttempt(id)?.lifecycle),
+        n < 5 ? "awaiting_audit" : "awaiting_approval",
+        `after try ${n}`,
+      );
+    }
+    assert.match(
+      String(env.ledger.latestEventBody("promotion_pending", id)?.reason),
+      /the auditor asked for the owner: the auditor could not answer after 5 tries/,
+    );
+  });
+
+  test("the review panel passes a subjective goal, accepted with no owner step (goal 079)", async () => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
     await env.service.applyCommand(env.assign);
     await env.drain();
@@ -347,7 +394,7 @@ describe("advisors", () => {
     await fake.close();
     assert.equal(state.stats.reviews, 1, JSON.stringify(state.stats));
     const r = env.ledger.db.prepare("select panel_result, owner_decision from review").get();
-    assert.deepEqual({ ...r }, { panel_result: "review_passed", owner_decision: null });
+    assert.deepEqual({ ...r }, { panel_result: "review_passed", owner_decision: "accepted" });
     // Each panelist's call, as the review panel's, with the review it was for.
     const usage = env.ledger
       .eventsAfter(0, 100_000)

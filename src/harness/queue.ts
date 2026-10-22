@@ -60,6 +60,11 @@ export interface BriefExperiment {
   family?: string;
   why?: string;
   by: string;
+  /**
+   * Up next: its trials that ended without really trying it (the provider failed, the harness
+   * restarted, the run was paused), how many and the last one's cause (goal 079).
+   */
+  returned?: { times: number; cause: string };
 }
 
 export interface QueueBrief {
@@ -69,6 +74,8 @@ export interface QueueBrief {
   tried: (BriefExperiment & {
     lane?: string;
     result: string;
+    /** How its trial ended, in words (goal 079): not only "error". */
+    cause?: string;
     attempt?: string;
     verdict?: string;
     delta?: number;
@@ -180,7 +187,10 @@ export class ExperimentQueue {
     return {
       up_next: this.queued(run)
         .slice(0, o.upNext ?? 40)
-        .map(text),
+        .map((x) => ({
+          ...text(x),
+          ...(x.returns ? { returned: { times: x.returns, cause: clip(x.cause ?? "", 300) } } : {}),
+        })),
       proposed: this.proposed(run)
         .slice(-(o.proposed ?? 20))
         .map(text),
@@ -192,6 +202,7 @@ export class ExperimentQueue {
           x.state === "dropped"
             ? `dropped by ${x.dropped_by ?? "?"}: ${clip(x.dropped_why ?? "", 300)}`
             : (x.result ?? ""),
+        ...(x.state === "done" && x.cause ? { cause: clip(x.cause, 300) } : {}),
         ...(x.attempt ? { attempt: x.attempt, ...judged(x.attempt) } : {}),
       })),
     };
@@ -436,16 +447,23 @@ export class ExperimentQueue {
    */
   finish(
     trial: string,
-    o: { result: string; attempt?: string | null | undefined },
+    o: {
+      result: string;
+      attempt?: string | null | undefined;
+      /** How its trial ended, in words (goal 079). */
+      cause?: string | undefined;
+    },
     actor: string,
   ): Experiment | undefined {
     const x = this.forTrial(trial);
     if (x?.state !== "assigned") return undefined;
+    const cause = o.cause?.trim().slice(0, 2000) || null;
     const row: Row = {
       ...strip(x),
       state: "done",
       result: o.result,
       attempt: o.attempt ?? null,
+      cause,
     };
     this.ledger.writeExperiments([row], {
       actor,
@@ -457,6 +475,50 @@ export class ExperimentQueue {
         trial,
         ...(o.attempt ? { attempt: o.attempt } : {}),
         result: o.result,
+        ...(cause ? { cause: cause.slice(0, 500) } : {}),
+      },
+    });
+    return this.require(x.run, x.id);
+  }
+
+  /**
+   * A trial ended without really trying its experiment (goal 079): the provider failed (a rate
+   * limit, a 5xx, no credits, a refused key), the harness restarted, or the run was paused or
+   * reset. The same experiment goes back to the top of the queue, not a copy, with how many times
+   * that happened and why. While the agents are stopped it waits there; it is the next one given
+   * out when they go on.
+   */
+  returnToQueue(
+    trial: string,
+    o: { result: string; cause: string },
+    actor: string,
+  ): Experiment | undefined {
+    const x = this.forTrial(trial);
+    if (x?.state !== "assigned") return undefined;
+    const cause = o.cause.trim().slice(0, 2000) || o.result;
+    const returns = (x.returns ?? 0) + 1;
+    const row: Row = {
+      ...strip(x),
+      state: "queued",
+      lane: null,
+      trial: null,
+      attempt: null,
+      result: null,
+      cause,
+      returns,
+    };
+    this.ledger.writeExperiments(this.reorder(x.run, row, { place: "top" }), {
+      actor,
+      kind: "experiment_returned",
+      run: x.run,
+      body: {
+        id: x.id,
+        lane: x.lane,
+        trial,
+        result: o.result,
+        cause: cause.slice(0, 500),
+        returns,
+        position: "top",
       },
     });
     return this.require(x.run, x.id);

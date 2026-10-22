@@ -83,7 +83,7 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 | Control | `/var/lib/thermite-control` (`THERMITE_CONTROL_DIR`) | `control.db` (rigs, reports, commands, providers, MCP servers with their secrets and sign-ins sealed, [Thermite's knowledge base](knowledge-base.md), the audit log); `control-signing.key` (0600) and `control-signing.pub`; `secrets.key`, which seals every key and sign-in control stores; `kits/`, kits written or uploaded on the **New campaign** page; `exports/`, the [exports](exports.md#where-control-keeps-them) of rigs without a results repository |
 | Control | `/keys` | `control-signing.pub`, copied there for rigs (`THERMITE_CONTROL_PUBKEY_EXPORT`) |
 | Harness | `/var/lib/thermite` | The ledger and the rig's report key (`ledger/`), git mirrors (`git/`), kits (`kits/`), imports (`imports/`), models (`models/`), builds (`builds/`), the model route control set (`model-route.json`, root only), the rig's settings (`rig-settings.json`) and its copy of each run's past research (`knowledge/<run>/`) |
-| Harness | `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder (`thermite/research/<run>/`, with its `knowledge/`). Emptied at every start |
+| Harness | `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder (`thermite/research/<run>/`, with its `knowledge/`). Emptied at every start, except each lane's cache folder, `thermite/lanes/<lane>/cache`, which a start keeps when it is a real folder its own lane's user owns ([below](#a-lanes-cache)) |
 | Harness | `/inbox` | Read-only: project and kit bundles and [model files](model-files.md) the supervisor fetched |
 | Harness | `/outbox` | Exports, written by the harness |
 | Harness | `/keys` | Read-only: control's public key |
@@ -92,6 +92,19 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 | Supervisor | `/outbox` | Read-only: the harness's exports |
 | Supervisor | `/results` | Compose only: the local results repository the rigs share |
 | Supervisor | `/etc/thermite/advisors` | Compose only, read-only: the advisors file, if there is one |
+
+### A lane's cache
+
+Each lane keeps a cache folder for its builds, `/scratch/thermite/lanes/<lane>/cache` (`$THERMITE_LANE_CACHE` and `CCACHE_DIR` in its commands, at most 8 GB). Its trials share it, so a fresh workspace does not rebuild everything; the judge builds without it. It outlives a restart of the harness, an image update and a restart of the rig wherever `/scratch` is on a volume that outlives the container:
+
+| Where the rig runs | `/scratch` is | Its lane caches after a restart |
+| --- | --- | --- |
+| The compose stack | The named volume `harness-scratch` (`harness2-scratch` for the second rig) | Kept |
+| A machine, set up by control | The Podman volume `thermite-<rig>-scratch` | Kept |
+| A cluster, set up by control | The rig's data volume claim, subpath `scratch` | Kept |
+| RunPod | The pod's container disk | Kept over a restart of the harness; lost when the pod stops |
+
+A deployment of your own that puts `/scratch` on an empty folder at each start, such as an `emptyDir` or a `tmpfs`, loses them: each lane then rebuilds its project at its first trial after a restart. A full reset empties them too.
 
 A full reset empties the harness's state, scratch and outbox, keeping only the rig's report key, and the supervisor's home, keeping only a pull mode rig's `tunnel/` and `enrolled/`. Control's knowledge base keeps the items the rig's runs reported before. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
 

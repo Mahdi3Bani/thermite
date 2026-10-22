@@ -3,11 +3,14 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
+import { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
+import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
 import { MIGRATIONS } from "./schema.ts";
+import { shownViolations, violationsOf } from "./v0.ts";
 
 /**
  * The harness ledger: the authoritative research record for one rig.
@@ -57,6 +60,8 @@ export interface RunRow {
   agents: boolean;
   /** The run's own promotion policy; null: the rig's default. */
   promotion: "auto" | "owner_approval" | null;
+  /** What else the run asks the owner about (goal 079); none: nothing. */
+  ask_owner: AskOwner;
 }
 
 export interface JobRow {
@@ -114,6 +119,13 @@ export interface ExperimentRow {
   dropped_why: string | null;
   from_run: string | null;
   from_id: string | null;
+  /**
+   * Why its trial ended without trying it, or (done) how its trial ended, in words (goal 079).
+   * Null: nothing to say.
+   */
+  cause?: string | null | undefined;
+  /** How many times its trial ended without really trying it, and it came back (goal 079). */
+  returns?: number | undefined;
   created_at: string;
   updated_at: string;
 }
@@ -372,6 +384,8 @@ export class Ledger {
     agents?: boolean | undefined;
     /** The run's own promotion policy (unset: the rig's default). */
     promotion?: "auto" | "owner_approval" | undefined;
+    /** What else the run asks the owner about (goal 079). */
+    askOwner?: AskOwner | undefined;
     /** Background from past research for every agent's brief, in order (goal 065). */
     briefing?: BriefingItem[] | undefined;
     actor: string;
@@ -391,7 +405,8 @@ export class Ledger {
       const at = this.now();
       this.run(
         `insert into run (id, campaign, version, contract_sha, mode, seed_repo, seed_commit,
-           direction, status, agents, promotion, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
+           direction, status, agents, promotion, ask_owner, created_at, updated_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
         input.id,
         input.contract.campaign,
         input.contract.version,
@@ -402,6 +417,7 @@ export class Ledger {
         input.direction ?? null,
         input.agents === false ? 0 : 1,
         input.promotion ?? null,
+        input.askOwner && Object.keys(input.askOwner).length ? canonicalJson(input.askOwner) : null,
         at,
         at,
       );
@@ -452,6 +468,9 @@ export class Ledger {
         direction: input.direction ?? null,
         agents: input.agents !== false,
         promotion: input.promotion ?? null,
+        ...(input.askOwner && Object.keys(input.askOwner).length
+          ? { ask_owner: input.askOwner }
+          : {}),
         ...(briefing.length ? { briefing: briefing.length } : {}),
         // The campaign's own context settings for the run's agents, when it sets any (goal 070):
         // with each agent's route, they say what the agents work with.
@@ -618,6 +637,14 @@ export class Ledger {
         known_flaws: a.knownFlaws ?? [],
         // What changed, bounded: the first 50 files and how many there were in all.
         ...(a.files ? { files: a.files.slice(0, 50), files_total: a.files.length } : {}),
+        // Why the static checks refused it, bounded (goal 082): control, the knowledge base and
+        // the owner see what the submitting trial saw. The record keeps them all.
+        ...(() => {
+          const refused = violationsOf(a.v0);
+          if (!refused.length) return {};
+          const shown = shownViolations(refused);
+          return { violations: shown.violations, violations_total: shown.total };
+        })(),
       });
     });
   }
@@ -904,7 +931,12 @@ export class Ledger {
     }));
   }
 
-  /** Held-out results: for promotion code only, never in events, snapshots or exports. */
+  /**
+   * A held-out record: whether every held-out cell passed, and each cell's name, kind of failure
+   * and value against its threshold (goal 082). It never goes into a snapshot or an export; the
+   * judge's `held_out_checked` event carries the same for the owner, and the agents get only the
+   * kinds (heldOutFailure).
+   */
   recordHeldOut(
     jobId: number,
     fence: number,
@@ -924,6 +956,24 @@ export class Ledger {
         this.now(),
       );
     });
+  }
+
+  /**
+   * What the agents may know of an attempt's newest held-out record (goal 082): undefined when
+   * it has none or it passed; else the kinds of failure it found, each once ([] for a record from
+   * before goal 082, which kept no kinds). Never a cell's name, values or texts.
+   */
+  heldOutFailure(attempt: string): HeldOutKind[] | undefined {
+    const r = this.get<Row>(
+      "select pass, detail from held_out where attempt = ? order by id desc limit 1",
+      attempt,
+    );
+    if (!r || Number(r.pass) === 1) return undefined;
+    try {
+      return heldOutKinds(heldOutCellsOf(JSON.parse(String(r.detail))));
+    } catch {
+      return [];
+    }
   }
 
   heldOutPassed(jobId: number): boolean | undefined {
@@ -1324,13 +1374,15 @@ export class Ledger {
       const now = this.now();
       const upsert = this.db.prepare(
         `insert into experiment (id, run, title, details, family, why, added_by, state, place, lane,
-           trial, attempt, result, dropped_by, dropped_why, from_run, from_id, created_at, updated_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           trial, attempt, result, dropped_by, dropped_why, from_run, from_id, cause, returns,
+           created_at, updated_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          on conflict (id) do update set title = excluded.title, details = excluded.details,
            family = excluded.family, why = excluded.why, state = excluded.state,
            place = excluded.place, lane = excluded.lane, trial = excluded.trial,
            attempt = excluded.attempt, result = excluded.result, dropped_by = excluded.dropped_by,
-           dropped_why = excluded.dropped_why, updated_at = excluded.updated_at
+           dropped_why = excluded.dropped_why, cause = excluded.cause, returns = excluded.returns,
+           updated_at = excluded.updated_at
          where experiment.run = excluded.run`,
       );
       for (const r of rows) {
@@ -1352,6 +1404,8 @@ export class Ledger {
           r.dropped_why,
           r.from_run,
           r.from_id,
+          r.cause ?? null,
+          r.returns ?? 0,
           now,
           now,
         );
@@ -1515,11 +1569,28 @@ function toRun(r: Row): RunRow {
     pause_reason: r.pause_reason === null ? null : String(r.pause_reason),
     agents: r.agents === undefined || Number(r.agents) !== 0,
     promotion: r.promotion === "auto" || r.promotion === "owner_approval" ? r.promotion : null,
+    ask_owner: askOwnerOf(r.ask_owner),
   };
 }
 
+/** A run's stored switches; anything unreadable asks nothing (a run from before goal 079). */
+function askOwnerOf(raw: unknown): AskOwner {
+  if (typeof raw !== "string" || !raw) return {};
+  try {
+    const p = AskOwner.safeParse(JSON.parse(raw));
+    return p.success ? p.data : {};
+  } catch {
+    return {};
+  }
+}
+
 function toExperiment(r: ExperimentRow): ExperimentRow {
-  return { ...r, place: r.place === null ? null : Number(r.place) };
+  return {
+    ...r,
+    place: r.place === null ? null : Number(r.place),
+    cause: r.cause ?? null,
+    returns: Number(r.returns ?? 0),
+  };
 }
 
 function toJob(r: Row): JobRow {

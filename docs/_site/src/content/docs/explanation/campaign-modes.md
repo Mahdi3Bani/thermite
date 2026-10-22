@@ -12,9 +12,9 @@ A **campaign** is one piece of research: what to improve, reach or find out, and
 | --- | --- | --- | --- |
 | The question | How far can this number go without breaking anything else? | Can the project reach these goals? | What can be learned about this question in this time? |
 | An agent's work | One change to the code, and any sources, claims and notes it records on the way | One change to the code, and any sources, claims and notes it records on the way | Reading sources and recording claims, with quotes, and findings |
-| What checks it | The judge, by timing the change against the champion with statistics | The judge, by each goal's own test; a person accepts goals that need judgement | Code that finds every quote, word for word, in a page the rig archived, and checks each finding against verified claims |
+| What checks it | The judge, by timing the change against the champion with statistics | The judge, by each goal's own test; the review panel passes goals that need judgement (and you, when the run asks you) | Code that finds every quote, word for word, in a page the rig archived, and checks each finding against verified claims |
 | The best result | The champion: the best confirmed version | The champion: the version that meets the most goals | The findings, the verified claims and the report |
-| It ends when | Never on its own: you pause it | Every required goal is met, or you accept that they cannot be | Its time window is over |
+| It ends when | Never on its own: you pause it | Every required goal is met, or the evidence shows that they cannot be (where the contract allows it; you decide, if the run asks you) | Its time window is over |
 | The dashboard's headline | The best gain over the starting point | Goals met | Verified claims |
 
 ## What every mode shares
@@ -33,6 +33,10 @@ Reading is not only for research campaigns. A change to code often rests on some
 
 Such a run's research folder holds `INDEX.md`, `sources/`, `claims/` and `notes/`, which the harness writes from the run's records and keeps current, `knowledge/`, the past research described below, and `compactions/` once a trial's conversation was [compacted](../reference/limits-and-pacing.md#compaction). Once the run has recorded anything there, each worker's brief points to the folder, and tells the worker to search it before fetching a page again. The fetcher uses fixed values in these runs: it respects `robots.txt`, and fetches at most 6 pages a minute from each site and at most 5,000,000 bytes a page. In Pi, the worker has the tools `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note`; in OpenCode, Claude Code and Codex, the same five as `thermite-trial research` commands.
 
+### The campaign's brief
+
+In every mode, a campaign can carry its author's **brief**: additional information in Markdown (the project and its links, what was tried, limits, what good looks like), starting links, ideas to try (hill climb and goal) and hypotheses. It is part of the contract. The planner (in a hill climb or goal campaign) and the advisors read it whole, each worker reads it in its brief, and the run's folder keeps it as `BRIEF.md`. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide. [The campaign's brief](../reference/contract.md#the-campaigns-brief) lists what each agent gets.
+
 ### Field notes and past research
 
 In every mode, the workers, the planner (where the run has one) and the advisors keep **field notes** as they work: short notes of what they observed, decided and learned, which the run's **Journal** tab shows. Every run's records also go into its campaign's folder in **Thermite's knowledge base** on control. Later runs of the campaign read that folder, and other campaigns' folders when the owner grants them, in their research folder's `knowledge/`. [Journals and the knowledge base](journals-and-knowledge.md) explains both.
@@ -47,7 +51,7 @@ A hill climb pushes one number, the **primary metric**, up or down: operations p
 
 **How a change is judged.** The judge builds the change and checks that it works on every test case. Then it times the change and the champion together, in blocks that alternate between the two on the same device, and decides with statistics set in the contract. A change that looks better is timed again in fresh blocks and run on the hidden test cases. Once a day, when it has nothing else to do, the judge times the champion against itself to learn how noisy the rig is, and uses that in every later decision. [Why agents never judge](why-agents-never-judge.md) follows a change through every step.
 
-**Who promotes.** A confirmed win becomes the new champion at once, unless the run waits for the owner's approval of every promotion. That rule is chosen when the run starts, or comes from the rig's default. A surprisingly large gain first goes to an **audit**: by default, a gain above 15%, or above three times the median of the run's earlier confirmed gains once it has three. So does a change whose agent declared known flaws. An audit can hold a result back, but never pass one. A gain above the 15% trigger, a change with declared flaws, and anything the auditor hands on to the owner then wait for the owner's decision. On a rig with no auditor configured, audits wait for the owner too. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows those decisions.
+**Who promotes.** Hands-off by default: a confirmed win becomes the new champion with no step of the owner's. On a rig with an auditor, a surprisingly large gain first goes to an **audit**: by default, a gain above 15%, or above three times the median of the run's earlier confirmed gains once it has three. So does a change whose agent declared known flaws. The auditor's clear is the last step; its block stops the change, with its reasons; anything it hands on waits for the owner. A run waits for the owner only where it was set to ask: every promotion, a gain above a line, or declared flaws. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows how to choose.
 
 **When it ends.** Never on its own. A faster program can always be tried, so no code closes a hill climb. It stops when you pause it, when a budget you set pauses it, or when another run starts on its rig. Its champion is ready to download at any time.
 
@@ -57,18 +61,20 @@ A goal campaign works until a list of goals is met. Each goal has its own test, 
 
 - **a code test:** a set of the kit's test cases, called a **verifier**, that must all pass the kit's check. A kit can order its verifiers and run an expensive one only after the cheap ones it depends on have passed;
 - **a metric threshold:** a number, such as items per second, that must be above or below a value. The judge runs each test case several times (five by default) and counts the goal as met only when the whole uncertainty range is on the passing side;
-- **a review:** a goal that needs judgement, such as the quality of documentation. The rig's review panel, a group of models, reviews the champion's change without knowing who wrote it, and needs at least two reviewers who all pass it (two to five in the advisors file, three on one model when its model comes from control: **Edit rig**, MCP or the REST API). Even then, the goal is met only when the owner accepts it.
+- **a review:** a goal that needs judgement, such as the quality of documentation. The rig's review panel, a group of models, reviews the champion's change without knowing who wrote it, and needs at least two reviewers who all pass it (two to five in the advisors file, three on one model when its model comes from control: **Edit rig**, MCP or the REST API). Their pass meets the goal, unless the run asks the owner to accept it.
 
 The contract also says what the finished work must be, and can list results that do **not** count, such as a special case that only passes the tests. That list goes to the auditor and the reviewers; code does not check it.
 
 **What counts as progress.** A change makes progress when it meets a goal that the champion does not, and loses none that the champion meets. A change that could not check a goal the champion meets is not counted as worse, but not as progress either: its verdict is `inconclusive`. A change that makes progress is checked again in fresh runs, and on hidden test cases for the goals it gained, before it is promoted. If the contract has an adversarial checklist, a list of ways a change could fake success for the auditor to look for, every promotion is audited first.
+
+**How each goal is checked.** The contract's words for a goal can drift from what the kit really runs. So the dashboard shows each goal's real check: folded under **How it is checked** below each goal in the run's **Goals** block (and in a campaign's **Goals** block before its first run), and under **How each goal is checked** on a campaign's page once it has runs: the kit's verifier or the metric threshold, the cases it runs on with the parameters the kit runs each with, each case's time limit, and the hidden test cases by name only. It comes from the kit as the run's rig reported it when the run started; for a campaign's page, from the kit control keeps when it keeps one, else from the newest run's rig report. When there is none of these, it shows what the contract says, and says why the rest is missing. `get_run` and `GET /v1/rigs/<rig>/view` give the same as each run's `goal_checks`.
 
 **The goal report.** When the run starts, and after each promotion, the judge checks every goal on the champion. The planner and the workers see that report, so they know which goals are still open, and the next round of work waits for it, for up to two hours.
 
 **When it ends.** In one of two ways:
 
 - **Every required goal is met**, or, if the contract says so, at least a set number of them. Because this ending is final, the judge checks the champion twice, independently, and closes the run only if both checks agree.
-- **You accept that the goals cannot be met.** Thermite proposes this ending, called **"not possible"**, only when the contract allows it, and only with evidence: a number of different approaches, set in the contract, each tried at least three times with no progress. Those approaches are then set aside. You accept the proposal, which closes the run, or reject it, which reopens them; a new proposal then needs more failed approaches than the last one. No agent can propose it.
+- **The evidence shows that the goals cannot be met.** Thermite proposes this ending, called **"not possible"**, only when the contract allows it, and only with evidence: a number of different approaches, set in the contract, each tried at least three times with no progress. Those approaches are then set aside. By default the proposal closes the run. A run that asks you about it waits for you to accept it, which closes the run, or reject it, which reopens them; a new proposal then needs more failed approaches than the last one. No agent can propose it.
 
 A goal campaign has no time limit of its own. Budgets pause it, as in any mode.
 
@@ -76,7 +82,7 @@ A goal campaign has no time limit of its own. Budgets pause it, as in any mode.
 
 ## Research
 
-A research campaign studies a topic for a set time. The contract gives the topic, the questions, starting URLs and which web sites to include or leave out. There is no project to change and no kit: the work is reading.
+A research campaign studies a topic for a set time. The contract gives the topic, the questions and which web sites to include or leave out. A question can be as long as it needs, with several lines; every research worker's brief has each one whole. The brief adds the background, the starting links (the contract's `seeds`) and the author's hypotheses. The harness fetches and archives the starting links when the run starts, while the first trials run, and the run starts with those hypotheses as its own, so its workers look for sources for and against them. There is no project to change and no kit: the work is reading.
 
 **How the work is checked.** Workers fetch pages through the rig's archiving fetcher, which keeps a copy of everything it reads. By default it respects `robots.txt`. It limits how fast it fetches from each site and how large a page may be, and never fetches private or local addresses. A page a worker reads any other way verifies nothing until it is fetched through the archiving fetcher. A worker records a **claim** with exact quotes from those archived pages. Code then checks it:
 
@@ -96,6 +102,7 @@ Workers can also write research notes, propose hypotheses that cite verified cla
 ```text
 INDEX.md          the questions, what is known so far, and where everything is
 REPORT.md         the newest report
+BRIEF.md          the campaign's brief from its author, when it has one
 sources/          every archived page as text: the words a claim's quotes must match
 claims/ findings/ hypotheses/ notes/ report/
                   every claim (verified or draft), finding, hypothesis, note and report section
@@ -114,15 +121,15 @@ A lane's working area is kept for its next trial, so a worker builds on what the
 
 A Claude subscription runs only in Claude Code, which doesn't run research workers, so a research campaign needs another model. On a rig whose workers run in Codex, research workers run in Pi, with the same model. OpenCode's own free models work only when the agents run in OpenCode v2. A research campaign needs a model to do anything at all.
 
-**How the work is planned.** Research is planned by fixed rules, not by a model. Each research task is an experiment in the run's [experiment queue](agents-lanes-planner.md#the-experiment-queue): a kind of task (explore, find primary sources, look for contradictions, or consolidate) for one of the campaign's questions. Each round, when the queue holds fewer tasks than the run has **lanes** (lines of search, each with one worker), the research plan adds tasks: the questions with the least coverage first. When an hour passes with no new source and no newly verified claim, primary sources and contradictions come first. Each lane then takes the next task in the queue, whoever added it, so the owner and the teachers can add tasks too. A worker's idea for another task waits until the owner queues it or drops it, because no model plans a research run. The report shows what was new in the last hour. The owner can message the lanes and the teachers of a research run, but it has no planner, auditor or review panel to message ([How the parts fit together](how-it-fits-together.md#the-owners-messages)).
+**How the work is planned.** Research is planned by fixed rules, not by a model. Each research task is an experiment in the run's [experiment queue](agents-lanes-planner.md#the-experiment-queue): a kind of task (explore, find primary sources, look for contradictions, or consolidate) for one of the campaign's questions. Its rounds are research rounds: the run's agent figures count them apart from a planner's rounds, never as fallbacks. Each round, when the queue holds fewer tasks than the run has **lanes** (lines of search, each with one worker), the research plan adds tasks: the questions with the least coverage first. When an hour passes with no new source and no newly verified claim, primary sources and contradictions come first. Each lane then takes the next task in the queue, whoever added it, so the owner and the teachers can add tasks too. A worker's idea for another task waits until the owner queues it or drops it, because no model plans a research run. The report shows what was new in the last hour. The owner can message the lanes and the teachers of a research run, but it has no planner, auditor or review panel to message ([How the parts fit together](how-it-fits-together.md#the-owners-messages)).
 
 **What it produces.** The final report and the whole research folder: the archived sources, every claim, finding, hypothesis and note, and the lanes' files. A digest of the report comes every hour by default. The rig's export after the final report carries the folder, without `knowledge/`, and every export carries the run's field notes and research notes ([Set up the results repository](../how-to/operate/results-repository.md#what-gets-pushed) says what reaches the repository).
 
-**When it ends.** When its time window is over. The window is the contract's maximum duration, or its minimum duration when no maximum is set. Only running time counts: time spent paused does not. When the time is up, the trials still running finish, the final report is written and the run is closed. The report has no pass or fail; it is what the claims and findings support.
+**When it ends.** When its running time reaches the contract's maximum duration. Without a maximum it runs until someone stops it: the minimum duration is a floor, never a stop. Only time the agents could work counts: time spent paused does not, and neither does time the agents were stopped by the model provider (no credits, a refused key, a failing model check) or waited for its rate limit. When the time is up, the trials still running finish, the final report is written and the run is closed. The report has no pass or fail; it is what the claims and findings support.
 
 Some things are not built yet:
 
-- Web search in the research tools: workers start from the campaign's starting URLs and follow the links of pages already archived ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal)).
+- Web search in the research tools: workers start from the campaign's starting links and follow the links of pages already archived ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal)).
 - A model planner for research ([goal 047](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/047-research-planner.goal)).
 
 ## Choosing a mode

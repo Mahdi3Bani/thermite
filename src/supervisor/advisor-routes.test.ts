@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fetchControlAdvisors, mergeAdvisors, runtimeOf } from "./advisor-routes.ts";
-import { AdvisorsConfig } from "./advisors.ts";
+import { AdvisorsConfig, advisorsFileReport } from "./advisors.ts";
 
 const route = (o: Partial<Record<string, unknown>> = {}) => ({
   name: "p",
@@ -32,7 +32,6 @@ describe("advisors from control", () => {
         model: "claude-opus-5-5",
         token: "tok",
         effort: "max",
-        timeout_s: 1800,
       },
     );
     const keyed = runtimeOf(route(), "teacher-1");
@@ -50,6 +49,51 @@ describe("advisors from control", () => {
     assert.equal(signedIn?.runtime === "openai" && signedIn.api_key, "access");
   });
 
+  test("a role from control has no hidden turn, time or reply limit (goal 079); the advisors file can set them", () => {
+    const keyed = runtimeOf(route({ type: "openai", base_url: "https://x/v1" }), "teacher-1");
+    assert.ok(keyed?.runtime === "openai");
+    if (keyed?.runtime !== "openai") return;
+    assert.equal(keyed.max_turns, undefined);
+    assert.equal(keyed.timeout_s, undefined);
+    assert.equal(keyed.max_tokens, undefined, "none listed: none sent");
+    // The model's maximum output from the provider's list goes with the route.
+    const listed = runtimeOf(
+      route({ type: "openai", base_url: "https://x/v1", max_tokens: 64_000 }),
+      "teacher-1",
+    );
+    assert.equal(listed?.runtime === "openai" && listed.max_tokens, 64_000);
+    for (const harness of ["opencode", "codex"]) {
+      const cli = runtimeOf(route({ type: "openai", harness }), "auditor") as {
+        timeout_s?: number;
+      };
+      assert.equal(cli.timeout_s, undefined, harness);
+    }
+    // The advisors file: none unless set, and what it sets stays.
+    const parsed = AdvisorsConfig.parse({
+      teachers: [
+        { name: "t", runtime: "openai", base_url: "https://x/v1", model: "m", api_key: "k" },
+      ],
+    });
+    const t = parsed.teachers[0] as { max_turns?: number; timeout_s?: number; max_tokens?: number };
+    assert.deepEqual([t.max_turns, t.timeout_s, t.max_tokens], [undefined, undefined, undefined]);
+    const set = AdvisorsConfig.parse({
+      teachers: [
+        {
+          name: "t",
+          runtime: "openai",
+          base_url: "https://x/v1",
+          model: "m",
+          api_key: "k",
+          max_turns: 24,
+          timeout_s: 900,
+          max_tokens: 8192,
+        },
+      ],
+    });
+    const s2 = set.teachers[0] as { max_turns?: number; timeout_s?: number; max_tokens?: number };
+    assert.deepEqual([s2.max_turns, s2.timeout_s, s2.max_tokens], [24, 900, 8192]);
+  });
+
   test("each role runs in the harness its route names: OpenCode (its own models too) or Codex", () => {
     // OpenCode's own models: no key, no base address.
     assert.deepEqual(
@@ -64,7 +108,6 @@ describe("advisors from control", () => {
         api: "opencode",
         model: "big-pickle",
         context_window: 0,
-        timeout_s: 1800,
       },
     );
     // A provider's model in OpenCode: its key stays in memory, for the call's proxy.
@@ -79,7 +122,6 @@ describe("advisors from control", () => {
         model: "claude-test",
         api_key: "key-in-memory",
         context_window: 200_000,
-        timeout_s: 1800,
       },
     );
     // A ChatGPT sign-in in Codex, with its effort.
@@ -105,7 +147,6 @@ describe("advisors from control", () => {
         api_key: "access",
         reasoning: "high",
         context_window: 0,
-        timeout_s: 1800,
       },
     );
     // Codex speaks only the Responses API: an Anthropic route in Codex is not run.
@@ -300,5 +341,129 @@ process.stdin.on("end", () => {
       r.output?.reasons,
       'token=fd3 env=clean tools="" settings="" strict=true model=claude-opus-5-5 effort=high scrub=undefined prompt=true',
     );
+  });
+});
+
+/**
+ * What the supervisor tells control of its advisors file (goal 074), so that Edit rig can say what
+ * an advisor with no model from control uses: for each role, where it runs, its model, its
+ * provider's name and kind, its window and its point. Never a key, a token, a key file's path, a
+ * base address or a command line.
+ */
+describe("the supervisor's report of its advisors file", () => {
+  test("each role's model, harness, provider and window, and no key, token, address or path", () => {
+    const secrets = [
+      "secret-password",
+      "teacher-key-for-tests",
+      "token-for-claude-tests",
+      "merged-key-for-tests",
+      "cli-token-for-tests",
+      "/run/secrets/",
+      "llm.example.com",
+      "kb.example.com",
+      "user:pw",
+    ];
+    const file = AdvisorsConfig.parse({
+      teachers: [
+        {
+          name: "teacher-a",
+          runtime: "openai",
+          api: "anthropic",
+          base_url: "https://user:secret-password@llm.example.com/v1",
+          model: "model-a",
+          api_key: "teacher-key-for-tests",
+          provider: "my-litellm",
+          compact_at: 70,
+        },
+        {
+          name: "teacher-b",
+          runtime: "claude-code",
+          model: "opus-5.5",
+          token: "token-for-claude-tests",
+          context_window: 200_000,
+        },
+      ],
+      merged_by: {
+        name: "merged-by",
+        runtime: "codex",
+        api: "chatgpt",
+        base_url: "https://llm.example.com/v1",
+        model: "gpt-sol",
+        api_key: "merged-key-for-tests",
+      },
+      auditor: {
+        name: "auditor",
+        runtime: "cli",
+        argv: ["my-agent", "--token", "cli-token-for-tests"],
+        restricted: true,
+      },
+      review_panel: [
+        {
+          name: "reviewer-a",
+          runtime: "opencode",
+          base_url: "https://llm.example.com/v1",
+          // A model value with credentials in it is left out, not sent.
+          model: "https://user:pw@llm.example.com/model-b",
+          api_key_file: "/run/secrets/llm-key",
+        },
+      ],
+      kb: { mcp_url: "https://kb.example.com/mcp", token_file: "/run/secrets/kb-token" },
+    });
+    const report = advisorsFileReport(file);
+    assert.deepEqual(report, {
+      teachers: [
+        {
+          harness: "pi",
+          model: "model-a",
+          provider: "my-litellm",
+          api: "anthropic",
+          context_window: 200_000,
+          compact_at: 70,
+        },
+        {
+          harness: "claude-code",
+          model: "opus-5.5",
+          provider: null,
+          api: "claude",
+          context_window: 200_000,
+          compact_at: null,
+        },
+      ],
+      merged_by: {
+        harness: "codex",
+        model: "gpt-sol",
+        provider: null,
+        api: "chatgpt",
+        context_window: null,
+        compact_at: null,
+      },
+      auditor: {
+        harness: "cli",
+        model: null,
+        provider: null,
+        api: null,
+        context_window: null,
+        compact_at: null,
+      },
+      review_panel: [
+        {
+          harness: "opencode",
+          model: null,
+          provider: null,
+          api: "openai",
+          context_window: null,
+          compact_at: null,
+        },
+      ],
+    });
+    const sent = JSON.stringify(report);
+    for (const secret of secrets)
+      assert.ok(!sent.includes(secret), `the report leaves out ${secret}`);
+  });
+
+  test("no file, or a file that names no advisor: every role empty", () => {
+    const none = { teachers: [], merged_by: null, auditor: null, review_panel: [] };
+    assert.deepEqual(advisorsFileReport(undefined), none);
+    assert.deepEqual(advisorsFileReport(AdvisorsConfig.parse({ teacher_minutes: 30 })), none);
   });
 });

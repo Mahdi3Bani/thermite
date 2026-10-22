@@ -30,12 +30,12 @@ Open **Campaigns** in the sidebar. For a running run, press the run's name on it
 5. In **Details**, you may say more on how to try it, up to 4000 characters, for the lane that takes it.
 6. Press **Add**.
 
-The page says `Control sent the command to rig-1. The rig does it in less than 10 seconds. This page shows the result.`, with your rig's name. Once the rig has reported, within a minute, press **refresh** in the status bar, the line along the bottom of the page. The experiment is in **Up next** at its place, marked **you**, with its direction and why.
+The form empties, and a line under it says `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, with your rig's name. Once the rig has reported, within a minute, the line says `Done. rig-1 took it at 03:41 UTC.`, and the experiment is in **Up next** at its place, marked **you**, with its direction and why. You do not need to refresh the page.
 
 ## Reorder, edit or drop an experiment
 
 - **↑ Top**, beside every experiment but the first, moves it to the top. **History** then says `You moved "…" to the top.`
-- To move an experiment anywhere else, drag it by its handle, `⋮⋮`, and drop it on another experiment. Dropped on the upper half of that experiment, it goes just above it; on the lower half, just below it, so you can also move one below the last. The numbers change at once; press **refresh** after the rig's next report to see the rig's order.
+- To move an experiment anywhere else, drag it by its handle, `⋮⋮`, and drop it on another experiment. Dropped on the upper half of that experiment, it goes just above it; on the lower half, just below it, so you can also move one below the last. The numbers change at once, and **Up next** shows the rig's order by itself after the rig's next report.
 - **Edit** opens a small form with the experiment's **What to try**, **Details**, **Direction** and **Why**. Change them, then press **Save**. An emptied **Details** or **Why** is cleared; an emptied **Direction** keeps the direction it had. **History** then says `You edited "…".`
 - **Drop** opens a small menu. Write why in its field, then press **Drop it**. The experiment leaves **Up next** and shows under **Tried** as `dropped by you:` and your reason.
 
@@ -45,7 +45,7 @@ Only experiments that wait can change: a lane that has started on one keeps it. 
 
 **In progress** shows what each lane is on: `lane-1 · since 9m ago`, the experiment's title and who added it, or `No lane is at work.` An experiment moves here when a lane's trial starts on it, and to **Tried** when the trial ends.
 
-When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a trial early, its experiment wasn't really tried. It shows under **Tried** as `no attempt: interrupted`, and a copy goes back to the top of **Up next**, by the same author, with a reason that starts `tried again: its trial on lane-1 was interrupted`. A trial that fails with an error comes back the same way. **History** says, for example, `Your experiment "…" went back in the queue: its trial was interrupted.`, or `lane-2's experiment "…" went back in the queue: its trial failed.` See [Steer a run](steer-a-run.md) for pausing and restarting.
+When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a trial early, its experiment wasn't really tried. Nor was it when the trial ended on the model provider's error: a rate limit, an outage, no credits or a refused key. The same experiment goes back to the top of **Up next**, not a copy, with `Came back once: its trial never really tried it` and why. **History** says, for example, `"…" went back to the top of the queue: its trial on lane-1 was interrupted (its trial was stopped).` A trial that fails for another reason, such as a memory limit, tried its experiment: it shows under **Tried** as `no attempt: error`, with how its trial ended. See [Steer a run](steer-a-run.md) for pausing and restarting.
 
 Others write to the queue too, and **Added by** names them:
 
@@ -58,14 +58,23 @@ Your own experiments show `you`. When a lane gets an experiment that neither you
 
 ## Queue or drop the lanes' ideas
 
-While it works, a lane's worker may propose an **idea**: another experiment worth trying beyond its own. Workers do this by themselves, and you set nothing up for it; its trial goes on. Thermite sets no limit on how many ideas a lane proposes.
+While it works, a lane's worker may propose an **idea**: another experiment worth trying beyond its own. Workers do this by themselves, and you set nothing up for it; its trial goes on. A code trial's brief asks its worker to propose each distinct follow-up its work suggests before it submits or stops. Thermite sets no limit on how many ideas a lane proposes.
 
-Ideas wait under **Ideas from the lanes**, headed `wait for the planner or you`, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. Below them, the card says `The planner's model queues or drops these at its next hand-out, and you can decide first. Without its model (none set, its answer refused, the planner off, or a research run) they wait for you.` The lane's worker is told the same: `it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` To decide:
+Ideas wait under **Ideas from the lanes**, headed `wait for the planner or you`, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. Below them, the card says `The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model. In a research run they wait for you.` ([Keep ideas ready](#keep-ideas-ready) says how many that is.) The lane's worker is told the same: `it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` To decide:
 
 - **Queue it** puts the idea at the end of **Up next**.
 - **Drop** drops it at once, with the reason `the owner dropped this idea`. It shows under **Tried** as `dropped by you: the owner dropped this idea`.
 
 With no ideas waiting, the card says `None waiting. Lanes propose ideas while they work.`
+
+## Keep ideas ready
+
+A hill-climb or goal campaign keeps a number of experiments ready in each run's queue: **Ideas kept ready**, two for each lane unless you set another. It is a target that drives ideas, not a cap: the queue may hold more, and nothing stops when it holds fewer.
+
+- **See it** on the campaign's page, under **Experiment queue**: `Ideas kept ready 4 (2 for each of 2 lanes)`.
+- **Set it** when you make the campaign: on **Campaigns › New campaign**, step **5 Where it runs**, open **Advanced** and enter **Ideas kept ready**. `0` asks for no ideas. In a contract, it is `lanes.queue_target` ([Contract](../../reference/contract.md#lanes)); a new version of the contract changes it for new runs.
+
+When a round leaves fewer ready, the planner is asked to top the queue up, the lanes' distinct ideas go up next, and then the teachers are asked for ideas at once. Live and **History** say so: `After round 3, the queue had 1 of its target of 4 experiments ready: the teachers were asked for ideas at once.` [Agents, lanes and the planner](../../explanation/agents-lanes-planner.md#keeping-the-queue-at-its-target) explains each step.
 
 ## Read what was tried
 
@@ -84,7 +93,7 @@ A **rule** tells the planner which **direction** to avoid or to favor. A directi
 3. Read the line below the box. It says what your message names: **Named exactly:** and each `:name:` with its figures, or with **new** and `not in this run: the planner designs it`. For plain words, **In plain words:** says that the planner reads them, and which of the run's directions your words match. The **Examples** fill the box with a sample message, about the run's own directions once it has some. A `:name:` too long for a direction's name shows `too long for a direction's name: the planner reads it as plain words`.
 4. Press **Send to the planner**.
 
-The page says `Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.` Once the rig has reported, your message shows under the box, newest first, with `Sent. The planner reads it when it next gives out work: round 5. Its answer shows here.` The planner reads it when it plans its next round with its model's answer, and **Live** shows `✓ planner read your message: …`. A lane's later trials in a round don't wait for the planner, so the next round can be a while off; **Restart the lanes** starts one at once.
+The box empties, and a line under it follows the message: `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, then that the rig took it, such as `Done. rig-1 took it at 03:41 UTC.` Once the rig has reported, press **refresh**: your message shows under the box, newest first, with `Sent. The planner reads it when it next gives out work: round 5. Its answer shows here.` The planner reads it when it plans its next round with its model's answer, and **Live** shows `✓ planner read your message: …`. A lane's later trials in a round don't wait for the planner, so the next round can be a while off; **Restart the lanes** starts one at once.
 
 After that round, the planner's answer shows under your message, such as `planner · round 5 · 14:02`, on the next load of the page (press **refresh**):
 
@@ -152,7 +161,7 @@ A rule you removed stays removed. When the advisors, the planner or the agent's 
 
 With the planner switched off on **Edit rig**, **Tell the planner** has no form. It says `The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules.`, and its link **Switch it on in Edit rig** opens the rig's settings. Control refuses a message to a planner that is off however it is sent: `The planner is off on this rig (Edit rig), so nothing would read it.`
 
-If control refuses the message, the card shows **Not sent.** and the reason at once, such as `Write a message first.` for a message of only spaces. If the rig refuses it, within seconds, the card shows it after a **refresh**, as **Not sent.** `The rig refused your last message to the planner:` and the rig's reason. The notice goes once you send the planner a newer message. [Send the agents a message](steer-a-run.md#send-the-agents-a-message) covers messages to the other agents.
+If control refuses the message, a line under the box says `Not sent:` and the reason at once, such as `Not sent: Write a message first.` for a message of only spaces, and your text stays in the box. If the rig refuses it, within seconds the line says `rig-1 refused it:` and the rig's reason, and the card shows it after a **refresh**, as **Not sent.** `The rig refused your last message to the planner:` and the rig's reason. The notice goes once you send the planner a newer message. [Send the agents a message](steer-a-run.md#send-the-agents-a-message) covers messages to the other agents.
 
 A research run has no planner model, so its tab has no **Tell the planner**. Its card **The plan** says `A research run sets each round with a fixed method: it takes the experiments in queue order and keeps to the rules. There is no planner model to tell. Its rules name its task kinds: send one with redirect over MCP, the REST API or the command line.`
 

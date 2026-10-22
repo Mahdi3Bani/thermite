@@ -22,10 +22,10 @@ Code counts every call where it is made, never an agent ([The model usage record
 | `not reported` | Any figure | The harness that ran the calls does not give that figure, so it is not counted. It is never shown as 0 |
 | `on a plan` | Cost | The calls ran on a subscription: a Claude or ChatGPT provider, or Claude Code. Their tokens are counted, not priced |
 | `no price` | Cost | No price is known for the model: its provider's list gives none and you set none. Never $0 |
-| `free` | Cost | The provider's list gives the model a price of 0 |
+| `free` | Cost | The model's price is 0 in every part: its provider's list's, or the one you set |
 | `<$0.01` | Cost | Less than half a cent, but more than nothing |
 
-A cost with an **i** before it leaves something out or adds something. Its **i** says what: the GPU time on RunPod in it, the tokens on a plan or with no price that are not in it, the free tokens, and the tokens in that were priced as not cached because their harness does not report the cache (OpenCode v2, for example).
+A cost with an **i** before it leaves something out or adds something. Its **i** says what: the GPU time on RunPod in it, the tokens on a plan or with no price that are not in it, the free tokens, and the tokens in that were priced as not cached because their harness does not report the cache (Pi, for example, when the provider's answer does not name its cached tokens).
 
 ## The six numbers
 
@@ -36,8 +36,8 @@ A cost with an **i** before it leaves something out or adds something. Its **i**
 | **Cost** | The dollars, split by a bar into tokens in (not cached), cached in, out, and **GPU time on RunPod**. Under it, the tokens with no dollars: `144k tokens on a plan · 350k no price · 3.3k free` |
 | **Tokens in** | Every token sent to the models, split into `cached` (the provider read them from its cache), `not cached`, and `not reported by` the harnesses that do not say |
 | **Tokens out** | Every token the models wrote, with the reasoning tokens under it where the provider counts them |
-| **Calls** | The model calls. Records that do not say how many calls they cover (a Codex turn) count as none, and an **i** says how many there are. The bars under it count the calls in each hour of today, or on each day (each week, past 62 days) |
-| **Output speed** | Tokens out a second, from the first token to the last of each call: the median, with `p10–p90` under it (8 of 10 calls are in this range) |
+| **Calls** | The model calls. Records that do not say how many calls they cover (a Codex turn) count as none, and an **i** says how many there are. On Metrics, the line under it counts the runs and campaigns, such as `12 runs · 3 campaigns`. The bars under it count the calls in each hour of today, or on each day (each week, past 62 days), once there are two or more to draw: **Today** has none before 1 a.m. |
+| **Output speed** | Tokens out a second over each call's whole time, from the request to the last token: the median, with `p10–p90` under it (8 of 10 calls are in this range) |
 | **Time in calls** | All calls added together, from the request to the last token, with the median time to the first token under it |
 
 ## A run's page
@@ -62,7 +62,7 @@ Under the line:
 - **Calls**: the run's calls, how many calls the workers made in a trial (`28 a trial`), and the median time to the first token (`first token 1.8 s`). The bars beside it count the calls in each round, from `round 1` to the latest; a run with fewer than two rounds has no bars.
 - **By agent and model**: one row for each agent's calls to each model.
 
-A run that has made no model call yet says `No model call recorded yet. Code counts each call of the agents when it ends.`
+A run that has made no model call yet says `No model call recorded yet. Code counts each call of the agents when it ends.` A run with no agents and no model use says `No model use: this run has no agents.`
 
 **By agent and model** has its rows in groups, as [Edit rig](../how-to/models/model-per-agent.md) names the agents:
 
@@ -87,7 +87,7 @@ On a narrow screen the table keeps **Agent**, **In**, **Cached**, **Out**, **tok
 
 ## A campaign's page
 
-The campaign's sidebar has its own **Model use**, over all its runs on every rig. Its line on the right counts the runs with records.
+The campaign's sidebar has its own **Model use**, over all its runs on every rig. Its line on the right counts the runs with records or pod spend.
 
 - **Cost**, as on Metrics.
 - **Tokens in**, with the part that was cached under it. Where a harness does not report the cache, the part is of the tokens that were reported, and an **i** says how many were not.
@@ -97,6 +97,8 @@ The campaign's sidebar has its own **Model use**, over all its runs on every rig
 - A table of its runs: **Run** (a link to the run's page, with `at work`, `paused` or `finished` and its rig), **In**, **Out** and **Cost**. A run's cost includes its pod's spend on RunPod.
 - **By model, on Metrics ›** opens Metrics.
 
+A campaign whose runs have made no model call yet says `No model call recorded yet.`
+
 ## Metrics
 
 **Metrics** shows the model use of every campaign and rig. The chips **Today**, **7 days** and **All** choose the period; **7 days** is the default. They are links, such as `/ui/metrics?period=today`.
@@ -104,6 +106,8 @@ The campaign's sidebar has its own **Model use**, over all its runs on every rig
 - **Today** starts at midnight in your own time zone. The page's script adds your browser's zone to the address (`tz`, such as `tz=Europe/Paris`); without the script, today starts at midnight UTC. The line under the title says which zone the page uses: `every campaign and rig · times in Europe/Paris`.
 - **7 days** is the 7 days up to now.
 - **All** is every record.
+
+With no call in the period, the page says `No model call in this period.`, or for **All** `No model call recorded yet. Code counts each call of the agents when it ends, on every rig.`
 
 Under the six numbers:
 
@@ -132,9 +136,9 @@ On a narrow screen the provider shows under the model.
 | `yours` | You set it here, or with [`POST /v1/model-prices`](rest-api.md#model-usage) or [`set_model_price`](mcp-tools.md#set_model_price) |
 | `no price` | Neither: the model's calls show `no price` |
 
-A model with no listed price has three fields. **Save prices**, under the table, saves every row at once, and waits until a price changes. To set a price, fill in **In** and **Out**; to remove yours, empty all three. The line beside **Save prices** then says `Saved. Every cost follows.`: a price you set or change costs every call of the model, the earlier ones too. Each change is in the audit log as `model_price_set` or `model_price_cleared`, by `owner:ui`.
+A model with no listed price has three fields. **Save prices**, under the table, saves every row at once, and waits until a price changes. To set a price, fill in **In** and **Out**; to remove yours, empty all three. The line beside **Save prices** then says `Saved. Every cost follows.`: a price you set or change costs every call of the model, the earlier ones too. With no change it says `Nothing changed.` Each change is in the audit log as `model_price_set` or `model_price_cleared`, by `owner:ui`.
 
-The line beside **Save prices** says why a row can't be saved, with the model and its provider: as you type it starts with `Not yet.`, and after you press **Save prices** with `Not saved.`, such as `Not saved. small-model of lab: set In and Out, or leave all three empty.`
+The line beside **Save prices** says why a row can't be saved, with the model and its provider: as you type it starts with `Not yet.`, and after you press **Save prices** with `Not saved.`, such as `Not saved. small-model of lab: set In and Out, or leave all three empty.` Rows without a problem are saved even then, and the line ends with how many, such as `The other 2 changes are saved.`
 
 | Message | Why |
 | --- | --- |

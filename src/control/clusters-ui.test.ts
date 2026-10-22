@@ -162,7 +162,13 @@ function fakeCluster(
 /** Control over a fake cluster; `tag` names the rig images it deploys (another control, later). */
 async function control(
   k: ClusterKubectl,
-  o: { store?: ControlStore; secrets?: SecretBox; tag?: string; publicUrl?: string | null } = {},
+  o: {
+    store?: ControlStore;
+    secrets?: SecretBox;
+    tag?: string;
+    publicUrl?: string | null;
+    drainWatchMs?: number;
+  } = {},
 ) {
   const store = o.store ?? new ControlStore(":memory:");
   const secrets = o.secrets ?? SecretBox.ephemeral();
@@ -175,6 +181,7 @@ async function control(
       staleAfterMs: 180_000,
       secrets,
       clusterKubectl: k,
+      ...(o.drainWatchMs ? { drainWatchMs: o.drainWatchMs } : {}),
       publicUrl: o.publicUrl === null ? undefined : (o.publicUrl ?? "https://control.example.com"),
       rigImages: {
         harness: `registry.example.com/harness:${tag}`,
@@ -512,6 +519,139 @@ describe("clusters in Providers and Add a rig", () => {
       await same.post("/ui/rigs/cpu-1/cluster/images", {}),
       /ok=cpu-1 already runs control's images/,
     );
+  });
+
+  test("a busy rig drains before its update: its pods restart once nothing runs; Update now skips the wait (goal 079)", async () => {
+    const f = fakeCluster({ canCreateNamespaces: false, slots: { "thermite-slot-1": true } });
+    const before = await control(f.k);
+    await before.post("/ui/settings/add", {
+      type: "k8s",
+      name: "k8s-c",
+      kubeconfig: KUBECONFIG,
+      placement: "slot",
+      slots: "thermite-slot-1",
+    });
+    await before.post("/ui/rigs/add", {
+      place: "cluster:k8s-c",
+      rig: "cpu-1",
+      "k_gpus__k8s-c": "0",
+      "k_slot__k8s-c": "thermite-slot-1",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    before.store.setClusterRigStatus("cpu-1", "running");
+    // The rig reports what still runs: two trials and the judge's job.
+    const report = (work: Record<string, unknown>) =>
+      before.store.ingest({
+        rig: "cpu-1",
+        ledger_id: "l-1",
+        cursor: 0,
+        next: 0,
+        generated_at: new Date().toISOString(),
+        events: [],
+        summary: { work },
+      });
+    report({ trials: 2, judge_jobs: 1, draining: null });
+    const s = await control(f.k, { store: before.store, secrets: before.secrets, tag: "2" });
+    f.calls.length = 0;
+    assert.match(
+      await s.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /ok=cpu-1 drains first: it starts nothing new, and its pods restart on the new images once 2 trials and the judge's job finish/,
+    );
+    assert.equal(s.store.clusterRig("cpu-1")?.status, "draining");
+    assert.ok(!f.calls.some((c) => c.args[0] === "apply"), "no restart yet");
+    const sent = s.store.pendingCommands("cpu-1").map((c) => c.envelope);
+    assert.deepEqual(
+      sent.filter((e) => e.kind === "drain_rig").map((e) => e.payload),
+      [{ drain: true, reason: "its images are about to change" }],
+    );
+    // Its page says what it waits for, with the two ways out.
+    const page = await s.page("/ui/rigs/cpu-1");
+    assert.match(page, /Draining before its pods restart on control's images/);
+    assert.match(page, /It waits for 2 trials and the judge's job to finish/);
+    assert.match(page, /Update now, without waiting/);
+    assert.match(page, /Call the update off/);
+    // Asked again, it goes on waiting; called off, the rig goes back to work.
+    assert.match(await s.post("/ui/rigs/cpu-1/cluster/images", {}), /ok=cpu-1 is draining/);
+    assert.match(
+      await s.post("/ui/rigs/cpu-1/cluster/drain-cancel", {}),
+      /ok=cpu-1 goes back to work on its images/,
+    );
+    assert.equal(s.store.clusterRig("cpu-1")?.status, "running");
+    assert.deepEqual(
+      s.store
+        .pendingCommands("cpu-1")
+        .map((c) => c.envelope)
+        .filter((e) => e.kind === "drain_rig")
+        .map((e) => (e.payload as { drain: boolean }).drain),
+      [true, false],
+    );
+    // Drained again, then Update now: its pods restart at once, while work still runs.
+    await s.post("/ui/rigs/cpu-1/cluster/images", {});
+    assert.match(
+      await s.post("/ui/rigs/cpu-1/cluster/images-now", {}),
+      /ok=cpu-1's pods restart on the new images/,
+    );
+    assert.ok(f.calls.some((c) => c.args[0] === "apply"));
+    // An idle rig is updated at once, with no drain.
+    s.store.setClusterRigStatus("cpu-1", "running");
+    report({ trials: 0, judge_jobs: 0, draining: null });
+    const idle = await control(f.k, { store: s.store, secrets: s.secrets, tag: "3" });
+    assert.match(
+      await idle.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /ok=cpu-1's pods restart on the new images/,
+    );
+  });
+
+  test("a draining rig's pods restart once its report says nothing runs (goal 079)", async () => {
+    const f = fakeCluster({ canCreateNamespaces: false, slots: { "thermite-slot-1": true } });
+    const before = await control(f.k);
+    await before.post("/ui/settings/add", {
+      type: "k8s",
+      name: "k8s-c",
+      kubeconfig: KUBECONFIG,
+      placement: "slot",
+      slots: "thermite-slot-1",
+    });
+    await before.post("/ui/rigs/add", {
+      place: "cluster:k8s-c",
+      rig: "cpu-1",
+      "k_gpus__k8s-c": "0",
+      "k_slot__k8s-c": "thermite-slot-1",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    before.store.setClusterRigStatus("cpu-1", "running");
+    const report = (work: Record<string, unknown>) =>
+      before.store.ingest({
+        rig: "cpu-1",
+        ledger_id: "l-1",
+        cursor: 0,
+        next: 0,
+        generated_at: new Date().toISOString(),
+        events: [],
+        summary: { work },
+      });
+    report({ trials: 1, judge_jobs: 0, draining: null });
+    const s = await control(f.k, {
+      store: before.store,
+      secrets: before.secrets,
+      tag: "2",
+      drainWatchMs: 20,
+    });
+    await s.post("/ui/rigs/cpu-1/cluster/images", {});
+    f.calls.length = 0;
+    // The rig took the drain, and its trial still runs: no restart.
+    report({ trials: 1, judge_jobs: 0, draining: { since: "x", reason: "r" } });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.ok(!f.calls.some((c) => c.args[0] === "apply"));
+    // Its trial ended and the judge has no job: the pods restart on the new images.
+    report({ trials: 0, judge_jobs: 0, draining: { since: "x", reason: "r" } });
+    for (let i = 0; i < 50 && !f.calls.some((c) => c.args[0] === "apply"); i++)
+      await new Promise((r) => setTimeout(r, 20));
+    assert.ok(
+      f.calls.some((c) => c.args[0] === "apply"),
+      "restarted once nothing ran",
+    );
+    assert.equal(s.store.clusterRig("cpu-1")?.status, "updating");
   });
 
   test("CPU slots: the quota sets the rig's CPUs and memory; slots added later; a rig added over MCP", async () => {

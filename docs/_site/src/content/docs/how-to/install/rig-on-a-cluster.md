@@ -126,7 +126,7 @@ In a slot whose network rules don't keep the harness off the cluster, control re
 
 ## 3. Watch it start
 
-You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page fills in once the rig reports for the first time." Its **Set up by control** block lists each step. Press **refresh** in the status bar (the line along the bottom of the page) to follow:
+You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page fills in once the rig reports for the first time." Its **Set up by control** block lists each step, and shows each one as it comes, with no refresh:
 
 - ✓ Enrolled with control: a token of its own
 - ✓ Its objects applied in the cluster: namespace, secret, volume, deployments
@@ -168,7 +168,7 @@ Once the cause is fixed, the pods start and the rig reports by itself, and its s
 
 ## Afterwards
 
-The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `starting`, `updating` or `failed`. Its buttons:
+The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `starting`, `draining`, `updating` or `failed`. Its buttons:
 
 - **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**. After a start or a restart, the page says `Started.` or `Restarted.`, and the status says `starting`. As after an update, control waits up to 15 minutes for the pods and then up to 10 minutes for a report. The steps "Its pods run again" and "A report reached control after the start" get a ✓, and the status says `running`. If a wait runs out, its step gets ✕ and the status says `failed`.
 - **Update to these images**, when control deploys other images than the rig runs; **Try the update again**, when the last change to its pods failed; **Give it control's new address**, when only control's address changed. See [Update the rig's images](#update-the-rigs-images).
@@ -180,7 +180,7 @@ Next, [check the rig](../operate/check-a-rig.md), then [give it a model](../mode
 
 ## Update the rig's images
 
-After you update Thermite, push the new images and restart control with them ([Push the images to your own registry](own-registry.md)). The rig keeps running its old images until you move it: its **Set up by control** block then says "Control now deploys other images:" and offers **Update to these images**. Control applies the rig's two deployments again with the new images, waits for the new pods and a report from them, and lists each step in the block. The rig's volume, tokens, runs and results stay.
+After you update Thermite, push the new images and restart control with them ([Push the images to your own registry](own-registry.md)). The rig keeps running its old images until you move it: its **Set up by control** block then says "Control now deploys other images:" and offers **Update to these images**. A rig at work drains first: it starts nothing new, and its pods restart once its running trials and the judge's job under way end; **Update now, without waiting** skips the wait, and **Call the update off** ends the drain. Control then applies the rig's two deployments again with the new images, waits for the new pods and a report from them, and lists each step in the block. The rig's volume, tokens, runs and results stay, and so does each lane's build cache.
 
 - **Control's address for rigs must be set** (`THERMITE_CONTROL_PUBLIC_URL`). The update writes it into the rig's supervisor again, so a changed address reaches the rig too. Without it, control refuses: `Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.`
 - **One change at a time:** wait until the status says `running` or `failed` before you update again.
@@ -196,7 +196,9 @@ Over MCP, the owner's and the operator's tokens have four tools for clusters (se
 - `add_cluster_rig` adds a rig on a cluster in Providers, with the same checks as **Add a rig**. Its fields are `rig`, `cluster`, `slot`, `gpus`, `judge_gpus`, `gpu_mode` (`device-plugin` or `dra:<device class>`), `node`, `storage_class`, `storage_gb`, `cpus` and `memory_gib`. It answers with the rig's name and `"status": "deploying"`; follow the rig with `rig_setup` and `list_rigs`.
 - `set_cluster_slots` replaces the list of slots of a cluster that uses slots. A slot that holds a rig must stay in the list.
 - `cluster_rig` stops, starts or restarts a rig, as the buttons on its page do. Its fields are `rig` and `action`: `stop`, `start` or `restart`. Its answer's `said` is `Stopped.`, `Started.` or `Restarted.` After a start or a restart, follow the rig with `rig_setup`: it says `starting`, then `running` once the pods run and the rig reports, or `failed`. Removing a rig is done on the dashboard.
-- `update_rig_images` moves a rig onto control's images, as **Update to these images**, **Try the update again** and **Give it control's new address** do. Its one field is `rig`. Its answer's `said` is one of:
+- `update_rig_images` moves a rig onto control's images, as **Update to these images**, **Try the update again** and **Give it control's new address** do. Its fields are `rig` and `wait`: by default it drains a rig at work first; `"wait": false` restarts its pods now, also during a drain. Its answer's `said` is one of:
+  - `rig-1 drains first: it starts nothing new, and its pods restart on the new images once 2 trials and the judge's job finish. …`;
+  - `rig-1 is draining: …`, while a drain is under way;
   - `rig-1's pods restart on the new images.`;
   - `rig-1 runs the new images when it starts again.` (a stopped rig);
   - `rig-1's pods restart with control's new address.`, when only control's address for rigs changed;
@@ -206,6 +208,6 @@ Over MCP, the owner's and the operator's tokens have four tools for clusters (se
 
   An update while the rig is `updating` or `starting` is refused, and so is one without control's address for rigs, with the same reasons as on the page. When control can't read the rig's supervisor deployment to compare the address, the tool answers with an error: `Control could not read rig-1's deployment to compare control's address:` and kubectl's error.
 
-`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `images`, `images_running` and `report_after_images` for an update, or `pods_running` and `report_after_start` for a start or a restart. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig, a start or an update. It is for those who run control: the agent token doesn't have it, and a reader's token gets each step with `detail` set to `null`.
+`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `drain` (while an update waits for the rig's work), `images`, `images_running` and `report_after_images` for an update, or `pods_running` and `report_after_start` for a start or a restart. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig, a start or an update. It is for those who run control: the agent token doesn't have it, and a reader's token gets each step with `detail` set to `null`.
 
 Once the rig shows on **Rigs**, `set_rig_model` gives its agents a model from **Providers**, as **Edit rig** does. Adding the cluster itself is done on the dashboard.

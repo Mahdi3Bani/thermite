@@ -18,7 +18,6 @@ import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
 import type { Research } from "./research/research.ts";
-import { Reviews } from "./reviews.ts";
 import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
 
 /**
@@ -136,10 +135,9 @@ export function createHarnessApi(
   // its own route: the planner's, when control gave the planner a model of its own (goal 073).
   const openTrial = (token: string) => {
     try {
-      registry.openTrial(token);
-      return true;
+      return registry.openTrial(token).id;
     } catch {
-      return false;
+      return undefined;
     }
   };
   app.all("/v1/model-proxy/*", bodyLimit({ maxSize: 64 * 1024 * 1024 }), async (c) => {
@@ -148,7 +146,8 @@ export function createHarnessApi(
       ? bearer.slice(7)
       : (c.req.header("x-api-key") ?? "");
     const trial = given.startsWith("trial.");
-    const ok = trial ? openTrial(given.slice("trial.".length)) : service.proxyTokenValid(given);
+    const trialId = trial ? openTrial(given.slice("trial.".length)) : undefined;
+    const ok = trial ? trialId !== undefined : service.proxyTokenValid(given);
     if (!ok) return c.json({ error: "unauthorized" }, 401);
     const m = (trial ? undefined : service.proxyTokenModel(given)) ?? service.models?.current();
     // OpenCode's own models need no proxy; a Claude subscription is used only by Claude Code.
@@ -167,6 +166,8 @@ export function createHarnessApi(
       },
       { api: m.api, baseUrl: m.baseUrl, key: m.keyNow?.() ?? m.apiKey },
       () => service.noteUsageLimit(),
+      // Each error answer, for the trial (or the check or plan) to tell its kind (goal 079).
+      (a) => service.noteProviderAnswer(trialId ?? "proxy", a),
     );
   });
 
@@ -301,6 +302,9 @@ export function createHarnessApi(
         // The campaign's own context settings, which the advisors' calls for the run take too
         // (goal 070); null: none.
         agents_context: service.ledger.getContract(i.campaign, i.version)?.agents_context ?? null,
+        // The planner's round left the queue below its target (goal 081): the teachers' round
+        // starts at once, not on the clock. Null: the queue is at its target, or none applies.
+        queue_low: service.queueLow(i.id),
       })),
     }),
   );
@@ -308,6 +312,44 @@ export function createHarnessApi(
   app.get("/v1/brief", supervisor, (c) => {
     const run = z.string().min(1).parse(c.req.query("run"));
     return c.json(service.brief(run) as object);
+  });
+
+  // The teachers' reads of a run's code and evidence (goal 081), read only: the champion's tree,
+  // one of its files by lines, an attempt's diff in parts, and the judge's public findings.
+  // Nothing here reads the kit, a held-out cell or a measurement, and nothing writes: a failed
+  // held-out check is only its kind in fixed words (goal 082).
+  const runOf = (c: { req: { query(k: string): string | undefined } }) =>
+    z.string().min(1).max(100).parse(c.req.query("run"));
+  const numberOf = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
+  app.get("/v1/code/files", supervisor, async (c) =>
+    c.json(await service.codeFiles(runOf(c), c.req.query("path") ?? "")),
+  );
+  app.get("/v1/code/file", supervisor, async (c) => {
+    const q = z
+      .object({
+        path: z.string().min(1).max(500),
+        offset: z.number().int().min(1).optional(),
+        limit: z.number().int().min(1).max(100_000).optional(),
+      })
+      .parse({
+        path: c.req.query("path"),
+        offset: numberOf(c.req.query("offset")),
+        limit: numberOf(c.req.query("limit")),
+      });
+    return c.json(await service.codeFile(runOf(c), q.path, q.offset, q.limit));
+  });
+  app.get("/v1/code/diff", supervisor, async (c) => {
+    const q = z
+      .object({
+        attempt: z.string().min(1).max(64),
+        offset: z.number().int().min(0).optional(),
+      })
+      .parse({ attempt: c.req.query("attempt"), offset: numberOf(c.req.query("offset")) });
+    return c.json(await service.attemptDiff(runOf(c), q.attempt, q.offset));
+  });
+  app.get("/v1/evidence", supervisor, (c) => {
+    const attempt = z.string().min(1).max(64).optional().parse(c.req.query("attempt"));
+    return c.json(service.evidence(runOf(c), attempt) as object);
   });
 
   app.get("/v1/audits/pending", supervisor, async (c) =>
@@ -347,10 +389,17 @@ export function createHarnessApi(
           .max(8),
       })
       .parse(await c.req.json());
-    return c.json({
-      review: id,
-      result: new Reviews(service.ledger).recordPanel(id, body.results, "supervisor"),
-    });
+    return c.json({ review: id, ...service.recordReviewPanel(id, body.results, "supervisor") });
+  });
+
+  // The supervisor says which advisors it has (goal 079): whether an auditor decides this rig's
+  // audits, and its review panel's size. Without an auditor, the audits held go on by the run's
+  // rules.
+  app.put("/v1/advisors", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const body = z
+      .strictObject({ auditor: z.boolean(), panel: z.number().int().min(0).max(100) })
+      .parse(await c.req.json());
+    return c.json({ released: await service.setAdvisors(body, "supervisor") });
   });
 
   // The advisors' receipts and answers for the owner's messages: which messages an advisor role
@@ -471,9 +520,18 @@ export function createHarnessApi(
             tokens_out: z.number().int().min(0),
           })
           .optional(),
+        /** The trial waits for its provider, then goes on in the same conversation (goal 079). */
+        wait: z
+          .object({
+            until: z.iso.datetime(),
+            kind: z.enum(["rate_limit", "server", "model", "context", "credits", "auth", "route"]),
+            words: z.string().max(2000),
+          })
+          .optional(),
       })
       .parse(await c.req.json());
     service.trialReport(trial, body);
+    if (body.wait) service.trialWait(trial, body.wait);
     return c.json({ ok: true });
   });
 
@@ -730,11 +788,14 @@ export function createHarnessApi(
   app.get("/v1/attempts/:id", async (c) => {
     const id = c.req.param("id");
     if (trialToken(c.req.header("authorization"))) {
-      // A worker sees only its own lane's attempts.
+      // A worker reads any attempt of its own campaign on this rig: its lane's, another lane's
+      // (a hand-out may name one), or an earlier run's (the knowledge base shows those). Its
+      // brief still shows only its own lane's (goal 082).
       const { trial } = trialOf(c.req.header("authorization"));
       const a = service.ledger.getAttempt(id);
-      if (!a || String(a.run) !== trial.run || String(a.lane) !== trial.lane)
-        throw new LedgerError("not_found", `no attempt ${id} in this lane`);
+      const campaign = (run: unknown) => service.ledger.getRun(String(run))?.campaign;
+      if (!a || campaign(a.run) !== campaign(trial.run))
+        throw new LedgerError("not_found", `no attempt ${id} in this campaign`);
       return c.json(service.attemptStatus(id) as object);
     }
     if (!allows(tokens, ["supervisor", "proposer"], c.req.header("authorization")))

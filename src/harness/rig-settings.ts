@@ -4,6 +4,20 @@ import type { CommandPayloads } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
 
 /**
+ * A trial's length from THERMITE_TRIAL_MINUTES (goal 079): unset or empty, none; else whole
+ * minutes from 1 to 1,440, as a contract's `lanes.limits.trial_minutes`.
+ */
+export function trialMinutesFromEnv(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 1440)
+    throw new Error(
+      `THERMITE_TRIAL_MINUTES must be a whole number from 1 to 1440, or empty, not ${raw}`,
+    );
+  return n;
+}
+
+/**
  * Workers at a time from THERMITE_MAX_TRIALS (unset: 1; 0: a rig that starts no trials, such as
  * one that only judges or runs its advisors). A rig runs at most MAX_LANES, as on Edit rig;
  * anything else stops the harness at start with the reason.
@@ -41,8 +55,8 @@ export interface RigSettings {
   review: boolean;
   /** Hourly exports for the supervisor to push. */
   exports: boolean;
-  /** A trial's length when its contract sets none, in minutes. */
-  trial_minutes: number;
+  /** A trial's length when its contract sets none, in minutes; null: none (goal 079). */
+  trial_minutes: number | null;
   /** A cap on each trial's turns; null: none. */
   max_turns: number | null;
   promotion: "auto" | "owner_approval";
@@ -63,13 +77,18 @@ export class RigSettingsStore {
   /** Settings kept in `file` (none: in memory only), starting from `defaults`. */
   constructor(defaults: RigSettings, file?: string | undefined) {
     this.file = file;
-    let saved: Partial<RigSettings> = {};
+    let saved: Partial<RigSettings> & { set_keys?: string[] } = {};
     if (file && existsSync(file)) {
       try {
-        saved = JSON.parse(readFileSync(file, "utf8")) as Partial<RigSettings>;
+        saved = JSON.parse(readFileSync(file, "utf8")) as typeof saved;
       } catch {}
     }
-    this.current = { ...defaults, ...saved };
+    // A file written before goal 079 kept every setting, defaults too: its 20-minute trial was
+    // the old default, not a choice, and there is no default trial length now. A file that says
+    // which settings someone set keeps exactly those.
+    if (!saved.set_keys && saved.trial_minutes === 20) delete saved.trial_minutes;
+    const { set_keys: _keys, ...values } = saved;
+    this.current = { ...defaults, ...values };
   }
 
   get(): RigSettings {
@@ -83,7 +102,22 @@ export class RigSettingsStore {
       if (v !== undefined) (next as Record<string, unknown>)[k] = v;
     this.current = next;
     if (this.file) {
-      writeFileSync(`${this.file}.tmp`, JSON.stringify(next, null, 2), { mode: 0o600 });
+      // Only what someone set is kept, with the names of those settings: the defaults stay the
+      // environment's (goal 079).
+      let kept: Record<string, unknown> & { set_keys?: string[] } = {};
+      try {
+        if (existsSync(this.file))
+          kept = JSON.parse(readFileSync(this.file, "utf8")) as typeof kept;
+      } catch {}
+      const keys = new Set([
+        ...(kept.set_keys ?? Object.keys(kept).filter((k) => k !== "set_keys")),
+        ...Object.entries(change)
+          .filter(([, v]) => v !== undefined)
+          .map(([k]) => k),
+      ]);
+      const out: Record<string, unknown> = { set_keys: [...keys].sort() };
+      for (const k of keys) out[k] = (next as unknown as Record<string, unknown>)[k];
+      writeFileSync(`${this.file}.tmp`, JSON.stringify(out, null, 2), { mode: 0o600 });
       renameSync(`${this.file}.tmp`, this.file);
     }
     for (const f of this.listeners) f(this.get());

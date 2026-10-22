@@ -6,10 +6,15 @@ import { runProgress, waitingOn } from "./operator.ts";
 /** The smoke checks control runs on each new rig make campaigns of their own: hidden by default. */
 export const isRigCheck = (name: string) => name.startsWith("rig-check-");
 
-/** What the Campaigns list shows: active and paused (the default), one state, or everything. */
-export type CampaignFilter = "default" | "active" | "paused" | "check" | "all";
+/**
+ * What the Campaigns list shows: active and paused (the default), one state, everything, or the
+ * archived campaigns (goal 077), which the other filters leave out and All marks.
+ */
+export type CampaignFilter = "default" | "active" | "paused" | "check" | "all" | "archived";
 export const campaignFilter = (q: string | undefined): CampaignFilter =>
-  q === "active" || q === "paused" || q === "check" || q === "all" ? q : "default";
+  q === "active" || q === "paused" || q === "check" || q === "all" || q === "archived"
+    ? q
+    : "default";
 
 /** A campaign's state for the list: at work, paused, finished, or a rig check. */
 export function campaignKind(k: CampaignView): "active" | "paused" | "finished" | "check" {
@@ -19,8 +24,11 @@ export function campaignKind(k: CampaignView): "active" | "paused" | "finished" 
   return "finished";
 }
 
-const shows = (f: CampaignFilter, kind: ReturnType<typeof campaignKind>) =>
-  f === "all" || (f === "default" ? kind === "active" || kind === "paused" : f === kind);
+const shows = (f: CampaignFilter, kind: ReturnType<typeof campaignKind>, archived: boolean) =>
+  f === "all" ||
+  (f === "archived"
+    ? archived
+    : !archived && (f === "default" ? kind === "active" || kind === "paused" : f === kind));
 
 /** The newest thing a run did: its last event, attempt or start. */
 export function lastActivity(r: RunView): string {
@@ -52,6 +60,10 @@ export interface CampaignsListInput {
   best: (k: CampaignView) => string;
   /** What a campaign is for, from its contract, when control has it. */
   about: (k: CampaignView) => string;
+  /** The archived campaigns (goal 077), each with when and by whom, in words. */
+  archived?: ReadonlyMap<string, string> | undefined;
+  /** An archived campaign's Unarchive button (a form). */
+  unarchive?: ((name: string) => string) | undefined;
 }
 
 /**
@@ -60,11 +72,13 @@ export interface CampaignsListInput {
  */
 export function campaignsListBody(o: CampaignsListInput): string {
   const kinds = new Map(o.camps.map((k) => [k.name, campaignKind(k)]));
+  const shelf = o.archived ?? new Map<string, string>();
   const count = (f: CampaignFilter) =>
-    o.camps.filter((k) => shows(f, kinds.get(k.name) ?? "finished")).length;
+    o.camps.filter((k) => shows(f, kinds.get(k.name) ?? "finished", shelf.has(k.name))).length;
   const q = o.query.trim().toLowerCase();
+  const archivedView = o.filter === "archived";
   const rows = o.camps
-    .filter((k) => shows(o.filter, kinds.get(k.name) ?? "finished"))
+    .filter((k) => shows(o.filter, kinds.get(k.name) ?? "finished", shelf.has(k.name)))
     .filter(
       (k) =>
         !q ||
@@ -80,7 +94,12 @@ export function campaignsListBody(o: CampaignsListInput): string {
         .at(-1);
       const rigs = [...new Set(k.runs.map((x) => x.rig.id))];
       const check = isRigCheck(k.name);
-      return `<tr class="click"><td><a class="kname" href="/ui/campaigns/${encodeURIComponent(k.name)}">${check ? `<span class="av ck" title="rig check">CK</span>` : modeAvatar(k.mode)}<span><b>${esc(k.name)}</b> <span class="muted small">${check ? "rig check" : esc(modeName(k.mode))}</span>${o.about(k) ? `<span class="kabout">${esc(o.about(k))}</span>` : ""}</span></a></td><td>${runCounts(k)}</td><td><b class="fig">${esc(o.best(k))}</b></td><td class="muted nowrap">${last ? `${esc(ago(last, o.now))} ago` : ""}</td><td class="muted small">${esc(rigs.join(", "))}</td></tr>`;
+      const shelved = shelf.get(k.name);
+      const name = `<td><a class="kname" href="/ui/campaigns/${encodeURIComponent(k.name)}">${check ? `<span class="av ck" title="rig check">CK</span>` : modeAvatar(k.mode)}<span><b>${esc(k.name)}</b> <span class="muted small">${check ? "rig check" : esc(modeName(k.mode))}</span>${shelved !== undefined && !archivedView ? ` <span class="chip">archived</span>` : ""}${o.about(k) ? `<span class="kabout">${esc(o.about(k))}</span>` : ""}</span></a></td>`;
+      // The Archived view: when and by whom, and Unarchive, in place of the last activity and rigs.
+      if (archivedView)
+        return `<tr class="click">${name}<td>${k.runs.length ? runCounts(k) : `<span class="muted small">no runs</span>`}</td><td><b class="fig">${esc(o.best(k))}</b></td><td class="muted nowrap">${esc(shelved ?? "")}</td><td class="right">${o.unarchive?.(k.name) ?? ""}</td></tr>`;
+      return `<tr class="click">${name}<td>${runCounts(k)}</td><td><b class="fig">${esc(o.best(k))}</b></td><td class="muted nowrap">${last ? `${esc(ago(last, o.now))} ago` : ""}</td><td class="muted small">${esc(rigs.join(", "))}</td></tr>`;
     })
     .join("");
   const chip = (f: CampaignFilter, label: string) =>
@@ -101,13 +120,14 @@ export function campaignsListBody(o: CampaignsListInput): string {
   }</div>
 ${waiting}
 <div class="block"><div class="head"><h2>All campaigns</h2></div>
-<div class="ktools">${chip("default", "Active and paused")}${chip("active", "At work")}${chip("paused", "Paused")}${chip("check", "Rig checks")}${chip("all", "All")}
+<div class="ktools">${chip("default", "Active and paused")}${chip("active", "At work")}${chip("paused", "Paused")}${chip("check", "Rig checks")}${chip("all", "All")}${chip("archived", "Archived")}
 <form class="ksearch" method="get" action="/ui/campaigns">${o.filter === "default" ? "" : `<input type="hidden" name="f" value="${o.filter}">`}<input name="q" value="${esc(o.query)}" placeholder="Find a campaign, run or rig" aria-label="Find a campaign, run or rig"></form></div>
 ${
   rows
-    ? `<div class="card flat"><table class="ktable"><thead><tr><th>Campaign</th><th>Runs</th><th>Best so far</th><th>Last activity</th><th>Rigs</th></tr></thead><tbody>${rows}</tbody></table></div>`
-    : `<div class="card"><div class="empty">${q ? "No campaign matches." : "No campaign here."}</div></div>`
+    ? `<div class="card flat"><table class="ktable"><thead><tr><th>Campaign</th><th>Runs</th><th>Best so far</th>${archivedView ? "<th>Archived</th><th></th>" : "<th>Last activity</th><th>Rigs</th>"}</tr></thead><tbody>${rows}</tbody></table></div>`
+    : `<div class="card"><div class="empty">${q ? "No campaign matches." : archivedView ? "No campaign is archived." : "No campaign here."}</div></div>`
 }
+${archivedView ? `<div class="muted small" style="margin-top:8px">Out of the navigation, Needs you and the Overview. Their runs, results and kits stay.</div>` : ""}
 ${o.filter === "default" && checks ? `<div class="muted small" style="margin-top:8px">Rig checks are hidden: they are the smoke runs a rig check starts. <a href="/ui/campaigns?f=check">Show the ${checks} rig check${checks === 1 ? "" : "s"}</a></div>` : ""}</div>`;
 }
 
@@ -192,7 +212,8 @@ ${
     : ""
 }${o.past ?? ""}
 <details class="adv"><summary>More options</summary><div class="sgrid">
-<label class="sfd">${infoLabel("When a change is confirmed better", "Keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
+<label class="sfd">${infoLabel("When a change is confirmed better", "Keep it at once as the new best (the default), or wait for you every time. The rig's default is set on its Edit rig page.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
+<div class="sfd">${infoLabel("Ask me first about", "Thermite is hands-off by default: when the judge confirms a change is better, it becomes the champion with no step of yours (after the auditor clears it, when the rig has an auditor and the campaign calls for an audit). A review panel's pass is accepted, and a goal campaign the evidence shows is not possible ends. Choose here what you want to decide yourself; it then waits for you in Needs you.")}<span class="act" style="display:grid;gap:4px"><input name="ask_above_gain" inputmode="decimal" placeholder="a gain above this %, such as 15 (empty: never)" aria-label="Ask me about a gain above this percent"><label class="small" title="A change whose agent declared flaws in it waits for you."><input type="checkbox" name="ask_declared_flaws" value="1"> a change whose agent declared flaws</label><label class="small" title="A review goal is met only after you accept the review panel's pass."><input type="checkbox" name="ask_reviews" value="1"> a review panel's pass of a goal</label><label class="small" title="A goal campaign the evidence shows is not possible ends only after you accept."><input type="checkbox" name="ask_not_possible" value="1"> ending a goal campaign as not possible</label></span></div>
 <label class="sfd">${infoLabel("GPUs for the judge", "For a rig with several GPUs: how many the judge measures on; the rest are the agents'. It changes the rig's split for every run on it, and the rig's harness restarts to apply it. Empty: the rig's current split.")}<input name="judge_gpus" inputmode="numeric" placeholder="the rig's current split"></label>
 </div></details>
 <div class="muted small">${o.from}</div>
@@ -214,7 +235,7 @@ export function earlierRuns(
         ? `<span class="kst pause">Paused</span>`
         : `<span class="kst done">${esc(x.run.status === "closed" ? "Finished" : x.run.status)}</span>`;
     const last = lastActivity(x.run);
-    const n = waitingOn(x.run);
+    const n = waitingOn(x.run, x.rig);
     return `<tr><td>${st}</td><td><a href="${runHref(x.rig.id, x.run)}"><b>${esc(x.run.id)}</b></a>${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.rig.id)}</td><td>${runProgress(x.run)}${x.result}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
   };
   const head = `<thead><tr><th style="width:90px">State</th><th>Run</th><th>Rig</th><th>Result</th><th>Why it stopped</th><th>Last activity</th><th></th></tr></thead>`;

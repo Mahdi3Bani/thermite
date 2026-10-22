@@ -34,7 +34,14 @@ import {
   SYSTEM,
   takeUsage,
 } from "./opencode.ts";
-import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
+import { afterProgramFailure, type ProviderLink } from "./provider-errors.ts";
+import {
+  type SubmitOutcome,
+  stopNudging,
+  type TrialResult,
+  type TrialSpec,
+  trialBudget,
+} from "./worker.ts";
 
 /**
  * Trials, model checks and planner calls in the Codex CLI, OpenAI's open-source agent program,
@@ -472,7 +479,7 @@ export const codexLimitsNote = (limits: LaneLimitValues) =>
     .replace(" (it uses about 500 MiB)", "")
     .replace(/OpenCode/g, "Codex");
 
-export interface CodexTrialDeps {
+export interface CodexTrialDeps extends ProviderLink {
   runner: Runner;
   model: ModelConfig;
   /** The harness API as the lane reaches it, for example http://127.0.0.1:8700. */
@@ -578,10 +585,13 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
       error: `could not set Codex up: ${setup.stderr.slice(-300)}`,
     };
   const started = Date.now();
-  const deadline = started + spec.wallMs;
-  const minutes = Math.round(spec.wallMs / 60_000);
+  // A trial's length only when the campaign or the rig sets one (goal 079).
+  const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
+  const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
+  // Failed model calls in a row, and rate limits in a row (goal 079).
+  const count = { failures: 0, rateWaits: 0 };
   const maxTurns = spec.maxTurns;
-  let message = `${CODEX_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${codexLimitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each message or tool call is one)` : ""}. Submit before it ends.`;
+  let message = `${CODEX_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${codexLimitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each message or tool call is one")}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -608,6 +618,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     }
     const errorsBefore = tally.errors.length;
     const progressBefore = tally.turns + tally.toolCalls;
+    const callsBefore = tally.toolCalls;
     const runStarted = Date.now();
     const exe = codexExe();
     const running = deps.runner.run({
@@ -624,7 +635,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
       cwd: spec.workspace,
       env,
       stdin: message,
-      timeoutMs: remaining,
+      ...(Number.isFinite(remaining) ? { timeoutMs: remaining } : {}),
       rssLimitBytes: limits.runRssMib * 1024 * 1024,
       // Over the memory limit, Codex's commands are killed and Codex carries on.
       ...(exe ? { spareExe: exe } : {}),
@@ -688,12 +699,38 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
       result.stopped = "wall";
       break;
     }
-    // A run that failed outright (its model unreachable, say) ends the trial; the scheduler's
-    // backoff decides when the lane tries again.
-    if (tally.errors.length > errorsBefore && tally.toolCalls === 0) {
-      result.stopped = "error";
-      result.error = tally.errors.at(-1);
-      break;
+    // A run that ended with the provider's error (goal 079): by its kind, the trial ends (no
+    // credits, a refused key, an unserved model, or the campaign's limit), or waits and goes on
+    // in the same session. The failure is not one of the nudges.
+    if (tally.errors.length > errorsBefore) {
+      if (tally.turns + tally.toolCalls > progressBefore) count.failures = 0;
+      const step = await afterProgramFailure({
+        error: tally.errors.at(-1) as string,
+        answer: deps.providerAnswer?.(runStarted),
+        count,
+        failuresInARow: limits.failuresInARow,
+        deadline,
+        signal: deps.signal,
+        waiting: deps.waiting,
+        pauseMs: deps.pauseMs,
+      });
+      if ("interrupted" in step) {
+        result.stopped = "interrupted";
+        break;
+      }
+      if ("wall" in step) {
+        result.stopped = "wall";
+        break;
+      }
+      if ("end" in step) {
+        result.stopped = "error";
+        result.error = step.end.error;
+        result.errorKind = step.end.kind;
+        break;
+      }
+      nudges--;
+      message = [step.goOn, ...ownerLines(carried.take(tally))].join("\n\n");
+      continue;
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
@@ -703,10 +740,16 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
       );
       break;
     }
-    // Resumed twice to get a submission, and then for as long as the owner's messages wait and
-    // the agent keeps working. A message is read only once the agent starts on the prompt.
+    // Continued to get a submission (goal 079) for as long as the agent keeps working (a tool
+    // call in this run), with no number unless the campaign sets lanes.limits.nudges; a nudge it
+    // answers without any work ends the trial, its own choice. The owner's messages continue it
+    // while they wait and it keeps working. A message is read only once the agent starts on the
+    // prompt.
     const progressed = tally.turns + tally.toolCalls > progressBefore;
-    if (nudges >= 2 && (!progressed || !(deps.messages?.waiting().length ?? 0))) break;
+    if (
+      stopNudging(nudges, tally.toolCalls > callsBefore, progressed, limits.nudges, deps.messages)
+    )
+      break;
     message = [NUDGE, ...ownerLines(carried.take(tally))].join("\n\n");
   }
   const sub = deps.submitted();
@@ -737,7 +780,8 @@ export async function codexOnce(
   deps: OpencodeOnceDeps,
   o: {
     role: Role;
-    timeoutMs: number;
+    /** None unless given: a planner call runs until it answers or its run stops (goal 079). */
+    timeoutMs?: number | undefined;
     signal?: AbortSignal | undefined;
     /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
     mcp?: Omit<McpAccess, "apiUrl"> | undefined;
@@ -787,7 +831,7 @@ export async function codexOnce(
         tmp: join(dir, "tmp"),
       }),
       stdin: prompt,
-      timeoutMs: o.timeoutMs,
+      ...(o.timeoutMs !== undefined ? { timeoutMs: o.timeoutMs } : {}),
       captureBytes: 8 * 1024 * 1024,
     });
     const live = readCodexEvents(r.stdout.split("\n"), tally);
@@ -809,7 +853,7 @@ export async function codexOnce(
       }).take(live, tally.compactions.splice(0));
     }
     if (r.killedFor === "timeout")
-      tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
+      tally.errors.push(`no answer in ${Math.round((o.timeoutMs ?? 0) / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
       tally.errors.push(
         codexExitWords(r.exitCode ?? r.signal, tally.notes.at(-1) ?? r.stderr.slice(-300)),

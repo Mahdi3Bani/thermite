@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { modelConfigFromEnv, modelEnv } from "./model.ts";
+import { ANTHROPIC_UNKNOWN_MAX_TOKENS, buildModel, modelConfigFromEnv, modelEnv } from "./model.ts";
 import { type ControlRoute, ModelSource } from "./model-source.ts";
 
 const route: ControlRoute = {
@@ -44,7 +44,8 @@ describe("the agents' model source", () => {
       model: "m-1",
       apiKey: "sk-secret-0001",
       contextWindow: 262144,
-      maxTokens: 8192,
+      // The route's max_tokens is 0: no reply limit is known, and none is sent (goal 079).
+      maxTokens: 0,
       reasoning: "off",
     });
     assert.ok(!JSON.stringify(m.info()).includes("sk-secret"));
@@ -110,5 +111,51 @@ describe("the agents' model source", () => {
     src.setPlanner(null);
     assert.equal(src.planner(), undefined);
     assert.ok(!existsSync(join(dir, "model-route-planner.json")));
+  });
+
+  test("no reply limit is sent unless the provider's list gives the model's maximum output (goal 079)", async () => {
+    // The request each route sends, as the provider would get it.
+    const sent = async (cfg: Parameters<typeof buildModel>[0]) => {
+      const { models, model } = buildModel(cfg);
+      let body: Record<string, unknown> = {};
+      const fetch = (async (_url: unknown, init?: { body?: unknown }) => {
+        body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        return new Response("no", { status: 400 });
+      }) as typeof globalThis.fetch;
+      const r = await models.completeSimple(
+        model,
+        { messages: [{ role: "user", content: "hi", timestamp: Date.now() }] },
+        { fetch, maxRetries: 0 },
+      );
+      assert.equal(r.stopReason, "error");
+      return body;
+    };
+    const base = { baseUrl: "http://127.0.0.1:9/v1", model: "m", apiKey: "k", contextWindow: 0 };
+    // Unset in the rig's settings: 0, none sent; the provider's own limit applies.
+    assert.equal(
+      modelConfigFromEnv({
+        THERMITE_MODEL_BASE_URL: "http://x/v1",
+        THERMITE_MODEL: "m",
+        THERMITE_MODEL_API_KEY: "k",
+      })?.maxTokens,
+      0,
+    );
+    const none = await sent({ ...base, maxTokens: 0 });
+    assert.equal(none.max_tokens, undefined);
+    assert.equal(none.max_completion_tokens, undefined);
+    // With a window, still none: the room left is not a limit Thermite sends.
+    assert.equal(
+      (await sent({ ...base, contextWindow: 131_072, maxTokens: 0 })).max_tokens,
+      undefined,
+    );
+    // The model's maximum output from the provider's list goes as it is.
+    assert.equal((await sent({ ...base, maxTokens: 64_000 })).max_tokens, 64_000);
+    // Anthropic's API needs one: the list's, else ANTHROPIC_UNKNOWN_MAX_TOKENS.
+    const anthropic = { ...base, api: "anthropic" as const, baseUrl: "http://127.0.0.1:9" };
+    assert.equal(
+      (await sent({ ...anthropic, maxTokens: 0 })).max_tokens,
+      ANTHROPIC_UNKNOWN_MAX_TOKENS,
+    );
+    assert.equal((await sent({ ...anthropic, maxTokens: 128_000 })).max_tokens, 128_000);
   });
 });

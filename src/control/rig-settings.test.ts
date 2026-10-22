@@ -141,6 +141,14 @@ describe("Edit rig's settings over REST and MCP", () => {
     assert.ok("change" in out);
     // In the payload's order, as Edit rig has always sent them.
     assert.deepEqual(Object.keys(out.change ?? {}), ["lanes", "planner", "promotion"]);
+    // An empty One trial lasts is no limit (goal 079): a change only while the rig has one.
+    assert.deepEqual(rigSettingsChange("rig-a", now, split, { trial_minutes: null }), {
+      change: { trial_minutes: null },
+    });
+    assert.deepEqual(
+      rigSettingsChange("rig-a", { ...now, trial_minutes: null }, split, { trial_minutes: null }),
+      { change: undefined },
+    );
     // null for judge_gpus: the rig's default again, only when the rig keeps a share of its own.
     assert.deepEqual(rigSettingsChange("rig-a", now, split, { judge_gpus: null }), {
       change: undefined,
@@ -197,17 +205,18 @@ describe("Edit rig's settings over REST and MCP", () => {
       assert.equal(last?.by, "owner:api");
       assert.equal(last?.id, r.body.id);
     }
-    // No turn limit, and the rig's default split, are null.
+    // No limit on a trial's length (goal 079) or its turns, and the rig's default split, are null.
     s.report("rig-a", {
-      settings: { ...DEFAULTS, max_turns: 50, judge_gpus: 3 },
+      settings: { ...DEFAULTS, trial_minutes: 30, max_turns: 50, judge_gpus: 3 },
       gpu_split: { set: 4, judge: 3 },
     });
-    const none = await s.set({ max_turns: null, judge_gpus: null });
-    assert.deepEqual(none.body.sent, { max_turns: null, judge_gpus: null });
-    assert.match(String(none.body.said), /^Control sent 2 settings to rig-a\./);
-    // Several fields: those that differ, in Edit rig's order.
+    const none = await s.set({ trial_minutes: null, max_turns: null, judge_gpus: null });
+    assert.deepEqual(none.body.sent, { trial_minutes: null, max_turns: null, judge_gpus: null });
+    assert.match(String(none.body.said), /^Control sent 3 settings to rig-a\./);
+    // Several fields: those that differ.
     const many = await s.set({
       ...DEFAULTS,
+      trial_minutes: 30,
       judge_gpus: 3,
       max_turns: 50,
       lanes: 2,
@@ -275,7 +284,7 @@ describe("Edit rig's settings over REST and MCP", () => {
     for (const [body, field] of [
       [{ lanes: 0 }, "lanes"],
       [{ trial_minutes: 0 }, "trial_minutes"],
-      [{ trial_minutes: 10_081 }, "trial_minutes"],
+      [{ trial_minutes: 1_441 }, "trial_minutes"],
       [{ max_turns: 0 }, "max_turns"],
     ] as const) {
       const r = await s.set(body);

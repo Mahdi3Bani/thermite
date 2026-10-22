@@ -1,5 +1,7 @@
 import { canonicalJson, sha256Hex } from "../../core/canonical.ts";
+import { heldOutWords } from "../judge/held-out.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
+import { shownViolations, violationsOf } from "../v0.ts";
 
 /**
  * Agent state in the ledger: the direction registry (approach families and how they fared),
@@ -48,6 +50,48 @@ export interface Evidence {
   lifecycle: string;
   verdict: string | null;
   delta: number | null;
+  /**
+   * A change the static checks refused before building: why, bounded (the first 5), and how
+   * many violations there were in all (goal 082). Left out when it was not refused.
+   */
+  refused?: { violations: string[]; total: number } | undefined;
+  /**
+   * When its confirmation failed on held-out cells: that a held-out check failed, and how, in
+   * fixed words (goal 082). Never which cell, its values or its texts.
+   */
+  held_out?: string | undefined;
+}
+
+/** How many of a refused change's violations the planner's and the teachers' evidence shows. */
+const EVIDENCE_VIOLATIONS = 5;
+
+/**
+ * One attempt's evidence, from its row (id, lane, family, hypothesis, lifecycle and v0): the one
+ * shape the planner's evidence, the teachers' brief and their read_evidence tool share (goals 081
+ * and 082).
+ */
+export function evidenceOf(ledger: Ledger, r: Row): Evidence {
+  const v = ledger.currentVerdict(String(r.id));
+  const d = v
+    ? (ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as Row | undefined)
+        ?.delta
+    : null;
+  const refused = violationsOf(r.v0);
+  const heldOut = ledger.heldOutFailure(String(r.id));
+  return {
+    attempt: String(r.id),
+    lane: r.lane === null || r.lane === undefined ? null : String(r.lane),
+    family: r.family === null || r.family === undefined ? null : String(r.family),
+    hypothesis:
+      r.hypothesis === null || r.hypothesis === undefined
+        ? null
+        : String(r.hypothesis).slice(0, 300),
+    lifecycle: String(r.lifecycle),
+    verdict: v?.verdict ?? null,
+    delta: typeof d === "number" ? d : null,
+    ...(refused.length ? { refused: shownViolations(refused, EVIDENCE_VIOLATIONS) } : {}),
+    ...(heldOut ? { held_out: heldOutWords(heldOut) } : {}),
+  };
 }
 
 export class Registry {
@@ -142,29 +186,17 @@ export class Registry {
   evidence(run: string, limit = 30, lane?: string): Evidence[] {
     const rows = lane
       ? this.all(
-          "select id, lane, family, hypothesis, lifecycle from attempt where run = ? and lane = ? order by created_at desc limit ?",
+          "select id, lane, family, hypothesis, lifecycle, v0 from attempt where run = ? and lane = ? order by created_at desc limit ?",
           run,
           lane,
           limit,
         )
       : this.all(
-          "select id, lane, family, hypothesis, lifecycle from attempt where run = ? order by created_at desc limit ?",
+          "select id, lane, family, hypothesis, lifecycle, v0 from attempt where run = ? order by created_at desc limit ?",
           run,
           limit,
         );
-    return rows.map((r) => {
-      const v = this.ledger.currentVerdict(String(r.id));
-      const d = v ? this.get("select delta from verdict where id = ?", v.id)?.delta : null;
-      return {
-        attempt: String(r.id),
-        lane: r.lane === null ? null : String(r.lane),
-        family: r.family === null ? null : String(r.family),
-        hypothesis: r.hypothesis === null ? null : String(r.hypothesis).slice(0, 300),
-        lifecycle: String(r.lifecycle),
-        verdict: v?.verdict ?? null,
-        delta: typeof d === "number" ? d : null,
-      };
-    });
+    return rows.map((r) => evidenceOf(this.ledger, r));
   }
 
   currentEpoch(run: string): EpochRecord | undefined {
@@ -193,6 +225,8 @@ export class Registry {
     notes?: string | undefined;
     /** "research": planned by the research plan's fixed method, not by a model (no refusal). */
     plan?: "research" | undefined;
+    /** Why each of the model's tries gave no usable plan (goal 079). */
+    causes?: { try: number; cause: string; detail: string }[] | undefined;
     by: string;
   }): void {
     this.ledger.tx(() => {
@@ -226,6 +260,15 @@ export class Registry {
         // Why the model's plans were refused (the first few, shortened), so a fallback says why.
         ...(input.rawViolations.length
           ? { refused: input.rawViolations.slice(0, 4).map((v) => v.slice(0, 300)) }
+          : {}),
+        // The real cause of each try that gave no plan: timeout, text only, cut off, the
+        // provider's error, cancelled, or refused with which rules (goal 079).
+        ...(input.causes?.length
+          ? {
+              causes: input.causes
+                .slice(0, 4)
+                .map((c) => ({ try: c.try, cause: c.cause, detail: c.detail.slice(0, 300) })),
+            }
           : {}),
         directives: input.directives ?? [],
         assignments: input.assignments.map((a) => ({
@@ -422,18 +465,29 @@ export class Registry {
 
   /**
    * Trials a dead controller left unfinished. Their worker processes died with it; the trials
-   * are closed as interrupted (any submission they made stands), so their lanes can go on.
+   * are closed as interrupted (any submission they made stands), so their lanes can go on. Each
+   * keeps the counters its worker last reported (goal 079): the work it did still counts.
    */
   interruptUnfinished(by: string): string[] {
-    const open = this.all("select id from trial where ended_at is null").map((r) => String(r.id));
-    for (const id of open) {
+    const open = this.all(
+      "select id, turns, tool_calls, tokens_in, tokens_out from trial where ended_at is null",
+    );
+    const n = (v: unknown) => (typeof v === "number" ? v : 0);
+    for (const t of open) {
       this.finishTrial(
-        id,
-        { stopped: "interrupted", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 },
+        String(t.id),
+        {
+          stopped: "interrupted",
+          turns: n(t.turns),
+          toolCalls: n(t.tool_calls),
+          tokensIn: n(t.tokens_in),
+          tokensOut: n(t.tokens_out),
+          error: "the harness restarted while this trial ran",
+        },
         by,
       );
     }
-    return open;
+    return open.map((t) => String(t.id));
   }
 
   /** Trials of a lane in an epoch (finished or running). */

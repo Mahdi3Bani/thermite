@@ -99,13 +99,13 @@ All three need sudo without a password; otherwise the row says "the user can't s
 
 ## 6. Watch it start
 
-You land on the rig's page: "Control is setting rig-1 up on gpu-host-1. Its page fills in once the rig reports for the first time." Its **Set up by control** block lists each step. Press **refresh** to follow:
+You land on the rig's page: "Control is setting rig-1 up on gpu-host-1. Its page fills in once the rig reports for the first time." Its **Set up by control** block lists each step, and shows each one as it comes, with no refresh:
 
 - ✓ Enrolled with control: a token of its own
 - ✓ Files and units written, images ready, services started. The first pull of the images can take a while: control allows 30 minutes for this step.
 - ✓ First report reached control. Control waits up to 10 minutes for it.
 
-A step that fails shows ✕ and the reason. When the rig reports, its page fills in: "rig-1 is live; it reported … ago." Over MCP, `rig_setup` shows the rig's status there and the same steps, by their ids. It is for those who run control, so the agent token doesn't have it ([MCP tools](../../reference/mcp-tools.md)).
+A step that fails shows ✕ and the reason. When the rig reports, press **refresh**, and its page fills in: "rig-1 is live; it reported … ago." Over MCP, `rig_setup` shows the rig's status there and the same steps, by their ids. It is for those who run control, so the agent token doesn't have it ([MCP tools](../../reference/mcp-tools.md)).
 
 If the setup step says "rig rig-1 exists on this machine already", an earlier rig of that name left its folder on the machine, and control wrote nothing. Control can't set this rig up again under the same name, so add the rig again under a new name. If you don't need the earlier rig, remove what it left first: on this rig's page, under **Remove it from gpu-host-1**, type `remove rig-1` and press **Remove the rig**. That deletes the earlier rig's units, files and volumes on the machine, with the results in them, and retires this rig. A removed rig's name can't be used again.
 

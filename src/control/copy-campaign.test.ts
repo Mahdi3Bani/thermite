@@ -165,6 +165,8 @@ async function stack() {
       seed: { repo: "my-project", commit: C },
       imports: gemvImports,
       promotion: "owner_approval",
+      // A run option: a copy leaves it with gs-3, as it leaves promotion (goal 079).
+      ask_owner: { declared_flaws: true },
       queue: [
         { title: "Vector loads", by: "planner", state: "queued", from: { run: "gs-2", id: "x-9" } },
       ],

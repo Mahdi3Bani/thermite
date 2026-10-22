@@ -1,0 +1,67 @@
+---
+id: "078"
+title: "A campaign's brief: additional information, ideas and hypotheses for every mode"
+status: VERIFIED
+version: "0.1.0"
+depends_on: []
+created: 2026-10-21
+updated: 2026-10-22
+---
+
+# 078 · A campaign's brief: additional information, ideas and hypotheses for every mode
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+New campaign takes the whole brief for a campaign, for every mode, and every agent gets it:
+
+- **On New campaign's step 2, The brief**, its own step after **1 Aim** (the later steps move down by one: 3 Project, 4 How to measure, 5 Where it runs, 6 Review and start):
+  - all modes: **Additional information**, a large field for Markdown with no length limit (background, links, what was tried, limits, what good looks like), with its preview beside it as you type; **Starting links** directly under it, one address per line; and **Hypotheses**, one per box;
+  - hill climb and goal: **Ideas to try**, one per box;
+  - research: the **Topic** and the **Questions**, each question in its own box, as long as it needs, added and removed one by one. Research's step 4 becomes **Time and tools**: how long it runs, and its MCP servers.
+  - Every label has its info icon. A line under the text says its size and which agents get all of it; a line under the links counts them or names a line that is not a web address.
+- **In the contract:** `notes` (the additional information, which existed already), and the new optional `links` (hill climb and goal), `ideas` (hill climb and goal) and `hypotheses` (every mode), with no default, so old contracts keep their hashes. A research campaign's starting links are its `seeds`.
+- **To the agents**, each told it is a starting point, not a rule:
+  - the planner: `campaign_brief` in its context, whole;
+  - each worker's trial brief, code and research: whole up to 32,000 characters, else cut there with a line that says where the whole text is;
+  - the run's folder: `BRIEF.md`, whole;
+  - the teachers' brief, the auditor's and the review panel's packages: `campaign_brief`, whole, ahead of the evidence and the diff;
+  - a research run starts with the hypotheses as its own (`hypothesis_added`), and the harness fetches and archives its starting links (`seeds`) when it starts. A hill climb's or goal's links are not fetched up front, nor are links written in the additional information.
+- **Shown and copied:** the campaign's page shows the brief; Copy keeps it; a copy over REST, MCP (`copy_campaign`) and the command line (`thermite campaign copy`) may give its own; `thermite assign` puts it in the contract it sends; an `assign_campaign` over REST or MCP carries it in its contract.
+
+## Why
+
+The owner, 2026-10-21, on New campaign's mode choice, with the "Research a question" card showing: "add "additional information" to the [New campaign mode choice, showing the 'Research a question' card]. I have no where to drop hypothesis, descriptions beyond one sentance, additional details... When starting a new campaign. I tried to start a new campaign on [a rig] and couldn't because I couldn't give it enough information." (The rig's name is left out: this file is public.)
+
+A past research run shows the gap: its owner had to put a whole brief into the research questions. The report's question 1 was a paragraph about the project and its links, and question 2 was "Explore the following questions:". The page's only free text was **Notes for the agents**, under Advanced on step 4, with an 8,000-character cap, and research briefs never had it.
+
+## Done when
+
+- [x] The owner approves the mockup `v010-campaign-brief` (New campaign's brief for each mode, and the campaign's page): approved 2026-10-22, with the brief as its own step 2 and the starting links in it, as built.
+- [x] New campaign takes the brief for every mode as above, on its own step 2, with info icons and a live Markdown preview; no length limit on the text.
+- [x] The contract has `links`, `ideas` and `hypotheses`, optional and without a default; old contracts keep their hashes (a test pins the hashes of the example contracts and the fixtures).
+- [x] The planner's prompt, each trial's brief (code and research) and the advisors' brief and packages carry the brief, as above; the run's folder keeps `BRIEF.md`; a research run starts with the hypotheses as its own, and archives its starting links when it starts.
+- [x] The campaign's page shows the brief; Copy keeps it; REST, MCP and the command line take it.
+- [x] Tests: the form posted as a browser posts it, for each mode; the steps; the starting links as typed; the contract's fields and the old hashes; the text in the planner's prompt, a trial's brief and a research trial's brief; the research run's starting links archived; the advisors' packages; Copy keeps it; the command line.
+- [x] Pages: Start a campaign from the dashboard, the two quick-start tutorials' steps, the contract, REST, MCP and command-line references, the research-mode explanation, limits, the planner and the advisors; the changelog.
+- [x] The compose acceptances for campaigns, agents and steering pass with the change.
+
+## Decisions
+
+- 2026-10-22, owner, on the mockup `v010-campaign-brief`: "This looks good. I assume link seeds would go in the additional details section, and that the brief would be step two (Not part of step 1 "aim")." So: the brief is New campaign's own step 2, after Aim; the later steps move down by one; Topic and Questions go with it. Starting links sit directly under Additional information, for every mode. The other choices of the mockup stand as shown: the preview beside the box, and the brief block after the runs on the campaign's page.
+- 2026-10-22, builder: the starting links of a research campaign are its `seeds`, which the harness now fetches and archives when the run starts (one after another, beside the first trials; Live says how many it archived, and why not the rest). A hill climb's or goal's are a new optional `links`, which the agents get with the brief and nothing fetches up front. Links written in the additional information reach the agents too, and are not fetched first. Research's old step 3 kept how long it runs and its MCP servers, so it stays, as step 4, **Time and tools**.
+- 2026-10-21, builder, proposed in the mockup: the brief lives in the contract (`notes`, `links`, `ideas`, `hypotheses`), not beside it, so it is part of what the owner approves, of the hash, and of every copy; a change to it is a new version.
+- 2026-10-21, builder: the planner and the advisors get the brief whole: the planner's context is not cut, and the advisors' packages keep their own cut at their end (to the advisor's window, and to 120,000 or 200,000 characters), with the brief ahead of the evidence and the diff, which go first. A worker's brief carries the first 32,000 characters and points to `BRIEF.md` for the rest, so a very long brief never makes a trial fail at its first prompt. 32,000 is how much goes into one prompt, not a limit on the text.
+- 2026-10-21, builder: the only limit on the text is the signed command's (3.5 MiB for a whole contract): the page says so when the brief comes near it. Control's audit log records which parts of a brief a copy gave (`own_brief`), not their text: the contract holds that.
+- 2026-10-21, builder: a research question has no length limit either. A research task in the queue holds an experiment's details (4,000 characters) and says the whole question is in the worker's brief.
+
+## Open questions
+
+- Changing a campaign's brief after it is saved, as a new version (as its Agents' context does on its page): not in this goal. Today: New campaign again with the same name, or a copy with its own brief.
+
+## Progress
+
+- 2026-10-21: mockup `v010-campaign-brief` written for the owner. Built on its branch: the contract fields, New campaign's brief, the brief in every agent's input, `BRIEF.md`, research's starting hypotheses, the campaign's page, Copy, REST, MCP and the command line, tests and pages.
+- 2026-10-22: the owner approved the mockup, with two changes, both built and in the mockup: the brief is its own step 2, and the starting links are in it (a research campaign's seeds, archived when its run starts; `links` for hill climb and goal). Branch merged with v1/build. Typecheck, lint, the public check, the touched tests, the docs' build and check, and the full `npm run check` pass. What is left: the compose acceptances (campaign, agents, steering), then `VERIFIED`.
+- 2026-10-22: The new-campaign, agents and steering acceptances pass on the development branch with the change, with every other compose acceptance. `VERIFIED`.

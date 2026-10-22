@@ -1,3 +1,4 @@
+import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../harness/judge/held-out.ts";
 import { type ControlStore, type Decision, fingerprint } from "../store.ts";
 import {
   type AttemptView,
@@ -7,7 +8,16 @@ import {
   type RunView,
   type StoredEvent,
 } from "../views.ts";
-import { ago, esc, icon, modeAvatar, reportingTag, runHref, sparkline } from "./components.ts";
+import {
+  ago,
+  esc,
+  icon,
+  modeAvatar,
+  moreText,
+  reportingTag,
+  runHref,
+  sparkline,
+} from "./components.ts";
 import {
   attemptState,
   auditReason,
@@ -45,7 +55,16 @@ export interface Forms {
 
 /** Something that waits for the owner. */
 export interface Need {
-  kind: "promotion" | "audit" | "blocked" | "key" | "reset" | "review" | "conclusion" | "stale";
+  kind:
+    | "promotion"
+    | "audit"
+    | "blocked"
+    | "key"
+    | "reset"
+    | "agents"
+    | "review"
+    | "conclusion"
+    | "stale";
   rig: string;
   run?: string | undefined;
   attempt?: string | undefined;
@@ -258,6 +277,18 @@ const CHAMPION_IS =
 const REJECT_DOES =
   "The change does not become the champion. The record shows that you rejected it. The agents continue from the current champion.";
 
+/**
+ * Why a change waits for you (goal 079: only where the run asks, or the auditor sent it). The
+ * reason comes from the harness; one from before goal 079 may be missing.
+ */
+const waitWhy = (reason: string | null | undefined, max?: number) => {
+  if (!reason) return "This run asks you to decide every change. This is its promotion rule.";
+  const r = esc(max ? clip(reason, max) : reason);
+  return /^the auditor/i.test(reason)
+    ? `The auditor sent this change to you: ${r}.`
+    : `It waits for you because ${r}.`;
+};
+
 /** Why a change waits for an audit, in plain words. */
 const auditWhy = (reason: string, a: AttemptView | undefined) => {
   const n = a?.known_flaws.length ?? 0;
@@ -413,9 +444,7 @@ export function needs(
             kind: "Your decision",
             question: "Make this change the new champion?",
             headline: changeHeadline(r, a, id),
-            why: w?.reason
-              ? `The auditor sent this change to you: ${esc(clip(w.reason, 160))}`
-              : "This rig changes its champion only after you agree",
+            why: waitWhy(w?.reason, 160),
             chips: changeChips(r, a),
             key: `promote-${u.id}-${r.id}-${id}`,
             u,
@@ -423,7 +452,7 @@ export function needs(
             lane: a?.lane,
             since: w?.at ?? a?.updated_at,
             now,
-            facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${w?.reason ? `The auditor sent this change to you: ${esc(w.reason)}` : "This rig changes its champion only after you agree. This is its promotion rule."}</dd>`,
+            facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${waitWhy(w?.reason)}</dd>`,
             choices: [
               {
                 button: f.cmd({
@@ -461,10 +490,14 @@ export function needs(
           }),
         });
       }
-      for (const au of r.audits.filter((x) => x.decision === null || x.decision === "block")) {
+      // An audit the rig's auditor will decide needs nothing from you (goal 079): only a block
+      // does, or an audit held on a rig with no auditor that has not been let go yet.
+      const advisors = hasAdvisors(u);
+      for (const au of r.audits.filter(
+        (x) => x.decision === "block" || (x.decision === null && !advisors),
+      )) {
         const a = find(au.attempt);
         const blocked = au.decision === "block";
-        const advisors = hasAdvisors(u);
         out.push({
           kind: blocked ? "blocked" : "audit",
           rig: u.id,
@@ -595,6 +628,56 @@ export function needs(
           }),
         });
       }
+      // The run's agents stopped on the provider's refusal or a failing model check (goal 079):
+      // a real failure, not a decision; it ends by itself once a model check passes.
+      const stop = r.agents_stopped;
+      if (stop && r.status !== "closed") {
+        const check = stop.kind === "check";
+        out.push({
+          kind: "agents",
+          rig: u.id,
+          run: r.id,
+          at: stop.since,
+          ...card({
+            tone: "bad",
+            ic: icon.warn,
+            kind: "Agents stopped",
+            question: "The agents of this run cannot work",
+            headline: check
+              ? "The model check of the workers' model fails"
+              : `The model provider refuses: ${esc(stop.said)}`,
+            why: `No trial or plan starts until a model check passes. The provider said: ${esc(stop.words.slice(0, 200))}`,
+            key: `agents-${u.id}-${r.id}`,
+            u,
+            r,
+            since: stop.since,
+            now,
+            facts: `<dt>What</dt><dd>${check ? "The workers' model failed its check." : `A ${esc(stop.by)} found that ${esc(stop.said)}.`} No new trial or plan starts. Trials in progress end as they would. The judge goes on with the changes it has. A research run's clock stops.</dd>
+<dt>The provider's words</dt><dd><code>${esc(stop.words)}</code></dd>
+<dt>Check</dt><dd>${stop.kind === "credits" ? "Add credits at the provider, or give the rig another model on Edit rig." : stop.kind === "auth" ? "The provider's key in Settings › Providers: it may be wrong, expired or revoked." : stop.kind === "route" ? "The model's name, and whether this key may use it, in Settings › Providers; or give the rig another model on Edit rig." : "The check's result on the rig's page, and the provider in Settings › Providers."}</dd>
+<dt>When it ends</dt><dd>Thermite checks the model again after a minute, then less often (at most every 30 minutes). The agents go on once a check passes, or when the rig gets another model.</dd>`,
+            choices: [
+              {
+                button: f.cmd({
+                  rig: u.id,
+                  kind: "rig_check",
+                  fields: { check: "model" },
+                  label: "Check the model now",
+                  cls: "primary",
+                  back,
+                }),
+                label: "Check the model now",
+                does: "The rig checks its workers' model at once. If the check passes, the agents go on.",
+              },
+              {
+                button: `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Edit rig</a>`,
+                label: "Edit rig",
+                does: "Give the rig's agents another model. A new model ends the stop at once.",
+              },
+            ],
+          }),
+        });
+      }
       for (const k of r.conclusions.filter((x) => x.decision === null)) {
         out.push({
           kind: "conclusion",
@@ -720,7 +803,17 @@ export function needs(
       }),
     });
   }
-  const order = ["key", "reset", "promotion", "audit", "blocked", "review", "conclusion", "stale"];
+  const order = [
+    "key",
+    "reset",
+    "agents",
+    "promotion",
+    "audit",
+    "blocked",
+    "review",
+    "conclusion",
+    "stale",
+  ];
   return out.sort(
     (a, b) =>
       order.indexOf(a.kind) - order.indexOf(b.kind) ||
@@ -728,11 +821,16 @@ export function needs(
   );
 }
 
-/** How many of the owner's decisions a run waits on. */
-export function waitingOn(r: RunView): number {
+/**
+ * How many of the owner's decisions a run waits on. With its rig: an audit that the rig's
+ * auditor will decide is not one of them (goal 079).
+ */
+export function waitingOn(r: RunView, u?: RigView): number {
+  const auditor = u ? hasAdvisors(u) : false;
   return (
     r.pending_promotions.length +
-    r.audits.filter((x) => x.decision === null || x.decision === "block").length +
+    (r.agents_stopped && r.status !== "closed" ? 1 : 0) +
+    r.audits.filter((x) => x.decision === "block" || (x.decision === null && !auditor)).length +
     r.reviews.filter((x) => x.panel === "review_passed" && !x.owner).length +
     r.conclusions.filter((x) => x.decision === null).length
   );
@@ -924,7 +1022,7 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
       : r.status === "paused"
         ? ["Paused", "warn"]
         : [cap(r.status), ""];
-  const n = waitingOn(r);
+  const n = waitingOn(r, u);
   const last = r.attempts
     .map((a) => a.updated_at)
     .sort()
@@ -942,19 +1040,26 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
   return `<a class="rr" href="${runHref(u.id, r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
 }
 
-/** An attempt's outcome as one word a person scans for, with its tone. */
-export function outcome(r: RunView, a: AttemptView): { word: string; tone: string } {
+/**
+ * An attempt's outcome as one word a person scans for, with its tone. With its rig: an audit the
+ * rig's auditor will decide is "Auditing", not "Needs you" (goal 079).
+ */
+export function outcome(r: RunView, a: AttemptView, u?: RigView): { word: string; tone: string } {
   const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
   if (champ) return { word: `Champion #${champ.seq}`, tone: "ok" };
   const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
   if (audit?.decision === "block" || a.lifecycle === "audit_blocked")
     return { word: "Blocked", tone: "bad" };
+  const auditing = a.lifecycle === "awaiting_audit" || (audit && audit.decision === null);
   if (
-    r.pending_promotions.includes(a.id) ||
-    a.lifecycle === "awaiting_approval" ||
-    a.lifecycle === "awaiting_audit" ||
-    (audit && audit.decision === null)
+    auditing &&
+    u &&
+    hasAdvisors(u) &&
+    !r.pending_promotions.includes(a.id) &&
+    a.lifecycle !== "awaiting_approval"
   )
+    return { word: "Auditing", tone: "info" };
+  if (r.pending_promotions.includes(a.id) || a.lifecycle === "awaiting_approval" || auditing)
     return { word: "Needs you", tone: "warn" };
   if (a.lifecycle === "declined") return { word: "Declined", tone: "" };
   if (a.lifecycle === "promoted") return { word: "Promoted", tone: "ok" };
@@ -978,7 +1083,7 @@ export function attemptRows(u: RigView, r: RunView, xs: AttemptView[], now: numb
     return `<div class="card"><div class="empty">No attempt yet: the lanes have not submitted anything.</div></div>`;
   return `<div class="card flat">${xs
     .map((a) => {
-      const o = outcome(r, a);
+      const o = outcome(r, a, u);
       const effect =
         r.mode === "goal"
           ? a.gained?.length || a.lost.length
@@ -1035,7 +1140,8 @@ export interface TimelineRow {
 }
 
 /** Whether a rig event is the judge's (its jobs, measurements and checks) or the runs'. */
-const JUDGE_EVENT = /^(job_|verdict|calibrat|screen|confirm|measure|baseline|rig_check|smoke)/;
+const JUDGE_EVENT =
+  /^(job_|verdict|calibrat|screen|confirm|measure|baseline|rig_check|smoke|held_out)/;
 
 export function timeline(
   items: { u: RigView; e: StoredEvent }[],
@@ -1081,6 +1187,64 @@ export function timeline(
 }
 
 /**
+ * Why the static checks refused a change before building (goal 082): each violation, as the
+ * submitting trial got it, and how many more when the rig sent only the first 20.
+ */
+function refusedBlock(a: AttemptView): string {
+  if (!a.violations_total) return "";
+  const more = a.violations_total - a.violations.length;
+  return `<div class="block"><div class="head"><h2>Refused before building</h2><span class="n">${a.violations_total}</span><span class="right">the static checks: the editable paths, the forbidden patterns, no binary files, links or submodules</span></div><div class="card flat">${a.violations
+    .map((v) => `<div class="fw">${esc(v)}</div>`)
+    .join(
+      "",
+    )}${more > 0 ? `<div class="fw muted small">and ${more} more: the rig's record of the attempt keeps them all</div>` : ""}</div></div>`;
+}
+
+/** A measured value for the owner: four significant figures, or an exponent for a large one. */
+function figure(x: number): string {
+  return Math.abs(x) >= 1e5 ? x.toExponential(3) : String(Number(x.toPrecision(4)));
+}
+
+/**
+ * The newest held-out check of a confirmation, for the owner (goal 082): each held-out case by
+ * name, what it was checked for, how it went, and its value against its threshold where the
+ * check gives one. The agents get only that a held-out check failed, and how.
+ */
+function heldOutBlock(a: AttemptView, now: number): string {
+  const h = a.held_out;
+  if (!h) return "";
+  const failed = h.cells.filter((c) => !c.ok).length;
+  const rows = h.cells
+    .map((c) => {
+      const kind = c.kind as HeldOutKind | null;
+      const result = c.ok
+        ? `<span class="chip ok">passed</span>`
+        : `<span class="chip bad">${esc(kind && kind in HELD_OUT_OWNER_WORDS ? HELD_OUT_OWNER_WORDS[kind] : (c.kind ?? "failed"))}</span>`;
+      const forWhat = c.goal
+        ? `goal <b>${esc(c.goal)}</b>`
+        : c.verifier
+          ? `verifier <b>${esc(c.verifier)}</b>`
+          : "no worse than the champion";
+      const unit = c.unit && c.unit !== "ratio" ? ` ${esc(c.unit)}` : "";
+      const measured =
+        c.value === null
+          ? `<span class="muted">·</span>`
+          : `${esc(figure(c.value))}${unit}${c.low !== null && c.high !== null ? ` <span class="muted small">[${esc(figure(c.low))}, ${esc(figure(c.high))}]</span>` : ""}${c.measure ? `<div class="muted small">${esc(c.measure)}</div>` : ""}`;
+      const threshold =
+        c.threshold === null || c.op === null
+          ? `<span class="muted">·</span>`
+          : `${esc(c.op)} ${esc(figure(c.threshold))}${unit}`;
+      return `<tr><td><code>${esc(c.cell)}</code></td><td>${forWhat}</td><td>${result}</td><td>${measured}</td><td>${threshold}</td></tr>`;
+    })
+    .join("");
+  const more =
+    h.cells_total > h.cells.length
+      ? `<div class="note small">and ${h.cells_total - h.cells.length} more cases: the rig's held_out record keeps them all</div>`
+      : "";
+  return `<div class="block"><div class="head"><h2>Held-out checks</h2><span class="n">${h.pass ? "all passed" : `${failed} failed`}</span><span class="right">${esc(ago(h.at, now))} ago · only you see which case: the agents see only that a held-out check failed, and how</span></div><div class="card flat"><table><thead><tr><th>Case</th><th>Checked for</th><th>Result</th><th>Measured</th><th>Threshold</th></tr></thead><tbody>${rows}</tbody></table>${more}</div></div>`;
+}
+
+/**
  * One attempt, in full: what it does and where it stands in one sentence, the decision it waits
  * for, then what happened to it, the goals it moves, the files it changes and its facts.
  */
@@ -1091,7 +1255,7 @@ export function attemptDetail(
   now: number,
   opts: { decision?: Need | undefined; patch?: string | undefined } = {},
 ): string {
-  const o = outcome(r, a);
+  const o = outcome(r, a, u);
   const base = r.champion.filter((c) => !c.reopened && c.commit === a.parent).at(-1);
   const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
   const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
@@ -1130,8 +1294,17 @@ export function attemptDetail(
                   ? `Held for an audit: ${auditReason(audit.reason)}`
                   : audit.decision === "clear"
                     ? "The auditor cleared it"
-                    : "The auditor passed it to you",
-            tone: audit.decision === "block" ? "bad" : audit.decision === "clear" ? "ok" : "warn",
+                    : audit.decision === "skipped"
+                      ? "This rig has no auditor: the audit was skipped"
+                      : "The auditor passed it to you",
+            tone:
+              audit.decision === "block"
+                ? "bad"
+                : audit.decision === "clear"
+                  ? "ok"
+                  : audit.decision === "skipped"
+                    ? ""
+                    : "warn",
           },
         ]
       : []),
@@ -1175,7 +1348,7 @@ export function attemptDetail(
                   : g.status === "met"
                     ? ["ok", "✓", "met by the champion too"]
                     : ["off", "·", "not met yet"];
-            return `<div class="gl"><span class="gl-mark ${tone}">${mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b> ${gained || lost ? `<span class="chip ${tone}">${esc(word)}</span>` : `<span class="muted small">${esc(word)}</span>`}</span>${g.description ? `<span class="muted">${esc(clip(g.description, 200))}</span>` : ""}</span></div>`;
+            return `<div class="gl"><span class="gl-mark ${tone}">${mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b> ${gained || lost ? `<span class="chip ${tone}">${esc(word)}</span>` : `<span class="muted small">${esc(word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}</span></div>`;
           })
           .join("")}</div></div>`
       : "";
@@ -1230,6 +1403,7 @@ export function attemptDetail(
 <p class="run-said">${said}</p>
 ${opts.decision ? `<div class="block"><div class="head"><h2>Your decision</h2></div>${opts.decision.box}</div>` : ""}
 <div class="cols run-cols"><div>
+${refusedBlock(a)}
 ${a.known_flaws.length ? `<div class="block"><div class="head"><h2>Flaws its author declared</h2><span class="n">${a.known_flaws.length}</span></div><div class="card flat">${a.known_flaws.map((f) => `<div class="fw">${esc(f)}</div>`).join("")}</div></div>` : ""}
 <div class="block"><div class="head"><h2>What happened to it</h2></div><div class="card">${stepper}</div>
 <details class="card flat matrix" data-k="events-${esc(a.id)}" style="margin-top:10px"><summary>Every event <span class="muted small">${history.length}</span></summary>${timeline(
@@ -1237,6 +1411,7 @@ ${a.known_flaws.length ? `<div class="block"><div class="head"><h2>Flaws its aut
     now,
     { limit: 100 },
   )}</details></div>
+${heldOutBlock(a, now)}
 ${goals}
 <div class="block"><div class="head"><h2>Files it changes</h2><span class="n">${a.files_total}</span><span class="right">the diff stays on the rig: <code>attempts/${esc(a.id)}.patch</code> in its exports</span></div><div class="card flat">${files}</div></div>
 </div><div class="side">

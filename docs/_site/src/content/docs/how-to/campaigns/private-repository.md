@@ -47,14 +47,14 @@ You see a line such as `"project-deploy" reads git@git.example.com:you/project.g
 
 On **Campaigns › New campaign**:
 
-- for the project, in **2 Project**, write the address in **Repository** and choose the access in **Repository access**;
-- for a kit in a repository, in **3 How to measure**, choose it in **Kit repository access**.
+- for the project, in **3 Project**, write the address in **Repository** and choose the access in **Repository access**;
+- for a kit in a repository, in **4 How to measure**, choose it in **Kit repository access**.
 
 **Look it up** then reads the project with the access. A deploy key needs an `ssh://` or `git@host:path` address: an `https://` one gives `with an SSH deploy key, the repository is an ssh:// or git@host:path address`. See [Start a campaign from the dashboard](start-from-dashboard.md) for the other fields.
 
 ## 5. Check that the rig fetched it
 
-The run shows on the campaign's page, under **At work now**, within a minute or so. Press **refresh** in the status bar, the line along the bottom of the page. If the run doesn't show, open **Commands** in the sidebar: the **assign campaign** row is **failed**, with the reason after `staging:`.
+Stay on the campaign's page: once the rig reports the run, within a minute or so, the page opens the run's own page by itself. If the rig could not fetch the project, the card at the top says `Not started:`, the run, and `rig-1 refused it: staging:` with the reason. On **Commands** in the sidebar, the **assign campaign** row is **failed**, with the same reason.
 
 | Reason | What to do |
 | --- | --- |

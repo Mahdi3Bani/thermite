@@ -14,10 +14,13 @@ import {
   compactAtRefusal,
   compactAtWords,
 } from "../core/compaction.ts";
-import { FolderSchema, MAX_LANES } from "../core/contract.ts";
+import { FolderSchema, MAX_LANES, parseContract } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
+import { queueTarget, queueTargetNote } from "../core/queue-target.ts";
 import { isFree, knownTimeZone, type UsagePeriod } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { type GoalChecks, goalChecks } from "../harness/goal-checks.ts";
+import { KitSchema } from "../harness/kit.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import {
   campaignContract,
@@ -28,6 +31,15 @@ import {
   rigContext,
   setCampaignContext,
 } from "./campaign-context.ts";
+import {
+  archiveCampaign,
+  createFolder,
+  deleteFolder,
+  moveCampaign,
+  renameFolder,
+  type ShelfOutcome,
+  unarchiveCampaign,
+} from "./campaign-folders.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
   type ClusterFacts,
@@ -51,6 +63,21 @@ import {
   clusterRigObjects,
   rigResources,
 } from "./clusters/manifests.ts";
+import {
+  checkProgress,
+  checkRow,
+  checkRows,
+  checkRowsOf,
+  checkWaits,
+  clockUtc,
+  commandFollowUrl,
+  commandProgress,
+  modelFollowUrl,
+  modelProgress,
+  notSent,
+  type Progress,
+  takingModel,
+} from "./command-progress.ts";
 import {
   type CopyCampaignOutcome,
   type CopyCampaignRequest,
@@ -114,7 +141,7 @@ import {
 } from "./machines/ssh.ts";
 import { campaignMcpServers, McpServers } from "./mcp-servers.ts";
 import { mcpSettingsBlocks, mountMcpUi } from "./mcp-ui.ts";
-import { type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
+import { askOwnerFrom, type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
@@ -130,6 +157,7 @@ import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import {
+  advisorsFileOf,
   agentModelsOf,
   HARNESS_NAMES,
   harnessRefusal,
@@ -184,6 +212,7 @@ import {
   type TunnelRig,
 } from "./store.ts";
 import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
+import { campaignBriefBlock } from "./ui/campaign-brief.ts";
 import { type ContextRig, contextBlock, startLine, startNote } from "./ui/campaign-context.ts";
 import { CAMPAIGN_CONTEXT_JS } from "./ui/campaign-context-client.ts";
 import {
@@ -212,6 +241,7 @@ import {
   meter,
   modeAvatar,
   modeName,
+  moreText,
   num,
   pct,
   type RunTab,
@@ -233,6 +263,8 @@ import {
   agentsTable,
 } from "./ui/edit-rig.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
+import { FOLLOW_JS } from "./ui/follow-client.ts";
+import { type ChecksSource, howChecked, howCheckedDetails } from "./ui/goal-checks.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
   campaignKnowledge,
@@ -243,7 +275,7 @@ import {
   SEARCH_KINDS,
 } from "./ui/knowledge.ts";
 import { liveEntryHtml, liveLinesHtml, resultJoin, runEntryHtml, runLinesHtml } from "./ui/live.ts";
-import { infoLabel, newCampaignBody } from "./ui/new-campaign.ts";
+import { infoLabel, newCampaignBody, QUEUE_TARGET_TIP } from "./ui/new-campaign.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import {
   attemptDetail,
@@ -265,6 +297,7 @@ import {
 import { PLANNER_JS } from "./ui/planner-client.ts";
 import { PROVIDERS_JS } from "./ui/providers-client.ts";
 import { experimentsTab, plannerTab } from "./ui/queue.ts";
+import { checkFollowUrl, checkRowHtml, modelCheckHtml } from "./ui/rig-checks.ts";
 import {
   type RigPlace,
   stateBanners,
@@ -314,8 +347,10 @@ import {
  * SameSite=Strict cookie. Sessions are kept in control's store (hashed), so a restart does not
  * sign the owner out; each use renews one, and a new admin token ends them all. Every form
  * carries a token derived from the session and the admin token (CSRF). The only
- * script is control's own (/ui/assets/app.js): it streams the live view. Pages never reload by
- * themselves: the status bar says when the page was made and has a refresh link.
+ * script is control's own (/ui/assets/app.js): it streams the live view, and follows the owner's
+ * actions to their outcome (goal 080: it draws the page's parts again when one comes). Pages never
+ * reload by themselves otherwise: the status bar says when the page was made and has a refresh
+ * link.
  * The look follows Magnesium's design.
  */
 
@@ -364,6 +399,8 @@ export interface DashboardOptions {
   rigImages?: RigImages | undefined;
   /** How control reaches Kubernetes clusters (tests give their own). */
   clusterKubectl?: ClusterKubectl | undefined;
+  /** How often a draining rig's report is looked at (goal 079; default 10 s). */
+  drainWatchMs?: number | undefined;
   /** How control reaches GPU clouds' APIs (tests give their own). */
   cloudFetch?: typeof fetch | undefined;
   /** Test pods on GPU clouds (made by createControlApi). */
@@ -529,7 +566,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   });
 
   app.get("/ui/assets/app.js", (c) =>
-    c.body(CLIENT_JS, 200, {
+    c.body(`${CLIENT_JS}${FOLLOW_JS}`, 200, {
       "content-type": "text/javascript; charset=utf-8",
       "cache-control": "no-cache",
     }),
@@ -559,6 +596,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       cls?: string;
       back?: string;
       extra?: string;
+      /** Off while what it sent waits for the rig (a check's Sent, Running…). */
+      disabled?: boolean;
     },
   ) =>
     `<form class="inline" method="post" action="/ui/commands"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(f.rig)}"><input type="hidden" name="kind" value="${esc(f.kind)}">${Object.entries(
@@ -567,7 +606,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
       .join(
         "",
-      )}${f.back ? `<input type="hidden" name="back" value="${esc(f.back)}">` : ""}${f.extra ?? ""}<button class="${f.cls ?? ""}">${esc(f.label)}</button></form>`;
+      )}${f.back ? `<input type="hidden" name="back" value="${esc(f.back)}">` : ""}${f.extra ?? ""}<button class="${f.cls ?? ""}"${f.disabled ? " disabled" : ""}>${esc(f.label)}</button></form>`;
 
   /** Pause, with an optional reason the run keeps (it shows wherever the run's state does). */
   const pauseMenu = (c: Ctx, rig: string, run: string, back: string, cls = "") =>
@@ -588,20 +627,71 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
    */
   const needs = (c: Ctx, vs: RigView[], now: number, back = "/ui"): Need[] =>
     operatorNeeds(store, vs, forms(c), now, back).filter((n) => !n.decided);
-  /** The page shell with the sidebar's rigs and campaigns. */
+  /** The archived campaigns (goal 077): out of the navigation, Needs you and the Overview. */
+  const archivedNames = () => new Set(store.archivedCampaigns().map((a) => a.campaign));
+  /** A run's campaign, as the views name it (a run without one is its own). */
+  const campaignOfRun = (vs: RigView[], rig: string, run: string) => {
+    const r = vs.find((u) => u.id === rig)?.runs.find((x) => x.id === run);
+    return r ? r.campaign || r.id : undefined;
+  };
+  /** Leaves out what belongs to an archived campaign's runs: for Needs you and the lists. */
+  const notArchived = <T extends { rig: string; run?: string | undefined }>(
+    vs: RigView[],
+    xs: T[],
+    archived = archivedNames(),
+  ) =>
+    archived.size
+      ? xs.filter((x) => !x.run || !archived.has(campaignOfRun(vs, x.rig, x.run) ?? ""))
+      : xs;
+  /** The run an event is about: its body's run, the run it names, or its attempt's run. */
+  const eventRun = (u: RigView, e: RigView["recent"][number]): string | undefined => {
+    const b = e.body?.run;
+    if (typeof b === "string") return b;
+    if (!e.subject) return undefined;
+    if (u.runs.some((r) => r.id === e.subject)) return e.subject;
+    return u.runs.find((r) => r.attempts.some((a) => a.id === e.subject))?.id;
+  };
+  /** Where a page's forms in the navigation return: the page, without the notes it showed. */
+  const backHere = (c: Ctx) => {
+    const u = new URL(c.req.url);
+    for (const k of ["sent", "error", "on", "ok"]) u.searchParams.delete(k);
+    return `${u.pathname}${u.search}`;
+  };
+  /** The page shell with the navigation's campaigns and their folders. */
   const page = (c: Ctx, s: Omit<Shell, "rigs" | "needs" | "now">, body: string, vs = views()) => {
     const now = Date.now();
     // A command just sent from this page (POST /ui/commands): say so at the top.
     const sent = c.req.query("sent");
-    if (sent)
+    // What a folder's form or Archive refused (on=shelf): at the top, in words.
+    const shelfError = c.req.query("on") === "shelf" ? c.req.query("error") : undefined;
+    if (shelfError) {
+      const [head, ...rest] = shelfError.split(/(?<=\.) /);
+      body = `<div class="card warn" style="margin-bottom:16px"><b class="bad">${esc(head)}</b> ${esc(rest.join(" "))}</div>${body}`;
+    } else if (sent)
       body = `<div class="card sent-note" style="margin-bottom:16px"><b class="ok">${esc(sent)}</b></div>${body}`;
+    const archived = archivedNames();
+    const path = new URL(c.req.url).pathname;
+    const current = path.startsWith("/ui/campaigns/")
+      ? decodeURIComponent(path.slice("/ui/campaigns/".length).split("/")[0] ?? "")
+      : undefined;
     return c.html(
       shell(
         {
           ...s,
           rigs: vs,
-          needs: needs(c, vs, now).filter((n) => n.kind !== "stale").length,
+          needs: notArchived(
+            vs,
+            needs(c, vs, now).filter((n) => n.kind !== "stale"),
+            archived,
+          ).length,
           now,
+          nav: {
+            folders: store.campaignFolders(),
+            archived,
+            csrf: csrf(c),
+            back: backHere(c),
+            current,
+          },
         },
         body,
       ),
@@ -674,15 +764,31 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const others = vs.filter((x) => x.id !== u.id);
     const usage = runUsage(u, i, now);
     const decisions = needs(c, [u], now, back).filter((n) => n.run === i.id);
+    // How each goal is really checked (goal 082): as this run's rig reported its kit, else as
+    // control can read the campaign's kit or contract.
+    const how = i.mode === "goal" ? goalChecksFor(i.campaign || i.id, vs, u.id, i) : undefined;
+    const howFor = (goal: string) =>
+      howCheckedDetails(
+        how?.checks.goals.find((x) => x.goal === goal),
+        how?.checks,
+        how?.source,
+      );
     const goals = i.goals.length
       ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${i.goals.filter((g) => g.status === "met").length} of ${i.goals.length} met</span><span class="right">the judge's check of champion #${esc(i.goals_seq ?? "?")}${i.goals_at ? `, ${esc(ago(i.goals_at, now))} ago` : ""}</span></div><div class="card flat">${i.goals
           .map((g) => {
             const st = goalState(g);
-            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<span class="muted">${esc(clip(g.description, 200))}</span>` : ""}${g.status === "met" ? "" : `<span class="gl-why ${st.tone}">${esc(g.reasons.slice(0, 400))}</span>`}</span></div>`;
+            return `<div class="gl"><span class="gl-mark ${st.tone}">${st.mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.status === "met" ? "" : ` <span class="chip ${st.tone === "off" ? "" : st.tone}">${esc(st.word)}</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${g.status === "met" ? "" : `<div class="gl-why ${st.tone}">${moreText(g.reasons, 400)}</div>`}${howFor(g.goal)}</span></div>`;
           })
           .join("")}</div></div>`
       : i.mode === "goal"
-        ? `<div class="block"><div class="head"><h2>Goals</h2></div><div class="card"><div class="empty">The judge has not checked the goals yet.</div></div></div>`
+        ? `<div class="block"><div class="head"><h2>Goals</h2></div><div class="card${how?.checks.goals.length ? " flat" : ""}"><div class="empty">The judge has not checked the goals yet.</div>${(
+            how?.checks.goals ?? []
+          )
+            .map(
+              (g) =>
+                `<div class="gl"><span class="gl-mark off">·</span><span class="gl-main"><span><b>${esc(g.goal)}</b></span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${howFor(g.goal)}</span></div>`,
+            )
+            .join("")}</div></div>`
         : "";
     const research = i.research
       ? (() => {
@@ -853,12 +959,22 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             })
             .join("")}</div></div>`
         : "";
-    const policyWord =
-      i.promotion === "auto"
-        ? "Automatic when the judge confirms; audits and big gains still wait for you"
-        : i.promotion === "owner_approval"
-          ? "Only with your approval"
-          : "The rig's default (set where the rig is deployed)";
+    // Hands-off by default (goal 079): what the run asks you about, if anything.
+    const asks = [
+      typeof i.ask_owner.above_gain === "number"
+        ? `a gain above ${(i.ask_owner.above_gain * 100).toFixed(1).replace(/\.0$/, "")}%`
+        : "",
+      i.ask_owner.declared_flaws ? "a change with declared flaws" : "",
+      i.ask_owner.reviews ? "a review panel's pass" : "",
+      i.ask_owner.not_possible ? 'a "not possible" ending' : "",
+    ].filter(Boolean);
+    const policyWord = `${
+      i.promotion === "owner_approval"
+        ? "Only with your approval"
+        : i.promotion === "auto"
+          ? "Automatic when the judge confirms, after the auditor's clear when an audit is called for"
+          : "The rig's default (automatic unless it was set to ask you)"
+    }${asks.length && i.promotion !== "owner_approval" ? `. It asks you about ${asks.join(", ")}` : ""}`;
     const settings = [
       [
         "Champion",
@@ -956,15 +1072,15 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                   ? usage
                     ? runStatsTab(usage)
                     : `<div class="card"><div class="empty">No model use: this run has no agents.</div></div>`
-                  : `<p class="run-said">${said}</p>
-${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}
+                  : `<p class="run-said" data-part="run-said">${said}</p>
+<div data-part="run-needs">${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}</div>
 <div class="cols run-cols"><div>
 ${goals}${research}${ladder}
-<div class="block"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
+<div class="block" data-part="attempts"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
 </div><div class="side">
-<div class="block"><div class="head"><h2>Now</h2></div>${now_}</div>
-<div class="block"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
-<div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
+<div class="block" data-part="now"><div class="head"><h2>Now</h2></div>${now_}</div>
+<div class="block" data-part="facts"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
+<div class="block" data-part="recent"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
     return `${usage ? runUsageTop(usage) : ""}<section class="block" id="${esc(runKey(u.id, i.id))}">
 <nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}${usage ? sub("stats", "Stats") : ""}</nav>
@@ -999,19 +1115,28 @@ ${body}
   app.get("/ui", (c) => {
     const now = Date.now();
     const vs = views();
-    const feed = needs(c, vs, now);
+    // An archived campaign (goal 077) leaves Needs you and the lists here.
+    const archived = archivedNames();
+    const feed = notArchived(vs, needs(c, vs, now), archived);
     const urgent = feed.filter((n) => n.kind !== "stale");
     const camps = campaignViews(vs);
+    const shelved = (u: RigView, run: string | undefined) =>
+      run !== undefined && archived.has(campaignOfRun([u], u.id, run) ?? "");
     // What happened lately, across rigs, in words.
     const activity = timeline(
-      vs.flatMap((u) => u.recent.slice(0, 40).map((e) => ({ u, e }))),
+      vs.flatMap((u) =>
+        u.recent
+          .slice(0, 40)
+          .filter((e) => !archived.size || !shelved(u, eventRun(u, e)))
+          .map((e) => ({ u, e })),
+      ),
       now,
       { limit: 10, showRig: true },
     );
     // One scan, top to bottom: what needs you, what is at work, what happened.
     const live = vs.flatMap((u) =>
       u.runs
-        .filter((i) => i.status === "running")
+        .filter((i) => i.status === "running" && !archived.has(i.campaign || i.id))
         .map((i) =>
           runBrief(store, u, i, now, {
             heading: true,
@@ -1035,12 +1160,12 @@ ${body}
         summary: `${urgent.length ? `<span class="warn">${urgent.length} need${urgent.length === 1 ? "s" : ""} you</span>` : "nothing needs you"} · ${running} run${running === 1 ? "" : "s"} at work · ${reporting} of ${expected} rigs reporting${stopped ? ` · ${stopped} stopped` : ""}`,
         active: "overview",
       },
-      `${tallies}
-<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${feed.length}</span><span class="right">open one for its evidence and what each choice does</span></div>
+      `<div data-part="tallies">${tallies}</div>
+<div class="block" id="needs" data-part="needs"><div class="head"><h2>Needs you</h2><span class="n">${feed.length}</span><span class="right">open one for its evidence and what each choice does</span></div>
 ${feed.length ? `<div class="dqs">${feed.map((n) => n.html).join("")}</div>` : `<div class="card"><div class="empty">Nothing waits for you. The campaigns go on by themselves.</div></div>`}</div>
-<div class="block"><div class="head"><h2>At work</h2><span class="n">${running}</span></div>
+<div class="block" data-part="at-work"><div class="head"><h2>At work</h2><span class="n">${running}</span></div>
 ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.length ? "No run is running." : opts.kits ? "No campaign yet. Make one with New campaign on the Campaigns page, or assign one to a rig through control's API, MCP or the CLI." : "No campaign yet. Assign one to a rig through control's API, MCP or the CLI."}</div></div>`}</div>
-<div class="block"><div class="head"><h2>What happened</h2><span class="right">newest first</span></div>${activity}</div>`,
+<div class="block" data-part="happened"><div class="head"><h2>What happened</h2><span class="right">newest first</span></div>${activity}</div>`,
       vs,
     );
   });
@@ -1049,24 +1174,39 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   app.get("/ui/campaigns", (c) => {
     const now = Date.now();
     const vs = views();
-    const camps = campaignViews(vs);
-    const feed = needs(c, vs, now, "/ui/campaigns");
+    // Archived campaigns (goal 077) have their own filter, with Unarchive; one with no runs too.
+    const shelf = new Map(store.archivedCampaigns().map((a) => [a.campaign, a]));
+    const reported = campaignViews(vs);
+    const modes = shelf.size ? campaignModes(store, vs) : new Map<string, string | null>();
+    const camps: CampaignView[] = [
+      ...reported,
+      ...[...shelf.keys()]
+        .filter((name) => !reported.some((k) => k.name === name))
+        .map((name) => ({ name, mode: modes.get(name) ?? null, runs: [] })),
+    ];
+    const feed = notArchived(vs, needs(c, vs, now, "/ui/campaigns"), new Set(shelf.keys()));
     const waitingFor = (u: RigView, r: RunView) =>
       feed.filter((n) => n.rig === u.id && n.run === r.id).length;
     // Rig checks have their own filter: At work counts the campaigns' runs only.
     const atWork = vs.flatMap((u) =>
       u.runs
-        .filter((r) => r.status === "running" && !isRigCheck(r.campaign ?? ""))
+        .filter(
+          (r) =>
+            r.status === "running" &&
+            !isRigCheck(r.campaign ?? "") &&
+            !shelf.has(r.campaign || r.id),
+        )
         .map((r) => workCardFor(c, u, r, now, waitingFor(u, r), "/ui/campaigns")),
     );
     const waiting = vs
       .flatMap((u) => u.runs.map((r) => ({ rig: u, run: r, n: waitingFor(u, r) })))
       .filter((w) => w.n > 0);
+    const shown = camps.length - shelf.size;
     return page(
       c,
       {
         title: "Campaigns",
-        summary: `${atWork.length} at work · ${waiting.reduce((a, w) => a + w.n, 0)} decision${waiting.reduce((a, w) => a + w.n, 0) === 1 ? " waits" : "s wait"} for you · ${camps.length} campaign${camps.length === 1 ? "" : "s"}`,
+        summary: `${atWork.length} at work · ${waiting.reduce((a, w) => a + w.n, 0)} decision${waiting.reduce((a, w) => a + w.n, 0) === 1 ? " waits" : "s wait"} for you · ${shown} campaign${shown === 1 ? "" : "s"}${shelf.size ? ` · ${shelf.size} archived` : ""}`,
         active: "campaigns",
         actions: opts.kits
           ? `<a class="btn primary" href="/ui/campaigns/new">New campaign</a>`
@@ -1077,6 +1217,17 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             camps,
             atWork,
             waiting,
+            archived: new Map(
+              [...shelf].map(([name, a]) => {
+                const folder = store.campaignFolderOf(name);
+                return [
+                  name,
+                  `${ago(a.at, now)} ago by ${copiedBy(a.by)}${folder ? ` · in ${folder.name}` : ""}`,
+                ];
+              }),
+            ),
+            unarchive: (name) =>
+              `<form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><input type="hidden" name="back" value="/ui/campaigns?f=archived"><button class="sm">Unarchive</button></form>`,
             filter: campaignFilter(c.req.query("f")),
             query: c.req.query("q") ?? "",
             now,
@@ -1328,6 +1479,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       }
     }
     const promotion = String(f.promotion ?? "");
+    const askOwner = askOwnerFrom(f);
+    if (typeof askOwner === "string") return newCampaignPage(c, { draft, errors: [askOwner] });
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return newCampaignPage(c, { draft, errors: [split] });
     // The agents' model: given here, or the rig's; agents never start on a rig with none.
@@ -1392,6 +1545,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           target: { type: target.type, class: target.class },
           start: startValue === "save" ? false : startValue === "try" ? "try" : true,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+          askOwner,
           by: "owner:ui",
         },
       );
@@ -1573,7 +1727,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   };
   const startPanel = (c: Ctx, campaign: string, vs: RigView[], open: boolean) => {
     const from = startFrom(campaign);
-    if (!from) return "";
+    // An archived campaign starts no run (goal 077): its page offers Unarchive instead.
+    if (!from || store.campaignArchived(campaign)) return "";
     const kb = store.kb();
     const pastQ = (c.req.query("past") ?? "").slice(0, 300);
     return startDrawer({
@@ -1732,6 +1887,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : undefined,
           agents,
           promotion: req.promotion,
+          askOwner: req.askOwner,
           by,
           owner,
           // A command carries at most 500 experiments.
@@ -1843,10 +1999,33 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       typed: tried?.context,
     });
   };
-  /** A campaign's buttons at the top of its page: Copy, then Start a run, as control can. */
-  const campaignActions = (name: string) =>
-    `${copySource(name) ? `<a class="btn" href="${campaignHref(name)}?copy=1" data-open="#copy">${icon.copy}Copy</a>` : ""}${startFrom(name) ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>` : ""}` ||
-    undefined;
+  /**
+   * A campaign's buttons at the top of its page: Copy, then Start a run, as control can, then ⋯
+   * with Move to folder and Archive (goal 077). An archived campaign starts no run: its ⋯ has
+   * Unarchive.
+   */
+  const campaignActions = (c: Ctx, name: string) => {
+    const archived = store.campaignArchived(name);
+    const hidden = `<input type="hidden" name="csrf" value="${esc(csrf(c))}">`;
+    const folders = store.campaignFolders();
+    const here = store.campaignFolderOf(name);
+    const move = folders.length
+      ? `<form class="sfd" method="post" action="${campaignHref(name)}/folder">${hidden}${infoLabel("Move to folder", archived ? "The folder this campaign keeps while it is archived, and comes back into when you unarchive it. Its runs, results and folder in the knowledge base do not change." : "Where this campaign shows in the left navigation. You can also drag it there. Its runs, results and folder in the knowledge base do not change.")}<span class="kmove"><select name="folder" aria-label="Folder"><option value=""${here ? "" : " selected"}>No folder</option>${folders.map((f) => `<option value="${f.id}"${f.id === here?.id ? " selected" : ""}>${esc(f.name)}</option>`).join("")}</select><button class="sm">Move</button></span></form>`
+      : `<div class="sfd">${infoLabel("Move to folder", "Where this campaign shows in the left navigation. Make a folder with the folder button beside Campaigns there.")}<span class="muted small">No folder yet: make one with the folder button beside Campaigns in the navigation.</span></div>`;
+    const more = `<details class="menu" data-campaign-more><summary class="btn" title="More" aria-label="More">${icon.dots}</summary><div class="menu-pop kmore-pop">${
+      archived
+        ? `${move}<div class="fsep"></div><form method="post" action="${campaignHref(name)}/unarchive">${hidden}<button class="sm">Unarchive</button></form><span class="muted small">It comes back to the navigation, ${here ? `in ${esc(here.name)}` : "in no folder"}.</span>`
+        : `${move}<div class="fsep"></div><form method="post" action="${campaignHref(name)}/archive">${hidden}<button class="sm">${icon.archive}Archive</button></form><span class="muted small">Out of the navigation, Needs you and the Overview. Its runs, results and kits stay.</span>`
+    }</div></details>`;
+    return `${copySource(name) ? `<a class="btn" href="${campaignHref(name)}?copy=1" data-open="#copy">${icon.copy}Copy</a>` : ""}${!archived && startFrom(name) ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>` : ""}${more}`;
+  };
+  /** An archived campaign's line at the top of its page, with Unarchive. */
+  const archivedLine = (c: Ctx, name: string) => {
+    const a = store.campaignArchived(name);
+    if (!a) return "";
+    const folder = store.campaignFolderOf(name);
+    return `<div class="card" style="margin-bottom:16px"><b>${icon.archive} Archived</b> ${esc(ago(a.at, Date.now()))} ago by ${esc(copiedBy(a.by))}. <span class="muted">It is out of the navigation, Needs you and the Overview. Its runs, results and kits stay${folder ? `, and it keeps its folder, ${esc(folder.name)}` : ""}. Control starts no run of it until you unarchive it.</span> <form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><button class="sm">Unarchive</button></form></div>`;
+  };
   // The Copy panel's form: the copy's page, or the panel again with control's words.
   app.post("/ui/campaigns/:campaign/copy", async (c) => {
     const from = c.req.param("campaign");
@@ -1906,6 +2085,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       c.redirect(`${campaignHref(campaign)}?start=1&error=${encodeURIComponent(m)}`, 303);
     const agents = String(f.agents ?? "on") !== "off";
     const promotion = String(f.promotion ?? "");
+    const askOwner = askOwnerFrom(f);
+    if (typeof askOwner === "string") return back(askOwner);
     const choice = String(f.agents_model ?? "").trim();
     let model: StartRunRequest["model"];
     if (choice) {
@@ -1929,6 +2110,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         // are left out, whatever the form sent.
         model: agents ? model : undefined,
         promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+        askOwner,
         judgeGpus: String(f.judge_gpus ?? ""),
         queueFrom:
           agents && String(f.copy_queue ?? "") === "1" && slash > 0
@@ -1974,6 +2156,53 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       `<a class="btn sm" href="${runLiveHref(u.id, r.id)}">${icon.terminal}Live</a>${r.has_agents === false ? "" : `<a class="btn sm" href="${runLiveHref(u.id, r.id, "&compose=1")}">Message</a>`}${pauseMenu(c, u.id, r.id, back, "sm ghost")}`,
       waiting,
     );
+
+  /**
+   * How each goal of a goal campaign is really checked (goal 082), and where that comes from: a
+   * run's own rig report first; then the kit control keeps, at the contract's commit; then, for
+   * a campaign's page, the newest run whose rig reported it; else what the contract says. Undefined
+   * when control has no goal contract for the campaign and no rig reported its checks.
+   */
+  const goalChecksFor = (
+    name: string,
+    vs: RigView[],
+    rig?: string,
+    run?: RunView,
+  ): { checks: GoalChecks; source: ChecksSource } | undefined => {
+    if (rig && run?.goal_checks) return { checks: run.goal_checks, source: { from: "rig", rig } };
+    const v = store.campaignVersions(name)[0];
+    const raw = v?.contract ?? store.latestAssignments().get(name)?.payload.contract;
+    const parsed = raw ? parseContract(raw) : undefined;
+    const contract = parsed?.ok && parsed.contract.mode === "goal" ? parsed.contract : undefined;
+    const ref = contract?.project.kit;
+    const kept = v?.sources.kit !== undefined && "control" in v.sources.kit;
+    if (contract && ref && kept && opts.kits) {
+      const kit = KitSchema.safeParse(opts.kits.manifest(ref.repo, ref.commit));
+      if (kit.success)
+        return {
+          checks: goalChecks(contract, { kit: kit.data, repo: ref.repo, commit: ref.commit }),
+          source: { from: "control" },
+        };
+    }
+    if (!run) {
+      const reported = vs
+        .flatMap((u) => u.runs.map((r) => ({ u, r })))
+        .filter((x) => (x.r.campaign || x.r.id) === name && x.r.goal_checks)
+        .sort((a, b) => (b.r.created_at ?? "").localeCompare(a.r.created_at ?? ""))[0];
+      if (reported?.r.goal_checks)
+        return { checks: reported.r.goal_checks, source: { from: "rig", rig: reported.u.id } };
+    }
+    if (!contract) return undefined;
+    return {
+      checks: goalChecks(contract),
+      source: {
+        from: "contract",
+        why: kept
+          ? "Control can't read its copy of this campaign's kit at the contract's commit, so the cases' parameters and time limits are not shown."
+          : "Control keeps no copy of this campaign's kit, which is in its repository, and no rig has reported its checks yet, so the cases' parameters and time limits are not shown.",
+      },
+    };
+  };
 
   /** What a campaign is for, from its contract on control: its title, topic or objective. */
   const aboutOf = (name: string): string => {
@@ -2035,6 +2264,27 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         const own = ownModels(store, r.id, mode);
         return { id: r.id, own, now: rigContext(own, ctx) };
       });
+  /**
+   * The campaign's Experiment queue block (goal 081): its target queue depth, the ideas kept
+   * ready, from its newest contract. None for a rig check, a research campaign (its research
+   * plan fills its queue) or a campaign with no contract.
+   */
+  const queueTargetSection = (name: string) => {
+    if (isRigCheck(name)) return "";
+    const contract = campaignContract(store, name) as
+      | { mode?: unknown; lanes?: { count?: unknown; queue_target?: unknown } }
+      | undefined;
+    if (!contract || contract.mode === "research") return "";
+    const count = Number(contract.lanes?.count) || 2;
+    const own = contract.lanes?.queue_target;
+    const lanes = {
+      count,
+      ...(typeof own === "number" ? { queue_target: own } : {}),
+    };
+    return `<div class="block" id="queue-target"><div class="head"><h2>Experiment queue</h2><span class="right">every run of ${esc(name)}</span></div>
+<div class="card"><div>${infoLabel("Ideas kept ready", QUEUE_TARGET_TIP)} <b>${queueTarget({ lanes })}</b> <span class="muted">(${esc(queueTargetNote({ lanes }))})</span></div>
+<div class="muted small">Set it in New campaign, or as <code>lanes.queue_target</code> in the campaign's contract. A run's Live view says when its queue falls below it, and the teachers are then asked for ideas at once.</div></div></div>`;
+  };
   /** The campaign's Agents' context block; none for a rig check, or a campaign with no contract. */
   const contextSection = (c: Ctx, name: string, vs: RigView[], said: boolean) => {
     if (isRigCheck(name)) return "";
@@ -2122,24 +2372,53 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const kbFailed = c.req.query("on") === "kb" ? c.req.query("error") : undefined;
     // So does what the Agents' context's Save did, in its own block.
     const onContext = c.req.query("on") === "context";
-    const failed = kbFailed || onContext ? undefined : c.req.query("error");
+    // Archive and Move to folder (on=shelf) say what they refused at the top of every page.
+    const failed =
+      kbFailed || onContext || c.req.query("on") === "shelf" ? undefined : c.req.query("error");
     const okNote = onContext ? undefined : c.req.query("ok");
     const context = () => contextSection(c, name, vs, onContext);
-    const note = failed
-      ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
-      : okNote
-        ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
-        : "";
-    const canStart = Boolean(startFrom(name));
-    const buttons = campaignActions(name);
+    // The campaign's brief from its contract (goal 078): what its agents know.
+    const brief = () => (isRigCheck(name) ? "" : campaignBriefBlock(campaignContract(store, name)));
+    const note = `${
+      failed
+        ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
+        : okNote
+          ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
+          : ""
+    }${archivedLine(c, name)}`;
+    const canStart = Boolean(startFrom(name)) && !store.campaignArchived(name);
+    const buttons = campaignActions(c, name);
     const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1")}${copyPanel(c, name, vs, tried)}`;
     // A run just started (Start a run sends here with ?run=), until its rig reports it.
-    const startingCard = (key: string) =>
-      `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(key)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`;
+    // The card follows the run's command (goal 080): how the start goes, in words, and the run's
+    // own page once the rig reports the run. A start that the rig refused says why.
+    const startingCmd = (key: string) => {
+      const slash = key.indexOf("/");
+      const run = key.slice(slash + 1);
+      return slash > 0
+        ? store
+            .latestCommands(key.slice(0, slash), "assign_campaign")
+            .find(
+              (x) =>
+                x.payload.run === run &&
+                (x.payload.contract as { campaign?: unknown } | undefined)?.campaign === name,
+            )
+        : undefined;
+    };
+    const startingCard = (key: string) => {
+      const cmd = startingCmd(key);
+      const p = cmd ? commandProgress(cmd, Date.now()) : undefined;
+      const failed = p?.state === "refused" || p?.state === "expired";
+      const follow =
+        cmd && p && !p.final
+          ? ` data-follow="${esc(commandFollowUrl(cmd.id))}" data-follow-state="${p.state}"`
+          : "";
+      return `<div class="card" style="margin-bottom:16px" data-part="starting"${follow}><b${failed ? ` class="bad"` : ""}>${failed ? "Not started:" : "Starting"} ${esc(key)}.</b>${p ? ` <span class="${p.tone}">${esc(p.said)}</span>` : ""}${failed ? "" : ` <span class="muted">The rig fetches the project and the kit, and checks both. The run's page opens here when the rig reports the run, usually within a minute.</span>`}</div>`;
+    };
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaignVersions(name);
-      if (!saved.length && !canStart)
+      if (!saved.length && !startFrom(name) && !store.campaignArchived(name))
         return page(
           c,
           {
@@ -2151,6 +2430,16 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           vs,
         );
       const waiting = c.req.query("run");
+      // A goal campaign's goals, each with how it is checked (goal 082), before any run.
+      const how = goalChecksFor(name, vs);
+      const savedGoals = how?.checks.goals.length
+        ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${how.checks.goals.length}</span></div><div class="card flat">${how.checks.goals
+            .map(
+              (g) =>
+                `<div class="gl"><span class="gl-mark off">·</span><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.required ? "" : ` <span class="muted small">optional</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${howCheckedDetails(g, how.checks, how.source)}</span></div>`,
+            )
+            .join("")}</div></div>`
+        : "";
       return page(
         c,
         {
@@ -2164,7 +2453,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           waiting
             ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>`
-        }${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+        }${savedGoals}${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -2229,9 +2518,16 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     // ---------------------------------------- the campaign
     // A new run of a campaign that has runs: Starting until its rig reports it (only the newest
     // assignment, so an old link to a run that never came says nothing).
+    // An old link to a run that never came says nothing, unless the rig refused its start.
     const latest = wanted ? store.latestAssignments().get(name) : undefined;
+    const startCmd = wanted ? startingCmd(wanted) : undefined;
     const starting =
-      wanted && latest && runKey(latest.rig, latest.run) === wanted ? startingCard(wanted) : "";
+      wanted &&
+      ((latest && runKey(latest.rig, latest.run) === wanted) ||
+        startCmd?.status === "failed" ||
+        startCmd?.status === "rejected")
+        ? startingCard(wanted)
+        : "";
     const running = k.runs.filter((x) => x.run.status === "running");
     const earlier = k.runs
       .filter((x) => x.run.status !== "running")
@@ -2240,15 +2536,26 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       .map((x) => ({ ...x, n: waitingFor(x.rig, x.run) }))
       .filter((x) => x.n > 0);
     const bestRun = h.best;
+    // How each goal is really checked (goal 082): from the kit control keeps, else from the
+    // newest run whose rig reported it, else what the contract says.
+    const how = k.mode === "goal" ? goalChecksFor(name, vs) : undefined;
     const goals =
-      k.mode === "goal" && bestRun?.goals.length
+      (k.mode === "goal" && bestRun?.goals.length
         ? `<div class="kgoals">${bestRun.goals
             .map((g) => {
               const s2 = goalState(g);
               return `<span class="kgoal ${s2.tone}" title="${esc(g.goal)}: ${esc(s2.word)}">${s2.tone === "ok" ? "✓ " : ""}${esc(g.goal)}</span>`;
             })
             .join("")}</div>`
-        : "";
+        : "") +
+      (how?.checks.goals.length
+        ? `<details class="howcheck khow" data-k="how-goals"><summary>How each goal is checked</summary>${how.checks.goals
+            .map(
+              (g) =>
+                `<div class="gl"><span class="gl-main"><span><b>${esc(g.goal)}</b>${g.required ? "" : ` <span class="muted small">optional</span>`}</span>${g.description ? `<div class="muted">${moreText(g.description, 200)}</div>` : ""}${howChecked(g, how.checks, how.source)}</span></div>`,
+            )
+            .join("")}</details>`
+        : "");
     const about = aboutOf(name);
     const rigs = rigList(k);
     const verifiedBy = new Map(
@@ -2272,45 +2579,164 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           : ""
       }
 <div class="cols run-cols"><div>
-<div class="block"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
+<div class="block" data-part="at-work"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
         running.length
           ? `<div class="kwork one">${running.map((x) => workCardFor(c, x.rig, x.run, now, waitingFor(x.rig, x.run), campaignHref(name))).join("")}</div>`
           : `<div class="card"><div class="empty">No run is at work.${canStart ? ` <a href="${campaignHref(name)}?start=1" data-open="#start">Start one.</a>` : ""}</div></div>`
       }</div>
 ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`).join("")}
-${
-  earlier.length
-    ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
-        earlier.map((x) => ({
-          ...x,
-          // A hill climb's champion that other rigs confirmed (cross-verified).
-          result: (() => {
-            const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
-            return v.length
-              ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
-              : "";
-          })(),
-          action:
-            x.run.status === "paused"
-              ? cmdForm(c, {
-                  rig: x.rig.id,
-                  kind: "resume_run",
-                  fields: { run: x.run.id },
-                  label: "Resume",
-                  cls: "sm",
-                  back: campaignHref(name),
-                })
-              : "",
-        })),
-        now,
-      )}</div>`
-    : ""
-}${context()}${knowledgeSection(c, name, vs, kbFailed)}
+<div data-part="earlier">${
+        earlier.length
+          ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
+              earlier.map((x) => ({
+                ...x,
+                // A hill climb's champion that other rigs confirmed (cross-verified).
+                result: (() => {
+                  const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
+                  return v.length
+                    ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
+                    : "";
+                })(),
+                action:
+                  x.run.status === "paused"
+                    ? cmdForm(c, {
+                        rig: x.rig.id,
+                        kind: "resume_run",
+                        fields: { run: x.run.id },
+                        label: "Resume",
+                        cls: "sm",
+                        back: campaignHref(name),
+                      })
+                    : "",
+              })),
+              now,
+            )}</div>`
+          : ""
+      }</div>${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}
 </div><div class="side">${campaignUsage(k)}</div></div>${drawer}`,
       vs,
     );
   };
   app.get("/ui/campaigns/:campaign", (c) => campaignPage(c));
+
+  // ---------------------------------------- Archive, and the navigation's folders (goal 077)
+  /**
+   * Where Archive or a folder's form returns: its page, with what control did (sent) or what it
+   * refused (error, on=shelf), in words. The navigation's script asks for JSON instead.
+   */
+  const shelfAnswer = <T>(
+    c: Ctx,
+    f: Record<string, unknown>,
+    out: ShelfOutcome<T>,
+    done: (a: T) => string,
+    not: string,
+    fallback: string,
+  ) => {
+    if (c.req.header("accept")?.includes("application/json")) {
+      if (out.ok) return c.json({ ...out.answer, said: done(out.answer) });
+      // A redirect's refusal is audited from its address; this answer says it itself.
+      store.audit("owner:ui", "refused", { path: new URL(c.req.url).pathname, why: out.error });
+      return c.json({ error: `${not} ${out.error}` });
+    }
+    const to = backTo(f, fallback);
+    const [path = fallback, hash] = to.split("#");
+    const q = out.ok
+      ? `sent=${encodeURIComponent(done(out.answer))}`
+      : `error=${encodeURIComponent(`${not} ${out.error}`)}&on=shelf`;
+    return c.redirect(`${path}${path.includes("?") ? "&" : "?"}${q}${hash ? `#${hash}` : ""}`, 303);
+  };
+  /** A folder of the navigation by the id its forms carry. */
+  const folderById = (id: string) => store.campaignFolders().find((x) => String(x.id) === id);
+  const goneFolder = {
+    ok: false,
+    error: "That folder is not there any more.",
+    status: 404,
+  } as const;
+  app.post("/ui/campaigns/:campaign/archive", async (c) => {
+    const name = c.req.param("campaign");
+    return shelfAnswer(
+      c,
+      await c.req.parseBody(),
+      archiveCampaign(store, views(), name, "owner:ui"),
+      (a) =>
+        a.changed
+          ? `Archived ${name}. It left the navigation, Needs you and the Overview.`
+          : `${name} is archived already.`,
+      "Not archived.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaigns/:campaign/unarchive", async (c) => {
+    const name = c.req.param("campaign");
+    return shelfAnswer(
+      c,
+      await c.req.parseBody(),
+      unarchiveCampaign(store, views(), name, "owner:ui"),
+      (a) =>
+        a.changed
+          ? `Unarchived ${name}. It is back in the navigation, ${a.folder ? `in ${a.folder}` : "in no folder"}.`
+          : `${name} is not archived.`,
+      "Not unarchived.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaigns/:campaign/folder", async (c) => {
+    const name = c.req.param("campaign");
+    const f = await c.req.parseBody();
+    const id = String(f.folder ?? "");
+    const to = id ? folderById(id) : undefined;
+    return shelfAnswer(
+      c,
+      f,
+      id && !to ? goneFolder : moveCampaign(store, views(), name, to?.name ?? null, "owner:ui"),
+      (a) =>
+        !a.changed
+          ? a.folder
+            ? `${name} is in ${a.folder} already.`
+            : `${name} is in no folder already.`
+          : a.folder
+            ? `Moved ${name} to ${a.folder}.`
+            : `Moved ${name} out of its folder.`,
+      "Not moved.",
+      campaignHref(name),
+    );
+  });
+  app.post("/ui/campaign-folders", async (c) => {
+    const f = await c.req.parseBody();
+    return shelfAnswer(
+      c,
+      f,
+      createFolder(store, String(f.name ?? ""), "owner:ui"),
+      (a) =>
+        `Made the folder ${a.folder.name}. Drag a campaign onto it, or use Move to folder on a campaign's page.`,
+      "No folder made.",
+      "/ui/campaigns",
+    );
+  });
+  app.post("/ui/campaign-folders/:id/rename", async (c) => {
+    const f = await c.req.parseBody();
+    const folder = folderById(c.req.param("id"));
+    return shelfAnswer(
+      c,
+      f,
+      folder ? renameFolder(store, folder.name, String(f.name ?? ""), "owner:ui") : goneFolder,
+      (a) => (a.changed ? `Renamed ${a.was} to ${a.folder.name}.` : "Nothing to rename."),
+      "Not renamed.",
+      "/ui/campaigns",
+    );
+  });
+  app.post("/ui/campaign-folders/:id/delete", async (c) => {
+    const f = await c.req.parseBody();
+    const folder = folderById(c.req.param("id"));
+    return shelfAnswer(
+      c,
+      f,
+      folder ? deleteFolder(store, folder.name, "owner:ui") : goneFolder,
+      (a) => `Deleted the folder ${a.deleted}.`,
+      "Not deleted.",
+      "/ui/campaigns",
+    );
+  });
 
   // The folders a campaign's agents may read besides its own (goal 065): the owner's, any time.
   const grantBack = (c: Ctx, campaign: string, k: "ok" | "error", m: string) =>
@@ -2527,10 +2953,13 @@ ${
     const pulled = store.tunnelRig(c.req.param("rig"));
     const flashOk = c.req.query("ok");
     const flashError = c.req.query("error");
+    // A command the green line is about (Edit rig's settings): the page says how it stands.
+    const flashCmd = flashOk ? store.commandRow(c.req.query("cmd") ?? "") : undefined;
+    const flashing = flashCmd ? commandProgress(flashCmd, Date.now()) : undefined;
     const flash = flashError
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not done.</b> ${esc(flashError)}</div>`
       : flashOk
-        ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(flashOk)}</b></div>`
+        ? `<div class="card" style="margin-bottom:16px"${flashCmd && flashing && !flashing.final ? ` data-follow="${esc(commandFollowUrl(flashCmd.id))}" data-follow-state="${flashing.state}" data-say` : ""}><b class="ok">${esc(flashOk)}</b>${flashing ? ` <span class="${flashing.tone}" data-say>${esc(flashing.said)}</span>` : ""}</div>`
         : "";
     const retired = store.rigRetired(c.req.param("rig"));
     const launched = opts.runpodRigs?.view(c.req.param("rig"));
@@ -2649,7 +3078,7 @@ ${
     const live = u.runs.filter((i) => i.status === "running");
     const runsNow = live
       .map((i) =>
-        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i) }),
+        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i, u) }),
       )
       .join("");
     const checks: [string, string, string][] = [
@@ -2700,25 +3129,30 @@ ${
     ]
       .filter(Boolean)
       .join(" ");
+    // Each check's row in its state now: sent, running, its result, or why it did not run (goal 080).
+    const rows = checkRowsOf(store, u.id, u.checks, now);
     const checkRows = refusedNow
       ? `<div class="empty">Control sends no command to a refused rig, so its checks can't run. Update it first.</div>`
       : checks
-          .map(([k, name, what]) => {
-            const r = u.checks[k];
-            const res = !r
-              ? `<span class="chip">not run yet</span>`
-              : r.finished_at === null
-                ? `<span class="chip info">running</span>`
-                : r.ok
-                  ? `<span class="chip ok">passed</span>`
-                  : `<span class="chip bad">failed</span>`;
-            const when = !r
-              ? ""
-              : r.finished_at === null
-                ? `started ${esc(ago(r.started_at, now))} ago`
-                : `${esc(ago(r.finished_at, now))} ago`;
-            return `<div class="ck"><span class="ck-res">${res}</span><span class="ck-main"><span><b>${esc(name)}</b> <span class="muted small">${when}</span></span>${r?.finished_at && r.summary ? `<span class="ck-sum ${r.ok ? "" : "bad"}">${esc(r.summary)}</span>` : ""}<span class="ck-what">${esc(what)}</span></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: k }, label: r && r.finished_at === null ? "Running…" : "Run it", back })}</div>`;
-          })
+          .map(([k, name, what]) =>
+            checkRowHtml({
+              rig: u.id,
+              check: k,
+              name,
+              what,
+              row: rows[k] ?? checkRow(k, undefined, undefined, now),
+              now,
+              button: (label, disabled) =>
+                cmdForm(c, {
+                  rig: u.id,
+                  kind: "rig_check",
+                  fields: { check: k },
+                  label,
+                  back,
+                  disabled,
+                }),
+            }),
+          )
           .join("");
     const runRows = u.runs.map((i) => runRow(u, i, now, "campaign")).join("");
     const jobs = u.judge.jobs
@@ -2865,18 +3299,18 @@ ${retireForm}</div></details>`;
         actions,
         active: "rigs",
       },
-      `<p class="run-said">${said}</p>
-${flash}${stateBanners(stateIn)}${keyCard}
+      `<p class="run-said" data-part="said">${said}</p>
+${flash}<div data-part="banners"${stateIn.updating ? ` data-follow="${esc(updateFollowUrl(u.id))}" data-follow-state="${esc(updateProgress(u.id).state)}"` : ""}>${stateBanners(stateIn)}</div>${keyCard}
 ${rp ? podSection(c, u.id, now) : ""}
-${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}
+<div data-part="at-work">${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}</div>
 <div class="cols run-cols"><div>
-<div class="block"><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat">${checkRows}</div></div>
-<div class="block"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span>${u.state !== "reporting" || refusedNow ? `<span class="right">as of its last report${neverReported(u) ? "" : `, ${esc(ago(u.last_seen, now))} ago`}</span>` : ""}</div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
+<div class="block" data-part="checks"${takingModel(u.model, store.rigModels()[u.id]) ? ` data-follow="${esc(modelFollowUrl(u.id))}" data-follow-state="taking"` : ""}><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat cks">${checkRows}</div></div>
+<div class="block" data-part="runs"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span>${u.state !== "reporting" || refusedNow ? `<span class="right">as of its last report${neverReported(u) ? "" : `, ${esc(ago(u.last_seen, now))} ago`}</span>` : ""}</div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
 ${rp ? events : ""}
-<div class="block"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
+<div class="block" data-part="jobs"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
-<div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${versionFact(stateIn)}${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
+<div class="block" data-part="rig"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${versionFact(stateIn)}${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
 ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}${pulled ? pullBlock(pulled, now) : ""}
 ${rp ? "" : events}
 </div></div>`,
@@ -2903,6 +3337,15 @@ ${rp ? "" : events}
     });
   });
 
+  /** The follow of the owner's newest decision on a change, while the rig has not done it. */
+  const followDecision = (rig: string, attempt: string, now: number) => {
+    const d = store.decisions().find((x) => x.rig === rig && x.attempt === attempt);
+    const cmd = d ? store.commandRow(d.id) : undefined;
+    const p = cmd ? commandProgress(cmd, now) : undefined;
+    return cmd && p && !p.final
+      ? ` data-follow="${esc(commandFollowUrl(cmd.id))}" data-follow-state="${esc(p.state)}"`
+      : "";
+  };
   app.get("/ui/rigs/:rig/attempts/:attempt", (c) => {
     const now = Date.now();
     const vs = views();
@@ -2937,7 +3380,9 @@ ${rp ? "" : events}
         ],
         active: "campaigns",
       },
-      attemptDetail(u, r, a, now, { decision, patch }),
+      // One part: the owner's decision and what the rig did show without a refresh (goal 080),
+      // followed while the rig has not done it.
+      `<div data-part="attempt"${followDecision(u.id, a.id, now)}>${attemptDetail(u, r, a, now, { decision, patch })}</div>`,
       vs,
     );
   });
@@ -2970,8 +3415,8 @@ ${rp ? "" : events}
     const idle = vs.filter((u) => !u.runs.some((r) => r.status === "running"));
     const runLink = (x: { u: RigView; r: RunView }, sub: string, cls = "") =>
       `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.u.id, x.r.id)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
-    const nav = `<nav class="lruns" aria-label="Runs">
-<div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r) ? ` · <span class="warn">${waitingOn(x.r)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
+    const nav = `<nav class="lruns" aria-label="Runs" data-part="lruns">
+<div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r, x.u) ? ` · <span class="warn">${waitingOn(x.r, x.u)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
 ${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
 ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
 </nav>`;
@@ -3075,7 +3520,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const box =
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
-        : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
+        : `<form class="lcomposer" method="post" action="/ui/live/message" data-act><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
 <select name="to" aria-label="To" class="lto">${opt("all", "To everyone working", off("all"))}${lanes.map((l) => opt(l, `To ${l}`, off(l))).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("panel", "To the review panel", off("panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
 <textarea name="text" rows="1" required data-words maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
@@ -3088,14 +3533,14 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         : r.mode === "goal"
           ? `${r.goals.filter((g) => g.status === "met").length} of ${r.goals.length} goals met`
           : signed((r.champion.filter((x) => !x.reopened).at(-1)?.cumulative ?? 1) - 1),
-      waitingOn(r)
-        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r)} wait${waitingOn(r) === 1 ? "s" : ""} for you</a>`
+      waitingOn(r, u)
+        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r, u)} wait${waitingOn(r, u) === 1 ? "s" : ""} for you</a>`
         : "",
     ]
       .filter(Boolean)
       .join(" · ");
     const st = runState(r);
-    const head = `<div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
+    const head = `<div data-part="lhead"><div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
       r.status === "running"
         ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm") +
           moreMenu(c, u.id, r, runLiveHref(u.id, r.id), "sm")
@@ -3109,7 +3554,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
               back: runLiveHref(u.id, r.id),
             })
           : ""
-    }</div>`;
+    }</div></div>`;
     return page(
       c,
       {
@@ -3118,9 +3563,9 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         active: "live",
         flush: true,
       },
-      `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div class="lchips">${chips}<span class="grow"></span>${keptBox}<button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
+      `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div data-fw-top></div><div class="lchips">${chips}<span class="grow"></span><span data-part="lkept">${keptBox}</span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
 <div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
-${notice}${box}</section></div>`,
+<div data-part="lnotice">${notice}</div>${box}</section></div>`,
       vs,
     );
   });
@@ -3173,18 +3618,22 @@ ${notice}${box}</section></div>`,
       );
     const to = String(f.to ?? "all");
     const keep = String(f.keep ?? "") === "1" && (to === "all" || to.startsWith("lane-"));
+    // From the page's script (goal 080): JSON, and the message is followed until the rig took it.
+    const json = wantsJson(c);
+    let id: string;
     try {
-      issueCommand(store, opts.privateKeyPem, {
+      ({ id } = issueCommand(store, opts.privateKeyPem, {
         rig,
         kind: "message_agent",
         payload: { run, to, text: String(f.text ?? "").trim(), ...(keep ? { keep: true } : {}) },
         issuedBy: "owner:ui",
-      });
+      }));
     } catch (err) {
-      return back(
-        `&msgerror=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`,
-      );
+      const why = err instanceof Error ? err.message : String(err);
+      return json ? c.json(notSent(why), 400) : back(`&msgerror=${encodeURIComponent(why)}`);
     }
+    const cmd = json ? store.commandRow(id) : undefined;
+    if (cmd) return c.json({ ...commandProgress(cmd, Date.now()), follow: commandFollowUrl(id) });
     return back();
   });
 
@@ -3458,6 +3907,31 @@ ${notice}${box}</section></div>`,
     const b = String(f.back ?? "");
     return b.startsWith("/ui") && !b.startsWith("//") ? b : fallback;
   };
+
+  // ---------------------------------------------------------------- following an action (goal 080)
+  // The page's script sends an action's form with fetch, asking for JSON, then follows it on these
+  // routes until its outcome: a Progress (command-progress.ts) each time.
+  const wantsJson = (c: Ctx) => (c.req.header("accept") ?? "").includes("application/json");
+  app.get("/ui/commands/:file{.+\\.json}", (c) => {
+    const cmd = store.commandRow(c.req.param("file").replace(/\.json$/, ""));
+    return cmd ? c.json(commandProgress(cmd, Date.now())) : c.json({ error: "not found" }, 404);
+  });
+  app.get("/ui/rigs/:rig/checks/:file{.+\\.json}", (c) => {
+    const rig = c.req.param("rig");
+    const check = c.req.param("file").replace(/\.json$/, "");
+    const known = store.rigs().find((x) => x.id === rig);
+    if (!known) return c.json({ error: "not found" }, 404);
+    const row = checkRows(store, rig, Date.now())[check];
+    return row
+      ? c.json(checkProgress(row, known.last_cursor))
+      : c.json({ error: "not found" }, 404);
+  });
+  app.get("/ui/rigs/:rig/model.json", (c) => {
+    const rig = c.req.param("rig");
+    return store.rigs().some((x) => x.id === rig)
+      ? c.json(modelProgress(store, rig, Date.now()))
+      : c.json({ error: "not found" }, 404);
+  });
 
   app.post("/ui/resets/:id/confirm", async (c) => {
     try {
@@ -3860,26 +4334,25 @@ ${
             : m.source === "environment"
               ? `Its agents use the rig's own settings (${m.model}, under ${HARNESSES[m.harness]}).`
               : "Its agents have no model: they wait.";
-        const moving =
-          m &&
-          want &&
-          !(
-            m.source === "control" &&
-            m.name === want.provider &&
-            sameModel(m.model, want.model) &&
-            m.harness === want.harness
-          )
+        const taking = takingModel(m, want);
+        const moving = !taking
+          ? ""
+          : want
             ? ` <span class="chip info">taking ${esc(want.model)} under ${esc(HARNESSES[want.harness])}</span>`
-            : m && !want && m.source === "control"
-              ? ` <span class="chip info">going back to its own settings</span>`
-              : "";
-        const chk = u.checks.model;
-        const checked = !chk
-          ? "Its model check has not run."
-          : chk.finished_at === null
-            ? "Its model check is running."
-            : `Its model check ${chk.ok ? "passed" : "FAILED"} ${ago(chk.finished_at, now)} ago: ${chk.summary ?? ""}`;
-        return `<div class="ck rr-route"><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${chk?.finished_at && !chk.ok ? "bad" : ""}">${esc(checked)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="harness" class="harness" aria-label="harness for ${esc(u.id)}">${(Object.keys(HARNESSES) as Harness[]).map((h) => `<option value="${h}"${(want?.harness ?? "pi") === h ? " selected" : ""}>${HARNESSES[h]}</option>`).join("")}</select><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings" })}</span></div>`;
+            : ` <span class="chip info">going back to its own settings</span>`;
+        // The model check in its state now: sent, running, its result, or why it did not run.
+        const chk =
+          checkRowsOf(store, u.id, u.checks, now).model ??
+          checkRow("model", undefined, undefined, now);
+        const waits = checkWaits(chk);
+        const bad = chk.state === "failed" || chk.state === "refused" || chk.state === "expired";
+        // The page follows the rig while it takes the model, then its check (goal 080).
+        const follow = taking
+          ? ` data-follow="${esc(modelFollowUrl(u.id))}" data-follow-state="taking"`
+          : waits
+            ? ` data-follow="${esc(checkFollowUrl(u.id, "model"))}" data-follow-state="${chk.state}"`
+            : "";
+        return `<div class="ck rr-route"${follow}><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${bad ? "bad" : ""}">${modelCheckHtml(chk, now)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs" data-act><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="harness" class="harness" aria-label="harness for ${esc(u.id)}">${(Object.keys(HARNESSES) as Harness[]).map((h) => `<option value="${h}"${(want?.harness ?? "pi") === h ? " selected" : ""}>${HARNESSES[h]}</option>`).join("")}</select><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings", disabled: waits })}</span></div>`;
       })
       .join("");
     return page(
@@ -3895,7 +4368,7 @@ ${note}
 ${prices}
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
 ${mcpSettingsBlocks(store, mcpServers, t, now, (k) => c.req.query(k))}
-<div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
+<div class="block" data-part="routes"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
 <script src="/ui/assets/providers.js" defer></script>`,
       vs,
     );
@@ -4708,7 +5181,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
   const clusterPlacedBlock = (r: ClusterRig, t: string) => {
     const rName = encodeURIComponent(r.rig);
     const act = (action: string, label: string, extra = "", cls = "sm") =>
-      `<form class="inline" method="post" action="/ui/rigs/${rName}/cluster/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+      `<form class="inline" method="post" action="/ui/rigs/${rName}/cluster/${action}"${action === "remove" ? "" : " data-act"}><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
     const s = r.spec;
     const manage =
       r.status === "removed" || r.status === "deploying"
@@ -4717,10 +5190,17 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
     const want = controlImages(s.gpus);
     const keeps =
-      "Its volume, tokens, runs and results stay. A trial in progress stops, and the harness plans it again.";
+      "Its volume, tokens, runs and results stay. Running trials and the judge's job under way finish first: the rig starts nothing new meanwhile. Update now skips the wait: a trial in progress then stops, and its experiment goes back to the queue.";
     // New images; or the same ones after a failed update (a retry); or a new address for control.
-    const update =
-      !manage || typeof want === "string"
+    // Draining for an update (goal 079): what it waits for, and the two ways out.
+    const work = rigWork(r.rig);
+    const draining =
+      r.status === "draining" && typeof want !== "string"
+        ? `<div class="small" style="margin-top:12px">Draining before its pods restart on control's images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">${work ? `It waits for ${esc(workWords(work))} to finish, and starts nothing new.` : "It waits for its next report."} Its pods restart as soon as nothing runs.</div>${act("images-now", "Update now, without waiting")}${act("drain-cancel", "Call the update off")}`
+        : "";
+    const update = draining
+      ? draining
+      : !manage || typeof want === "string"
         ? ""
         : want.harness !== s.images.harness || want.supervisor !== s.images.supervisor
           ? `<div class="small" style="margin-top:12px">Control now deploys other images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">Its pods restart on these images. ${keeps} After a newer harness has opened its ledger, an older image may not open it.</div>${act("images", "Update to these images")}`
@@ -4729,7 +5209,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
             : s.controlUrl && controlAddress() && s.controlUrl !== controlAddress()
               ? `<div class="small" style="margin-top:12px">Control's address for rigs changed: the rig reports to <span class="mono">${esc(s.controlUrl)}</span>, control is now at <span class="mono">${esc(controlAddress() ?? "")}</span>.</div><div class="small muted" style="margin:4px 0 6px">Its pods restart with the new address, on the same images. ${keeps}</div>${act("images", "Give it control's new address")}`
               : "";
-    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
+    return `<div class="block" ${placeAttrs(r.rig, r.status)}><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}${update}</div></div>`;
   };
   /** A rig in pull mode: its pod, its enrollment, control's last connection and the refusals. */
@@ -4793,17 +5273,42 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     await awaitFirstReport(r.rig, (s) => store.setClusterRigStatus(r.rig, s));
   };
   /** A rig control set up: where, its setup history, and stop, start, restart and remove. */
+  /**
+   * A rig control set up, on a machine or a cluster, while a change to it is under way (goal 080):
+   * its block follows the change's steps until it ends. Its buttons, but Remove, are sent by the
+   * page's script (data-act).
+   */
+  const PLACE_BUSY = new Set(["deploying", "starting", "updating"]);
+  const placeProgress = (rig: string): Progress => {
+    const status = store.clusterRig(rig)?.status ?? store.machineRig(rig)?.status ?? "removed";
+    return {
+      state: `${status}:${store.rigSetupEvents(rig).length}`,
+      final: !PLACE_BUSY.has(status),
+      said: "",
+      tone: "",
+    };
+  };
+  const placeFollowUrl = (rig: string) => `/ui/rigs/${encodeURIComponent(rig)}/place.json`;
+  const placeAttrs = (rig: string, status: string) =>
+    `data-part="placed"${PLACE_BUSY.has(status) ? ` data-follow="${esc(placeFollowUrl(rig))}" data-follow-state="${esc(placeProgress(rig).state)}"` : ""}`;
+  /** A form's answer: JSON for the page's script, else the rig's page with the words. */
+  const placeBack = (c: Ctx, rig: string, k: "ok" | "error", msg: string) =>
+    wantsJson(c)
+      ? k === "ok"
+        ? c.json({ ...placeProgress(rig), said: msg, tone: "ok", follow: placeFollowUrl(rig) })
+        : c.json(notSent(msg), 400)
+      : c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(msg)}`, 303);
   const placedBlock = (r: MachineRig, t: string) => {
     const rName = encodeURIComponent(r.rig);
     const steps = setupSteps(r.rig);
     const act = (action: string, label: string, extra = "", cls = "sm") =>
-      `<form class="inline" method="post" action="/ui/rigs/${rName}/machine/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+      `<form class="inline" method="post" action="/ui/rigs/${rName}/machine/${action}"${action === "remove" ? "" : " data-act"}><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
     const manage =
       r.status === "removed" || r.status === "deploying"
         ? ""
         : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its services") : act("stop", "Stop its services")}${act("restart", "Restart them")}</div>
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.machine)}</summary><div class="small muted" style="margin:6px 0">Stops its services and deletes its units, files and volumes on the machine, and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
-    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? gpuRoles(r.gpus, r.judge_gpus) : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
+    return `<div class="block" ${placeAttrs(r.rig, r.status)}><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? gpuRoles(r.gpus, r.judge_gpus) : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${steps || `<div class="muted small">No step yet.</div>`}</div>${manage}</div></div>`;
   };
   /** Sets a rig up on a machine, in the background: each step becomes a setup event. */
@@ -5276,6 +5781,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   const updateClusterRigImages = async (
     rig: string,
     by: string,
+    o: { wait?: boolean | undefined } = {},
   ): Promise<{ ok: string } | { error: string }> => {
     const r = store.clusterRig(rig);
     if (!r || r.status === "removed")
@@ -5292,6 +5798,12 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const old = r.spec.images;
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
+    // A drain under way (goal 079): asked again, it goes on waiting; asked not to wait, the
+    // update goes ahead now.
+    if (r.status === "draining" && o.wait !== false)
+      return {
+        ok: `${rig} is draining: its pods restart on the new images once its trials and the judge's job end. Update now skips the wait.`,
+      };
     // One change at a time: an update or a start still waiting for its pods is not overlapped.
     if (r.status === "updating" || r.status === "starting")
       return {
@@ -5329,6 +5841,30 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         return { ok: `${rig} already runs control's images.` };
     }
     const stopped = r.status === "stopped";
+    // Drain first (goal 079): while trials run or the judge has a job under way, the rig starts
+    // nothing new and lets those end; the watcher below restarts its pods once nothing runs.
+    // A harness too old to report its work is updated at once, as before.
+    const work = rigWork(rig);
+    if (
+      o.wait !== false &&
+      !stopped &&
+      r.status !== "draining" &&
+      work &&
+      (work.trials > 0 || work.judge_jobs > 0)
+    ) {
+      issueCommand(store, opts.privateKeyPem, {
+        rig,
+        kind: "drain_rig",
+        payload: { drain: true, reason: "its images are about to change" },
+        issuedBy: by,
+      });
+      store.setClusterRigStatus(rig, "draining");
+      store.rigSetupEvent(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
+      store.audit(by, "cluster_rig_drain", { rig, to: images });
+      return {
+        ok: `${rig} drains first: it starts nothing new, and its pods restart on the new images once ${workWords(work)} finish. Update now, on its page or with update_rig_images and wait false, skips the wait.`,
+      };
+    }
     const out = await kube.kubectl(
       clusterTarget(k),
       ["apply", "-f", "-"],
@@ -5337,6 +5873,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     );
     if (out.code !== 0) {
       store.rigSetupEvent(rig, "images", false, kubeError(out));
+      // A rig that drained for it goes back to work: the update did not happen.
+      if (r.status === "draining") {
+        undrain(rig, by);
+        store.setClusterRigStatus(rig, "failed");
+      }
       return { error: kubeError(out) };
     }
     store.setClusterRigImages(rig, images, controlAddress());
@@ -5371,6 +5912,49 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     };
   };
   if (opts.actions) opts.actions.updateRigImages = updateClusterRigImages;
+  /** What a rig still runs, as its last report says (goal 079); none from an older harness. */
+  const rigWork = (
+    rig: string,
+  ): { trials: number; judge_jobs: number; draining: unknown } | undefined => {
+    const w = (store.rigs().find((x) => x.id === rig)?.summary as { work?: unknown } | undefined)
+      ?.work as { trials?: unknown; judge_jobs?: unknown; draining?: unknown } | undefined;
+    if (!w || typeof w.trials !== "number" || typeof w.judge_jobs !== "number") return undefined;
+    return { trials: w.trials, judge_jobs: w.judge_jobs, draining: w.draining ?? null };
+  };
+  const workWords = (w: { trials: number; judge_jobs: number }) =>
+    [
+      w.trials ? `${w.trials} trial${w.trials === 1 ? "" : "s"}` : "",
+      w.judge_jobs ? `the judge's job${w.judge_jobs === 1 ? "" : "s"}` : "",
+    ]
+      .filter(Boolean)
+      .join(" and ") || "its work";
+  /** A drain ends: the rig starts work again (its images did not change). */
+  const undrain = (rig: string, by: string) =>
+    issueCommand(store, opts.privateKeyPem, {
+      rig,
+      kind: "drain_rig",
+      payload: { drain: false, reason: "the update did not happen" },
+      issuedBy: by,
+    });
+  /** The owner calls the update off: the rig goes back to work on its images. */
+  const cancelDrain = (rig: string, by: string): { ok: string } | { error: string } => {
+    const r = store.clusterRig(rig);
+    if (r?.status !== "draining") return { error: `${rig} is not draining.` };
+    undrain(rig, by);
+    store.setClusterRigStatus(rig, "running");
+    store.rigSetupEvent(rig, "drain", true, "called off: the rig goes back to work on its images");
+    return { ok: `${rig} goes back to work on its images.` };
+  };
+  // A draining rig's pods restart once its report says nothing runs any more (goal 079).
+  const drainWatch = setInterval(() => {
+    for (const r of store.clusterRigs().filter((x) => x.status === "draining")) {
+      const w = rigWork(r.rig);
+      if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
+      store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
+      void updateClusterRigImages(r.rig, "control:drain", { wait: false }).catch(() => {});
+    }
+  }, opts.drainWatchMs ?? 10_000);
+  drainWatch.unref?.();
   const addClusterRigFrom = async (
     c: Ctx,
     f: Record<string, unknown>,
@@ -5748,17 +6332,25 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         return { error: `Control didn't set ${rig} up on a cluster.` };
       return clusterRigAction(r, action, by);
     };
+  app.get("/ui/rigs/:rig/place.json", (c) => {
+    const rig = c.req.param("rig");
+    return store.clusterRig(rig) || store.machineRig(rig)
+      ? c.json(placeProgress(rig))
+      : c.json({ error: "not found" }, 404);
+  });
   app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
     const r = store.clusterRig(c.req.param("rig"));
     const action = c.req.param("action");
-    const back = (k: "ok" | "error", msg: string) =>
-      c.redirect(
-        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
-        303,
-      );
+    const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
-    if (action === "images") {
-      const done = await updateClusterRigImages(r.rig, "owner:ui");
+    if (action === "images" || action === "images-now") {
+      const done = await updateClusterRigImages(r.rig, "owner:ui", {
+        wait: action !== "images-now",
+      });
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    if (action === "drain-cancel") {
+      const done = cancelDrain(r.rig, "owner:ui");
       return "error" in done ? back("error", done.error) : back("ok", done.ok);
     }
     if (!["stop", "start", "restart", "remove"].includes(action))
@@ -5776,11 +6368,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   app.post("/ui/rigs/:rig/machine/:action", async (c) => {
     const r = store.machineRig(c.req.param("rig"));
     const action = c.req.param("action") as RigAction;
-    const back = (k: "ok" | "error", msg: string) =>
-      c.redirect(
-        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
-        303,
-      );
+    const back = (k: "ok" | "error", msg: string) => placeBack(c, c.req.param("rig"), k, msg);
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
     if (!["stop", "start", "restart", "remove"].includes(action))
       return back("error", "No such action.");
@@ -5961,10 +6549,39 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if ("error" in done) throw new Error(done.error);
     return done.ok;
   };
+  /**
+   * How an update stands, for the page's script (goal 080): a new state with each step, so the
+   * rig's page draws its steps as they come; final once it ended.
+   */
+  const updateProgress = (rig: string): Progress => {
+    const waiting = updates.waiting(rig);
+    const steps = store.rigSetupEvents(rig);
+    const from = steps.map((s) => s.step).lastIndexOf("update_started");
+    const n = from < 0 ? 0 : steps.length - from;
+    return { state: `${n}:${waiting ?? "ended"}`, final: !waiting, said: "", tone: "" };
+  };
+  const updateFollowUrl = (rig: string) => `/ui/rigs/${encodeURIComponent(rig)}/update.json`;
+  app.get("/ui/rigs/:rig/update.json", (c) => {
+    const rig = c.req.param("rig");
+    return store.rigs().some((x) => x.id === rig)
+      ? c.json(updateProgress(rig))
+      : c.json({ error: "not found" }, 404);
+  });
   app.post("/ui/rigs/:rig/update", (c) => {
     const rig = c.req.param("rig");
+    const json = wantsJson(c);
     const back = (k: "ok" | "error", m: string) =>
-      c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}#version`, 303);
+      json
+        ? c.json(
+            k === "ok"
+              ? { ...updateProgress(rig), said: m, tone: "ok", follow: updateFollowUrl(rig) }
+              : notSent(m),
+            k === "ok" ? 200 : 400,
+          )
+        : c.redirect(
+            `/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}#version`,
+            303,
+          );
     const place = placeOf(rig);
     if (!place.update)
       return back(
@@ -5982,7 +6599,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.audit("owner:ui", "rig_update", { rig, to: control.version });
     return back(
       "ok",
-      `The update of ${rig} to ${control.version} began. Its steps show below: press refresh to follow them.`,
+      `The update of ${rig} to ${control.version} began. Its steps show below as they happen.`,
     );
   });
   /** What a cluster's API says about a rig's two deployments, in words: ok when both run. */
@@ -6893,20 +7510,25 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const rig = String(f.rig ?? "");
     const choice = String(f.choice ?? "");
     const harness = harnessOf(f.harness);
-    if (!store.rigs().some((x) => x.id === rig))
-      return c.redirect(settingsUrl("error", "No such rig."), 303);
+    // From the page's script (goal 080): JSON, and the row follows the rig as it takes the model.
+    const answer = (k: "ok" | "error", m: string) =>
+      wantsJson(c)
+        ? k === "ok"
+          ? c.json({
+              ...modelProgress(store, rig, Date.now()),
+              said: m,
+              tone: "ok",
+              follow: modelFollowUrl(rig),
+            })
+          : c.json(notSent(m), 400)
+        : c.redirect(settingsUrl(k, m), 303);
+    if (!store.rigs().some((x) => x.id === rig)) return answer("error", "No such rig.");
     if (!choice) {
       clearRigModel(rig);
-      return c.redirect(
-        settingsUrl("ok", `${rig} goes back to its own settings within a minute.`),
-        303,
-      );
+      return answer("ok", `${rig} goes back to its own settings within a minute.`);
     }
     const given = giveRigModel(rig, choice, harness);
-    return c.redirect(
-      "error" in given ? settingsUrl("error", given.error) : settingsUrl("ok", given.ok),
-      303,
-    );
+    return "error" in given ? answer("error", given.error) : answer("ok", given.ok);
   });
   /**
    * Gives a rig a provider's model under a harness, as Providers and Edit rig both do. `cap`: a cap
@@ -7007,7 +7629,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   /**
    * Checks a model for one of a rig's other agents (or one of the teachers' models), as its row on
    * Edit rig does, or (an empty choice) its default again: the workers' model for the planner,
-   * the rig default for an advisor. Nothing changes here: applyAgentModel saves what this
+   * the one in the rig's advisors file for an advisor. Nothing changes here: applyAgentModel saves what this
    * allows. `harness` (goal 073): where it runs; left out (a line's Runs in on its empty choice, or
    * a form without it), the one it has while it keeps the same model, else what the model needs.
    * `cap` and `at`: the agent's own cap on its model's window and its compaction point (goal 070),
@@ -7250,6 +7872,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       now,
       two: second === "2" || (second !== "1" && hasSecond),
       href: `/ui/rigs/${rName}/edit`,
+      // What an agent with no model uses (goal 074): the rig's own model, as its harness reports
+      // it, and its advisors file, as its supervisor reports it.
+      defaults: {
+        workers:
+          u.model?.source === "environment"
+            ? (u.model.model ?? undefined)
+            : u.model?.source === "none"
+              ? null
+              : undefined,
+        advisors: advisorsFileOf(u.supervisor),
+      },
     });
     const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
     const where = placed
@@ -7272,14 +7905,14 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <form id="edit-rig" method="post" action="/ui/rigs/${rName}/edit"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Parts of the rig</h2><div class="card flat">${PARTS.map(sw).join("")}
 <div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
-<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, an agent uses the rig default.</p>
+<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, the workers use the rig's own settings, and the planner uses the workers' model. An advisor uses the model in the rig's advisors file. If the file has none, that advisor is off.</p>
 <div class="card">${agents}</div>
 <div class="g3" style="margin-top:14px">
-<label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
+<label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit. Empty: no limit; a trial lasts until the worker submits or stops.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 </div></div>
 <div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
-<label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion. A change that the campaign sends to an audit still waits for the audit.</span></span></label>
+<label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion with no step of yours. When the campaign calls for an audit and this rig has an auditor, the auditor's clear comes first; its block stops the change. A run can still ask you about some changes (Ask me first, when you start it).</span></span></label>
 <label class="ch${s?.promotion === "owner_approval" ? " on" : ""}"><input type="radio" name="promotion" value="owner_approval"${s?.promotion === "owner_approval" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Ask me for each change</b><br><span class="muted small">Each confirmed change waits for you in Needs you.</span></span></label>
 </div><div class="muted small" style="margin-top:6px">A campaign can set its own rule when it starts; that rule comes first for its runs.</div></div>
 <div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl>${
@@ -7364,8 +7997,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 
     // The other agents' lines (goals 070, 073 and 074): each one's model, effort, harness, window
     // and point. Only the lines the form has: a line it lacks keeps its model. The first teacher
-    // on the rig default takes the second teacher and the merged by model with it, as
-    // set_rig_model's clear does; a second teacher needs a first.
+    // with no model (the advisors file's) takes the second teacher and the merged by model with
+    // it, as set_rig_model's clear does; a second teacher needs a first.
     const roles = store.roleModels(rig);
     const noTeachers = "role_teachers" in f && !String(f.role_teachers ?? "");
     if (noTeachers && twoTeachers)
@@ -7429,8 +8062,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     }
 
     // The harness's settings: only what changed, checked here (as REST's and MCP's twins check
-    // them: rig-settings.ts) and sent below as one signed command. An empty number field keeps
-    // what the rig has; an empty Turns per trial is no limit.
+    // them: rig-settings.ts) and sent below as one signed command. An empty Workers at a time
+    // keeps what the rig has; an empty One trial lasts or Turns per trial is no limit.
     const s = u.settings;
     let settings: RigSettingsChange | undefined;
     if (s) {
@@ -7441,7 +8074,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       const out = rigSettingsChange(rig, s, u.gpu_split, {
         ...Object.fromEntries(PARTS.map((p) => [p.id, f[p.id] === "1"])),
         lanes: num("lanes") ?? undefined,
-        trial_minutes: num("trial_minutes") ?? undefined,
+        // Empty: no limit (goal 079).
+        trial_minutes: num("trial_minutes"),
         max_turns: num("max_turns"),
         promotion: String(f.promotion ?? s.promotion),
         // The field shows only on a rig with a GPU set.
@@ -7465,23 +8099,24 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const teachersCleared = plans.some((p) => p.role === "teachers" && p.clear);
     for (const plan of plans) {
       const ok = applyAgentModel(rig, plan).ok;
-      // The teachers back to the rig default: said once, for their three models.
+      // The teachers back to the advisors file: said once, for their three models.
       if (!(teachersCleared && plan.clear && plan.role !== "teachers")) said.push(ok);
     }
+    let sent: string | undefined;
     if (settings) {
-      issueCommand(store, opts.privateKeyPem, {
+      sent = issueCommand(store, opts.privateKeyPem, {
         rig,
         kind: "rig_settings",
         payload: settings,
         issuedBy: "owner:ui",
-      });
+      }).id;
       said.push(settingsCount(Object.keys(settings).length));
     }
-    return back(
-      "ok",
-      said.length
-        ? `Control sent ${said.join(" and ")} to ${rig}. The rig takes the change in less than one minute.`
-        : "Nothing changed.",
+    if (!said.length) return back("ok", "Nothing changed.");
+    // The rig's page follows the settings' command, and the rig as it takes a model (goal 080).
+    return c.redirect(
+      `/ui/rigs/${encodeURIComponent(rig)}?ok=${encodeURIComponent(`Control sent ${said.join(" and ")} to ${rig}. The rig takes the change in less than one minute.`)}${sent ? `&cmd=${encodeURIComponent(sent)}` : ""}`,
+      303,
     );
   });
 
@@ -7538,11 +8173,18 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       drop_directive: { run, id: Number(f.id) },
       unkeep_message: { run, message: Number(f.message) },
     };
-    if (!(kind in payloads)) return c.text("this command is not available from the dashboard", 400);
+    // The page's script sends the form with fetch and follows the command (goal 080): it takes
+    // JSON. A plain form post gets the page again, which says "Sent".
+    const json = wantsJson(c);
+    if (!(kind in payloads)) {
+      const why = "this command is not available from the dashboard";
+      return json ? c.json(notSent(why), 400) : c.text(why, 400);
+    }
     let woke: string | null;
+    let id: string;
     try {
       // A run resumed on a stopped RunPod pod starts the pod first.
-      ({ woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
+      ({ id, woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
         rig: String(f.rig),
         kind,
         payload: payloads[kind],
@@ -7551,14 +8193,29 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       }));
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
-      return c.text(`refused: ${why}`, 400);
+      return json ? c.json(notSent(why), 400) : c.text(`refused: ${why}`, 400);
     }
+    const now = Date.now();
+    const cmd = store.commandRow(id);
+    // A check's row says how it stands itself; any other command says it beside its button.
+    const check = kind === "rig_check" ? String(f.check ?? "") : "";
+    const progress: Progress = check
+      ? checkProgress(
+          checkRows(store, String(f.rig), now)[check] ?? checkRow(check, undefined, cmd, now),
+        )
+      : cmd
+        ? commandProgress(cmd, now)
+        : { state: "sent", final: false, said: "", tone: "" };
+    if (json)
+      return c.json({
+        ...progress,
+        said: [woke ?? "", progress.said].filter(Boolean).join(" "),
+        follow: check ? checkFollowUrl(String(f.rig), check) : commandFollowUrl(id),
+      });
     // The page says the command went; the rig's answer shows where the command was given.
     const to = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`);
     const [path, hash] = to.split("#");
-    const sent = woke
-      ? `${woke} Control sent the command to ${String(f.rig)}: the rig does it once its pod runs. This page shows the result.`
-      : `Control sent the command to ${String(f.rig)}. The rig does it in less than 10 seconds. This page shows the result.`;
+    const sent = `${woke ? `${woke} ` : ""}Sent to ${String(f.rig)} at ${clockUtc(cmd?.issued_at ?? new Date(now).toISOString())}.`;
     return c.redirect(
       `${path}${path?.includes("?") ? "&" : "?"}sent=${encodeURIComponent(sent)}${hash ? `#${hash}` : ""}`,
       303,

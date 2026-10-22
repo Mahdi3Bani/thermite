@@ -3,9 +3,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { log } from "../common/env.ts";
 import type { McpConnect } from "../common/mcp-client.ts";
+import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
+  type AskOwner,
   CommandPayloads,
   type Envelope,
   ExperimentId,
@@ -23,14 +26,24 @@ import { isLegacyRule, researchDirectionRefusal } from "../core/directions.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
+import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
+import { KIND_WORDS, type ProviderErrorKind } from "./agents/provider-errors.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import type { Compactions } from "./compactions.ts";
 import { Conclusions } from "./conclusions.ts";
+import {
+  listChampionFiles,
+  oneAttempt,
+  readAttemptDiff,
+  readChampionFile,
+  recentAttempts,
+  triedCauses,
+} from "./evidence.ts";
 import {
   createAttemptCommit,
   folderCommit,
@@ -41,21 +54,25 @@ import {
   showFile,
   updateRef,
 } from "./git.ts";
+import { goalChecks } from "./goal-checks.ts";
 import { importBundle, importFile } from "./imports.ts";
 import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
+import { heldOutWords } from "./judge/held-out.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import { type McpCaller, McpGateway } from "./mcp-gateway.ts";
 import { type AdvisorRole, messageText, OwnerMessages } from "./messages.ts";
+import type { ProviderErrorAnswer } from "./model-forward.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf } from "./research/folder.ts";
+import { startingHypotheses } from "./research/research.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { ModelUsage } from "./usage.ts";
-import { checkV0 } from "./v0.ts";
+import { checkV0, violationsOf } from "./v0.ts";
 
 /** A directive set may not both avoid a direction and ask for it. */
 function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
@@ -327,6 +344,26 @@ export class HarnessService {
     this.usageLimitAt = now;
   }
 
+  /** The newest error answer the model proxy saw for each trial (or "proxy"): goal 079. */
+  private readonly providerAnswers = new Map<string, ProviderErrorAnswer & { at: number }>();
+
+  /** The model proxy saw a provider's error answer for a trial (or a check or a plan). */
+  noteProviderAnswer(who: string, a: ProviderErrorAnswer, now = Date.now()): void {
+    this.providerAnswers.delete(who);
+    this.providerAnswers.set(who, { ...a, at: now });
+    // The newest few hundred: a trial reads its own soon after its program stops.
+    for (const k of this.providerAnswers.keys()) {
+      if (this.providerAnswers.size <= 256) break;
+      this.providerAnswers.delete(k);
+    }
+  }
+
+  /** The newest error answer the proxy saw for a trial, if it came at or after `since` (ms). */
+  providerAnswerSince(who: string, since: number): ProviderErrorAnswer | undefined {
+    const a = this.providerAnswers.get(who);
+    return a && a.at >= since ? { status: a.status, headers: a.headers, body: a.body } : undefined;
+  }
+
   /**
    * When agents may try the ChatGPT plan again, if the proxy saw it full at or after `since` (ms):
    * OpenAI gives no reset time, so a fixed wait (CHATGPT_LIMIT_WAIT_MS). Undefined: it did not.
@@ -345,6 +382,27 @@ export class HarnessService {
    * research folder, and the record of it (main.ts sets it, with the research folder).
    */
   compactions?: Compactions | undefined;
+  /**
+   * The rig drains (goal 079): no new trial, plan or judge job starts, and those running end as
+   * they would. Kept in memory only: the restart it prepares for ends it.
+   */
+  draining: { since: string; reason: string; by: string } | undefined;
+
+  /** What still runs, for a drain's report: open trials and the judge's leased jobs. */
+  work(): {
+    trials: number;
+    judge_jobs: number;
+    draining: { since: string; reason: string } | null;
+  } {
+    const n = (sql: string) =>
+      Number((this.ledger.db.prepare(sql).get() as { n: number } | undefined)?.n ?? 0);
+    return {
+      trials: n("select count(*) as n from trial where ended_at is null"),
+      judge_jobs: n("select count(*) as n from job where state = 'leased'"),
+      draining: this.draining ? { since: this.draining.since, reason: this.draining.reason } : null,
+    };
+  }
+
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   get promotion(): "auto" | "owner_approval" {
     return this.settings.get().promotion;
@@ -380,9 +438,10 @@ export class HarnessService {
         teachers: true,
         review: true,
         exports: true,
-        trial_minutes: 20,
+        trial_minutes: null,
         max_turns: null,
-        promotion: input.promotion ?? "owner_approval",
+        // Hands-off by default (goal 079).
+        promotion: input.promotion ?? "auto",
         judge_gpus: null,
       });
     this.rig = input.rig;
@@ -419,6 +478,172 @@ export class HarnessService {
   /** A run's promotion policy: its own, chosen when it was assigned, or the rig's default. */
   promotionFor(run: string): "auto" | "owner_approval" {
     return this.ledger.getRun(run)?.promotion ?? this.promotion;
+  }
+
+  /** What else a run asks the owner about (goal 079): nothing unless it was set to ask. */
+  askFor(run: string): AskOwner {
+    return this.ledger.getRun(run)?.ask_owner ?? {};
+  }
+
+  /**
+   * Why a confirmed win waits for the owner, or undefined (goal 079). Thermite is hands-off by
+   * default: a win waits only where the run (or the rig's default) asks: every win (promotion
+   * policy "owner_approval"), a gain above `ask_owner.above_gain`, or declared flaws
+   * (`ask_owner.declared_flaws`).
+   */
+  ownerAsks(
+    run: string,
+    attempt: Record<string, unknown>,
+    delta: number | null,
+  ): string | undefined {
+    if (this.promotionFor(run) === "owner_approval")
+      return "you asked to decide every change (promotion: owner approval)";
+    const ask = this.askFor(run);
+    const flaws = (JSON.parse(String(attempt.known_flaws ?? "[]")) as unknown[]).length;
+    if (ask.declared_flaws && flaws > 0)
+      return `you asked to decide changes with declared flaws: this one declares ${flaws}`;
+    const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+    if (ask.above_gain !== undefined && delta !== null && delta > ask.above_gain)
+      return `you asked to decide gains above ${pct(ask.above_gain)}: this one is ${pct(delta)}`;
+    return undefined;
+  }
+
+  /** The change of an attempt's current verdict, if it has one. */
+  private verdictDelta(attempt: string): number | null {
+    const v = this.ledger.currentVerdict(attempt);
+    const d = v
+      ? (this.ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as
+          | { delta: number | null }
+          | undefined)
+      : undefined;
+    return typeof d?.delta === "number" ? d.delta : null;
+  }
+
+  /**
+   * The supervisor's advisors, as it last said (goal 079): whether an auditor decides this rig's
+   * audits, and how many reviewers its review panel has. Unknown until it says.
+   */
+  advisors: { auditor: boolean; panel: number; at: string } | undefined;
+
+  /**
+   * The supervisor says which advisors it has (goal 079). Without an auditor, the audits held for
+   * one go on by the run's rules: promoted, or to the owner where the run asks.
+   */
+  async setAdvisors(a: { auditor: boolean; panel: number }, by: string): Promise<string[]> {
+    this.advisors = { ...a, at: this.clock().toISOString() };
+    return a.auditor ? [] : this.releaseHeldAudits(by);
+  }
+
+  /**
+   * A review panel's results (goal 079). A pass is accepted with no owner step, unless the run
+   * asks the owner (`ask_owner.reviews`); the goal tree is checked again.
+   */
+  recordReviewPanel(
+    id: number,
+    results: { reviewer: string; pass: boolean; reasons: string }[],
+    by: string,
+  ): { result: "review_passed" | "review_failed"; accepted?: true } {
+    const reviews = new Reviews(this.ledger);
+    const result = reviews.recordPanel(id, results, by);
+    const row = this.ledger.db.prepare("select run from review where id = ?").get(id) as
+      | { run: string }
+      | undefined;
+    if (result !== "review_passed" || !row || this.askFor(row.run).reviews) return { result };
+    reviews.ownerDecision(
+      id,
+      row.run,
+      true,
+      "hands-off: the review panel passed it, and the run does not ask the owner",
+      "harness (hands-off)",
+    );
+    this.ledger.enqueueJob({ kind: "validate", priority: 40, spec: { run: row.run }, actor: by });
+    return { result, accepted: true };
+  }
+
+  /**
+   * A "not possible" proposal (goal 079): taken, closing the run, unless the run asks the owner
+   * (`ask_owner.not_possible`). True when it was taken.
+   */
+  takeConclusion(run: string, proposal: number): boolean {
+    if (this.askFor(run).not_possible) return false;
+    new Conclusions(this.ledger).decide(
+      run,
+      proposal,
+      true,
+      "hands-off: the run does not ask the owner",
+      "harness (hands-off)",
+      "not possible: the evidence holds, and the run does not ask the owner",
+    );
+    return true;
+  }
+
+  /** The audits held while no auditor decides them (goal 079), released by the run's rules. */
+  async releaseHeldAudits(by: string): Promise<string[]> {
+    const audits = new Audits(this.ledger);
+    const out: string[] = [];
+    for (const id of audits.pending()) {
+      const au = this.ledger.db.prepare("select * from audit where id = ?").get(id) as
+        | Record<string, unknown>
+        | undefined;
+      if (!au) continue;
+      const attempt = String(au.attempt);
+      if (String(this.ledger.getAttempt(attempt)?.lifecycle) !== "awaiting_audit") continue;
+      this.ledger.appendEvent(by, "audit_skipped", attempt, {
+        audit: id,
+        run: String(au.run),
+        reason: String(au.reason),
+        why: "this rig has no auditor",
+      });
+      await this.promoteOrAsk(attempt, String(au.run), Number(au.expected_seq), by, "no auditor");
+      out.push(attempt);
+    }
+    return out;
+  }
+
+  /**
+   * A win with nothing left to hold it (an auditor's clear, or no auditor): the owner, where the
+   * run asks; else the champion by compare-and-swap, its declared flaws accepted by this step
+   * (goal 079: hands-off by default). A champion that moved meanwhile sends it to be screened
+   * again.
+   */
+  private async promoteOrAsk(
+    attempt: string,
+    run: string,
+    expectedSeq: number,
+    by: string,
+    cleared: string,
+  ): Promise<Record<string, unknown>> {
+    const a = this.ledger.getAttempt(attempt) as Record<string, unknown>;
+    const ask = this.ownerAsks(run, a, this.verdictDelta(attempt));
+    if (ask) {
+      this.ledger.tx(() => {
+        this.ledger.appendEvent(by, "promotion_pending", attempt, {
+          run,
+          expected_seq: expectedSeq,
+          commit: a.commit_sha,
+          reason: ask,
+        });
+        this.ledger.setAttemptLifecycle(attempt, "awaiting_approval", by);
+      });
+      return { effect: "waiting for the owner", reason: ask };
+    }
+    const flaws = (JSON.parse(String(a.known_flaws ?? "[]")) as unknown[]).length > 0;
+    const before = (a.flaws_cleared_by as string | null) ?? null;
+    if (flaws && !before)
+      this.ledger.db
+        .prepare("update attempt set flaws_cleared_by = ? where id = ?")
+        .run(`${by} (${cleared})`, attempt);
+    const r = await this.promoteAttempt({ run, attempt, expectedSeq, by });
+    if (r.promoted) {
+      if (flaws && !before)
+        this.ledger.appendEvent(by, "flaws_accepted", attempt, { by: `${by} (${cleared})` });
+      return { effect: "promoted", seq: r.seq };
+    }
+    if (flaws && !before)
+      this.ledger.db
+        .prepare("update attempt set flaws_cleared_by = null where id = ?")
+        .run(attempt);
+    return this.rescreen(attempt, r.currentSeq, by) as Record<string, unknown>;
   }
 
   mirrorFor(repo: string): string {
@@ -497,6 +722,22 @@ export class HarnessService {
         return this.assignCampaign(CommandPayloads.assign_campaign.parse(payload), by);
       case "rig_check":
         return this.startRigCheck(CommandPayloads.rig_check.parse(payload), by);
+      case "drain_rig": {
+        const p = CommandPayloads.drain_rig.parse(payload);
+        this.draining = p.drain
+          ? (this.draining ?? {
+              since: this.clock().toISOString(),
+              reason: p.reason ?? "its images are about to change",
+              by,
+            })
+          : undefined;
+        this.ledger.appendEvent(by, "rig_drain", null, {
+          drain: p.drain,
+          ...(p.reason ? { reason: p.reason } : {}),
+          ...this.work(),
+        });
+        return this.work();
+      }
       case "pause_run": {
         const p = CommandPayloads.pause_run.parse(payload);
         this.ledger.setRunStatus(p.run, "paused", p.reason, by);
@@ -799,6 +1040,7 @@ export class HarnessService {
     // The kit is checked against the contract now, not when the judge first needs it.
     const kitRef = contract.mode !== "research" ? contract.project.kit : undefined;
     let named: McpUse[] = [];
+    let checkedKit: Kit | undefined;
     if (kitRef) {
       const mirror = this.mirrorFor(`kit-${kitRef.repo}`);
       if (!(await hasCommit(mirror, kitRef.commit))) {
@@ -818,6 +1060,7 @@ export class HarnessService {
       if (problems.length)
         throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
       named = kit.mcp_servers ?? [];
+      checkedKit = kit;
     }
     // The MCP servers the kit names (a research contract's), as the signed command says them:
     // control gives the rig only those servers, so the two must agree.
@@ -854,14 +1097,27 @@ export class HarnessService {
         direction: p.direction,
         agents: p.agents,
         promotion: p.promotion,
+        askOwner: p.ask_owner,
         // The background the owner picked from past research: every agent's brief shows it.
         briefing: p.briefing?.map((b) => ({ text: b.text, from: b.from })),
         actor: by,
       });
+      // A research run starts with its campaign's hypotheses as its own (goal 078).
+      if (contract.mode === "research" && contract.hypotheses?.length)
+        startingHypotheses(this.ledger, p.run, contract.hypotheses, by);
       // The MCP servers the run's agents use, and which agents get each: what the gateway and
       // the advisors read from now on (goal 068).
       if (named.length)
         this.ledger.appendEvent(by, "mcp_servers", p.run, { servers: canonicalUses(named) });
+      // How each goal is really checked, as this rig's kit runs it (goal 082): control shows it
+      // on the campaign's and the run's pages, also for a kit only the rig has.
+      if (contract.mode === "goal" && checkedKit && kitRef)
+        this.ledger.appendEvent(
+          by,
+          "goal_checks",
+          p.run,
+          goalChecks(contract, { kit: checkedKit, repo: kitRef.repo, commit: kitRef.commit }),
+        );
       // Another run's untried experiments start this run's queue, in order, each with who added
       // it, why, its state and where it came from.
       for (const s of p.queue ?? [])
@@ -1158,6 +1414,26 @@ export class HarnessService {
   private checkRun: Promise<void> | undefined;
   private modelCheckWaits = false;
 
+  /** Whether a rig check runs now (a model check would have to wait). */
+  modelCheckRunning(): boolean {
+    return this.checking !== undefined;
+  }
+
+  /**
+   * Checks the workers' model now, unless a check runs or this rig has none (goal 079: the
+   * scheduler checks again while the agents are stopped). True when it started one.
+   */
+  checkModelNow(by: string): boolean {
+    if (!this.rigChecks.model || this.checking) return false;
+    try {
+      this.startRigCheck({ check: "model" }, by);
+      return true;
+    } catch (err) {
+      log("harness", "the model check did not start", { error: String(err) });
+      return false;
+    }
+  }
+
   /**
    * A check at start, run before anything else and awaited. Forced: at start no trial or judge
    * job of this controller can be running. Never fatal: its result is its own event.
@@ -1172,10 +1448,15 @@ export class HarnessService {
 
   /** What the supervisor's auditor sees for each open audit: the package and the diff. */
   async auditPackages(): Promise<
-    (AuditPackage & { diff: string; owner_messages: { id: number; at: string; text: string }[] })[]
+    (AuditPackage & {
+      campaign_brief?: BriefData;
+      diff: string;
+      owner_messages: { id: number; at: string; text: string }[];
+    })[]
   > {
     const audits = new Audits(this.ledger);
     const out: (AuditPackage & {
+      campaign_brief?: BriefData;
       diff: string;
       owner_messages: { id: number; at: string; text: string }[];
     })[] = [];
@@ -1192,8 +1473,12 @@ export class HarnessService {
         String(a.parent_commit),
         String(a.commit_sha),
       );
+      // The campaign's brief from its author, whole, before the diff (goal 078): a package too
+      // long for the auditor's window is cut at its end.
+      const brief = briefData(this.contractFor(row.run));
       out.push({
         ...pkg,
+        ...(brief ? { campaign_brief: brief } : {}),
         diff: diff.slice(0, 200_000),
         // The owner's messages the auditor has not read (to it, or to all the advisors).
         owner_messages: this.ownerMessagesFor(row.run, "auditor"),
@@ -1205,13 +1490,20 @@ export class HarnessService {
 
   /** Reviews waiting for the panel, each with the owner's messages the panel has not read. */
   reviewPackages(): (ReviewPackage & {
+    campaign_brief?: BriefData;
     owner_messages: { id: number; at: string; text: string }[];
   })[] {
-    return new Reviews(this.ledger).pending().map((r) => ({
-      ...r,
-      owner_messages: this.ownerMessagesFor(r.run, "panel"),
-      ...this.backgroundFor(r.run),
-    }));
+    return new Reviews(this.ledger).pending().map(({ diff, ...r }) => {
+      // The campaign's brief from its author, whole, before the diff (goal 078).
+      const brief = briefData(this.contractFor(r.run));
+      return {
+        ...r,
+        ...(brief ? { campaign_brief: brief } : {}),
+        diff,
+        owner_messages: this.ownerMessagesFor(r.run, "panel"),
+        ...this.backgroundFor(r.run),
+      };
+    });
   }
 
   /** A run's background from past research, for an advisor's brief or package (when it has one). */
@@ -1239,9 +1531,10 @@ export class HarnessService {
   }
 
   /**
-   * The auditor's decision. Block holds the attempt for good (only the owner can override);
-   * needs_owner sends it to the owner; clear returns it to the promotion policy, except that
-   * declared flaws always go to the owner: an audit can block, never pass.
+   * The auditor's decision. Block holds the attempt for good (only the owner can override), with
+   * the auditor's reasons; needs_owner sends it to the owner. Clear is the last step (goal 079,
+   * the owner's decision of 2026-10-22): the win is promoted, even above the audit trigger or with
+   * declared flaws, unless the run asks the owner.
    */
   async decideAudit(input: {
     attempt: string;
@@ -1272,35 +1565,122 @@ export class HarnessService {
     if (input.decision === "block") {
       this.ledger.tx(() => {
         this.ledger.appendEvent(input.auditor, "promotion_blocked", input.attempt, {
-          reason: "blocked by the audit",
+          reason: `blocked by the audit: ${input.reasons.slice(0, 1000)}`,
         });
         this.ledger.setAttemptLifecycle(input.attempt, "audit_blocked", input.auditor);
       });
       return { decision: "block", effect: "blocked" };
     }
-    if (input.decision === "needs_owner") return toOwner("the auditor asked for the owner");
-    if (String(audit.trigger) === "known_flaws") return toOwner("declared flaws need the owner");
-    // A gain above the absolute trigger always needs the owner; a model never decides it.
-    if (String(audit.trigger) === "absolute") return toOwner("a gain this large needs the owner");
-    if (this.promotionFor(run) === "owner_approval")
-      return toOwner("promotion policy: owner approval");
-    const r = await this.promoteAttempt({
-      run,
-      attempt: input.attempt,
-      expectedSeq,
-      by: input.auditor,
-    });
-    if (r.promoted) return { decision: "clear", effect: "promoted", seq: r.seq };
+    if (input.decision === "needs_owner")
+      return toOwner(`the auditor asked for the owner: ${input.reasons.slice(0, 600)}`);
+    // The auditor's clear is the last step: the run's own rules decide (goal 079).
     return {
       decision: "clear",
-      ...(this.rescreen(input.attempt, r.currentSeq, input.auditor) as object),
+      ...(await this.promoteOrAsk(
+        input.attempt,
+        run,
+        expectedSeq,
+        input.auditor,
+        "the auditor's clear",
+      )),
     };
   }
 
   /**
-   * The deterministic snapshot the teachers review: the campaign, the champion,
-   * the direction registry, recent evidence, epochs and the directives in force. Nothing from
-   * held-out cells, and no worker text beyond hypotheses.
+   * A run's target queue depth now (goal 081): the target, the lanes it is counted for (the
+   * current round's, else the contract's), and how many experiments are queued, ready for a lane.
+   */
+  queueState(run: string): { target: number; lanes: number; ready: number } {
+    const contract = this.contractFor(run);
+    const epoch = new Registry(this.ledger).currentEpoch(run);
+    const lanes = epoch?.assignments.length || contract.lanes.count;
+    return {
+      target: queueTarget(contract, lanes),
+      lanes,
+      ready: this.queue.queued(run).length,
+    };
+  }
+
+  /**
+   * The newest time a planner's round left a run's queue below its target (goal 081), while it
+   * still is: the supervisor then starts the teachers' round at once, not on the clock. None for
+   * a run that is not running, has no agents or is a research run, or whose queue is at its
+   * target again.
+   */
+  queueLow(
+    run: string,
+  ): { event: number; at: string; round: number; ready: number; target: number } | null {
+    const inst = this.ledger.getRun(run);
+    if (inst?.status !== "running" || !inst.agents || inst.mode === "research") return null;
+    const e = this.ledger.db
+      .prepare(
+        "select id, at, body from event where kind = 'queue_low' and subject = ? order by id desc limit 1",
+      )
+      .get(run) as { id: number; at: string; body: string } | undefined;
+    if (!e) return null;
+    const now = this.queueState(run);
+    if (now.ready >= now.target) return null;
+    const b = JSON.parse(e.body) as { round?: number };
+    return {
+      event: Number(e.id),
+      at: e.at,
+      round: Number(b.round ?? 0),
+      ready: now.ready,
+      target: now.target,
+    };
+  }
+
+  /** The champion's commit and the run's project mirror, for the teachers' code reads (goal 081). */
+  private championCode(run: string): { mirror: string; commit: string } {
+    const inst = this.requireRun(run);
+    return {
+      mirror: this.mirrorFor(inst.seed_repo),
+      commit: this.ledger.currentChampion(run).commit_sha,
+    };
+  }
+
+  /** The files of the champion's tree under a folder, for the teachers (goal 081). */
+  codeFiles(run: string, folder: string): ReturnType<typeof listChampionFiles> {
+    const c = this.championCode(run);
+    return listChampionFiles(c.mirror, c.commit, folder);
+  }
+
+  /** One file of the champion's tree, by lines, for the teachers (goal 081). */
+  codeFile(
+    run: string,
+    path: string,
+    offset?: number,
+    limit?: number,
+  ): ReturnType<typeof readChampionFile> {
+    const c = this.championCode(run);
+    return readChampionFile(c.mirror, c.commit, path, offset, limit);
+  }
+
+  /** An attempt's diff, in parts, for the teachers (goal 081). */
+  attemptDiff(run: string, attempt: string, offset?: number): ReturnType<typeof readAttemptDiff> {
+    const inst = this.requireRun(run);
+    return readAttemptDiff(this.ledger, this.mirrorFor(inst.seed_repo), run, attempt, offset);
+  }
+
+  /**
+   * The judge's public findings for the teachers (goal 081): one attempt in full, or the newest
+   * attempts and the newest tried experiments, each with its cause. Never held-out results.
+   */
+  evidence(run: string, attempt?: string): unknown {
+    this.requireRun(run);
+    if (attempt) return oneAttempt(this.ledger, run, attempt);
+    return {
+      attempts: recentAttempts(this.ledger, run, { limit: 40, reasonChars: 2000 }),
+      tried: triedCauses(this.ledger, this.queue, run, { limit: 40, causeChars: 1200 }),
+    };
+  }
+
+  /**
+   * The deterministic snapshot the teachers review: the campaign, the champion and its commit,
+   * the direction registry, recent attempts with the judge's public reasons, the causes of the
+   * experiments tried, epochs, the directives in force, the queue and its target, and what the
+   * teachers proposed before (goal 081). Nothing from held-out cells (evidence.ts says how), and
+   * no worker text beyond hypotheses and ideas.
    */
   brief(run: string): unknown {
     const inst = this.requireRun(run);
@@ -1313,7 +1693,8 @@ export class HarnessService {
         .all(run) as Record<string, unknown>[]
     ).map((e) => ({
       n: Number(e.n),
-      source: String(e.source),
+      // A research run's rounds are set by its research plan, never by the planner (goal 079).
+      source: contract.mode === "research" ? "research plan" : String(e.source),
       planner_valid: Number(e.planner_valid) === 1,
       violations: (JSON.parse(String(e.raw_violations)) as unknown[]).length,
       directives: JSON.parse(String(e.directives ?? "[]")) as number[],
@@ -1328,6 +1709,7 @@ export class HarnessService {
             status: string;
           }[])
         : undefined;
+    const brief = briefData(contract);
     return {
       rig: this.rig,
       run,
@@ -1345,18 +1727,55 @@ export class HarnessService {
                 required: g.required,
               }))
             : { topic: contract.topic, questions: contract.questions },
+      // The campaign's brief from its author, whole (goal 078): ahead of the long parts, so a
+      // brief cut to the teacher's window loses the evidence first.
+      ...(brief ? { campaign_brief: brief } : {}),
       editable_paths: "editable_paths" in contract ? contract.editable_paths : [],
-      champion: { seq: champion.seq, attempt: champion.attempt },
+      // Its commit: the tree the teachers read with their code tools (goal 081).
+      champion: { seq: champion.seq, attempt: champion.attempt, commit: champion.commit_sha },
       families: registry.families(run),
       // The run's directions (goal 066). A rule may also name a new one: the planner designs it.
       directions: this.queue.directions(run),
-      evidence: registry.evidence(run, 40),
+      // The target the teachers keep the queue at, and how far below it the queue is now
+      // (goal 081). Short, so it comes before the long parts, which a window may cut.
+      queue_target: (() => {
+        const q = this.queueState(run);
+        return { ...q, below: q.ready < q.target, wanted: Math.max(0, q.target - q.ready) };
+      })(),
+      // What the teachers proposed before and what became of it: their portfolio is new since.
+      teacher_ideas: this.queue
+        .all(run)
+        .filter((x) => x.added_by === "teacher")
+        .slice(-30)
+        .reverse()
+        .map((x) => ({
+          id: x.id,
+          title: x.title,
+          state: x.state,
+          ...(x.result ? { result: x.result } : {}),
+          ...(x.dropped_why ? { dropped: x.dropped_why.slice(0, 200) } : {}),
+        })),
+      // The newest attempts: the planner's evidence, with a refused change's violations and a
+      // held-out failure's kind (goal 082), and the judge's public reasons (goal 081); the
+      // teachers read each in full with their tools.
+      evidence: recentAttempts(this.ledger, run, { limit: 20, reasonChars: 400 }),
       epochs,
-      directives: this.ledger
-        .activeDirectives(run)
-        .map((d) => (isLegacyRule(d.body) ? { ...d, legacy: true } : d)),
+      // A teachers' rule that freezes the queue or pins an experiment, set before code refused
+      // them, is marked: it no longer reaches the planner (goal 081).
+      directives: this.ledger.activeDirectives(run).map((d) => {
+        const refused = d.author.startsWith("supervisor")
+          ? ruleRefusal(d.body as StructuredDirective)
+          : undefined;
+        return {
+          ...d,
+          ...(isLegacyRule(d.body) ? { legacy: true } : {}),
+          ...(refused ? { refused: refused.why } : {}),
+        };
+      }),
       // The run's experiment queue: the teachers may add experiments and move queued ones.
       queue: this.queue.brief(run),
+      // Why each experiment tried ended as it did (goal 081).
+      causes: triedCauses(this.ledger, this.queue, run, { limit: 20, causeChars: 400 }),
       ...(goals ? { goals } : {}),
       budget: {
         ...contract.budget,
@@ -1489,7 +1908,8 @@ export class HarnessService {
    * addDirectives, with the rules it left out. A rule may name a direction the run doesn't have
    * yet: the planner designs it (goal 066). A research run has no planner, so there a rule for
    * another direction than a task kind is left out, recorded as a `directives_left_out` event
-   * with why. The rest of the set stands.
+   * with why. A rule that freezes the queue's size or pins an experiment is left out the same
+   * way (goal 081). The rest of the set stands.
    */
   setAdvisorRules(
     run: string,
@@ -1507,23 +1927,47 @@ export class HarnessService {
       throw new LedgerError("invalid", "at most 3 notes per directive set");
     }
     conflictCheck(parsed);
+    type Rule = (typeof parsed)[number];
+    // Rules that freeze the queue's size or pin an experiment (goal 081), each with why.
+    const refused = new Map(
+      parsed.flatMap((d) => {
+        const r = ruleRefusal(d);
+        return r ? [[d, r] as const] : [];
+      }),
+    );
     const research = this.contractFor(run).mode === "research";
     const known = this.queue.directions(run);
     const unknown = research ? unknownIn(parsed, known) : [];
-    const keep = parsed.filter((d) => !d.family || !unknown.includes(d.family));
-    const why = unknown.length ? researchDirectionRefusal(unknown) : "";
+    const unknownWhy = unknown.length ? researchDirectionRefusal(unknown) : "";
+    const isUnknown = (d: Rule) => !!d.family && unknown.includes(d.family);
+    const keep = parsed.filter((d) => !isUnknown(d) && !refused.has(d));
+    const named = (d: Rule) =>
+      `${d.kind}${d.family ? ` ${d.family}` : ""}${typeof d.value === "string" ? ` "${d.value.slice(0, 80)}"` : ""}`;
     return this.ledger.tx(() => {
       if (unknown.length)
         this.ledger.appendEvent(author, "directives_left_out", run, {
-          rules: parsed.filter((d) => !keep.includes(d)),
-          why,
+          rules: parsed.filter(isUnknown),
+          why: unknownWhy,
           reason: "unknown_direction",
         });
+      for (const reason of ["freezes_queue", "pins_experiment"] as const) {
+        const rules = parsed.filter((d) => !isUnknown(d) && refused.get(d)?.reason === reason);
+        const first = rules[0];
+        if (first)
+          this.ledger.appendEvent(author, "directives_left_out", run, {
+            rules,
+            why: refused.get(first)?.why ?? "",
+            reason,
+          });
+      }
       return {
         ids: this.ledger.addDirectiveSet(run, author, keep, true),
         left_out: parsed
           .filter((d) => !keep.includes(d))
-          .map((d) => ({ rule: `${d.kind} ${d.family}`, why })),
+          .map((d) => ({
+            rule: named(d),
+            why: isUnknown(d) ? unknownWhy : (refused.get(d)?.why ?? ""),
+          })),
       };
     });
   }
@@ -1544,8 +1988,31 @@ export class HarnessService {
     this.openRun(p.run);
     const actor = `supervisor:${p.role}`;
     const out = { added: [] as string[], moved: [] as string[], refused: [] as string[] };
-    for (const a of p.add)
-      out.added.push(this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor).id);
+    // A teacher's idea that repeats one waiting in the queue (up next, a lane's idea, or in
+    // progress) is refused, with the one it repeats (goal 081): the portfolio is new ideas.
+    const waiting = new Map(
+      this.queue
+        .all(p.run)
+        .filter((x) => x.state === "queued" || x.state === "proposed" || x.state === "assigned")
+        .map((x) => [ideaWords(x.title), x] as const),
+    );
+    const where: Record<string, string> = {
+      queued: "up next",
+      proposed: "a lane's idea",
+      assigned: "in progress",
+    };
+    for (const a of p.add) {
+      const same = p.role === "teacher" ? waiting.get(ideaWords(a.title)) : undefined;
+      if (same) {
+        out.refused.push(
+          `add "${a.title.slice(0, 120)}": it repeats ${same.id} (${where[same.state] ?? same.state})`,
+        );
+        continue;
+      }
+      const x = this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor);
+      waiting.set(ideaWords(x.title), x);
+      out.added.push(x.id);
+    }
     for (const m of p.move) {
       try {
         this.queue.move(p.run, m.id, { by: p.role, position: m.position, why: m.why }, actor);
@@ -1767,18 +2234,26 @@ export class HarnessService {
     }
   }
 
-  /** What a proposer may see about its own attempt: lifecycle, verdict and V0 findings. */
+  /**
+   * What a proposer may see about an attempt: lifecycle, verdict and V0 findings, with the
+   * violations of a refused change at the top (`violations`, all of them).
+   */
   attemptStatus(id: string): unknown {
     const a = this.ledger.getAttempt(id);
     if (!a) throw new LedgerError("not_found", `no attempt ${id}`);
     const verdict = this.ledger.currentVerdict(id);
+    const heldOut = this.ledger.heldOutFailure(id);
     return {
       attempt: id,
       run: a.run,
+      lane: a.lane ?? null,
       lifecycle: a.lifecycle,
       commit: a.commit_sha,
       v0: a.v0 ? JSON.parse(String(a.v0)) : null,
+      violations: violationsOf(a.v0),
       verdict: verdict ? { verdict: verdict.verdict } : null,
+      // Only that a held-out check failed, and how (goal 082): never which cell, or why.
+      held_out: heldOut ? heldOutWords(heldOut) : null,
     };
   }
 
@@ -1854,7 +2329,22 @@ export class HarnessService {
         | undefined;
     },
   ): void {
-    if (r.progress) this.trialProgress.set(trial.id, r.progress);
+    if (r.progress) {
+      this.trialProgress.set(trial.id, r.progress);
+      // Kept in the trial's record too, so a restart that interrupts it keeps its counters
+      // (goal 079).
+      this.ledger.db
+        .prepare(
+          "update trial set turns = ?, tool_calls = ?, tokens_in = ?, tokens_out = ? where id = ? and ended_at is null",
+        )
+        .run(
+          r.progress.turns,
+          r.progress.tool_calls,
+          r.progress.tokens_in,
+          r.progress.tokens_out,
+          trial.id,
+        );
+    }
     for (const e of r.entries ?? [])
       this.live.append({
         source: `trial:${trial.id}`,
@@ -1864,6 +2354,33 @@ export class HarnessService {
         run: trial.run,
       });
     if (r.entries?.length || r.progress?.turns || r.progress?.tokens_in) this.trialAtWork(trial.id);
+  }
+
+  /**
+   * A trial waits for its provider and then goes on in the same conversation (goal 079): a line in
+   * its session, and for a rate limit, a wait the scheduler and the research clock read: no new
+   * trial starts before it ends, and a research run's clock stops meanwhile.
+   */
+  trialWait(
+    trial: { id: string; run: string; lane: string },
+    w: { until: string; kind: string; words: string },
+  ): void {
+    const at = new Date(w.until);
+    const when = Number.isNaN(at.getTime()) ? w.until : at.toISOString().slice(11, 19);
+    this.live.append({
+      source: `trial:${trial.id}`,
+      kind: "status",
+      text: `waiting until ${when} UTC: ${KIND_WORDS[w.kind as ProviderErrorKind] ?? w.kind} (${w.words.slice(0, 300)}). The trial goes on in the same conversation.`,
+      lane: trial.lane,
+      run: trial.run,
+    });
+    if (w.kind === "rate_limit" && !Number.isNaN(at.getTime()))
+      this.ledger.appendEvent("scheduler", "agents_wait_for_limit", trial.run, {
+        until: at.toISOString(),
+        trial: trial.id,
+        reason: w.words.slice(0, 600),
+        in_trial: true,
+      });
   }
 
   /** A trial's waiting messages, given to it now (each read at once). */
@@ -1924,6 +2441,9 @@ export class HarnessService {
         ...(this.models ? { model: this.models.info() } : {}),
         // What runs on this rig and how (Edit rig).
         settings: this.settings.get(),
+        // What still runs, and whether the rig drains (goal 079): control restarts a draining
+        // rig once nothing runs.
+        work: this.work(),
         ...(this.gpuSplit ? { gpu_split: this.gpuSplit } : {}),
         ...(this.subscriptionUsage && this.models?.info().source !== "none"
           ? {

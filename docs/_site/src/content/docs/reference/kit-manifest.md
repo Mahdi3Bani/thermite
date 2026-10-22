@@ -67,10 +67,10 @@ Unknown fields are refused at every level.
 | `build.timeout_s` | integer ≥ 1 | 600 | The build's time limit, in seconds |
 | `build.rss_mib` | integer ≥ 1 | 4096 | The build's memory limit, in MiB |
 | `build.disk_mib` | integer ≥ 1 | 4096 | The build's disk limit, in MiB |
-| `cells` | object | required | Every cell the kit can measure. See [Cells](#cells) |
+| `cells` | object | required | Every cell the kit can measure, with its parameters and, when it needs one, its own time limit. See [Cells](#cells) |
 | `run.copy` | list of kit paths | `[]` | Kit files and folders copied, read-only, into every run. A run reaches them as `{kit:<path>}` |
 | `run.command` | list of text, at least one | required | One run of one build on one cell |
-| `run.timeout_s` | integer ≥ 1 | 300 | A run's time limit, in seconds |
+| `run.timeout_s` | integer ≥ 1 | 300 | A run's time limit, in seconds, for each cell that sets none of its own |
 | `run.rss_mib` | integer ≥ 1 | 1024 | A run's memory limit, in MiB |
 | `run.disk_mib` | integer ≥ 1 | 256 | A run's disk limit, in MiB |
 | `metrics` | object | required | What the judge measures. See [Metrics](#metrics) |
@@ -90,7 +90,24 @@ Unknown fields are refused at every level.
 
 ### Cells
 
-A **cell** is one measured input, a test case: a name and its parameters. The dashboard calls cells **cases**. `cells` maps each cell's name to an object of parameters, whose values are numbers, text or `true`/`false`. A run receives them through `{params}` and `{params_json}`.
+A **cell** is one measured input, a test case: a name and its parameters. The dashboard calls cells **cases**. `cells` maps each cell's name to its parameters, in one of two forms:
+
+- **Its parameters alone:** an object whose values are numbers, text or `true`/`false`, such as `"small": {"n": 128, "work": 1006632960}`. Its runs have the time limit `run.timeout_s`.
+- **Its parameters and its own time limit:** `{"params": {…}, "timeout_s": <seconds>}`. `timeout_s` is an integer ≥ 1. It replaces `run.timeout_s` for this cell's runs only, so one slow cell does not set the limit for every cell. Leave `timeout_s` out to keep `run.timeout_s`. No other field is taken in this form.
+
+```json title="kit.json (part)"
+{
+  "cells": {
+    "small": { "n": 128, "work": 1006632960 },
+    "diagnostic": { "params": { "n": 4096, "mode": "full", "work": 137438953472 }, "timeout_s": 1800 }
+  },
+  "run": { "command": ["{build:out/bench}", "{params}", "{out}"], "timeout_s": 60 }
+}
+```
+
+Here `small` is stopped after 60 seconds and `diagnostic` after 1,800. A parameter's value is never an object, so the second form is never read as parameters. A parameter that is called `timeout_s` in the first form is only a parameter: it sets no limit. A kit written before cells could set a limit works as before.
+
+A run receives the parameters through `{params}` and `{params_json}`, in both forms; the time limit is not among them.
 
 The contract chooses which cells count: `cells` for every block, `held_out_cells` for confirmation only, and each goal's cells. A rate metric reads one parameter, named by its `work`, from each cell; time and check metrics need none.
 
@@ -173,7 +190,7 @@ A run cannot read the kit. The kit files a run needs go in `run.copy`. Before ea
 
 | Limit | Build | Run | Check |
 | --- | --- | --- | --- |
-| Time | `build.timeout_s` | `run.timeout_s` | `check.timeout_s` |
+| Time | `build.timeout_s` | The cell's own `timeout_s`, else `run.timeout_s` | `check.timeout_s` |
 | Memory: the summed resident memory of the user's processes, sampled every 100 ms | `build.rss_mib` | `run.rss_mib` | none |
 | Disk: the working folder, sampled every 500 ms | `build.disk_mib` | `run.disk_mib` | none |
 | Files: 50,000 or more files and folders, or folders nested 128 deep, count as over the disk limit | yes | yes | none |
@@ -231,7 +248,7 @@ The reasons have these forms:
 | Driver refused a value | `implausible: <problems>` |
 | Check failed | The check's `reasons`, joined with `; ` |
 
-In a goal campaign, a failed run on a verifier's cell makes that goal unmet, with the run's failure as its reason, whichever arm it was.
+In a goal campaign, a failed run on a verifier's cell makes that goal unmet, with the run's failure as its reason, whichever arm it was. A held-out cell's failure is recorded with the cell's name and its kind for you; the agents learn its kind alone: see [Held-out failures](verdicts.md#held-out-failures).
 
 Each run's reason keeps at most 2,000 characters. A longer one keeps its first quarter and its last three quarters, with ` … ` where it was cut: the start says what failed, and the end of the standard error is where the error usually is. Reasons are shortened the same way where they are passed on:
 
@@ -269,7 +286,7 @@ When a run is assigned, the harness checks the kit against the contract before i
 | Problem | Message |
 | --- | --- |
 | The kit's `target` is not the rig's | `the kit measures on <kit target>, and this rig's target is <rig target>` |
-| A cell named in `cells` or `held_out_cells` (hill climb) | `cells names cell <cell>, which the kit does not have`, or `held_out_cells names cell …` |
+| A cell named in `cells` (hill climb) or `held_out_cells` (hill climb and goal) | `cells names cell <cell>, which the kit does not have`, or `held_out_cells names cell …` |
 | A metric named by the objective, a secondary objective, a guard or a `min`/`max` hard constraint (hill climb) | `the objective names metric <metric>, which the kit does not have`, or `a secondary objective …`, `a guard …`, `a hard constraint …` |
 | A goal's verifier | `goal <id> names verifier <verifier>, which the kit does not have` |
 | A goal threshold's metric or cell | `goal <id> names metric <metric>, which the kit does not have`, or `goal <id> names cell <cell>, which the kit does not have` |

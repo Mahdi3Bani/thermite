@@ -477,7 +477,7 @@ describe("the OpenCode harness", () => {
     assert.match(String(disk), /300 MiB in 50000 files, over 16384 MiB/);
   });
 
-  test("a run that ends without a submission is continued in its session, twice at most; a waiting message goes into the next continuation and is read when the agent starts on it", async () => {
+  test("a run that ends without a submission is continued in its session (twice, with the campaign's nudges of 2); a waiting message goes into the next continuation and is read when the agent starts on it", async () => {
     const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
     const owner = fakeInbox(["try the other loop"]);
     const runs: RunRequest[] = [];
@@ -502,6 +502,8 @@ describe("the OpenCode harness", () => {
         editablePaths: ["src/**"],
         brief: "b",
         wallMs: 60_000,
+        // The worker keeps working each run: without a number of nudges it would go on (goal 079).
+        limits: { ...laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }), nudges: 2 },
       },
       {
         runner,
@@ -525,6 +527,60 @@ describe("the OpenCode harness", () => {
     assert.doesNotMatch(String(opencodeRuns[2]?.argv.at(-1)), /owner:/);
     assert.deepEqual(owner.given, [1]);
     assert.equal(r.stopped, "no_submission");
+  });
+
+  test("with no number of nudges, a worker that keeps working is continued; a nudge it answers without work ends the trial (goal 079)", async () => {
+    const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
+    const runs: RunRequest[] = [];
+    // Works (tool calls) in its first four runs, then answers a nudge with words alone.
+    const idle = [
+      { type: "text", sessionID: "ses_1", part: { type: "text", text: "Nothing more." } },
+      {
+        type: "step_finish",
+        sessionID: "ses_1",
+        part: { type: "step-finish", reason: "stop", tokens: { input: 10, output: 3 } },
+      },
+    ];
+    const runner = {
+      run: async (req: RunRequest): Promise<RunOutcome> => {
+        runs.push(req);
+        if (req.argv.includes("run")) {
+          const n = runs.filter((x) => x.argv.includes("run")).length;
+          const lines = n <= 4 ? EVENTS : idle.map((e) => JSON.stringify(e));
+          appendFileSync(String(req.env?.THERMITE_OPENCODE_EVENTS), `${lines.join("\n")}\n`);
+        }
+        return { exitCode: 0, signal: null, killedFor: null, stdout: "", stderr: "" } as RunOutcome;
+      },
+      killRole: async () => 0,
+    } as unknown as Runner;
+    const r = await runOpencodeTrial(
+      {
+        trialId: "t-3",
+        run: "r-1",
+        lane: "lane-2",
+        workspace: area,
+        workspaceRoot: area,
+        parentCommit: "c".repeat(40),
+        editablePaths: ["src/**"],
+        brief: "b",
+      },
+      {
+        runner,
+        model,
+        apiUrl: "http://h",
+        live: () => undefined,
+        progress: () => undefined,
+        submitted: () => undefined,
+        pollMs: 5,
+      },
+    );
+    // Four working runs (three nudges past the first), and the fifth, answered without work.
+    assert.equal(runs.filter((x) => x.argv.includes("run")).length, 5);
+    assert.equal(r.stopped, "no_submission");
+    // No trial length: the prompt says to submit once the change works, and names no minutes.
+    const first = String(runs.find((x) => x.argv.includes("run"))?.argv.at(-1));
+    assert.match(first, /Submit once your change works\./);
+    assert.doesNotMatch(first, /This trial lasts/);
   });
 
   test("a research trial runs in its lane's working area as the lane, with the research commands and the folder, and ends when the agent stops", async () => {
@@ -586,8 +642,9 @@ describe("the OpenCode harness", () => {
     assert.match(prompt, /This trial lasts 1 minutes/);
   });
 
-  test("a research trial: a failure after some work and the owner's messages continue it; a failure before any work, or the turn cap, ends it", async () => {
+  test("a research trial: a failed call waits and continues it, as the owner's messages do; no credits, or the turn cap, ends it", async () => {
     const failed = JSON.stringify({ type: "error", error: { message: "429 rate limited" } });
+    const broke = JSON.stringify({ type: "error", error: { message: "402 out of credits" } });
     const tool = JSON.stringify({
       type: "tool_use",
       sessionID: "ses_9",
@@ -656,6 +713,8 @@ describe("the OpenCode harness", () => {
           progress: () => undefined,
           messages: owner.inbox,
           pollMs: 5,
+          // The waits after a failed call, shortened (goal 079).
+          pauseMs: () => 5,
         },
       );
       return {
@@ -675,10 +734,16 @@ describe("the OpenCode harness", () => {
       String(midway.prompts[1]),
       /^The model call failed \(429 rate limited\)\. Continue/,
     );
-    const early = await trial([[failed]]);
-    assert.equal(early.r.stopped, "error");
-    assert.equal(early.r.error, "429 rate limited");
-    assert.equal(early.prompts.length, 1);
+    // A rate limit before any work no longer ends the trial (goal 079): it waits and goes on.
+    const early = await trial([[failed], [tool, step]]);
+    assert.equal(early.r.stopped, "finished");
+    assert.equal(early.prompts.length, 2);
+    assert.match(String(early.prompts[1]), /^The model call failed \(429 rate limited\)/);
+    // No credits ends it at once, with its kind.
+    const credits = await trial([[broke]]);
+    assert.deepEqual([credits.r.stopped, credits.r.errorKind], ["error", "credits"]);
+    assert.equal(credits.r.error, "402 out of credits");
+    assert.equal(credits.prompts.length, 1);
     const owner = await trial(
       [
         [tool, step],
@@ -703,8 +768,8 @@ describe("the OpenCode harness", () => {
     assert.equal(third.prompts.length, 4);
     assert.match(String(third.prompts[3]), /owner: three passes on/);
     assert.deepEqual(third.given, [1]);
-    // A failure before any work ends the trial; a waiting message is not taken.
-    const noWork = await trial([[tool, step], [failed]], { messages: ["unread"] });
+    // No credits before any work ends the trial; a waiting message is not taken.
+    const noWork = await trial([[tool, step], [broke]], { messages: ["unread"] });
     assert.equal(noWork.r.stopped, "error");
     assert.match(String(noWork.prompts[1]), /owner: unread/);
     assert.deepEqual(noWork.given, [], "the agent never started on it: it stays waiting");

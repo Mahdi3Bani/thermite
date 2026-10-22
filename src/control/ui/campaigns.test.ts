@@ -162,6 +162,57 @@ test("a research run's rounds read as set by the research plan, not as a refused
     /round 3 \(by the fixed rules: the planner is off on this rig \(Edit rig\)\)/,
   );
   assert.match(said({ planner_tries: 0 }), /round 3 \(by the fixed rules: no model\)/);
+  // Each try's real cause (goal 079), in words: not "did not call submit_plan" for every one.
+  assert.match(
+    said({
+      planner_tries: 2,
+      refused: ["try 1: x", "try 2: y"],
+      causes: [
+        { try: 1, cause: "cut_off", detail: "its reply was cut off" },
+        { try: 2, cause: "provider_error", detail: "the provider failed for now: 503" },
+      ],
+    }),
+    /because try 1: its reply was cut off at the output limit \(its reply was cut off\); try 2: the provider failed \(the provider failed for now: 503\)\)/,
+  );
+});
+
+test("a research run's rounds are counted as research rounds, not as planner fallbacks (goal 079)", async () => {
+  const { ControlStore } = await import("../store.ts");
+  const { rigView } = await import("../views.ts");
+  const store = new ControlStore(":memory:");
+  const ev = (kind: string, subject: string, body: Record<string, unknown>) => ({
+    kind,
+    subject,
+    actor: "scheduler",
+    at: "2026-10-22T00:00:00Z",
+    body,
+  });
+  store.ingest({
+    rig: "rig-a",
+    ledger_id: "l-1",
+    cursor: 0,
+    next: 3,
+    generated_at: "2026-10-22T00:00:00Z",
+    events: [
+      ev("run_created", "r-1", { mode: "research", campaign: "c" }),
+      ev("epoch_started", "r-1", {
+        n: 1,
+        source: "fallback",
+        plan: "research",
+        planner_valid: false,
+      }),
+      ev("epoch_started", "r-1", {
+        n: 2,
+        source: "fallback",
+        plan: "research",
+        planner_valid: false,
+      }),
+    ].map((e, i) => ({ id: i + 1, ...e })),
+    summary: {},
+  } as never);
+  const v = rigView(store, "rig-a", { staleAfterMs: 600_000 });
+  const a = v?.runs.find((r) => r.id === "r-1")?.agents;
+  assert.deepEqual([a?.epochs, a?.research_rounds, a?.fallbacks], [2, 2, 0]);
 });
 
 test("History tells a run's MCP servers, and a server that fails and comes back, in words", async () => {
@@ -362,6 +413,27 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
       reason: "unknown_direction",
     }),
     "The teachers named a direction this research run doesn't have (avoid :blogs:): left out. A research run's directions are its task kinds.",
+  );
+  // Goal 081: a rule that would freeze the queue's size, and a queue below its target.
+  assert.equal(
+    say("directives_left_out", "supervisor", {
+      rules: [{ kind: "note", value: "Do not add queue entries" }],
+      why: "a rule may not freeze the queue's size",
+      reason: "freezes_queue",
+    }),
+    "The teachers gave a rule that would freeze the queue's size (note): left out. a rule may not freeze the queue's size",
+  );
+  assert.equal(
+    say("directives_left_out", "supervisor", {
+      rules: [{ kind: "priority" }, { kind: "note" }],
+      why: "a rule may not pin an experiment",
+      reason: "pins_experiment",
+    }),
+    "The teachers gave 2 rules that would pin an experiment (priority; note): left out. a rule may not pin an experiment",
+  );
+  assert.equal(
+    say("queue_low", "planner", { round: 7, ready: 1, target: 4, lanes: 2 }),
+    "After round 7, the queue had 1 of its target of 4 experiments ready: the teachers were asked for ideas at once.",
   );
   // An experiment back in the queue after its trial was interrupted: not its author's act.
   const back = {

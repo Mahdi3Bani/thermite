@@ -107,7 +107,7 @@ Under **Start, stop and end it**, press **Stop the pod**. The page says `Stoppin
 
 Press **Start the pod** to start it again. RunPod gives a stopped pod's GPU to whoever asks next. When it has no GPU free for the pod, the start is refused and says so: `RunPod has no free GPU for pod … now, so the pod stays stopped (…). Its volume stays. Try again later, or terminate it and launch a new rig.` Once the pod runs, control resumes the runs the stop paused. The rig reports again with the same keys and enrollment: it does not enroll again.
 
-**Restart the pod** stops the pod and starts it again, with no export: the volume keeps everything. It does not pause the runs. A trial in progress stops, and when the harness starts again, it closes that trial as interrupted and plans it again. A restart can meet the same lack of a free GPU.
+**Restart the pod** stops the pod and starts it again, with no export: the volume keeps everything. It does not pause the runs. A trial in progress stops: the harness records it as interrupted, and its experiment goes back to the top of the queue. A restart can meet the same lack of a free GPU.
 
 From the command line: `thermite runpod stop rp-1a2b3c4d $c`, `thermite runpod start …` and `thermite runpod restart …`.
 

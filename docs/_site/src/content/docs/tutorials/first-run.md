@@ -78,9 +78,9 @@ Read that container's log, for example `docker compose logs harness` (or `podman
 2. Open <http://127.0.0.1:8800/ui> in your browser.
 3. Paste the token into **Admin token** and press **Sign in**.
 
-You see the **Overview**, the first page in the sidebar. Its first line says `nothing needs you · 0 runs at work · 1 of 1 rigs reporting`. If it says `0 of 1`, the rig hasn't reported yet: wait a minute and press **refresh** in the status bar, the line along the bottom of every page. Dashboard pages never reload by themselves.
+You see the **Overview**, the first page in the sidebar. Its first line says `nothing needs you · 0 runs at work · 1 of 1 rigs reporting`. If it says `0 of 1`, the rig hasn't reported yet: wait a minute and press **refresh** in the status bar, the line along the bottom of every page. This page doesn't update by itself.
 
-The sidebar on the left holds the dashboard's pages: **Overview**, **Campaigns**, **Rigs**, **Live** and more.
+The sidebar on the left holds the dashboard's pages: **Overview**, **Campaigns**, **Rigs**, **Metrics**, **Live** and more.
 
 :::tip
 If the sign-in page comes back with no message, the token didn't match. Copy it again, without spaces.
@@ -102,9 +102,9 @@ Now give the judge something to judge. The **Judge smoke** check submits twelve 
 
 1. Beside **Judge smoke**, press **Run it**.
 
-   A message shows above the line `local-1 is live`: `Control sent the command to local-1. The rig does it in less than 10 seconds. This page shows the result.`
+   The button turns at once into **Sending…**. Then **Judge smoke** shows **sent**, its button says **Sent**, and the line under its name says `Sent to the rig at`, the time, and `It starts when the rig takes it.`
 
-2. Wait half a minute, then press **refresh**, still on the rig's page. **Judge smoke** shows **running**, and its button reads **Running…**. The line that starts `local-1 is live` now goes on with `It runs rig-check-smoke-cpu-69c3d2f6 › check-smoke-` and some letters, then says what the judge is **screening**. Screening is the judge's first look at a change: it builds the change and measures it.
+2. Stay on the rig's page: it follows the check by itself, with no refresh. Within a few seconds, **Judge smoke** shows **running** with the time so far, such as `running · 12 s`, and its button reads **Running…**. The line under its name says `Its running runs are paused for it, and resumed after.` Within a minute, when the rig has reported, the line that starts `local-1 is live` goes on with `It runs rig-check-smoke-cpu-69c3d2f6 › check-smoke-` and some letters, then says what the judge is **screening**. Screening is the judge's first look at a change: it builds the change and measures it.
 
    The two names are the check's campaign and run. A **campaign** is one piece of research: what to improve, and how the judge decides. The check's campaign is `rig-check-smoke-cpu-69c3d2f6`; its letters are the start of the smoke kit's commit, which [Your first goal campaign](first-goal-campaign.md) uses again. A **run** is a campaign at work on one rig: here, `check-smoke-` and some letters.
 
@@ -114,9 +114,9 @@ Now give the judge something to judge. The **Judge smoke** check submits twelve 
 
    The **Campaigns** page in the sidebar doesn't show this run under **At work now**: that list leaves rig checks out. Step 7 shows where Campaigns keeps them.
 
-4. Two or three minutes after you pressed **Run it**, go back to **Rigs** › **local-1** and press **refresh**.
+4. Two or three minutes after you pressed **Run it**, go back to **Rigs** › **local-1**.
 
-   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`. Until then, it shows **running**. The rig reports to control about once a minute, so the result can show a minute after the check ended, as `passed 1m ago`.
+   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`, and **Run it** comes back. Until then, it shows **running**, and the row changes by itself when the result comes. The rig reports to control about once a minute, so the result can show a minute after the check ended, as `passed 1m ago`.
 
    On a machine whose timing is noisy, such as a virtual machine that shares its host, it can show **passed** with `smoke on smoke-cpu: 11 of 12 candidates were judged as expected; the no-op came out inconclusive, not neutral` and the note `The timing on this machine is noisy. Results here need more repeats.` The judge works; the note means campaigns here need more repeats to tell small changes apart. Go on with the tutorial. In step 7, the no-op then counts as inconclusive, not neutral. See [Judge smoke passed with a note](../how-to/operate/troubleshoot.md#judge-smoke-passed-with-a-note).
 

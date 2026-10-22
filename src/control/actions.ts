@@ -47,9 +47,15 @@ export interface ControlActions {
   rigModels?: (rig: string) => AgentModels | { error: string };
   /**
    * Moves a rig control set up on a cluster onto control's current images, keeping its volume and
-   * tokens (the rig's page, or MCP's update_rig_images).
+   * tokens (the rig's page, or MCP's update_rig_images). It drains the rig first (goal 079):
+   * running trials and the judge's job under way finish, then its pods restart. `wait: false`
+   * restarts them now, also while a drain is under way.
    */
-  updateRigImages?: (rig: string, by: string) => Promise<{ ok: string } | { error: string }>;
+  updateRigImages?: (
+    rig: string,
+    by: string,
+    o?: { wait?: boolean | undefined },
+  ) => Promise<{ ok: string } | { error: string }>;
   /** Stop, start or restart a rig control set up on a cluster, as on its page. */
   clusterRigAction?: (
     rig: string,

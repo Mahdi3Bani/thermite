@@ -43,7 +43,8 @@ export type RigSettingsChange = z.infer<(typeof CommandPayloads)["rig_settings"]
  */
 export type RigSettingsWanted = { [P in RigPart]?: boolean | undefined } & {
   lanes?: number | undefined;
-  trial_minutes?: number | undefined;
+  /** null: no limit on a trial's length (goal 079). */
+  trial_minutes?: number | null | undefined;
   /** null: no limit. */
   max_turns?: number | null | undefined;
   promotion?: string | undefined;
@@ -232,9 +233,10 @@ export const rigSettingsFields = {
   trial_minutes: z
     .number()
     .int()
+    .nullable()
     .optional()
     .describe(
-      "How long one trial lasts, in minutes (1 to 10080), when the campaign's contract sets no limit",
+      "How long one trial lasts, in minutes (1 to 1440), when the campaign's contract sets no limit; null: no limit, a trial lasts until its worker submits or stops",
     ),
   max_turns: z
     .number()

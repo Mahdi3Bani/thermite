@@ -66,8 +66,24 @@ const LaneLimits = z.strictObject({
    */
   dev_run_timeout_s: z.number().int().min(10).max(3600).optional(),
   dev_run_rss_mib: z.number().int().min(256).max(16_384).optional(),
-  /** A worker's whole trial. Unset: the rig's default (THERMITE_TRIAL_MINUTES). */
+  /**
+   * A worker's whole trial. Unset: the rig's own (Edit rig, THERMITE_TRIAL_MINUTES), which is none
+   * unless someone set one (goal 079).
+   */
   trial_minutes: z.number().int().min(1).max(1440).optional(),
+  /**
+   * A trial ends after this many failed model calls in a row (a provider's 5xx, a broken
+   * connection, a request it refused). Unset: none; a rate limit's waits never count (goal 079).
+   */
+  failures_in_a_row: z.number().int().min(1).max(10_000).optional(),
+  /** A trial ends after this many replies in a row cut off at the output limit. Unset: none. */
+  cutoffs_in_a_row: z.number().int().min(1).max(10_000).optional(),
+  /**
+   * How many times a worker that stops without submitting is told to go on. Unset: no number; it
+   * is told for as long as it keeps working, and a nudge it answers without any work ends the
+   * trial (goal 079). 0: never.
+   */
+  nudges: z.number().int().min(0).max(10_000).optional(),
   /**
    * Processes and threads each of a lane's users may have at once (RLIMIT_NPROC): its commands
    * and OpenCode or Claude Code, its development runs, and its Pi worker. Unset: 256.
@@ -112,6 +128,13 @@ const Common = {
       trials_per_epoch: z.number().int().min(1).default(3),
       /** Raised limits for heavy projects (see laneLimits for the defaults). */
       limits: LaneLimits.optional(),
+      /**
+       * The target queue depth (goal 081): queued experiments to keep ready for the lanes' next
+       * trials. Below it, the planner is asked to top the queue up, and the teachers when it
+       * can't. A target that drives ideas, never a cap; 0 asks for none. Unset: two for each
+       * lane. Optional and without a default, so contracts written before it keep their hash.
+       */
+      queue_target: z.number().int().min(0).max(1000).optional(),
     })
     .default({ count: 2, trials_per_epoch: 3 }),
   budget: z
@@ -125,7 +148,18 @@ const Common = {
   min_duration: DurationSchema.optional(),
   max_duration: DurationSchema.optional(),
   search_policy: SearchPolicy.optional(),
+  /**
+   * The campaign's additional information, from its author (goal 078): background, links, what
+   * was tried, limits and what good looks like, in Markdown, with no length limit. The planner,
+   * the workers and the advisors get it as data to weigh, never as a rule (brief.ts).
+   */
   notes: z.string().optional(),
+  /**
+   * What the campaign's author thinks is true, one entry each (goal 078): a starting point for the
+   * agents to test, not a fact. A research run starts with them as its hypotheses. Optional and
+   * without a default, so contracts written before it keep their hash.
+   */
+  hypotheses: z.array(z.string().min(1)).optional(),
   /**
    * The campaign's own context window and compaction point for all its runs' agents (goal 070):
    * each agent's window is the lower of this and its own model's, and this point replaces the
@@ -139,6 +173,18 @@ const EditPolicy = {
   editable_paths: z.array(z.string().min(1)).min(1),
   /** Regular expressions; an added line matching one is refused at V0. */
   forbidden_patterns: z.array(RegexSchema).default([]),
+  /**
+   * Ideas the campaign's author wants tried, one entry each (goal 078): the planner and the
+   * workers get them as starting points, not rules. Optional and without a default, so contracts
+   * written before it keep their hash.
+   */
+  ideas: z.array(z.string().min(1)).optional(),
+  /**
+   * Starting links from the campaign's author (goal 078): pages the agents get with the brief.
+   * Nothing fetches them up front; a worker fetches one when it needs it. Optional and without a
+   * default, so contracts written before it keep their hash. A research contract's are its seeds.
+   */
+  links: z.array(z.url()).optional(),
 };
 
 const Acceptance = z
@@ -294,7 +340,11 @@ export const ResearchContract = z.strictObject({
   mode: z.literal("research"),
   topic: z.string().min(1),
   questions: z.array(z.string().min(1)).min(1),
-  /** Starting URLs (without a search provider, research follows links from these). */
+  /**
+   * Starting links: the harness fetches and archives them when the run starts (goal 078), and
+   * every research worker's brief lists them. Without a search provider, research follows links
+   * from these.
+   */
   seeds: z.array(z.url()).default([]),
   /**
    * The MCP servers the campaign's agents use (goal 068), as a kit names them: a research
@@ -387,6 +437,12 @@ export interface LaneLimitValues {
   trialMinutes?: number | undefined;
   /** RLIMIT_NPROC for each of the lane's users (lane, development and agent). */
   processes: number;
+  /** Failed model calls in a row that end a trial; unset: none (goal 079). */
+  failuresInARow?: number | undefined;
+  /** Replies in a row cut off at the output limit that end a trial; unset: none (goal 079). */
+  cutoffsInARow?: number | undefined;
+  /** Nudges to a worker that stopped without submitting; unset: no number (goal 079). */
+  nudges?: number | undefined;
 }
 
 /** A dev run's limit on a device the judge shares, when the contract sets none. */
@@ -406,6 +462,9 @@ export function laneLimits(contract: Pick<Contract, "lanes">): LaneLimitValues {
     devRunRssMib: l.dev_run_rss_mib ?? 4096,
     trialMinutes: l.trial_minutes,
     processes: l.processes ?? LANE_PROCESSES,
+    failuresInARow: l.failures_in_a_row,
+    cutoffsInARow: l.cutoffs_in_a_row,
+    nudges: l.nudges,
   };
 }
 

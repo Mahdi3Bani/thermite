@@ -56,15 +56,15 @@ This guide covers providers reached with an API key, or with no key for OpenCode
 3. Choose the model. The list groups the models by provider. A group marked "OpenCode harness only" needs **OpenCode v2**. Without a key, OpenCode serves only the models whose names end in `-free`.
 4. Press **Use**.
 
-   The page shows `rig-1 takes my-model from "my-litellm" under Pi within a minute, and checks it.`
+   The button turns into **Sending…**, and a line at the top of the page shows `rig-1 takes my-model from "my-litellm" under Pi within a minute, and checks it.`
 
-5. Wait a minute or two, then press **refresh** in the status bar, the line along the bottom of the page. Dashboard pages do not reload by themselves. Until the rig takes the model, its row says "taking my-model under Pi".
+5. Wait a minute or two on the page: the row follows the rig by itself, with no refresh. Until the rig takes the model, its row says "taking my-model under Pi". Then its model check shows as it runs, such as "Its model check is running · 12 s."
 
 The rig's row now says "Its agents run under Pi with my-model from my-litellm." Below it you see the model check's result, for example "Its model check passed 1m ago: my-model answered with a correct tool call in 3.2 s". Press **Check** to run it again.
 
 You can also give a rig its agents' model where you start a run:
 
-- under **The agents' model** on the **New campaign** page ([Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#4-where-it-runs));
+- under **The agents' model** on the **New campaign** page ([Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#5-where-it-runs));
 - in a campaign's **Start a run** panel, which shows **The agents' model** when the chosen rig has no model and **Agents** is **On**. Its ⓘ says: "For a rig with no model for its agents: the model to give it, as on its Edit rig page. Control gives it to the rig, which takes it within a minute; then start the run again here." Control gives the rig the model and says "rig-1 takes my-model within a minute; Settings › Providers shows it taking the model until then. Then start the run again." The run doesn't start yet: when the rig's row here says it runs the model, open **Start a run** again and press **Start the run**.
 
 An agent can do it over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model). All three work like **Use** here.
@@ -112,7 +112,7 @@ An agent does the same with [`set_rig_model`](../../reference/mcp-tools.md#set_r
 After a minute, the rig's row under **Harness and model for each rig** says "Its agents run under Pi with my-model from my-litellm. Its context window: 131,072 tokens (capped; the provider allows 204,800)." The model check's details record the window the rig runs with: see [Rig checks](../../reference/rig-checks.md#model-route-check).
 
 :::note
-Agents in Pi keep to the window: each reply is limited to the room left, and near the window the conversation is compacted and the trial goes on (see the next section). OpenCode v2, Codex and Claude Code get the window in their own settings, with limits of their own: Claude Code takes no window below 100,000 tokens, Codex none above what the model takes (272,000 tokens for a model it does not know), and OpenCode's own models keep the window OpenCode knows. To compare models at exactly one window, run both rigs in Pi.
+Agents in Pi keep to the window: when a reply limit is known, each reply is limited to the room left, and near the window the conversation is compacted and the trial goes on (see the next section). OpenCode v2, Codex and Claude Code get the window in their own settings, with limits of their own: Claude Code takes no window below 100,000 tokens, Codex none above what the model takes (272,000 tokens for a model it does not know), and OpenCode's own models keep the window OpenCode knows. To compare models at exactly one window, run both rigs in Pi.
 :::
 
 ## Set when a conversation is compacted
@@ -132,10 +132,11 @@ Control answers with the point it keeps, and says it in words: `"compact_at":70`
 
 - A point outside 50 to 95 is refused: `The compaction point is a whole percent of the context window, from 50 to 95.`
 - Each request sets the point anew, as it sets the cap. Give the model again without `compact_at` and the rig goes back to 80%.
+- A rig whose harness is older than this point refuses a model route with `compact_at`: set it only on rigs on images that have it. A route without it is unchanged.
 - **Use** on this page keeps the point while the rig keeps the same model, and another model there removes it. On **Edit rig**, the workers' **Context** cell shows the point and changes it.
 - This point is for the workers' model, and for the planner when it follows the workers. The planner with its own model and each advisor take their own point, and a campaign can set its own for all its runs: see [Give each agent its own model](model-per-agent.md#set-an-agents-context-window-and-compaction).
 
-After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction shows in the run's **History** and in the trial's **Live** view, with the summary, such as "Claude Code compacted the conversation (compaction 1) at about 160,512 tokens, down to about 18,204. The trial goes on. The conversation before it is kept in the run's research folder, compactions/t-…-1.md." [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes, and how each one's conversation is kept: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
+After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction has a line in the run's **History**, and one in **Live** with the summary after it, such as "Claude Code compacted the conversation (compaction 1) at about 160,512 tokens, down to about 18,204. The trial goes on. The conversation before it is kept in the run's research folder, compactions/t-…-1.md." [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes, and how each one's conversation is kept: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
 
 ## Add a model the list leaves out
 
@@ -143,7 +144,7 @@ Some providers serve models that their list does not show. Open the provider's r
 
 ## Give a model its price
 
-[Model usage](../../reference/model-use.md) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show `no price` until you set one, in US dollars for a million tokens.
+[Model usage](../../reference/model-use.md) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show `no price` until you set one, in US dollars for a million tokens. A provider whose list makes every model free says `free, from the provider` in its row.
 
 1. Open **Settings › Providers**. Under the providers, **Model prices** lists every model of every provider that is not a subscription, in $ for a million tokens. Its **Price from** column says `provider's list`, `free`, `yours` or `no price`.
 2. In the model's row, type its **In** and **Out** prices, and **Cached in** if the provider charges less for tokens it reads from its cache (empty: the **In** price). A model whose list gives a price shows it as text: it can't be changed here.
@@ -159,7 +160,7 @@ curl -sS -X POST https://control.example.com/v1/model-prices \
   -d '{"provider": "lab", "model": "small-model", "input": 1, "cached_input": 0.1, "output": 2}'
 ```
 
-The answer says the price in words: "small-model of lab costs 1 USD per million tokens in, 0.1 USD cached and 2 USD out. Model usage prices all its calls at it." The MCP tool [`set_model_price`](../../reference/mcp-tools.md#set_model_price) does the same. A subscription's calls (a Claude or ChatGPT provider) are on its plan and take no price.
+The answer says the price in words: "small-model of lab costs 1 USD per million tokens in, 0.1 USD cached and 2 USD out. Model usage prices all its calls at it." The MCP tool [`set_model_price`](../../reference/mcp-tools.md#set_model_price) does the same. A subscription's calls (a Claude or ChatGPT provider) are on its plan and take no price: its row says `On a plan: its calls show their tokens, and “on a plan” for cost.`
 
 ## Refresh, change or delete a provider
 
@@ -198,7 +199,7 @@ A rig can also take its model from its own settings, the `THERMITE_MODEL_*` vari
 | `THERMITE_MODEL_API_KEY_FILE` | A file holding the key. On the local stack: `.dev/secrets/model-api-key` |
 | `THERMITE_MODEL_CONTEXT_WINDOW` | The model's context per request. `0` means unknown |
 | `THERMITE_MODEL_COMPACT_AT` | The share of the window, in percent (50 to 95), at which an agent's conversation is compacted. Unset: 80 |
-| `THERMITE_MODEL_MAX_TOKENS` | The longest reply, thinking included. Default `8192` |
+| `THERMITE_MODEL_MAX_TOKENS` | The longest reply, thinking included. Default: none sent, so the provider's own limit applies (Anthropic's API gets 32,000). A model from control takes the model's maximum output from the provider's list |
 | `THERMITE_MODEL_REASONING_EFFORT` | `none`, `low`, `medium` or `high`. Unset: nothing is sent |
 | `THERMITE_MODEL_API` | `openai` (the default), `anthropic`, `opencode`, `claude` or `chatgpt` |
 | `THERMITE_AGENT_HARNESS` | `pi` (the default), `opencode`, `claude-code` or `codex` |

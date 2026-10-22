@@ -46,7 +46,8 @@ export class DevRuns {
   private readonly gpu: boolean;
   private readonly dedicated: boolean;
   private readonly unavailable: string | undefined;
-  private readonly maxWaitMs: number;
+  /** How long a dev run waits for a device before it gives up; none unless given (goal 079). */
+  private readonly maxWaitMs: number | undefined;
 
   constructor(opts: {
     runner: Runner;
@@ -67,7 +68,7 @@ export class DevRuns {
     this.gpu = opts.gpu;
     this.dedicated = opts.dedicated === true;
     this.unavailable = opts.unavailable;
-    this.maxWaitMs = opts.maxWaitMs ?? 10 * 60_000;
+    this.maxWaitMs = opts.maxWaitMs;
     this.busy = Array.from(
       { length: this.dedicated ? Math.max(1, opts.cards ?? 1) : 1 },
       () => false,
@@ -96,8 +97,15 @@ export class DevRuns {
     return Number(r.n) > 0;
   }
 
-  /** Waits until the lane's dev runs have ended (a trial's end waits for this). */
+  /** Each lane's dev run still waiting for a device: how to give it up (its trial ended). */
+  private readonly waiting = new Map<string, () => void>();
+
+  /**
+   * Waits until the lane's dev runs have ended (a trial's end waits for this). One still waiting
+   * for a device gives up at once: its trial has ended (goal 079).
+   */
   async settle(lane: string): Promise<void> {
+    this.waiting.get(lane)?.();
     await this.perLane.get(lane)?.catch(() => undefined);
   }
 
@@ -126,9 +134,9 @@ export class DevRuns {
     const cap = limits.timeoutS ?? (this.dedicated ? undefined : SHARED_DEV_RUN_S);
     const timeoutS =
       req.timeout_s === undefined ? cap : Math.min(req.timeout_s, cap ?? Number.POSITIVE_INFINITY);
-    // One dev run per card, in arrival order; a lane's next dev run waits for its last. One
-    // waiting for a card for longer than maxWaitMs is told so and never runs: the device has no
-    // time limit of its own.
+    // One dev run per card, in arrival order; a lane's next dev run waits for its last. It waits
+    // until a card is free or its trial ends (goal 079: no time limit of its own); with maxWaitMs
+    // given, one that waits longer is told so and never runs.
     let started = false;
     let gaveUp = false;
     let waiter: { wake: () => void } | undefined;
@@ -151,9 +159,10 @@ export class DevRuns {
       });
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let giveUp: (reason: string) => void = () => undefined;
     const waited = new Promise<unknown>((resolve) => {
-      timer = setTimeout(() => {
-        if (started) return;
+      giveUp = (reason) => {
+        if (started || gaveUp) return;
         gaveUp = true;
         // It leaves the line, and ends at once.
         if (waiter) {
@@ -161,14 +170,20 @@ export class DevRuns {
           if (i >= 0) this.waiters.splice(i, 1);
           waiter.wake();
         }
-        resolve({
-          ran: false,
-          reason: "another lane's dev run held the device; try again later",
-        });
-      }, this.maxWaitMs);
+        resolve({ ran: false, reason });
+      };
+      if (this.maxWaitMs === undefined) return;
+      timer = setTimeout(
+        () => giveUp("another lane's dev run held the device; try again later"),
+        this.maxWaitMs,
+      );
       timer.unref?.();
     });
-    const outcome = Promise.race([next, waited]).finally(() => clearTimeout(timer));
+    this.waiting.set(req.lane, () => giveUp("the trial ended before a device was free"));
+    const outcome = Promise.race([next, waited]).finally(() => {
+      clearTimeout(timer);
+      if (this.perLane.get(req.lane) === outcome) this.waiting.delete(req.lane);
+    });
     this.perLane.set(req.lane, outcome);
     this.laneTail.set(
       req.lane,
@@ -189,7 +204,10 @@ export class DevRuns {
   ): Promise<unknown> {
     try {
       onStart();
-      const deadline = Date.now() + this.maxWaitMs;
+      // While the judge has work on the shared device: until it is done, or the trial ends (or,
+      // with maxWaitMs given, until that wait is over).
+      const deadline =
+        this.maxWaitMs !== undefined ? Date.now() + this.maxWaitMs : Number.POSITIVE_INFINITY;
       while (!this.dedicated && this.judgeBusy()) {
         if (Date.now() > deadline)
           return { ran: false, reason: "the judge kept the device busy; try again later" };

@@ -5,8 +5,10 @@ import { type Ledger, LedgerError, PROMOTABLE_VERDICTS } from "./ledger.ts";
 /**
  * "Not possible" endings for goal campaigns. The harness proposes one only where the contract
  * allows it, and only from evidence in the ledger: at least `min_refuted_approaches` approach
- * families, each with several judged attempts and no progress at all. The owner accepts or
- * rejects it; until then the campaign goes on. No agent can end a campaign.
+ * families, each with several judged attempts and no progress at all. Hands-off by default
+ * (goal 079): the proposal is taken and the campaign ends, unless its run asks the owner
+ * (`ask_owner.not_possible`); then the owner accepts or rejects it, and until then the campaign
+ * goes on. No agent can end a campaign.
  */
 
 type Row = Record<string, unknown>;
@@ -142,8 +144,18 @@ export class Conclusions {
     });
   }
 
-  /** The owner's decision. Accepting closes the run; rejecting lets the campaign go on. */
-  decide(run: string, proposal: number, accept: boolean, note: string | undefined, by: string) {
+  /**
+   * The decision: the owner's, or the harness's where the run does not ask (goal 079). Accepting
+   * closes the run; rejecting lets the campaign go on.
+   */
+  decide(
+    run: string,
+    proposal: number,
+    accept: boolean,
+    note: string | undefined,
+    by: string,
+    closeReason = "not possible: the owner accepted the evidence",
+  ) {
     return this.ledger.tx(() => {
       const row = this.ledger.db
         .prepare("select * from conclusion where id = ? and run = ?")
@@ -160,12 +172,7 @@ export class Conclusions {
         kind: String(row.kind),
       });
       if (accept) {
-        this.ledger.setRunStatus(
-          run,
-          "closed",
-          "not possible: the owner accepted the evidence",
-          by,
-        );
+        this.ledger.setRunStatus(run, "closed", closeReason, by);
       } else {
         // The owner wants the campaign to go on: the families this proposal exhausted reopen.
         const families = (JSON.parse(String(row.evidence)) as { approaches: { family: string }[] })

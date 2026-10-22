@@ -170,33 +170,168 @@ describe("audits", () => {
     assert.equal(env.ledger.currentChampion("js-1").attempt, id);
   });
 
-  test("a cleared audit follows the promotion policy, but large gains and declared flaws go to the owner", async () => {
-    // Above the absolute trigger: a clear still needs the owner, whatever the policy.
+  test("an auditor's clear is the last step: large gains and declared flaws promote with no owner step (goal 079)", async () => {
+    // Above the absolute trigger: the auditor's clear promotes it.
     const big = makeJudgeEnv({ contract: lowAudit });
     await big.service.applyCommand(big.assign);
     const large = await submit(big, FAST_KERNEL);
     await big.drain();
-    await big.service.decideAudit({
+    assert.equal(String(big.ledger.getAttempt(large)?.lifecycle), "awaiting_audit");
+    const cleared = (await big.service.decideAudit({
       attempt: large,
       decision: "clear",
       reasons: "ok",
       citations: [],
       auditor: "a",
+    })) as { effect?: string };
+    assert.equal(cleared.effect, "promoted");
+    assert.equal(big.ledger.currentChampion("js-1").attempt, large);
+
+    // Declared flaws: the auditor's clear accepts them, and the record says who did.
+    const env2 = makeJudgeEnv({ contract: lowAudit });
+    await env2.service.applyCommand(env2.assign);
+    const flawed = await submit(env2, FAST_KERNEL, ["only tested on small inputs"]);
+    await env2.drain();
+    assert.equal(String(env2.ledger.getAttempt(flawed)?.lifecycle), "awaiting_audit");
+    await env2.service.decideAudit({
+      attempt: flawed,
+      decision: "clear",
+      reasons: "ok",
+      citations: [],
+      auditor: "a",
     });
-    assert.equal(String(big.ledger.getAttempt(large)?.lifecycle), "awaiting_approval");
-    // An agent's MCP or API credential cannot approve: control records who issued a command.
-    const byAgent = signAs(big, "agent:mcp", "approve_promotion", {
-      run: "js-1",
-      attempt: large,
+    assert.equal(env2.ledger.currentChampion("js-1").attempt, flawed);
+    assert.match(String(env2.ledger.getAttempt(flawed)?.flaws_cleared_by), /the auditor's clear/);
+    assert.ok(env2.ledger.latestEventBody("flaws_accepted", flawed));
+
+    // The auditor's block stops it, with its reasons.
+    const env3 = makeJudgeEnv({ contract: lowAudit });
+    await env3.service.applyCommand(env3.assign);
+    const stopped = await submit(env3, FAST_KERNEL);
+    await env3.drain();
+    await env3.service.decideAudit({
+      attempt: stopped,
+      decision: "block",
+      reasons: "the timer is read twice",
+      citations: [],
+      auditor: "a",
     });
-    const refused = await big.service.applyCommand(byAgent);
+    assert.equal(String(env3.ledger.getAttempt(stopped)?.lifecycle), "audit_blocked");
+    assert.match(
+      String(env3.ledger.latestEventBody("promotion_blocked", stopped)?.reason),
+      /blocked by the audit: the timer is read twice/,
+    );
+    assert.equal(env3.ledger.currentChampion("js-1").seq, 1);
+  });
+
+  test("with no auditor, a win the judge confirms is promoted, and the skipped audit is recorded (goal 079)", async () => {
+    // The supervisor said: no auditor. A large gain with declared flaws promotes at once.
+    const env = makeJudgeEnv({ contract: lowAudit });
+    await env.service.applyCommand(env.assign);
+    await env.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    const win = await submit(env, FAST_KERNEL, ["only tested on small inputs"]);
+    await env.drain();
+    assert.equal(env.ledger.currentChampion("js-1").attempt, win, env.explain(win));
+    assert.equal(String(env.ledger.getAttempt(win)?.lifecycle), "promoted");
+    assert.match(String(env.ledger.latestEventBody("audit_skipped", win)?.why), /no auditor/);
+    assert.match(String(env.ledger.getAttempt(win)?.flaws_cleared_by), /no audit/);
+
+    // An audit held before the supervisor said goes on when it says there is no auditor.
+    const held = makeJudgeEnv({ contract: lowAudit });
+    await held.service.applyCommand(held.assign);
+    const x = await submit(held, FAST_KERNEL);
+    await held.drain();
+    assert.equal(String(held.ledger.getAttempt(x)?.lifecycle), "awaiting_audit");
+    const api = createHarnessApi(held.service, tokens);
+    const said = await api.request("/v1/advisors", {
+      method: "PUT",
+      headers: auth(tokens.supervisor),
+      body: JSON.stringify({ auditor: false, panel: 0 }),
+    });
+    assert.equal(said.status, 200);
+    assert.deepEqual(((await said.json()) as { released: string[] }).released, [x]);
+    assert.equal(held.ledger.currentChampion("js-1").attempt, x);
+    assert.ok(held.ledger.latestEventBody("audit_skipped", x));
+    // Only the supervisor's token may say it.
+    const refused = await api.request("/v1/advisors", {
+      method: "PUT",
+      headers: auth(tokens.proposer),
+      body: JSON.stringify({ auditor: false, panel: 0 }),
+    });
+    assert.equal(refused.status, 401);
+  });
+
+  test("a goal campaign's win promotes with no owner step too (goal 079)", async () => {
+    const env = makeJudgeEnv({ goal: { opsPerSecond: 90e6 } });
+    await env.service.applyCommand(env.assign);
+    assert.equal(env.ledger.getRun("js-1")?.promotion, null, "no policy of its own");
+    await env.drain();
+    const win = await submit(env, FAST_KERNEL);
+    await env.drain();
+    assert.equal(env.ledger.currentChampion("js-1").attempt, win, env.explain(win));
+  });
+
+  test("a run set to ask the owner keeps its asks; a run that asked for approval keeps it (goal 079)", async () => {
+    // Above a gain the run names: the win waits for the owner, with why.
+    const gain = makeJudgeEnv({ contract: lowAudit, assign: { ask_owner: { above_gain: 0.05 } } });
+    await gain.service.applyCommand(gain.assign);
+    assert.deepEqual(gain.ledger.getRun("js-1")?.ask_owner, { above_gain: 0.05 });
+    await gain.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    const a = await submit(gain, FAST_KERNEL);
+    await gain.drain();
+    assert.equal(String(gain.ledger.getAttempt(a)?.lifecycle), "awaiting_approval");
+    assert.match(
+      String(gain.ledger.latestEventBody("promotion_pending", a)?.reason),
+      /you asked to decide gains above 5\.0%/,
+    );
+    // An agent's credential cannot approve: control records who issued a command.
+    const byAgent = signAs(gain, "agent:mcp", "approve_promotion", { run: "js-1", attempt: a });
+    const refused = await gain.service.applyCommand(byAgent);
     assert.ok(refused.status === "applied" && !refused.accepted, JSON.stringify(refused));
-    const ok = await big.service.applyCommand(
-      big.sign("approve_promotion", { run: "js-1", attempt: large }),
+    const ok = await gain.service.applyCommand(
+      gain.sign("approve_promotion", { run: "js-1", attempt: a }),
     );
     assert.ok(ok.status === "applied" && ok.accepted, JSON.stringify(ok));
+    assert.equal(gain.ledger.currentChampion("js-1").attempt, a);
 
-    // The ratio trigger (far above earlier confirmed gains): a clear follows the policy (auto).
+    // Declared flaws, when the run asks: after the auditor's clear, the owner decides.
+    const flaws = makeJudgeEnv({
+      contract: lowAudit,
+      assign: { ask_owner: { declared_flaws: true } },
+    });
+    await flaws.service.applyCommand(flaws.assign);
+    const f = await submit(flaws, FAST_KERNEL, ["only tested on small inputs"]);
+    await flaws.drain();
+    await flaws.service.decideAudit({
+      attempt: f,
+      decision: "clear",
+      reasons: "ok",
+      citations: [],
+      auditor: "a",
+    });
+    assert.equal(String(flaws.ledger.getAttempt(f)?.lifecycle), "awaiting_approval");
+    assert.equal(flaws.ledger.currentChampion("js-1").seq, 1);
+    assert.equal(flaws.ledger.getAttempt(f)?.flaws_cleared_by, null);
+
+    // A run that asked for the owner's approval (a run from before goal 079 keeps its choice).
+    const old = makeJudgeEnv({ promotion: "owner_approval" });
+    await old.service.applyCommand(old.assign);
+    await old.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    const o = await submit(old, FAST_KERNEL);
+    await old.drain();
+    assert.equal(String(old.ledger.getAttempt(o)?.lifecycle), "awaiting_approval");
+    const own = makeJudgeEnv({ assign: { promotion: "owner_approval" } });
+    await own.service.applyCommand(own.assign);
+    await own.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    const w = await submit(own, FAST_KERNEL);
+    await own.drain();
+    assert.equal(String(own.ledger.getAttempt(w)?.lifecycle), "awaiting_approval");
+    assert.match(
+      String(own.ledger.latestEventBody("promotion_pending", w)?.reason),
+      /you asked to decide every change/,
+    );
+
+    // The ratio trigger (far above earlier confirmed gains): with an auditor, its clear promotes.
     const env = makeJudgeEnv({
       contract: {
         acceptance: {
@@ -231,26 +366,6 @@ describe("audits", () => {
       auditor: "a",
     });
     assert.equal(String(env.ledger.getAttempt(clean)?.lifecycle), "promoted");
-
-    const env2 = makeJudgeEnv({ contract: lowAudit });
-    await env2.service.applyCommand(env2.assign);
-    const flawed = await submit(env2, FAST_KERNEL, ["only tested on small inputs"]);
-    await env2.drain();
-    assert.equal(String(env2.ledger.getAttempt(flawed)?.lifecycle), "awaiting_audit");
-    await env2.service.decideAudit({
-      attempt: flawed,
-      decision: "clear",
-      reasons: "ok",
-      citations: [],
-      auditor: "a",
-    });
-    assert.equal(String(env2.ledger.getAttempt(flawed)?.lifecycle), "awaiting_approval");
-    assert.equal(env2.ledger.currentChampion("js-1").seq, 1);
-    const r = await env2.service.applyCommand(
-      env2.sign("approve_promotion", { run: "js-1", attempt: flawed }),
-    );
-    assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
-    assert.equal(env2.ledger.currentChampion("js-1").attempt, flawed);
   });
 });
 
@@ -406,23 +521,72 @@ describe("goal reviews and conclusions", () => {
     assert.equal(goalStatus(), "verified");
   });
 
-  test("'not possible' is proposed from refuted approaches and needs the owner to end the campaign", async () => {
-    const env = makeJudgeEnv({
+  test("a review panel's pass is accepted with no owner step, unless the run asks (goal 079)", async () => {
+    const results = [
+      { reviewer: "opus", pass: true, reasons: "clear" },
+      { reviewer: "sol", pass: true, reasons: "clear" },
+    ];
+    const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
+    await env.service.applyCommand(env.assign);
+    await env.drain();
+    const id = new Reviews(env.ledger).pending()[0]?.id as number;
+    assert.deepEqual(env.service.recordReviewPanel(id, results, "s"), {
+      result: "review_passed",
+      accepted: true,
+    });
+    await env.drain();
+    assert.equal(
+      env.ledger.db.prepare("select status from goal where run = 'js-1' and id = 'readable'").get()
+        ?.status,
+      "verified",
+    );
+    // A run set to ask: the pass waits for the owner.
+    const asks = makeJudgeEnv({
+      goal: { opsPerSecond: 1e12 },
+      assign: { ask_owner: { reviews: true } },
+    });
+    await asks.service.applyCommand(asks.assign);
+    await asks.drain();
+    const id2 = new Reviews(asks.ledger).pending()[0]?.id as number;
+    assert.deepEqual(asks.service.recordReviewPanel(id2, results, "s"), {
+      result: "review_passed",
+    });
+    assert.equal(
+      asks.ledger.db.prepare("select owner_decision from review").get()?.owner_decision,
+      null,
+    );
+  });
+
+  test("'not possible' is proposed from refuted approaches and ends the campaign unless the run asks (goal 079)", async () => {
+    const refute = async (env: ReturnType<typeof makeJudgeEnv>) => {
+      await env.service.applyCommand(env.assign);
+      await env.drain();
+      for (const k of [WRONG_KERNEL, `${WRONG_KERNEL}// b\n`, `${WRONG_KERNEL}// c\n`]) {
+        const id = await submit(env, k);
+        env.ledger.db.prepare("update attempt set family = 'closed-form' where id = ?").run(id);
+        env.ledger.db
+          .prepare(
+            "insert or ignore into family (run, id, description, created_by, created_at) values ('js-1', 'closed-form', 'd', 't', ?)",
+          )
+          .run(new Date().toISOString());
+      }
+      await env.drain();
+    };
+    // Hands-off: the evidence ends the campaign.
+    const auto = makeJudgeEnv({
       goal: { opsPerSecond: 1e12 },
       contract: { infeasibility: { allowed: true, min_refuted_approaches: 1 } },
     });
-    await env.service.applyCommand(env.assign);
-    await env.drain();
-    for (const k of [WRONG_KERNEL, `${WRONG_KERNEL}// b\n`, `${WRONG_KERNEL}// c\n`]) {
-      const id = await submit(env, k);
-      env.ledger.db.prepare("update attempt set family = 'closed-form' where id = ?").run(id);
-      env.ledger.db
-        .prepare(
-          "insert or ignore into family (run, id, description, created_by, created_at) values ('js-1', 'closed-form', 'd', 't', ?)",
-        )
-        .run(new Date().toISOString());
-    }
-    await env.drain();
+    await refute(auto);
+    assert.equal(auto.ledger.getRun("js-1")?.status, "closed");
+    assert.match(String(auto.ledger.getRun("js-1")?.pause_reason ?? ""), /not possible/);
+    // A run set to ask: the proposal waits for the owner, and the campaign goes on.
+    const env = makeJudgeEnv({
+      goal: { opsPerSecond: 1e12 },
+      contract: { infeasibility: { allowed: true, min_refuted_approaches: 1 } },
+      assign: { ask_owner: { not_possible: true } },
+    });
+    await refute(env);
     const c = new Conclusions(env.ledger);
     const open = c.open("js-1");
     assert.ok(open, "a proposal exists");

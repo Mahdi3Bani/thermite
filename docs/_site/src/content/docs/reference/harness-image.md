@@ -25,7 +25,7 @@ docker build -t thermite-harness -f containers/harness/Containerfile .
 
 ## Published images
 
-For each release, the release workflow (`.github/workflows/release.yml`) builds the images from these files and pushes them to GitHub's container registry, under the repository owner's name:
+For each release, the release workflow (`.github/workflows/release.yml`) builds the images from these files and pushes them to GitHub's container registry, under the repository owner's name. It builds every layer again, without the build cache, so each image has its base's newest system packages:
 
 | Image | Name | Tags | Architectures |
 | --- | --- | --- | --- |
@@ -51,7 +51,7 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 
 | Argument | Images | Default | Effect |
 | --- | --- | --- | --- |
-| `NODE_IMAGE` | All three | `docker.io/library/node:22-bookworm-slim`, pinned by its sha256 digest | The Node.js image every stage starts from |
+| `NODE_IMAGE` | All three | `docker.io/library/node:22.23.4-bookworm-slim`, pinned by its sha256 digest | The Node.js image every stage starts from |
 | `BASE_IMAGE` | Harness | `NODE_IMAGE` | The harness's final base. GPU rigs set a CUDA 12.x development image: see [The CUDA harness](#the-cuda-harness) |
 | `OPENCODE_VERSION` | Harness, supervisor | `2.0.32` | The OpenCode release installed |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | empty | A Claude Code release to install. Empty: Claude Code is not installed |
@@ -135,7 +135,7 @@ The [isolation check](rig-checks.md#isolation-check) tests these users, and [Iso
 | Path | What | Owner and mode |
 | --- | --- | --- |
 | `/var/lib/thermite` | State: the ledger, git mirrors, kits, imports, models, builds and the harness's copy of each run's past research, `knowledge/<run>/` (`THERMITE_STATE_DIR`) | `thermite`, 0711. `ledger`, `git`, `kits` and `imports` are 0700; `models` and `builds` 0711, reachable only by exact path |
-| `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder, `thermite/research/<run>/` with its [`knowledge/`](knowledge-base.md#a-runs-knowledge-folder) (`THERMITE_SCRATCH_DIR`). Emptied at every start; the harness puts a run's `knowledge/` back from its state when the run next needs it | root, 0755 |
+| `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder, `thermite/research/<run>/` with its [`knowledge/`](knowledge-base.md#a-runs-knowledge-folder) (`THERMITE_SCRATCH_DIR`). Emptied at every start, except each lane's cache folder, `thermite/lanes/<lane>/cache` ([A lane's cache](ports-volumes-secrets.md#a-lanes-cache)); the harness puts a run's `knowledge/` back from its state when the run next needs it | root, 0755 |
 | `/inbox` | What the supervisor fetched for the harness: project and kit bundles, models (`THERMITE_INBOX_DIR`) | Mounted read-only |
 | `/outbox` | Exports the supervisor pushes (`THERMITE_OUTBOX_DIR`) | `thermite` with the supervisor's group (10010:10001), 2750 |
 | `/keys` | Control's public key, `control-signing.pub` | Mounted read-only |
@@ -151,6 +151,7 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 | Base | `NODE_IMAGE` |
 | Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3` |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
+| Compaction hook and plugin | The same as in the harness image, for advisors in Claude Code and OpenCode: `/opt/thermite/dist/harness/agents/compaction-hook.js` and `/opt/thermite/dist/harness/agents/opencode-plugin.js`. Each keeps an advisor's conversation before each of that program's compactions ([Compaction](limits-and-pacing.md#compaction)) |
 | Claude Code | `/usr/local/bin/claude`, only when built with `CLAUDE_CODE_VERSION`. Advisors on a Claude subscription need it |
 | OpenCode | `/usr/local/bin/opencode`, at `OPENCODE_VERSION` (2.0.32 by default), as in the harness image, for [advisors in OpenCode](advisors-file.md#opencode-opencode-v2-in-the-supervisor). Always installed. Its MIT `LICENSE` is in `/usr/local/share/doc/opencode` |
 | Codex CLI | `/opt/codex`, with `/usr/local/bin/codex` linked to `/opt/codex/bin/codex`, at `CODEX_VERSION` (0.162.1 by default), as in the harness image, for [advisors in Codex](advisors-file.md#codex-the-codex-cli-in-the-supervisor). Installed unless that argument is empty. Its `LICENSE` (the Apache License 2.0) and `NOTICE` are in `/usr/local/share/doc/codex` |

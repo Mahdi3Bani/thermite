@@ -15,7 +15,7 @@ import { buildHeaders, buildInfo } from "../core/version.ts";
 import { McpGateway } from "../harness/mcp-gateway.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
-import { AdvisorsConfig } from "./advisors.ts";
+import { AdvisorsConfig, advisorsFileReport } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
@@ -239,6 +239,26 @@ async function main(): Promise<void> {
     } catch {}
     return lastSettings;
   };
+  /**
+   * Tells the harness which advisors decide (goal 079): without an auditor, the audits it holds
+   * go on by each run's rules instead of waiting. An older harness does not know the call. Said
+   * again every minute between rounds: a harness that restarted forgets it.
+   */
+  let told: { auditor: boolean; panel: number } | undefined;
+  let toldAt = 0;
+  const tellAdvisors = async (a = told) => {
+    if (!a) return;
+    told = a;
+    toldAt = Date.now();
+    try {
+      await fetch(`${harnessUrl}/v1/advisors`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${harnessToken}`, "content-type": "application/json" },
+        body: JSON.stringify(a),
+      });
+    } catch {}
+  };
+  const retell = () => (Date.now() - toldAt >= 60_000 ? tellAdvisors() : undefined);
   // How often the pause between advisor rounds looks for a new owner's message to the teachers.
   const ownerCheckMs = 5000;
   // Advisors run on their own: a teacher round can take many minutes.
@@ -247,8 +267,12 @@ async function main(): Promise<void> {
       const advisors = await refreshAdvisors();
       if (!advisors) {
         // No role has an advisor: look again later (the owner may give one a model).
+        await tellAdvisors({ auditor: false, panel: 0 });
         const until = Date.now() + Math.max(intervalMs, 30_000);
-        while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+        while (!stopping && Date.now() < until) {
+          await new Promise((r) => setTimeout(r, 250));
+          await retell();
+        }
         continue;
       }
       const before = { ...adviseState.stats };
@@ -262,6 +286,7 @@ async function main(): Promise<void> {
           auditor: on.auditor ? advisors.auditor : undefined,
           review_panel: on.review ? advisors.review_panel : [],
         };
+        await tellAdvisors({ auditor: Boolean(active.auditor), panel: active.review_panel.length });
         adviseState = await adviseOnce(
           {
             harnessUrl,
@@ -306,6 +331,7 @@ async function main(): Promise<void> {
       let checked = Date.now();
       while (!stopping && Date.now() < until) {
         await new Promise((r) => setTimeout(r, 250));
+        await retell();
         if (Date.now() - checked < ownerCheckMs || !advisors.teachers.length) continue;
         checked = Date.now();
         const called = await teachersCalled(
@@ -575,6 +601,10 @@ async function main(): Promise<void> {
                 auditor: lastSettings.auditor && Boolean(advisors.auditor),
                 panel: lastSettings.review ? advisors.review_panel.length : 0,
               },
+              // What the rig's advisors file sets up for each role, so that Edit rig can say what
+              // an advisor with no model from control uses (goal 074). No key, token or address.
+              // With no advisor from the file or from control, `advisors` is null: none in it.
+              file: advisorsFileReport(fileAdvisors),
             }
           : null,
       });

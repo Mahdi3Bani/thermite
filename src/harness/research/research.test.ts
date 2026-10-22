@@ -540,6 +540,37 @@ describe("research integrity", () => {
     await new Promise((r) => setTimeout(r, 300));
     assert.equal(research.clock("r-1").elapsed_ms, paused);
   });
+
+  test("time the agents could not run does not count, and the minimum is never a stop (goal 079)", async () => {
+    // No maximum: the minimum is a floor; the run never ends by its clock.
+    const { env, research } = await researchEnv({ min_duration: "1s", max_duration: undefined });
+    const ledger = env.service.ledger;
+    await new Promise((r) => setTimeout(r, 1100));
+    const c0 = research.clock("r-1");
+    assert.ok(c0.elapsed_ms >= 1000);
+    assert.equal(c0.max_ms, null);
+    assert.equal(c0.done, false, "past its minimum, a run with no maximum goes on");
+    // The agents stop (no credits): the clock stops with them, until they go on.
+    ledger.appendEvent("scheduler", "agents_stopped", "r-1", { kind: "credits", words: "402" });
+    await new Promise((r) => setTimeout(r, 300));
+    const stopped = research.clock("r-1");
+    assert.ok(stopped.elapsed_ms - c0.elapsed_ms < 150, "the clock stopped");
+    assert.ok(stopped.waited_ms >= 250);
+    ledger.appendEvent("scheduler", "agents_resumed", "r-1", { why: "a model check passed" });
+    await new Promise((r) => setTimeout(r, 200));
+    const going = research.clock("r-1");
+    assert.ok(going.elapsed_ms - stopped.elapsed_ms >= 150, "it runs again");
+    // A wait for the provider's rate limit does not count either, until the time it named.
+    ledger.appendEvent("scheduler", "agents_wait_for_limit", "r-1", {
+      until: new Date(Date.now() + 60_000).toISOString(),
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(research.clock("r-1").elapsed_ms - going.elapsed_ms < 150, "waiting: stopped");
+    // With a maximum, the clock (not the minimum) ends it.
+    const { research: r2 } = await researchEnv({ min_duration: "1s", max_duration: "2s" });
+    assert.equal(r2.clock("r-1").done, false);
+    assert.equal(r2.clock("r-1").max_ms, 2000);
+  });
 });
 
 describe("research campaign", () => {

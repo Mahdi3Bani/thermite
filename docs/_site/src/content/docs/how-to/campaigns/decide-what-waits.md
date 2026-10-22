@@ -1,12 +1,12 @@
 ---
 title: "Decide what waits for you"
-description: "Approve or decline promotions, audits, reviews and \"not possible\" endings."
+description: "Choose what waits for you, and approve or decline the promotions, audits, reviews and \"not possible\" endings that do."
 type: how-to
 sidebar:
   order: 11
 ---
 
-Some things wait for the owner's word: a change that would become the new best, an audit, a subjective goal, a proposal to end a campaign, a rig's new key and a full reset. This page shows where they wait and what each button does. Campaigns go on while a decision waits: agents keep working from the current [champion](../../reference/glossary.md).
+Thermite is hands-off by default. A change the judge confirms becomes the new best with no step of yours, after the rig's auditor clears it when an audit is called for. A review panel's pass is accepted, and a goal campaign the evidence shows is not possible ends. Only what you ask to decide waits for you, and what goes wrong: an auditor's block, agents the model provider stopped, a rig's new key, a full reset you started and a rig that stopped reporting. This page shows how to choose what waits, where it waits and what each button does. Campaigns go on while a decision waits: agents keep working from the current [champion](../../reference/glossary.md).
 
 ![The Overview: two decisions under Needs you, each with what the judge measured and the buttons Make it the champion and Reject it](../../../../assets/screenshots/overview.webp)
 
@@ -21,57 +21,70 @@ The count also shows beside **Overview** in the sidebar, and as **Needs you** in
 1. Open a row. It says what is asked, why it waits, and where: the campaign, run, rig and lane. For a change, **What the judge found** has the judge's evidence and **Problems that the agent wrote** lists flaws the agent declared.
 2. Read what each choice does, then press its button.
 
-   The item leaves **Needs you** at once, and the count drops. The top of the page says `Control sent the command to …`. The change's own page keeps a **Your decision** box that says `You selected …` and, once the rig has done it (in less than 10 seconds), what the rig did.
+   The item leaves **Needs you** at once, and the count drops. A line at the top of the page says `Sent to …`, then `Done.` once the rig has reported it, with no refresh. The change's own page keeps a **Your decision** box that says `You selected …` and, once the rig has done it (in less than 10 seconds), what the rig did. While you look at that page, it changes by itself.
 3. If the rig refuses your choice, the item comes back to **Needs you** with the cause, and its buttons. It also comes back if it needs you again, for example when the champion changed and the judge measured the change again.
 
 ## What each decision asks
 
 | Label | The question | It appears when | Buttons |
 | --- | --- | --- | --- |
-| **Your decision** | Make this change the new champion? | The run promotes only with your approval, an audit holds the change, or the auditor sent it to you | **Make it the champion**, **Reject it** |
+| **Your decision** | Make this change the new champion? | The run asks you about this change (see [Choose what waits](#choose-what-waits)), the auditor sent it to you, or an audit holds it on a rig whose supervisor has not said yet that it has no auditor | **Make it the champion**, **Reject it** |
 | **Blocked** | Overrule the auditor and make this change the champion? | The rig's auditor blocked the change | **Overrule the auditor**, **Reject it** |
-| **Review** | Accept the goal "…" as met? | The rig's review panel passed a subjective goal | **Accept**, **Reject** |
-| **Not possible?** | End this campaign as not possible? | The [harness](../../reference/glossary.md), the rig's container that holds the judge, proposes that a goal campaign's goals can't be reached | **End it: not possible**, **Keep going** |
+| **Review** | Accept the goal "…" as met? | The rig's review panel passed a subjective goal, and the run asks you about reviews | **Accept**, **Reject** |
+| **Not possible?** | End this campaign as not possible? | The [harness](../../reference/glossary.md), the rig's container that holds the judge, proposes that a goal campaign's goals can't be reached, and the run asks you about it | **End it: not possible**, **Keep going** |
 | **New key** | Accept this rig's new report key? | A rig reports with a key control has not pinned | **Accept this key** |
 | **Wipe** | Wipe this rig's state? | A full reset you started is ready for its last step | **Confirm the wipe**, **Cancel the reset** |
+| **Agents stopped** | The agents of this run cannot work | The model provider refused a trial (no credits, a refused key, a model it does not serve on the key), or the workers' model check fails. No trial or plan starts until a check passes | **Check the model now**, **Edit rig** |
 | **Not reporting** | This rig stopped reporting, or, for a rig that never reported, This rig has not reported yet | A rig has sent no report for a while. A new rig whose first key waits for you shows under **New key** instead. A rig on RunPod whose pod is stopped shows no card: it can't report while stopped | **Open the rig** |
 
-### Promotions
+### Choose what waits
 
 When the judge confirms that a change is better, the run's rule decides what happens:
 
-- **always keep it** (`auto`): it becomes the champion at once, unless an audit holds it.
+- **always keep it** (`auto`): it becomes the champion with no step of yours. When an audit is called for and the rig has an auditor, the auditor's clear comes first.
 - **ask me every time** (`owner_approval`): it waits for you as **Your decision**.
 - **the rig's default**: the rule on the rig's **Edit rig** page, under **3 · When a change becomes the champion**: **Automatically** unless changed, or **Ask me for each change**. A script or an agent with the owner's token changes it with `promotion` in `POST /v1/rigs/<rig>/settings` or MCP's `set_rig_settings`; an operator's token can't.
 
-You choose a run's rule with **When a change is confirmed better**, on the **New campaign** page or under **More options** in a campaign's **Start a run** panel, or with `--promotion` on `thermite assign` or `thermite run start` (`promotion` over REST and MCP's `start_run`). The run's **Overview** tab shows the rule in force, in the block **The run**, as **Promotion**: `Automatic when the judge confirms; audits and big gains still wait for you`, `Only with your approval`, or `The rig's default (set where the rig is deployed)`.
+You choose a run's rule with **When a change is confirmed better**, on the **New campaign** page or under **More options** in a campaign's **Start a run** panel, or with `--promotion` on `thermite assign` or `thermite run start` (`promotion` over REST and MCP's `start_run`).
+
+Next to it, **Ask me first about** chooses what else waits for you. All of it is off by default:
+
+| Choice | What waits for you | `--ask` | `ask_owner` over REST and MCP |
+| --- | --- | --- | --- |
+| **a gain above this %** | A confirmed change whose gain over the champion is above it, such as 15 | `gain:15` | `"above_gain": 0.15` |
+| **a change whose agent declared flaws** | A confirmed change whose agent wrote problems it knows the change has. Without it, the promotion accepts them, and the record says so | `flaws` | `"declared_flaws": true` |
+| **a review panel's pass of a goal** | A subjective goal the review panel passed: see [Reviews](#reviews) | `reviews` | `"reviews": true` |
+| **ending a goal campaign as not possible** | A "not possible" proposal: see [Not possible endings](#not-possible-endings) | `not-possible` | `"not_possible": true` |
+
+A run keeps the choices it started with. A run started with **ask me every time** keeps asking, and so does a run with no rule of its own on a rig whose **Edit rig** says **Ask me for each change**.
+
+The run's **Overview** tab shows the rule in force, in the block **The run**, as **Promotion**: `Automatic when the judge confirms, after the auditor's clear when an audit is called for`, `Only with your approval`, or `The rig's default (automatic unless it was set to ask you)`, and then what else it asks you about, such as `. It asks you about a gain above 15%, a change with declared flaws`.
+
+### Promotions
+
+A change waits for you as **Your decision** only for a cause the row says, after `It waits for you because`: `you asked to decide every change (promotion: owner approval)`, `you asked to decide gains above 15.0%: this one is 21.3%`, or `you asked to decide changes with declared flaws: this one declares 2`. A row that says `The auditor sent this change to you` comes from the auditor's `needs_owner`.
 
 **Make it the champion** makes the change the next champion: agents start their next work from it. If the champion changed while the change waited, the judge first tests it again against the new champion. If the agent declared flaws, approving accepts them, and the record shows your name. **Reject it** keeps the change from becoming the champion, and the record shows that you rejected it.
 
 ### Audits
 
-An audit holds a confirmed change before it becomes the champion when:
+When the rig has an auditor, an audit holds a confirmed change before it becomes the champion when:
 
 - the agent declared flaws in it;
 - in a hill climb, its gain is above the contract's `acceptance.audit.absolute` (0.15, that is 15%), or above `acceptance.audit.ratio_to_median` (3) times the median of the run's earlier wins, once it has three;
 - in a goal campaign, the contract has an `adversarial_checklist`: then every change is audited.
 
-The rig's auditor, one of its [advisors](../operate/advisors.md), answers each audit: it clears the change, blocks it, or sends it to you. Who decides then:
+The rig's auditor, one of its [advisors](../operate/advisors.md), answers each audit: it clears the change, blocks it, or sends it to you. Its clear is the last step: the change becomes the champion, also with declared flaws or a gain above `absolute`, unless the run asks you about it (see [Choose what waits](#choose-what-waits)). Its block stops the change, and the **Blocked** row gives the auditor's reasons. An audit the auditor will decide is not in **Needs you**: the change's own page shows it as held for an audit.
 
-| Why the change is audited | The auditor clears it | The auditor blocks it |
-| --- | --- | --- |
-| The agent declared flaws | It waits for you | **Blocked**: you may overrule |
-| A gain above `absolute` | It waits for you | **Blocked**: you may overrule |
-| A gain above `ratio_to_median` times the median | It becomes the champion, or waits for you if the run asks you every time | **Blocked**: you may overrule |
-| A goal campaign's `adversarial_checklist` | The same | **Blocked**: you may overrule |
+A rig with no auditor, or with its **Auditor** switched off on **Edit rig**, has no audits: the change becomes the champion, or waits where the run asks you. Its record says why, with the event `audit_skipped`: `had no audit: this rig has no auditor`. The rig's supervisor tells the harness which advisors it has at each round, and again every minute. Until it first says so after a start, an audit holds the change; once it says the rig has no auditor, the held changes go on by the run's rules. A supervisor of an earlier version never says it: then an audit waits for you, with `This rig has no auditor, thus you must make the decision.`
 
-The row says either `The auditor of this rig will make the decision if you do not.` or `This rig has no auditor, thus you must make the decision.`
+An auditor that fails to answer an audit is tried up to five times in all, 30 minutes apart. After the last try, the change waits for you as **Your decision**, with the auditor's error.
 
 **Make it the champion** decides in place of the auditor. **Overrule the auditor**, on a **Blocked** row, makes a blocked change the champion anyway.
 
 ### Reviews
 
-A goal checked by `review` counts as met only with your word. It reaches you only after the rig's review panel passes it. A review panel chosen on **Edit rig** is three reviewers with the same model; one in the rig's advisors file has two to five. A rig with no review panel leaves such goals unmet.
+A goal checked by `review` counts as met when the rig's review panel passes it: at least two reviewers, each of whom passes it. The pass is accepted with no step of yours, and the record says `the review panel passed it, and it was accepted with no owner step`. A run that asks you about reviews waits for your word instead. A review panel chosen on **Edit rig** is three reviewers with the same model; one in the rig's advisors file has two to five. A rig with no review panel leaves such goals unmet.
 
 :::note[A switch that is on is not an advisor]
 On **Edit rig**, the **Auditor**, **Teachers** and **Review panel** switches are on by default, also on a rig that has no such advisor. A switch only lets an advisor work once it has a model. The rig's page shows what it has: its **Advisors** row says `none configured` when it has none. See [Configure advisors](../operate/advisors.md).
@@ -83,13 +96,14 @@ On **Edit rig**, the **Auditor**, **Teachers** and **Review panel** switches are
 
 The harness proposes ending a goal campaign as not possible only when its contract allows it (`infeasibility.allowed`), and once `min_refuted_approaches` approaches have each had at least three changes judged with no progress. Campaigns made on the **New campaign** page don't allow it. No agent can end a campaign.
 
-**End it: not possible** closes the run: its agents stop, and nothing more is judged. **Keep going** dismisses the proposal. A later proposal needs a newly refuted approach.
+By default the evidence ends the campaign: the run closes with `not possible: the evidence holds, and the run does not ask the owner`. A run that asks you about it waits for your word. **End it: not possible** closes the run: its agents stop, and nothing more is judged. **Keep going** dismisses the proposal. A later proposal needs a newly refuted approach.
 
 ### Keys, resets and silent rigs
 
 - **New key**: work out the rig's own fingerprint on the rig, as [Accept a rig's key](../operate/accept-a-rig-key.md#2-work-out-the-rigs-own-fingerprint) shows: the first 16 hexadecimal characters of the SHA-256 of its public key. Nothing prints it when a rig is set up. If it matches the one on the row, press **Accept this key**. Until you do, control refuses the rig's reports.
 - **Wipe**: check that the export it names is in the results repository, then press **Confirm the wipe**, which deletes the rig's ledger, builds and workspaces for good. **Cancel the reset** wipes nothing; the rig stays paused until you resume its run. Only a rig with a results repository can be fully reset, and rigs that control sets up have none yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). See [Stop, restart, remove and fully reset a rig](../operate/rig-lifecycle.md).
 - **Not reporting**: **Open the rig** shows its last known state and what you can do.
+- **Agents stopped**: the card shows the provider's own words and what to check: credits at the provider, the key in **Settings › Providers**, or the model. Fix the cause, then press **Check the model now**; or give the rig another model on **Edit rig**. Thermite also checks the model again by itself, after a minute and then less often (at most every 30 minutes). Once a check passes, or the rig has another model, the agents go on and the card goes away. See [The agents stopped: the provider refuses](../operate/troubleshoot.md#the-agents-stopped-the-provider-refuses).
 
 ## Decide without the dashboard
 
@@ -101,6 +115,7 @@ All of these take the owner's token. The examples use the owner's token file of 
 | Accept or reject a review | kind `accept_review`, payload `{"run": …, "review": <n>, "accept": true}` | no |
 | End a campaign as not possible, or keep going | kind `conclude`, payload `{"run": …, "proposal": <n>, "accept": true}` | no |
 | Accept a rig's key | `POST /v1/rigs/<rig>/key/accept?fingerprint=<fingerprint>` | no |
+| Check the model now, for a run whose agents are stopped | `POST /v1/commands`, kind `rig_check`, payload `{"check": "model"}` | `issue_command` |
 
 The `review` and `proposal` numbers are on the run, in `GET /v1/rigs/<rig>/view` or the MCP tool `get_run`: each item of its `reviews` has a `review`, and each item of its `conclusions` a `proposal`. An attempt's id shows at the top of its page on the dashboard, after **attempt**, such as `a-0123456789abcdef`.
 

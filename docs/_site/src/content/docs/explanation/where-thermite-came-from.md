@@ -14,7 +14,7 @@ Each lesson below is paired with the part of Thermite that answers it. The [glos
 
 A search for speed has long dry spells. A loop that stops after a fixed number of failures ends the search at the first long one, whether or not the next change would have worked.
 
-**In Thermite:** nothing ends research by default. There is no limit on turns, attempts, failures or time unless you set one. A lane whose trials end without a usable change waits a little longer before its next trial, up to ten minutes. After six trials in a row end in errors, the agents rest for half an hour. Then the work goes on. → [Why Thermite runs until the job is done](runs-until-done.md)
+**In Thermite:** nothing ends research by default. There is no limit on turns, attempts, failures or time unless you set one. A lane whose trials end without a usable change waits a little longer before its next trial, up to ten minutes. A provider's error is answered by its kind: a rate limit or an outage waits and goes on, and no credits or a refused key stops the agents until the model works again. → [Why Thermite runs until the job is done](runs-until-done.md)
 
 ## Useful experiments discarded because they didn't move one number
 
@@ -32,7 +32,7 @@ When the record of a campaign lives in the process that shows it, a restart lose
 
 Oversight added afterwards, by typing into a terminal, leaves no record of who asked for what, or why, and nothing stops it from overruling the measurements.
 
-**In Thermite:** every rig has a supervisor container built in. Its advisors, when the rig has them, steer the planner with directives that carry their reasons and citations, add experiments to the run's queue with why, and an audit can hold a result back but never pass one. Every instruction a person gives goes through control as a signed, recorded command, from the dashboard, the REST API or MCP. None of them can set a verdict. → [Supervision](supervision.md) and [Steer a run](../how-to/campaigns/steer-a-run.md)
+**In Thermite:** every rig has a supervisor container built in. Its advisors, when the rig has them, steer the planner with directives that carry their reasons and citations, add experiments to the run's queue with why, and an auditor can stop a result the judge confirmed, or clear it as the last step. Every instruction a person gives goes through control as a signed, recorded command, from the dashboard, the REST API or MCP. None of them can set a verdict. → [Supervision](supervision.md) and [Steer a run](../how-to/campaigns/steer-a-run.md)
 
 ## "The agent says it's faster" is not "it is faster"
 

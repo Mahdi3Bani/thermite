@@ -45,7 +45,7 @@ flowchart TB
 
 Switching users needs root. So the harness starts a small **broker** as root, and it is the only part that runs as root. It:
 
-- prepares the harness's folders, and clears the scratch area of anything an earlier run left;
+- prepares the harness's folders, and clears the scratch area of anything an earlier run left, except each lane's own cache folder;
 - closes the shared temporary places (`/tmp`, `/var/tmp` and `/dev/shm`) to every role, which each get a temporary folder of their own;
 - reads the rig's secret files, hands their values to the controller alone, and closes their folders. It refuses to start if a secret file can still be read by other users;
 - stops any role process left over from before;
@@ -74,7 +74,7 @@ The controller keeps its state where no role can look around in it:
 - each timed run gets a folder of its own, with a read-only copy of the files the kit's `run.copy` lists. The judge owns that copy; the run can read it but not change it;
 - the kit's check runs as the controller, in the kit's own folder, which no role can open.
 
-The results of hidden test cases stay in a table of the ledger that never goes into events, the agents' briefs or exports.
+The results of hidden test cases stay in a table of the ledger that never goes into an export. The owner sees each hidden case's name, how it failed and its value against its threshold, through the judge's `held_out_checked` event, which reaches control and no agent. The agents see only that a hidden check failed and its kind, such as "a held-out check timed out": never which case, its inputs or its output ([Held-out failures](../reference/verdicts.md#held-out-failures)).
 
 ## GPUs: device groups and the fence
 

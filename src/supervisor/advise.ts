@@ -22,6 +22,7 @@ import {
   teacherRound,
   withRunContext,
 } from "./advisors.ts";
+import type { AdvisorCode } from "./code-tools.ts";
 import type { PastSearch } from "./past-mcp.ts";
 
 /**
@@ -73,6 +74,13 @@ export interface AdviseState {
   limitSaid?: Record<string, number> | undefined;
   /** Runs already told their advisors get no MCP server because they may fetch any page. */
   mcpOffSaid?: Record<string, boolean> | undefined;
+  /**
+   * Per run, the newest time its queue fell below its target (the harness's queue_low event)
+   * that already started a teachers' round (goal 081).
+   */
+  ideasSeen?: Record<string, number> | undefined;
+  /** Runs already told their teachers read no code because they may fetch any page. */
+  codeOffSaid?: Record<string, boolean> | undefined;
   stats: {
     teacher_runs: number;
     directive_sets: number;
@@ -145,6 +153,11 @@ interface RunRow {
   mcp_servers?: McpUse[];
   /** The campaign's own context settings, which its advisors' calls take too (goal 070). */
   agents_context?: AgentsContext | null;
+  /**
+   * The planner's round left its queue below the target (goal 081): the teachers' round starts
+   * at once. Null: the queue is at its target, or none applies.
+   */
+  queue_low?: { event: number; at: string; round: number; ready: number; target: number } | null;
 }
 
 /** A name safe for a file: other characters become dashes. */
@@ -227,9 +240,13 @@ function harnessApi(cfg: Pick<AdviseConfig, "harnessUrl" | "harnessToken" | "fet
 /** The newest owner's message to the teachers a run has waiting (0: none). */
 const newestForTeachers = (r: RunRow) => Math.max(0, ...(r.owner_messages_waiting?.teachers ?? []));
 
+/** The newest time a run's queue fell below its target, while it still is (0: none, goal 081). */
+const lowQueue = (r: RunRow) => r.queue_low?.event ?? 0;
+
 /**
- * Whether the owner has written to the teachers of a running run since its last round: the
- * loop then starts the next round at once instead of waiting out its pause.
+ * Whether the owner has written to the teachers of a running run since its last round, or the
+ * run's queue fell below its target since (goal 081): the loop then starts the next round at
+ * once instead of waiting out its pause.
  */
 export async function teachersCalled(
   cfg: Pick<AdviseConfig, "harnessUrl" | "harnessToken" | "fetchImpl"> & {
@@ -241,7 +258,10 @@ export async function teachersCalled(
   if (overSpendLimit(cfg.advisors, state)) return false;
   const { runs } = (await harnessApi(cfg)("GET", "/v1/runs")) as { runs: RunRow[] };
   return runs.some(
-    (r) => r.status === "running" && newestForTeachers(r) > (state.ownerSeen?.[r.id] ?? 0),
+    (r) =>
+      r.status === "running" &&
+      (newestForTeachers(r) > (state.ownerSeen?.[r.id] ?? 0) ||
+        lowQueue(r) > (state.ideasSeen?.[r.id] ?? 0)),
   );
 }
 
@@ -260,6 +280,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   const next: AdviseState = structuredClone(state);
   next.tries ??= {};
   next.ownerSeen ??= {};
+  next.ideasSeen ??= {};
   const s = next.stats;
   const now = Date.now();
   const retryMs = cfg.retryMs ?? 30 * 60_000;
@@ -296,6 +317,25 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           ...(o.limit ? { limit: String(Math.max(1, Math.min(50, Math.floor(o.limit)))) } : {}),
         }).toString()}`,
       );
+  // The run's code and evidence for its teachers, read only, through the harness (goal 081): the
+  // champion's tree, a file of it, an attempt's diff, and the judge's public findings.
+  const codeFor = (run: string): AdvisorCode => {
+    const get = (path: string, params: Record<string, string | number | undefined>) =>
+      api(
+        "GET",
+        `${path}?${new URLSearchParams(
+          Object.entries({ run, ...params }).flatMap(([k, v]) =>
+            v === undefined ? [] : [[k, String(v)] as [string, string]],
+          ),
+        ).toString()}`,
+      );
+    return {
+      listFiles: (path) => get("/v1/code/files", { path }),
+      readFile: (path, offset, limit) => get("/v1/code/file", { path, offset, limit }),
+      readDiff: (attempt, offset) => get("/v1/code/diff", { attempt, offset }),
+      evidence: (attempt) => get("/v1/evidence", { attempt }),
+    };
+  };
   // The MCP servers a run's kit gives its advisors (goal 068), from the harness's list of runs
   // (read once a round). The supervisor calls them; advisors that may fetch any page get none,
   // which the run's live view says once.
@@ -446,18 +486,31 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   ): Promise<unknown> => {
     if (!add.length && !move.length) return undefined;
     try {
-      const r = (await api("POST", "/v1/queue", { run, role, add, move })) as {
-        added: string[];
-        moved: string[];
-        refused: string[];
-      };
+      // In parts of 20, as the harness takes them: the teachers' portfolio has no count.
+      const r = { added: [] as string[], moved: [] as string[], refused: [] as string[] };
+      for (let i = 0; i === 0 || i < add.length; i += 20) {
+        const part = (await api("POST", "/v1/queue", {
+          run,
+          role,
+          add: add.slice(i, i + 20),
+          move: i === 0 ? move : [],
+        })) as { added: string[]; moved: string[]; refused: string[] };
+        r.added.push(...part.added);
+        r.moved.push(...part.moved);
+        r.refused.push(...part.refused);
+      }
       const who = role === "teacher" ? "the teachers" : "the auditor";
       say(
         run,
         "text",
         [
-          add.length
-            ? `${who} added to the queue: ${add.map((a) => clip(a.title, 120)).join("; ")}`
+          r.added.length
+            ? `${who} added to the queue: ${add
+                .filter(
+                  (a) => !r.refused.some((x) => x.startsWith(`add "${a.title.slice(0, 120)}"`)),
+                )
+                .map((a) => clip(a.title, 120))
+                .join("; ")}`
             : "",
           r.moved.length ? `${who} moved ${r.moved.join(", ")}` : "",
           r.refused.length ? `refused: ${r.refused.join("; ")}` : "",
@@ -519,18 +572,35 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     for (const inst of runs.filter((i) => i.status === "running")) {
       const newest = newestForTeachers(inst);
       const called = newest > (next.ownerSeen[inst.id] ?? 0);
+      // The planner's round left the queue below its target (goal 081): ideas are wanted now.
+      const low = lowQueue(inst);
+      const wanted = low > (next.ideasSeen[inst.id] ?? 0);
       const last = next.lastTeacherAt[inst.id];
-      if (!called && last && now - Date.parse(last) < cfg.advisors.teacher_minutes * 60_000)
+      if (
+        !called &&
+        !wanted &&
+        last &&
+        now - Date.parse(last) < cfg.advisors.teacher_minutes * 60_000
+      )
         continue;
       next.lastTeacherAt[inst.id] = new Date().toISOString();
       // An owner's message starts one round: a round that fails leaves it for the next one.
       if (newest) next.ownerSeen[inst.id] = Math.max(newest, next.ownerSeen[inst.id] ?? 0);
+      // So does a queue below its target: the next one waits for a new planner's round.
+      if (low) next.ideasSeen[inst.id] = Math.max(low, next.ideasSeen[inst.id] ?? 0);
+      const q = inst.queue_low;
+      const ideasNow =
+        wanted && q
+          ? `its queue has ${q.ready} of its target of ${q.target} experiments ready: ideas are wanted now`
+          : undefined;
       say(
         inst.id,
         "status",
         called
           ? `the teachers review ${inst.id} now: the owner wrote to them`
-          : `the teachers review ${inst.id}`,
+          : ideasNow
+            ? `the teachers review ${inst.id} now: ${ideasNow}`
+            : `the teachers review ${inst.id}`,
       );
       try {
         const brief = (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
@@ -551,14 +621,29 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         closed(brief);
         const given = (brief.owner_messages ?? []).filter((m) => !m.read).map((m) => m.id);
         const round = `teachers ${new Date().toISOString()}`;
+        // The run's code and evidence, read only (goal 081); none for teachers with an open
+        // fetch: the code is private, and private reads never meet the open web in one advisor.
+        if (openFetch) {
+          next.codeOffSaid ??= {};
+          if (!next.codeOffSaid[inst.id]) {
+            next.codeOffSaid[inst.id] = true;
+            say(
+              inst.id,
+              "status",
+              `the teachers may fetch any web page (fetch_domains "*"), so they read no code, diffs or the judge's full findings: only their brief`,
+            );
+          }
+        }
         const run = await teacherRound({
           // With the campaign's own context settings, when it sets any (goal 070).
           config: await configFor(inst.id),
           run: inst.id,
           brief,
+          why: ideasNow,
           keeper: keeperFor(inst.id),
           tools: {
             ...toolsFor(),
+            ...(openFetch ? {} : { code: codeFor(inst.id) }),
             // The run's MCP servers for its advisors (none with an open fetch: mcpFor says so).
             mcp: await mcpFor(inst.id),
             // Teachers with an open fetch search no past research either.
@@ -589,8 +674,11 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         // The teachers that reviewed had the owner's messages in their brief: they read them.
         if (run.reviews.some((r) => r.review))
           await receipts(inst.id, "teachers", given, run.answers);
-        // Their experiments for the run's queue, and moves of queued ones, before the rules: a
-        // rule may then name the direction of an experiment they just added.
+        // Teachers' opportunities the merged by model left out, kept by code (goal 081).
+        if (run.kept.length)
+          say(inst.id, "status", `the teachers' portfolio: ${run.kept.join("; ")}`);
+        // Their portfolio for the run's queue, as experiments, and moves of queued ones, before
+        // the rules: a rule may then name the direction of an experiment they just added.
         const queued = await toQueue(inst.id, "teacher", run.experiments, run.moves);
         let posted: unknown;
         if (run.directives?.length) {
@@ -617,7 +705,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         } else if (run.error) {
           fail(`teachers for ${inst.id}`, run.error, inst.id);
         } else {
-          say(inst.id, "status", "the teachers set no directives");
+          // What the supervisor left out still shows: an opportunity, or a rule it refused.
+          say(
+            inst.id,
+            "status",
+            `the teachers set no directives${run.dropped.length ? `. Dropped: ${run.dropped.join("; ")}` : ""}`,
+          );
         }
         // Then each teacher's (and the merged by model's) field notes, once the round's work is posted.
         const noted: unknown[] = [];
@@ -641,6 +734,21 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     };
     // The owner's messages go to the auditor once, with the first audit that gets them.
     const told = new Set<number>();
+    /**
+     * An audit the auditor could not answer, its last try: the owner decides (goal 079). Hands-off
+     * leaves no other step, so it goes to the owner as a failure, with the error.
+     */
+    const failed = async (attempt: string, key: string, err: unknown, run?: string) => {
+      fail(`audit of ${attempt}`, err, run);
+      if ((next.tries[key] ?? 0) < MAX_TRIES || !cfg.advisors.auditor) return;
+      await api("POST", "/v1/audits", {
+        attempt,
+        decision: "needs_owner",
+        reasons: `the auditor could not answer after ${MAX_TRIES} tries: ${clip(err instanceof Error ? err.message : String(err), 500)}`,
+        citations: [],
+        auditor: cfg.advisors.auditor.name,
+      }).catch((e) => fail(`audit of ${attempt}: handing it to the owner`, e, run));
+    };
     for (const pkg of audits) {
       const key = `audit:${pkg.attempt}`;
       if (!due(key)) continue;
@@ -661,7 +769,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         count(r);
         await usageOut(pkg.run, `audit ${pkg.attempt}`, "auditor", r.usage);
         if (!r.output) {
-          fail(`audit of ${pkg.attempt}`, r.error, pkg.run);
+          await failed(pkg.attempt, key, r.error, pkg.run);
           continue;
         }
         const posted = (await api("POST", "/v1/audits", {
@@ -710,7 +818,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           ...(r.compactions?.length ? { compactions: r.compactions } : {}),
         });
       } catch (err) {
-        fail(`audit of ${pkg.attempt}`, err, pkg.run);
+        await failed(pkg.attempt, key, err, pkg.run);
       }
     }
   }
@@ -773,6 +881,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         }
         const posted = (await api("POST", `/v1/reviews/${pkg.id}`, { results })) as {
           result?: string;
+          accepted?: boolean;
         };
         s.reviews++;
         if (pkg.run) {
@@ -787,7 +896,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         say(
           pkg.run,
           "status",
-          `review ${pkg.id}: ${posted?.result === "review_passed" ? "the review panel passed it; it waits for the owner's acceptance" : "the review panel did not pass it"}`,
+          `review ${pkg.id}: ${posted?.result !== "review_passed" ? "the review panel did not pass it" : posted.accepted ? "the review panel passed it, and it was accepted (the run does not ask the owner)" : "the review panel passed it; it waits for the owner's acceptance"}`,
         );
         // Each reviewer's field notes, once the review is posted.
         const noted: unknown[] = [];

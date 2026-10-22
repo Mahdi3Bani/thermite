@@ -22,29 +22,37 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
 
    | Group | Agent | Its job | With no model chosen |
    | --- | --- | --- | --- |
-   | The work | **Workers** | "Change the code, one trial each." | **rig default**: the rig's `THERMITE_MODEL_*` settings. Without those, the agents have no model and wait |
+   | The work | **Workers** | "Change the code, one trial each." | The model of the rig's own `THERMITE_MODEL_*` settings, such as `rig's settings: my-model`. Without those, the agents have no model and wait: `none: can't run` |
    | The work | **Planner** | "Picks what each worker tries next." | **same as the workers**: their model, harness and context |
-   | The advisors | **Teachers** | "Read recent trials and suggest next steps." One model, or two: see [Two teachers](#two-teachers) | **rig default**: the teachers of the rig's advisors file |
-   | The advisors | **Auditor** | "Checks a win before it is kept." | **rig default** |
-   | The advisors | **Review panel** | "Scores goals that code can't measure." Three reviewers, all on this model; the advisors file can set two to five | **rig default** |
+   | The advisors | **Teachers** | "Read recent trials and suggest next steps." One model, or two: see [Two teachers](#two-teachers) | The teachers of the rig's advisors file, such as `rig's file: opus-5.5`, or `none: off` |
+   | The advisors | **Auditor** | "Checks a win before it is kept." | The auditor of the rig's advisors file, or `none: off` |
+   | The advisors | **Review panel** | "Scores goals that code can't measure." Three reviewers, all on this model; the advisors file can set two to five | The review panel of the rig's advisors file, or `none: off` |
 
-   Every column title, group and agent has an info icon (ⓘ) that says more.
+   Every column title, group and agent has an info icon (ⓘ) that says more. The first choice in each **Model** list is the one with no model, and it names what the agent uses then. For an advisor, it names what the rig's [advisors file](../../reference/advisors-file.md) sets up, as the rig's supervisor reports it:
+
+   | The first choice says | What it means |
+   | --- | --- |
+   | `rig's file: opus-5.5` | The file has a model for this advisor, and the advisor uses it. **Runs in** and **Context** show the file's program and window, greyed out, such as **Claude Code** and `200,000 · 80%` |
+   | `none: off` | The file has no model for this advisor, or the rig has no file. The advisor does not run until you choose a model here. **Runs in** and **Context** show `—` |
+   | `rig's file` | The rig's supervisor has not reported its file yet: it reports once a minute, and an older supervisor never does. The advisor uses the file's model, if the file has one |
+
+   For the workers, `rig's settings: my-model` is the model that the rig's harness reports from its own settings, `none: can't run` says it has none, and `rig's settings` alone says that control can't tell.
 
 3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see [Effort](#effort)).
-4. Check **Runs in**: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a model, the page sets the program it needs: **Claude Code** for a Claude subscription's model, **OpenCode v2** for OpenCode's own free models, else the line's own program when it can run the model, or **Pi**. Change it if you want another. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex). A line with no model shows where it runs then, greyed out: "as the workers (Pi)" for the planner, **rig default** for an advisor. [Where each agent runs](#where-each-agent-runs) says what each choice gives.
+4. Check **Runs in**: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a model, the page sets the program it needs: **Claude Code** for a Claude subscription's model, **OpenCode v2** for OpenCode's own free models, else the line's own program when it can run the model, or **Pi**. Change it if you want another. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex). A line with no model shows where it runs then, greyed out: "as the workers (Pi)" for the planner, and for an advisor the program that the advisors file gives it, such as **Pi**, or `—` when it is off. [Where each agent runs](#where-each-agent-runs) says what each choice gives.
 
    A program that can't run the model is refused in a red line under the agent's line, such as "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
 5. To change an agent's context window or the point where its conversation is compacted, see [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
 6. Read the list under **What changes when you save**, at the foot of the page. It says each change in a short sentence, such as "You change the auditor's model to my-model." and "You change where the auditor runs to Claude Code." While a line is refused, the list says why instead, such as "Not saved yet (the auditor): A Claude subscription runs only in Claude Code: …", and **Save changes** is off.
-7. Press **Save changes**.
+7. Press **Save changes**. The button says **Sending…** at once.
 
-You return to the rig's page, which says, for example, "Control sent a new model and a model for the auditor to rig-1. The rig takes the change in less than one minute."
+You return to the rig's page, which says, for example, "Control sent a new model and a model for the auditor to rig-1. The rig takes the change in less than one minute." When the save also changed the rig's settings, the line goes on with how their command stands, and changes by itself: `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, then `Done. rig-1 took it at 03:41 UTC.` While the rig takes a new model for its workers, its **Checks** block follows it, and shows its model check as it runs.
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
 
 When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch a run on the rig in **Live** (in the sidebar), the dashboard's view of one run's agents at work. Choose a filter above the stream:
 
-- **Planner**: the planner's lines. Each round starts with a line that says whether the model planned it, such as "round 4: planned by the model", or the lanes took their experiments without it, such as "round 4: taken from the queue by the fixed rules (no model)". The words in brackets say why: "(no model)", "(the planner is off on this rig (Edit rig))" or "(the model gave no usable plan)". When code refused a plan from the model, or the model didn't answer, a "refused:" line says why. A research run plans its rounds with a fixed method and no planner model, so it has no such filter.
+- **Planner**: the planner's lines. Each round starts with a line that says whether the model planned it, such as "round 4: planned by the model", or the lanes took their experiments without it, such as "round 4: taken from the queue by the fixed rules (no model)". The words in brackets say why: "(no model)", "(the planner is off on this rig (Edit rig))" or "(the model gave no usable plan)". When the model's tries gave no usable plan, a line says why for each try, such as "no usable plan: try 1: it answered in text without a plan (…); try 2: the plan was refused (…)". A research run plans its rounds with a fixed method and no planner model, so it has no such filter.
 - **Advisors**: the advisors' lines. Each error is a line of its own with its text, and an "advisor round done" line counts what a round did, errors included.
 
 A run's **Planner** tab also shows the planner's model, in the card **The planner**: for example "my-model, its own model (from my-litellm)", or "my-model, the agents' model (Edit rig can give the planner its own)". Under **What the planner did**, it shows each hand-out: which experiment went to which lane, and why. See [Check the planner's model](../campaigns/choose-what-runs-next.md#check-the-planners-model).
@@ -55,21 +63,21 @@ The teachers take one model or two. Two teachers on different models, such as on
 
 1. Give the **Teachers** line a model. **+ second teacher** shows under it.
 2. Press **+ second teacher**. Two lines show under the first teacher: the second teacher, and **merged by**, the model that joins the two teachers' suggestions into one set for the planner.
-3. Choose the second teacher's model, and a **merged by** model, or leave it on **rig default**. Each line has its own **Effort**, **Runs in** and **Context**. The sentences now say "teacher 1" and "teacher 2".
+3. Choose the second teacher's model, and a **merged by** model, or leave the merged by model empty: its first choice then names the advisors file's merged by model, or says `none: off`. Each line has its own **Effort**, **Runs in** and **Context**. The sentences now say "teacher 1" and "teacher 2".
 4. Press **Save changes**.
 
 **What changes when you save** says, for example, "You add a second teacher: chatgpt:gpt-pro in Codex. The merged-by model joins the two teachers' suggestions: claude-code:sonnet-5.5 in Claude Code."
 
 - **×** beside the second teacher's model removes the second teacher and its merged by model: "You remove the second teacher and its merged-by model." One teacher works alone: its review gives the set, and no merged by model runs.
-- **Two teachers without a merged by model** (it is on **rig default**, and the advisors file has none): the first review that comes back gives the set.
-- The first teacher on **rig default** takes the second teacher and the merged by model with it.
+- **Two teachers without a merged by model** (its first choice says `none: off`: the advisors file has none either): the first review that comes back gives the set.
+- The first teacher with no model takes the second teacher and the merged by model with it.
 - A second teacher with no model is refused: "Not saved yet (teacher 2): Choose its model, or remove it."
 
 Without the page's script, **+ second teacher** and **×** open the page again with the two lines shown, or emptied: **Save changes** then saves them.
 
 ## Set an agent's context window and compaction
 
-Each line's **Context** cell shows its agent's context window and its compaction point in short, such as `204,800 · 80%`: the most its model reads in one request, in tokens, and the share of that window at which its conversation is compacted. A number set on this rig is bold. A line with no model says **rig default**, and the planner with no model of its own "as the workers: 204,800 · 80%".
+Each line's **Context** cell shows its agent's context window and its compaction point in short, such as `204,800 · 80%`: the most its model reads in one request, in tokens, and the share of that window at which its conversation is compacted. A number set on this rig is bold. A line with no model shows, greyed out, what its agent has then: for an advisor the window and point of the advisors file, such as `200,000 · 80%`, or `—` when it is off; `rig's settings` for the workers; and for the planner with no model of its own "as the workers: 204,800 · 80%".
 
 1. Press the agent's **Context** cell. Two fields open under it:
 
@@ -96,7 +104,7 @@ Each line's **Context** cell shows its agent's context window and its compaction
 
 Another model on a line keeps the two numbers, and checks them against the new model. Empty fields remove the agent's own cap and point.
 
-The planner with no model of its own uses the workers' cap and point. An advisor in Pi compacts its call's conversation, and the supervisor keeps the conversation with its own records. Every advisor's package, such as an audit's diff, is cut to fit its window, and the advisor is told so. An advisor in Claude Code, OpenCode v2 or Codex gets the window and the point in that program's own settings, as the workers do, and the supervisor keeps its conversation before each of that program's compactions with its own records too. [Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
+The planner with no model of its own uses the workers' cap and point. An advisor in Pi compacts its call's conversation, and the supervisor keeps the conversation with its own records. An advisor's package, such as an audit's diff, is cut to fit its window when Thermite knows the window, and the advisor is told when it is cut. An advisor in Claude Code, OpenCode v2 or Codex gets the window and the point in that program's own settings, as the workers do, and the supervisor keeps its conversation before each of that program's compactions with its own records too. [Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
 
 These are the rig's numbers. A campaign can set a smaller window and its own point for all its runs: see [Set a campaign's own context window](#set-a-campaigns-own-context-window).
 
@@ -107,7 +115,7 @@ An agent or a script can set the same models without this page:
 - **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers`, `auditor` or `review_panel`. [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
 - **REST**, with the owner's token: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model) takes the same fields, and `GET /v1/rigs/<rig>/model` reads each agent's model.
 
-Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **rig default** for the workers and the advisors, **same as the workers** for the planner. Every agent takes `harness`, `context_window` and `compact_at`.
+Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: the rig's own settings for the workers, **same as the workers** for the planner, and the rig's advisors file for an advisor. Every agent takes `harness`, `context_window` and `compact_at`.
 
 The old names `combiner` and `panel` are still taken in 0.1.0: `combiner` sets the teachers' merged by model, and `panel` the review panel. The answer then starts with what the name is now, such as "The name panel is now review_panel."
 
@@ -132,11 +140,11 @@ The teachers take one model or two over MCP and REST too. `provider` and `model`
 The answer says "Control sent a model for the teachers, a model for a second teacher and a merged by model for the teachers to rig-1. The rig takes the change in less than one minute." Control checks every model in the call before it saves any: if one is refused, nothing changes.
 
 - **One teacher**: give `"second_model": null`. The answer says "Control sent the teachers back to one teacher to rig-1. …"
-- **Two teachers without a merged by model**: `"merged_by": null` sends the merged by model back to the rig default.
+- **Two teachers without a merged by model**: `"merged_by": null` sends the merged by model back to the rig's advisors file.
 - **A call without `provider` and `model`** may give `second_model` or `merged_by` alone; the first teacher keeps its model. A second teacher needs a first one, in the call or from before: else `The teachers have no model of their own yet: give a provider and a model for the first teacher too.`
-- **`clear: true`** sends all three back to the rig default: "the teachers back to the rig default".
+- **`clear: true`** sends all three back to the rig's advisors file: "the teachers back to the rig's advisors file".
 
-`rig_models` shows the teachers as `{"models": [...], "merged_by": ...}`: one model or two in `models` (none: the rig default), and the merged by model or `null`.
+`rig_models` shows the teachers as `{"models": [...], "merged_by": ...}`: one model or two in `models` (none: the teachers of the advisors file), and the merged by model or `null`. Its `advisors_file` says what the rig's advisors file sets up for each advisor, as the first choices on this page do, or is `null` until the rig's supervisor has reported it.
 
 A cap and a point go with the agent's model in the same call. For example, to cap the planner's window and compact its conversations at 70%:
 
@@ -150,7 +158,7 @@ The answer adds "Its context window: 131,072 tokens (capped; the provider allows
 
 The rig sets each agent's window and point. A campaign can set its own for all its runs, for example to run two rigs on different models at the same window. Each agent's window is then the lower of the campaign's and its own, and the campaign's point replaces the rig's.
 
-On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **4 · Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
+On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **5 Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
 
 - **MCP**: [`set_campaign_context`](../../reference/mcp-tools.md#set_campaign_context) with `{ "campaign": "sort-speed", "context_window": 131072, "compact_at": 70 }`.
 - **REST**: [`POST /v1/campaigns/<campaign>/context`](../../reference/rest-api.md#a-campaigns-context-settings) with `{"context_window": 131072, "compact_at": 70}`.
@@ -164,7 +172,7 @@ When you then start a run, the answer of **Start a run** (over REST, MCP or `the
 
 - **Workers** with no model use the rig's own settings. See [Use the rig's own settings instead](connect-a-provider.md#use-the-rigs-own-settings-instead).
 - **The planner** with no model of its own uses the workers' model, harness and context. When neither has a model, when the **Planner** switch in section **1 · Parts of the rig** is off, or when the model gives no valid plan in two tries, the lanes take queued experiments in order, by fixed rules. That order skips the directions an **Avoid** rule names and puts **Always** and **Try** directions first. It applies only rules that name a direction the run has used; rules in other words are applied only by the planner's model. The switch's own text says the same: "When it is off: Lanes take queued experiments in order, by the fixed rules. Rules that name a direction still apply; free-word rules need the planner's model."
-- **An advisor** with no model uses the rig default: the role from the rig's advisors file. If the file has none, or the rig has no file, that advisor does not run. See [Configure advisors](../operate/advisors.md).
+- **An advisor** with no model uses the model that the rig's advisors file gives its role, such as `rig's file: opus-5.5` in its **Model** list. If the file has none, or the rig has no file, that advisor does not run: `none: off`. See [Configure advisors](../operate/advisors.md).
 
 An advisor also runs only while its switch is on in section **1 · Parts of the rig**: **Teachers**, **Auditor** or **Review panel**. The teachers' merged by model follows the **Teachers** switch. The switches are on by default, but a switch that is on runs nothing until its advisor also has a model, here or in the advisors file. Why each advisor exists is in [Supervision](../../explanation/supervision.md).
 
@@ -195,11 +203,11 @@ The advisors can also call the tools of the [MCP servers](../campaigns/give-agen
 
 ## Effort
 
-**Effort** sets how long the model thinks before it answers. Its ⓘ says: "More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high."
+**Effort** sets how long the model thinks before it answers. Its ⓘ says: "More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high. "model's default": Thermite sends no effort, and the model (or Claude Code) uses its own."
 
-The list offers **default**, **low**, **medium**, **high**, **xhigh** and **max**. What reaches the model depends on the provider:
+The list offers **model's default**, **low**, **medium**, **high**, **xhigh** and **max**. What reaches the model depends on the provider:
 
-| Provider | default | low, medium, high | xhigh, max |
+| Provider | model's default | low, medium, high | xhigh, max |
 | --- | --- | --- | --- |
 | Claude subscription | Claude Code's own default | Passed to Claude Code as its effort | Passed to Claude Code as its effort |
 | Every other provider | Nothing is sent: the model's own default | Sent as the model's reasoning effort | Sent as **high** |
@@ -207,7 +215,7 @@ The list offers **default**, **low**, **medium**, **high**, **xhigh** and **max*
 Two cases take no effort from this page:
 
 - Agents that run in **OpenCode v2**: Thermite does not pass the effort to OpenCode. In **Codex**, the effort is Codex's reasoning effort, with **xhigh** and **max** sent as **high**.
-- Workers on **rig default**: they use the rig's `THERMITE_MODEL_REASONING_EFFORT` setting instead.
+- Workers with no model here, on the rig's own settings: they use the rig's `THERMITE_MODEL_REASONING_EFFORT` setting instead.
 
 ## Share a subscription
 

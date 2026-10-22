@@ -6,7 +6,7 @@ sidebar:
   order: 21
 ---
 
-A [rig](glossary.md)'s page shows one rig: whether it reports, its version against control's, what runs on it, its checks, and what you can do to it. Open it from [**Rigs**](rigs-list.md) or from the rig's name in the sidebar. Its address is `/ui/rigs/<rig>`. This page describes each part, from the top down. [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) and [Run a rig on RunPod](../how-to/install/runpod-rig.md) give the steps.
+A [rig](glossary.md)'s page shows one rig: whether it reports, its version against control's, what runs on it, its checks, and what you can do to it. Open it from [**Rigs**](rigs-list.md): press the rig's row. Its address is `/ui/rigs/<rig>`. This page describes each part, from the top down. [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) and [Run a rig on RunPod](../how-to/install/runpod-rig.md) give the steps.
 
 ## Places on the page
 
@@ -46,7 +46,7 @@ A button that needs typed words stays off until the words are typed exactly. Con
 
 The first lines under the title say, in a few sentences: for a RunPod rig, its pod and what it has cost; whether it reports; what runs on it; what its judge does; a check that failed; a key that waits for you; for a RunPod rig, a connection to its pod that failed.
 
-A card after an action says what happened: its words in green, or **Not done.** and the reason.
+A card after an action says what happened: its words in green, or **Not done.** and the reason. A button that sends a command to the rig, such as **Export now**, **Run it** or **Pause**, says at once that the click took, and the page follows the command to its outcome with no refresh: see [Signed commands](signed-commands.md#on-the-dashboard). After **Save changes** on **Edit rig**, the green line here goes on with how the settings' command stands, such as `rig-1 took it at 03:41 UTC. This page shows the change when the rig next reports.`
 
 ## The reporting banner
 
@@ -88,7 +88,7 @@ When the update can't come from control, the banner says how to do it:
 
 ### Update to control's version
 
-**Update to** moves a rig control set up, on a machine or on a cluster, onto the images control deploys now: `THERMITE_RIG_HARNESS_IMAGE` (`THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs) and `THERMITE_RIG_SUPERVISOR_IMAGE`. Control needs its address for rigs, `THERMITE_CONTROL_PUBLIC_URL`. One update runs on a rig at a time. The steps show in the banner as they happen, with the one under way; press **refresh** in the status bar to follow them.
+**Update to** moves a rig control set up, on a machine or on a cluster, onto the images control deploys now: `THERMITE_RIG_HARNESS_IMAGE` (`THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs) and `THERMITE_RIG_SUPERVISOR_IMAGE`. Control needs its address for rigs, `THERMITE_CONTROL_PUBLIC_URL`. One update runs on a rig at a time. The steps show in the banner as they happen, with the one under way. The page follows them by itself until the update ends: you do not need to refresh it.
 
 | Step | What control does | Waits at most | When it can't |
 | --- | --- | --- | --- |
@@ -99,13 +99,13 @@ When the update can't come from control, the banner says how to do it:
 | The isolation check after the update | Sends `rig_check` for the isolation check, and waits for its result | 30 minutes | It says why: it failed, the rig refused it (such as `not now: …`, while a judge job waits), or no result came |
 | Its runs resumed | Sends `resume_run` for each run it paused | | |
 
-The rig's volumes, tokens, key, ledger, runs and results stay. A trial in progress stops, and the harness plans it again. On a machine the update writes only the two container units: the rig's secrets, keys, volumes and networks stay as they were. If a step fails, the banner shows **The update stopped**, and its steps say why.
+The rig's volumes, tokens, key, ledger, runs and results stay. A trial in progress stops, and its experiment goes back to the top of the queue. On a machine the update writes only the two container units: the rig's secrets, keys, volumes and networks stay as they were. If a step fails, the banner shows **The update stopped**, and its steps say why.
 
 ## Blocks
 
 A key that waits for you has a card under the banners, with its fingerprint and **Accept this key**: see [Accept a rig's key](../how-to/operate/accept-a-rig-key.md).
 
-**At work** lists the runs at work now. **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**; for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs.
+**At work** lists the runs at work now. **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**, and its state: **not run yet**, **sent**, **running** with the time so far, **passed** or **failed**, or why the rig did not run it ([Where results show](rig-checks.md#where-results-show)); for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs.
 
 **What it runs on** shows the rig's hardware, from its signed report.
 

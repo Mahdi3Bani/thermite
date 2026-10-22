@@ -6,8 +6,10 @@
  * cannot run the model, a window above the model's or outside 4,096 to 100,000,000 tokens, a
  * compaction point outside 50 to 95. It shows and hides the second teacher and its merged by
  * line, says in the two fields' info icons what the line's harness does at the compaction point,
- * and counts the agents on each subscription. Save is off while a line is refused. Without the
- * script the form still posts, and control checks the same.
+ * and counts the agents on each subscription. Save is off while a line is refused. A line with no
+ * model shows, and its sentences say, what its agent uses then: the words the page gives each
+ * line (data-fb-ctx, data-fb-say, data-fb-off; goal 074). Without the script the form still posts,
+ * and control checks the same.
  */
 export const EDIT_RIG_JS = `
 (() => {
@@ -57,6 +59,10 @@ export const EDIT_RIG_JS = `
     return !t ? { empty: true } : /^\\d+$/.test(t) ? { n: Number(t) } : { bad: true };
   };
   const optText = (sel) => (sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "");
+  const escH = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // What a line with no model uses, in a sentence: the page's words (goal 074).
+  const modelSay = (x) => (x.m.value ? optText(x.m) : x.line.dataset.fbSay || optText(x.m));
+  const effortSay = (x) => (x.e.value ? optText(x.e) : "the model's default");
   const R = {};
   for (const line of table ? $$("[data-line]", table) : []) {
     const id = line.dataset.line, p = $('[data-ctx="' + id + '"]');
@@ -115,7 +121,7 @@ export const EDIT_RIG_JS = `
   };
   // A model just chosen takes the harness it needs: a Claude subscription Claude Code, OpenCode's
   // own models OpenCode v2. In the capture phase, before the sentences, so that they say it. The
-  // first teacher on the rig default takes the second teacher away.
+  // first teacher with no model (the advisors file's) takes the second teacher away.
   form.addEventListener("change", (e) => {
     const sel = e.target.closest && e.target.closest("[data-role]");
     if (!sel || !R[sel.dataset.role]) return;
@@ -169,7 +175,7 @@ export const EDIT_RIG_JS = `
     if (s.hErr) return "Fix Runs in first: " + s.hErr;
     const shows = adv ? "" : " History and Live show each compaction.";
     if (s.h === "pi") {
-      if (!W) return "In Pi, with no window, Thermite compacts only when the provider says the context is full.";
+      if (!W) return r.kind === "workers" ? "In Pi, with no window, Thermite compacts only when the provider says the context is full." : "In Pi, with no window, Thermite does not compact " + (adv ? "the advisor's" : "the planner's") + " conversation. Type a window to have it compacted.";
       if (adv) return "In Pi, at " + fmt(T) + " tokens, Thermite keeps the whole conversation in the supervisor, with the advisor's round. Then the same model writes a summary, and " + r.who + " continue" + r.s + ". Live shows each compaction.";
       return "In Pi, at " + fmt(T) + " tokens, Thermite keeps the whole conversation in the run's research folder, as compactions/" + (r.kind === "workers" ? "<trial>" : "planner-<id>") + "-<n>.md. Then the same model writes a summary, and " + (r.kind === "workers" ? "the worker continues with it and its most recent turns" : "the planner continues its call") + "." + shows;
     }
@@ -203,7 +209,7 @@ export const EDIT_RIG_JS = `
   };
   // The Context cell: the window and the point in short. Bold: set on this rig.
   const sumHtml = (s, S) => {
-    if (s.off === "own" || s.off === "default") return '<span class="muted">rig default</span>';
+    if (s.off === "own" || s.off === "default") return '<span class="muted">' + escH(s.x.line.dataset.fbCtx || "") + "</span>";
     if (s.off === "pick" || s.off === "absent") return '<span class="muted">—</span>';
     if (s.off === "follows") {
       const w = S.workers;
@@ -245,8 +251,8 @@ export const EDIT_RIG_JS = `
     const x = s.x, r = x.r, out = [];
     if (s.off === "absent" || s.off === "pick" || r.sub) return out;
     const newModel = x.m.value !== x.model0;
-    if (newModel) out.push("You change " + r.poss + " model to " + optText(x.m) + ".");
-    if (x.e.value !== x.e0) out.push("You change " + r.poss + " effort to " + optText(x.e) + ".");
+    if (newModel) out.push("You change " + r.poss + " model to " + modelSay(x) + ".");
+    if (x.e.value !== x.e0) out.push("You change " + r.poss + " effort to " + effortSay(x) + ".");
     if (s.model && x.h.value !== x.h0) out.push("You change where " + r.who + " run" + r.s + " to " + HN[x.h.value] + ".");
     if (!s.model) {
       if (x.cap0 || x.at0) out.push("The context set for " + r.poss + " old model goes with it.");
@@ -283,12 +289,12 @@ export const EDIT_RIG_JS = `
     if (two0 && !two) return ["You remove the second teacher and its merged-by model."];
     if (!two) return mb.model0 && !mb.m.value ? ["You remove the merged-by model."] : out;
     if (!two0) {
-      if (t2.m.value) out.push("You add a second teacher: " + optText(t2.m) + " in " + HN[t2.h.value] + ". The merged-by model joins the two teachers' suggestions: " + (mb.m.value ? optText(mb.m) + " in " + HN[mb.h.value] : "the rig default") + ".");
+      if (t2.m.value) out.push("You add a second teacher: " + optText(t2.m) + " in " + HN[t2.h.value] + ". " + (mb.m.value ? "The merged-by model joins the two teachers' suggestions: " + optText(mb.m) + " in " + HN[mb.h.value] : mb.line.dataset.fbOff ? "With no merged-by model, the first review that comes back is the set" : "The merged-by model joins the two teachers' suggestions: " + modelSay(mb)) + ".");
       return out;
     }
     for (const x of [t2, mb]) {
-      if (x.m.value !== x.model0) out.push("You change " + x.r.poss + " model to " + optText(x.m) + ".");
-      if (x.e.value !== x.e0) out.push("You change " + x.r.poss + " effort to " + optText(x.e) + ".");
+      if (x.m.value !== x.model0) out.push("You change " + x.r.poss + " model to " + modelSay(x) + ".");
+      if (x.e.value !== x.e0) out.push("You change " + x.r.poss + " effort to " + effortSay(x) + ".");
       if (x.m.value && x.h.value !== x.h0) out.push("You change where " + x.r.who + " runs to " + HN[x.h.value] + ".");
       const s = S[x.r.id];
       if (!x.m.value || s.off) continue;

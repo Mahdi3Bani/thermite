@@ -5,8 +5,10 @@ import { type Ledger, LedgerError } from "./ledger.ts";
 /**
  * Subjective goals (verify type `review`). The champion's artifact goes to the supervisor's
  * model panel as a package: the goal, its criteria and the change from the seed, with nothing
- * about which lane or model wrote it. A pass is recorded as review_passed; only the owner's
- * acceptance makes the goal met. No model is ever the final gate.
+ * about which lane or model wrote it. A pass is recorded as review_passed, and needs an
+ * acceptance to make the goal met: the harness's, hands-off by default (goal 079, the owner's
+ * decision of 2026-10-22), or the owner's where the run asks (`ask_owner.reviews`). A panel of
+ * at least two reviewers, every one passing it, and the judge's other checks stay.
  *
  * Reviews are per champion commit: a new champion needs a new review.
  */
@@ -200,7 +202,12 @@ export class Reviews {
     const r = this.get(run, goal, commit);
     if (!r) return { status: "not_runnable", reasons: "no review requested for this commit" };
     if (r.owner_decision === "accepted")
-      return { status: "met", reasons: "the review panel passed it and the owner accepted it" };
+      return {
+        status: "met",
+        reasons: String(r.owner_note ?? "").startsWith("hands-off")
+          ? "the review panel passed it, and it was accepted with no owner step"
+          : "the review panel passed it and the owner accepted it",
+      };
     if (r.owner_decision === "rejected")
       return { status: "unmet", reasons: "the owner did not accept it" };
     if (r.panel_result === "review_failed")

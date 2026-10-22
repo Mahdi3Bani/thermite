@@ -645,7 +645,7 @@ describe("the planner as the queue's coordinator", () => {
     await stubborn.round();
     const epoch = body(events(stubborn.env, "epoch_started")[0]);
     assert.equal(epoch.source, "fallback");
-    assert.match(JSON.stringify(epoch.refused), /try 2: rule \d+ is an old rule in words/);
+    assert.match(JSON.stringify(epoch.refused), /try 2: refused: rule \d+ is an old rule in words/);
     assert.deepEqual(
       stubborn.env.service.ledger.activeDirectives(RUN).map((d) => d.id),
       [waits],
@@ -711,7 +711,7 @@ describe("the planner as the queue's coordinator", () => {
     assert.deepEqual(s.given(), ["lane-1:stage the tiles in shared memory"]);
   });
 
-  test("an interrupted trial's experiment goes back to the top of the queue", async (t) => {
+  test("an interrupted trial's experiment goes back to the top of the queue: the same row, with why (goal 079)", async (t) => {
     const s = await setup(t, {
       lanes: 1,
       trial: (_spec, signal) =>
@@ -726,25 +726,59 @@ describe("the planner as the queue's coordinator", () => {
     assert.ok(await s.scheduler.tick());
     await command(s.env, "pause_run", { run: RUN, reason: "test" });
     await s.scheduler.idle();
-    assert.equal(s.q.get(x)?.state, "done");
-    assert.equal(s.q.get(x)?.result, "interrupted");
-    const again = s.q.queued(RUN)[0];
-    assert.equal(again?.title, "long one");
-    assert.equal(again?.added_by, "owner");
-    assert.match(String(again?.why), /tried again: its trial on lane-1 was interrupted \(x-/);
-    // Its event says it came back from that trial, not that its author added it again.
-    const added = events(s.env, "experiment_added").find((e) => body(e).id === again?.id);
-    assert.deepEqual(body(added).requeued_from, {
-      experiment: x,
-      trial: s.q.get(x)?.trial,
-      lane: "lane-1",
-      result: "interrupted",
+    // The same row, not a copy: back at the top, its author and its why as they were.
+    const back = s.q.get(x);
+    assert.equal(back?.state, "queued");
+    assert.equal(s.q.queued(RUN)[0]?.id, x);
+    assert.equal(back?.added_by, "owner");
+    assert.equal(back?.why, "big win if it works");
+    assert.equal(back?.returns, 1);
+    assert.match(String(back?.cause), /stopped|interrupted/);
+    assert.equal(s.q.all(RUN).length, 2, "no copy");
+    const returned = events(s.env, "experiment_returned");
+    assert.equal(returned.length, 1);
+    assert.equal(body(returned[0]).id, x);
+    assert.equal(body(returned[0]).result, "interrupted");
+    // The planner's brief says why it came back, and its tried list is not filled with copies.
+    const brief = s.q.brief(RUN);
+    assert.equal(brief.up_next[0]?.id, x);
+    assert.equal(brief.up_next[0]?.returned?.times, 1);
+    assert.equal(brief.tried.length, 0);
+  });
+
+  test("a trial that ends on the provider's error gives its experiment back; another failure is tried, with its cause (goal 079)", async (t) => {
+    let error = "503 Service Unavailable";
+    const s = await setup(t, {
+      lanes: 1,
+      trial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        error,
+      }),
     });
-    assert.equal(
-      events(s.env, "experiment_added").filter((e) => body(e).requeued_from).length,
-      1,
-      "only the experiment that came back",
-    );
+    const x = await s.add("waits for the provider");
+    assert.ok(await s.scheduler.tick());
+    await s.scheduler.idle();
+    const back = s.q.get(x);
+    assert.equal(back?.state, "queued", "the provider failed: it was never really tried");
+    assert.equal(back?.returns, 1);
+    assert.match(String(back?.cause), /503 Service Unavailable/);
+    // A failure of the trial itself (not the provider's): tried, and the brief says how it ended.
+    error = "the lane's memory limit of 2048 MiB was reached";
+    for (let i = 0; i < 50 && s.q.get(x)?.state !== "done"; i++) {
+      await s.scheduler.tick();
+      await s.scheduler.idle();
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.equal(s.q.get(x)?.state, "done");
+    assert.equal(s.q.get(x)?.result, "error");
+    const tried = s.q.brief(RUN).tried.find((e) => e.id === x);
+    assert.equal(tried?.result, "error");
+    assert.match(String(tried?.cause), /memory limit of 2048 MiB/);
+    assert.equal(s.q.all(RUN).length, 1, "still one row");
   });
 
   test("after a restart, an experiment whose trial a dead controller left open goes back to the queue", async (t) => {
@@ -771,7 +805,10 @@ describe("the planner as the queue's coordinator", () => {
         tokensOut: 0,
       }),
     });
-    assert.equal(s.q.get(x)?.result, "interrupted");
+    // Back in the queue, the same row, with why (goal 079).
+    assert.equal(s.q.get(x)?.state, "queued");
+    assert.equal(s.q.get(x)?.returns, 1);
+    assert.match(String(s.q.get(x)?.cause), /the harness restarted/);
     assert.deepEqual(
       s.q.queued(RUN).map((e) => e.title),
       ["half done"],
@@ -930,5 +967,216 @@ describe("research runs use the queue", () => {
       [words],
     );
     assert.equal(events(env, "directive_converted").length, 0);
+  });
+});
+
+describe("the queue's target drives ideas (goal 081)", () => {
+  test("the planner reads the target and how many to add, and is asked to top the queue up", async (t) => {
+    const s = await setup(t, {
+      planner: () => ({
+        add: [
+          { ref: "a", title: "wider loads", why: "reads dominate" },
+          { ref: "b", title: "prefetch", why: "the loads stall" },
+        ],
+        assignments: [
+          { lane: "lane-1", experiment: "a", why: "first" },
+          { lane: "lane-2", experiment: "b", why: "second" },
+        ],
+      }),
+    });
+    await s.add("only one");
+    await s.round();
+    const prompt = String(s.prompts[0]);
+    // Two lanes: a target of 4; up next holds 1, and 2 go to the lanes: at least 4 to add.
+    assert.match(
+      prompt,
+      /\\"queue_target\\":\{\\"add_at_least\\":4,\\"target\\":4,\\"up_next\\":1\}/,
+    );
+    assert.match(
+      prompt,
+      /Keep the queue\\nfull of ideas: queue_target\.target is how many experiments up_next should hold/,
+    );
+    assert.match(prompt, /The target drives ideas; it is not a cap/);
+    assert.match(prompt, /No rule\\nstops you from keeping the queue at its target/);
+  });
+
+  test("below the target, the fixed rules queue the lanes' distinct ideas, oldest first; repeats and avoided ones wait", async (t) => {
+    const s = await setup(t);
+    await s.add("wider loads");
+    const idea = (title: string, more: Record<string, unknown> = {}) =>
+      s.q.add(RUN, { title, by: "lane-1", state: "proposed", ...more }, "lane-1").id;
+    const fuse = idea("fuse the two loops");
+    const repeat = idea("Wider loads!");
+    const avoided = idea("tile the loops", { family: "tiling" });
+    const table = idea("use a lookup table");
+    s.env.ledger.addDirectiveSet(
+      RUN,
+      "control:owner",
+      [{ kind: "avoid", family: "tiling", rationale: "null", citations: [] }],
+      false,
+    );
+    await s.round();
+    const state = (id: string) => s.q.get(id)?.state;
+    assert.notEqual(state(fuse), "proposed");
+    assert.notEqual(state(table), "proposed");
+    assert.equal(state(repeat), "proposed", "a repeat waits for the planner or the owner");
+    assert.equal(state(avoided), "proposed", "an idea an AVOID rule names waits");
+    const accepted = events(s.env, "experiment_accepted");
+    assert.deepEqual(
+      accepted.map((e) => body(e).id),
+      [fuse, table],
+    );
+    assert.match(String(body(accepted[0]).why), /fewer than its target of 4 experiments ready/);
+    assert.equal(accepted[0]?.actor, "planner");
+    // The lanes took the first two in order, and the queue is still below its target: low.
+    assert.deepEqual(s.given(), ["lane-1:wider loads", "lane-2:fuse the two loops"]);
+    const low = events(s.env, "queue_low");
+    assert.equal(low.length, 1);
+    assert.deepEqual(body(low[0]), {
+      round: 1,
+      ready: 1,
+      target: 4,
+      lanes: 2,
+      source: "fallback",
+    });
+    assert.ok(s.env.service.queueLow(RUN), "the supervisor sees it, to ask the teachers");
+  });
+
+  test("a round that leaves the queue at its target asks for nothing", async (t) => {
+    const s = await setup(t);
+    for (const title of ["a", "b", "c", "d", "e", "f"]) await s.add(title);
+    await s.round();
+    assert.equal(events(s.env, "queue_low").length, 0);
+    assert.equal(s.env.service.queueLow(RUN), null);
+  });
+
+  test("a campaign's own target replaces two for each lane; 0 asks for none", async () => {
+    for (const [target, low] of [
+      [1, 0],
+      [0, 0],
+      [9, 1],
+    ] as const) {
+      const e = makeJudgeEnv({
+        contract: { lanes: { count: 2, trials_per_epoch: 1, queue_target: target } },
+      });
+      await e.service.applyCommand(e.assign);
+      for (const title of ["a", "b", "c"]) e.service.queue.add(RUN, { title, by: "owner" }, "o");
+      const scheduler = new Scheduler({
+        service: e.service,
+        runner: new LocalRunner(e.paths.scratchDir),
+        model: {
+          baseUrl: "http://127.0.0.1:9",
+          model: "m",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        owner: "scheduler-test",
+        plannerOn: () => false,
+        maxConcurrent: 2,
+        backoffBaseMs: 0,
+        backoffMaxMs: 0,
+        runTrial: async () => ({
+          stopped: "no_submission",
+          turns: 1,
+          toolCalls: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+        }),
+      });
+      assert.ok(await scheduler.tick());
+      await scheduler.idle();
+      // Three queued, two given out: one ready.
+      assert.equal(events(e, "queue_low").length, low, `target ${target}`);
+    }
+  });
+
+  test("lanes propose follow-ups as they end; the next round queues the distinct ones", async (t) => {
+    let n = 0;
+    const s = await setup(t, {
+      trial: async (spec) => {
+        n++;
+        // Each worker proposes a follow-up before it ends, through the existing path.
+        if (n === 1)
+          s.env.service.proposeIdea(String(spec.token), {
+            title: "vector loads after the fusion",
+            why: "the fused loop is load-bound",
+          });
+        if (n === 2) s.env.service.proposeIdea(String(spec.token), { title: "First" });
+        return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
+      },
+    });
+    await s.add("first");
+    await s.add("second");
+    await s.round();
+    assert.deepEqual(
+      s.q
+        .proposed(RUN)
+        .map((x) => x.title)
+        .sort(),
+      ["First", "vector loads after the fusion"],
+    );
+    // The next round, below its target: the distinct one goes up next, and to a lane; the
+    // repeat of "first" waits for the planner's model or the owner.
+    await s.round();
+    const follow = s.q.all(RUN).find((x) => x.title === "vector loads after the fusion");
+    assert.ok(follow);
+    assert.notEqual(follow.state, "proposed");
+    assert.match(follow.added_by, /^lane-\d$/);
+    assert.ok(s.given().some((g) => g.endsWith(":vector loads after the fusion")));
+    assert.equal(s.q.all(RUN).find((x) => x.title === "First")?.state, "proposed");
+  });
+
+  test("the worker's brief asks for follow-up ideas before it submits or stops", async (t) => {
+    const s = await setup(t);
+    await s.add("first");
+    await s.add("second");
+    await s.round();
+    assert.match(
+      String(s.briefs["lane-1"]?.[0]),
+      /Before you submit \(submitting ends your trial\), or before you stop without submitting, propose each distinct follow-up experiment your work suggests as an idea for the run's queue \(the idea tool, or thermite-trial idea\), each with why/,
+    );
+  });
+
+  test("an advisor's old rule that freezes the queue no longer reaches the planner", async (t) => {
+    const s = await setup(t, {
+      planner: () => ({
+        assignments: [
+          { lane: "lane-1", title: "a", family: "memory", why: "a" },
+          { lane: "lane-2", title: "b", family: "memory", why: "b" },
+        ],
+      }),
+    });
+    // Set before code refused them (goal 081): one freezes the queue, one is a plain rule.
+    s.env.ledger.addDirectiveSet(
+      RUN,
+      "supervisor",
+      [
+        {
+          kind: "note",
+          value: "Do not add queue entries",
+          rationale: "steady",
+          citations: ["a-1"],
+        },
+        { kind: "try", family: "memory", rationale: "reads dominate", citations: ["a-2"] },
+      ],
+      true,
+    );
+    await s.round();
+    const prompt = String(s.prompts[0]);
+    assert.doesNotMatch(prompt, /Do not add queue entries/);
+    assert.match(prompt, /reads dominate/);
+    // The teachers' brief marks it, with why.
+    const brief = s.env.service.brief(RUN) as {
+      directives: { body: { kind: string }; refused?: string }[];
+    };
+    assert.deepEqual(
+      brief.directives.map((d) => [d.body.kind, Boolean(d.refused)]),
+      [
+        ["note", true],
+        ["try", false],
+      ],
+    );
+    assert.match(String(brief.directives[0]?.refused), /may not freeze the queue's size/);
   });
 });

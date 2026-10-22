@@ -73,10 +73,11 @@ Every field this example leaves out takes its default. The repository has one ex
 | `models` | list of `{name, sha256}` | `[]` | [Model files](glossary.md) the campaign uses: data files the project loads that are not in its repository, such as a model's weights. Not the agents' AI model. Each must be on the rig, or imported by the command that starts the run. The kit reaches one as `{models:<sha256>}`, and agents are told where they are |
 | `lanes` | object | `{"count": 2, "trials_per_epoch": 3}` | How the work is split. See [Lanes](#lanes) |
 | `budget` | object | `{"max_open_attempts": 4}` | Optional budgets and back-pressure. See [Budget](#budget) |
-| `min_duration` | duration | none | Research: required. The time the campaign runs at least, and its end when `max_duration` is not set. Other modes: accepted, not used yet |
-| `max_duration` | duration | none | Research: when the campaign ends. It may not be shorter than `min_duration`. Other modes: accepted, not used yet |
+| `min_duration` | duration | none | Research: required. The time the campaign runs at least: a floor, never a stop. Other modes: accepted, not used yet |
+| `max_duration` | duration | none | Research: when the campaign ends. It may not be shorter than `min_duration`. Without it, a research campaign runs until someone stops it. Other modes: accepted, not used yet |
 | `search_policy` | object | none | Rules for research search queries. See [Search policy](#search-policy) |
-| `notes` | text | none | Notes from the campaign's author. In hill climb and goal campaigns, the planner gets them, and every worker's brief has them under "Notes from the campaign's author". Research campaigns do not use them |
+| `notes` | text | none | The campaign's additional information, from its author, in Markdown, with no length limit. See [The campaign's brief](#the-campaigns-brief) |
+| `hypotheses` | list of text, each not empty | none | What the campaign's author thinks is true, one entry each. See [The campaign's brief](#the-campaigns-brief) |
 | `agents_context` | object | none: each agent keeps the rig's settings | The campaign's own context window and compaction point for all its runs' agents. See [Agents' context](#agents-context) |
 
 ### Agents' context
@@ -92,7 +93,41 @@ The rig sets each agent's context window and compaction point with its model ([G
 | `agents_context.context_window` | integer, 4,096 to 100,000,000 | none | The most tokens of [context window](glossary.md) each agent works with. Each agent's window is the lower of this and its own: its provider's window, or the rig's cap on it. With an agent whose window Thermite does not know, this one |
 | `agents_context.compact_at` | integer, 50 to 95 | none | The share of the window, in percent, at which each agent's conversation is [compacted](limits-and-pacing.md#compaction), in place of the rig's point |
 
-Both are optional and have no default, so a contract without them keeps its hash. A change is a new version: a run keeps the settings it started with. Control refuses to start a run of a campaign whose window is above what a provider lists for one of the rig's agents' models; **Agents' context** on the campaign's page, [`POST /v1/campaigns/<campaign>/context`](rest-api.md#a-campaigns-context-settings), MCP's `set_campaign_context` and `thermite campaign context` save a new version with them; **New campaign** (step 4) and the **Copy** panel set them on a new campaign; and **Start a run** and its answer say what applies to each agent ([Set the agents' context](../how-to/campaigns/start-from-dashboard.md#set-the-agents-context)). A rig whose harness is older than this field refuses a contract that has it.
+Both are optional and have no default, so a contract without them keeps its hash. A change is a new version: a run keeps the settings it started with. Control refuses to start a run of a campaign whose window is above what a provider lists for one of the rig's agents' models; **Agents' context** on the campaign's page, [`POST /v1/campaigns/<campaign>/context`](rest-api.md#a-campaigns-context-settings), MCP's `set_campaign_context` and `thermite campaign context` save a new version with them; **New campaign** (step 5) and the **Copy** panel set them on a new campaign; and **Start a run** and its answer say what applies to each agent ([Set the agents' context](../how-to/campaigns/start-from-dashboard.md#set-the-agents-context)). A rig whose harness is older than this field refuses a contract that has it.
+
+### The campaign's brief
+
+The brief is what the campaign's author tells the agents beyond the objective: step **2 The brief** on the **New campaign** page. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide.
+
+```json title="contract.json (part)"
+{
+  "notes": "## Background\nThe kernel is `src/kernel/work.c`. It runs at batch size 1.\n\n## What was tried\n- Shared-memory tiling: no gain.",
+  "links": ["https://git.example.com/team/project/issues/12"],
+  "ideas": ["Fuse the dequantize step into the inner loop.", "Load 128-bit vectors."],
+  "hypotheses": ["The kernel is memory bound at batch size 1."]
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `notes` | text | none | The additional information, in Markdown: the project and its links, what was tried, limits, and what good looks like. No length limit of its own |
+| `links` | list of URLs | none | Hill climb and goal only: starting links, pages the agents get with the brief. Nothing fetches them up front; a worker fetches one when it needs it. A research campaign's starting links are its [`seeds`](#research) |
+| `ideas` | list of text, each not empty | none | Hill climb and goal only: ideas to try, one entry each. The planner turns those that fit into experiments. A research contract with it is refused: `Unrecognized key: "ideas"` |
+| `hypotheses` | list of text, each not empty | none | What the author thinks is true, one entry each, for the agents to test. A research run starts with them as its own hypotheses |
+
+All four are optional and have no default, so a contract without them keeps its hash. An entry may have several lines. The whole contract goes to a rig in one signed command, which control refuses above 3.5 MiB: `the assign_campaign command is too large to deliver`. A rig whose harness is older than `links`, `ideas` and `hypotheses` refuses a contract that has them.
+
+What each agent gets, and whether it gets the whole text:
+
+| Who | Where | Whole or cut |
+| --- | --- | --- |
+| The planner | `campaign_brief` in its context: `additional_information`, `starting_links`, `ideas_to_try` and `hypotheses` | Whole |
+| Each worker of a hill climb or goal | The section "The campaign's brief" in its trial brief | Whole up to 32,000 characters. A longer brief is cut there, with a line that says so and where the whole text is: `BRIEF.md` in the run's folder |
+| Each research worker | The same section in its research brief, after the questions | As for a worker |
+| The teachers, the auditor and the review panel | `campaign_brief` in their brief or package, before the evidence and the diff | Whole. Only the package's own cut can reach it: a package is cut at its end, to fit the advisor's window and to at most 120,000 characters for the teachers' brief or 200,000 for a package ([Compaction](limits-and-pacing.md#compaction)), so the cut takes the evidence and the diff before the brief |
+| The run's folder | `BRIEF.md`, for every mode | Whole |
+
+A research run starts with the contract's `hypotheses` as its first hypotheses: each one is a `hypothesis_added` event with no lane and no supporting claim. The run's folder lists them under `hypotheses/`, and the campaign's folder in [Thermite's knowledge base](knowledge-base.md) keeps them. **Copy** keeps the brief; a copy over REST, MCP or the command line may give its own ([Copy a campaign](rest-api.md#copy-a-campaign)). The campaign's page shows it under **The brief**.
 
 ### Lanes
 
@@ -103,6 +138,9 @@ A [lane](glossary.md) is one worker's line of search. An epoch is one round of p
 | `lanes.count` | integer, 1–16 | required when `lanes` is given; 2 when `lanes` is left out | Lanes planned in each epoch. A `lane_count` [directive](advisors-file.md#what-each-role-must-answer) can lower it. A rig has users for lanes 1 to 16 only, so more is refused. How many trials run at the same time is the rig's own setting, **Workers at a time**, which is 1 unless it is changed: see [Settings](settings.md#the-rigs-settings) |
 | `lanes.trials_per_epoch` | integer ≥ 1 | 3 | Trials each lane runs in one epoch |
 | `lanes.limits` | object | none | What each lane may use. Every field is optional, and the defaults below apply to what is left out |
+| `lanes.queue_target` | integer, 0–1000 | none: 2 for each lane | **Ideas kept ready**: the experiments the run's queue keeps ready for the lanes' later trials in a round, counted after each round's hand-out. A target that drives ideas, never a cap: below it, the planner is asked to top the queue up, the lanes' distinct ideas go up next, and the teachers are asked for ideas at once. `0` asks for none. The lanes it counts are the round's, so a `lane_count` directive lowers the default too. Hill climb and goal only: a research run's research plan fills its queue. See [Keeping the queue at its target](../explanation/agents-lanes-planner.md#keeping-the-queue-at-its-target) |
+
+A contract without `lanes.queue_target` keeps its hash: the field has no default in the contract itself.
 
 `lanes.limits`:
 
@@ -113,7 +151,10 @@ A [lane](glossary.md) is one worker's line of search. An epoch is one round of p
 | `workspace_mib` | 256–65536 | 2048 | Disk, in MiB, for the trial's workspace, build trees included. Each development run gets the same amount |
 | `dev_run_timeout_s` | 10–3600 | none on a development device of its own; 300 on a device the judge shares | Time limit, in seconds, for one development run |
 | `dev_run_rss_mib` | 256–16384 | 4096 | Memory, in MiB, for one development run |
-| `trial_minutes` | 1–1440 | the rig's trial length (20 minutes unless changed) | One trial's length, in minutes |
+| `trial_minutes` | 1–1440 | the rig's trial length, which is none unless someone sets it | One trial's length, in minutes. Without one, a trial lasts until its worker submits, or stops and answers a nudge without any work |
+| `failures_in_a_row` | 1–10000 | none | A trial ends after this many failed model calls in a row: a provider's 5xx, a broken connection, or a request it refused. A rate limit's waits never count. Without it, the worker waits a growing pause after each failure and goes on |
+| `cutoffs_in_a_row` | 1–10000 | none | A trial ends after this many replies in a row cut off at the output limit without a tool call (Pi). Without it, the worker is told to think less and goes on |
+| `nudges` | 0–10000 | none | How many times a worker that stops without submitting is told to go on; then its trial ends. `0`: never. Without it, it is told for as long as it keeps working, and a nudge it answers without any work ends the trial |
 | `processes` | 64–65536 | 256 | Processes and threads that each of a lane's users may have at once: the user of its commands (with OpenCode, Claude Code or Codex when the lane uses one), of its development runs, and of its Pi worker. At the limit, starting one more fails (`Resource temporarily unavailable`); nothing is stopped. Raise it for builds or tests that start many threads |
 
 A limit ends one command or one trial, never the campaign. [Limits and pacing](limits-and-pacing.md) lists every limit Thermite has.
@@ -124,7 +165,7 @@ No budget is set unless you set one, and without one a run keeps going. A spent 
 
 | Field | Type | Default | Meaning | Reason shown |
 | --- | --- | --- | --- | --- |
-| `budget.wall_hours` | number > 0 | none | Hours since the run was created, paused time included. It also shapes the search: an epoch's time cap is 6% of it, kept between 30 minutes and 3 hours (3 hours without it), and every lane starts again from the champion at a third and two thirds of it (every 20 epochs without it) | `the wall-time budget is spent` |
+| `budget.wall_hours` | number > 0 | none | Hours since the run was created, paused time included. It also shapes the search: every lane starts again from the champion at a third and two thirds of it (every 20 epochs without it) | `the wall-time budget is spent` |
 | `budget.device_hours` | number > 0 | none | Hours the judge's finished jobs for this run have taken | `the device-hours budget is spent` |
 | `budget.llm_usd` | number ≥ 0 | none | US dollars of model tokens the run's trials have used. Counted only when the rig sets both `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (prices per million tokens); without them, it has no effect | `the model budget is spent ($<amount>)` |
 | `budget.max_open_attempts` | integer ≥ 1 | 4 | Back-pressure, not a budget: no new trial starts while this many of the run's attempts wait for the judge (queued, building, screening, confirming, verifying, waiting for an audit or for approval) | none: lanes wait |
@@ -160,7 +201,7 @@ A **candidate** is a change an agent submits. These two fields are checked befor
 | `hard_constraints` | list of constraints (below) | `[]` | Absolute bounds on a metric |
 | `monitor_only` | list of metric names | `[]` | Accepted, not used yet. Not checked against the kit either |
 | `cells` | list of kit cells, at least one | required | The cells (test cases; the dashboard calls them **cases**) measured in every block |
-| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation. Their results are never shown to agents: a failed confirmation says only `confirmation failed`. A candidate must be correct on each, and its primary metric no worse than twice `acceptance.equivalence_band`, on the median of three runs |
+| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation. A candidate must be correct on each, and its primary metric no worse than twice `acceptance.equivalence_band`, on the median of three runs. When one fails, the agents learn only its kind, such as `confirmation failed: a held-out check timed out`, and the owner sees which cell, and its ratio against the threshold ([Held-out failures](verdicts.md#held-out-failures)) |
 | `acceptance` | object | all defaults below | How the judge decides |
 
 A guard:
@@ -191,13 +232,13 @@ A hard constraint is one of:
 | `acceptance.confirm_blocks` | integer ≥ 1 | 5 | Fresh blocks for confirmation |
 | `acceptance.runs_per_cell` | integer, 1–9 | 1 | Runs of each arm on each cell in one block. The block uses their median. For a kit described on the **New campaign** page, its **Runs per case** sets it, 3 unless changed |
 | `acceptance.audit.ratio_to_median` | number > 0 | 3 | A confirmed gain more than this many times the median of the run's earlier confirmed gains waits for an audit. It applies once there are three earlier gains |
-| `acceptance.audit.absolute` | number > 0 | 0.15 | A confirmed gain above this fraction waits for an audit, and then for the owner |
+| `acceptance.audit.absolute` | number > 0 | 0.15 | A confirmed gain above this fraction goes to an audit first ([Audits](../how-to/campaigns/decide-what-waits.md#audits)) |
 
 [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) covers audits and approvals.
 
 ## Goal
 
-`"mode": "goal"`: meet a list of goals, each checked by the judge or, for subjective goals, by a review panel and the owner.
+`"mode": "goal"`: meet a list of goals, each checked by the judge or, for subjective goals, by a review panel (and by the owner, when the run asks).
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -207,12 +248,12 @@ A hard constraint is one of:
 | `deliverable` | text | required | What a verified solution is: a commit, an artifact or a report. The review panel gets it |
 | `insufficient` | list of text | `[]` | Outcomes that must never count as success. The auditor and the review panel get the list; code does not check it |
 | `adversarial_checklist` | list of text | `[]` | Failure modes to audit for. When the list is not empty, every promotion waits for an audit, and the auditor gets the list |
-| `infeasibility.allowed` | boolean | `false` | Whether the harness may propose that the goals are not possible. The owner accepts or rejects the proposal |
+| `infeasibility.allowed` | boolean | `false` | Whether the harness may propose that the goals are not possible. The proposal closes the run, unless the run asks the owner (`ask_owner.not_possible`), who then accepts or rejects it |
 | `infeasibility.min_refuted_approaches` | integer ≥ 1 | none | Required when `allowed` is `true`. The proposal comes only after this many approach families each had 3 or more judged attempts and no progress |
 | `independence_epochs` | integer ≥ 0 | 2 | Accepted, not used yet |
 | `min_live_families` | integer ≥ 1 | 2 | Accepted, not used yet |
 | `threshold_reps` | integer, 2–20 | 5 | Runs on each cell when a `metric_threshold` goal is checked |
-| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation, for the goals a candidate newly meets. A verifier whose cells are all held out never shows as met in the goal report |
+| `held_out_cells` | list of kit cells | `[]` | Cells measured only at confirmation, for the goals a candidate newly meets. A verifier whose cells are all held out never shows as met in the goal report. A threshold goal whose `cells` mix measured and held-out cells is screened on the measured ones. When a held-out cell fails, the agents learn only its kind ([Held-out failures](verdicts.md#held-out-failures)) |
 
 Each goal:
 
@@ -231,9 +272,9 @@ Each goal:
 | --- | --- |
 | `{"type": "code", "verifier": "<name>"}` | A verifier in the kit: the goal is met when the kit's check passes on every run of the verifier's cells. A verifier can require others to pass first. See [the kit's verifiers](kit-manifest.md#verifiers) |
 | `{"type": "metric_threshold", "metric": "<m>", "op": ">=", "value": <number>, "cells": ["<cell>"]}` | `<m>` must be a metric in the kit. On each cell, the judge runs the build `threshold_reps` times and works out a 95% interval of the mean. The goal is met when every cell's whole interval passes, unmet when any cell's whole interval fails, and `inconclusive` otherwise. `op` is `>=`, `<=`, `>` or `<`. Without `cells`, every cell of the kit that is not held out is used |
-| `{"type": "review", "criteria": ["<criterion>", ...]}` | A subjective goal, with at least one criterion. The review panel, models that do not see who made the change, reviews each new champion, and the goal is met only when the owner accepts |
+| `{"type": "review", "criteria": ["<criterion>", ...]}` | A subjective goal, with at least one criterion. The review panel, models that do not see who made the change, reviews each new champion, and the goal is met when the review panel passes it, or, when the run asks the owner about reviews, when the owner accepts it |
 
-A goal campaign ends when the success policy is met on two validations of the champion, or when the owner accepts a "not possible" proposal. Its budgets pause it, as in every mode; `min_duration` and `max_duration` have no effect.
+A goal campaign ends when the success policy is met on two validations of the champion, or when a "not possible" proposal is taken: at once, or, when the run asks, once the owner accepts it. Its budgets pause it, as in every mode; `min_duration` and `max_duration` have no effect.
 
 ## Research
 
@@ -242,9 +283,9 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `topic` | text | required | What to research. Briefs and reports show it |
-| `questions` | list of text, at least one | required | The questions. Claims name the question they answer by its place in this list, from 0, and the plan works on the least-covered questions first |
-| `seeds` | list of URLs | `[]` | Starting pages, given to workers in their brief. With no web search, workers follow links from these |
-| `mcp_servers` | list | none | The MCP servers the campaign's agents use, as a kit's [`mcp_servers`](kit-manifest.md#mcp-servers) names them: a research campaign has no kit. The **New campaign** page writes it from **The question** › **MCP servers for the agents**. Control refuses to start a run that names a server **Settings** lacks |
+| `questions` | list of text, at least one | required | The questions. Each may be long and have several lines. Claims name the question they answer by its place in this list, from 0, and the plan works on the least-covered questions first. Every research worker's brief has them whole |
+| `seeds` | list of URLs | `[]` | The starting links: **Starting links** in the brief on the **New campaign** page. The harness fetches and archives them when the run starts, one after another, beside the first trials; Live says `starting links: <n> of <m> archived`, with the reason for each it could not. Every research worker's brief lists them under "Starting links". With no web search, workers follow links from these |
+| `mcp_servers` | list | none | The MCP servers the campaign's agents use, as a kit's [`mcp_servers`](kit-manifest.md#mcp-servers) names them: a research campaign has no kit. The **New campaign** page writes it from **Time and tools** › **MCP servers for the agents**. Control refuses to start a run that names a server **Settings** lacks |
 | `scope.include_domains` | list of domain names, in lowercase | `[]` | When not empty, only these domains and their subdomains are fetched. Others are refused with `outside the campaign's domains: <host>` |
 | `scope.exclude_domains` | list of domain names, in lowercase | `[]` | These domains and their subdomains are never fetched: `excluded domain <host>` |
 | `scope.source_types` | list of text | `[]` | Accepted, not used yet |
@@ -258,7 +299,7 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | `fetch_policy.max_bytes` | integer ≥ 1 | 5000000 | The largest response fetched, in bytes. A larger one is refused: `larger than <n> bytes` |
 | `fetch_policy.allow_logins` | `false` | `false` | Always off |
 
-A research run closes when its running time reaches `max_duration`, or `min_duration` when `max_duration` is not set. Time while the run is paused does not count. It then writes its final report. A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
+A research run closes when its running time reaches `max_duration`, and then writes its final report. Without `max_duration` it runs until someone stops it: `min_duration` is a floor, never a stop. Time while the run is paused does not count, and neither does time its agents could not run: while they were stopped by the provider (no credits, a refused key, a failing model check) or waited for its rate limit ([Limits and pacing](limits-and-pacing.md#the-model-provider)). A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
 
 ## Accepted, not used yet
 

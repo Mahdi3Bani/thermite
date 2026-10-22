@@ -11,6 +11,12 @@ import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import {
+  classifyProviderError,
+  nextStep,
+  type ProviderErrorKind,
+  ProviderWatch,
+} from "./provider-errors.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { CODE_RESEARCH_TOOLS, codeResearchNote } from "./research-tools.ts";
 import { PiMeter } from "./usage-meter.ts";
@@ -37,7 +43,8 @@ export interface TrialSpec {
   editablePaths: string[];
   /** The assignment and context, as the planner and the ledger give them. */
   brief: string;
-  wallMs: number;
+  /** The trial's length: none unless the campaign or the rig sets one (goal 079). */
+  wallMs?: number | undefined;
   /** A cap on the trial's turns: none unless configured (the owner's direction, 2026-10-15). */
   maxTurns?: number | undefined;
   /** The contract's lane limits (the server enforces them too). */
@@ -137,6 +144,16 @@ export interface TrialDeps {
   compaction?: CompactionLink | undefined;
   /** Each model call's usage, as the trial's code measures it (goal 075). */
   modelUsage?: ((u: CallUsage) => void) | undefined;
+  /** Told of each wait for the provider (a rate limit, a failed call) before it (goal 079). */
+  waiting?: ((w: ProviderWait) => void) | undefined;
+}
+
+/** A trial waits for its provider and then goes on in the same conversation (goal 079). */
+export interface ProviderWait {
+  until: string;
+  kind: ProviderErrorKind;
+  /** The provider's words. */
+  words: string;
 }
 
 /**
@@ -176,6 +193,11 @@ export interface TrialResult {
   /** Model calls whose usage the worker could not hand to the harness (goal 075). */
   usageUnrecorded?: number | undefined;
   error?: string | undefined;
+  /**
+   * The kind of the provider's error a trial ended on (goal 079): no credits, a refused key or an
+   * unserved model stop the run's agents until a model check passes.
+   */
+  errorKind?: ProviderErrorKind | undefined;
   /** The model's provider refused for now (a subscription's full usage window): not before this (ISO). */
   retryAfter?: string | undefined;
 }
@@ -353,7 +375,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ),
     tool(
       "status",
-      "Show the lifecycle and verdict of an attempt you submitted earlier.",
+      "Show the lifecycle and verdict of an attempt of this campaign: yours, another lane's or an earlier run's. A change refused before building lists why under violations.",
       Type.Object({ attempt: Type.String() }),
       async (p) => text(JSON.stringify(await deps.status(String(p.attempt)))),
     ),
@@ -468,6 +490,8 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const { models, model, thinkingLevel } = buildModel(deps.model);
   // Each model call's usage, the compaction summaries' included (goal 075).
   const meter = deps.modelUsage ? new PiMeter(deps.modelUsage) : undefined;
+  // The provider's error answers, for a rate limit's time (goal 079).
+  const watch = new ProviderWatch();
   const agent = new Agent({
     initialState: {
       systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
@@ -475,7 +499,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       tools,
       thinkingLevel,
     },
-    streamFn: meter ? meter.streamFn(models) : models.streamSimple.bind(models),
+    streamFn: watchedStream(models, watch, meter),
     convertToLlm: withoutPastThinking,
     // One tool call at a time: lane processes are killed by user when a tool finishes, so
     // parallel calls would kill each other, and a submission must end the trial before anything
@@ -508,10 +532,12 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     title: `Trial ${spec.trialId} (${spec.lane})`,
   });
   agent.prepareRequest = compactor.hook(agent);
-  // The budget is stated up front, and the worker is told once when it is nearly spent, so a
-  // trial ends with its best change submitted rather than cut off with nothing.
+  // A budget the campaign or the rig set is stated up front, and the worker is told once when it
+  // is nearly spent, so a trial ends with its best change submitted rather than cut off with
+  // nothing. Without one, a trial lasts until it submits or stops (goal 079).
   const started = Date.now();
-  const minutes = Math.round(spec.wallMs / 60_000);
+  const wallMs = spec.wallMs;
+  const minutes = wallMs !== undefined ? Math.round(wallMs / 60_000) : undefined;
   let warned = false;
   const warn = (why: string) => {
     if (warned || result.submitted) return;
@@ -535,9 +561,9 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
         agent.abort();
       } else if (maxTurns !== undefined && warnTurns !== undefined && result.turns >= warnTurns) {
         warn(`${maxTurns - result.turns} turns are left in this trial.`);
-      } else if (Date.now() - started >= spec.wallMs * 0.85) {
+      } else if (wallMs !== undefined && Date.now() - started >= wallMs * 0.85) {
         warn(
-          `About ${Math.max(1, Math.round((spec.wallMs - (Date.now() - started)) / 60_000))} minutes are left in this trial.`,
+          `About ${Math.max(1, Math.round((wallMs - (Date.now() - started)) / 60_000))} minutes are left in this trial.`,
         );
       }
     }
@@ -552,31 +578,48 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       ...link,
       messages: waiting ? async () => (result.submitted ? [] : waiting()) : undefined,
     });
-  const wall = setTimeout(() => {
-    if (!result.submitted) result.stopped = "wall";
-    agent.abort();
-  }, spec.wallMs);
+  const wall =
+    wallMs !== undefined
+      ? setTimeout(() => {
+          if (!result.submitted) result.stopped = "wall";
+          agent.abort();
+        }, wallMs)
+      : undefined;
   try {
     await agent.prompt(
-      `${spec.brief}\n\nThis trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each model reply is one)` : ""}. Submit before it ends.`,
+      `${spec.brief}\n\n${trialBudget(minutes, maxTurns, "each model reply is one")}`,
     );
-    // A model that stops of its own accord without submitting is told to go on, twice at most;
-    // then this trial ends and the lane's next one starts afresh. Cut-off replies and failed
-    // calls never end it (keepGoing).
+    // A model that stops of its own accord without submitting is told to go on (goal 079): for
+    // as long as it keeps working (a tool call since the last nudge), with no number unless the
+    // campaign sets lanes.limits.nudges. A nudge it answers without any work ends the trial, its
+    // own choice; the lane's next one starts afresh. Cut-off replies and failed calls never end
+    // it (keepGoing).
     let nudges = 0;
+    let callsAtNudge = -1;
     for (;;) {
       const end = await keepGoing(
         agent,
         () => result.submitted !== undefined || result.stopped !== "no_submission",
         deps.model.contextWindow,
         compactor,
+        {
+          failuresInARow: spec.limits?.failuresInARow,
+          cutoffsInARow: spec.limits?.cutoffsInARow,
+          watch,
+          onWait: deps.waiting,
+        },
       );
       if (end && !result.submitted) {
         result.stopped = end.stopped;
         result.error = end.error;
+        if (end.kind) result.errorKind = end.kind;
         break;
       }
-      if (result.submitted || result.stopped !== "no_submission" || nudges++ >= 2) break;
+      if (result.submitted || result.stopped !== "no_submission") break;
+      if (nudges > 0 && result.toolCalls === callsAtNudge) break;
+      if (spec.limits?.nudges !== undefined && nudges >= spec.limits.nudges) break;
+      nudges++;
+      callsAtNudge = result.toolCalls;
       await agent.prompt(NUDGE);
     }
   } catch (err) {
@@ -585,7 +628,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       result.error = err instanceof Error ? err.message : String(err);
     }
   } finally {
-    clearTimeout(wall);
+    if (wall) clearTimeout(wall);
   }
   if (compactor.count) result.compactions = compactor.count;
   // Why the model stopped, for a trial that ended without a submission. A trial stopped at its
@@ -599,9 +642,62 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
         : `the trial reached its ${minutes}-minute limit before a submission`;
   } else if (!result.submitted && !result.error && last && last.stopReason !== "toolUse") {
     result.error = `the model stopped (${last.stopReason})${last.errorMessage ? `: ${last.errorMessage.slice(0, 300)}` : ""}`;
-    if (last.stopReason === "error" && result.stopped === "no_submission") result.stopped = "error";
+    if (last.stopReason === "error" && result.stopped === "no_submission") {
+      result.stopped = "error";
+      result.errorKind ??= classifyProviderError(last.errorMessage ?? "").kind;
+    }
   }
   return result;
+}
+
+/**
+ * Pi's stream function for an agent: each call to the provider through `watch` (its error answers'
+ * status and headers) and, when the trial measures its usage, through the meter (goal 075).
+ */
+export function watchedStream(
+  models: ReturnType<typeof buildModel>["models"],
+  watch: ProviderWatch,
+  meter?: PiMeter | undefined,
+): NonNullable<ConstructorParameters<typeof Agent>[0]>["streamFn"] {
+  const fetch = watch.wrap(meter ? meter.fetch : globalThis.fetch);
+  return (model, context, options) => models.streamSimple(model, context, { ...options, fetch });
+}
+
+/**
+ * Whether a trial in a program of its own stops telling its worker to go on after a run that
+ * ended without a submission (goal 079): after a nudge it answered without any work (no tool
+ * call), or after the campaign's own number of nudges (`lanes.limits.nudges`); the owner's
+ * messages waiting for a worker that keeps working continue it either way.
+ */
+export function stopNudging(
+  nudges: number,
+  worked: boolean,
+  progressed: boolean,
+  limit: number | undefined,
+  messages?: { waiting(): unknown[] } | undefined,
+): boolean {
+  const owner = progressed && (messages?.waiting().length ?? 0) > 0;
+  if (owner) return false;
+  if (nudges > 0 && !worked) return true;
+  return limit !== undefined && nudges >= limit;
+}
+
+/**
+ * What a trial's prompt says of its length and turns (goal 079): only the limits someone set, and
+ * without either, to submit once the change works.
+ */
+export function trialBudget(
+  minutes: number | undefined,
+  maxTurns: number | undefined,
+  turn: string,
+): string {
+  const parts = [
+    minutes !== undefined ? `${minutes} minutes` : "",
+    maxTurns !== undefined ? `at most ${maxTurns} turns (${turn})` : "",
+  ].filter(Boolean);
+  return parts.length
+    ? `This trial lasts ${parts.join(" and ")}. Submit before it ends.`
+    : "Submit once your change works.";
 }
 
 const NUDGE =
@@ -633,14 +729,27 @@ export function withoutPastThinking(messages: AgentMessage[]): Message[] {
     ) as Message[];
 }
 
-/** Why keepGoing ended a trial early: its context is full even compacted, or the model is stuck or down. */
+/** Why keepGoing ended a trial early: its context is full even compacted, or the provider refuses. */
 export interface TrialEnd {
   stopped: "context" | "error";
   error: string;
+  /** The provider's error's kind (goal 079), when a provider's error ended it. */
+  kind?: ProviderErrorKind | undefined;
 }
 
-/** Errors a provider gives for a request longer than the model's context. */
-const CONTEXT_ERROR = /context|too long|maximum (context )?length|exceed/i;
+/** What keepGoing takes besides the agent: the campaign's limits and the provider's answers. */
+export interface KeepGoingOptions {
+  /** The campaign's `lanes.limits.failures_in_a_row`: none unless set (goal 079). */
+  failuresInARow?: number | undefined;
+  /** The campaign's `lanes.limits.cutoffs_in_a_row`: none unless set (goal 079). */
+  cutoffsInARow?: number | undefined;
+  /** The provider's error answers as Pi's calls saw them (a rate limit's Retry-After). */
+  watch?: ProviderWatch | undefined;
+  /** Told of each wait for the provider, before it. */
+  onWait?: ((w: ProviderWait) => void) | undefined;
+  /** How a wait is spent (tests give their own); by default, real time, cut short by done(). */
+  sleep?: ((ms: number, done: () => boolean) => Promise<void>) | undefined;
+}
 
 /** Said to the agent after the harness compacted a full conversation. */
 const COMPACTED =
@@ -648,27 +757,30 @@ const COMPACTED =
 
 /**
  * Until `done()`, a reply cut off at the output limit is told to think less and act, and a
- * failed model call is retried after a growing pause. A full context (a cut-off reply with almost
- * no output, a prompt at the window, or a context-length error) is compacted and the trial goes
- * on (goal 070); only a conversation that the compactor cannot make fit, twice running, ends it.
- * Returns undefined when the model stops of its own accord (or once `done()`), or why the trial
- * must end: a full context that compaction cannot help, or a model cut off 5 times running or
- * failing 6 times running, which is left to the scheduler's backoff rather than retried against
- * a shared endpoint for the rest of the trial. The lane's next trial starts afresh either way, so
- * none of this ends research.
+ * failed model call is answered by its kind (goal 079): a rate limit waits for the time the
+ * provider gives, a passing fault waits a growing pause, and the trial goes on in the same
+ * conversation. A full context (a cut-off reply with almost no output, a prompt at the window, or
+ * a context-length error) is compacted and the trial goes on (goal 070); only a conversation that
+ * the compactor cannot make fit, twice running, ends it. Returns undefined when the model stops of
+ * its own accord (or once `done()`), or why the trial must end: a full context that compaction
+ * cannot help; no credits, a refused key or an unserved model (the run's agents then stop until a
+ * model check passes); or the campaign's own limit on failures or cut-offs in a row. Nothing here
+ * ends research.
  */
 export async function keepGoing(
   agent: Agent,
   done: () => boolean,
   contextWindow?: number | undefined,
   compactor?: Pick<Compactor, "force" | "count"> | undefined,
+  o: KeepGoingOptions = {},
 ): Promise<TrialEnd | undefined> {
-  let failures = 0;
+  const count = { failures: 0, rateWaits: 0 };
   let cutoffs = 0;
   // Compactions forced in a row by a full context, with no finished reply between them.
   let forced = 0;
   let replies = 0;
   let repliesAtForce = -1;
+  let repliesAtFailure = -1;
   const unsubscribe = agent.subscribe((e) => {
     if (e.type !== "turn_end") return;
     const stop = (e.message as { stopReason?: string }).stopReason;
@@ -692,37 +804,44 @@ export async function keepGoing(
     while (!done()) {
       const last = lastAssistant(agent);
       if (last?.stopReason === "length") {
-        failures = 0;
+        count.failures = 0;
         const atWindow = (contextWindow ?? 0) > 0 && last.input >= 0.95 * (contextWindow as number);
         if (last.output < 64 || atWindow) {
           const end = await full(`${last.input} tokens in, ${last.output} out`);
           if (end) return end;
           continue;
         }
-        if (++cutoffs >= 5) {
+        cutoffs++;
+        if (o.cutoffsInARow !== undefined && cutoffs >= o.cutoffsInARow) {
           return {
             stopped: "error",
-            error: "the model's replies were cut off 5 times in a row without a tool call",
+            error: `the model's replies were cut off ${cutoffs} times in a row without a tool call (the campaign's cutoffs_in_a_row)`,
           };
         }
         await agent.prompt(CUT_OFF);
       } else if (last?.stopReason === "error") {
         cutoffs = 0;
-        const message = (last.errorMessage ?? "no detail").slice(0, 200);
-        if (CONTEXT_ERROR.test(message)) {
-          const end = await full(message);
+        // A reply that came through since the last failure: the failures are not in a row.
+        if (replies !== repliesAtFailure) {
+          count.failures = 0;
+          count.rateWaits = 0;
+        }
+        repliesAtFailure = replies;
+        const message = last.errorMessage ?? "no detail";
+        const e = classifyProviderError(message, o.watch?.take());
+        if (e.kind === "context") {
+          const end = await full(e.words.slice(0, 200));
           if (end) return end;
           continue;
         }
-        if (++failures > 5) {
-          return {
-            stopped: "error",
-            error: `the model call failed ${failures} times in a row: ${message}`,
-          };
-        }
-        await sleepUnlessDone(Math.min(60_000, 5_000 * 2 ** (failures - 1)), done);
+        const step = nextStep(e, count, o.failuresInARow);
+        if (step.end) return { stopped: "error", error: step.error, kind: e.kind };
+        o.onWait?.({ until: step.until, kind: e.kind, words: e.words });
+        await (o.sleep ?? sleepUnlessDone)(step.waitMs, done);
         if (done()) return undefined;
-        await agent.prompt(`The model call failed (${message}). Continue where you left off.`);
+        await agent.prompt(
+          `The model call failed (${e.words.slice(0, 200)}). Continue where you left off.`,
+        );
       } else {
         return undefined;
       }

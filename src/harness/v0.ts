@@ -33,3 +33,40 @@ export function checkV0(
   }
   return { ok: violations.length === 0, violations };
 }
+
+/**
+ * The most violations an event, a brief or a page carries for one attempt, each cut to 300
+ * characters; the attempt's record keeps them all (goal 082).
+ */
+export const VIOLATIONS_SHOWN = 20;
+
+/** A refused change's violations, from its record (the attempt's `v0`, as JSON or parsed). */
+export function violationsOf(v0: unknown): string[] {
+  let v: unknown = v0;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return [];
+    }
+  }
+  const list = (v as { violations?: unknown } | null | undefined)?.violations;
+  return Array.isArray(list) ? list.map(String) : [];
+}
+
+/** Violations bounded for an event, a brief or a page: the first `max`, and how many in all. */
+export function shownViolations(
+  list: readonly string[],
+  max = VIOLATIONS_SHOWN,
+): { violations: string[]; total: number } {
+  return {
+    violations: list.slice(0, max).map((x) => (x.length > 300 ? `${x.slice(0, 299)}…` : x)),
+    total: list.length,
+  };
+}
+
+/** Violations in words for a brief: `a; b; c`, then how many more when there are more. */
+export function violationsText(list: readonly string[], max = VIOLATIONS_SHOWN): string {
+  const { violations, total } = shownViolations(list, max);
+  return `${violations.join("; ")}${total > violations.length ? `; and ${total - violations.length} more` : ""}`;
+}

@@ -12,11 +12,15 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { parseContract } from "../core/contract.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { ModelSource } from "./agents/model-source.ts";
+import { Registry } from "./agents/registry.ts";
 import { createHarnessApi } from "./api.ts";
 import { resolveInbox } from "./imports.ts";
+import { knowledgePart } from "./kb-part.ts";
 import { NOISY_TIMING_NOTE, smokeReport } from "./smoke-check.ts";
+import { shownViolations, violationsText } from "./v0.ts";
 
 const tokens = { supervisor: "sup-token-123456", proposer: "prop-token-123456" };
 const auth = (t: string) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
@@ -186,6 +190,99 @@ describe("harness service and API", () => {
       headers: auth(tokens.proposer),
     });
     assert.equal(((await status.json()) as { lifecycle: string }).lifecycle, "queued");
+  });
+
+  test("a refused change's violations reach its event, the evidence, the knowledge base and every lane of its campaign (goal 082)", async () => {
+    const env = makeHarnessEnv();
+    await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
+    const api = createHarnessApi(env.service, tokens);
+    const registry = new Registry(env.service.ledger);
+    const trial = (id: string, run: string, lane: string) => {
+      registry.startTrial({
+        id,
+        run,
+        lane,
+        epoch: 1,
+        family: "f",
+        parent: env.seedCommit,
+        token: `tok-${id}`,
+      });
+      return { authorization: `Bearer trial.tok-${id}`, "content-type": "application/json" };
+    };
+    const lane1 = trial("t1", "smoke-1", "lane-1");
+    const timer = env.patchFrom((d) =>
+      writeFileSync(join(d, "bench", "timer.c"), "/* faster timer */\n"),
+    );
+    const r = await api.request("/v1/attempts", {
+      method: "POST",
+      headers: lane1,
+      body: JSON.stringify({ patch_base64: timer, hypothesis: "edit the timer" }),
+    });
+    assert.equal(r.status, 201);
+    const a = (await r.json()) as { attempt: string; lifecycle: string };
+    assert.equal(a.lifecycle, "rejected_v0");
+
+    // The attempt's event carries the violations, as control and the knowledge base read them.
+    const ev = env.service.ledger
+      .eventsAfter(0, 1000)
+      .events.find((e) => e.kind === "attempt_recorded" && e.subject === a.attempt);
+    const body = ev?.body as { violations?: string[]; violations_total?: number };
+    assert.deepEqual(body.violations, ["path not editable: bench/timer.c"]);
+    assert.equal(body.violations_total, 1);
+    const kb = knowledgePart(env.service.ledger, "rig-a", 0, Number.MAX_SAFE_INTEGER).find(
+      (i) => i.kind === "attempt" && i.ref === a.attempt,
+    );
+    assert.match(String(kb?.body), /Refused before building: path not editable: bench\/timer\.c/);
+
+    // The planner's evidence and the teachers' brief say why it was refused.
+    const refused = { violations: ["path not editable: bench/timer.c"], total: 1 };
+    assert.deepEqual(registry.evidence("smoke-1")[0]?.refused, refused);
+    const brief = env.service.brief("smoke-1") as { evidence: { refused?: unknown }[] };
+    assert.deepEqual(brief.evidence[0]?.refused, refused);
+
+    const status = async (headers: Record<string, string>) => {
+      const s = await api.request(`/v1/attempts/${a.attempt}`, { headers });
+      return { code: s.status, body: (await s.json()) as Record<string, unknown> };
+    };
+    // Its own lane, another lane, and a later run of the same campaign read it, with why.
+    for (const h of [lane1, trial("t2", "smoke-1", "lane-2")]) {
+      const s = await status(h);
+      assert.equal(s.code, 200, JSON.stringify(s.body));
+      assert.deepEqual(s.body.violations, ["path not editable: bench/timer.c"]);
+      assert.equal(s.body.lane, "lane-1");
+    }
+    await env.service.applyCommand(
+      env.sign("assign_campaign", env.assignPayload({ run: "smoke-2" })),
+    );
+    assert.equal((await status(trial("t3", "smoke-2", "lane-1"))).code, 200);
+    // Another campaign's lane does not.
+    const base = env.assignPayload();
+    const other = parseContract({ ...(base.contract as object), campaign: "other-campaign" });
+    assert.ok(other.ok);
+    const o = await env.service.applyCommand(
+      env.sign(
+        "assign_campaign",
+        env.assignPayload({ run: "other-1", contract: other.contract, contract_sha: other.sha }),
+      ),
+    );
+    assert.ok(o.status === "applied" && o.accepted, JSON.stringify(o));
+    const refusedHere = await status(trial("t4", "other-1", "lane-1"));
+    assert.equal(refusedHere.code, 404);
+    assert.match(String(refusedHere.body.error), /no attempt a-[0-9a-f]+ in this campaign/);
+
+    // A long list is bounded where it is passed on, and says how many more there were.
+    const many = Array.from(
+      { length: 30 },
+      (_, i) => `path not editable: f${i}${"x".repeat(i * 20)}`,
+    );
+    const shown = shownViolations(many);
+    assert.equal(shown.violations.length, 20);
+    assert.equal(shown.total, 30);
+    assert.ok(shown.violations.every((v) => v.length <= 300));
+    assert.match(
+      violationsText(many, 3),
+      /^path not editable: f0; path not editable: f1x+; path not editable: f2x+; and 27 more$/,
+    );
   });
 
   test("tokens are scoped: proposers cannot read snapshots, nobody without a token gets in", async () => {

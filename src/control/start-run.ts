@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AskOwner } from "../core/commands.ts";
 import type { ContextApplies } from "./campaign-context.ts";
 
 /**
@@ -18,6 +19,8 @@ export interface StartRunRequest {
   /** A model to give the rig's agents first, as the panel's "The agents' model". */
   model?: { provider: string; model: string } | undefined;
   promotion?: "auto" | "owner_approval" | undefined;
+  /** What else the run asks the owner about (goal 079); unset: nothing. */
+  askOwner?: AskOwner | undefined;
   /** How many of the rig's GPUs the judge measures on; empty: the rig's current split. */
   judgeGpus?: string | number | undefined;
   /** A run of the campaign whose untried experiments start the new run's queue. */
@@ -68,8 +71,11 @@ export const startRunFields = {
     .enum(["auto", "owner_approval"])
     .optional()
     .describe(
-      "When a change is confirmed better: keep it at once (auto) or ask the owner (owner_approval). Default: the rig's",
+      "When a change is confirmed better: keep it at once (auto: after an auditor's clear when the rig has an auditor and an audit is called for) or ask the owner every time (owner_approval). Default: the rig's, which is auto unless set",
     ),
+  ask_owner: AskOwner.optional().describe(
+    "What else the run asks the owner about; by default nothing (hands-off). above_gain: a confirmed gain above this fraction (0.15 is 15%) waits for the owner; declared_flaws: a win whose worker declared flaws waits; reviews: a review panel's pass of a subjective goal waits for the owner's acceptance; not_possible: a proposal to end a goal campaign as not possible waits",
+  ),
   judge_gpus: z
     .number()
     .int()
@@ -103,6 +109,7 @@ export function startRunRequest(campaign: string, b: StartRunBody): StartRunRequ
     agents: b.agents ?? true,
     model: b.agents_model,
     promotion: b.promotion,
+    askOwner: b.ask_owner,
     judgeGpus: b.judge_gpus,
     queueFrom: b.queue_from,
     past: b.past,

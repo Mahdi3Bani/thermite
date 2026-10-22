@@ -55,7 +55,7 @@ import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { ResearchFolder } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
-import { lanesFromEnv, RigSettingsStore } from "./rig-settings.ts";
+import { lanesFromEnv, RigSettingsStore, trialMinutesFromEnv } from "./rig-settings.ts";
 import {
   busyReason,
   isolationBusy,
@@ -69,6 +69,9 @@ import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver, smiAs, smiAsRun } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
 import { routeOf } from "./usage.ts";
+
+/** Minutes as milliseconds; none stays none. */
+const minutesMs = (m: number | null) => (m === null ? undefined : m * 60_000);
 
 /** The harness controller: owns the ledger, serves the API and drives the executor. */
 async function main(): Promise<void> {
@@ -208,9 +211,9 @@ async function main(): Promise<void> {
     privateKeyPem: readFileSync(rigKeyPath, "utf8"),
     publicKeyPem: readFileSync(`${rigKeyPath}.pub`, "utf8"),
   };
-  // The promotion policy: confirmed wins promote on their own (auto); audits still hold
-  // surprising ones, and a gain above the absolute trigger still waits for the owner.
-  // owner_approval makes every promotion wait.
+  // The promotion policy: confirmed wins promote on their own (auto), after an auditor's clear
+  // when one is called for and the rig has an auditor; a run's ask_owner makes some wait (goal
+  // 079). owner_approval makes every promotion wait.
   const promotion = (env.THERMITE_PROMOTION ?? "auto") as PromotionPolicy;
   if (promotion !== "auto" && promotion !== "owner_approval") {
     throw new Error(`THERMITE_PROMOTION must be auto or owner_approval, not ${promotion}`);
@@ -226,7 +229,8 @@ async function main(): Promise<void> {
       teachers: true,
       review: true,
       exports: true,
-      trial_minutes: Number(env.THERMITE_TRIAL_MINUTES ?? "20"),
+      // No trial length unless one is set (goal 079).
+      trial_minutes: trialMinutesFromEnv(env.THERMITE_TRIAL_MINUTES),
       max_turns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : null,
       promotion,
       judge_gpus: null,
@@ -541,11 +545,13 @@ async function main(): Promise<void> {
     model,
     owner: "scheduler",
     maxConcurrent: settings.get().lanes,
-    trialWallMs: settings.get().trial_minutes * 60_000,
+    trialWallMs: minutesMs(settings.get().trial_minutes),
     // No cap on a trial's turns unless one is configured.
     maxTurns: settings.get().max_turns ?? undefined,
     workersOn: () => settings.get().workers,
     plannerOn: () => settings.get().planner,
+    // A draining rig starts no trial or plan (goal 079).
+    draining: () => service.draining !== undefined,
     // Each trial runs in the harness the rig's route names: Pi (a worker process), OpenCode,
     // Claude Code or Codex.
     runTrial: (spec, signal) => {
@@ -564,6 +570,9 @@ async function main(): Promise<void> {
           compacted: compactedIn(spec, "codex"),
           keptAt: keptAtFor(spec),
           modelUsage: workerUsage(spec, m),
+          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+          waiting: (w) => service.trialWait(trialOf(spec), w),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -583,6 +592,9 @@ async function main(): Promise<void> {
           compacted: compactedIn(spec, "claude-code"),
           keptAt: keptAtFor(spec),
           modelUsage: workerUsage(spec, m),
+          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+          waiting: (w) => service.trialWait(trialOf(spec), w),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -601,6 +613,9 @@ async function main(): Promise<void> {
         compacted: compactedIn(spec, "opencode"),
         keptAt: keptAtFor(spec),
         modelUsage: workerUsage(spec, m),
+        // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+        providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+        waiting: (w) => service.trialWait(trialOf(spec), w),
         env: laneCacheEnv(paths.scratchDir, spec.lane),
         signal,
       });
@@ -611,7 +626,6 @@ async function main(): Promise<void> {
     askOpencode: async (m, prompt, signal, o) => {
       const t = await opencodeOnce(m, prompt, once, {
         role: PLANNER_ROLE,
-        timeoutMs: 300_000,
         signal,
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
@@ -630,7 +644,6 @@ async function main(): Promise<void> {
     askClaude: async (m, prompt, signal, o) => {
       const t = await claudeOnce(m, prompt, once, {
         tools: o?.read ? "Read,Grep,Glob" : "",
-        timeoutMs: 300_000,
         signal,
         role: PLANNER_ROLE,
         mcp: o?.mcp,
@@ -649,7 +662,6 @@ async function main(): Promise<void> {
     askCodex: async (m, prompt, signal, o) => {
       const t = await codexOnce(m, prompt, once, {
         role: PLANNER_ROLE,
-        timeoutMs: 300_000,
         signal,
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
@@ -725,6 +737,9 @@ async function main(): Promise<void> {
           compacted: compactedIn(spec, "opencode"),
           keptAt: keptAtFor(spec),
           modelUsage: m ? workerUsage(spec, m) : undefined,
+          // The provider's error answers the model proxy saw, and each wait for it (goal 079).
+          providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
+          waiting: (w) => service.trialWait(trialOf(spec), w),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -747,7 +762,7 @@ async function main(): Promise<void> {
   settings.onChange((s) => {
     scheduler.configure({
       maxConcurrent: s.lanes,
-      trialWallMs: s.trial_minutes * 60_000,
+      trialWallMs: minutesMs(s.trial_minutes),
       maxTurns: s.max_turns ?? undefined,
     });
     log("harness", "settings changed", { ...s });
@@ -778,8 +793,9 @@ async function main(): Promise<void> {
     while (!stopping) {
       let worked = false;
       try {
-        // The judge off (Edit rig): jobs wait in the queue, nothing is measured.
-        worked = settings.get().judge ? await executor.tick() : false;
+        // The judge off (Edit rig): jobs wait in the queue, nothing is measured. A draining rig
+        // takes no new job (goal 079): the one under way finishes first.
+        worked = settings.get().judge && !service.draining ? await executor.tick() : false;
       } catch (err) {
         log("harness", "executor error", { executor: id, error: String(err) });
       }
@@ -827,13 +843,25 @@ async function main(): Promise<void> {
     exporting(),
   ]);
 
+  // A stop (goal 079): running trials stop and are recorded as interrupted, with the counters
+  // their workers last reported. The judge's job under way is not waited for longer than a few
+  // seconds: a container's stop gives little time, and its lease is taken back at the next start.
+  // To let it finish, control drains the rig first (Update to these images).
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
     log("harness", "stopping", { signal });
     server.close();
-    await running;
-    ledger.close();
+    await scheduler
+      .shutdown(`the harness is stopping (${signal})`)
+      .catch((err) => log("harness", "trials not recorded at the stop", { error: String(err) }));
+    const ended = await Promise.race([running.then(() => true), sleep(5000).then(() => false)]);
+    if (ended) ledger.close();
+    else
+      log(
+        "harness",
+        "a judge job was under way at the stop: its lease is taken back at the next start",
+      );
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));

@@ -24,6 +24,17 @@ import {
   type GoalStatus,
   goalDelta,
 } from "./decide.ts";
+import {
+  type HeldOutCell,
+  type HeldOutKind,
+  type HeldOutResult,
+  heldOutKindOf,
+  heldOutKinds,
+  heldOutMeasure,
+  heldOutResult,
+  heldOutWords,
+  meetsThreshold,
+} from "./held-out.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
 import { clipReason, REASONS_CHARS } from "./reasons.ts";
 
@@ -82,7 +93,19 @@ class InfraError extends Error {}
 interface Finish {
   result: unknown;
   verdict?: Parameters<Ledger["recordVerdict"]>[0] | undefined;
-  promote?: { run: string; expectedSeq: number; attempt: string; commitSha: string } | undefined;
+  promote?:
+    | {
+        run: string;
+        expectedSeq: number;
+        attempt: string;
+        commitSha: string;
+        /**
+         * Declared flaws accepted by this step (goal 079: hands-off by default): who accepts
+         * them, as the record says. Set only when nothing asks the owner.
+         */
+        clearFlaws?: string | undefined;
+      }
+    | undefined;
   events?: { kind: string; subject: string; body: unknown }[] | undefined;
   enqueue?: Parameters<Ledger["enqueueJob"]>[0] | undefined;
   lifecycle?: string | undefined;
@@ -131,6 +154,9 @@ function rng(seed: number): () => number {
 }
 
 const pct = (x: number) => `${(toFraction(x) * 100).toFixed(2)}%`;
+
+/** The most held-out cells one event names; the held_out table keeps them all. */
+const HELD_OUT_EVENT_CELLS = 50;
 
 export class Judge {
   private readonly o: Required<JudgeOptions>;
@@ -217,12 +243,39 @@ export class Judge {
       for (const e of fin.events ?? [])
         this.ledger.appendEvent(this.o.owner, e.kind, e.subject, e.body);
       if (fin.promote) {
-        const r = this.ledger.promote({ ...fin.promote, by: this.o.owner });
+        const { clearFlaws, ...promote } = fin.promote;
+        // Declared flaws nothing asks the owner about are accepted by this promotion (goal 079),
+        // and only if it happens.
+        const flawed =
+          (
+            JSON.parse(
+              String(this.ledger.getAttempt(promote.attempt)?.known_flaws ?? "[]"),
+            ) as unknown[]
+          ).length > 0;
+        const accepting =
+          clearFlaws !== undefined &&
+          flawed &&
+          Number(
+            this.ledger.db
+              .prepare(
+                "update attempt set flaws_cleared_by = ? where id = ? and flaws_cleared_by is null",
+              )
+              .run(clearFlaws, promote.attempt).changes,
+          ) > 0;
+        const r = this.ledger.promote({ ...promote, by: this.o.owner });
         if (r.ok) {
           lifecycle = "promoted";
           movedRun = fin.promote.run;
           result.promoted = { seq: r.seq };
+          if (accepting)
+            this.ledger.appendEvent(this.o.owner, "flaws_accepted", promote.attempt, {
+              by: clearFlaws,
+            });
         } else {
+          if (accepting)
+            this.ledger.db
+              .prepare("update attempt set flaws_cleared_by = null where id = ?")
+              .run(promote.attempt);
           // Lost the compare-and-swap: screen again against the new champion.
           lifecycle = "queued";
           enqueue = { attempt: fin.promote.attempt, kind: "evaluate", actor: this.o.owner };
@@ -741,28 +794,32 @@ export class Judge {
         count: contract.acceptance.confirm_blocks,
         runsPerCell: contract.acceptance.runs_per_cell,
       });
-      const heldOutPass = await this.heldOut(job, ctx, cand, champ, contract);
-      let d = decideConfirm(contract, blocks, this.guardTotals(run), this.noiseFloor(run));
+      const ho = await this.heldOut(job, ctx, cand, champ, contract);
+      const d = decideConfirm(contract, blocks, this.guardTotals(run), this.noiseFloor(run));
       let verdict: string = d.verdict ?? "not_confirmed";
       let reasons = d.reasons;
-      if (verdict === "win_confirmed" && heldOutPass === false) {
-        verdict = "not_confirmed";
-        reasons = "confirmation failed"; // held-out detail stays with promotion code
-        d = { ...d, reasons };
+      // A held-out failure is named by its kind alone (goal 082): the reasons say that a held-out
+      // check failed and how, never which cell, its values or its texts. The owner's detail is in
+      // the held_out record and its event. The figures are the measured cells' only.
+      if (ho && !ho.pass) {
+        const words = heldOutWords(heldOutKinds(ho.cells));
+        reasons =
+          verdict === "win_confirmed"
+            ? `confirmation failed: ${words}; on the measured cells: ${d.reasons}`
+            : `${d.reasons}; ${words}`;
+        if (verdict === "win_confirmed") verdict = "not_confirmed";
       }
-      // With held-out cells, a failed confirmation shows no figures at all: otherwise a positive
-      // delta on a failed confirmation would reveal that a held-out cell failed.
-      const opaque = verdict !== "win_confirmed" && contract.held_out_cells.length > 0;
       const fin: Finish = {
         result: { verdict },
         verdict: {
           attempt: attemptId,
           verdict,
-          ...(opaque ? {} : this.verdictFields(d)),
+          ...this.verdictFields(d),
           dependsOnJobs: [job.id, Number(this.spec(job).screen_job ?? job.id)],
-          reasons: `${opaque ? "confirmation failed" : reasons}; vs champion seq ${champion.seq}`,
+          reasons: `${reasons}; vs champion seq ${champion.seq}`,
           judgedBy: this.o.owner,
         },
+        ...(ho ? { events: [this.heldOutEvent(job, run, attemptId, ho)] } : {}),
         lifecycle: "judged",
       };
       if (verdict !== "win_confirmed") return fin;
@@ -775,8 +832,10 @@ export class Judge {
 
   /**
    * Held-out cells: correctness on every one, and no regression beyond twice the equivalence
-   * band on the primary metric, judged on the median of three interleaved runs per arm.
-   * Recorded only in the held_out table, never as measurements, events or verdict reasons.
+   * band on the primary metric, judged on the median of three interleaved runs per arm. Each
+   * cell's result is recorded with its kind of failure and, for the regression check, its ratio
+   * against its threshold (goal 082): in the held_out table, and in the owner's event. Never a
+   * cell's inputs, outputs or texts, and never as measurements.
    */
   private async heldOut(
     job: JobRow,
@@ -784,18 +843,19 @@ export class Judge {
     cand: Arm,
     champ: Arm,
     contract: HillClimbContract,
-  ): Promise<boolean | undefined> {
+  ): Promise<HeldOutResult | undefined> {
     if (!contract.held_out_cells.length) return undefined;
     const { metric, direction } = contract.objective.primary;
-    const detail: Record<string, unknown> = {};
-    let pass = true;
+    const cells: HeldOutCell[] = [];
     const median = (xs: number[]) =>
       [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)] as number;
+    // A ratio to the champion above this passes: no worse than twice the equivalence band.
+    const threshold = 1 / (1 + 2 * contract.acceptance.equivalence_band);
     for (const cell of contract.held_out_cells) {
       this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
       const cv: number[] = [];
       const rv: number[] = [];
-      let failed: string | undefined;
+      let failed: HeldOutKind | undefined;
       for (let rep = 0; rep < 3 && !failed; rep++) {
         const c = await runArm(ctx, cand, cell);
         const r = await runArm(ctx, champ, cell);
@@ -804,30 +864,63 @@ export class Judge {
           log("judge", "champion failed on a held-out cell", { job: job.id, reason: r.reason });
           throw new InfraError("champion failed on a held-out cell");
         }
-        if (c.kind !== "ok") failed = c.kind;
+        if (c.kind !== "ok") failed = heldOutKindOf(c);
         else {
           cv.push(c.metrics[metric] as number);
           rv.push(r.metrics[metric] as number);
         }
       }
       if (failed) {
-        pass = false;
-        detail[cell] = { failed };
+        cells.push({ cell, ok: false, kind: failed });
         continue;
       }
       const ratio = direction === "max" ? median(cv) / median(rv) : median(rv) / median(cv);
-      const ok = Math.log(ratio) > -toLog(2 * contract.acceptance.equivalence_band);
-      detail[cell] = { ratio, ok };
-      if (!ok) pass = false;
+      const measured = {
+        value: ratio,
+        threshold,
+        op: ">" as const,
+        measure: heldOutMeasure(metric, direction),
+        unit: "ratio",
+      };
+      if (Math.log(ratio) > -toLog(2 * contract.acceptance.equivalence_band))
+        cells.push({ cell, ok: true, ...measured });
+      else cells.push({ cell, ok: false, kind: "threshold_missed", ...measured });
     }
-    this.ledger.recordHeldOut(job.id, job.fence, job.attempt as string, pass, detail);
-    return pass;
+    const result = heldOutResult(cells);
+    this.ledger.recordHeldOut(job.id, job.fence, job.attempt as string, result.pass, result);
+    return result;
   }
 
   /**
-   * What happens to a promotable result: an audit first when one is triggered (open known flaws,
-   * a gain above the contract's audit trigger, a goal campaign's adversarial checklist), then
-   * the rig's promotion policy.
+   * The owner's event for a held-out record (goal 082): each cell's name, its kind of failure, and
+   * its value against its threshold where there is one. It reaches control and the rig's exports;
+   * no agent reads events, and the knowledge base does not take this one.
+   */
+  private heldOutEvent(
+    job: JobRow,
+    run: string,
+    attempt: string,
+    ho: HeldOutResult,
+  ): { kind: string; subject: string; body: unknown } {
+    return {
+      kind: "held_out_checked",
+      subject: attempt,
+      body: {
+        run,
+        job: job.id,
+        pass: ho.pass,
+        cells: ho.cells.slice(0, HELD_OUT_EVENT_CELLS),
+        cells_total: ho.cells.length,
+      },
+    };
+  }
+
+  /**
+   * What happens to a promotable result (goal 079: hands-off by default). An audit first when one
+   * is triggered (open known flaws, a gain above the contract's audit trigger, a goal campaign's
+   * adversarial checklist) and the rig has an auditor, or may have one (its supervisor has not
+   * said yet); without an auditor the audit is skipped, and recorded so. Then the owner only where
+   * the run asks (every win, a gain above its line, declared flaws); else the champion.
    */
   private promotion(
     fin: Finish,
@@ -843,11 +936,12 @@ export class Judge {
       delta: fin.verdict?.delta,
       priorDeltas: audits.priorDeltas(run, attemptId),
     });
-    if (trigger) {
+    if (trigger && this.o.service.advisors?.auditor !== false) {
       return {
         ...fin,
         result: { ...(fin.result as object), promoted: false, waiting: "audit" },
         events: [
+          ...(fin.events ?? []),
           {
             kind: "promotion_blocked",
             subject: attemptId,
@@ -858,15 +952,27 @@ export class Judge {
         lifecycle: "awaiting_audit",
       };
     }
-    if (this.o.service.promotionFor(run) === "owner_approval") {
+    const skipped = trigger
+      ? [
+          {
+            kind: "audit_skipped",
+            subject: attemptId,
+            body: { run, reason: trigger.reason, why: "this rig has no auditor" },
+          },
+        ]
+      : [];
+    const ask = this.o.service.ownerAsks(run, attempt, fin.verdict?.delta ?? null);
+    if (ask) {
       return {
         ...fin,
-        result: { ...(fin.result as object), promoted: false, waiting: "owner_approval" },
+        result: { ...(fin.result as object), promoted: false, waiting: "owner" },
         events: [
+          ...(fin.events ?? []),
+          ...skipped,
           {
             kind: "promotion_pending",
             subject: attemptId,
-            body: { run, expected_seq: expectedSeq, commit: attempt.commit_sha },
+            body: { run, expected_seq: expectedSeq, commit: attempt.commit_sha, reason: ask },
           },
         ],
         lifecycle: "awaiting_approval",
@@ -874,11 +980,13 @@ export class Judge {
     }
     return {
       ...fin,
+      ...(skipped.length ? { events: [...(fin.events ?? []), ...skipped] } : {}),
       promote: {
         run,
         expectedSeq,
         attempt: attemptId,
         commitSha: String(attempt.commit_sha),
+        clearFlaws: `${this.o.owner} (no audit: ${trigger ? "this rig has no auditor" : "none was called for"})`,
       },
     };
   }
@@ -905,12 +1013,20 @@ export class Judge {
       goals?: string[];
       /** Validating the champion: review goals take the panel and owner's word for this commit. */
       champion?: { run: string; attempt: string | null; commit: string };
+      /**
+       * In the held-out pass, each held-out cell's result goes here (goal 082): its name, its kind
+       * of failure, and a threshold goal's value against its threshold. Never its texts.
+       */
+      heldOutCells?: HeldOutCell[];
     } = {},
   ): Promise<{ goal: string; required: boolean; status: GoalStatus; reasons: string }[]> {
     const out: { goal: string; required: boolean; status: GoalStatus; reasons: string }[] = [];
-    // Held-out cells run only at confirmation, and their results go to promotion code alone:
-    // never into measurements, goal checks, reports or events.
+    // Held-out cells run only at confirmation. Their results go to promotion code and, by name
+    // and kind alone, to the held_out record: never into measurements, goal checks or reports.
     const held = new Set(contract.held_out_cells);
+    const heldCell = (c: HeldOutCell) => {
+      if (opts.heldOut) opts.heldOutCells?.push(c);
+    };
     const pick = (cells: string[]) =>
       cells.filter((c) => (opts.heldOut ? held.has(c) : !held.has(c)));
     // Priority gates: each code verifier is evaluated once per pass, its gates (`requires`)
@@ -950,10 +1066,16 @@ export class Judge {
           for (const cell of cells) {
             if (!ctx.kit.cells[cell]) {
               failures.push(`no cell ${cell}`);
+              heldCell({ cell, verifier: name, ok: false, kind: "no_cell" });
               continue;
             }
             const r = await runArm(ctx, arm, cell);
             if (r.kind !== "ok") failures.push(`${cell}: ${r.kind}: ${clipReason(r.reason)}`);
+            heldCell(
+              r.kind === "ok"
+                ? { cell, verifier: name, ok: true }
+                : { cell, verifier: name, ok: false, kind: heldOutKindOf(r) },
+            );
           }
           result = {
             ok: !failures.length,
@@ -1030,20 +1152,28 @@ export class Judge {
       }
       const values: Record<string, number[]> = {};
       const failures: string[] = [];
+      // The held-out cells that failed before a threshold could be checked, and how.
+      const failedHeld = new Set<string>();
       for (const cell of cells) {
         if (!ctx.kit.cells[cell]) {
           failures.push(`no cell ${cell}`);
+          heldCell({ cell, goal: g.id, ok: false, kind: "no_cell" });
+          failedHeld.add(cell);
           continue;
         }
         for (let rep = 1; rep <= contract.threshold_reps; rep++) {
           const r = await runArm(ctx, arm, cell);
           if (r.kind !== "ok") {
             failures.push(`${cell}: ${r.kind}: ${clipReason(r.reason)}`);
+            heldCell({ cell, goal: g.id, ok: false, kind: heldOutKindOf(r) });
+            failedHeld.add(cell);
             break;
           }
           const value = r.metrics[v.metric] ?? r.check.details[v.metric];
           if (typeof value !== "number" || !Number.isFinite(value)) {
             failures.push(`${cell}: no ${v.metric}`);
+            heldCell({ cell, goal: g.id, ok: false, kind: "non_finite", measure: v.metric });
+            failedHeld.add(cell);
             break;
           }
           values[cell] = [...(values[cell] ?? []), value];
@@ -1067,7 +1197,32 @@ export class Judge {
         });
         continue;
       }
-      const d = decideThresholdGoal(g, values, 0.05);
+      // Decided on this pass's cells only: a goal whose cells mix measured and held-out ones is
+      // screened on the measured ones and confirmed on the held-out ones (goal 082), never
+      // "not runnable" for lack of a value that this pass does not measure.
+      const d = decideThresholdGoal(v.cells ? { ...g, verify: { ...v, cells } } : g, values, 0.05);
+      // Each held-out cell that ran: its mean and interval against the threshold. It passes only
+      // when its whole interval is on the passing side, as the goal's own decision rule says (one
+      // value gives no interval, and does not pass).
+      for (const cell of cells) {
+        const xs = values[cell];
+        if (!opts.heldOut || failedHeld.has(cell) || !xs?.length) continue;
+        const i = xs.length >= 2 ? meanInterval(xs, 0.05) : undefined;
+        const ok =
+          !!i && meetsThreshold(i.low, v.op, v.value) && meetsThreshold(i.high, v.op, v.value);
+        heldCell({
+          cell,
+          goal: g.id,
+          ok,
+          ...(ok ? {} : { kind: "threshold_missed" as const }),
+          value: i ? i.estimate : (xs[0] as number),
+          ...(i ? { low: i.low, high: i.high } : {}),
+          threshold: v.value,
+          op: v.op,
+          measure: v.metric,
+          unit: ctx.kit.metrics[v.metric]?.unit ?? "",
+        });
+      }
       const status: GoalStatus = failures.length && d.status === "met" ? "unmet" : d.status;
       out.push({
         goal: g.id,
@@ -1302,31 +1457,34 @@ export class Judge {
       );
       const screened = (this.spec(job).gained as string[] | undefined) ?? [];
       const held = screened.filter((g) => !gained.includes(g));
-      let heldOutPass: boolean | undefined;
+      let ho: HeldOutResult | undefined;
       if (contract.held_out_cells.length && gained.length) {
-        const ho = await this.verifyGoals(job, contract, ctx, cand, {
+        const cells: HeldOutCell[] = [];
+        const checked = await this.verifyGoals(job, contract, ctx, cand, {
           heldOut: true,
           goals: gained,
+          heldOutCells: cells,
         });
-        heldOutPass = ho.every((r) => r.status === "met" || r.reasons === "no held-out cells");
-        this.ledger.recordHeldOut(
-          job.id,
-          job.fence,
-          attemptId,
-          heldOutPass,
-          Object.fromEntries(ho.map((r) => [r.goal, r.status])),
-        );
+        ho = {
+          pass: checked.every((r) => r.status === "met" || r.reasons === "no held-out cells"),
+          cells: heldOutResult(cells).cells,
+        };
+        this.ledger.recordHeldOut(job.id, job.fence, attemptId, ho.pass, ho);
       }
       const ok =
-        gained.length > 0 &&
-        !lost.length &&
-        !unsure.length &&
-        !held.length &&
-        heldOutPass !== false;
+        gained.length > 0 && !lost.length && !unsure.length && !held.length && ho?.pass !== false;
       const verdict = ok ? "goal_progress" : "not_confirmed";
+      // A held-out failure is named by its kind alone (goal 082); the owner's detail is in the
+      // held_out record and its event.
+      const why = [
+        ho && !ho.pass ? heldOutWords(heldOutKinds(ho.cells)) : "",
+        held.length ? `no longer met: ${held.join(", ")}` : "",
+        lost.length ? `lost: ${lost.join(", ")}` : "",
+        unsure.length ? `could not check: ${unsure.join(", ")}` : "",
+      ].filter(Boolean);
       const reasons = ok
         ? `confirmed: newly met ${gained.join(", ")}; vs champion seq ${champion.seq}`
-        : `confirmation failed${held.length ? `: no longer met: ${held.join(", ")}` : ""}${lost.length ? `; lost: ${lost.join(", ")}` : ""}${unsure.length ? `; could not check: ${unsure.join(", ")}` : ""}; vs champion seq ${champion.seq}`;
+        : `confirmation failed${why.length ? `: ${why.join("; ")}` : ""}; vs champion seq ${champion.seq}`;
       const fin: Finish = {
         result: { verdict, gained },
         verdict: {
@@ -1337,6 +1495,7 @@ export class Judge {
           judgedBy: this.o.owner,
           guards: results.map((r) => ({ goal: r.goal, status: r.status })),
         },
+        ...(ho ? { events: [this.heldOutEvent(job, run, attemptId, ho)] } : {}),
         lifecycle: "judged",
       };
       if (!ok) return fin;
@@ -1361,7 +1520,13 @@ export class Judge {
   private maybeScheduleValidation(): void {
     for (const inst of this.ledger.listRuns()) {
       if (inst.status !== "running" || inst.mode !== "goal") continue;
-      new Conclusions(this.ledger).maybePropose(inst.id, this.goalContract(inst.id), this.o.owner);
+      const proposal = new Conclusions(this.ledger).maybePropose(
+        inst.id,
+        this.goalContract(inst.id),
+        this.o.owner,
+      );
+      // Hands-off by default (goal 079): the evidence ends the campaign unless the run asks.
+      if (proposal !== undefined && this.o.service.takeConclusion(inst.id, proposal)) continue;
       const seq = this.ledger.currentChampion(inst.id).seq;
       const jobs = this.ledger.db
         .prepare(

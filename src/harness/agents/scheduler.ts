@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { log } from "../../common/env.ts";
-import type { StoredRule } from "../../core/commands.ts";
+import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief.ts";
+import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
 import {
   type Contract,
   laneLimits,
@@ -11,6 +12,7 @@ import {
 import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
+import { queueTarget, ruleRefusal } from "../../core/queue-target.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -19,17 +21,20 @@ import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
 import type { McpCaller } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
-import type { Experiment } from "../queue.ts";
+import { type Experiment, inFamily } from "../queue.ts";
+import { writeAtomic } from "../research/folder.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
+import { violationsOf, violationsText } from "../v0.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { mcpAgentTools } from "./mcp-tools.ts";
-import { type ModelConfig, usageLimitRetry, withAgentsContext } from "./model.ts";
+import { type ModelConfig, withAgentsContext } from "./model.ts";
 import {
   type Ask,
   attribute,
+  causeWords,
   fallbackPlan,
   type GoalReport,
   lanesOf,
@@ -40,6 +45,12 @@ import {
   plan,
   toDesign,
 } from "./planner.ts";
+import {
+  classifyProviderError,
+  KIND_WORDS,
+  type ProviderErrorKind,
+  stopsAgents,
+} from "./provider-errors.ts";
 import { type Assignment, type EpochRecord, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
@@ -55,8 +66,13 @@ const BRIEF_GOAL_CHARS = 600;
  * trials, one at a time, each on an experiment of its own (the round's first, then the next in
  * the queue): a fresh workspace at the champion (or the lane's best), one worker invocation, at
  * most one submission, and the next trial only after that submission is judged. An epoch ends
- * when its lanes' trials are judged (or at a time cap). Agents never judge: the scheduler only
- * reads verdicts.
+ * when its lanes' trials are judged; it has no time cap (goal 079). Agents never judge: the
+ * scheduler only reads verdicts.
+ *
+ * The model provider decides when agents can work (goal 079): no trial or plan starts while the
+ * workers' model check fails or after a trial found no credits, a refused key or an unserved
+ * model (the run's agents stop, and the model is checked again after a growing pause), nor while
+ * the provider's rate limit asked for a pause.
  */
 
 const SETTLED = new Set([
@@ -162,12 +178,19 @@ export interface SchedulerOptions {
   devRuns?: { settle(lane: string): Promise<void> } | undefined;
   owner: string;
   maxConcurrent?: number | undefined;
+  /** A trial's length when its contract sets none: none unless the rig sets one (goal 079). */
   trialWallMs?: number | undefined;
   /** A cap on each trial's turns: none unless configured (THERMITE_MAX_TURNS). */
   maxTurns?: number | undefined;
   /** The rig's settings: whether workers start trials and the planner plans (default on). */
   workersOn?: (() => boolean) | undefined;
   plannerOn?: (() => boolean) | undefined;
+  /**
+   * The rig drains (goal 079): before its images change, no new trial or plan starts, and those
+   * running end as they would.
+   */
+  draining?: (() => boolean) | undefined;
+  /** A round's time cap: none unless given (tests only; goal 079). */
   epochCapMs?: number | undefined;
   /** Goal mode: how long an epoch waits for the judge's goal report on a new champion. */
   goalReportWaitMs?: number | undefined;
@@ -189,9 +212,19 @@ const OPEN_LIFECYCLES = [
   "awaiting_audit",
   "awaiting_approval",
 ];
-/** After this many trials in a row end in errors, agents cool down (a model outage, usually). */
-const ERROR_STREAK = 6;
-const COOLDOWN_MS = 30 * 60_000;
+/** The first pause before the model is checked again after the run's agents stopped (goal 079). */
+const RECHECK_FIRST_MS = 60_000;
+/** The longest pause between those checks: they double up to it. */
+const RECHECK_MAX_MS = 30 * 60_000;
+
+/** Why the run's agents are stopped (goal 079): the provider's kind and words. */
+export interface AgentsStopped {
+  kind: ProviderErrorKind | "check";
+  words: string;
+  /** What found it: a trial, the model check. */
+  by: string;
+  since: string;
+}
 
 type Optional =
   | "model"
@@ -199,7 +232,10 @@ type Optional =
   | "runResearchTrial"
   | "devRuns"
   | "usdPerMTokIn"
-  | "usdPerMTokOut";
+  | "usdPerMTokOut"
+  | "trialWallMs"
+  | "epochCapMs"
+  | "draining";
 
 export class Scheduler {
   readonly registry: Registry;
@@ -208,6 +244,8 @@ export class Scheduler {
   private readonly o: Required<Omit<SchedulerOptions, Optional>> & Pick<SchedulerOptions, Optional>;
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
+  /** Research runs whose starting links this scheduler has begun to archive (goal 078). */
+  private readonly seeded = new Set<string>();
   private readonly aborts = new Map<string, AbortController>();
   /** The run each running trial (by lane) works for. */
   private readonly laneRun = new Map<string, string>();
@@ -216,14 +254,13 @@ export class Scheduler {
   private watcher: ReturnType<typeof setInterval> | undefined;
   /** The newest workers_reset event acted on. */
   private resetSeen: number;
-  private cooldownNoted = "";
   private reportNoted = "";
+  /** Shutting down: no new plan or trial (goal 079). */
+  private stopping = false;
 
   constructor(opts: SchedulerOptions) {
     this.o = {
       maxConcurrent: 1,
-      trialWallMs: 20 * 60_000,
-      epochCapMs: 3 * 3_600_000,
       goalReportWaitMs: 2 * 3_600_000,
       backoffBaseMs: 15_000,
       backoffMaxMs: 10 * 60_000,
@@ -358,43 +395,141 @@ export class Scheduler {
   }
   private limitNoted: string | undefined;
 
-  /**
-   * A run of errors across the run (a model outage): no new trials for a while. A new model
-   * route, or the owner resuming the run, after the last error ends the wait at once: the
-   * errors may have been the missing model.
-   */
-  private coolingDown(run: string): boolean {
-    const recent = this.registry.recentTrials(run, null, ERROR_STREAK);
-    if (recent.length < ERROR_STREAK || !recent.every((t) => t.stopped === "error")) return false;
-    const last = recent[0] as { ended_at: string; error: string | null };
-    const until = Date.parse(last.ended_at) + COOLDOWN_MS;
-    if (Date.now() >= until) return false;
-    const since = this.ledger.db
+  /** The newest event of these kinds (for this subject, when given). */
+  private newest(
+    kinds: string[],
+    subject?: string,
+  ): { id: number; at: string; body: Record<string, unknown> } | undefined {
+    const r = this.ledger.db
       .prepare(
-        `select max(at) as at from event where at > ? and (kind = 'model_route_set'
-           or (kind = 'run_status' and subject = ? and json_extract(body, '$.status') = 'running'))`,
+        `select id, at, body from event where kind in (${kinds.map(() => "?").join(",")})${subject !== undefined ? " and subject = ?" : ""} order by id desc limit 1`,
       )
-      .get(last.ended_at, run) as { at: string | null } | undefined;
-    if (since?.at) return false;
-    if (this.cooldownNoted !== last.ended_at) {
-      this.cooldownNoted = last.ended_at;
-      this.ledger.appendEvent(this.o.owner, "agents_cooldown", run, {
-        until: new Date(until).toISOString(),
-        trials: ERROR_STREAK,
-        last_error: last.error?.slice(0, 300) ?? null,
-      });
-    }
-    return true;
+      .get(...kinds, ...(subject !== undefined ? [subject] : [])) as
+      | { id: number; at: string; body: string }
+      | undefined;
+    return r
+      ? {
+          id: Number(r.id),
+          at: String(r.at),
+          body: JSON.parse(r.body) as Record<string, unknown>,
+        }
+      : undefined;
+  }
+
+  /** The workers' model checks finished after event `after`, newest first. */
+  private modelChecks(after: number): { id: number; at: string; ok: boolean; summary: string }[] {
+    return (
+      this.ledger.db
+        .prepare(
+          "select id, at, body from event where kind = 'rig_check_finished' and id > ? and json_extract(body, '$.check') = 'model' order by id desc",
+        )
+        .all(after) as { id: number; at: string; body: string }[]
+    ).map((r) => {
+      const b = JSON.parse(r.body) as { ok?: boolean; summary?: string };
+      return { id: Number(r.id), at: String(r.at), ok: b.ok === true, summary: String(b.summary) };
+    });
   }
 
   /**
-   * The epoch cap: about 6% of the wall budget (Fork-and-Flush's per-branch exploration budget),
-   * between 30 minutes and 3 hours; the configured cap without a wall budget.
+   * The run's agents stop (goal 079): no new trial or plan, until a model check passes or the
+   * route changes. Recorded once, with the provider's words, for History and Needs you.
    */
-  private epochCap(contract: Contract): number {
-    const w = contract.budget.wall_hours;
-    if (w === undefined) return this.o.epochCapMs;
-    return Math.min(3 * 3_600_000, Math.max(30 * 60_000, 0.06 * w * 3_600_000));
+  stopAgents(run: string, why: { kind: AgentsStopped["kind"]; words: string; by: string }): void {
+    const stop = this.newest(["agents_stopped", "agents_resumed"], run);
+    if (stop && this.ledgerKind(stop.id) === "agents_stopped") return;
+    this.ledger.appendEvent(this.o.owner, "agents_stopped", run, {
+      kind: why.kind,
+      words: why.words.slice(0, 600),
+      by: why.by,
+      said: why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind],
+    });
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text: `the agents stop: ${why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind]} (${why.words.slice(0, 300)}). No trial starts until a model check passes; the model is checked again in a minute, then less often.`,
+      run,
+    });
+  }
+
+  private ledgerKind(id: number): string {
+    return String(
+      (this.ledger.db.prepare("select kind from event where id = ?").get(id) as { kind: string })
+        .kind,
+    );
+  }
+
+  /**
+   * Why the run's agents are stopped now, if they are (goal 079). A failing model check of the
+   * workers' route (newer than the route) stops them; so does a trial that found no credits, a
+   * refused key or an unserved model. They go on once a model check passes after the stop, or the
+   * route changes. While stopped, the model is checked again after a pause that doubles from a
+   * minute to 30 minutes; at once after the owner resumes the run.
+   */
+  private agentsStopped(run: string): AgentsStopped | undefined {
+    const stop = this.newest(["agents_stopped", "agents_resumed"], run);
+    const change = this.newest(["model_route_set", "model_route_cleared"]);
+    const open = stop && this.ledgerKind(stop.id) === "agents_stopped" ? stop : undefined;
+    if (open) {
+      const checks = this.modelChecks(open.id);
+      const passed = checks.find((c) => c.ok);
+      const changed = change && change.id > open.id;
+      if (passed || changed) {
+        this.ledger.appendEvent(this.o.owner, "agents_resumed", run, {
+          why: passed ? "a model check passed" : "the rig's model route changed",
+        });
+        this.o.service.live.append({
+          source: "planner",
+          kind: "status",
+          text: `the agents go on: ${passed ? "a model check passed" : "the rig's model route changed"}`,
+          run,
+        });
+        return undefined;
+      }
+      this.maybeRecheck(run, open, checks);
+      return {
+        kind: open.body.kind as AgentsStopped["kind"],
+        words: String(open.body.words ?? ""),
+        by: String(open.body.by ?? ""),
+        since: open.at,
+      };
+    }
+    // A failing model check of the workers' route, newer than the route and than the last time
+    // the agents went on: no trial starts on a model that fails it.
+    const last = this.modelChecks(Math.max(change?.id ?? 0, stop?.id ?? 0))[0];
+    if (last && !last.ok) {
+      const kind = classifyProviderError(last.summary).kind;
+      this.stopAgents(run, {
+        kind: stopsAgents(kind) ? kind : "check",
+        words: last.summary,
+        by: "the model check",
+      });
+      return {
+        kind: stopsAgents(kind) ? kind : "check",
+        words: last.summary,
+        by: "the model check",
+        since: last.at,
+      };
+    }
+    return undefined;
+  }
+
+  /** While stopped: the model is checked again after a growing pause, at once after a resume. */
+  private maybeRecheck(
+    run: string,
+    open: { id: number; at: string },
+    checks: { id: number; at: string }[],
+  ): void {
+    if (this.o.service.modelCheckRunning()) return;
+    const resumed = this.ledger.db
+      .prepare(
+        `select max(id) as id from event where kind = 'run_status' and subject = ? and id > ?
+           and json_extract(body, '$.status') = 'running'`,
+      )
+      .get(run, Math.max(open.id, checks[0]?.id ?? 0)) as { id: number | null };
+    const pause = Math.min(RECHECK_MAX_MS, RECHECK_FIRST_MS * 2 ** checks.length);
+    const due = Date.parse(checks[0]?.at ?? open.at) + pause;
+    if (!resumed.id && Date.now() < due) return;
+    this.o.service.checkModelNow("scheduler");
   }
 
   /**
@@ -466,6 +601,28 @@ export class Scheduler {
     await Promise.all([...this.running.values()]);
   }
 
+  /**
+   * The harness is stopping (goal 079): no new plan or trial, the planner's call is cancelled, and
+   * running trials stop and are recorded as interrupted, with the counters their workers last
+   * reported, before this returns.
+   */
+  async shutdown(reason: string): Promise<void> {
+    this.stopping = true;
+    for (const [lane, ctrl] of this.aborts) {
+      const run = this.laneRun.get(lane);
+      if (run && !ctrl.signal.aborted)
+        this.ledger.appendEvent(this.o.owner, "trial_stopped", run, { lane, reason });
+      ctrl.abort();
+    }
+    this.planning?.ctrl.abort();
+    await this.idle();
+  }
+
+  /** Trials running now (for a drain's report). */
+  get trialsRunning(): number {
+    return this.running.size;
+  }
+
   private run(): { id: string; contract: Contract } | undefined {
     const inst = this.ledger.listRuns().find((i) => i.status === "running");
     // A judge-only run: no planning, no trials.
@@ -487,11 +644,16 @@ export class Scheduler {
   private directives(run: string): { id: number; body: StoredRule }[] {
     // An old rule in words (legacy, goal 066) stays in force for the planner's model until its
     // round converts it; it has no family, so the code below and the fixed rules never keep it.
-    const all = this.ledger.activeDirectives(run).map((d) => ({
-      id: d.id,
-      owner: d.author.startsWith("control:"),
-      body: d.body as StoredRule,
-    }));
+    // An advisor's rule that freezes the queue's size or pins an experiment, set before code
+    // refused them (goal 081), never reaches the plan.
+    const all = this.ledger
+      .activeDirectives(run)
+      .filter((d) => !d.author.startsWith("supervisor") || !ruleRefusal(d.body as StoredRule))
+      .map((d) => ({
+        id: d.id,
+        owner: d.author.startsWith("control:"),
+        body: d.body as StoredRule,
+      }));
     const ownerFamilies = new Set(
       all.filter((d) => d.owner && d.body.family).map((d) => d.body.family),
     );
@@ -653,7 +815,7 @@ export class Scheduler {
   /** New limits from the rig's settings; they apply from the next trial or check. */
   configure(p: {
     maxConcurrent?: number;
-    trialWallMs?: number;
+    trialWallMs?: number | undefined;
     maxTurns?: number | undefined;
   }): void {
     Object.assign(this.o, p);
@@ -679,13 +841,16 @@ export class Scheduler {
       directives: this.directives(run),
       directions: this.o.service.queue.directions(run),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(run, l)])),
-      campaignNotes: contract.notes,
+      // The campaign's brief from its author, whole (goal 078).
+      campaignBrief: briefData(contract),
       ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
       goalReport: contract.mode === "goal" ? this.goalReport(run, champion.seq) : undefined,
       // The run's newest field notes, the owner's picks from past research, and where the run's
       // past research is: all data for the planner to weigh.
       notes: notesData(this.o.service.journal.newest(run, 20)),
       briefing: this.ledger.briefing(run),
+      // The queue's target (goal 081): the planner tops the queue up to it with distinct ideas.
+      queueTarget: queueTarget(contract, laneCount),
     };
     const live = this.o.service.live;
     live.append({
@@ -838,6 +1003,26 @@ export class Scheduler {
       p.queue?.rules.length || p.queue?.convert.length ? this.directives(run) : input.directives;
     if (lanes.some((l) => !handout.some((h) => h.lane === l)))
       this.coordinator.ensureMandates(run, directives);
+    // The queue's target (goal 081): when up next would hold fewer than the target after the
+    // hand-out, the lanes' distinct ideas go up next first, oldest first, as the planner's.
+    const target = input.queueTarget ?? 0;
+    const avoided = (x: Experiment) =>
+      directives.some(
+        (d) => d.body.kind === "avoid" && d.body.family && inFamily(x, d.body.family),
+      );
+    const ready = () =>
+      this.o.service.queue.queued(run).filter((x) => !given.has(x.id) && !avoided(x)).length;
+    const waitingLanes = lanes.filter((l) => !handout.some((h) => h.lane === l)).length;
+    // A target of 0 asks for no ideas: the lanes' ideas then wait, as before (goal 081).
+    const ideas =
+      target > 0
+        ? this.coordinator.acceptIdeas(
+            run,
+            target + waitingLanes - ready(),
+            avoided,
+            `the queue had fewer than its target of ${target} experiments ready: a lane's distinct idea goes up next`,
+          )
+        : [];
     for (const lane of lanes) {
       if (handout.some((h) => h.lane === lane)) continue;
       const fixed = p.assignments.find((a) => a.lane === lane);
@@ -893,8 +1078,22 @@ export class Scheduler {
               `old rules in words converted: ${p.queue.convert.map((c) => `rule ${c.rule} to ${asToken(c.family)}`).join("; ")}`,
             ]
           : []),
-        ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),
+        // Why the model's tries gave no usable plan, each by its real cause (goal 079).
+        ...(p.causes?.length
+          ? [
+              `no usable plan: ${p.causes
+                .map((c) => `try ${c.try}: ${causeWords[c.cause]} (${c.detail.slice(0, 200)})`)
+                .join("; ")}`,
+            ]
+          : p.rawViolations.length
+            ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`]
+            : []),
         ...(skipped.length ? [`skipped: ${skipped.slice(0, 3).join("; ")}`] : []),
+        ...(ideas.length
+          ? [
+              `the lanes' ideas queued to reach the target of ${target}: ${ideas.map((x) => x.title).join("; ")}`,
+            ]
+          : []),
       ].join("\n"),
       run,
     });
@@ -905,6 +1104,7 @@ export class Scheduler {
       tries: p.tries,
       valid: p.valid,
       rawViolations: p.rawViolations,
+      causes: p.causes,
       assignments: attribute(assignments, directives),
       directives: directives.map((d) => d.id),
       notes: p.notes,
@@ -925,6 +1125,24 @@ export class Scheduler {
         ...(skipped.length ? [`skipped: ${skipped.join("; ")}`] : []),
       ].join(". "),
     );
+    // Still below the target (goal 081): the planner could not top the queue up, so the teachers
+    // are asked for ideas at once (the supervisor reads queue_low), not on their clock.
+    const left = ready();
+    if (target > 0 && left < target) {
+      this.ledger.appendEvent(PLANNER, "queue_low", run, {
+        round: n,
+        ready: left,
+        target,
+        lanes: laneCount,
+        source: p.source,
+      });
+      live.append({
+        source: "planner",
+        kind: "status",
+        text: `after round ${n} the queue has ${left} of its target of ${target} experiments ready: the teachers are asked for ideas now`,
+        run,
+      });
+    }
     // The planner's field notes, also when the rest of its answer was refused; a note about an
     // experiment it added names the experiment's id, not the ref it used.
     this.plannerNotes(
@@ -961,6 +1179,23 @@ export class Scheduler {
   ): string | undefined {
     const s = this.o.service.knowledge.summary(run);
     return s ? pastResearchLine(s, reader) : undefined;
+  }
+
+  /**
+   * The campaign's brief for a worker's trial brief (goal 078): BRIEF.md in the run's folder, the
+   * whole text, and the section the trial brief carries (whole, or cut with where the rest is).
+   * "" when the contract has none.
+   */
+  private campaignBrief(run: string, contract: Contract): string {
+    const file = briefFile(contract);
+    if (!file) return "";
+    const path = join(this.o.service.knowledge.folder(run), BRIEF_FILE);
+    try {
+      writeAtomic(path, file);
+    } catch (err) {
+      log("scheduler", "the brief's file not written", { run, error: String(err) });
+    }
+    return briefSection(contract, path) ?? "";
   }
 
   /**
@@ -1081,6 +1316,8 @@ export class Scheduler {
   async tick(): Promise<boolean> {
     this.stopIfNotRunning();
     await this.applyResets();
+    // Stopping or draining: no new plan or trial; those running end as they would.
+    if (this.stopping || this.o.draining?.()) return false;
     const inst = this.run();
     if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
@@ -1103,7 +1340,7 @@ export class Scheduler {
       if (!this.running.size) this.ledger.setRunStatus(inst.id, "paused", spent, this.o.owner);
       return false;
     }
-    if (this.coolingDown(inst.id)) return false;
+    if (this.agentsStopped(inst.id)) return false;
     if (this.waitingForLimit(inst.id)) return false;
     if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
@@ -1147,7 +1384,10 @@ export class Scheduler {
       this.startTrial(id, contract, epoch.n, a, k, perEpoch, got);
       started = true;
     }
-    const capped = Date.now() - Date.parse(epoch.started_at) > this.epochCap(contract);
+    // No time cap on a round unless one is given (tests): it ends when its trials are judged.
+    const capped =
+      this.o.epochCapMs !== undefined &&
+      Date.now() - Date.parse(epoch.started_at) > this.o.epochCapMs;
     if ((complete || capped) && !this.running.size)
       this.registry.endEpoch(id, epoch.n, this.o.owner);
     return started;
@@ -1171,6 +1411,11 @@ export class Scheduler {
     const last = research.lastReportAt(run);
     if (!last || Date.now() - Date.parse(last) >= contract.report_cadence.digest_minutes * 60_000) {
       research.report(run, "digest");
+    }
+    // The campaign's starting links, archived by the harness, beside the first trials.
+    if (!this.seeded.has(run)) {
+      this.seeded.add(run);
+      void this.archiveSeeds(run, contract);
     }
     let epoch = this.registry.currentEpoch(run);
     if (!epoch || epoch.ended_at) {
@@ -1199,6 +1444,34 @@ export class Scheduler {
     }
     if (complete && !this.running.size) this.registry.endEpoch(run, epoch.n, this.o.owner);
     return started;
+  }
+
+  /**
+   * A research run's starting links (goal 078), fetched and archived by the harness when the run
+   * starts (and again after a restart, when an archived link is found at once), one after
+   * another, beside the first trials. A link the fetcher refuses is an event with its reason
+   * (fetch_refused) and a line in Live; the run goes on without it.
+   */
+  private async archiveSeeds(run: string, contract: ResearchContract): Promise<void> {
+    if (!contract.seeds.length) return;
+    const research = this.o.research as Research;
+    let archived = 0;
+    const refused: string[] = [];
+    for (const url of contract.seeds) {
+      try {
+        const r = (await research.fetch(run, null, url)) as { refused?: string };
+        if (r.refused) refused.push(`${url} (${r.refused})`);
+        else archived++;
+      } catch (err) {
+        refused.push(`${url} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text: `starting links: ${archived} of ${contract.seeds.length} archived${refused.length ? `; not archived: ${refused.join("; ").slice(0, 1000)}` : ""}`,
+      run,
+    });
   }
 
   private static readonly RESEARCH_TASKS: { id: string; description: string }[] = [
@@ -1353,7 +1626,7 @@ export class Scheduler {
           run,
           {
             title: `Question ${q.i}: ${task.description}`,
-            details: `Question ${q.i}: ${contract.questions[q.i]}`,
+            details: questionDetails(q.i, contract.questions[q.i] ?? ""),
             family: task.id,
             why: stalled
               ? "the research plan: novelty fell, so primary sources and contradictions first"
@@ -1372,7 +1645,7 @@ export class Scheduler {
     contract: ResearchContract,
     epoch: number,
     round: Assignment,
-    clock: { elapsed_ms: number; min_ms: number; max_ms: number },
+    clock: { elapsed_ms: number; min_ms: number; max_ms: number | null },
     got: { x: Experiment; why: string },
   ): void {
     // A research task from the queue: its task kind is the trial's family, its text the focus.
@@ -1393,13 +1666,16 @@ export class Scheduler {
       `Topic: ${contract.topic}`,
       "Questions:",
       ...contract.questions.map(
-        (q, i) => `${i}. ${q} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
+        (q, i) =>
+          `${i}. ${q.replace(/\n/g, "\n   ")} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
       ),
+      "",
+      // The campaign's brief from its author (goal 078): whole, or cut with where the rest is.
+      this.campaignBrief(run, contract),
       "",
       `Your focus: ${a.focus}`,
       `Time: ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h elapsed of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h (the campaign continues after your trial).`,
       `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts, ${stats.findings} findings.`,
-      contract.seeds.length ? `Starting URLs: ${contract.seeds.join(" ")}` : "",
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",
       "Record claims only with exact quotes from archived sources, and say which question each answers.",
@@ -1467,7 +1743,8 @@ export class Scheduler {
         r = this.withProgress(id, r);
         this.o.service.trialEnded(id, r.turns > 0 || r.tokensIn > 0);
         this.registry.finishTrial(id, r, this.o.owner);
-        this.finishExperiment(id, r.stopped);
+        this.finishExperiment(id, r);
+        this.afterTrial(id, run, r);
         this.trialLine(
           id,
           run,
@@ -1601,18 +1878,8 @@ export class Scheduler {
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
-        this.finishExperiment(id, r.stopped, r.submitted?.attempt);
-        // A full ChatGPT plan gives no reset time: the agents wait a while and try again.
-        if (!r.retryAfter && r.stopped === "error") {
-          const until = usageLimitRetry(r.error);
-          if (until) r = { ...r, retryAfter: until };
-        }
-        if (r.retryAfter)
-          this.ledger.appendEvent(this.o.owner, "agents_wait_for_limit", run, {
-            until: r.retryAfter,
-            trial: id,
-            reason: r.error ?? null,
-          });
+        this.finishExperiment(id, r, r.submitted?.attempt);
+        this.afterTrial(id, run, r);
         this.trialLine(
           id,
           run,
@@ -1634,15 +1901,49 @@ export class Scheduler {
   }
 
   /**
-   * A trial ended: its experiment is done (and goes back to the queue if the trial was
-   * interrupted or failed). A failure here is logged; the trial's own record stands.
+   * A trial ended: its experiment is done, with how its trial ended in words, or goes back to the
+   * top of the queue when the trial never really tried it (interrupted, or the provider's error:
+   * goal 079). A failure here is logged; the trial's own record stands.
    */
-  private finishExperiment(trial: string, stopped: string, attempt?: string | undefined): void {
+  private finishExperiment(trial: string, r: TrialResult, attempt?: string | undefined): void {
     try {
-      this.coordinator.finish(trial, { result: resultOf(stopped, attempt), attempt }, this.o.owner);
+      const kind =
+        r.errorKind ??
+        (r.stopped === "error" && r.error ? classifyProviderError(r.error).kind : undefined);
+      this.coordinator.finish(
+        trial,
+        {
+          result: resultOf(r.stopped, attempt),
+          attempt,
+          cause: r.error ?? (r.stopped === "interrupted" ? "its trial was stopped" : undefined),
+          kind,
+        },
+        this.o.owner,
+      );
     } catch (err) {
       log("scheduler", "the trial's experiment was not finished", { trial, error: String(err) });
     }
+  }
+
+  /**
+   * What a trial's provider error means for the run (goal 079): no credits, a refused key or an
+   * unserved model stop the run's agents; a rate limit with a time makes them wait until then.
+   */
+  private afterTrial(id: string, run: string, r: TrialResult): void {
+    if (r.stopped !== "error" || !r.error) return;
+    const e = classifyProviderError(r.error);
+    const kind = r.errorKind ?? e.kind;
+    if (stopsAgents(kind)) {
+      this.stopAgents(run, { kind, words: r.error, by: `trial ${id}` });
+      return;
+    }
+    const until = r.retryAfter ?? (kind === "rate_limit" ? e.retryAt : undefined);
+    if (until)
+      this.ledger.appendEvent(this.o.owner, "agents_wait_for_limit", run, {
+        until,
+        trial: id,
+        reason: r.error,
+      });
   }
 
   /**
@@ -1783,13 +2084,10 @@ export class Scheduler {
                   BRIEF_REASON_CHARS,
                 )
               : "";
-            const v0 = this.ledger.getAttempt(e.attempt)?.v0;
-            const violations = v0
-              ? (JSON.parse(String(v0)) as { violations: string[] }).violations
-              : [];
+            const violations = violationsOf(this.ledger.getAttempt(e.attempt)?.v0);
             return `- ${e.attempt} (${e.hypothesis ?? "no hypothesis"}): ${e.verdict ?? e.lifecycle}${
               e.delta !== null ? `, change ${(e.delta * 100).toFixed(2)}%` : ""
-            }${reasons ? `. Judge: ${reasons}` : ""}${violations.length ? `. Refused before building: ${violations.join("; ")}` : ""}`;
+            }${reasons ? `. Judge: ${reasons}` : ""}${violations.length ? `. Refused before building: ${violationsText(violations)}` : ""}`;
           })
           .join("\n")
       : "- none yet";
@@ -1797,6 +2095,7 @@ export class Scheduler {
       contract.mode === "goal"
         ? this.goalReport(run, this.ledger.currentChampion(run).seq)
         : undefined;
+    const campaignBrief = this.campaignBrief(run, contract);
     return [
       `# Assignment (epoch ${epoch}, trial ${k} of ${perEpoch}, ${a.lane})`,
       `Campaign: ${contract.title} (${contract.mode})`,
@@ -1833,15 +2132,30 @@ export class Scheduler {
       "# Your lane's recent attempts and the judge's findings",
       feedback,
       "",
-      contract.notes ? `# Notes from the campaign's author\n${contract.notes}\n` : "",
+      // The campaign's brief from its author (goal 078): whole, or cut with where the rest is.
+      campaignBrief ? `${campaignBrief}\n` : "",
       ...this.notesAndPast(run, a.lane, "worker").map((s) => `${s}\n`),
       "# How to work",
       "Read the relevant code, make one focused change in the editable paths, build and test it with run, then call submit once. The judge measures it on the real target; your own timings never count.",
+      // Lanes propose (goal 081): the planner queues the distinct ideas.
+      "Before you submit (submitting ends your trial), or before you stop without submitting, propose each distinct follow-up experiment your work suggests as an idea for the run's queue (the idea tool, or thermite-trial idea), each with why: what you saw that makes it worth trying. The planner queues the distinct ones for the lanes. Propose none that repeats your own assignment.",
       "Your lane keeps a cache directory between trials, $THERMITE_LANE_CACHE (ccache uses it as CCACHE_DIR): use it for build caches so a fresh workspace does not rebuild everything.",
     ]
       .filter((l) => l !== "")
       .join("\n");
   }
+}
+
+/**
+ * A research task's details: its question. A question has no length limit (goal 078); an
+ * experiment's details hold at most EXPERIMENT_DETAILS characters, so a longer one is cut there
+ * and says where the whole question is: in the trial brief's Questions.
+ */
+export function questionDetails(i: number, q: string): string {
+  const whole = `Question ${i}: ${q}`;
+  if (whole.length <= EXPERIMENT_DETAILS) return whole;
+  const note = ` … (cut: the whole question is under Questions in your brief)`;
+  return `${whole.slice(0, EXPERIMENT_DETAILS - note.length)}${note}`;
 }
 
 function objectiveOf(c: Contract): string {

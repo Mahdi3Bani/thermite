@@ -1,6 +1,8 @@
 import { directionOf, isLegacyRule, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { type Hardware, readHardware } from "../core/hardware.ts";
+import { clip } from "../core/kb-index.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
@@ -54,6 +56,73 @@ export interface AttemptView {
   /** The files it changes, with their line counts (null for a binary file), and how many. */
   files: { path: string; added: number | null; removed: number | null }[];
   files_total: number;
+  /**
+   * Why the static checks refused it before building (goal 082): the first 20 violations, each
+   * cut to 300 characters, and how many there were. Empty, and 0, when it was not refused or its
+   * rig's harness is older.
+   */
+  violations: string[];
+  violations_total: number;
+  /**
+   * Its newest confirmation's held-out check, for the owner (goal 082): whether every held-out
+   * cell passed, and each cell's name, kind of failure and value against its threshold. Null when
+   * no held-out check ran, or its rig's harness is older.
+   */
+  held_out: HeldOutView | null;
+}
+
+/** One held-out check of an attempt, from the judge's `held_out_checked` event. */
+export interface HeldOutView {
+  at: string;
+  pass: boolean;
+  cells: {
+    cell: string;
+    goal: string | null;
+    verifier: string | null;
+    ok: boolean;
+    kind: string | null;
+    value: number | null;
+    low: number | null;
+    high: number | null;
+    threshold: number | null;
+    op: string | null;
+    measure: string | null;
+    unit: string | null;
+  }[];
+  /** How many cells the check had; the event names at most 50. */
+  cells_total: number;
+}
+
+/** A held-out check from its event's body, each field checked: the rig's report is data. */
+function heldOutView(at: string, b: Record<string, unknown>): HeldOutView {
+  const txt = (v: unknown, n = 200) => (typeof v === "string" ? clip(v, n) : null);
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const cells = (Array.isArray(b.cells) ? b.cells : []).slice(0, 50).flatMap((x) => {
+    const c = (x ?? {}) as Record<string, unknown>;
+    if (typeof c.cell !== "string") return [];
+    return [
+      {
+        cell: clip(c.cell, 200),
+        goal: txt(c.goal),
+        verifier: txt(c.verifier),
+        ok: c.ok === true,
+        kind: txt(c.kind, 40),
+        value: num(c.value),
+        low: num(c.low),
+        high: num(c.high),
+        threshold: num(c.threshold),
+        op: c.op === ">=" || c.op === ">" || c.op === "<=" || c.op === "<" ? c.op : null,
+        measure: txt(c.measure),
+        unit: txt(c.unit, 40),
+      },
+    ];
+  });
+  return {
+    at,
+    pass: b.pass === true,
+    cells,
+    cells_total: typeof b.cells_total === "number" ? b.cells_total : cells.length,
+  };
 }
 
 /** A judge job, from its queued, leased and finished events. */
@@ -95,6 +164,13 @@ export interface RunView {
   seed_folder?: { folder: string; commit: string } | undefined;
   /** The run's own promotion policy (null: the rig's default, which control does not see). */
   promotion: "auto" | "owner_approval" | null;
+  /** What else the run asks the owner about (goal 079); empty: nothing (hands-off). */
+  ask_owner: {
+    above_gain?: number | undefined;
+    declared_flaws?: boolean | undefined;
+    reviews?: boolean | undefined;
+    not_possible?: boolean | undefined;
+  };
   status: string;
   pause_reason: string | null;
   champion: ChampionStep[];
@@ -106,7 +182,10 @@ export interface RunView {
   agents: {
     epochs: number;
     planner_valid: number;
+    /** Rounds the fixed rules planned because the planner gave no usable plan (or was off). */
     fallbacks: number;
+    /** A research run's rounds: planned by the research plan, never by the planner (goal 079). */
+    research_rounds: number;
     epochs_with_violations: number;
     trials: number;
     submitted: number;
@@ -115,12 +194,31 @@ export interface RunView {
     duplicates: number;
     attempts: number;
   };
+  /**
+   * The run's agents stopped (goal 079): the provider refused (no credits, a refused key, an
+   * unserved model) or the workers' model check fails. Null while they can run.
+   */
+  agents_stopped: {
+    kind: string;
+    /** The provider's or the check's own words. */
+    words: string;
+    /** The kind in plain words. */
+    said: string;
+    /** What found it: a trial, the model check. */
+    by: string;
+    since: string;
+  } | null;
   /** Research mode: the newest digest's figures and report. */
   research: Record<string, unknown> | null;
   goals: { goal: string; description: string | null; status: string; reasons: string }[];
   /** When the judge last checked the goals, and on which champion. */
   goals_at: string | null;
   goals_seq: number | null;
+  /**
+   * How each goal is really checked, as the rig's kit runs it (goal 082): from the rig's
+   * `goal_checks` event when the run started. Null for a run an older harness started.
+   */
+  goal_checks: GoalChecks | null;
   /** Audits (M5): what is held for one, and how each ended. */
   audits: {
     attempt: string;
@@ -291,6 +389,13 @@ export interface ExperimentView {
   dropped_why: string | null;
   dropped_by: string | null;
   from_run: string | null;
+  /**
+   * How its trial ended, in words; or, back in the queue, why its last trial never really tried
+   * it (goal 079). Null: nothing said.
+   */
+  cause: string | null;
+  /** How many times its trial ended without really trying it, and it came back (goal 079). */
+  returns: number;
   at: string;
   updated_at: string;
 }
@@ -335,7 +440,8 @@ export interface RigSettingsView {
   teachers: boolean;
   review: boolean;
   exports: boolean;
-  trial_minutes: number;
+  /** A trial's length when its contract sets none; null: none (goal 079). */
+  trial_minutes: number | null;
   max_turns: number | null;
   promotion: "auto" | "owner_approval";
   /** The judge's share of a rig's GPU set, if set on the rig; null: its default. */
@@ -355,7 +461,7 @@ function readSettings(v: unknown): RigSettingsView | null {
     teachers: b("teachers"),
     review: b("review"),
     exports: b("exports"),
-    trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : 20,
+    trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : null,
     max_turns: typeof o.max_turns === "number" ? o.max_turns : null,
     promotion: o.promotion === "auto" ? "auto" : "owner_approval",
     judge_gpus: typeof o.judge_gpus === "number" ? o.judge_gpus : null,
@@ -482,6 +588,41 @@ export interface RigCheckView {
   summary: string | null;
   /** A check that passed with a caveat says it here (the smoke check on noisy timing). */
   note: string | null;
+  /** The rig's id for this run of the check (rig_check's answer names it), or null. */
+  id: string | null;
+}
+
+/**
+ * Each check's newest run, from the rig's rig_check_started and rig_check_finished events: the
+ * rig's view, and a check's row on the dashboard, which reads only these events (goal 080).
+ */
+export function foldCheck(
+  checks: Record<string, RigCheckView>,
+  e: { at: string; kind: string; body: unknown },
+): void {
+  const b = (e.body ?? {}) as Record<string, unknown>;
+  const check = String(b.check ?? "");
+  const id = typeof b.id === "string" ? b.id : null;
+  if (e.kind === "rig_check_started")
+    checks[check] = {
+      check,
+      started_at: e.at,
+      finished_at: null,
+      ok: null,
+      summary: null,
+      note: null,
+      id,
+    };
+  else if (e.kind === "rig_check_finished")
+    checks[check] = {
+      check,
+      started_at: checks[check]?.started_at ?? e.at,
+      finished_at: e.at,
+      ok: b.ok === true,
+      summary: typeof b.summary === "string" ? b.summary : null,
+      note: typeof b.note === "string" ? b.note : null,
+      id: id ?? checks[check]?.id ?? null,
+    };
 }
 
 export function rigEvents(
@@ -528,6 +669,7 @@ export function rigView(
         mode: null,
         seed_repo: null,
         promotion: null,
+        ask_owner: {},
         status: "unknown",
         pause_reason: null,
         champion: [],
@@ -539,6 +681,7 @@ export function rigView(
           epochs: 0,
           planner_valid: 0,
           fallbacks: 0,
+          research_rounds: 0,
           epochs_with_violations: 0,
           trials: 0,
           submitted: 0,
@@ -547,10 +690,12 @@ export function rigView(
           duplicates: 0,
           attempts: 0,
         },
+        agents_stopped: null,
         research: null,
         goals: [],
         goals_at: null,
         goals_seq: null,
+        goal_checks: null,
         audits: [],
         promotion_waits: {},
         reviews: [],
@@ -596,30 +741,10 @@ export function rigView(
   for (const e of events) {
     const b = e.body ?? {};
     switch (e.kind) {
-      case "rig_check_started": {
-        const check = String(b.check ?? "");
-        checks[check] = {
-          check,
-          started_at: e.at,
-          finished_at: null,
-          ok: null,
-          summary: null,
-          note: null,
-        };
+      case "rig_check_started":
+      case "rig_check_finished":
+        foldCheck(checks, e);
         break;
-      }
-      case "rig_check_finished": {
-        const check = String(b.check ?? "");
-        checks[check] = {
-          check,
-          started_at: checks[check]?.started_at ?? e.at,
-          finished_at: e.at,
-          ok: b.ok === true,
-          summary: typeof b.summary === "string" ? b.summary : null,
-          note: typeof b.note === "string" ? b.note : null,
-        };
-        break;
-      }
       case "run_created": {
         const v = inst(String(e.subject));
         v.campaign = String(b.campaign ?? "");
@@ -636,6 +761,15 @@ export function rigView(
             : undefined;
         v.promotion =
           b.promotion === "auto" || b.promotion === "owner_approval" ? b.promotion : null;
+        {
+          const ask = (b.ask_owner ?? {}) as Record<string, unknown>;
+          v.ask_owner = {
+            ...(typeof ask.above_gain === "number" ? { above_gain: ask.above_gain } : {}),
+            ...(ask.declared_flaws === true ? { declared_flaws: true } : {}),
+            ...(ask.reviews === true ? { reviews: true } : {}),
+            ...(ask.not_possible === true ? { not_possible: true } : {}),
+          };
+        }
         v.status = "running";
         v.champion.push({
           seq: 1,
@@ -646,6 +780,21 @@ export function rigView(
           cumulative: 1,
           reopened: false,
         });
+        break;
+      }
+      case "agents_stopped": {
+        const v = inst(String(e.subject));
+        v.agents_stopped = {
+          kind: String(b.kind ?? ""),
+          words: String(b.words ?? ""),
+          said: String(b.said ?? b.kind ?? ""),
+          by: String(b.by ?? ""),
+          since: e.at,
+        };
+        break;
+      }
+      case "agents_resumed": {
+        inst(String(e.subject)).agents_stopped = null;
         break;
       }
       case "run_status": {
@@ -689,6 +838,16 @@ export function rigView(
               )
             : [],
           files_total: typeof b.files_total === "number" ? b.files_total : 0,
+          violations: Array.isArray(b.violations)
+            ? b.violations.slice(0, 20).map((v) => clip(String(v), 300))
+            : [],
+          violations_total:
+            typeof b.violations_total === "number"
+              ? b.violations_total
+              : Array.isArray(b.violations)
+                ? b.violations.length
+                : 0,
+          held_out: null,
         };
         attempts.set(a.id, a);
         inst(a.run).attempts.push(a);
@@ -723,6 +882,15 @@ export function rigView(
             confirmDelta.set(a.id, b.delta);
           }
         }
+        break;
+      }
+      case "held_out_checked": {
+        const a = attempts.get(String(e.subject));
+        if (a) a.held_out = heldOutView(e.at, b);
+        break;
+      }
+      case "goal_checks": {
+        inst(String(e.subject)).goal_checks = parseGoalChecks(b);
         break;
       }
       case "champion_promoted": {
@@ -785,7 +953,9 @@ export function rigView(
         const a = v.agents;
         a.epochs++;
         if (b.planner_valid === true) a.planner_valid++;
-        if (b.source === "fallback") a.fallbacks++;
+        // A research round is planned by the research plan on purpose: not a fallback (goal 079).
+        if (b.plan === "research") a.research_rounds++;
+        else if (b.source === "fallback") a.fallbacks++;
         if (Number(b.raw_violations ?? 0) > 0) a.epochs_with_violations++;
         break;
       }
@@ -858,6 +1028,17 @@ export function rigView(
           expected_seq: typeof b.expected_seq === "number" ? b.expected_seq : null,
           reasons: null,
         });
+        break;
+      }
+      case "audit_skipped": {
+        // No auditor decides it (goal 079): the run's own rules did.
+        const a = inst(String(b.run))
+          .audits.filter((x) => x.attempt === e.subject)
+          .at(-1);
+        if (a && a.decision === null) {
+          a.decision = "skipped";
+          a.reasons = String(b.why ?? "this rig has no auditor");
+        }
         break;
       }
       case "audit_decided":
@@ -1028,7 +1209,8 @@ export function rigView(
       case "experiment_edited":
       case "experiment_dropped":
       case "experiment_assigned":
-      case "experiment_finished": {
+      case "experiment_finished":
+      case "experiment_returned": {
         queueEvent(inst(String(e.subject)), e);
         break;
       }
@@ -1392,6 +1574,8 @@ function queueEvent(v: RunView, e: StoredEvent): void {
       dropped_why: null,
       dropped_by: null,
       from_run: str("from_run") ?? null,
+      cause: null,
+      returns: 0,
       at: e.at,
       updated_at: e.at,
     };
@@ -1434,6 +1618,18 @@ function queueEvent(v: RunView, e: StoredEvent): void {
       x.lane = str("lane") ?? x.lane;
       x.attempt = str("attempt") ?? null;
       x.result = str("result") ?? str("stopped") ?? null;
+      x.cause = str("cause") ?? null;
+      break;
+    // Its trial never really tried it (goal 079): the same experiment, back at the top.
+    case "experiment_returned":
+      x.state = "queued";
+      x.lane = null;
+      x.trial = null;
+      x.attempt = null;
+      x.result = null;
+      x.cause = str("cause") ?? null;
+      x.returns = Number(b.returns) || x.returns + 1;
+      place(x, b.position ?? "top");
       break;
   }
 }

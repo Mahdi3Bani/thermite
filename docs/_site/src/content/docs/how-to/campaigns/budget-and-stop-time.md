@@ -6,7 +6,7 @@ sidebar:
   order: 7
 ---
 
-Thermite runs a campaign until its job is done: a hill climb until you stop it, a goal campaign until its goals are met, and a research campaign until its time is up. Nothing else stops it unless you set a limit. [Why Thermite runs until the job is done](../../explanation/runs-until-done.md) says why.
+Thermite runs a campaign until its job is done: a hill climb until you stop it, a goal campaign until its goals are met, and a research campaign until its `max_duration`, or, without one, until you stop it. Nothing else stops it unless you set a limit. [Why Thermite runs until the job is done](../../explanation/runs-until-done.md) says why.
 
 Set a limit when you want one, and always before agents use a paid model key.
 
@@ -28,7 +28,7 @@ Where `llm_usd` can't count what you spend, set a stop time, and set a spending 
 
 ## Set a stop time on the dashboard
 
-On **Campaigns › New campaign**, step **4 Where it runs**, open **Advanced** and enter the hours in **Stop after (hours)**, such as `48`. Empty means no limit. The page has no field for money or device hours: for those, write a contract.
+On **Campaigns › New campaign**, step **5 Where it runs**, open **Advanced** and enter the hours in **Stop after (hours)**, such as `48`. Empty means no limit. The page has no field for money or device hours: for those, write a contract.
 
 ## Set limits in the contract
 
@@ -62,7 +62,7 @@ When a limit is reached, no new trial starts. The trials that are running go on 
 
 The run's state is **Paused**, and its **History** says, for example, `Run sort-speed-1 paused: the wall-time budget is spent.` Its queued judge jobs wait too. Nothing is lost: the champion and every verdict stay.
 
-A research campaign ends by its own time instead: after `max_duration` of running time, or `min_duration` when there is no `max_duration`, it writes its final report and closes with `the research window is over`.
+A research campaign ends by its own time instead: after `max_duration` of running time it writes its final report and closes with `the research window is over`. Without `max_duration` it runs until you stop it: `min_duration` is a floor, never a stop. Time its agents could not work, stopped by the model provider or waiting for its rate limit, does not count.
 
 ## Go on after a limit
 
