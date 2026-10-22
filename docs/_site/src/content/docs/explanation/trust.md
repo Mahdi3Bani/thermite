@@ -140,7 +140,9 @@ The pod counts what it refused and reports the count in the next exchange. The r
 
 ### Enrollment
 
-RunPod's console and API show a pod's environment, so no long-lived secret goes there. For each pod, control mints the rig: its ID, a random path, a key of its own for the rig (what the pod sends is sealed to it) and a **one-time enrollment code**. The pod's environment gets those public values, the SHA-256 of control's command-signing public key, and the code ([the settings](../reference/settings.md#pull-mode)).
+RunPod's console and API show a pod's environment, so no secret that reaches beyond the pod goes there. For each pod, control mints the rig: its ID, a random path, a key of its own for the rig (what the pod sends is sealed to it) and a **one-time enrollment code**. The pod's environment gets those public values, the SHA-256 of control's command-signing public key, and the code ([the settings](../reference/settings.md#pull-mode)).
+
+It also gets one secret that lasts as long as the pod: the key the pod's [state snapshot](../reference/harness-image.md#where-the-state-lives) is sealed with. Control makes a new one for each pod and keeps no copy, so it opens nothing but that pod's snapshot. It must outlive a stop, as the snapshot does, and RunPod keeps a stopped pod's settings. It keeps the snapshot from the rig's own parts and agents, who can all read the pod's volume; it does not keep it from RunPod or from whoever can read the account's pods, who can read the pod's disk anyway. In the pod, only root has it: the broker takes it out of its environment before it starts anything.
 
 1. At its first start, the pod makes its own keys: one to sign its answers and one that control seals to. They stay in its state, readable only by the supervisor's user.
 2. Control's first request brings control's public key, a proof that control holds the code, and the rig's settings. The pod takes the key only if its SHA-256 is the one in its environment, and the request only if it is signed with that key. The proof is an HMAC bound to the rig, the pod and the request's nonce, so the code itself never crosses the network.

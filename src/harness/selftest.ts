@@ -33,7 +33,14 @@ import {
 } from "./broker/one-container.ts";
 import { listProcesses, type Proc } from "./broker/process.ts";
 import { IDS, type Role, roleIds, walk } from "./broker/runner.ts";
-import { SNAPSHOT_RECORD, type SnapshotRecord } from "./broker/snapshot.ts";
+import { SNAPSHOT_KEY_VAR } from "./broker/seal.ts";
+import {
+  inspectSnapshotFolder,
+  lookWords,
+  SNAPSHOT_RECORD,
+  type SnapshotRecord,
+  UNSEALED_DIRS,
+} from "./broker/snapshot.ts";
 import { copyForRun } from "./judge/measure.ts";
 import { writeAtomic } from "./research/folder.ts";
 
@@ -44,7 +51,8 @@ import { writeAtomic } from "./research/folder.ts";
  * `readable` or `reachable` probe, which must succeed. In the one-container rig image it also
  * checks the container as a whole (containerChecks): the supervisor's user, its GPU access,
  * set-id files, RunPod's variables, the enrollment code, in pull mode control's key, and the state
- * snapshot's folder (THERMITE_STATE_SNAPSHOT_DIR), which no role may list or write in either.
+ * snapshot (THERMITE_STATE_SNAPSHOT_DIR): its folder holds nothing but sealed files, and only
+ * root has its key. Each role probes the folder and the key too.
  */
 
 export interface Probe {
@@ -59,9 +67,14 @@ export interface Probe {
     | "readable"
     | "reachable"
     | "gpus"
-    | "runpod";
+    | "runpod"
+    | "sealed"
+    | "environ";
   path: string;
-  /** For `gpus`: the only card UUIDs nvidia-smi may list, comma-separated. */
+  /**
+   * For `gpus`: the only card UUIDs nvidia-smi may list, comma-separated. For `environ`: the
+   * variable no environment the role can read may hold.
+   */
   expect?: string;
 }
 
@@ -99,14 +112,77 @@ export function isFailure(result: string): boolean {
 /**
  * The probe script each role runs (node -e, the probes as JSON in argv[1]). `runpod` lists /proc
  * (the probe's `path`): RunPod's variables must be in neither the role's own environment nor any
- * process environment it can read.
+ * process environment it can read; `environ` does the same for one variable (`expect`). `sealed`
+ * tries to list the state snapshot's folder and to write an empty file in it (removed again):
+ * refused, as it must be where the volume keeps permissions, or, where it does not, "open,
+ * sealed" when the folder holds only what a sealed snapshot holds, as inspectSnapshotFolder
+ * (broker/snapshot.ts) looks, and "FOUND" with the first thing that is not.
  */
 export const PROBE = `
 const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
 const probes = JSON.parse(process.argv[1]);
 const out = {};
+const sealedLook = (dir, names) => {
+  let manifest = false, files = 0;
+  for (const n of names) {
+    const path = dir + "/" + n;
+    let st;
+    try { st = fs.lstatSync(path); } catch { continue; }
+    if (st.isDirectory())
+      return { problem: (${JSON.stringify(UNSEALED_DIRS)}.includes(n) ? "an unsealed snapshot an older image left: " : "a folder a sealed snapshot never holds: ") + n };
+    if (!st.isFile()) return { problem: "a link or special file a sealed snapshot never holds: " + n };
+    const kind = n === "manifest" || n === "manifest.new" ? "M"
+      : /^[0-9a-f]{64}$/.test(n) || /^\\.new-[0-9a-f]{32}$/.test(n) ? "B"
+      : /^probe-\\d+$/.test(n) ? "P" : "";
+    if (!kind) return { problem: "a name a sealed snapshot never uses: " + n };
+    if (st.size === 0) continue;
+    if (kind === "P") return { problem: "a file that is not sealed: " + n };
+    let head;
+    try {
+      const fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+      try { const b = Buffer.alloc(9); head = b.subarray(0, fs.readSync(fd, b, 0, 9, 0)); } finally { fs.closeSync(fd); }
+    } catch { continue; }
+    if (head.toString("latin1") !== "THMSEAL1" + kind) return { problem: "a file that is not sealed: " + n };
+    if (n === "manifest") manifest = true;
+    else if (/^[0-9a-f]{64}$/.test(n)) files++;
+  }
+  const count = files + " sealed file" + (files === 1 ? "" : "s");
+  return { words: !manifest && !files ? "no snapshot yet" : manifest ? "the manifest and " + count : count + " and no manifest" };
+};
 for (const p of probes) {
+  if (p.op === "environ") {
+    const found = Object.keys(process.env).filter((k) => k === p.expect).map((k) => k + " (own)");
+    try {
+      for (const pid of fs.readdirSync(p.path).filter((d) => /^\\d+$/.test(d))) {
+        let text;
+        try {
+          text = fs.readFileSync(p.path + "/" + pid + "/environ", "latin1");
+        } catch {
+          continue;
+        }
+        if (text.split("\\0").some((kv) => kv.startsWith(p.expect + "="))) found.push(p.expect + " (pid " + pid + ")");
+      }
+      out[p.name] = found.length ? "FOUND " + found.slice(0, 8).join(", ") : "none";
+    } catch (e) {
+      out[p.name] = "failed: " + (e.code || String(e));
+    }
+    continue;
+  }
+  if (p.op === "sealed") {
+    let names, list = "", create = "";
+    try { names = fs.readdirSync(p.path).sort(); } catch (e) { list = e.code || String(e); }
+    const mine = p.path + "/probe-" + process.getuid();
+    try {
+      fs.writeFileSync(mine, "", { flag: "wx" });
+      try { fs.rmSync(mine); } catch {}
+    } catch (e) { create = e.code || String(e); }
+    if (!names && create) { out[p.name] = list; continue; }
+    const look = names ? sealedLook(p.path, names) : { words: "can't list it" };
+    const can = names && !create ? "lists it and writes in it" : names ? "lists it" : "writes in it";
+    out[p.name] = look.problem ? "FOUND " + look.problem : "open, sealed: " + can + "; " + look.words;
+    continue;
+  }
   if (p.op === "runpod") {
     const found = Object.keys(process.env).filter((k) => k.startsWith("RUNPOD_")).map((k) => k + " (own)");
     try {
@@ -510,12 +586,21 @@ export function controlKeyCheck(
 }
 
 /**
- * The state snapshot's folder (THERMITE_STATE_SNAPSHOT_DIR), as the broker found it at start
- * (its record next to its socket): "closed to thermite, supervisor, agent-1 (owner 0:0, mode
- * 700)" when the controller's user, the supervisor's and a role were each refused listing it and
- * writing in it; otherwise "OPENED: …", "failed: …" or "MISSING: …". The roles probe it too.
+ * The state snapshot (THERMITE_STATE_SNAPSHOT_DIR): the broker's record of its folder at start
+ * (next to its socket), and the folder now, where this process may list it. The folder must hold
+ * nothing but the sealed manifest and sealed files (inspectSnapshotFolder): a plaintext file, an
+ * unsealed snapshot or any other name fails ("FOUND …"). Then, with the launch's key:
+ *
+ * - "sealed, closed to thermite, supervisor, agent-1 (owner 0:0, mode 700)", when each of those
+ *   users was refused listing it and writing in it;
+ * - "open, sealed: agent-1 lists it and writes in it; … (owner …, mode …)", where the volume lets
+ *   them in, as RunPod's does: not a failure, since nothing there can be read or changed unseen.
+ *
+ * Without a key, "no snapshot: <why>" (not a failure: nothing is written there). Each ends with
+ * what the folder holds, where this process could list it. "MISSING: …" without a record, and
+ * "failed: …" when root could not make the folder.
  */
-export function stateSnapshotCheck(brokerDir: string): string {
+export function stateSnapshotCheck(brokerDir: string, dir?: string): string {
   let r: SnapshotRecord;
   try {
     r = JSON.parse(readFileSync(join(brokerDir, SNAPSHOT_RECORD), "utf8")) as SnapshotRecord;
@@ -523,17 +608,45 @@ export function stateSnapshotCheck(brokerDir: string): string {
     return `MISSING: no record from the broker (${(err as NodeJS.ErrnoException).code ?? String(err)})`;
   }
   const users = Object.entries(r.users ?? {});
-  if (r.closed && users.length)
-    return `closed to ${users.map(([u]) => u).join(", ")} (owner ${r.owner}, mode ${r.mode})`;
-  const open = users.filter(([, v]) => v.startsWith("OPENED"));
-  if (open.length) return `OPENED: ${open.map(([u, v]) => `${u} ${v.slice(8)}`).join("; ")}`;
-  return `failed: ${users.map(([u, v]) => `${u} ${v}`).join("; ") || "no user was probed"}`;
+  if (!users.length || users.some(([, v]) => v.startsWith("failed")))
+    return `failed: ${users.map(([u, v]) => `${u} ${v}`).join("; ") || "no user was probed"}`;
+  let holds = "";
+  try {
+    const look = inspectSnapshotFolder(dir ?? r.dir);
+    if (look.problem) return `FOUND ${look.problem}`;
+    holds = `; holds ${lookWords(look)}`;
+  } catch {
+    // closed to this process: root alone writes there
+  }
+  const who = `(owner ${r.owner}, mode ${r.mode})`;
+  if (r.sealed === false) return `no snapshot: ${r.off ?? "no snapshot key"} ${who}${holds}`;
+  if (r.closed) return `sealed, closed to ${users.map(([u]) => u).join(", ")} ${who}${holds}`;
+  const open = users
+    .filter(([, v]) => v.startsWith("OPENED"))
+    .map(([u, v]) => `${u} ${v.slice("OPENED: ".length)}`);
+  return `open, sealed: ${open.join("; ")} ${who}${holds}`;
+}
+
+/**
+ * The state snapshot's key (THERMITE_STATE_SNAPSHOT_KEY) in the rig's processes: root's alone.
+ * The broker takes it out of its environment before it starts anything, so no part, no role and
+ * nothing they start has it. "none (read N of M processes)" or "FOUND".
+ */
+export function snapshotKeyCheck(procDir = "/proc"): string {
+  const procs = rigProcesses(procDir);
+  const found = procs
+    .filter(
+      (p) => p.uid !== 0 && (p.environ ?? []).some((kv) => kv.startsWith(`${SNAPSHOT_KEY_VAR}=`)),
+    )
+    .map((p) => `pid ${p.pid} (uid ${p.uid})`);
+  if (found.length) return `FOUND ${SNAPSHOT_KEY_VAR} in ${found.slice(0, 8).join(", ")}`;
+  return `none (read ${procs.filter((p) => p.environ).length} of ${procs.length} processes)`;
 }
 
 /**
  * The one-container image's checks of the container as a whole: the supervisor's user, its GPU
  * access, set-id files, RunPod's variables and the enrollment code; in pull mode, also the key
- * the harness trusts; with a state snapshot, its folder.
+ * the harness trusts; with a state snapshot, its folder and its key.
  */
 export async function containerChecks(opts: {
   brokerDir: string;
@@ -555,7 +668,12 @@ export async function containerChecks(opts: {
     ...(opts.controlKey
       ? { "control-key": controlKeyCheck(opts.controlKey.file, opts.controlKey.sha256) }
       : {}),
-    ...(opts.snapshotDir ? { "state-snapshot": stateSnapshotCheck(opts.brokerDir) } : {}),
+    ...(opts.snapshotDir
+      ? {
+          "state-snapshot": stateSnapshotCheck(opts.brokerDir, opts.snapshotDir),
+          "snapshot-key": snapshotKeyCheck(opts.procDir),
+        }
+      : {}),
   };
 }
 
@@ -720,11 +838,12 @@ export async function isolationSelftest(opts: {
     if (pod.controlKey)
       probes.push({ name: "control-key-write", op: "access", path: pod.controlKey.file });
   }
-  // The state's snapshot on the host's volume: root's alone, whatever owner the volume shows.
+  // The state's snapshot on the host's volume: closed to every role where the volume keeps
+  // permissions; where it does not, it holds nothing but sealed files. No role has its key.
   if (opts.snapshotDir)
     probes.push(
-      { name: "state-snapshot-list", op: "list", path: opts.snapshotDir },
-      { name: "state-snapshot-create", op: "create", path: opts.snapshotDir },
+      { name: "state-snapshot", op: "sealed", path: opts.snapshotDir },
+      { name: "snapshot-key", op: "environ", path: "/proc", expect: SNAPSHOT_KEY_VAR },
     );
   const kitFile = firstKitFile(join(opts.stateDir, "kits"));
   if (kitFile) probes.push({ name: "kit-by-path", op: "read", path: kitFile });

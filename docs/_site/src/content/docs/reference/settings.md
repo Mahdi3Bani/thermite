@@ -117,11 +117,12 @@ The [one-container rig image](harness-image.md#the-one-container-rig-image) sets
 
 ### The state's snapshot
 
-Where a host empties the container's disk when it stops, as RunPod does, the broker keeps the rig's state on that disk and a snapshot of it on the host's volume. The [one-container rig image](harness-image.md#where-the-state-lives) sets `THERMITE_STATE_SNAPSHOT_DIR`; compose and Kubernetes rigs keep their state on volumes and take no snapshot.
+Where a host empties the container's disk when it stops, as RunPod does, the broker keeps the rig's state on that disk and a sealed snapshot of it on the host's volume. The [one-container rig image](harness-image.md#where-the-state-lives) sets `THERMITE_STATE_SNAPSHOT_DIR`, and control gives each pod it launches on RunPod its `THERMITE_STATE_SNAPSHOT_KEY`. Compose and Kubernetes rigs keep their state on volumes and take no snapshot.
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_STATE_SNAPSHOT_DIR` | path | not set: no snapshot | no | The folder, on the host's volume, where root keeps a snapshot of the harness's state and outbox (in the one-container rig image also the inbox, the supervisor's state and root's copy of its token). Root makes it with mode 0700 and never gives anything in it another owner. Every live folder must be outside it, or the broker stops with `fatal: the state snapshot can't be set up`. At a start on an empty disk the broker restores the newest snapshot. A broker that is not root takes and restores none |
+| `THERMITE_STATE_SNAPSHOT_DIR` | path | not set: no snapshot | no | The folder, on the host's volume, where root keeps a snapshot of the harness's state and outbox (in the one-container rig image also the inbox, the supervisor's state and root's copy of its token). Root makes it with mode 0700 and never gives anything in it another owner. Every live folder must be outside it, or the broker stops with `fatal: the state snapshot can't be set up`. At a start on an empty disk the broker restores the newest snapshot that verifies. A broker that is not root takes and restores none |
+| `THERMITE_STATE_SNAPSHOT_KEY` | 32 bytes in base64url (43 characters) | not set: no snapshot | secret | A launch value: the key the snapshot is sealed with. Control makes a new one for each pod it launches on RunPod and puts it in the pod's environment, with the other [launch values](#pull-mode); control keeps no copy, and RunPod keeps it in the pod's settings while the pod is stopped. The broker reads it at start and takes it out of its own environment before it starts anything: no part, no role and no program they start has it. Without it, or with a value that is not 32 bytes in base64url, the broker logs `no snapshot key: no snapshot is taken or restored` with why, and the rig's state does not outlive a stop |
 | `THERMITE_STATE_SNAPSHOT_MINUTES` | minutes | `5` | no | How often the broker takes a snapshot. It also takes one after each export, after enrollment and at a stop. Fractions work; 0 or less stops the broker with `fatal: a snapshot setting is not valid` |
 | `THERMITE_STATE_SNAPSHOT_STOP_SECONDS` | seconds | `8` | no | How long a stop waits for its snapshot before the broker stops the two parts. Keep it, and the seconds the parts need to stop, within the time the host gives a stop. A snapshot cut short leaves the last complete one |
 
@@ -229,7 +230,7 @@ The Codex CLI speaks only OpenAI's Responses API, so `codex` goes only with `THE
 
 ### Pull mode
 
-In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code, and puts them in the pod's environment when the owner [launches a rig on RunPod](rest-api.md#rigs-on-a-gpu-cloud). A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
+In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code, and puts them in the pod's environment when the owner [launches a rig on RunPod](rest-api.md#rigs-on-a-gpu-cloud), with the key the pod's [state snapshot](#the-states-snapshot) is sealed with (`THERMITE_STATE_SNAPSHOT_KEY`), which only the broker reads. A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
@@ -286,7 +287,7 @@ Two commands read variables. `thermite doctor` reads `THERMITE_CONTROL_PORT`, th
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
 - the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`;
 - in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`; in pull mode also `THERMITE_CONTROL_PUBKEY_FILE` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, to check the key the harness trusts;
-- `THERMITE_STATE_SNAPSHOT_DIR`, the state's snapshot folder, which no role may list or write in.
+- `THERMITE_STATE_SNAPSHOT_DIR`, the state's snapshot folder, which must hold only sealed files, and which no role may list or write in where the volume keeps file modes.
 
 ## Rigs that control sets up
 

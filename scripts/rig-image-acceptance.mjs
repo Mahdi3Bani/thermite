@@ -9,11 +9,13 @@
 //     settings from control reach the controller, but not the enrollment code;
 //   - the rig's reports reach control through control's pulls only;
 //   - the state's snapshot folder (/workspace/thermite; on RunPod, the volume) is root's, mode
-//     0700, closed to both parts and the roles, and root takes a snapshot right after enrollment;
+//     0700, closed to both parts and the roles, and root takes a snapshot right after enrollment,
+//     sealed with the launch's key: the manifest and sealed files only, nothing in plain text;
+//   - the snapshot key is in no part's environment and nowhere in the rig's output;
 //   - the isolation selftest passes, both the harness's own check at start and one run as root,
 //     with the container checks (the supervisor's user, its GPU access, set-id files, RunPod's
-//     variables, the enrollment code, control's key, the snapshot folder) and the supervisor's
-//     places and the snapshot folder probed for every role;
+//     variables, the enrollment code, control's key, the snapshot folder and its key) and the
+//     supervisor's places, the snapshot folder and its key probed for every role;
 //   - a key the supervisor writes after enrollment changes nothing the harness trusts;
 //   - a supervisor or a controller that exits starts again;
 //   - a stop takes a snapshot of the state, with the ledger, then ends both parts cleanly, with
@@ -251,6 +253,21 @@ try {
     "root took a snapshot of the state right after enrollment",
     JSON.stringify(enrolledSnap),
   );
+  // Sealed: the manifest and files named by a keyed hash, each sealed; nothing in plain text.
+  const onVolume = JSON.parse(
+    inside(
+      `const fs=require("fs");const d=${JSON.stringify(SNAPSHOT)};const out={names:[],plain:[]};for(const n of fs.readdirSync(d)){out.names.push(n);const b=fs.readFileSync(d+"/"+n);if(b.length&&(b.subarray(0,8).toString("latin1")!=="THMSEAL1"||b.includes("PRIVATE KEY")||b.includes("SQLite format")))out.plain.push(n)}console.log(JSON.stringify(out))`,
+    ),
+  );
+  // A snapshot after an export may be under way: its files being sealed are there too.
+  check(
+    onVolume.names.includes("manifest") &&
+      onVolume.names.length > 2 &&
+      onVolume.names.every((n) => /^(manifest(\.new)?|[0-9a-f]{64}|\.new-[0-9a-f]{32})$/.test(n)) &&
+      onVolume.plain.length === 0,
+    "the snapshot is sealed: the manifest and sealed files only, nothing in plain text",
+    `${onVolume.names.length} names; not sealed: ${onVolume.plain.join(", ")}`,
+  );
   const tokenMade = logLines("made the token between the supervisor and the harness").length;
   check(tokenMade === 1, "the broker made the token between the two parts once");
   const keyNow = () => ({
@@ -271,14 +288,30 @@ try {
   ).split("\n");
   check(
     ctlEnv.includes("THERMITE_TARGET_CLASS=rig-image-check") &&
-      !ctlEnv.some((k) => /^(THERMITE_TUNNEL_(ENROLL_CODE|PREFIX|PORT)|RUNPOD_)/.test(k)),
-    "the controller has the rig's settings from control, and no code, path or RunPod variable",
-    ctlEnv.filter((k) => k.startsWith("THERMITE_TUNNEL") || k.startsWith("RUNPOD")).join(", "),
+      !ctlEnv.some((k) =>
+        /^(THERMITE_TUNNEL_(ENROLL_CODE|PREFIX|PORT)|THERMITE_STATE_SNAPSHOT_KEY|RUNPOD_)/.test(k),
+      ),
+    "the controller has the rig's settings from control, and no code, path, snapshot key or RunPod variable",
+    ctlEnv
+      .filter((k) => /^(THERMITE_TUNNEL|THERMITE_STATE_SNAPSHOT_KEY|RUNPOD)/.test(k))
+      .join(", "),
+  );
+  // The supervisor's environment, read as its own user: no snapshot key either.
+  const supervisorPid = JSON.parse(pidsOf("dist/supervisor/main.js"))[0];
+  const supEnv = inside(
+    `process.stdout.write(require("fs").readFileSync("/proc/${supervisorPid}/environ","latin1").split("\\0").map(kv=>kv.split("=")[0]).join("\\n"))`,
+    "10001:10001",
+  ).split("\n");
+  check(
+    supEnv.includes("THERMITE_SUPERVISOR_HOME") && !supEnv.includes("THERMITE_STATE_SNAPSHOT_KEY"),
+    "the supervisor has no snapshot key",
+    supEnv.filter((k) => k.startsWith("THERMITE_STATE")).join(", "),
   );
   check(
     !logs().includes("made-up-key-for-the-test") &&
-      !logs().includes(minted.env.THERMITE_TUNNEL_ENROLL_CODE),
-    "RunPod's API key and the enrollment code appear nowhere in the rig's output",
+      !logs().includes(minted.env.THERMITE_TUNNEL_ENROLL_CODE) &&
+      !logs().includes(minted.env.THERMITE_STATE_SNAPSHOT_KEY),
+    "RunPod's API key, the enrollment code and the snapshot key appear nowhere in the rig's output",
   );
   // The rig's reports reach control, through control's pulls only.
   let reported = false;
@@ -307,7 +340,10 @@ try {
       /^none \(read [1-9]/.test(startContainer["runpod-variables"] ?? "") &&
       /^none \(read [1-9]/.test(startContainer["enroll-code"] ?? "") &&
       startContainer["control-key"] === "root's, the key the launch named" &&
-      /^closed to thermite, supervisor, agent-1 /.test(startContainer["state-snapshot"] ?? ""),
+      /^sealed, closed to thermite, supervisor, agent-1 /.test(
+        startContainer["state-snapshot"] ?? "",
+      ) &&
+      /^none \(read [1-9]/.test(startContainer["snapshot-key"] ?? ""),
     "it checked the container, from the controller's side too",
     JSON.stringify(startContainer),
   );
@@ -352,9 +388,16 @@ try {
     c["supervisor-gpu"],
   );
   check(
-    c["state-snapshot"] === "closed to thermite, supervisor, agent-1 (owner 0:0, mode 700)",
-    "neither part nor a role may open the state's snapshot folder",
+    /^sealed, closed to thermite, supervisor, agent-1 \(owner 0:0, mode 700\); holds the manifest and [1-9]\d* sealed files$/.test(
+      c["state-snapshot"] ?? "",
+    ),
+    "the snapshot is sealed, and neither part nor a role may open its folder",
     c["state-snapshot"],
+  );
+  check(
+    /^none \(read [1-9]/.test(c["snapshot-key"] ?? ""),
+    "no process of the rig but root's holds the snapshot key",
+    c["snapshot-key"],
   );
   const roles = report.roles ?? {};
   const mustRefuse = [
@@ -364,18 +407,17 @@ try {
     "inbox-list",
     "supervisor-environ",
     "control-key-write",
-    "state-snapshot-list",
-    "state-snapshot-create",
+    "state-snapshot",
   ];
   const leaks = Object.entries(roles).flatMap(([role, r]) => [
     ...mustRefuse.filter((p) => !/^E[A-Z]+$/.test(r[p] ?? "")).map((p) => `${role} ${p}: ${r[p]}`),
-    ...(r["runpod-variables"] === "none"
-      ? []
-      : [`${role} runpod-variables: ${r["runpod-variables"]}`]),
+    ...["runpod-variables", "snapshot-key"]
+      .filter((p) => r[p] !== "none")
+      .map((p) => `${role} ${p}: ${r[p]}`),
   ]);
   check(
     Object.keys(roles).length >= 6 && leaks.length === 0,
-    "no role reaches the supervisor's places, PID 1's environment, the state's snapshot or a RunPod variable",
+    "no role reaches the supervisor's places, PID 1's environment, the state's snapshot, its key or a RunPod variable",
     leaks.slice(0, 6).join("; "),
   );
   if (foreign) {

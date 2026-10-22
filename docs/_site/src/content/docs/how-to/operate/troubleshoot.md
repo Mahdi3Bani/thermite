@@ -180,12 +180,14 @@ To have control apply the images again and wait once more, press **Try the updat
 ### A RunPod rig lost its state over a stop
 
 - **You see:** after **Start the pod**, the rig reports with fresh records, or never reports again because it made new keys that control does not know.
-- **Why:** the rig works on the pod's own disk, which RunPod empties at a stop, and its state comes back from the snapshot on the volume. A start finds none when no snapshot could be taken: the snapshot folder was open to other users, so the rig never wrote it, or the volume was full.
+- **Why:** the rig works on the pod's own disk, which RunPod empties at a stop, and its state comes back from the sealed snapshot on the volume ([Where the state lives](../../reference/harness-image.md#where-the-state-lives)). A start restores nothing when the pod has no snapshot key, when no snapshot could be taken, or when the snapshot did not verify: someone changed it, or it was deleted.
 - **Do:** read **Pod log** ([A rig's page](../../reference/rig-page.md#pod-log)) for the broker's lines about the snapshot:
-  - `the snapshot folder is open to other users: no snapshot is taken or restored`: the volume lets another user into a folder of mode 0700. Its **Isolation** check fails too. Launch the rig on another volume or data center;
+  - `no snapshot key: no snapshot is taken or restored`: the pod was launched without `THERMITE_STATE_SNAPSHOT_KEY`, by a control from before sealing. Terminate the pod and launch the rig again from the current control;
+  - `the snapshot did not verify: <why>`: the manifest or a file in the snapshot was changed, cut short or removed, or it is another pod's. Nothing of it was restored, and the rig started with an empty state. A rig in pull mode then has no keys and can't enroll again by itself, since its one-time code is spent: control can't reach it. Terminate the pod and launch the rig again. Its results that had left the pod are on control. A change to the snapshot means a part or a role wrote on the volume: look at what ran on the rig before the stop;
   - `could not take a snapshot of the rig's state: the last one stays`, with its `error`: free room on the volume, or launch with a larger one;
   - `fatal: could not restore the rig's state from its snapshot`: the start stops, holds the error a minute and tries again, with the snapshot unchanged. Its `error` says why, such as a pod disk too small for the state;
-  - `no snapshot at the stop: the last complete one stays`: the stop gave the rig too little time, and only what changed after the last snapshot is gone.
+  - `no snapshot at the stop: the last complete one stays`: the stop gave the rig too little time, and only what changed after the last snapshot is gone;
+  - `no snapshot yet: the rig starts with a fresh state` after a stop: the snapshot is gone from the volume. As after a refused snapshot, terminate the pod and launch the rig again.
 
 ### The harness stops at start: the ledger is newer
 

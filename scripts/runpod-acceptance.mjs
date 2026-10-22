@@ -12,10 +12,12 @@
 //   enroll     control enrolls the pod through the proxy and pins its keys;
 //   report     the rig's reports reach control through control's pulls only;
 //   stop       the runs are paused, an export leaves the pod for control, the stop takes a
-//              snapshot of the state onto the volume, then the pod stops; nothing on the volume
-//              was ever given an owner but root;
-//   start      the pod runs again: root restores its state from the snapshot on its fresh disk,
-//              and it reports with the same keys, enrollment and token;
+//              snapshot of the state onto the volume, sealed with the pod's snapshot key from
+//              the launch, then the pod stops; nothing on the volume was ever given an owner but
+//              root, and nothing there is in plain text;
+//   start      the pod runs again with its launch values: root restores its state from the
+//              sealed snapshot on its fresh disk, every file verified, and it reports with the
+//              same keys, enrollment and token;
 //   terminate  a full export leaves the pod, then the pod and its volume are removed, and the
 //              rig is retired.
 //
@@ -225,13 +227,14 @@ try {
     JSON.stringify(Object.keys(pod.env).sort()) ===
       JSON.stringify([
         "THERMITE_RIG_ID",
+        "THERMITE_STATE_SNAPSHOT_KEY",
         "THERMITE_TUNNEL_CONTROL_BOX",
         "THERMITE_TUNNEL_CONTROL_KEY_SHA256",
         "THERMITE_TUNNEL_ENROLL_CODE",
         "THERMITE_TUNNEL_PORT",
         "THERMITE_TUNNEL_PREFIX",
       ]),
-    "the launch gave the pod pull mode's values and nothing else",
+    "the launch gave the pod pull mode's values and its snapshot key, and nothing else",
     Object.keys(pod.env).join(", "),
   );
 
@@ -286,7 +289,9 @@ try {
     JSON.stringify(stopSnap),
   );
   // RunPod's volume refuses root a change of owner: nothing on it was ever given one, and its
-  // snapshot folder is root's alone.
+  // snapshot folder is root's alone. RunPod's volume also lets any user in, whatever the modes:
+  // the snapshot is sealed, its manifest and files named by a keyed hash, nothing in plain text
+  // (no private key, no SQLite file, no token).
   const onVolume = (
     await run([
       "run",
@@ -306,6 +311,31 @@ try {
     onVolume.length === 1 && onVolume[0] === "0 700",
     "nothing on the volume belongs to anyone but root, and the snapshot folder is root's, 0700",
     onVolume.join("; "),
+  );
+  const sealedLook = JSON.parse(
+    await run([
+      "run",
+      "--rm",
+      "-v",
+      `${volume(pod)}:/workspace`,
+      "--entrypoint",
+      "node",
+      rigImage,
+      "-e",
+      `const fs=require("fs");const d="/workspace/thermite";const out={names:[],plain:[]};for(const n of fs.readdirSync(d)){out.names.push(n);const b=fs.readFileSync(d+"/"+n);if(b.subarray(0,8).toString("latin1")!=="THMSEAL1"||b.includes("PRIVATE KEY")||b.includes("SQLite format"))out.plain.push(n)}console.log(JSON.stringify(out))`,
+    ]),
+  );
+  check(
+    sealedLook.names.includes("manifest") &&
+      sealedLook.names.every((n) => n === "manifest" || /^[0-9a-f]{64}$/.test(n)) &&
+      sealedLook.plain.length === 0 &&
+      !JSON.stringify(sealedLook).includes(pod.env.THERMITE_STATE_SNAPSHOT_KEY),
+    "the snapshot on the volume is sealed: the manifest and sealed files only, nothing in plain text",
+    `${sealedLook.names.length} names; not sealed: ${sealedLook.plain.join(", ")}`,
+  );
+  check(
+    !pod.stopLog.includes(pod.env.THERMITE_STATE_SNAPSHOT_KEY),
+    "the snapshot key appears nowhere in the pod's output",
   );
   check(stopped.stopped_by === "owner", "the rig shows who stopped it", stopped.stopped_by);
 
@@ -336,9 +366,12 @@ try {
     restored?.parts?.harness?.files > 0 &&
       restored.parts.supervisor?.files > 0 &&
       restored.parts.secrets?.files === 1 &&
+      restored.snapshot === "manifest" &&
+      restored.seq >= 1 &&
       !restored.refused &&
+      !startLog.includes("the snapshot did not verify") &&
       !startLog.includes("made the token between the supervisor and the harness"),
-    "the start restored the rig's state from the snapshot, with the same token",
+    "the start restored the rig's state from the sealed snapshot, every file verified, with the same token",
     JSON.stringify(restored),
   );
 

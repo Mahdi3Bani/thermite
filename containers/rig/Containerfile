@@ -34,8 +34,10 @@ RUN mkdir -p /var/lib/thermite-rig && chmod 0711 /var/lib/thermite-rig
 # THERMITE_ONE_CONTAINER: the broker also starts the supervisor. The state of both parts lives in
 # /var/lib/thermite-rig; scratch stays on the container's disk too. RunPod empties that disk when
 # the pod stops, so root keeps a snapshot of the state on RunPod's volume (/workspace, kept when the
-# pod stops): every few minutes, after each export, after enrollment and at a stop, in a folder no
-# part or role may open, and restores it at a start on an empty disk (src/harness/broker/snapshot.ts).
+# pod stops): every few minutes, after each export, after enrollment and at a stop, and restores it
+# at a start on an empty disk (src/harness/broker/snapshot.ts). RunPod's volume ignores file modes,
+# so the snapshot is sealed: encrypted and authenticated with the key control mints for each pod at
+# its launch (THERMITE_STATE_SNAPSHOT_KEY), which only root holds (src/harness/broker/seal.ts).
 # The harness API answers on loopback only. Pull mode: control connects to the supervisor's port;
 # the supervisor's enrollment brings control's key, and root gives the harness its own copy of it
 # (THERMITE_CONTROL_PUBKEY_FILE, in a folder only root writes) once its SHA-256 is the launch's.

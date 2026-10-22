@@ -70,7 +70,7 @@ These secrets let control set rigs up. They never go to a rig.
 
 A **RunPod key** is sealed too. Control uses it to read the account, to start and stop the test pods you ask for, and to launch, stop, start, restart and terminate rigs on RunPod. It never goes to a pod. RunPod puts a key of its own in every pod's environment; a rig in [pull mode](trust.md#rigs-in-pull-mode) takes it out of its supervisor's environment at start and never uses it.
 
-A rig in pull mode holds no token for control. Its pod makes its own keys at its first start and keeps them where only the supervisor's user can read them; control pins their public halves when the pod enrolls with its one-time code. Everything with a secret in it, such as a model route with its key or a Git access, reaches the pod sealed to the pod's key, so RunPod's proxy never sees it in plain text ([Enrollment](trust.md#enrollment)).
+A rig in pull mode holds no token for control. Its pod makes its own keys at its first start and keeps them where only the supervisor's user can read them; control pins their public halves when the pod enrolls with its one-time code. A snapshot of them, with the rest of the rig's state, sits on the pod's volume, sealed with a key control made for that pod at its launch and kept nowhere but in the pod's settings at RunPod ([Where the state lives](../reference/harness-image.md#where-the-state-lives)). Everything with a secret in it, such as a model route with its key or a Git access, reaches the pod sealed to the pod's key, so RunPod's proxy never sees it in plain text ([Enrollment](trust.md#enrollment)).
 
 ## Git access
 

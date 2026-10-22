@@ -188,7 +188,7 @@ podman build -t thermite-rig --build-arg HARNESS_IMAGE=localhost/thermite-harnes
 
 ### Settings the image sets
 
-The launch gives the rest: control's launch values for [pull mode](settings.md#pull-mode) (the rig's ID, the random path, the SHA-256 of control's key, the rig's key at control and the one-time enrollment code), and RunPod's `RUNPOD_POD_ID`.
+The launch gives the rest: control's launch values for [pull mode](settings.md#pull-mode) (the rig's ID, the random path, the SHA-256 of control's key, the rig's key at control and the one-time enrollment code), the key the state's snapshot is sealed with (`THERMITE_STATE_SNAPSHOT_KEY`), and RunPod's `RUNPOD_POD_ID`.
 
 | Variable | Value | Effect |
 | --- | --- | --- |
@@ -209,26 +209,41 @@ The launch gives the rest: control's launch values for [pull mode](settings.md#p
 
 ### Where the state lives
 
-RunPod empties a pod's container disk when the pod stops, and keeps its volume. The volume refuses even root a change of owner, and the rig keeps its parts and roles apart by owner. So the rig's state lives on the container's disk, in `/var/lib/thermite-rig`, where each part and role keeps its own folders as in the harness image. Root keeps a **snapshot** of it on the volume, and puts it back after a stop:
+RunPod empties a pod's container disk when the pod stops, and keeps its volume. The volume refuses even root a change of owner, and the rig keeps its parts and roles apart by owner. So the rig's state lives on the container's disk, in `/var/lib/thermite-rig`, where each part and role keeps its own folders as in the harness image. Root keeps a **snapshot** of it on the volume, and puts it back after a stop.
+
+RunPod's volume also ignores file modes: a folder of mode 0700 keeps no user out, and every part and role can list it, read in it and write in it. So the snapshot is **sealed** with the key control makes for each pod at its launch (`THERMITE_STATE_SNAPSHOT_KEY`, 32 random bytes), which only root holds:
+
+- **Every file is encrypted and authenticated**, with AES-256-GCM and a fresh nonce for each file. A part or role that reads the volume learns nothing of the ledger, the pod's keys or the token, and a change to any byte is found.
+- **Each file's name is a keyed hash of its content** (HMAC-SHA-256), in hexadecimal: it tells nothing about the file but which files are the same.
+- **The manifest is sealed too.** It lists each file and folder: its part, its path, its owner, mode, time and size, the name of its sealed file and the SHA-256 of its content. A restore checks the manifest and checks each file against it.
+- **One key for each purpose.** The file contents, the names and the manifest each have a key of their own, derived from the snapshot key with HKDF-SHA-256, so a sealed file can't pass for a manifest.
+- **The key is root's alone.** The broker reads it at start and takes it out of its own environment before it starts anything; the process that takes a snapshot gets it on its standard input, never in its arguments, which any user can read. No part, no role and no program they start has it, and the [isolation check](rig-checks.md#the-one-container-image) looks for it in every environment it can read.
 
 | When | Root |
 | --- | --- |
-| At a start, first | Makes the snapshot folder, `THERMITE_STATE_SNAPSHOT_DIR`, its own with mode 0700, and never gives anything in it another owner. As the controller's user, the supervisor's and `agent-1`, it tries to list the folder and to write in it: each must be refused, whatever owner the volume shows. It logs `the snapshot folder is closed to the parts and the roles` with the owner and mode the volume shows, and records what each user met in `snapshot.json` in its socket's folder, for the isolation check. A folder another user can open is never written or read: the broker logs `the snapshot folder is open to other users: no snapshot is taken or restored`, and the isolation check fails. When it can't make the folder at all, it logs `could not make the snapshot folder: no snapshot is taken or restored`, and nothing is kept over a stop |
-| At a start on an empty disk | When the live folders hold nothing, restores the newest complete snapshot into them, as below, and logs `restored the rig's state from its snapshot` with when it was taken, and the files, folders and bytes of each part. With no snapshot yet it logs `no snapshot yet: the rig starts with a fresh state`. When the live folders hold the state already (a restart that kept the disk), it restores nothing, and logs `the live state is on this disk: nothing is restored` |
+| At a start, first | Makes the snapshot folder, `THERMITE_STATE_SNAPSHOT_DIR`, its own with mode 0700, and never gives anything in it another owner. As the controller's user, the supervisor's and `agent-1`, it tries to list the folder and to write in it, and records what each user met in `snapshot.json` in its socket's folder, for the isolation check. It logs `the snapshot folder is closed to the parts and the roles` with the owner and mode the volume shows, or, on a volume that lets them in, `the snapshot folder is open to other users: its snapshot is sealed`. Without the key it logs `no snapshot key: no snapshot is taken or restored` with why, and does neither. When it can't make the folder at all, it logs `could not make the snapshot folder: no snapshot is taken or restored`, and nothing is kept over a stop |
+| At a start on an empty disk | When the live folders hold nothing, restores the newest snapshot whose manifest and every file verify, as below, and logs `restored the rig's state from its snapshot` with its number (`seq`), when it was taken, and the files, folders and bytes of each part. With no snapshot yet it logs `no snapshot yet: the rig starts with a fresh state`. When the live folders hold the state already (a restart that kept the disk), it restores nothing |
 | Every 5 minutes | Takes a snapshot (`THERMITE_STATE_SNAPSHOT_MINUTES`) |
 | After each export | Takes a snapshot once a new export is in the outbox. It looks every 10 seconds |
 | After enrollment | Takes a snapshot at once: the pod's keys and its enrollment are then kept |
 | At a stop | Takes a snapshot on `SIGTERM`, before it tells the two parts to stop, and waits for it up to 8 seconds (`THERMITE_STATE_SNAPSHOT_STOP_SECONDS`). A second signal ends it at once. Either way the last complete snapshot stays |
 
-Each snapshot logs `took a snapshot of the rig's state`, with why (`reason`), the files and bytes it holds, how many it linked and copied, and how long it took. A snapshot holds the harness's state, the outbox, the inbox, the supervisor's state (with the pod's keys, its enrollment and the nonces it has seen) and root's copy of the supervisor's token. It leaves out what is made again at every start or is not done yet: the supervisor's `tmp` and its copy of the token, exports still being written (names starting with `.` in the outbox), and the ledger's write-ahead files.
+Each snapshot logs `took a snapshot of the rig's state`, with why (`reason`), its number (`seq`, one more than the snapshot before it), the files and bytes it holds, how many it sealed now (`sealed`) and how many it found sealed already (`reused`), how many sealed files no manifest names any more it removed (`removed`), and how long it took. A snapshot holds the harness's state, the outbox, the inbox, the supervisor's state (with the pod's keys, its enrollment and the nonces it has seen) and root's copy of the supervisor's token. It leaves out what is made again at every start or is not done yet: the supervisor's `tmp` and its copy of the token, exports still being written (names starting with `.` in the outbox), and the ledger's write-ahead files.
 
 - **The ledger** is copied with SQLite's backup, by a process that runs as the controller's user, never as a plain copy of a file being written. The copy is consistent: a transaction is in it whole or not at all. It is copied first, so an export the ledger records is in the outbox's copy too.
-- **Other files** are copied as they are. A file that has not changed since the last snapshot (the same size and time) is a hard link to that snapshot's copy, so a snapshot copies only what changed. On a volume that refuses hard links every file is copied, and the log line says so.
-- **Only plain files and folders of the part's own user** are copied: a link, a device, a pipe, a socket or another user's file is left out and named in the log line (`skipped_first`).
-- **A new folder, then a rename.** A snapshot is written into `snapshot.new`, its list of files, `SNAPSHOT.json`, last, then renamed to `snapshot`. The snapshot before it stays whole until then. A snapshot that fails, such as on a full volume, leaves the one before it, logs `could not take a snapshot of the rig's state: the last one stays`, and is tried again a minute later.
+- **Only what changed is sealed.** A file that has not changed since the last snapshot (the same size and time), and whose sealed file is still there, is not read again. A file whose content is sealed there already, under another path or from before, is not sealed again. Once the new manifest is in place, the sealed files no manifest names are removed.
+- **Only plain files and folders of the part's own user** are taken: a link, a device, a pipe, a socket or another user's file is left out and named in the log line (`skipped_first`).
+- **A new manifest, then a rename.** Each new file is sealed into a file of its own (`.new-` and a random name) and renamed to its sealed name once written. The manifest is written last, as `manifest.new`, then renamed to `manifest`. The snapshot before it stays whole until then. A snapshot that fails, such as on a full volume, leaves the one before it, logs `could not take a snapshot of the rig's state: the last one stays`, and is tried again a minute later. When the manifest before it does not verify, the log line says so (`before`) and every file is sealed again.
+- **Inside the folder.** Root works from inside the snapshot folder, by bare names. A user who renames the folder or puts a link in its place can't send root's writes, reads or removals anywhere else.
 - **Out of the judge's way.** The snapshot runs in a process of its own, at a low CPU and disk priority but at a stop, so it never holds up the broker, which times the judge's runs. One that falls due while a timed run is at work waits for it to end, up to 5 minutes.
 
-A restore copies only plain files and folders, under the parts the rig has and the names a snapshot holds. A link, a device, a pipe, a name that climbs out of its part, or a file whose size is not the one recorded, is refused and counted in the log line. Each restored file and folder gets its part's owner, as a start gives it, and the mode it had, with no set-user-id or set-group-id bit on a file. Each part is written beside its live folder, then renamed into place once every part is written: a restore that fails changes nothing, logs `fatal: could not restore the rig's state from its snapshot`, and is tried again at the next start.
+A restore takes the newest manifest that verifies: `manifest`, or a `manifest.new` that a stop cut off before its rename. The manifest must be this rig's (`THERMITE_RIG_ID`), and every file it names must be there, a plain file of the size sealing gives, and must verify: its tag, and the SHA-256, size and keyed hash of its content against the manifest. If any of it does not, the whole snapshot is refused: nothing of it is restored, the broker logs `the snapshot did not verify: <why>`, naming the file or the manifest, and the rig starts with an empty state. A pod in [pull mode](settings.md#pull-mode) then has no keys and can't enroll again, since its code is spent: [Troubleshooting](../how-to/operate/troubleshoot.md#a-runpod-rig-lost-its-state-over-a-stop) says what to do.
+
+The restore writes only plain files and folders, under the parts the rig has and the names a snapshot holds: a name that climbs out of its part is refused and counted in the log line, even in a manifest that verifies. Each restored file and folder gets its part's owner, as a start gives it, and the mode it had, with no set-user-id or set-group-id bit on a file. Each part is written beside its live folder, then renamed into place once every part is written and verified: a restore that fails for another reason, such as a full disk, changes nothing, logs `fatal: could not restore the rig's state from its snapshot`, and is tried again at the next start.
+
+An image from before sealing kept its snapshot unsealed, in `snapshot/`. It is never restored. Where no other user may write in the folder, the broker removes it and logs `removed an unsealed snapshot an older image left: it is not restored`; where one may, it stays (a removal there could be sent elsewhere), the broker says so, and the isolation check fails until the owner removes it.
+
+What sealing does not stop: a part or role that can write on the volume can still delete the snapshot, or put back an older sealed snapshot of the same pod that it kept a copy of. Either takes effect only at the next start on an empty disk: a deleted snapshot gives a fresh state, and an older one gives the state as it was then; the rig can't tell an older snapshot from the newest. What the rig did since, and had not sent out, is lost; what left the pod for control stays on control. Nor does sealing hide how many files the snapshot holds, their sizes, or which of them have the same content.
 
 | Part | Owner it is restored with |
 | --- | --- |
@@ -243,7 +258,7 @@ The container's disk holds the live state, models and builds among it, and the v
 ### How it starts
 
 1. `thermite-rig-start` removes every `RUNPOD_` variable from the environment: RunPod's API key, the pod's ID and the others. It passes the pod's ID on as `THERMITE_TUNNEL_POD`, unless that is set already. Then it starts `tini`, so no process of the rig has RunPod's variables, PID 1 included.
-2. The broker, as root, makes the snapshot folder and checks that it is closed to the parts and the roles. On an empty disk, such as after a stop, it restores the state from the snapshot ([Where the state lives](#where-the-state-lives)).
+2. The broker, as root, takes the snapshot key out of its own environment first, so nothing it starts has it. It makes the snapshot folder and records whether the parts and the roles can open it. On an empty disk, such as after a stop, it restores the state from the sealed snapshot once it verifies ([Where the state lives](#where-the-state-lives)).
 3. The broker prepares the harness's places as in the harness image, and the supervisor's:
    - its state folder, `THERMITE_SUPERVISOR_HOME`: the supervisor's, mode 0700, with a folder `tmp` emptied at every start. `/tmp` is closed to the supervisor, as to the roles;
    - the inbox: the supervisor's, with the controller's group `thermite`, mode 2750;
@@ -261,7 +276,7 @@ The container's disk holds the live state, models and builds among it, and the v
 
 A pod that restarts does not enroll again: the supervisor writes the same files again at start, and the broker checks them again before the controller starts. After a stop, the pod's keys and its enrollment come back from the snapshot.
 
-The supervisor's environment is the broker's, without RunPod's variables and without the harness's secret files, with `HOME` (its passwd home), `TMPDIR` (its `tmp`), `USER=supervisor` and `THERMITE_HARNESS_TOKEN_FILE` set. It takes the enrollment code out of its own environment at start. The controller gets no `RUNPOD_` variable, in every image, and none of pull mode's launch values but `THERMITE_TUNNEL_DIR` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, which its isolation check reads. The roles get what they get in the harness image.
+The supervisor's environment is the broker's, without RunPod's variables, the snapshot key and the harness's secret files, with `HOME` (its passwd home), `TMPDIR` (its `tmp`), `USER=supervisor` and `THERMITE_HARNESS_TOKEN_FILE` set. It takes the enrollment code out of its own environment at start. The controller gets no `RUNPOD_` variable, in every image, no snapshot key, and none of pull mode's launch values but `THERMITE_TUNNEL_DIR` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, which its isolation check reads. The roles get what they get in the harness image.
 
 ### Restarts and stops
 
@@ -282,13 +297,13 @@ The supervisor's environment is the broker's, without RunPod's variables and wit
 | `/var/lib/thermite-rig/inbox` | What the supervisor fetched for the harness | `supervisor` with group `thermite` (10001:10010), 2750 |
 | `/var/lib/thermite-rig/supervisor` | The supervisor's state, its `harness-token`, its `tmp`, the pod's keys (`tunnel/`) and what enrollment left (`enrolled/`) | `supervisor`, 0700 |
 | `/var/lib/thermite-rig/secrets` | Root's copy of the token between the two parts | root, 0700 |
-| `/workspace/thermite` | The state's snapshot, on RunPod's volume: `snapshot/`, and `snapshot.new/` while one is written | root, 0700. Whatever owner the volume shows, no part or role may open it |
-| `/run/thermite/snapshot.json` | The broker's record of the snapshot folder: its owner and mode, and what each user met trying to open it | root, 0644, in the broker's folder |
+| `/workspace/thermite` | The state's sealed snapshot, on RunPod's volume: `manifest`, the sealed files (each named by 64 hexadecimal characters), and `manifest.new` and `.new-…` files while one is written | root, 0700. RunPod's volume lets every user in all the same: everything in it is sealed |
+| `/run/thermite/snapshot.json` | The broker's record of the snapshot folder: its owner and mode, what each user met trying to open it, and whether the launch gave the key (`sealed`; `off` says why not) | root, 0644, in the broker's folder |
 | `/etc/thermite/control-signing.pub` | Control's key, copied by root from enrollment once checked | root, 0644, in a folder of root's (0755) |
 | `/run/thermite/supervisor.json` | The broker's record of the supervisor's user, fence and GPU access | root, 0644, in the broker's folder (root and group `thermite`, 0750) |
 | `/scratch` | As in the harness image, on the container's own disk | root, 0755 |
 
-The [isolation check](rig-checks.md#the-one-container-image) checks the supervisor, set-id files, RunPod's variables, the enrollment code, control's key and the snapshot folder in this image too.
+The [isolation check](rig-checks.md#the-one-container-image) checks the supervisor, set-id files, RunPod's variables, the enrollment code, control's key, the snapshot folder and the snapshot key in this image too.
 
 ## The control image
 

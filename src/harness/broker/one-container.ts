@@ -20,6 +20,7 @@ import {
   POD_CONFIG_VALUE,
   sameHex,
 } from "../../core/tunnel.ts";
+import { SNAPSHOT_KEY_VAR } from "./seal.ts";
 
 /**
  * The one-container rig image (containers/rig/Containerfile): a rig's harness and supervisor in
@@ -43,10 +44,17 @@ export function oneContainer(env: Env): boolean {
  */
 export const isRunpodVariable = (name: string): boolean => name.startsWith("RUNPOD_");
 
-/** An environment without RunPod's variables and without unset entries. */
+/**
+ * What only root may hold: the state snapshot's key (seal.ts). The broker takes it out of its own
+ * environment before it starts anything; no part and no role is ever given it either.
+ */
+export const isRootOnly = (name: string): boolean => name === SNAPSHOT_KEY_VAR;
+
+/** An environment without RunPod's variables, root's own values and unset entries. */
 export function withoutRunpod(env: Env): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) if (v !== undefined && !isRunpodVariable(k)) out[k] = v;
+  for (const [k, v] of Object.entries(env))
+    if (v !== undefined && !isRunpodVariable(k) && !isRootOnly(k)) out[k] = v;
   return out;
 }
 
@@ -90,8 +98,8 @@ export function supervisorPaths(env: Env): SupervisorPaths {
 }
 
 /**
- * The supervisor's environment: the broker's own, without RunPod's variables and without the
- * harness's secret files (only root reads those), with its own places and user.
+ * The supervisor's environment: the broker's own, without RunPod's variables, the snapshot key
+ * and the harness's secret files (only root reads those), with its own places and user.
  */
 export function supervisorEnv(
   env: Env,

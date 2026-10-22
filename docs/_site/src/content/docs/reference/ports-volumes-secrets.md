@@ -162,9 +162,9 @@ A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control rem
 | What | Where | Holds |
 | --- | --- | --- |
 | The pod's container disk | 40 GB unless set (`container_disk_gb`), emptied when the pod stops | The rig's live state in `/var/lib/thermite-rig`, and `/scratch` |
-| The pod's volume | `/workspace`, 100 GB unless set (`volume_gb`), kept while the pod is stopped and removed with it | A snapshot of the rig's state, in `/workspace/thermite`, root's alone. It holds copies of the rig's keys and tokens too: the harness's keys, the supervisor's keys and enrollment, and root's copy of the supervisor's token |
+| The pod's volume | `/workspace`, 100 GB unless set (`volume_gb`), kept while the pod is stopped and removed with it | A sealed snapshot of the rig's state, in `/workspace/thermite`. The volume ignores file modes, so every user in the pod can read it: every file is encrypted and authenticated with the pod's snapshot key |
 
-The [one-container rig image](harness-image.md#where-the-state-lives) says when the snapshot is taken and how a start restores it.
+The [one-container rig image](harness-image.md#where-the-state-lives) says when the snapshot is taken, how it is sealed, and how a start checks and restores it.
 
 ## Secret files
 
@@ -185,6 +185,7 @@ The [one-container rig image](harness-image.md#where-the-state-lives) says when 
 | The rig's report key | Harness | `ledger/rig-signing.key` in its state, 0600 | Signs the rig's reports. Made on first start |
 | The pod's keys | Supervisor, in pull mode | `keys.json` in `THERMITE_TUNNEL_DIR`, 0600 | Sign the pod's answers to control and open what control seals to the pod. Made on first start; control pins their public halves at enrollment |
 | The enrollment code | Supervisor, in pull mode | `THERMITE_TUNNEL_ENROLL_CODE` in the pod's environment | A one-time code. It never crosses the network, and the first enrollment spends it. The supervisor takes it out of its own environment at start |
+| The snapshot key | The broker (root), in the one-container rig image | `THERMITE_STATE_SNAPSHOT_KEY` in the pod's environment | Seals the rig's state snapshot on the pod's volume. Control makes a new one for each pod at its launch and keeps no copy; RunPod keeps it in the pod's settings. The broker takes it out of its own environment at start, so no part and no role has it |
 | The results repository key | Supervisor | `THERMITE_RESULTS_KEY_FILE`, `THERMITE_RESULTS_KNOWN_HOSTS` | Optional: an SSH deploy key that can write to the results repository, and its host key. See [Set up the results repository](../how-to/operate/results-repository.md) |
 | A knowledge base token | Supervisor | `kb.token_file` in the [advisors file](advisors-file.md) | Optional |
 | A Hugging Face token | Supervisor | `THERMITE_HF_TOKEN_FILE` | Optional: for [gated model files](model-files.md#gated-models-on-hugging-face). Sent to Hugging Face only, never to the harness |

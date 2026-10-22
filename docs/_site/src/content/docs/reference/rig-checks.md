@@ -144,12 +144,12 @@ In the [one-container rig image](harness-image.md#the-one-container-rig-image), 
 | `supervisor-environ` | Read | The environment of the supervisor's process. Skipped when no supervisor runs |
 | `control-key-write` | Write | Root's copy of control's key, which the harness trusts. In pull mode only |
 
-Where the rig keeps a snapshot of its state on the host's volume (`THERMITE_STATE_SNAPSHOT_DIR`, which the one-container rig image sets), every role must also be refused these, whatever owner the volume shows for root's files:
+Where the rig keeps a sealed snapshot of its state on the host's volume (`THERMITE_STATE_SNAPSHOT_DIR`, which the one-container rig image sets; [Where the state lives](harness-image.md#where-the-state-lives)), every role also runs these two probes:
 
-| Probe | Tries to | What |
+| Probe | Tries to | Passes with |
 | --- | --- | --- |
-| `state-snapshot-list` | List | The snapshot folder ([Where the state lives](harness-image.md#where-the-state-lives)) |
-| `state-snapshot-create` | Create a file | The snapshot folder |
+| `state-snapshot` | List the snapshot folder, and create an empty file in it (removed again) | The error it met, such as `EACCES`, where the volume keeps file modes. On a volume that lets the role in, as RunPod's does: `open, sealed: lists it and writes in it; the manifest and <n> sealed files` (or `no snapshot yet`), when the folder holds only the sealed manifest, sealed files, files being sealed and empty probe files. `FOUND a file that is not sealed: <name>`, `FOUND an unsealed snapshot an older image left: snapshot`, or `FOUND` with any other name in the folder, fails |
+| `snapshot-key` | Find the snapshot key (`THERMITE_STATE_SNAPSHOT_KEY`) in the role's own environment and in every process environment the role can read | `none`. `FOUND THERMITE_STATE_SNAPSHOT_KEY (own)` or `(pid <n>)` fails |
 
 ### Probes that must succeed
 
@@ -174,7 +174,8 @@ In the [one-container rig image](harness-image.md#the-one-container-rig-image) (
 | `runpod-variables` | `none (read <n> of <m> processes)` | No `RUNPOD_` variable in the environment of PID 1 or any process started under it. A shell opened in the container from outside is left out. Without `CAP_SYS_PTRACE` a process can read only the environments of its own user's processes: as root, PID 1 and the broker; as the controller, its own. When PID 1 is not the image's own `tini` but an init the platform runs (RunPod does, with the image's entry point as its child), PID 1 is left out, because it keeps the environment the platform gave the container, and the result adds `PID 1 is the platform's own init (<program>), not the rig's, and keeps the container's first environment`. The roles' `pid1-environ` probes show that no role can read it |
 | `enroll-code` | `none (read <n> of <m> processes)` | No process of the rig started with pull mode's enrollment code (`THERMITE_TUNNEL_ENROLL_CODE`), but root's and the supervisor's own first process. The supervisor takes the code out of its environment at start, so nothing it starts has it, and the controller never gets it |
 | `control-key` | `root's, the key the launch named` | In pull mode only (`THERMITE_TUNNEL_CONTROL_KEY_SHA256` set): the key the harness trusts, `THERMITE_CONTROL_PUBKEY_FILE`, is a plain file, and it and every folder above it are root's and writable by no other user, so neither the supervisor nor a role can change it. Its SHA-256 is the one the launch named |
-| `state-snapshot` | `closed to thermite, supervisor, agent-1 (owner <uid>:<gid>, mode 700)` | With `THERMITE_STATE_SNAPSHOT_DIR` set: the controller's user, the supervisor's and `agent-1` were each refused listing the snapshot folder and writing in it, when the broker tried as each at start. It records what each met in `snapshot.json` in its socket's folder, with the owner and mode the volume shows. `OPENED: <user> lists it` (or `writes in it`) fails the check, and the broker then neither takes nor restores a snapshot |
+| `state-snapshot` | `sealed, closed to thermite, supervisor, agent-1 (owner <uid>:<gid>, mode 700)`; `open, sealed: <user> lists it and writes in it; … (owner <uid>:<gid>, mode 700)`; or `no snapshot: <why> (…)`. Each ends with `; holds the manifest and <n> sealed files` (or `no snapshot yet`) when the selftest's user can list the folder | With `THERMITE_STATE_SNAPSHOT_DIR` set. At start, the broker tried to list the snapshot folder and to write in it as the controller's user, the supervisor's and `agent-1`, and recorded what each met in `snapshot.json` in its socket's folder, with the owner and mode the volume shows and whether the launch gave the snapshot key. `sealed, closed`: each was refused. `open, sealed`: the volume lets them in, as RunPod's does; this is no failure, since everything there is sealed. `no snapshot`: the launch gave no key, so nothing is written there; this is no failure either. The check also looks into the folder where it can: `FOUND a file that is not sealed: <name>`, `FOUND an unsealed snapshot an older image left: snapshot`, or `FOUND` with any other name, fails. `failed: root …` means root could not make the folder |
+| `snapshot-key` | `none (read <n> of <m> processes)` | With `THERMITE_STATE_SNAPSHOT_DIR` set: no process of the rig but root's holds the snapshot key (`THERMITE_STATE_SNAPSHOT_KEY`). The broker takes it out of its environment before it starts anything. `FOUND THERMITE_STATE_SNAPSHOT_KEY in pid <n> (uid <u>)` fails. It reads the environments it may, as `runpod-variables` does |
 
 ### Results
 
@@ -185,7 +186,7 @@ Each probe's result is the error the operation met (refused, as it must be), `re
 | `ALLOWED` | A probe that must be refused succeeded |
 | `UNREADABLE <error>`, `UNREACHABLE <error>` | A probe that must succeed was refused |
 | `WRONG GPUS <ids>` | `nvidia-smi` showed other cards than the role's own |
-| `FOUND <what>` | Something that must not be there: a RunPod variable, the enrollment code, or a set-id file |
+| `FOUND <what>` | Something that must not be there: a RunPod variable, the enrollment code, the snapshot key, a set-id file, or a file in the snapshot folder that is not sealed |
 | `OPENED <nodes>` | The supervisor's user opened a GPU device node |
 | `WRONG USER: <ids>`, `WRONG: <why>` | The supervisor runs as another user or group, or can gain privileges; or control's key for the harness is not root's alone, or not the launch's |
 | `MISSING: <what>` | No supervisor process, no record of it from the broker, or no key for the harness in pull mode |

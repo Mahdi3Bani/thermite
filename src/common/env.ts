@@ -57,8 +57,11 @@ export async function waitForFile(path: string, timeoutMs: number): Promise<stri
 
 /**
  * A message with what could be a credential taken out, for logs: a URL's user and password,
- * a bearer token, and keys with a known prefix. Messages are written by Thermite's own code, so
- * this guards against an echoed URL or key, not against anything a message could hold.
+ * a bearer token, keys with a known prefix, and the value given to a Thermite or RunPod variable
+ * whose name ends in KEY, CODE, TOKEN, SECRET or PREFIX (`NAME=value`, or `"NAME":"value"` in
+ * JSON), such as a pod's snapshot key or enrollment code echoed back. Messages are written by
+ * Thermite's own code, so this guards against an echoed URL or key, not against anything a
+ * message could hold.
  */
 export function redact(text: string): string {
   return text
@@ -66,6 +69,10 @@ export function redact(text: string): string {
     .replace(/\b(Bearer\s+)\S+/gi, "$1***")
     .replace(
       /\b(sk-|rpa_|ghp_|gho_|ghs_|github_pat_|glpat-|hf_|xox[abp]-)[A-Za-z0-9_-]{6,}/g,
+      "$1***",
+    )
+    .replace(
+      /\b((?:THERMITE|RUNPOD)_[A-Z0-9_]*(?:KEY|CODE|TOKEN|SECRET|PREFIX)(?:=\\?["']?|\\?["']\s*:\s*\\?["']))[^\s"'\\,;}&]+/g,
       "$1***",
     )
     .slice(0, 2000);
