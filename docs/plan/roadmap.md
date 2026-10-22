@@ -66,6 +66,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [073](goals/073-harness-for-each-agent.goal) A harness for each agent · `VERIFIED`
 - [074](goals/074-one-name-for-each-agent.goal) One name for each agent · `VERIFIED`
 - [075](goals/075-model-usage.goal) Model usage for each run, campaign and the whole system · `VERIFIED`
+- [078](goals/078-campaign-brief.goal) A campaign's brief: additional information, ideas and hypotheses for every mode · `IN_PROGRESS`
 
 ### Research mode
 
