@@ -173,7 +173,7 @@ export const EDIT_RIG_JS = `
       if (adv) return "In Pi, at " + fmt(T) + " tokens, Thermite keeps the whole conversation in the supervisor, with the advisor's round. Then the same model writes a summary, and " + r.who + " continue" + r.s + ". Live shows each compaction.";
       return "In Pi, at " + fmt(T) + " tokens, Thermite keeps the whole conversation in the run's research folder, as compactions/" + (r.kind === "workers" ? "<trial>" : "planner-<id>") + "-<n>.md. Then the same model writes a summary, and " + (r.kind === "workers" ? "the worker continues with it and its most recent turns" : "the planner continues its call") + "." + shows;
     }
-    if (s.h === "opencode") return W ? "OpenCode v2 compacts on its own at " + fmt(T) + " tokens: Thermite gives it the window and tells it to keep " + fmt(W - T) + " tokens free. OpenCode does not report its compactions." : "OpenCode v2 compacts only when it knows the window, and the provider lists none. Type a window.";
+    if (s.h === "opencode") return W ? "OpenCode v2 compacts on its own at " + fmt(T) + " tokens: Thermite gives it the window and tells it to keep " + fmt(W - T) + " tokens free." + shows : "OpenCode v2 compacts only when it knows the window, and the provider lists none. Type a window.";
     if (s.h === "codex") return "Codex compacts on its own" + (W ? " at " + fmt(Math.floor((W * Math.min(P, CODEX_LAST)) / 100)) + " tokens: at 90% of the window at the latest." : ", with its own window and point: the provider lists no window.") + shows;
     return "Claude Code compacts on its own at " + P + "% of the window, less the room it keeps for a reply. It counts a window below 100,000 tokens as 100,000." + shows;
   };
