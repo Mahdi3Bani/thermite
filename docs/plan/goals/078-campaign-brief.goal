@@ -1,7 +1,7 @@
 ---
 id: "078"
 title: "A campaign's brief: additional information, ideas and hypotheses for every mode"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 depends_on: []
 created: 2026-10-21
@@ -10,7 +10,7 @@ updated: 2026-10-22
 
 # 078 · A campaign's brief: additional information, ideas and hypotheses for every mode
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -45,7 +45,7 @@ A past research run shows the gap: its owner had to put a whole brief into the r
 - [x] The campaign's page shows the brief; Copy keeps it; REST, MCP and the command line take it.
 - [x] Tests: the form posted as a browser posts it, for each mode; the steps; the starting links as typed; the contract's fields and the old hashes; the text in the planner's prompt, a trial's brief and a research trial's brief; the research run's starting links archived; the advisors' packages; Copy keeps it; the command line.
 - [x] Pages: Start a campaign from the dashboard, the two quick-start tutorials' steps, the contract, REST, MCP and command-line references, the research-mode explanation, limits, the planner and the advisors; the changelog.
-- [ ] The compose acceptances for campaigns, agents and steering pass with the change.
+- [x] The compose acceptances for campaigns, agents and steering pass with the change.
 
 ## Decisions
 
@@ -64,3 +64,4 @@ A past research run shows the gap: its owner had to put a whole brief into the r
 
 - 2026-10-21: mockup `v010-campaign-brief` written for the owner. Built on its branch: the contract fields, New campaign's brief, the brief in every agent's input, `BRIEF.md`, research's starting hypotheses, the campaign's page, Copy, REST, MCP and the command line, tests and pages.
 - 2026-10-22: the owner approved the mockup, with two changes, both built and in the mockup: the brief is its own step 2, and the starting links are in it (a research campaign's seeds, archived when its run starts; `links` for hill climb and goal). Branch merged with v1/build. Typecheck, lint, the public check, the touched tests, the docs' build and check, and the full `npm run check` pass. What is left: the compose acceptances (campaign, agents, steering), then `VERIFIED`.
+- 2026-10-22: The new-campaign, agents and steering acceptances pass on the development branch with the change, with every other compose acceptance. `VERIFIED`.

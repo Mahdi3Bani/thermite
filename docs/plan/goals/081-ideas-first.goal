@@ -1,7 +1,7 @@
 ---
 id: "081"
 title: "Teachers put ideas first; a target queue depth; lanes propose follow-ups"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["064", "066", "074"]
@@ -11,7 +11,7 @@ updated: 2026-10-22
 
 # 081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -43,7 +43,7 @@ An audit compared the two:
 - [x] A worker's brief asks for its follow-up ideas before it submits or stops; the planner queues the distinct ones.
 - [x] Tests for each: the prompts, the refusal of freezing rules, the portfolio written as experiments, the code and diff tools, held-out content kept out, the top-up below the target, the teachers' round started by a low queue, and lane proposals reaching the queue.
 - [x] The pages that describe the advisors, the advisors file, supervision, the planner and the queue, the contract and the changelog describe it.
-- [ ] The steering and agents acceptances pass on this branch.
+- [x] The steering and agents acceptances pass on this branch.
 
 ## Decisions
 
@@ -68,6 +68,7 @@ None.
 - 2026-10-22: Goal written from the owner's request and the audit. Built: the teachers' portfolio and its merge (`src/supervisor/advisors.ts`), the code and evidence reads (`src/harness/evidence.ts`, `src/supervisor/code-tools.ts`, the harness's `/v1/code/*` and `/v1/evidence`), the refusals (`src/core/queue-target.ts`), the target and the top-up (`src/harness/agents/scheduler.ts`, `coordinator.ts`, `planner.ts`), the low queue's teachers' round (`src/supervisor/advise.ts`), the follow-up line in the worker's brief, New campaign's field and the campaign's page. Tests: `src/core/queue-target.test.ts`, `src/harness/evidence.test.ts`, `src/supervisor/advise-ideas.test.ts`, `src/harness/agents/scheduler-queue.test.ts`, `src/control/new-campaign-page.test.ts`, `src/control/ui/campaigns.test.ts`. Next: the steering and agents acceptances.
 - 2026-10-22: Checks passed: the typecheck, the lint, the touched test files, `docs:build`, `docs:check`, the quick start's page test and the public check. The full `npm run check` passed every test but one of goal 075's, which fails only in the first hour after midnight in the zone it names (its "today" has no hour's bar yet) and touches nothing here; run again after that hour, it passed.
 - 2026-10-22: Merged v1/build, with goals 078, 080 and 082. The teachers' evidence now has one shape with the planner's: `registry.evidence` (goal 082's `refused` and `held_out`), with the judge's reasons and the experiment added (`src/harness/evidence.ts`), so a failed held-out check reaches the teachers only as its kind in fixed words. The prompts keep goal 078's campaign brief. **Ideas kept ready** stays under **Advanced** in **Where it runs**, now step 5. The two plans are now goals 083 and 084: 082 is the judge's findings in view. The **Experiments** tab's screenshot was taken again from the dashboard demo, for the ideas card's new words. Next: the steering and agents acceptances.
+- 2026-10-22: The steering and agents acceptances pass on the merge, and again on the development branch with goal 079, with the Claude Code, real Claude Code and Codex acceptances. `VERIFIED`.
 
 ---
 
