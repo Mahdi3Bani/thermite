@@ -266,7 +266,7 @@ The owner closes a run by hand, for good: for example a paused run whose work an
 The run becomes `closed` with the reason, as a goal run that met its goals does, and its `run_status` event is `{"status": "closed", "reason"}`. A running or a paused run may be closed:
 
 - its lanes' running trials end, as for [`pause_run`](#pause_run), and its planner call is cancelled; no new round or trial starts;
-- the judge takes no job of a closed run, so its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded; if that job would close the run as complete, the run keeps your reason;
+- the judge takes no job of a closed run, so its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded, but a win it confirms does not become the champion: it is held as **Run closed**; if that job would close the run as complete, the run keeps your reason;
 - a research run's final report is written once its last trial has ended, as at the end of its time;
 - it can't be resumed or paused again: [`resume_run`](#resume_run) and [`pause_run`](#pause_run) refuse it with `run <run> is closed`. Its queue, rules and messages no longer change;
 - nothing in it waits for a decision any more. A change waiting for approval or held for an audit, a review the review panel passed and a "not possible" proposal stay as they were when it closed: control leaves them out of **Needs you**, the harness refuses [`approve_promotion`](#approve_promotion), [`decline_promotion`](#decline_promotion), [`accept_review`](#accept_review) and [`conclude`](#conclude) for the run, and the rig's auditor gets none of its audits. None of its changes becomes the champion by a decision.

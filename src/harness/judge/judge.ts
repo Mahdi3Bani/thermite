@@ -977,6 +977,14 @@ export class Judge {
     expectedSeq: number,
     attempt: Record<string, unknown>,
   ): Finish {
+    // A run the owner closed while this job ran (goal 087): nothing changes its champion now. The
+    // win stays recorded and waits, and no one decides it.
+    if (String(this.ledger.getRun(run)?.status) === "closed")
+      return {
+        ...fin,
+        result: { ...(fin.result as object), promoted: false, waiting: "run_closed" },
+        lifecycle: "awaiting_approval",
+      };
     const audits = new Audits(this.ledger);
     const trigger = auditTrigger({
       contract: this.o.service.contractFor(run),

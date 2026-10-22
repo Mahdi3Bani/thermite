@@ -208,6 +208,44 @@ describe("close_run (goal 087)", () => {
     );
   });
 
+  test("a win the judge confirms after its run closed does not become the champion (the owner, 2026-10-22)", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const sub = (await env.service.submitAttempt(
+      {
+        run: "js-1",
+        patch_base64: env.patch(FAST_KERNEL),
+        hypothesis: "less work",
+        known_flaws: [],
+      },
+      "proposer",
+    )) as { attempt: string };
+    await env.service.applyCommand(
+      env.sign("close_run", { run: "js-1", reason: "done elsewhere" }),
+    );
+    // The judge's job on it was under way when the run closed: its confirmation now ends.
+    const judge = env.judge as unknown as {
+      promotion(
+        fin: unknown,
+        attempt: string,
+        run: string,
+        seq: number,
+        row: Record<string, unknown>,
+      ): { promote?: unknown; lifecycle?: string; result: unknown };
+    };
+    const out = judge.promotion(
+      { result: {}, verdict: { verdict: "win_confirmed", delta: 0.5 } },
+      sub.attempt,
+      "js-1",
+      1,
+      env.ledger.getAttempt(sub.attempt) as Record<string, unknown>,
+    );
+    assert.equal(out.promote, undefined);
+    assert.equal(out.lifecycle, "awaiting_approval");
+    assert.deepEqual(out.result, { promoted: false, waiting: "run_closed" });
+    assert.equal(env.ledger.currentChampion("js-1").seq, 1);
+  });
+
   test("a closed run's waiting decisions are refused in words, and its held audit is no one's to decide (the owner, 2026-10-22)", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

@@ -43,6 +43,7 @@ Today a run closes only when its goals are met, when the owner accepts a "not po
   - **No new event kind.** The close is the `run_status` event that goal completion writes, with the issuer as its actor (`control:owner:ui`, `control:owner:api`, `control:owner:mcp`), and the command's own record. So control's views, the knowledge base and exports read it as they read every close.
   - **Pause refuses a closed run.** Before, `pause_run` set a closed run to paused, and `resume_run` could then run it again. Now it is refused with `run <run> is closed`, as a resume is. Control pauses only running runs itself (a full reset, an update, a RunPod stop), so none of its own steps changes.
   - **A judge job under way.** A job the judge leased before the close finishes and its verdict is recorded, as for a pause. If it would close the run as complete, the run keeps the owner's reason: the judge closes only a run that is not closed yet.
+- 2026-10-22, lead, from the owner's answer ("yes": nothing waits in a closed run, and decisions on it are refused): a win that a judge job under way confirms after the close does not become the champion either. It is recorded and held as **Run closed**, as a change that waited when the run closed (`promotion` in `src/harness/judge/judge.ts` returns before any audit or promotion for a closed run; test in `src/harness/close-run.test.ts`).
   - **A research run** closed by the owner gets its final report once its last trial has ended, from the ledger, as at the end of its time; the next export then carries the report and its folder.
   - **The operator** may not close a run: control's MCP list for the operator has no `close_run`, and REST commands take the owner's token only. The harness's gate takes `owner:` issuers, as for the other owner-only kinds.
   - **Screens.** The change is a form in an existing menu, on the patterns already there (the menu, a typed confirmation, the follow pattern of goal 080), so no mockup was made first.
@@ -57,7 +58,6 @@ Today a run closes only when its goals are met, when the owner accepts a "not po
 
 ## Open questions
 
-- **A judge job under way at the close.** As decided above, a job the judge leased before the close finishes and its verdict is recorded. In a run that does not ask the owner, a win that job confirms still becomes the champion after the close. Proposal: leave it as it is (the judge's own finish, not a decision), or hold such a win as **Run closed**. The owner decides. Not built.
 - The owner looks at **Close run** in the **⋯** of a run's page (`src/control/close-run.test.ts` builds it).
 
 ## Progress
