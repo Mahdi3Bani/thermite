@@ -287,6 +287,7 @@ import {
   type Forms,
   goalState,
   jobHtml,
+  leftByClose,
   type Need,
   needs as operatorNeeds,
   runBrief,
@@ -827,10 +828,15 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
           }</div>${num(r.unsupported_numbers) ? `<div class="note warn">${num(r.unsupported_numbers)} numbers in the report have no source.</div>` : ""}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
         })()
       : "";
+    // The changes that waited when the run closed (goal 087): they left Needs you.
+    const left = leftByClose(i, u).length;
+    const leftWords = left
+      ? ` When it closed, ${left} change${left === 1 ? "" : "s"} waited for a decision. ${left === 1 ? "It does" : "They do"} not become the champion, and nothing in this run waits for you.`
+      : "";
     const now_ =
       i.status === "running"
         ? runBrief(store, u, i, now, { detail: true })
-        : `<div class="card"><div class="small">This run is <b>${esc(runStatusText(i))}</b>. ${i.status === "paused" ? `Nothing new starts until it is resumed.` : "It is finished."}</div></div>`;
+        : `<div class="card"><div class="small">This run is <b>${esc(runStatusText(i))}</b>. ${i.status === "paused" ? `Nothing new starts until it is resumed.` : `It is finished.${leftWords}`}</div></div>`;
     const recent = timeline(
       i.timeline.map((e) => ({ u, e })),
       now,

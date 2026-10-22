@@ -97,6 +97,18 @@ function unknownIn(set: { family?: string | undefined }[], known: readonly strin
   return out;
 }
 
+/**
+ * Why a closed run's waiting decision is refused, by kind (goal 087; the owner, 2026-10-22: a
+ * closed run's decisions leave Needs you, and approvals of them are refused). A closed run is
+ * finished: none of its changes becomes the champion, and nothing in it is decided again.
+ */
+const CLOSED_RUN_REFUSALS = {
+  approve_promotion: "none of its changes can become the champion",
+  decline_promotion: "its changes stay as they were when it closed",
+  accept_review: "its goals are not checked again",
+  conclude: "it can't end as not possible or go on",
+} as const;
+
 /** Command kinds only the owner may issue (control records the issuer in the signed envelope). */
 const OWNER_ONLY = new Set([
   "approve_promotion",
@@ -597,6 +609,8 @@ export class HarnessService {
       if (!au) continue;
       const attempt = String(au.attempt);
       if (String(this.ledger.getAttempt(attempt)?.lifecycle) !== "awaiting_audit") continue;
+      // A closed run's audit stays held (goal 087): none of its changes becomes the champion.
+      if (this.ledger.getRun(String(au.run))?.status === "closed") continue;
       this.ledger.appendEvent(by, "audit_skipped", attempt, {
         audit: id,
         run: String(au.run),
@@ -888,7 +902,7 @@ export class HarnessService {
         return this.declinePromotion(CommandPayloads.decline_promotion.parse(payload), by);
       case "accept_review": {
         const p = CommandPayloads.accept_review.parse(payload);
-        this.requireRun(p.run);
+        this.decidingRun(p.run, "accept_review");
         new Reviews(this.ledger).ownerDecision(p.review, p.run, p.accept, p.note, by);
         // The goal tree is checked again with the owner's word.
         this.ledger.enqueueJob({
@@ -901,7 +915,7 @@ export class HarnessService {
       }
       case "conclude": {
         const p = CommandPayloads.conclude.parse(payload);
-        this.requireRun(p.run);
+        this.decidingRun(p.run, "conclude");
         return new Conclusions(this.ledger).decide(p.run, p.proposal, p.accept, p.note, by);
       }
     }
@@ -918,6 +932,17 @@ export class HarnessService {
   private requireRun(id: string) {
     const inst = this.ledger.getRun(id);
     if (!inst) throw new LedgerError("not_found", `no run ${id}`);
+    return inst;
+  }
+
+  /**
+   * A run whose waiting decisions the owner may still take: one that exists and is not closed
+   * (goal 087). Refused in words, by the command's kind.
+   */
+  private decidingRun(id: string, kind: keyof typeof CLOSED_RUN_REFUSALS) {
+    const inst = this.requireRun(id);
+    if (inst.status === "closed")
+      throw new LedgerError("invalid", `run ${id} is closed: ${CLOSED_RUN_REFUSALS[kind]}`);
     return inst;
   }
 
@@ -1490,9 +1515,11 @@ export class HarnessService {
         attempt: string;
         run: string;
       };
+      const inst = this.requireRun(row.run);
+      // A closed run's audits are not the auditor's to decide (goal 087): nothing in it changes.
+      if (inst.status === "closed") continue;
       const pkg = audits.package(id, this.contractFor(row.run));
       const a = this.ledger.getAttempt(row.attempt) as Record<string, unknown>;
-      const inst = this.requireRun(row.run);
       const diff = await patchBetween(
         this.mirrorFor(inst.seed_repo),
         String(a.parent_commit),
@@ -1568,6 +1595,9 @@ export class HarnessService {
     citations: string[];
     auditor: string;
   }): Promise<unknown> {
+    // A run closed after the auditor took its package (goal 087): its decision is not recorded.
+    const held = this.ledger.getAttempt(input.attempt);
+    if (held) this.decidingRun(String(held.run), "approve_promotion");
     const audit = new Audits(this.ledger).decide(input);
     const a = this.ledger.getAttempt(input.attempt) as Record<string, unknown>;
     const run = String(a.run);
@@ -1851,6 +1881,7 @@ export class HarnessService {
     p: z.infer<(typeof CommandPayloads)["approve_promotion"]>,
     by: string,
   ): Promise<unknown> {
+    this.decidingRun(p.run, "approve_promotion");
     const a = this.ledger.getAttempt(p.attempt);
     if (!a || String(a.run) !== p.run) {
       throw new Error(`attempt ${p.attempt} is not in ${p.run}`);
@@ -1896,6 +1927,8 @@ export class HarnessService {
     p: z.infer<(typeof CommandPayloads)["decline_promotion"]>,
     by: string,
   ): unknown {
+    // A closed run's changes stay as they were (goal 087): its record does not change.
+    this.decidingRun(p.run, "decline_promotion");
     const a = this.ledger.getAttempt(p.attempt);
     if (!a || String(a.run) !== p.run) throw new Error(`attempt ${p.attempt} is not in ${p.run}`);
     const lifecycle = String(a.lifecycle);

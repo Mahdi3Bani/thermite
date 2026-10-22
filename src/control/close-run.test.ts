@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createHarnessApi } from "../harness/api.ts";
 import { relayOnce } from "../supervisor/relay.ts";
-import { makeJudgeEnv } from "../testing/judge-env.ts";
+import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { createControlApi } from "./api.ts";
 import type { Progress } from "./command-progress.ts";
 import { ControlStore } from "./store.ts";
@@ -274,5 +274,113 @@ describe("close_run over REST and MCP (goal 087)", () => {
     const c = s.store.command(id) as { status: string; outcome?: { result?: unknown } };
     assert.equal(c.status, "failed");
     assert.match(JSON.stringify(c), /run js-1 is already closed \(closed over MCP\)/);
+  });
+});
+
+describe("A closed run's waiting decisions (goal 087; the owner, 2026-10-22)", () => {
+  test("a change waiting for approval leaves Needs you and its counts when its run closes; its page has no buttons and says why; the rig refuses an approval in words", async () => {
+    const s = await stack();
+    // A change that waits for the owner's approval, as the judge leaves one the run asks about.
+    const { attempt } = (await s.env.service.submitAttempt(
+      {
+        run: "js-1",
+        patch_base64: s.env.patch(FAST_KERNEL),
+        hypothesis: "less work",
+        known_flaws: [],
+      },
+      "proposer",
+    )) as { attempt: string };
+    s.env.ledger.setAttemptLifecycle(attempt, "awaiting_approval", "judge");
+    s.env.ledger.appendEvent("judge", "promotion_pending", attempt, {
+      run: "js-1",
+      expected_seq: 1,
+      commit: s.env.ledger.getAttempt(attempt)?.commit_sha,
+      reason: "you asked to decide every change (promotion: owner approval)",
+    });
+    await s.relay();
+    const ATTEMPT_PAGE = `/ui/rigs/rig-a/attempts/${attempt}`;
+    const approveButton = /name="kind" value="approve_promotion"/;
+    const declineButton = /name="kind" value="decline_promotion"/;
+    const waiting = await s.page("/ui");
+    assert.match(waiting, /Make this change the new champion\?/);
+    assert.match(waiting, /<h2>Needs you<\/h2><span class="n">1<\/span>/);
+    assert.match(waiting, /Needs you 1<\/a>/, "the count in the status bar");
+    assert.match(await s.page(ATTEMPT_PAGE), approveButton);
+    assert.match(
+      await s.page("/ui/campaigns"),
+      /<h2>Waiting for you<\/h2><span class="n">1<\/span>[\s\S]*1 decision waits for you\./,
+    );
+
+    // The owner closes the run.
+    const why = "another run finished the work";
+    await s.send({
+      rig: "rig-a",
+      kind: "close_run",
+      run: "js-1",
+      reason: why,
+      confirm: "close js-1",
+    });
+    await s.relay();
+    await s.relay();
+    assert.equal(s.env.ledger.getRun("js-1")?.status, "closed");
+
+    // Needs you leaves it out, and every count with it.
+    const overview = await s.page("/ui");
+    assert.doesNotMatch(overview, /Make this change the new champion\?/);
+    assert.match(overview, /<h2>Needs you<\/h2><span class="n">0<\/span>/);
+    assert.match(overview, /Nothing waits for you\. The campaigns go on by themselves\./);
+    assert.doesNotMatch(overview, /Needs you \d+<\/a>/, "no count in the status bar");
+    assert.doesNotMatch(overview, /<span class="badge">\d+<\/span>/, "no count beside Overview");
+    const campaigns = await s.page("/ui/campaigns");
+    assert.doesNotMatch(campaigns, /<h2>Waiting for you<\/h2>|decision waits for you/);
+    assert.match(campaigns, /0 decisions wait for you/);
+    const run = await s.page(RUN_PAGE);
+    assert.doesNotMatch(run, /id="needs"/);
+    assert.match(
+      run,
+      /It is finished\. When it closed, 1 change waited for a decision\. It does not become the champion, and nothing in this run waits for you\./,
+    );
+
+    // The change's own page: no buttons, and why.
+    const page = await s.page(ATTEMPT_PAGE);
+    assert.doesNotMatch(page, approveButton);
+    assert.doesNotMatch(page, declineButton);
+    assert.doesNotMatch(page, /<h2>Your decision<\/h2>/);
+    assert.match(page, /<span class="chip ">Run closed<\/span>/);
+    assert.match(
+      page,
+      /The run closed while this change waited for a decision\. It does not become the champion, and the rig refuses a decision on it\./,
+    );
+    assert.match(page, /Waited for your approval/);
+    assert.match(page, /The run closed: no decision now/);
+
+    // REST and MCP list no pending promotion for it.
+    const view = (await (
+      await s.control.request("/v1/rigs/rig-a/view", {
+        headers: { authorization: `Bearer ${ADMIN}` },
+      })
+    ).json()) as { runs: { id: string; pending_promotions: string[] }[] };
+    assert.deepEqual(view.runs.find((r) => r.id === "js-1")?.pending_promotions, []);
+    const owner = await connect(s.control, ADMIN);
+    const listed = (await owner.callTool({ name: "list_rigs", arguments: {} })) as {
+      content: { text: string }[];
+    };
+    const rigs = JSON.parse(listed.content[0]?.text ?? "[]") as {
+      runs: { run: string; pending_promotions: string[] }[];
+    }[];
+    assert.deepEqual(rigs[0]?.runs.find((r) => r.run === "js-1")?.pending_promotions, []);
+    await owner.close();
+
+    // An approval sent from a page opened before the close: the rig refuses it, in words, and
+    // nothing comes back to Needs you.
+    const sent = await s.send({ rig: "rig-a", kind: "approve_promotion", run: "js-1", attempt });
+    await s.relay();
+    await s.relay();
+    const out = await s.follow(sent.answer.follow ?? "");
+    assert.deepEqual([out.final, out.tone], [true, "bad"]);
+    assert.match(out.said, /run js-1 is closed: none of its changes can become the champion/);
+    assert.equal(String(s.env.ledger.getAttempt(attempt)?.lifecycle), "awaiting_approval");
+    assert.equal(s.env.ledger.currentChampion("js-1").seq, 1, "the champion stays");
+    assert.match(await s.page("/ui"), /Nothing waits for you\./);
   });
 });

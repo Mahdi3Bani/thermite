@@ -183,6 +183,7 @@ export interface RunView {
   champion: ChampionStep[];
   attempts: AttemptView[];
   verdicts: Record<string, number>;
+  /** Confirmed wins that wait for the owner's approval; none in a closed run (goal 087). */
   pending_promotions: string[];
   calibration: { at: string; sigma: number; summary: string } | null;
   /** Agents (M4): planner quality, duplicates, effort. */
@@ -1427,6 +1428,9 @@ export function rigView(
     v.agents.attempts = v.attempts.length;
     v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
     v.directions = runDirections(v);
+    // A closed run waits for no one (goal 087; the owner, 2026-10-22): the rig refuses approvals
+    // of its changes, so none is pending. Each attempt keeps its own lifecycle.
+    if (v.status === "closed") v.pending_promotions = [];
   }
   const summary = u.summary as
     | {
