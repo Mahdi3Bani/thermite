@@ -218,6 +218,7 @@ describe("Archive a campaign over REST (goal 077)", () => {
       archived: false,
       at: null,
       by: null,
+      folder: null,
       changed: true,
     });
     assert.equal(s.audit("campaign_unarchived").length, 1);
@@ -292,19 +293,47 @@ describe("Folders for campaigns over REST (goal 077)", () => {
     assert.equal(gone.status, 200);
     assert.deepEqual(await gone.json(), { deleted: "Fast kernels" });
 
-    // Archiving takes a campaign out of its folder; an archived one is not moved.
+    // An archived campaign keeps its folder (the owner, 2026-10-21), and comes back into it.
     await s.rest("POST", "/v1/campaigns/old-sweep/folder", { folder: "Research" });
-    await s.rest("POST", "/v1/campaigns/old-sweep/archive");
-    const listed = await json<{ folders: { name: string; campaigns: string[] }[] }>(
-      await s.rest("GET", "/v1/campaign-folders"),
+    const archived = await json<{ folder: string | null }>(
+      await s.rest("POST", "/v1/campaigns/old-sweep/archive"),
     );
+    assert.equal(archived.folder, "Research");
+    const listed = await json<{
+      folders: { name: string; campaigns: string[] }[];
+      archived: { campaign: string; folder: string | null }[];
+    }>(await s.rest("GET", "/v1/campaign-folders"));
     assert.deepEqual(
       listed.folders.map((f) => [f.name, f.campaigns]),
-      [["Research", []]],
+      [["Research", ["old-sweep"]]],
     );
-    const shelved = await s.rest("POST", "/v1/campaigns/old-sweep/folder", { folder: "Research" });
-    assert.equal(shelved.status, 409);
-    assert.deepEqual(await shelved.json(), { error: "old-sweep is archived. Unarchive it first." });
+    assert.deepEqual(
+      listed.archived.map((a) => [a.campaign, a.folder]),
+      [["old-sweep", "Research"]],
+    );
+    // A folder that holds only an archived campaign is not empty: refused in words.
+    const kept = await s.rest("POST", "/v1/campaign-folders/Research/delete");
+    assert.equal(kept.status, 409);
+    assert.deepEqual(await kept.json(), {
+      error: "Research is not empty. Move its campaign out first: old-sweep (archived).",
+    });
+    const back = await json<{ archived: boolean; folder: string | null; changed: boolean }>(
+      await s.rest("POST", "/v1/campaigns/old-sweep/unarchive"),
+    );
+    assert.deepEqual([back.archived, back.folder, back.changed], [false, "Research", true]);
+    assert.deepEqual(s.audit("campaign_unarchived")[0]?.body, {
+      campaign: "old-sweep",
+      folder: "Research",
+    });
+    // An archived campaign may move: it comes back into its new folder, or into none.
+    await s.rest("POST", "/v1/campaigns/old-sweep/archive");
+    const outOf = await s.rest("POST", "/v1/campaigns/old-sweep/folder", { folder: null });
+    assert.deepEqual(await outOf.json(), { campaign: "old-sweep", folder: null, changed: true });
+    assert.equal((await s.rest("POST", "/v1/campaign-folders/Research/delete")).status, 200);
+    const none = await json<{ folder: string | null }>(
+      await s.rest("POST", "/v1/campaigns/old-sweep/unarchive"),
+    );
+    assert.equal(none.folder, null);
 
     for (const action of [
       "campaign_folder_created",
@@ -561,13 +590,55 @@ describe("The navigation and archive on the dashboard (goal 077)", () => {
       s.audit("campaign_archived").map((a) => a.actor),
       ["owner:ui"],
     );
-    // The drop of an archived campaign is refused in JSON, in words.
-    await s.post("/ui/campaigns/old-sweep/archive", {});
+  });
+
+  test("an archived campaign keeps its folder: the folder's count leaves it out, the folder is not deleted, and Unarchive brings it back into it", async () => {
+    const s = await stack();
     await s.post("/ui/campaign-folders", { name: "Old" });
     const id = String(s.store.campaignFolder("Old")?.id);
-    const drop = await s.post("/ui/campaigns/old-sweep/folder", { folder: id }, true);
-    assert.deepEqual(await drop.json(), {
-      error: "Not moved. old-sweep is archived. Unarchive it first.",
-    });
+    for (const k of ["old-sweep", "wide-gemm"])
+      await s.post(`/ui/campaigns/${k}/folder`, { folder: id }, true);
+    const fold = (html: string) =>
+      /<div class="side-fold" data-folder="\d+">[\s\S]*?<\/details><details class="fmenu">/.exec(
+        sidebar(html),
+      )?.[0] ?? "";
+    assert.match(
+      fold(await s.page("/ui")),
+      /<span class="fname">Old<\/span><span class="n">2<\/span>/,
+    );
+
+    await s.post("/ui/campaigns/wide-gemm/archive", {});
+    let f = fold(await s.page("/ui"));
+    assert.match(f, /<span class="n">1<\/span>/);
+    assert.match(f, /data-archived="1"/);
+    assert.doesNotMatch(f, /data-campaign="wide-gemm"/);
+    await s.post("/ui/campaigns/old-sweep/archive", {});
+    f = fold(await s.page("/ui"));
+    assert.match(f, /<span class="n">0<\/span>/);
+    assert.match(f, /<div class="side-empty">2 archived campaigns, not shown\.<\/div>/);
+
+    // Its page and Campaigns › Archived name the folder it keeps; ⋯ can still move it.
+    const own = await s.page("/ui/campaigns/old-sweep");
+    assert.match(own, /and it keeps its folder, Old\./);
+    assert.match(own, /It comes back to the navigation, in Old\./);
+    assert.match(own, new RegExp(`<option value="${id}" selected>Old</option>`));
+    assert.match(await s.page("/ui/campaigns?f=archived"), /ago by you · in Old/);
+
+    // A folder that holds only archived campaigns is not deleted, in words.
+    const refused = await s.post(`/ui/campaign-folders/${id}/delete`, { back: "/ui" });
+    assert.match(
+      await s.page(refused.headers.get("location") ?? ""),
+      /<b class="bad">Not deleted\.<\/b> Old is not empty\. Move its 2 campaigns out first: old-sweep \(archived\), wide-gemm \(archived\)\./,
+    );
+
+    const back = await s.post("/ui/campaigns/old-sweep/unarchive", {});
+    assert.equal(
+      back.headers.get("location"),
+      "/ui/campaigns/old-sweep?sent=Unarchived%20old-sweep.%20It%20is%20back%20in%20the%20navigation%2C%20in%20Old.",
+    );
+    f = fold(await s.page("/ui"));
+    assert.match(f, /<span class="n">1<\/span>/);
+    assert.match(f, /data-campaign="old-sweep"/);
+    assert.match(f, /data-archived="1"/);
   });
 });

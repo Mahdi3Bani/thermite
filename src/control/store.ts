@@ -3623,7 +3623,7 @@ export class ControlStore {
     this.db.prepare("update campaign_folder set name = ? where id = ?").run(name, id);
   }
 
-  /** Deletes a folder, and what it still records of campaigns control no longer knows. */
+  /** Deletes a folder (campaign-folders.ts deletes only an empty one). */
   deleteCampaignFolder(id: number): void {
     this.db.prepare("delete from campaign_in_folder where folder = ?").run(id);
     this.db.prepare("delete from campaign_folder where id = ?").run(id);
@@ -3672,7 +3672,10 @@ export class ControlStore {
     return r ? { at: String(r.archived_at), by: String(r.archived_by) } : undefined;
   }
 
-  /** Archives a campaign: it also leaves its folder. */
+  /**
+   * Archives a campaign. It keeps its folder (the owner, 2026-10-21): the navigation leaves it out
+   * while it is archived, and unarchiving brings it back into the same folder.
+   */
   archiveCampaign(campaign: string, by: string): { at: string; by: string } {
     const at = new Date().toISOString();
     this.db
@@ -3680,7 +3683,6 @@ export class ControlStore {
         "insert into campaign_archived (campaign, archived_at, archived_by) values (?, ?, ?) on conflict (campaign) do nothing",
       )
       .run(campaign, at, by);
-    this.db.prepare("delete from campaign_in_folder where campaign = ?").run(campaign);
     return this.campaignArchived(campaign) ?? { at, by };
   }
 

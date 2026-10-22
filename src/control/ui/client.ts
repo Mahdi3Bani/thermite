@@ -340,7 +340,9 @@ export const CLIENT_JS = `
       fold.querySelector("summary .n").textContent = String(n);
       const empty = d.querySelector(".side-empty");
       if (n && empty) empty.remove();
-      if (!n && !empty) { const e = document.createElement("div"); e.className = "side-empty"; e.textContent = "Empty. Drag a campaign here."; d.append(e); }
+      // A folder that holds only archived campaigns says so, as control draws it.
+      const shelved = Number(d.dataset.archived || "0");
+      if (!n && !empty) { const e = document.createElement("div"); e.className = "side-empty"; e.textContent = shelved ? shelved + " archived " + (shelved === 1 ? "campaign" : "campaigns") + ", not shown." : "Empty. Drag a campaign here."; d.append(e); }
     };
     sc.addEventListener("dragstart", (ev) => {
       const r = ev.target instanceof Element ? ev.target.closest(".side-row[data-campaign]") : null;

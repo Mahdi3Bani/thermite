@@ -383,10 +383,17 @@ const FOLDER_NAME_MAX = 40;
 const FOLDER_TIP =
   "A folder groups campaigns in this navigation, and nothing else: a campaign's runs, results and folder in the knowledge base stay as they are. Up to 40 characters; each name once.";
 
+/** What an empty folder says: a folder that holds only archived campaigns says so. */
+export const emptyFolder = (archived: number) =>
+  archived
+    ? `${archived} archived ${archived === 1 ? "campaign" : "campaigns"}, not shown.`
+    : "Empty. Drag a campaign here.";
+
 /**
  * The campaigns in the left navigation (goal 077): folders first, each with its campaigns, then
  * the campaigns in no folder. Every campaign that is not archived shows, finished ones too, with
- * its state; a rig check only while it is at work. A row can be dragged onto a folder, or onto
+ * its state; a rig check only while it is at work. An archived campaign keeps its folder, but the
+ * folder neither shows nor counts it. A row can be dragged onto a folder, or onto
  * "no folder" (client.ts sends the move); a folder folds, and the browser remembers it. Without
  * the script, the folders' forms and the campaign page's Move to folder still work.
  */
@@ -411,7 +418,9 @@ function navCampaigns(camps: CampaignView[], nav: NavCampaigns | undefined): str
     .map((f) => {
       const rows = shown.filter((k) => f.campaigns.includes(k.name));
       for (const k of rows) filed.add(k.name);
-      return `<div class="side-fold" data-folder="${f.id}"><details class="side-folder" open data-fold="${f.id}"><summary>${icon.chevron}${icon.folder}<span class="fname">${esc(f.name)}</span><span class="n">${rows.length}</span></summary>${rows.map(row).join("") || `<div class="side-empty">Empty. Drag a campaign here.</div>`}</details><details class="fmenu"><summary class="ib" title="Rename or delete" aria-label="${esc(f.name)}: rename or delete">${icon.dots}</summary><div class="menu-pop"><form class="sfd" method="post" action="/ui/campaign-folders/${f.id}/rename">${hidden(nav?.back ?? "/ui")}${infoLabel("Folder name", FOLDER_TIP)}<input name="name" value="${esc(f.name)}" maxlength="${FOLDER_NAME_MAX}" required autocomplete="off" aria-label="Folder name"><button class="sm">Rename</button></form><div class="fsep"></div><form method="post" action="/ui/campaign-folders/${f.id}/delete">${hidden(nav?.back ?? "/ui")}<button class="sm">Delete folder</button></form><span class="muted small">Only an empty folder is deleted.</span></div></details></div>`;
+      // An archived campaign keeps its folder, but neither shows in it nor counts.
+      const shelved = f.campaigns.filter((c) => archived.has(c)).length;
+      return `<div class="side-fold" data-folder="${f.id}"><details class="side-folder" open data-fold="${f.id}" data-archived="${shelved}"><summary>${icon.chevron}${icon.folder}<span class="fname">${esc(f.name)}</span><span class="n">${rows.length}</span></summary>${rows.map(row).join("") || `<div class="side-empty">${emptyFolder(shelved)}</div>`}</details><details class="fmenu"><summary class="ib" title="Rename or delete" aria-label="${esc(f.name)}: rename or delete">${icon.dots}</summary><div class="menu-pop"><form class="sfd" method="post" action="/ui/campaign-folders/${f.id}/rename">${hidden(nav?.back ?? "/ui")}${infoLabel("Folder name", FOLDER_TIP)}<input name="name" value="${esc(f.name)}" maxlength="${FOLDER_NAME_MAX}" required autocomplete="off" aria-label="Folder name"><button class="sm">Rename</button></form><div class="fsep"></div><form method="post" action="/ui/campaign-folders/${f.id}/delete">${hidden(nav?.back ?? "/ui")}<button class="sm">Delete folder</button></form><span class="muted small">Only an empty folder is deleted.</span></div></details></div>`;
     })
     .join("");
   const loose = shown

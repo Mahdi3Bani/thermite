@@ -771,15 +771,15 @@ Errors:
 
 **Campaign folders and archived campaigns.** Owner, operator and reader.
 
-> How the owner arranged the campaigns in the dashboard's left navigation: each folder, by name, with the campaigns in it ({name, campaigns, created_at, created_by}), and the archived campaigns ({campaign, at, by}), which are out of the navigation, Needs you and the Overview. A campaign in no folder and not archived shows on its own in the navigation. These folders only group campaigns there: they are not the campaigns' folders in the knowledge base (kb_folders).
+> How the owner arranged the campaigns in the dashboard's left navigation: each folder, by name, with the campaigns in it ({name, campaigns, created_at, created_by}), archived ones too, and the archived campaigns ({campaign, at, by, folder}), which are out of the navigation, Needs you and the Overview. An archived campaign keeps its folder (folder: its name, or null), but the navigation neither shows nor counts it there until it is unarchived. A campaign in no folder and not archived shows on its own in the navigation. These folders only group campaigns there: they are not the campaigns' folders in the knowledge base (kb_folders).
 
-No inputs. It returns what [`GET /v1/campaign-folders`](rest-api.md#archive-a-campaign-and-folders) returns: `{folders, archived}`, the folders by name and the archived campaigns, the newest first. `by` is the actor that archived the campaign, such as `owner:ui` or `owner:operator`.
+No inputs. It returns what [`GET /v1/campaign-folders`](rest-api.md#archive-a-campaign-and-folders) returns: `{folders, archived}`, the folders by name, each with its campaigns, archived ones too, and the archived campaigns, the newest first, each with the folder it keeps. `by` is the actor that archived the campaign, such as `owner:ui` or `owner:operator`.
 
 ### archive_campaign
 
 **Archive a campaign.** Owner and operator.
 
-> As Archive on a campaign's page: the campaign leaves the dashboard's left navigation, Needs you and the Overview's lists, and the Campaigns page lists it under Archived. Its runs, results, kits and folder in the knowledge base stay; it also leaves its folder in the navigation. Control starts and resumes no run of an archived campaign until unarchive_campaign. Returns {campaign, archived: true, at, by, changed} (changed: false when it was archived already). Refused in words while a run of it is at work or waits to start (a start or resume control sent that the rig has not taken yet): "Pause or close its runs first.", with each such run; and for a campaign control does not know.
+> As Archive on a campaign's page: the campaign leaves the dashboard's left navigation, Needs you and the Overview's lists, and the Campaigns page lists it under Archived. Its runs, results, kits and folder in the knowledge base stay, and it keeps its folder in the navigation, where it comes back when unarchived. Control starts and resumes no run of an archived campaign until unarchive_campaign. Returns {campaign, archived: true, at, by, folder, changed} (changed: false when it was archived already). Refused in words while a run of it is at work or waits to start (a start or resume control sent that the rig has not taken yet): "Pause or close its runs first.", with each such run; and for a campaign control does not know.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -791,7 +791,7 @@ It does what [`POST /v1/campaigns/<campaign>/archive`](rest-api.md#archive-a-cam
 
 **Unarchive a campaign.** Owner and operator.
 
-> As Unarchive on the Campaigns page's Archived list: the campaign comes back to the dashboard's left navigation, in no folder, and its runs may start again. Returns {campaign, archived: false, at: null, by: null, changed} (changed: false when it was not archived). Refused in words for a campaign control does not know.
+> As Unarchive on the Campaigns page's Archived list: the campaign comes back to the dashboard's left navigation, in the folder it kept, and its runs may start again. Returns {campaign, archived: false, at: null, by: null, folder, changed} (changed: false when it was not archived). Refused in words for a campaign control does not know.
 
 It takes `campaign`, as `archive_campaign` does. The audit log has `campaign_unarchived` when it changed something.
 
@@ -824,19 +824,19 @@ The audit log has `campaign_folder_renamed`, with the old name and the new.
 
 **Delete an empty folder for campaigns.** Owner and operator.
 
-> Deletes a folder of the dashboard's left navigation that has no campaign in it. Returns {deleted}. Refused in words: no such folder, or one with campaigns in it (move them out first with move_campaign, folder: null).
+> Deletes a folder of the dashboard's left navigation that has no campaign in it, archived ones included. Returns {deleted}. Refused in words: no such folder, or one with campaigns in it, each archived one marked (archived) (move them out first with move_campaign, folder: null).
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `folder` | string | | The folder's name |
 
-A folder with campaigns is refused, such as `Kernels is not empty. Move its 2 campaigns out first: sort-speed, gemv-speed.` The audit log has `campaign_folder_deleted`.
+A folder with campaigns is refused, such as `Kernels is not empty. Move its 2 campaigns out first: sort-speed, gemv-speed (archived).` An archived campaign is in its folder, though the navigation does not show it there. The audit log has `campaign_folder_deleted`.
 
 ### move_campaign
 
 **Move a campaign to a folder.** Owner and operator.
 
-> Puts a campaign in a folder of the dashboard's left navigation (folder: its name), or in none (folder: null). Only the navigation changes: not its runs, results or folder in the knowledge base. Returns {campaign, folder, changed}. Refused in words: no such campaign or folder, an archived campaign (unarchive it first).
+> Puts a campaign in a folder of the dashboard's left navigation (folder: its name), or in none (folder: null). Only the navigation changes: not its runs, results or folder in the knowledge base. An archived campaign may move too: it comes back into its new folder when it is unarchived. Returns {campaign, folder, changed}. Refused in words: no such campaign or folder.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |

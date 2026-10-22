@@ -1162,7 +1162,13 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             atWork,
             waiting,
             archived: new Map(
-              [...shelf].map(([name, a]) => [name, `${ago(a.at, now)} ago by ${copiedBy(a.by)}`]),
+              [...shelf].map(([name, a]) => {
+                const folder = store.campaignFolderOf(name);
+                return [
+                  name,
+                  `${ago(a.at, now)} ago by ${copiedBy(a.by)}${folder ? ` · in ${folder.name}` : ""}`,
+                ];
+              }),
             ),
             unarchive: (name) =>
               `<form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><input type="hidden" name="back" value="/ui/campaigns?f=archived"><button class="sm">Unarchive</button></form>`,
@@ -1944,11 +1950,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const folders = store.campaignFolders();
     const here = store.campaignFolderOf(name);
     const move = folders.length
-      ? `<form class="sfd" method="post" action="${campaignHref(name)}/folder">${hidden}${infoLabel("Move to folder", "Where this campaign shows in the left navigation. You can also drag it there. Its runs, results and folder in the knowledge base do not change.")}<span class="kmove"><select name="folder" aria-label="Folder"><option value=""${here ? "" : " selected"}>No folder</option>${folders.map((f) => `<option value="${f.id}"${f.id === here?.id ? " selected" : ""}>${esc(f.name)}</option>`).join("")}</select><button class="sm">Move</button></span></form>`
+      ? `<form class="sfd" method="post" action="${campaignHref(name)}/folder">${hidden}${infoLabel("Move to folder", archived ? "The folder this campaign keeps while it is archived, and comes back into when you unarchive it. Its runs, results and folder in the knowledge base do not change." : "Where this campaign shows in the left navigation. You can also drag it there. Its runs, results and folder in the knowledge base do not change.")}<span class="kmove"><select name="folder" aria-label="Folder"><option value=""${here ? "" : " selected"}>No folder</option>${folders.map((f) => `<option value="${f.id}"${f.id === here?.id ? " selected" : ""}>${esc(f.name)}</option>`).join("")}</select><button class="sm">Move</button></span></form>`
       : `<div class="sfd">${infoLabel("Move to folder", "Where this campaign shows in the left navigation. Make a folder with the folder button beside Campaigns there.")}<span class="muted small">No folder yet: make one with the folder button beside Campaigns in the navigation.</span></div>`;
     const more = `<details class="menu" data-campaign-more><summary class="btn" title="More" aria-label="More">${icon.dots}</summary><div class="menu-pop kmore-pop">${
       archived
-        ? `<form method="post" action="${campaignHref(name)}/unarchive">${hidden}<button class="sm">Unarchive</button></form><span class="muted small">It comes back to the navigation, in no folder.</span>`
+        ? `${move}<div class="fsep"></div><form method="post" action="${campaignHref(name)}/unarchive">${hidden}<button class="sm">Unarchive</button></form><span class="muted small">It comes back to the navigation, ${here ? `in ${esc(here.name)}` : "in no folder"}.</span>`
         : `${move}<div class="fsep"></div><form method="post" action="${campaignHref(name)}/archive">${hidden}<button class="sm">${icon.archive}Archive</button></form><span class="muted small">Out of the navigation, Needs you and the Overview. Its runs, results and kits stay.</span>`
     }</div></details>`;
     return `${copySource(name) ? `<a class="btn" href="${campaignHref(name)}?copy=1" data-open="#copy">${icon.copy}Copy</a>` : ""}${!archived && startFrom(name) ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>` : ""}${more}`;
@@ -1957,7 +1963,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   const archivedLine = (c: Ctx, name: string) => {
     const a = store.campaignArchived(name);
     if (!a) return "";
-    return `<div class="card" style="margin-bottom:16px"><b>${icon.archive} Archived</b> ${esc(ago(a.at, Date.now()))} ago by ${esc(copiedBy(a.by))}. <span class="muted">It is out of the navigation, Needs you and the Overview. Its runs, results and kits stay. Control starts no run of it until you unarchive it.</span> <form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><button class="sm">Unarchive</button></form></div>`;
+    const folder = store.campaignFolderOf(name);
+    return `<div class="card" style="margin-bottom:16px"><b>${icon.archive} Archived</b> ${esc(ago(a.at, Date.now()))} ago by ${esc(copiedBy(a.by))}. <span class="muted">It is out of the navigation, Needs you and the Overview. Its runs, results and kits stay${folder ? `, and it keeps its folder, ${esc(folder.name)}` : ""}. Control starts no run of it until you unarchive it.</span> <form class="inline" method="post" action="${campaignHref(name)}/unarchive"><input type="hidden" name="csrf" value="${esc(csrf(c))}"><button class="sm">Unarchive</button></form></div>`;
   };
   // The Copy panel's form: the copy's page, or the panel again with control's words.
   app.post("/ui/campaigns/:campaign/copy", async (c) => {
@@ -2483,7 +2490,7 @@ ${
       unarchiveCampaign(store, views(), name, "owner:ui"),
       (a) =>
         a.changed
-          ? `Unarchived ${name}. It is back in the navigation, in no folder.`
+          ? `Unarchived ${name}. It is back in the navigation, ${a.folder ? `in ${a.folder}` : "in no folder"}.`
           : `${name} is not archived.`,
       "Not unarchived.",
       campaignHref(name),
