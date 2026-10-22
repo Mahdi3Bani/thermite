@@ -436,6 +436,32 @@ describe("every button that sends a command (goal 080)", () => {
     assert.doesNotMatch(html, /data-part="starting"/);
   });
 
+  test("Save changes on Edit rig: the rig's page follows the settings' command in its green line", async () => {
+    const s = await stack();
+    const form: Record<string, string> = { choice: "", harness: "pi" };
+    for (const k of ["judge", "workers", "auditor", "teachers", "review", "exports"]) form[k] = "1";
+    Object.assign(form, { lanes: "2", trial_minutes: "20", max_turns: "", promotion: "auto" });
+    const r = await s.post("/ui/rigs/rig-a/edit", form);
+    const to = String(r.headers.get("location"));
+    const id = /&cmd=([0-9a-f-]+)$/.exec(to)?.[1] ?? "";
+    assert.ok(id, to);
+    let page = await s.page(to);
+    assert.match(
+      page,
+      new RegExp(
+        `<div class="card" style="margin-bottom:16px" data-follow="/ui/commands/${id}\\.json" data-follow-state="sent" data-say><b class="ok">Control sent \\d settings to rig-a\\. The rig takes the change in less than one minute\\.</b> <span class="" data-say>Sent to rig-a at \\d\\d:\\d\\d UTC\\. Waiting for the rig to take it\\.</span></div>`,
+      ),
+    );
+    await s.relay();
+    await s.relay();
+    assert.equal((await s.follow(`/ui/commands/${id}.json`)).state, "done");
+    // Once done, the same address says so, and follows nothing.
+    page = await s.page(to);
+    assert.match(page, /<span class="ok" data-say>Done\. rig-a took it at \d\d:\d\d UTC\.<\/span>/);
+    assert.doesNotMatch(page, /data-follow="\/ui\/commands\//);
+    assert.match(await s.page("/ui/rigs/rig-a/edit"), /<form id="edit-rig" method="post"/);
+  });
+
   test("Use on Providers: the row follows the rig as it takes the model", async () => {
     const s = await stack();
     // The rig reports that its agents have no model yet.
@@ -452,7 +478,7 @@ describe("every button that sends a command (goal 080)", () => {
     const a = JSON.parse(
       (await s.send("/ui/settings/rigs", { rig: "rig-a", choice: "lab|m", harness: "pi" })).text,
     ) as Answer;
-    assert.equal(a.state, "taking");
+    assert.deepEqual([a.state, a.final, a.tone], ["taking", false, "ok"]);
     assert.equal(a.follow, "/ui/rigs/rig-a/model.json");
     assert.match(a.said, /rig-a takes m from "lab" under Pi within a minute, and checks it/);
     assert.match(

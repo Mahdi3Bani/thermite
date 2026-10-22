@@ -13,6 +13,8 @@
  *   status bar and each [data-part]. A part the owner is typing in waits until they leave it.
  * - `said` shows beside the form, or at the top of the page for a button in the header, an
  *   inline button, or a form that a redraw took away. Times in data-since count on each second.
+ * - Start a run and Edit rig's Save post as before (the page they open follows the action), and
+ *   their button says "Sending…" at once.
  *
  * FOLLOW_CORE_JS touches no page, and the tests run it as the browser does
  * (action-progress.test.ts). Without this script every form posts as before, and control answers
@@ -246,6 +248,24 @@ export const FOLLOW_JS = `
     if (form.getAttribute("action") !== "/ui/commands" && !form.hasAttribute("data-act")) return;
     ev.preventDefault();
     send(form, ev.submitter);
+  });
+  // A form that leaves the page (Start a run, Edit rig's Save): its button says at once that the
+  // click took, once the browser has taken the form's fields. Back in the history, it comes back.
+  document.addEventListener("submit", (ev) => {
+    const form = ev.target;
+    if (!(form instanceof HTMLFormElement) || ev.defaultPrevented || !form.matches("form[data-start], form#edit-rig")) return;
+    const btn = ev.submitter || form.querySelector("button:not([type=button])");
+    if (!btn) return;
+    btn.dataset.fwLabel = btn.innerHTML;
+    setTimeout(() => { btn.disabled = true; btn.textContent = "Sending…"; }, 0);
+  });
+  window.addEventListener("pageshow", (ev) => {
+    if (!ev.persisted) return;
+    for (const b of document.querySelectorAll("button[data-fw-label]")) {
+      b.disabled = false;
+      b.innerHTML = b.dataset.fwLabel;
+      delete b.dataset.fwLabel;
+    }
   });
   // An action the page's other script sent itself (a queue item dragged to its place).
   document.addEventListener("fw:follow", (ev) => {
