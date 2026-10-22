@@ -92,7 +92,7 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/usage` | Owner or reader | The agents' model usage, summed for one run, for a campaign (all its runs on every rig) or for the whole system, over a period | `run`: one run. `rig`: with `run`, that run on this rig only. `campaign`: one campaign. Neither `run` nor `campaign`: the whole system. `period`: `today` (since midnight UTC), `7d` (the last 7 days) or `all`, default `all`. An empty field counts as not given | `{scope, period, since, total, by_agent, by_model}`, with `by_run` for a campaign and `by_campaign` for the system, below. 400 `{"error":"<why>"}`: `Give a run or a campaign, not both.`, `The period is today, 7d or all.`, `A rig goes with a run: give the run too.`, `A run is 1 to 100 characters.` (a rig too; a campaign, 1 to 200), or `It takes run, rig, campaign and period, not <field>.` |
+| `GET /v1/usage` | Owner or reader | The agents' model usage, summed for one run, for a campaign (all its runs on every rig) or for the whole system, over a period | `run`: one run. `rig`: with `run`, that run on this rig only. `campaign`: one campaign. Neither `run` nor `campaign`: the whole system. `period`: `today` (since midnight UTC, or in `tz`), `7d` (the last 7 days) or `all`, default `all`. `tz`: the time zone whose midnight starts `today`, by its IANA name, such as `Europe/Paris`; default `UTC`. An empty field counts as not given | `{scope, period, tz, since, total, by_agent, by_model, by_agent_model}`, with `by_run` for a campaign and `by_campaign` for the system, below. 400 `{"error":"<why>"}`: `Give a run or a campaign, not both.`, `The period is today, 7d or all.`, `The time zone is a name such as Europe/Paris, America/Chicago or UTC.`, `A rig goes with a run: give the run too.`, `A run is 1 to 100 characters.` (a rig too; a campaign, 1 to 200), or `It takes run, rig, campaign, period and tz, not <field>.` |
 
 It sums the [model usage records](../explanation/how-it-fits-together.md#the-model-usage-records) the rigs reported, by the time each call started. A run or a campaign with no records gives sums of 0 records. The MCP tool [`model_usage`](mcp-tools.md#model_usage) gives the same answer.
 
@@ -100,9 +100,11 @@ It sums the [model usage records](../explanation/how-it-fits-together.md#the-mod
 | --- | --- |
 | `scope` | `{kind: "run", run, rig}` (`rig` is `null` when not given), `{kind: "campaign", campaign}` or `{kind: "system"}` |
 | `period`, `since` | The period, and when it starts; `since` is `null` for `all` |
+| `tz` | The time zone whose midnight starts `today`: the one asked for, or `UTC` |
 | `total` | The sums of every record in the scope and period |
 | `by_agent` | The sums of each agent with records, in this order: `workers`, `planner`, `teachers`, `combiner` (the teachers' merged by model), `auditor`, `panel` (the review panel). Each has `agent` and its `name` in words, such as `Teachers (merged by)` or `Review panel` |
 | `by_model` | The sums of each model, with its `harness`, its `provider` (`null`: a rig's own settings, or an advisors file that names none) and its `model`, the most tokens first |
+| `by_agent_model` | The sums of each agent's calls to each model, with the agent's `agent` and `name`, and the model's `harness`, `provider` and `model`: in the agents' order, then the most tokens first |
 | `by_run` | For a campaign: the sums of each run, with its `rig`, its `run` and its `share` of the campaign's tokens (in and out, from 0 to 1), the largest first |
 | `by_campaign` | For the system: the sums of each campaign, with its `campaign` (`null` for a run whose campaign control has no record of) and its `share` of the system's tokens, the largest first |
 
@@ -134,6 +136,9 @@ Each set of sums has these fields. A figure that no record reports is `null`, ne
 | `priced` | Records with a price: the provider's list's, else the owner's |
 | `on_plan` | Records on a subscription's plan: a Claude or ChatGPT provider's, and every Claude Code call |
 | `no_price` | Records whose model has no price known |
+| `free` | Priced records whose model is free: its price is 0 in every part |
+| `on_plan_tokens`, `no_price_tokens`, `free_tokens` | The tokens, in and out, of the records on a plan, with no price, and free |
+| `priced_as_not_cached` | Tokens in priced at the input price because their records do not report the cache, where the model has a lower cached price |
 
 A model's price comes from the provider's model list when the list gives one, as OpenRouter's and Nous Portal's do (`pricing`, in US dollars per token). OpenAI's own list, Anthropic's and OpenCode Zen's give none: the owner sets one.
 

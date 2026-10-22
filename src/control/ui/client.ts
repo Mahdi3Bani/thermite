@@ -379,6 +379,24 @@ export const CLIENT_JS = `
     location.href = row.dataset.href;
   });
 
+  // ------------------------------------------------ Metrics: today starts at midnight where the viewer is
+  // Every link to Metrics carries the browser's time zone (tz); a Metrics page opened without one
+  // loads again with it. Without this script, Metrics counts today from midnight UTC and says so.
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) {
+      for (const a of document.querySelectorAll('a[href^="/ui/metrics"]')) {
+        const u = new URL(a.getAttribute("href"), location.href);
+        if (!u.searchParams.has("tz")) { u.searchParams.set("tz", tz); a.setAttribute("href", u.pathname + u.search); }
+      }
+      if (location.pathname === "/ui/metrics" && !new URLSearchParams(location.search).has("tz")) {
+        const u = new URL(location.href);
+        u.searchParams.set("tz", tz);
+        location.replace(u.pathname + u.search + u.hash);
+      }
+    }
+  } catch {}
+
   // ------------------------------------------------ the composer: Cmd/Ctrl+Enter sends
   const ta = $(".composer textarea");
   if (ta) ta.addEventListener("keydown", (ev) => {

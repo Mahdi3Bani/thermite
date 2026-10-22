@@ -1,9 +1,12 @@
 import { z } from "zod";
 import {
+  knownTimeZone,
   type ModelPrice,
+  type PodSpendRow,
   type Pricing,
   UsagePeriod,
   type UsageReport,
+  type UsageRow,
   type UsageScope,
   usageReport,
   usageSince,
@@ -20,7 +23,12 @@ import type { ControlStore } from "./store.ts";
  * `set_model_price`); a subscription's calls are on its plan; a model with no price known has
  * none, never 0. A GPU cloud pod's spend goes to the run its rig was running when control counted
  * it (every 30 seconds), so to that run's campaign; a pod's idle spend only to the system's.
+ *
+ * Today starts at midnight UTC, or in the time zone the reader gives (`tz`): the dashboard's
+ * Metrics page gives the viewer's own.
  */
+
+const TZ_WORDS = "The time zone is a name such as Europe/Paris, America/Chicago or UTC.";
 
 /** What a reader asks for: a run (on one rig, or on any), a campaign, or neither (the system). */
 export const UsageQuery = z
@@ -29,6 +37,8 @@ export const UsageQuery = z
     rig: z.string().trim().min(1).max(100).optional(),
     campaign: z.string().trim().min(1).max(200).optional(),
     period: UsagePeriod.default("all"),
+    /** The time zone whose midnight starts today: an IANA name, such as Europe/Paris. */
+    tz: z.string().trim().min(1).max(64).refine(knownTimeZone, { message: TZ_WORDS }).optional(),
   })
   .refine((q) => !(q.run && q.campaign), { message: "Give a run or a campaign, not both." })
   .refine((q) => !q.rig || q.run, { message: "A rig goes with a run: give the run too." });
@@ -40,10 +50,11 @@ export function usageQueryRefusal(raw: unknown): string | undefined {
   if (q.success) return undefined;
   const issue = q.error.issues[0];
   if (issue?.code === "unrecognized_keys")
-    return `It takes run, rig, campaign and period, not ${issue.keys.join(", ")}.`;
+    return `It takes run, rig, campaign, period and tz, not ${issue.keys.join(", ")}.`;
   if (issue?.code === "custom") return issue.message;
   const field = String(issue?.path[0] ?? "");
   if (field === "period") return "The period is today, 7d or all.";
+  if (field === "tz") return TZ_WORDS;
   return `A ${field} is 1 to ${field === "campaign" ? 200 : 100} characters.`;
 }
 
@@ -71,6 +82,18 @@ export function pricingOf(
 
 /** The report for a query; a query that does not read throws its problem in words. */
 export function modelUsage(store: ControlStore, raw: unknown, now = new Date()): UsageReport {
+  return usageData(store, raw, now).report;
+}
+
+/**
+ * The report for a query, with the records it sums (each priced) and the pods' spend: what the
+ * dashboard's screens draw their bars from. A query that does not read throws its problem.
+ */
+export function usageData(
+  store: ControlStore,
+  raw: unknown,
+  now = new Date(),
+): { report: UsageReport; rows: UsageRow[]; pods: PodSpendRow[] } {
   const refused = usageQueryRefusal(raw);
   if (refused) throw new Error(refused);
   const q = UsageQuery.parse(raw);
@@ -79,12 +102,14 @@ export function modelUsage(store: ControlStore, raw: unknown, now = new Date()):
     : q.campaign
       ? { kind: "campaign", campaign: q.campaign }
       : { kind: "system" };
-  const since = usageSince(q.period, now);
+  const tz = q.tz ?? "UTC";
+  const since = usageSince(q.period, now, tz);
   const price = pricingOf(store);
   const rows = store
     .usageRows(scope, since)
     .map((r) => ({ ...r, pricing: price(r.provider, r.model, r.harness) }));
-  return usageReport(rows, scope, q.period, since, store.podSpend(scope, since));
+  const pods = store.podSpend(scope, since);
+  return { report: usageReport(rows, scope, q.period, since, pods, tz), rows, pods };
 }
 
 // --------------------------------------------------------------------------- prices

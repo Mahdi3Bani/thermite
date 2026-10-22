@@ -143,7 +143,15 @@ Some providers serve models that their list does not show. Open the provider's r
 
 ## Give a model its price
 
-[Model usage](../../reference/rest-api.md#model-usage) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show no price until you set one, in US dollars per million tokens:
+[Model usage](../../reference/model-use.md) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show `no price` until you set one, in US dollars for a million tokens.
+
+1. Open the provider's row in **Settings › Providers**. Under its models, **Prices, $ for a million tokens** lists each model. A chip under its name says `from the provider`, `yours` or `no price`.
+2. Type the model's **In** and **Out** prices, and **Cached in** if the provider charges less for tokens it reads from its cache (empty: the **In** price). The line under the model says what its calls so far cost at that price, such as `So far: 5.1k in, 505 out · <$0.01`.
+3. Press **Save prices**.
+
+The block says `Saved. Every cost follows.`, and the model's chip reads `yours`. The run pages, the campaign pages and **Metrics** cost every call of the model at the new price, the earlier ones too. To remove your price, empty its three fields and press **Save prices**: its calls show `no price` again. A model whose list gives a price can't be changed here.
+
+To set a price without the dashboard, send it to control:
 
 ```sh
 curl -sS -X POST https://control.example.com/v1/model-prices \

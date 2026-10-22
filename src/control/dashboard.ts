@@ -21,6 +21,7 @@ import {
 } from "../core/compaction.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
+import { isFree, knownTimeZone, type UsagePeriod } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import {
@@ -280,7 +281,16 @@ import { type LaunchForm, launchBody } from "./ui/runpod-launch.ts";
 import { RUNPOD_LAUNCH_JS } from "./ui/runpod-launch-client.ts";
 import { HISTORY_FILTERS, podBlock, podRows, podRuns, readySteps } from "./ui/runpod-rig.ts";
 import { STYLE } from "./ui/style.ts";
+import {
+  campaignUsageBlock,
+  metricsBody,
+  PRICE_NUMBER,
+  pricesBlock,
+  runStateWord,
+  runUsageBlock,
+} from "./ui/usage.ts";
 import { auditReason, clip, jobText, listText, runStatusText, signed, span } from "./ui/words.ts";
+import { setModelPrice, usageData } from "./usage.ts";
 import {
   type CampaignView,
   campaignModes,
@@ -595,6 +605,49 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   };
 
   /**
+   * A run's model use and cost (goal 075), at the top of its page above the tabs: control's sums
+   * of its records on this rig, its rounds for the bars, and a RunPod rig's price an hour. The
+   * teachers' lines say "teacher 1" or "teacher 2" where the rig's settings tell which.
+   */
+  const runUsage = (u: RigView, i: RunView) => {
+    const d = usageData(store, { run: i.id, rig: u.id });
+    // A run with no agents (a try of a kit) and nothing spent has no model use to show.
+    if (!i.has_agents && !d.report.total.records && d.report.total.cost.pod_usd === null) return "";
+    const roles = store.roleModels(u.id);
+    const launched = store.runpodRig(u.id);
+    const perHour = (launched?.state as { price_per_hr?: unknown } | null | undefined)
+      ?.price_per_hr;
+    return runUsageBlock({
+      report: d.report,
+      rows: d.rows,
+      roundStarts: store.roundStarts(u.id, i.id),
+      trials: i.agents.trials,
+      rounds: i.agents.epochs,
+      rig: u.id,
+      pod: launched
+        ? { perHour: typeof perHour === "number" && perHour > 0 ? perHour : null }
+        : undefined,
+      teacher: (provider, model) => {
+        const is = (r: { provider: string; model: string } | undefined) =>
+          r !== undefined && r.provider === provider && r.model === model;
+        const one = is(roles.teachers);
+        const two = is(roles.second_teacher);
+        return one && !two ? "teacher 1" : two && !one ? "teacher 2" : "";
+      },
+    });
+  };
+
+  /** A campaign's model use and cost over all its runs on every rig (goal 075), for its sidebar. */
+  const campaignUsage = (k: CampaignView) =>
+    campaignUsageBlock({
+      report: usageData(store, { campaign: k.name }).report,
+      run: (rig, run) => {
+        const x = k.runs.find((y) => y.rig.id === rig && y.run.id === run);
+        return x ? { href: runHref(rig, x.run), state: runStateWord(x.run.status) } : undefined;
+      },
+    });
+
+  /**
    * One run on its campaign's page, one view at a time: its overview (what waits for the owner,
    * what it is doing now, goals, what happened, latest attempts), all its attempts, its history
    * in words, or its steering. Command forms return to the same view.
@@ -899,7 +952,7 @@ ${goals}${research}${ladder}
 <div class="block"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
 <div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
-    return `<section class="block" id="${esc(runKey(u.id, i.id))}">
+    return `${runUsage(u, i)}<section class="block" id="${esc(runKey(u.id, i.id))}">
 <nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
 ${body}
 </section>`;
@@ -1020,6 +1073,42 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             about: (k) => aboutOf(k.name),
           })
         : `<div class="card"><div class="empty">No campaign yet.${opts.kits ? ` <a href="/ui/campaigns/new">Start one.</a>` : ""}</div></div>`,
+      vs,
+    );
+  });
+
+  // ---------------------------------------------------------------- Metrics (goal 075)
+  // The whole system's model use and cost, by model and by campaign: today, the last 7 days (the
+  // default) or all. Today starts at midnight in the viewer's own time zone, which the page
+  // script adds to the address (tz); without it, UTC, and the line under the title says so.
+  app.get("/ui/metrics", (c) => {
+    const now = Date.now();
+    const vs = views();
+    const p = c.req.query("period");
+    const period: UsagePeriod = p === "today" || p === "all" ? p : "7d";
+    const asked = (c.req.query("tz") ?? "").trim();
+    const tz = asked && asked.length <= 64 && knownTimeZone(asked) ? asked : "UTC";
+    const d = usageData(store, { period, tz }, new Date(now));
+    const modes = new Map(campaignViews(vs).map((k) => [k.name, k.mode]));
+    return page(
+      c,
+      {
+        title: "Metrics",
+        summary: `every campaign and rig · times in ${esc(tz)}`,
+        active: "metrics",
+      },
+      metricsBody({
+        report: d.report,
+        rows: d.rows,
+        podRigs: [...new Set(d.pods.map((x) => x.rig))],
+        // A campaign no rig reports now: its mode as control saved it, when it did.
+        mode: (k) => {
+          const saved = (store.campaignVersions(k)[0]?.contract as { mode?: unknown } | undefined)
+            ?.mode;
+          return modes.get(k) ?? (typeof saved === "string" ? saved : null);
+        },
+        now,
+      }),
       vs,
     );
   });
@@ -2164,6 +2253,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           ? `<div class="card khead"><div>${about ? `<div class="small muted">What it is for</div>` : `<div class="small muted">Goals of its best run</div>`}${about ? `<div class="kabout-big">${esc(about)}</div>` : ""}${goals}</div><div class="small muted right">on ${esc(rigs.join(", "))}${bestRun ? `<br>best: ${esc(bestRun.id)}, ${esc(h.value)} ${esc(h.sub)}` : ""}</div></div>`
           : ""
       }
+<div class="cols run-cols"><div>
 <div class="block"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
         running.length
           ? `<div class="kwork one">${running.map((x) => workCardFor(c, x.rig, x.run, now, waitingFor(x.rig, x.run), campaignHref(name))).join("")}</div>`
@@ -2197,7 +2287,8 @@ ${
         now,
       )}</div>`
     : ""
-}${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+}${context()}${knowledgeSection(c, name, vs, kbFailed)}
+</div><div class="side">${campaignUsage(k)}</div></div>${drawer}`,
       vs,
     );
   };
@@ -3567,8 +3658,37 @@ ${notice}${box}</section></div>`,
         );
     // What an MCP server's form did is said in its own block (at=mcp), where the page opens.
     const atMcp = c.req.query("at") === "mcp";
-    const ok = atMcp ? undefined : c.req.query("ok");
-    const error = atMcp ? undefined : c.req.query("error");
+    // So is what a provider's Save prices did (at=prices:<provider>), in that provider's block.
+    const at = c.req.query("at") ?? "";
+    const atPrices = at.startsWith("prices:") ? at.slice("prices:".length) : undefined;
+    const ok = atMcp || atPrices !== undefined ? undefined : c.req.query("ok");
+    const error = atMcp || atPrices !== undefined ? undefined : c.req.query("error");
+    // Each model's price and its calls so far (goal 075), for the providers' price fields.
+    const ownerPrices = store.modelPrices();
+    const soFar = store.usageByProviderModel();
+    const prices = (p: ModelProvider) =>
+      pricesBlock({
+        provider: p.name,
+        models: p.models,
+        owner: new Map(
+          ownerPrices.filter((x) => x.provider === p.name).map((x) => [x.model, x.price]),
+        ),
+        soFar: new Map(soFar.filter((x) => x.provider === p.name).map((x) => [x.model, x])),
+        csrf: t,
+        flash:
+          atPrices !== p.name
+            ? undefined
+            : c.req.query("error")
+              ? { kind: "bad", text: String(c.req.query("error")) }
+              : c.req.query("ok") === "saved"
+                ? { kind: "saved" }
+                : c.req.query("ok") === "same"
+                  ? { kind: "same" }
+                  : undefined,
+      });
+    const allFree = (p: ModelProvider) =>
+      p.models.length > 0 && p.models.every((m) => m.price && isFree(m.price));
+    const PLAN_LINE = `<div class="muted small" style="margin-top:10px">On a plan: its calls show their tokens, and “on a plan” for cost.</div>`;
     const note = error
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not done.</b> ${esc(error)}</div>`
       : ok
@@ -3600,7 +3720,7 @@ ${notice}${box}</section></div>`,
       return `<details class="dq" data-k="provider-${esc(p.name)}"><summary>
 <span class="dq-kind"><span class="kind m">Subscription</span></span>
 <span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· Claude subscription</span></span><span class="dq-why">${p.models.length} models · runs only in Claude Code, Anthropic's own program</span><span class="dq-sub"><span class="chip">token ${esc(p.key_hint)}</span><span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
-</summary><div class="dq-body">${windows}
+</summary><div class="dq-body">${windows}${PLAN_LINE}
 <div class="chips" style="margin:12px 0">${p.models.map((m) => `<span class="chip">claude-code:${esc(m.id)}</span>`).join("")}</div>
 <form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}"><input type="hidden" name="type" value="claude">
 <label>${infoLabel("New token from claude setup-token", "A new token replaces the old one at once; control seals it and never shows it again. Tokens from claude setup-token last one year.")}<input name="claude_token" type="password" autocomplete="new-password" maxlength="4096" placeholder="empty keeps the token ending ${esc(p.key_hint)}"></label>
@@ -3621,7 +3741,7 @@ ${
 <span class="dq-kind"><span class="kind m">Subscription</span></span>
 <span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ChatGPT subscription</span></span>${status}<span class="dq-sub"><span class="chip">sign-in ${esc(p.key_hint)}</span><span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 <span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
-</summary><div class="dq-body"><div class="muted small">OpenAI does not tell apps how much of the plan is used: see it in ChatGPT, Settings › Usage. When the plan is full, the agents on this subscription wait and try again every 15 minutes; nothing pays for more.</div>
+</summary><div class="dq-body"><div class="muted small">OpenAI does not tell apps how much of the plan is used: see it in ChatGPT, Settings › Usage. When the plan is full, the agents on this subscription wait and try again every 15 minutes; nothing pays for more.</div>${PLAN_LINE}
 <div class="chips" style="margin:12px 0">${p.models.map((m) => `<span class="chip">chatgpt:${esc(m.id)}</span>`).join("")}</div>
 <form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}"><input type="hidden" name="type" value="chatgpt"><input type="hidden" name="chatgpt_consent" value="1">
 <div style="grid-column:1/-1" class="small">To sign in again (for example after the login ended): <a href="/ui/settings/chatgpt/start?name=${pName}" target="_blank" rel="noopener">Sign in with ChatGPT ↗</a>, then paste the address the tab goes to.</div>
@@ -3640,7 +3760,7 @@ ${
         if (p.type === "chatgpt") return chatgptRow(p, rigs);
         const status = p.models_error
           ? `<span class="dq-why bad">${esc(p.models_error)}${p.models.length ? ` (keeping its last list of ${p.models.length})` : ""}</span>`
-          : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"}${p.models_at ? ` · listed ${esc(ago(p.models_at, now))} ago` : ""}</span>`;
+          : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"}${allFree(p) ? " · free, from the provider" : ""}${p.models_at ? ` · listed ${esc(ago(p.models_at, now))} ago` : ""}</span>`;
         const list = p.models.length
           ? `<div class="chips">${p.models
               .map(
@@ -3650,11 +3770,11 @@ ${
               .join("")}</div>`
           : "";
         const pName = encodeURIComponent(p.name);
-        return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
+        return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"${atPrices === p.name ? " open" : ""}><summary>
 <span class="dq-kind"><span class="kind m">Models</span></span>
 <span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ${esc(TYPES[p.type])}</span></span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">${p.key_hint ? `key ${esc(p.key_hint)}` : "no key: its free models"}</span>${p.type === "opencode" ? `<span class="chip info">runs in the OpenCode harness</span>` : isOpencodeOwn(p) ? `<span class="chip info">OpenCode's own: its free models run in the OpenCode harness</span>` : ""}${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 <span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
-</summary><div class="dq-body">${list}
+</summary><div class="dq-body">${list}${prices(p)}
 <form method="post" action="/ui/settings/providers/${pName}/models" class="form-grid"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("A model it does not list", "Some providers serve models their list leaves out. Add one by its id at the provider; it shows as yours.")}<input name="model" maxlength="200" placeholder="its id at the provider"></label><div class="form-end"><button>Add it</button></div></form>
 <form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}">
 <label>${infoLabel("Type", TYPE_TIP)}${typeSelect(p.type)}</label>
@@ -6670,6 +6790,71 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.addProviderModel(name, model);
     store.audit("owner:ui", "model_provider_model_added", { name, model });
     return c.redirect(settingsUrl("ok", `${model} added to "${name}".`), 303);
+  });
+
+  // Each model's price (goal 075), from the provider's price field: a model the provider's list
+  // prices is left as it is; all three fields empty removes the owner's price; In and Out set it.
+  // Each change goes through setModelPrice, as POST /v1/model-prices does, and is audited.
+  app.post("/ui/settings/providers/:name/prices", async (c) => {
+    const f = await c.req.parseBody();
+    const name = c.req.param("name");
+    const back = (k: "ok" | "error", m: string) =>
+      c.redirect(
+        `/ui/settings?at=${encodeURIComponent(`prices:${name}`)}&${k}=${encodeURIComponent(m)}#prices-${encodeURIComponent(name)}`,
+        303,
+      );
+    const p = store.provider(name);
+    if (!p) return c.redirect(settingsUrl("error", "No such provider."), 303);
+    const owner = new Map(
+      store
+        .modelPrices()
+        .filter((x) => x.provider === p.name)
+        .map((x) => [x.model, x.price]),
+    );
+    const problems: string[] = [];
+    let changed = 0;
+    for (let i = 0; i < p.models.length; i++) {
+      const id = f[`m${i}`];
+      if (typeof id !== "string") continue;
+      const m = p.models.find((x) => x.id === id);
+      if (!m || m.price) continue;
+      const read = (k: string) => {
+        const v = String(f[`${k}${i}`] ?? "").trim();
+        return v === "" ? null : PRICE_NUMBER.test(v) ? Number(v) : Number.NaN;
+      };
+      const [input, cached, output] = [read("in"), read("cached"), read("out")];
+      if ([input, cached, output].some((x) => Number.isNaN(x))) {
+        problems.push(`${id}: a price is a number, such as 0.60.`);
+        continue;
+      }
+      const was = owner.get(id);
+      if (input === null && output === null && cached === null) {
+        if (!was) continue;
+        const r = setModelPrice(store, { provider: p.name, model: id, clear: true }, "owner:ui");
+        if (r.ok) changed++;
+        else problems.push(r.error);
+        continue;
+      }
+      if (input === null || output === null) {
+        problems.push(`${id}: set In and Out, or leave all three empty.`);
+        continue;
+      }
+      if (was && was.input === input && was.output === output && was.cached_input === cached)
+        continue;
+      const r = setModelPrice(
+        store,
+        { provider: p.name, model: id, input, cached_input: cached, output },
+        "owner:ui",
+      );
+      if (r.ok) changed++;
+      else problems.push(r.error);
+    }
+    if (problems.length)
+      return back(
+        "error",
+        `${problems.join(" ")}${changed ? ` The other ${changed} change${changed === 1 ? " is" : "s are"} saved.` : ""}`,
+      );
+    return back("ok", changed ? "saved" : "same");
   });
 
   app.post("/ui/settings/providers/:name/delete", async (c) => {

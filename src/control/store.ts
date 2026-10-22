@@ -2275,8 +2275,8 @@ export class ControlStore {
     }
     const rows = this.db
       .prepare(
-        `select rig, run, campaign, agent, harness, provider, model, calls, at, tokens_in, cached_in,
-           tokens_out, reasoning, first_token_ms, call_ms from model_call
+        `select rig, run, campaign, trial, agent, harness, provider, model, calls, at, tokens_in,
+           cached_in, tokens_out, reasoning, first_token_ms, call_ms from model_call
          ${where.length ? `where ${where.join(" and ")}` : ""} order by at`,
       )
       .all(...args) as Row[];
@@ -2286,6 +2286,7 @@ export class ControlStore {
       rig: String(r.rig),
       run: String(r.run),
       campaign: r.campaign === null ? null : String(r.campaign),
+      trial: r.trial === null || r.trial === undefined ? null : String(r.trial),
       agent: String(r.agent),
       harness: String(r.harness),
       provider: r.provider === null ? null : String(r.provider),
@@ -2299,6 +2300,51 @@ export class ControlStore {
       first_token_ms: num(r.first_token_ms),
       call_ms: num(r.call_ms),
     }));
+  }
+
+  /**
+   * Each provider's models' calls so far, over every record (goal 075: the price field's line on
+   * Settings › Providers): tokens in, the cached ones over the records that report the cache, and
+   * tokens out.
+   */
+  usageByProviderModel(): {
+    provider: string;
+    model: string;
+    records: number;
+    tokens_in: number;
+    cached_in: number;
+    tokens_out: number;
+  }[] {
+    return (
+      this.db
+        .prepare(
+          `select provider, model, count(*) as records, sum(tokens_in) as tokens_in,
+             sum(coalesce(cached_in, 0)) as cached_in, sum(tokens_out) as tokens_out
+           from model_call where provider is not null group by provider, model`,
+        )
+        .all() as Row[]
+    ).map((r) => ({
+      provider: String(r.provider),
+      model: String(r.model),
+      records: Number(r.records),
+      tokens_in: Number(r.tokens_in),
+      cached_in: Number(r.cached_in),
+      tokens_out: Number(r.tokens_out),
+    }));
+  }
+
+  /**
+   * When each round of a run on a rig started, oldest first (goal 075: a run page's calls in each
+   * round): the times of its `epoch_started` events, on any of the rig's ledgers.
+   */
+  roundStarts(rig: string, run: string): string[] {
+    return (
+      this.db
+        .prepare(
+          "select at from rig_event where rig = ? and kind = 'epoch_started' and subject = ? order by seq",
+        )
+        .all(rig, run) as Row[]
+    ).map((r) => String(r.at));
   }
 
   /**

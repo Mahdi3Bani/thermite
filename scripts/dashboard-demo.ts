@@ -14,6 +14,7 @@ import { createControlApi } from "../src/control/api.ts";
 import { issueCommand } from "../src/control/issue.ts";
 import { ControlStore, type IngestReport } from "../src/control/store.ts";
 import { generateSigningKeys } from "../src/core/commands.ts";
+import { callUsage } from "../src/core/usage.ts";
 
 const { values } = parseArgs({ options: { port: { type: "string", default: "8810" } } });
 const now = Date.now();
@@ -66,6 +67,47 @@ const VERDICTS = [
   "crash_candidate",
 ];
 
+// The model calls draw from their own sequence, so the rest of the demo stays as it was.
+let useSeed = 7;
+const urnd = () => {
+  useSeed = (useSeed * 1103515245 + 12345) % 2 ** 31;
+  return useSeed / 2 ** 31;
+};
+
+/** One made-up model usage record: its calls, tokens, cached share (null: not reported) and times. */
+function modelCall(
+  u: Rig,
+  hoursAgo: number,
+  run: string,
+  agent: string,
+  harness: string,
+  provider: string,
+  model: string,
+  calls: number,
+  cached: number | null,
+  trial: string | null,
+) {
+  const tokensIn = calls * (14_000 + Math.floor(urnd() * 16_000));
+  const tokensOut = calls * (300 + Math.floor(urnd() * 900));
+  u.ev(hoursAgo, "model_call", run, {
+    trial,
+    round: null,
+    agent,
+    harness,
+    provider,
+    model,
+    ...callUsage({
+      at: iso(hoursAgo),
+      calls,
+      tokensIn,
+      cachedIn: cached === null ? null : Math.floor(tokensIn * cached),
+      tokensOut,
+      firstTokenMs: 900 + Math.floor(urnd() * 1500),
+      callMs: Math.floor((tokensOut / (30 + urnd() * 40)) * 1000) + calls * 1200,
+    }),
+  });
+}
+
 function hillClimb(
   u: Rig,
   run: string,
@@ -113,6 +155,26 @@ function hillClimb(
       tokens_out: 2000 + Math.floor(rnd() * 6000),
       stopped: "submitted",
     });
+    // Model use (goal 075): the trial's worker, a round's planner, now and then the teachers
+    // (on a subscription, in Claude Code) and the auditor (OpenCode, which does not report the cache).
+    modelCall(u, t - 0.03, run, "workers", "pi", "demo-models", "glm-5.1", 28, 0.75, `t-${id}`);
+    if (i % 3 === 0)
+      modelCall(u, t + 0.04, run, "planner", "pi", "demo-models", "kimi-k3", 1, 0.6, null);
+    if (i % 8 === 4)
+      modelCall(
+        u,
+        t - 0.1,
+        run,
+        "teachers",
+        "claude-code",
+        "claude-plan",
+        "opus-5.5",
+        1,
+        0.9,
+        null,
+      );
+    if (i === total - 6)
+      modelCall(u, t - 0.2, run, "auditor", "opencode", "demo-models", "glm-5.1", 2, null, null);
     const win = wins[n];
     if (win !== undefined && i === Math.floor(((n + 1) * total) / (wins.length + 1))) {
       n++;
@@ -745,6 +807,22 @@ store.addReport(
   "daily",
   "Daily report for gpu-1\n\nCampaign decode-speed (decode-a): champion seq 6, +24.1% over its baseline.\n48 attempts today: 6 wins confirmed, 1 held by audit.\nAgents: 16 epochs, 48 trials, planner valid 94%.",
 );
+
+// A model provider whose list prices one model and not the other (goal 075's price field).
+store.putProvider({
+  name: "demo-models",
+  type: "openai",
+  base_url: "https://models.example.com/v1",
+  key: { sealed: "demo", hint: "…demo" },
+});
+store.setProviderModels("demo-models", [
+  {
+    id: "glm-5.1",
+    context_window: 131_072,
+    price: { input: 0.6, cached_input: 0.11, output: 2.2 },
+  },
+  { id: "kimi-k3", context_window: 262_144 },
+]);
 
 const port = Number(values.port);
 serve({

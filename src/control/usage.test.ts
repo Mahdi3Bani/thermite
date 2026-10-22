@@ -244,7 +244,8 @@ describe("model usage on control (goal 075)", () => {
     await refused("?run=r-1&campaign=matmul", /^Give a run or a campaign, not both\.$/);
     await refused("?period=month", /^The period is today, 7d or all\.$/);
     await refused("?rig=rig-a", /^A rig goes with a run/);
-    await refused("?model=x", /^It takes run, rig, campaign and period, not model\.$/);
+    await refused("?model=x", /^It takes run, rig, campaign, period and tz, not model\.$/);
+    await refused("?tz=Nowhere%2FTown", /^The time zone is a name such as Europe\/Paris/);
     await refused(`?run=${"x".repeat(101)}`, /^A run is 1 to 100 characters\.$/);
     assert.equal((await s.api.request("/v1/usage")).status, 401);
   });
@@ -325,6 +326,11 @@ describe("model usage cost on control (goal 075)", () => {
       priced: 2,
       on_plan: 0,
       no_price: 1,
+      free: 0,
+      on_plan_tokens: 0,
+      no_price_tokens: 550,
+      free_tokens: 0,
+      priced_as_not_cached: 0,
     });
     // The owner prices small-model: every one of its calls, the earlier ones too.
     const set = await s.post({ provider: "lab", model: "small-model", input: 1, output: 2 });
