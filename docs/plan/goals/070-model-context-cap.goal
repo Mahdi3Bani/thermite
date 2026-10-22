@@ -1,17 +1,17 @@
 ---
 id: "070"
 title: "Cap the context window of a rig's model"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-22
 ---
 
 # 070 · Cap the context window of a rig's model
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -124,6 +124,7 @@ The owner compares two models on the same research campaign: one rig on a model 
 - 2026-10-21: The kept conversation of OpenCode, Codex and Claude Code built (see the builder's decisions above), for the workers, the planner and the advisors. Harness: `src/harness/agents/compaction-hook.ts` (Claude Code's PreCompact and PostCompact hooks, one program), `opencode-plugin.ts` (Thermite's OpenCode plugin), `cli-conversation.ts` (each program's own conversation as Markdown, read as data), `cli-compaction.ts` (the line naming the file, Codex's compaction prompt, the program's own conversation for each compaction); `claude-code.ts` (`--settings` with the hook), `codex.ts` (`compact_prompt`, the rollout), `opencode.ts` (the plugin's link and its records, research trials too), each one-call function for the planner; `compactions.ts` (`keptAt`, the summary), `scheduler.ts` and `main.ts` (where each trial's and planner call's conversation goes). Supervisor: `advisors.ts` (each program's compactions read from the call's folder and kept with the round), `advise.ts` (the keeper's place, the Live lines), `advisor-cli.ts` (Codex keeps its session). Tests: `src/harness/agents/cli-conversation.test.ts` (the converters, the guarded reads, the hook as a program, the plugin with a stand-in OpenCode), additions to `cli-compaction.test.ts` (a trial and a planner call in each program, the real hook and plugin in the loop), `compactions.test.ts`, `planner-harness.test.ts`, and `src/supervisor/advisor-compaction.test.ts` (an advisor in each program, with stand-ins that compact). The compose stand-ins compact once in a trial (`containers/test-claude`, `containers/test-codex`), and `scripts/claude-acceptance.mjs` and `codex-acceptance.mjs` check the kept file, its event and the summary; Codex's auditor now runs without `--ephemeral`, with the compaction prompt. `containers/test-anthropic` makes the real Claude Code compact a trial (its first reply says the conversation is large), and `scripts/claude-real-acceptance.mjs` checks the real hook's copy and the summary. Pages: Limits and pacing (Compaction), Connect a model provider, Give each agent its own model, the advisors file, the harness image, the settings reference, the glossary, Troubleshoot, the agents' explanation, campaign modes and the changelog. Left: the compose acceptances (claude, claude-real, codex, agents, steering) are to be run; Edit rig's info icon for OpenCode (`src/control/ui/edit-rig-client.ts`) still says "OpenCode does not report its compactions.", which is no longer so.
 - 2026-10-21: In a run of the real-Claude acceptance, claude, codex and agents passed; claude-real failed only on its new compaction check (no compaction). The cause was in the check's stand-in model, not in Thermite: Claude Code 2.1.305 compacts at the owner's point through its "reactive" compaction, which summarizes only rounds before the newest one, and the stand-in reported the large conversation in the first round, so Claude Code bailed (see the decision above). The stand-in now makes two rounds, and the check runs Claude Code with its debug log on and, when it fails, prints the log's compaction lines, the hooks' folder and what the transcript shows. Limits and pacing says how Claude Code compacts a conversation still in its first round. The Edit rig text was changed with the merge.
 - 2026-10-21: The next run of claude-real compacted, but the kept file was the conversation as Thermite saw it: the PreCompact hook had found no transcript. Claude Code 2.1.305 writes its transcript every 100 ms and runs the hook without writing first, so a real worker's copy would have lacked the newest lines (the last tool result, often), and the stand-in's quick rounds came before the first write. The hook now waits until the transcript has stopped growing (300 ms, 5 seconds at most) and records how long it waited; the check requires the last tool result in the kept file and prints the hook's records on a failure. claude-real then passed in full.
+- 2026-10-22: Verified. Every box has its evidence. The acceptances passed with the kept conversation of all three CLI harnesses: claude, codex, agents, steering, rig-image, multi-GPU, smoke and control on 31d7efd; claude and steering again on bdc00ca; claude-real on 3d90e0c, where the real Claude Code 2.1.305 compacts a trial, its PreCompact hook keeps the whole transcript to the last tool result, and the summary names the kept file.
 
 ---
 
