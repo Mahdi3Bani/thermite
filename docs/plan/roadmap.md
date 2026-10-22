@@ -67,6 +67,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [074](goals/074-one-name-for-each-agent.goal) One name for each agent · `VERIFIED`
 - [075](goals/075-model-usage.goal) Model usage for each run, campaign and the whole system · `VERIFIED`
 - [077](goals/077-archive-and-folders.goal) Archive a campaign; folders in the left navigation; no rigs there · `VERIFIED`
+- [081](goals/081-ideas-first.goal) Teachers put ideas first; a target queue depth; lanes propose follow-ups · `IN_PROGRESS`
 
 ### Research mode
 
@@ -97,6 +98,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [029](goals/029-api-mcp-coverage.goal) Full API and MCP coverage · `IN_PROGRESS`
 - [071](goals/071-bounded-mcp-answers.goal) MCP answers that fit an agent's context · `PROPOSED`
 - [072](goals/072-why-nothing-at-work.goal) Say why a running run has nothing at work · `PROPOSED`
+- [082](goals/082-deep-research-teacher.goal) A deep-research teacher that runs on a trigger · `PROPOSED`
+- [083](goals/083-research-tasks-in-code-runs.goal) Research tasks inside goal and hill-climb runs, with web search · `PROPOSED`
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
 - [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`

@@ -70,6 +70,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [074 · One name for each agent](goals/074-one-name-for-each-agent.goal) | `VERIFIED` | [073](goals/073-harness-for-each-agent.goal) |
 | [075 · Model usage for each run, campaign and the whole system](goals/075-model-usage.goal) | `VERIFIED` | — |
 | [077 · Archive a campaign; folders in the left navigation; no rigs there](goals/077-archive-and-folders.goal) | `VERIFIED` | — |
+| [081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups](goals/081-ideas-first.goal) | `IN_PROGRESS` | [064](goals/064-experiment-queue.goal), [066](goals/066-direction-rules.goal), [074](goals/074-one-name-for-each-agent.goal) |
 
 ### Install from images
 

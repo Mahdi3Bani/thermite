@@ -1,0 +1,72 @@
+---
+id: "081"
+title: "Teachers put ideas first; a target queue depth; lanes propose follow-ups"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["064", "066", "074"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A run's queue stays full of distinct, evidenced ideas.
+
+- **The teachers put ideas first.** Each teachers' round's main product is a **portfolio** of new opportunities, as many as are distinct and evidenced, with no fixed count. Each opportunity has its mechanism, the gain it may give at most, the smallest experiment that tells whether the mechanism holds with its matched control, a stop condition, why it is new since the teachers' last round, and what it rests on. The queue writes each one as an experiment, added by the teachers. Rules come second: only when new evidence calls for one. Code refuses a rule that freezes the queue's size ("do not add queue entries", "keep the queue unchanged") or pins an experiment, and says why. The merged by model merges two teachers' portfolios without dropping a distinct idea, and code adds back any it leaves out.
+- **The teachers read the code and the evidence,** read only, within the supervisor's sandbox rules: the champion's tree, each attempt's diff, the judge's public reasons for each attempt (its verdict and the checks that refused it before building), and why each experiment tried ended as it did. Held-out content stays out.
+- **A target queue depth.** A campaign setting, **Ideas kept ready** (`lanes.queue_target` in the contract): how many queued experiments to keep ready, two for each lane by default. It is a target that drives ideas, not a cap. Below it, the planner's round is asked to top the queue up with distinct ideas, the lanes' distinct ideas go up next, and when the queue is still below it the teachers are asked for ideas at once, not on their clock. New campaign sets it; the campaign's page shows it.
+- **Lanes propose.** A worker's brief asks it to propose its distinct follow-up experiments before it submits or stops, through the existing idea path. The planner queues the distinct ones.
+
+## Why
+
+The owner, 2026-10-22, with the names of a lab setup and a campaign left out: "In teh past ([an earlier research setup] + claude cron) teachers were submitting ideas and really helping the process, doing deep research on the problems/areas/ideas already in the queue and helping the queue. Also have them look at planners. I ask this because the [current goal] campaign only has 1 upcoming experiment. I'd expect a lot more in there."
+
+An audit compared the two:
+
+- **The old teacher** was an hourly headless agent. It read the plan and the journal, the ideas and the queue, the worker's session, profiler data and the engine's source. It wrote "a short portfolio of up to 3 distinct opportunities that are new since the previous reports", each with a mechanism, a gain bound, "the smallest discriminating experiment and its matched control", and gates and a stop condition. It sent at most one steer per check-in.
+- **Thermite's teachers** got the goals by id and status only, hypotheses cut to 300 characters, no judge's reasons, and no code or diffs. They could give up to 10 experiments and 10 moves a round, but their instructions were mostly about rules. In one goal run over 24 hours they set 75 rules and proposed 4 experiments, with notes such as "Do not add queue entries" and "keep the queue unchanged", which the planner obeyed. Their 4 ideas were good: one gave the run's best speed lead.
+- **The planner** was asked for one experiment for each lane each round, more being optional. There was no target queue depth, and nothing asked for ideas when the queue ran low. The fixed fallback plan only filled an empty queue. The lanes proposed 1 idea in 31 trials. The planner saw no code.
+
+## Done when
+
+- [ ] The teachers' instructions and answer put a portfolio first, with no count; each opportunity becomes an experiment in the queue, with its mechanism, gain bound, experiment and control, stop condition, why it is new and its evidence. One without evidence is left out, with why.
+- [ ] Rules come second. The supervisor and the harness both refuse a rule that freezes the queue's size or pins an experiment, each with why in History and Live. Such a rule of the teachers', in force from before, no longer reaches the planner.
+- [ ] The merged by model merges two portfolios without dropping a distinct idea; code adds back what it left out. Without a merged by model, every teacher's distinct ideas are kept.
+- [ ] The teachers read the champion's tree, a file of it, an attempt's diff and the judge's public findings: tools in Pi, and the same tools on localhost for Claude Code, OpenCode and Codex. None for teachers with an open web fetch. Held-out content stays out, by what is read.
+- [ ] A target queue depth: the contract's `lanes.queue_target`, two for each lane by default, set in New campaign and shown on the campaign's page, with a description that says it is a target, not a cap.
+- [ ] Below the target, the planner is asked to top the queue up; the lanes' distinct ideas go up next; a queue still below it starts the teachers' round at once.
+- [ ] A worker's brief asks for its follow-up ideas before it submits or stops; the planner queues the distinct ones.
+- [ ] Tests for each: the prompts, the refusal of freezing rules, the portfolio written as experiments, the code and diff tools, held-out content kept out, the top-up below the target, the teachers' round started by a low queue, and lane proposals reaching the queue.
+- [ ] The pages that describe the advisors, the advisors file, supervision, the planner and the queue, the contract and the changelog describe it.
+- [ ] The steering and agents acceptances pass on this branch.
+
+## Decisions
+
+- 2026-10-22, builder, within the owner's request:
+  - **"Proposed experiments"** are the teachers' queue proposals: each opportunity is written as an experiment up next, added by the teachers, as the advisors' experiments always were (the queue decision of 2026-10-20). The `proposed` state stays the lanes' ideas.
+  - **Evidenced** means at least one citation: an attempt id, a file of the champion, an address or a paper id. An opportunity without one is left out, with why, in the supervisor's record of the round.
+  - **Distinct.** Two ideas are one when their titles have the same words (case, punctuation and spacing aside). The harness refuses a teacher's idea that repeats one up next, a lane's idea or one in progress, in words; an idea tried before may come back, with what changed in its why.
+  - **Freezing and pinning** are found by their words, in code (`src/core/queue-target.ts`): rules to stop adding, keep or freeze the queue, cap it at a number, or keep, retry or pin a named experiment. The supervisor drops them, the harness leaves them out and records `directives_left_out` with the reason `freezes_queue` or `pins_experiment`, and the scheduler no longer gives such a rule of the teachers', set before, to the planner.
+  - **The target** is `lanes.queue_target`, a whole number from 0 to 1000; 0 asks for no ideas. Unset, it is two for each of the round's lanes. It is counted after the round's hand-out: queued experiments that no lane was given this round and that no AVOID rule names. It applies to hill climbs and goals; a research run's research plan fills its queue as before.
+  - **The fixed rules take ideas** when the queue is below the target after the planner's answer (or without one): the lanes' distinct ideas, oldest first, go up next as the planner's. Before, the fixed rules never took an idea. A repeat, or an idea in an avoided direction, still waits for the planner's model or the owner.
+  - **Asking the teachers.** A planner's round that leaves the queue below its target records one `queue_low` event. The supervisor starts one teachers' round for each, at once, while the queue is still below the target; the brief's first line says why.
+  - **The code tools** (`list_files`, `read_file`, `read_diff`, `read_evidence`) go to the teachers only, through the harness API with the supervisor's token. Teachers that may fetch any web page get none, as they get no knowledge-base search: private code and the open web never meet in one advisor. The merged by model and the auditor are as before.
+  - **No counts on ideas.** The teachers' portfolio and plain experiments, and the planner's added and accepted experiments, have no count. The supervisor sends the teachers' experiments to the harness 20 at a time.
+  - **New campaign** gets one field, **Ideas kept ready**, under **Advanced** in step 4, so as not to cross goal 078's work on the builder. The campaign's page shows the number read only, in a block of its own; a new contract version changes it.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's request and the audit. Building.
+
+---
+
+Run with `/goal Complete docs/plan/goals/081-ideas-first.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

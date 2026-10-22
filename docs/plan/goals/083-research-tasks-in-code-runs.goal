@@ -1,0 +1,46 @@
+---
+id: "083"
+title: "Research tasks inside goal and hill-climb runs, with web search"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["081", "062", "046"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 083 · Research tasks inside goal and hill-climb runs, with web search
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+- **Research tasks in the queue of a goal or hill-climb run.** An experiment may be a research task: read sources and record checked claims and notes in the run's research folder ([062](062-research-folder.goal)), with no change to the code. The planner, the teachers and the owner add them, as they add experiments; a lane works on one as a research worker does, and its findings feed the queue's next experiments.
+- **A web search backend.** A search provider in **Settings › Providers**, which those tasks, and research mode, use to find sources ([046](046-web-search.goal) plans it for research mode).
+- **The judge is unchanged.** A research task submits no change, so the judge measures nothing for it; its record is its claims and notes.
+
+## Why
+
+The owner, 2026-10-22, on goal 081, wants ideas grounded in research on "the problems/areas/ideas already in the queue". Today only research runs do research, and they follow seed links only. Research tasks inside code runs would let lanes research a direction before they spend trials on it.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- How a research task shows on the **Experiments** tab, and how its findings reach the queue.
+- Whether 046's search provider moves to v0.2.0 with this goal.
+
+## Progress
+
+- 2026-10-22: Goal written as a plan, from the owner's request on goal 081.
+
+---
+
+Run with `/goal Complete docs/plan/goals/083-research-tasks-in-code-runs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
