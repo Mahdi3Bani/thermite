@@ -156,6 +156,12 @@ const EditPolicy = {
    * written before it keep their hash.
    */
   ideas: z.array(z.string().min(1)).optional(),
+  /**
+   * Starting links from the campaign's author (goal 078): pages the agents get with the brief.
+   * Nothing fetches them up front; a worker fetches one when it needs it. Optional and without a
+   * default, so contracts written before it keep their hash. A research contract's are its seeds.
+   */
+  links: z.array(z.url()).optional(),
 };
 
 const Acceptance = z
@@ -311,7 +317,11 @@ export const ResearchContract = z.strictObject({
   mode: z.literal("research"),
   topic: z.string().min(1),
   questions: z.array(z.string().min(1)).min(1),
-  /** Starting URLs (without a search provider, research follows links from these). */
+  /**
+   * Starting links: the harness fetches and archives them when the run starts (goal 078), and
+   * every research worker's brief lists them. Without a search provider, research follows links
+   * from these.
+   */
   seeds: z.array(z.url()).default([]),
   /**
    * The MCP servers the campaign's agents use (goal 068), as a kit names them: a research

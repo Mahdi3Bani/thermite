@@ -353,7 +353,7 @@ ${BRIEF_PAGE_JS}
     const cw = ccNum(val("context_window")), ca = ccNum(val("compact_at"), true);
     if (cw.n || ca.n) d.agents_context = Object.assign({}, cw.n ? { context_window: cw.n } : {}, ca.n ? { compact_at: ca.n } : {});
     if (mode === "research") {
-      d.research = { topic: val("topic"), questions: briefList(blItems("questions")), seeds: lines("seeds"), min_duration: val("min_duration") };
+      d.research = { topic: val("topic"), questions: briefList(blItems("questions")), seeds: briefLinks(form.elements.links ? form.elements.links.value : "").links, min_duration: val("min_duration") };
       d.mcp_servers = picked(blockOf("r"));
       return d;
     }
@@ -461,10 +461,12 @@ ${BRIEF_PAGE_JS}
     const proj = mode === "research" ? "" : " on " + repoName(val("project_url") || "the project") + (folder() ? " (the folder " + folder() + ")" : "") + (found ? " at " + found.commit.slice(0, 7) : "") + ", changing only " + (lines("editable_paths").join(", ") || "(no files yet)");
     const ctx = cc.errs.length ? "" : cc.cw ? " Its agents get at most " + ccFmt(cc.cw) + " tokens" + (cc.at ? " and compact at " + cc.at + "%." : ".") : cc.at ? " Each of its agents compacts at " + cc.at + "%." : "";
     // The brief in a few words (goal 078).
-    const bd = briefDraft(mode, briefFieldsNow()), qs = mode === "research" ? briefList(blItems("questions")).length : 0;
+    const bf = briefFieldsNow(), bd = briefDraft(mode, bf);
+    const qs = mode === "research" ? briefList(blItems("questions")).length : 0, nl = briefLinks(bf.links).links.length;
     const count = (n, one, many) => n.toLocaleString("en-US") + " " + (n === 1 ? one : many);
-    const bparts = [qs ? count(qs, "question", "questions") : "", bd.notes ? count(bd.notes.length, "character", "characters") + " of additional information" : "", bd.ideas ? count(bd.ideas.length, "idea", "ideas") + " to try" : "", bd.hypotheses ? count(bd.hypotheses.length, "hypothesis", "hypotheses") : ""].filter(Boolean);
-    const brief = bparts.length ? " Its brief: " + bparts.join(", ") + "." : " Its brief is empty.";
+    const bparts = [qs ? count(qs, "question", "questions") : "", bd.notes ? count(bd.notes.length, "character", "characters") + " of additional information" : "", nl ? count(nl, "starting link", "starting links") : "", bd.ideas ? count(bd.ideas.length, "idea", "ideas") + " to try" : "", bd.hypotheses ? count(bd.hypotheses.length, "hypothesis", "hypotheses") : ""].filter(Boolean);
+    // Only a brief with something in it is said: an empty one adds nothing to the sentence.
+    const brief = bparts.length ? " Its brief: " + bparts.join(", ") + "." : "";
     const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + (Number(lanes) === 1 ? " agent works" : " agents work") + " on " + (rig || "(no rig chosen)") + "." + ctx + brief;
     for (const el of $$("[data-summary]")) el.textContent = s;
     $("#draft-preview") && ($("#draft-preview").textContent = JSON.stringify(draft(), null, 2));
@@ -482,10 +484,11 @@ ${BRIEF_PAGE_JS}
   // A page sent back with mistakes keeps what was typed (the server echoes the draft).
   const back = form.dataset.draft ? JSON.parse(form.dataset.draft) : null;
   if (back) {
-    const set = (n, v) => { if (form.elements[n] && v !== undefined && v !== null) form.elements[n].value = Array.isArray(v) ? v.join(n === "editable_paths" || n === "forbidden_patterns" || n === "seeds" ? "\\n" : " ") : v; };
+    const set = (n, v) => { if (form.elements[n] && v !== undefined && v !== null) form.elements[n].value = Array.isArray(v) ? v.join(n === "editable_paths" || n === "forbidden_patterns" || n === "links" ? "\\n" : " ") : v; };
     set("campaign", back.campaign); set("title", back.title); set("notes", back.notes); set("lanes", back.lanes);
     // The brief's lists, one box for each entry (goal 078).
     blFill("ideas", back.ideas); blFill("hypotheses", back.hypotheses);
+    set("links", back.mode === "research" ? back.research && back.research.seeds : back.links);
     if (back.project) { set("project_access", back.project.access); set("project_url", back.project.url); set("project_ref", back.project.ref); set("project_folder", back.project.folder); set("editable_paths", back.project.editable_paths); set("forbidden_patterns", back.project.forbidden_patterns); }
     if (back.kit && back.kit.source === "here") { for (const k of ["build", "run", "check"]) set(k, back.kit[k]); set("outputs", back.kit.outputs); set("runs_per_case", back.kit.runs_per_case); }
     if (back.score) {
@@ -510,7 +513,7 @@ ${BRIEF_PAGE_JS}
         .catch(() => {});
     }
     if (back.agents_context) { set("context_window", back.agents_context.context_window); set("compact_at", back.agents_context.compact_at); }
-    if (back.research) { set("topic", back.research.topic); blFill("questions", back.research.questions); set("seeds", back.research.seeds); set("min_duration", back.research.min_duration); }
+    if (back.research) { set("topic", back.research.topic); blFill("questions", back.research.questions); set("min_duration", back.research.min_duration); }
     $$('.ch[data-group="mode"]').forEach((c) => { c.classList.toggle("on", c.dataset.value === back.mode); });
     choice.mode = back.mode;
     // The MCP servers as they were chosen (a kit in a repository: as its kit.json named them).

@@ -76,7 +76,7 @@ The last command prints nothing. Your `thermite-source` folder now holds the fil
 
 ## 5. Name the campaign
 
-In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** at the top right of the page. The page has five steps: **1 Aim**, **2 Project**, **3 How to measure**, **4 Where it runs** and **5 Review and start**. Each field's ⓘ says more about it.
+In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** at the top right of the page. The page has six steps: **1 Aim**, **2 The brief**, **3 Project**, **4 How to measure**, **5 Where it runs** and **6 Review and start**. Each field's ⓘ says more about it.
 
 On **1 Aim**:
 
@@ -85,11 +85,13 @@ On **1 Aim**:
 3. **Title**: `Make the sample's matrix multiply faster`
 4. Press **Next**.
 
+On **2 The brief**, leave every field empty and press **Next**. The brief is optional: it is where you give the agents background, links, ideas and hypotheses.
+
 ## 6. Point it at the sample
 
 The sample is one folder of Thermite's repository. Your rig fetches the whole repository from GitHub, and the run starts from that folder: the agents see only its files.
 
-On **2 Project**:
+On **3 Project**:
 
 1. **Repository**: `https://github.com/iammrduncan/thermite.git`
 2. **Start from**: `v0.1.0`, the release of step 4. The sample then matches your images.
@@ -110,7 +112,7 @@ On **2 Project**:
 
 ## 7. Upload the kit
 
-On **3 How to measure**:
+On **4 How to measure**:
 
 1. Choose the card **Upload a kit**.
 2. Under **Kit archive**, choose the file `matmul-cpu-kit.tar.gz` in your `thermite-source` folder. Control unpacks it and checks it. The page says `matmul-cpu-kit.tar.gz: checked.`, then sums the kit up: `matmul-cpu: measures on cpu, 3 cases, scores flops_per_s.`
@@ -120,7 +122,7 @@ On **3 How to measure**:
 
 ## 8. Start the campaign
 
-On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
+On **5 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
 
 1. **Agents working at once**: `1`. The agent works in a **lane**: a line of search, worked by one agent at a time.
 2. **The agents' model**: keep **the rig's model**.
@@ -128,7 +130,7 @@ On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's har
 
 **When a change is confirmed better** stays at **the rig's default**. On `local-1` that rule is automatic: a change the judge confirms becomes the best version without waiting for you, unless it is held for a second look (see step 10).
 
-On **5 Review and start**, a sentence sums up the campaign. It starts with `matmul-agents will make flops_per_s higher`, names `thermite (the folder examples/matmul-cpu/project)` and `src/kernel/**` as the only files to change, and ends `1 agent works on local-1.`
+On **6 Review and start**, a sentence sums up the campaign. It starts with `matmul-agents will make flops_per_s higher`, names `thermite (the folder examples/matmul-cpu/project)` and `src/kernel/**` as the only files to change, and ends `1 agent works on local-1.`
 
 Press **Start the campaign**. Control keeps the kit, saves the campaign, and sends its first **run** to `local-1`: this campaign at work on that rig.
 

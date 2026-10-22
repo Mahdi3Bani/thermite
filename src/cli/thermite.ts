@@ -34,7 +34,7 @@ const USAGE = `usage: thermite <command> [options]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
-         [--info-file F] [--idea TEXT ...] [--hypothesis TEXT ...]
+         [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -52,11 +52,12 @@ const USAGE = `usage: thermite <command> [options]
                                       in the contract sent (its agents_context, over the file's):
                                       every agent's window is the lower of it and its own, and
                                       the point replaces the rig's; the contract's hash changes
-                                      with them. --info-file, --idea and --hypothesis give the
-                                      campaign's brief in the contract sent, each in place of the
-                                      file's: its additional information (Markdown, from file F),
-                                      its ideas to try (hill climb and goal) and its hypotheses,
-                                      one per option. --print shows the payload (for
+                                      with them. --info-file, --link, --idea and --hypothesis
+                                      give the campaign's brief in the contract sent, each in
+                                      place of the file's: its additional information (Markdown,
+                                      from file F), its starting links (a research campaign's
+                                      seeds), its ideas to try (hill climb and goal) and its
+                                      hypotheses, one per option. --print shows the payload (for
                                       issue_command over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
@@ -123,8 +124,8 @@ const USAGE = `usage: thermite <command> [options]
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
   campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
-         [--compact-at PERCENT] [--info-file F] [--idea TEXT ...] [--hypothesis TEXT ...]
-         --control URL --token-file F
+         [--compact-at PERCENT] [--info-file F] [--link URL ...] [--idea TEXT ...]
+         [--hypothesis TEXT ...] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
@@ -134,8 +135,8 @@ const USAGE = `usage: thermite <command> [options]
                                       ([] for none). --context-window and --compact-at give the
                                       copy its own context settings, in place of FROM's. The copy
                                       keeps FROM's brief; --info-file (Markdown; an empty file
-                                      for none), --idea and --hypothesis give its own, each in
-                                      place of FROM's
+                                      for none), --link, --idea and --hypothesis give its own,
+                                      each in place of FROM's
   campaign context CAMPAIGN [--context-window TOKENS] [--compact-at PERCENT]
          --control URL --token-file F
                                       set a campaign's own context settings for all its runs'
@@ -216,6 +217,7 @@ function contextFromFlags(values: {
  */
 function briefFromFlags(values: {
   "info-file"?: string | undefined;
+  link?: string[] | undefined;
   idea?: string[] | undefined;
   hypothesis?: string[] | undefined;
 }): { notes?: string; ideas?: string[]; hypotheses?: string[] } {
@@ -230,6 +232,7 @@ function briefFromFlags(values: {
   }
   return {
     ...(notes !== undefined ? { notes } : {}),
+    ...(values.link ? { links: values.link } : {}),
     ...(values.idea ? { ideas: values.idea } : {}),
     ...(values.hypothesis ? { hypotheses: values.hypothesis } : {}),
   };
@@ -484,6 +487,7 @@ async function main(argv: string[]): Promise<void> {
           "context-window": { type: "string" },
           "compact-at": { type: "string" },
           "info-file": { type: "string" },
+          link: { type: "string", multiple: true },
           idea: { type: "string", multiple: true },
           hypothesis: { type: "string", multiple: true },
           control: { type: "string" },
@@ -912,6 +916,7 @@ async function main(argv: string[]): Promise<void> {
           "context-window": { type: "string" },
           "compact-at": { type: "string" },
           "info-file": { type: "string" },
+          link: { type: "string", multiple: true },
           idea: { type: "string", multiple: true },
           hypothesis: { type: "string", multiple: true },
         },

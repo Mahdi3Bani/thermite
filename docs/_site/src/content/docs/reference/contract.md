@@ -93,15 +93,16 @@ The rig sets each agent's context window and compaction point with its model ([G
 | `agents_context.context_window` | integer, 4,096 to 100,000,000 | none | The most tokens of [context window](glossary.md) each agent works with. Each agent's window is the lower of this and its own: its provider's window, or the rig's cap on it. With an agent whose window Thermite does not know, this one |
 | `agents_context.compact_at` | integer, 50 to 95 | none | The share of the window, in percent, at which each agent's conversation is [compacted](limits-and-pacing.md#compaction), in place of the rig's point |
 
-Both are optional and have no default, so a contract without them keeps its hash. A change is a new version: a run keeps the settings it started with. Control refuses to start a run of a campaign whose window is above what a provider lists for one of the rig's agents' models; **Agents' context** on the campaign's page, [`POST /v1/campaigns/<campaign>/context`](rest-api.md#a-campaigns-context-settings), MCP's `set_campaign_context` and `thermite campaign context` save a new version with them; **New campaign** (step 4) and the **Copy** panel set them on a new campaign; and **Start a run** and its answer say what applies to each agent ([Set the agents' context](../how-to/campaigns/start-from-dashboard.md#set-the-agents-context)). A rig whose harness is older than this field refuses a contract that has it.
+Both are optional and have no default, so a contract without them keeps its hash. A change is a new version: a run keeps the settings it started with. Control refuses to start a run of a campaign whose window is above what a provider lists for one of the rig's agents' models; **Agents' context** on the campaign's page, [`POST /v1/campaigns/<campaign>/context`](rest-api.md#a-campaigns-context-settings), MCP's `set_campaign_context` and `thermite campaign context` save a new version with them; **New campaign** (step 5) and the **Copy** panel set them on a new campaign; and **Start a run** and its answer say what applies to each agent ([Set the agents' context](../how-to/campaigns/start-from-dashboard.md#set-the-agents-context)). A rig whose harness is older than this field refuses a contract that has it.
 
 ### The campaign's brief
 
-The brief is what the campaign's author tells the agents beyond the objective: **The brief** on the **New campaign** page. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide.
+The brief is what the campaign's author tells the agents beyond the objective: step **2 The brief** on the **New campaign** page. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide.
 
 ```json title="contract.json (part)"
 {
   "notes": "## Background\nThe kernel is `src/kernel/work.c`. It runs at batch size 1.\n\n## What was tried\n- Shared-memory tiling: no gain.",
+  "links": ["https://git.example.com/team/project/issues/12"],
   "ideas": ["Fuse the dequantize step into the inner loop.", "Load 128-bit vectors."],
   "hypotheses": ["The kernel is memory bound at batch size 1."]
 }
@@ -110,16 +111,17 @@ The brief is what the campaign's author tells the agents beyond the objective: *
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `notes` | text | none | The additional information, in Markdown: the project and its links, what was tried, limits, and what good looks like. No length limit of its own |
+| `links` | list of URLs | none | Hill climb and goal only: starting links, pages the agents get with the brief. Nothing fetches them up front; a worker fetches one when it needs it. A research campaign's starting links are its [`seeds`](#research) |
 | `ideas` | list of text, each not empty | none | Hill climb and goal only: ideas to try, one entry each. The planner turns those that fit into experiments. A research contract with it is refused: `Unrecognized key: "ideas"` |
 | `hypotheses` | list of text, each not empty | none | What the author thinks is true, one entry each, for the agents to test. A research run starts with them as its own hypotheses |
 
-All three are optional and have no default, so a contract without them keeps its hash. An entry may have several lines. The whole contract goes to a rig in one signed command, which control refuses above 3.5 MiB: `the assign_campaign command is too large to deliver`. A rig whose harness is older than `ideas` and `hypotheses` refuses a contract that has them.
+All four are optional and have no default, so a contract without them keeps its hash. An entry may have several lines. The whole contract goes to a rig in one signed command, which control refuses above 3.5 MiB: `the assign_campaign command is too large to deliver`. A rig whose harness is older than `links`, `ideas` and `hypotheses` refuses a contract that has them.
 
 What each agent gets, and whether it gets the whole text:
 
 | Who | Where | Whole or cut |
 | --- | --- | --- |
-| The planner | `campaign_brief` in its context: `additional_information`, `ideas_to_try` and `hypotheses` | Whole |
+| The planner | `campaign_brief` in its context: `additional_information`, `starting_links`, `ideas_to_try` and `hypotheses` | Whole |
 | Each worker of a hill climb or goal | The section "The campaign's brief" in its trial brief | Whole up to 32,000 characters. A longer brief is cut there, with a line that says so and where the whole text is: `BRIEF.md` in the run's folder |
 | Each research worker | The same section in its research brief, after the questions | As for a worker |
 | The teachers, the auditor and the review panel | `campaign_brief` in their brief or package, before the evidence and the diff | Whole. Only the package's own cut can reach it: a package is cut at its end, to fit the advisor's window and to at most 120,000 characters for the teachers' brief or 200,000 for a package ([Compaction](limits-and-pacing.md#compaction)), so the evidence and the diff go first |
@@ -276,8 +278,8 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | --- | --- | --- | --- |
 | `topic` | text | required | What to research. Briefs and reports show it |
 | `questions` | list of text, at least one | required | The questions. Each may be long and have several lines. Claims name the question they answer by its place in this list, from 0, and the plan works on the least-covered questions first. Every research worker's brief has them whole |
-| `seeds` | list of URLs | `[]` | Starting pages, given to workers in their brief. With no web search, workers follow links from these |
-| `mcp_servers` | list | none | The MCP servers the campaign's agents use, as a kit's [`mcp_servers`](kit-manifest.md#mcp-servers) names them: a research campaign has no kit. The **New campaign** page writes it from **Sources** › **MCP servers for the agents**. Control refuses to start a run that names a server **Settings** lacks |
+| `seeds` | list of URLs | `[]` | The starting links: **Starting links** in the brief on the **New campaign** page. The harness fetches and archives them when the run starts, one after another, beside the first trials; Live says `starting links: <n> of <m> archived`, with the reason for each it could not. Every research worker's brief lists them under "Starting links". With no web search, workers follow links from these |
+| `mcp_servers` | list | none | The MCP servers the campaign's agents use, as a kit's [`mcp_servers`](kit-manifest.md#mcp-servers) names them: a research campaign has no kit. The **New campaign** page writes it from **Time and tools** › **MCP servers for the agents**. Control refuses to start a run that names a server **Settings** lacks |
 | `scope.include_domains` | list of domain names, in lowercase | `[]` | When not empty, only these domains and their subdomains are fetched. Others are refused with `outside the campaign's domains: <host>` |
 | `scope.exclude_domains` | list of domain names, in lowercase | `[]` | These domains and their subdomains are never fetched: `excluded domain <host>` |
 | `scope.source_types` | list of text | `[]` | Accepted, not used yet |

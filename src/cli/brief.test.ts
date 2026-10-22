@@ -58,6 +58,8 @@ describe("a campaign's brief on the command line (goal 078)", () => {
       "Unroll by 4.",
       "--hypothesis",
       "It is memory bound.",
+      "--link",
+      "https://git.example.com/team/x/issues/1",
       "--print",
     );
     assert.equal(out.code, 0, out.stderr);
@@ -68,6 +70,7 @@ describe("a campaign's brief on the command line (goal 078)", () => {
     assert.equal(payload.contract.notes, INFO);
     assert.deepEqual(payload.contract.ideas, ["Fuse the loops.", "Unroll by 4."]);
     assert.deepEqual(payload.contract.hypotheses, ["It is memory bound."]);
+    assert.deepEqual(payload.contract.links, ["https://git.example.com/team/x/issues/1"]);
     // The hash is the sent contract's: it changes with the brief.
     const sent = parseContract(payload.contract);
     const file = parseContract(JSON.parse(readFileSync(contract, "utf8")));

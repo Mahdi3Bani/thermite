@@ -135,6 +135,8 @@ export const CampaignDraft = z.strictObject({
   notes: z.string().optional(),
   ideas: z.array(z.string()).optional(),
   hypotheses: z.array(z.string()).optional(),
+  /** Hill climb and goal: the starting links the agents get with the brief. Research: its seeds. */
+  links: z.array(z.string()).optional(),
   /** The rig's measurement target, from the rig the campaign starts on. */
   target: z.strictObject({ type: z.string().min(1), class: z.string().min(1) }),
   project: z
@@ -175,7 +177,8 @@ export const CampaignDraft = z.strictObject({
       topic: z.string().min(1).max(2000),
       // Each question may be long and have several lines (goal 078); at least one is needed.
       questions: z.array(z.string()),
-      seeds: z.array(z.string().url()).max(100).default([]),
+      // The starting links (goal 078): the harness archives them when a run starts.
+      seeds: z.array(z.string()).default([]),
       min_duration: DurationSchema,
     })
     .optional(),
@@ -223,6 +226,16 @@ export type Built =
       mcp_servers?: McpUse[] | undefined;
     }
   | { ok: false; errors: string[] };
+
+/** An http or https address, as the contract's links and seeds take them. */
+function webAddress(x: string): boolean {
+  try {
+    const u = new URL(x);
+    return (u.protocol === "https:" || u.protocol === "http:") && !/\s/.test(x);
+  } catch {
+    return false;
+  }
+}
 
 /** The kit's name for a campaign: its own repository beside the project. */
 export const kitName = (campaign: string) => `${campaign.slice(0, 59)}-kit`;
@@ -319,6 +332,20 @@ export function buildCampaign(
   const entries = (xs: string[] | undefined) => (xs ?? []).map((x) => x.trim()).filter(Boolean);
   const ideas = entries(d.ideas);
   const hypotheses = entries(d.hypotheses);
+  // Starting links (goal 078): web addresses, refused in words otherwise.
+  const notLinks = [...(d.links ?? []), ...(d.research?.seeds ?? [])].filter((x) => !webAddress(x));
+  if (notLinks.length)
+    return {
+      ok: false,
+      errors: notLinks.map(
+        (x) => `Starting links: ${x.slice(0, 200)} is not a web address: write it as https://…`,
+      ),
+    };
+  if (d.mode === "research" && d.links?.length)
+    return {
+      ok: false,
+      errors: ["a research campaign's starting links are its seeds: give them as research.seeds"],
+    };
   if (d.mode === "research" && ideas.length)
     return {
       ok: false,
@@ -339,6 +366,7 @@ export function buildCampaign(
     ...(d.notes?.trim() ? { notes: d.notes } : {}),
     ...(ideas.length ? { ideas } : {}),
     ...(hypotheses.length ? { hypotheses } : {}),
+    ...(d.mode !== "research" && d.links?.length ? { links: d.links } : {}),
     ...(d.wall_hours ? { budget: { wall_hours: d.wall_hours } } : {}),
     ...(Object.keys(own).length ? { agents_context: own } : {}),
   };

@@ -49,7 +49,7 @@ usage: thermite <command> [options]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
-         [--info-file F] [--idea TEXT ...] [--hypothesis TEXT ...]
+         [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -67,11 +67,12 @@ usage: thermite <command> [options]
                                       in the contract sent (its agents_context, over the file's):
                                       every agent's window is the lower of it and its own, and
                                       the point replaces the rig's; the contract's hash changes
-                                      with them. --info-file, --idea and --hypothesis give the
-                                      campaign's brief in the contract sent, each in place of the
-                                      file's: its additional information (Markdown, from file F),
-                                      its ideas to try (hill climb and goal) and its hypotheses,
-                                      one per option. --print shows the payload (for
+                                      with them. --info-file, --link, --idea and --hypothesis
+                                      give the campaign's brief in the contract sent, each in
+                                      place of the file's: its additional information (Markdown,
+                                      from file F), its starting links (a research campaign's
+                                      seeds), its ideas to try (hill climb and goal) and its
+                                      hypotheses, one per option. --print shows the payload (for
                                       issue_command over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
@@ -138,8 +139,8 @@ usage: thermite <command> [options]
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
   campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
-         [--compact-at PERCENT] [--info-file F] [--idea TEXT ...] [--hypothesis TEXT ...]
-         --control URL --token-file F
+         [--compact-at PERCENT] [--info-file F] [--link URL ...] [--idea TEXT ...]
+         [--hypothesis TEXT ...] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
@@ -149,8 +150,8 @@ usage: thermite <command> [options]
                                       ([] for none). --context-window and --compact-at give the
                                       copy its own context settings, in place of FROM's. The copy
                                       keeps FROM's brief; --info-file (Markdown; an empty file
-                                      for none), --idea and --hypothesis give its own, each in
-                                      place of FROM's
+                                      for none), --link, --idea and --hypothesis give its own,
+                                      each in place of FROM's
   campaign context CAMPAIGN [--context-window TOKENS] [--compact-at PERCENT]
          --control URL --token-file F
                                       set a campaign's own context settings for all its runs'
@@ -318,6 +319,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--context-window TOKENS` | No | The contract's | The campaign's own context window for the run's agents: the contract's [`agents_context.context_window`](contract.md#agents-context), over the file's. 4,096 to 100,000,000. Each agent works with the lower of it and its own window. The contract sent, and its hash, change with it |
 | `--compact-at PERCENT` | No | The contract's | The campaign's own compaction point: the contract's `agents_context.compact_at`, over the file's. 50 to 95. It replaces the rig's point for every agent of the run |
 | `--info-file F` | No | The contract's | The campaign's additional information: the contract's [`notes`](contract.md#the-campaigns-brief), in Markdown, read from file `F`, over the file's. No length limit of its own. An empty file removes it. The contract sent, and its hash, change with it |
+| `--link URL` | No, repeatable | The contract's | One starting link, a web address. Together they are the contract's `links` (hill climb and goal), or a research contract's `seeds`, in place of the file's. A research run's harness fetches and archives them when the run starts |
 | `--idea TEXT` | No, repeatable | The contract's | Hill climb and goal: one idea to try. Together they are the contract's `ideas`, in place of the file's. For a research contract the command stops: `--idea is for hill-climb and goal campaigns: a research campaign has questions` (exit 2) |
 | `--hypothesis TEXT` | No, repeatable | The contract's | One hypothesis. Together they are the contract's `hypotheses`, in place of the file's. A research run starts with them as its hypotheses |
 | `--control URL` | To send it | | Control's address |
@@ -326,7 +328,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--ttl MIN` | No | `60` | Minutes before the command expires if the rig has not taken it: a whole number from 1 to 10080 (7 days) |
 | `--print` | Instead of the four above | | Print the payload as indented JSON and send nothing. The output is what the MCP tool `issue_command` takes as `payload` |
 
-`--info-file`, `--idea` and `--hypothesis` put the campaign's brief in the contract sent, so you can keep the brief in a Markdown file beside the contract. An `--info-file` that can't be read ends the command with `--info-file:` and why (exit 2).
+`--info-file`, `--link`, `--idea` and `--hypothesis` put the campaign's brief in the contract sent, so you can keep the brief in a Markdown file beside the contract. An `--info-file` that can't be read ends the command with `--info-file:` and why (exit 2).
 
 A `--context-window` or `--compact-at` out of range ends the command before anything is sent, with exit code 2: `--context-window and --compact-at: A context window is a whole number of tokens from 4,096 to 100,000,000.` or `… The compaction point is a whole percent of the context window, from 50 to 95.` Control refuses a window above what a provider lists for one of the rig's agents' models: [Campaigns](rest-api.md#campaigns) has the words.
 
@@ -566,6 +568,7 @@ It prints control's answer on one line, such as `{"campaign":"sort-speed-b","ver
 | `--context-window TOKENS` | No | the source's | The copy's own context window for its runs' agents, 4,096 to 100,000,000, sent in the request's `agents_context`. With it or `--compact-at`, the copy's context settings are these, in place of the source's |
 | `--compact-at PERCENT` | No | the source's | The copy's own compaction point, 50 to 95, sent in the request's `agents_context` |
 | `--info-file F` | No | the source's | The copy's own additional information, in Markdown, read from file `F` and sent as the request's `notes`. An empty file gives the copy none |
+| `--link URL` | No, repeatable | the source's | The copy's own starting links, sent as the request's `links`: a research copy's seeds |
 | `--idea TEXT` | No, repeatable | the source's | The copy's own ideas to try, sent as the request's `ideas`. A hill-climb or goal campaign only |
 | `--hypothesis TEXT` | No, repeatable | the source's | The copy's own hypotheses, sent as the request's `hypotheses` |
 | `--control URL` | Yes | | Control's address |

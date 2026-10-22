@@ -35,7 +35,7 @@ Such a run's research folder holds `INDEX.md`, `sources/`, `claims/` and `notes/
 
 ### The campaign's brief
 
-In every mode, a campaign can carry its author's **brief**: additional information in Markdown (the project and its links, what was tried, limits, what good looks like), ideas to try (hill climb and goal) and hypotheses. It is part of the contract. The planner and the advisors read it whole, each worker reads it in its brief, and the run's folder keeps it as `BRIEF.md`. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide. [The campaign's brief](../reference/contract.md#the-campaigns-brief) lists what each agent gets.
+In every mode, a campaign can carry its author's **brief**: additional information in Markdown (the project and its links, what was tried, limits, what good looks like), starting links, ideas to try (hill climb and goal) and hypotheses. It is part of the contract. The planner and the advisors read it whole, each worker reads it in its brief, and the run's folder keeps it as `BRIEF.md`. The agents weigh it as starting points, not rules: the objective, the judge and the owner's messages decide. [The campaign's brief](../reference/contract.md#the-campaigns-brief) lists what each agent gets.
 
 ### Field notes and past research
 
@@ -80,7 +80,7 @@ A goal campaign has no time limit of its own. Budgets pause it, as in any mode.
 
 ## Research
 
-A research campaign studies a topic for a set time. The contract gives the topic, the questions, starting URLs and which web sites to include or leave out. A question can be as long as it needs, with several lines; every research worker's brief has each one whole. The brief adds the background and the author's hypotheses: the run starts with those hypotheses as its own, so its workers look for sources for and against them. There is no project to change and no kit: the work is reading.
+A research campaign studies a topic for a set time. The contract gives the topic, the questions, starting URLs and which web sites to include or leave out. A question can be as long as it needs, with several lines; every research worker's brief has each one whole. The brief adds the background, the starting links and the author's hypotheses. The harness fetches and archives the starting links when the run starts, and the run starts with those hypotheses as its own, so its workers look for sources for and against them. There is no project to change and no kit: the work is reading.
 
 **How the work is checked.** Workers fetch pages through the rig's archiving fetcher, which keeps a copy of everything it reads. By default it respects `robots.txt`. It limits how fast it fetches from each site and how large a page may be, and never fetches private or local addresses. A page a worker reads any other way verifies nothing until it is fetched through the archiving fetcher. A worker records a **claim** with exact quotes from those archived pages. Code then checks it:
 

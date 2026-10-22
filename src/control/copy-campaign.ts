@@ -24,9 +24,9 @@ import { isRigCheck } from "./ui/campaigns.ts";
  * A copy may set its own context settings for its runs' agents (`agents_context`, goal 070), in
  * place of its source's: its contract then holds them, and its hash changes with them.
  *
- * A copy keeps its source's brief (goal 078): the additional information, the ideas to try and
- * the hypotheses, in its contract. It may give its own (`notes`, `ideas`, `hypotheses`), each in
- * place of its source's: its hash then changes with them.
+ * A copy keeps its source's brief (goal 078): the additional information, the starting links,
+ * the ideas to try and the hypotheses, in its contract. It may give its own (`notes`, `links`,
+ * `ideas`, `hypotheses`), each in place of its source's: its hash then changes with them.
  *
  * REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign and `thermite campaign copy` call it
  * through ControlActions.copyCampaign, which dashboard.ts fills in with the campaigns it knows.
@@ -49,6 +49,8 @@ export interface CopyCampaignRequest {
   agents_context?: { context_window?: number | undefined; compact_at?: number | undefined } | null;
   /** The copy's own additional information (Markdown), in place of its source's; "" or null: none. */
   notes?: string | null | undefined;
+  /** The copy's own starting links (a research campaign's seeds), in place of its source's; []: none. */
+  links?: string[] | undefined;
   /** The copy's own ideas to try (hill climb and goal), in place of its source's; []: none. */
   ideas?: string[] | undefined;
   /** The copy's own hypotheses, in place of its source's; []: none. */
@@ -94,6 +96,12 @@ export const copyCampaignFields = {
     .optional()
     .describe(
       "The copy's own additional information for its agents, in Markdown, in place of the source's: background, links, what was tried, limits, what good looks like. No length limit of its own. \"\" or null: none. Left out: the source's",
+    ),
+  links: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "The copy's own starting links, one address each, in place of the source's: pages its agents get with the brief. For a research campaign they are its seeds, which the harness fetches and archives when a run starts. []: none. Left out: the source's",
     ),
   ideas: z
     .array(z.string())

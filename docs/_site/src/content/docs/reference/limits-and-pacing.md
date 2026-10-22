@@ -269,7 +269,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | Field notes in the planner's and the teachers' brief | The run's newest 20 |
 | The run page's **Journal** tab | The newest 500 field notes; the rest are in the campaign's folder and the run's export |
 | A briefing (`assign_campaign`'s `briefing`) | Up to 200 items, each 1 to 4,000 characters |
-| A campaign's brief (the contract's `notes`, `ideas` and `hypotheses`) | No limit of its own: the whole contract goes to a rig in one signed command of at most 3.5 MiB. The planner and the advisors get it whole; each worker's brief carries its first 32,000 characters and says where the rest is (`BRIEF.md` in the run's folder). See [The campaign's brief](contract.md#the-campaigns-brief) |
+| A campaign's brief (the contract's `notes`, `links` or a research campaign's `seeds`, `ideas` and `hypotheses`) | No limit of its own: the whole contract goes to a rig in one signed command of at most 3.5 MiB. The planner and the advisors get it whole; each worker's brief carries its first 32,000 characters and says where the rest is (`BRIEF.md` in the run's folder). See [The campaign's brief](contract.md#the-campaigns-brief) |
 | A research question | No limit of its own. A research task in the queue holds its first 4,000 characters, and says the whole question is in the worker's brief |
 | An item of the knowledge base | Title 300 characters, text 20,000 |
 | Search words | The first 8 words of 2 or more characters; at most 300 characters in all |

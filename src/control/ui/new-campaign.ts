@@ -3,7 +3,7 @@ import type { OwnModel } from "../campaign-context.ts";
 import type { McpServer } from "../mcp-servers.ts";
 import type { GitAccess } from "../store.ts";
 import { podStopped, type RigView } from "../views.ts";
-import { type BriefDraft, briefFields } from "./campaign-brief.ts";
+import { type BriefDraft, briefPane } from "./campaign-brief.ts";
 import { contextFields, fieldValues } from "./campaign-context.ts";
 import { esc, infoLabel } from "./components.ts";
 import { kitMcpSection } from "./new-campaign-mcp.ts";
@@ -13,10 +13,11 @@ export { infoLabel };
 
 /**
  * The new-campaign page: a campaign from nothing
- * in five steps (aim, project, how to measure, where, review), with every setting beyond the
- * simple ones folded under Advanced and a description behind every label's info icon. The first
- * step holds the campaign's brief for every mode (goal 078, campaign-brief.ts): a research
- * campaign's topic and questions there too, and its sources on its third step. The
+ * in six steps (aim, the brief, project, how to measure, where, review), with every setting
+ * beyond the simple ones folded under Advanced and a description behind every label's info icon.
+ * Step 2 holds the campaign's brief for every mode (goal 078, campaign-brief.ts), with a research
+ * campaign's topic, questions and starting links; a research campaign's step 4 is how long it
+ * runs and its MCP servers. The
  * page's script (/ui/assets/new-campaign.js) gathers the answers into one draft; control
  * checks and builds it (campaign-builder.ts) and starts the first run (new-campaign.ts).
  */
@@ -136,7 +137,7 @@ ${errors}
 <form id="nc" method="post" action="/ui/campaigns/new" data-draft="${esc(p.draft ? JSON.stringify(p.draft) : "")}" data-step="${p.errors?.length ? "review" : "aim"}">
 <input type="hidden" name="csrf" value="${esc(p.csrf)}"><input type="hidden" name="draft"><input type="hidden" name="rig"><input type="hidden" name="start_value" value="start">
 <div class="wiz">
-<ol class="nc-steps" id="steps">${step(1, "aim", "Aim")}${step(2, "project", "Project", "hill_climb goal")}${step(3, "measure", "How to measure", "hill_climb goal")}${step(3, "research", "Sources", "research")}${step(4, "where", "Where it runs")}${step(5, "review", "Review and start")}</ol>
+<ol class="nc-steps" id="steps">${step(1, "aim", "Aim")}${step(2, "brief", "The brief")}${step(3, "project", "Project", "hill_climb goal")}${step(4, "measure", "How to measure", "hill_climb goal")}${step(4, "research", "Time and tools", "research")}${step(5, "where", "Where it runs")}${step(6, "review", "Review and start")}</ol>
 <div>
 <section class="pane" data-pane="aim"><div class="sec"><h2>What should this campaign do?</h2><p class="lead">This decides how the judge tells better from worse.</p>
 <div class="cards3">
@@ -145,8 +146,9 @@ ${choice("mode", "goal", "Reach a list of goals", "Say what the result must do, 
 ${choice("mode", "research", "Research a question", "Agents read sources and report findings, each backed by quotes Thermite checks. No code changes.<br><i>For example: which papers improve 2-bit decoding?</i>", mode === "research")}
 </div></div>
 <div class="g2" style="max-width:760px">${field("Campaign name", "A short name: lowercase letters, digits, dots, dashes. Its runs are named after it (name-1, name-2). Using a name again makes a new version of that campaign.", `<input name="campaign" required placeholder="matmul-speed">`)}${field("Title", "A sentence for people about what this campaign is for. Agents read it too.", `<input name="title" required placeholder="Make the GPU matrix multiply faster">`)}</div>
-${briefFields(d)}
 <div class="act"><button class="primary" data-next>Next</button></div></section>
+
+${briefPane(d)}
 
 <section class="pane" data-pane="project" hidden><div class="sec"><h2>Your project</h2><p class="lead">The code the agents change. Each rig fetches it itself from the repository, at the commit control looks up now.</p>
 <div class="g2" style="max-width:860px">${field("Repository", "The project's git repository, as https://… . Rigs fetch it; Thermite never pushes to it. Private repositories need a key, which comes with Settings › Providers › Git access.", `<input name="project_url" placeholder="https://github.com/you/project.git">`)}${field("Start from", "A branch, tag or full commit. Control pins it to the exact commit now, so every run starts from the same code.", `<input name="project_ref" placeholder="main">`)}</div>
@@ -207,8 +209,7 @@ ${field("Smallest gain that counts (%)", "A change must beat the best so far by 
 ${kitMcpSection("k", p.mcp ?? [])}
 <div class="act" style="margin-top:14px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>
 
-<section class="pane" data-pane="research" hidden><div class="sec"><h2>Sources</h2><p class="lead">Where the research starts, and how long it runs. The topic and the questions are in the brief, on the first step.</p>
-${field("Starting links", "Pages to start from, one per line. Without a search service, agents follow links from these.", `<textarea name="seeds"></textarea>`)}
+<section class="pane" data-pane="research" hidden><div class="sec"><h2>Time and tools</h2><p class="lead">How long the research runs, and the MCP servers its agents use. Its topic, questions and starting links are in the brief, on step 2.</p>
 ${field("Run for at least", "Research keeps going this long, collecting and checking sources: for example 8h or 2d.", `<input name="min_duration" value="8h">`)}
 ${kitMcpSection("r", p.mcp ?? [])}
 <div class="act" style="margin-top:14px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>

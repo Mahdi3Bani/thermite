@@ -237,7 +237,7 @@ Two causes are common on a laptop:
 
 - **You see:** the run never appears. On **Commands**, the **assign campaign** row is **failed**, and its **Outcome** has `commit <commit> has no folder <folder>`. On the **New campaign** page, **Look it up** says `main has no folder examples/none, or the folder has no files` (with your branch and folder).
 - **Why:** the campaign's project is one folder of its repository (**Folder in the repository**, or `project.folder` in the contract), and the commit the run starts from has no such folder. The path is from the top of the repository, and git's names are case-sensitive.
-- **Do:** check the folder's path on your Git host, at the branch or commit you start from. Then open **New campaign** again, fill it in with the same campaign name and the folder fixed, and start it. See [Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#2-project).
+- **Do:** check the folder's path on your Git host, at the branch or commit you start from. Then open **New campaign** again, fill it in with the same campaign name and the folder fixed, and start it. See [Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#3-project).
 
 ### Agents don't start
 

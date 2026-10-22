@@ -13,12 +13,12 @@ The **New campaign** page starts a [campaign](../../reference/glossary.md) in fi
 - You are signed in to the dashboard with the owner's token.
 - A rig reports to control: on **Rigs**, in the sidebar on the left, it shows the green **Live** chip and a hardware line. The campaign measures on this rig's target, CPU or GPU.
 - Your project is in a git repository at an `https://` address, or in a private repository with Git access set up: see [Use a private repository](private-repository.md).
-- For agents to work, the rig needs a model from a provider in **Settings › Providers**: see [Connect a model provider](../models/connect-a-provider.md). The page won't start agents on a rig without a model; **Try the kit first** and **Save without starting** work without one. You can give the rig a model in step 4, but then **Start the campaign** only saves the campaign: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
-- If the model uses a paid API key, set **Stop after (hours)** in step 4 under **Advanced**. See [Set a budget or a stop time](budget-and-stop-time.md).
+- For agents to work, the rig needs a model from a provider in **Settings › Providers**: see [Connect a model provider](../models/connect-a-provider.md). The page won't start agents on a rig without a model; **Try the kit first** and **Save without starting** work without one. You can give the rig a model in step 5, but then **Start the campaign** only saves the campaign: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
+- If the model uses a paid API key, set **Stop after (hours)** in step 5 under **Advanced**. See [Set a budget or a stop time](budget-and-stop-time.md).
 
 ## 1. Aim
 
-Open **Campaigns** in the sidebar and press **New campaign**, at the top right of the page. The page shows the steps **1 Aim**, **2 Project**, **3 How to measure** (**3 Sources** for research), **4 Where it runs** and **5 Review and start**. Move with **Next** and **Back**. Hover over the "i" beside a field to read what it means.
+Open **Campaigns** in the sidebar and press **New campaign**, at the top right of the page. The page shows the steps **1 Aim**, **2 The brief**, **3 Project**, **4 How to measure** (**4 Time and tools** for research), **5 Where it runs** and **6 Review and start**. Move with **Next** and **Back**. Hover over the "i" beside a field to read what it means.
 
 Choose a card. [Campaign modes](../../explanation/campaign-modes.md) explains each.
 
@@ -30,25 +30,26 @@ Choose a card. [Campaign modes](../../explanation/campaign-modes.md) explains ea
 
 Fill in **Campaign name** (lowercase letters, digits, dots and dashes, such as `sort-speed`) and **Title** (one sentence; agents read it too). Runs are named after the campaign: `sort-speed-1`, `sort-speed-2`. Using a name again saves a new version of that campaign, and the page doesn't warn you that the name is in use. Nothing that ran changes: runs that exist keep their version, and later runs use the new one. This is how you change a campaign made here, such as its stop time: fill in the page again with the same name. The page starts empty each time.
 
-### The brief
+## 2. The brief
 
-Under the name and the title, **The brief** says what the agents should know. They get it as starting points, not rules: the objective, the judge and your messages decide. Only a research campaign's questions are required.
+**The brief** says what the agents should know. They get it as starting points, not rules: the objective, the judge and your messages decide. Only a research campaign's questions are required: leave the rest empty if you have nothing to add.
 
 | Field | Mode | What it does |
 | --- | --- | --- |
 | **Topic** | Research | What the agents research, in one sentence |
 | **Questions** | Research | What the research must answer, one question in each box. A question can be long and have several lines. **Add a question** adds a box, and **×** removes one. At least one. Every finding answers one of them, and the report counts the verified claims for each |
 | **Additional information** | All | Background in Markdown: the project and its links, what was tried, limits, and what good looks like. No length limit. The preview beside the box shows it as it renders, as you type |
+| **Starting links** | All | Pages for the agents, one address per line. For research, the harness fetches and archives them when the run starts, so the workers can read and quote them at once. For a hill climb or goals, the agents get them with the brief, and a worker fetches one when it needs it. Links written in **Additional information** reach the agents too, but nothing fetches them first |
 | **Ideas to try** | Hill climb and goals | One idea in each box. The planner turns those that fit into experiments, and every worker reads them |
 | **Hypotheses** | All | What you think is true, one in each box, for the agents to test. A research run starts with them as its own hypotheses |
 
-A box grows with its text. Empty boxes are left out. The count beside each list follows it, such as `3 ideas`, or `At least one.` in red under **Questions** while it has none.
+A box grows with its text. Empty boxes are left out. The count beside each list follows it, such as `3 ideas`, or `At least one.` in red under **Questions** while it has none. The line under **Starting links** counts them, such as `2 links.`, or says in red which line is not a web address: `Line 2 is not a web address: write each as https://…`
 
 The line under **Additional information** follows its size as you type. Up to 32,000 characters it says, for example, `Markdown · 1,240 characters. Every agent gets all of it.` Over that, it says `Markdown · 40,512 characters. Each worker's brief has the first 32,000; the rest is in BRIEF.md in the run's folder. The planner gets all of it, and the advisors as much as their window takes.` A campaign goes to a rig in one signed command of at most 3.5 MiB: a brief of more than about 3,000,000 bytes shows `Too long to send: a campaign goes to a rig in one command of at most 3.5 MiB.` in red.
 
-Control keeps the brief in the campaign's contract: [The campaign's brief](../../reference/contract.md#the-campaigns-brief) lists the fields and what each agent gets. The campaign's page shows it under **The brief**: the questions, the ideas and the hypotheses, then the additional information as it renders. A long text is folded, with its size; press it to open it.
+Control keeps the brief in the campaign's contract: [The campaign's brief](../../reference/contract.md#the-campaigns-brief) lists the fields and what each agent gets. The campaign's page shows it under **The brief**: the questions, the starting links, the ideas and the hypotheses, then the additional information as it renders. A long text is folded, with its size; press it to open it.
 
-## 2. Project
+## 3. Project
 
 Research campaigns skip this step.
 
@@ -70,7 +71,7 @@ Press **Look it up**. Control reads the repository's file names, not their conte
 - If you change **Repository**, **Start from** or **Folder in the repository** after **Look it up**, press it again: the page keeps the commit it found first.
 :::
 
-## 3. How to measure
+## 4. How to measure
 
 The judge needs a [kit](../../explanation/kits.md): how to build your project, run it on test cases and check the output. This page calls a test case a **case**; a `kit.json` and a contract call it a **cell**. Agents never see the kit. Choose a card:
 
@@ -107,7 +108,7 @@ This card has no **Better is** or **Smallest gain that counts (%)** of its own: 
 2. Set **Smallest gain that counts (%)**.
 3. Choose **A kit in a repository**. Fill in **Kit repository**, **Kit repository access**, **Kit commit** (the full commit), **Cases to measure** and **Hidden tests** (case names separated by spaces), and **The kit's metric** (a metric name from its `kit.json`).
 
-For a goal campaign, do only step 3, without **The kit's metric**. Control reads only the MCP servers that this kit's `kit.json` names ([below](#mcp-servers-for-the-agents)); the rig checks the kit when the run starts.
+For a goal campaign, do only step 4, without **The kit's metric**. Control reads only the MCP servers that this kit's `kit.json` names ([below](#mcp-servers-for-the-agents)); the rig checks the kit when the run starts.
 
 ### Upload a kit
 
@@ -137,11 +138,11 @@ The last part of **How to measure** gives the campaign's agents tools from outsi
 
 The line under the list says what each kind of agent gets, such as `The workers get 31 tools from gbrain; the planner gets none; the advisors get 31 tools from gbrain.`, and warns of a server that is not in **Settings**, of one that doesn't work now, of one with no agents, and of a kind of agent left with no tool. **What goes into kit.json** shows the list. A kit described here gets it in its `kit.json`. An uploaded kit's list starts as its `kit.json` has it, and a change is written into the kit control keeps. A server it names that **Settings** lacks stays in the list, with `paper-search is not in Settings: this campaign can't start until it is. The uploaded kit names it: add it in Settings, or upload the kit without it.` A tool limit in its `kit.json` stays for a server whose tools **Settings** has not read. For **A kit in a repository**, the list is read from the kit's `kit.json` once you fill in **Kit repository** and **Kit commit**, each server marked `✓ found` or `✕ missing`, with **Add it in Settings** for a missing one; change it in the kit's repository. [Give agents MCP tools](give-agents-mcp-tools.md) says more.
 
-### Sources
+### Time and tools
 
-For research, step 3 asks for **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. The topic and the questions are in [the brief](#the-brief), on step 1. A run made here ends after that much running time; time while it is paused doesn't count. **MCP servers for the agents** is on this step too, as [above](#mcp-servers-for-the-agents); control writes the servers into the campaign's contract.
+For research, step 4 is **Time and tools**. It asks for **Run for at least**, such as `8h` or `2d`. The topic, the questions and the starting links are in [the brief](#2-the-brief), on step 2. A run made here ends after that much running time; time while it is paused doesn't count. **MCP servers for the agents** is on this step too, as [above](#mcp-servers-for-the-agents); control writes the servers into the campaign's contract.
 
-## 4. Where it runs
+## 5. Where it runs
 
 Choose the rig. Each card shows its hardware, whether it is idle, and its agents' model after `agents:`, followed by ` (OpenCode v2)` or ` (Codex)` when they run there, or `no model for its agents yet` in red. A rig that is not reporting can't be chosen. A [rig on RunPod](../install/runpod-rig.md) whose pod is stopped can: its card says `its pod is stopped: the first run starts it`, and control starts the pod before the first run. The campaign's page then says `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.`
 
@@ -173,7 +174,7 @@ A line under them says what the first run's workers get on the rig you chose, su
 
 ### Advanced
 
-Under **Advanced**, at the foot of step 4:
+Under **Advanced**, at the foot of step 5:
 
 | Field | What it does |
 | --- | --- |
@@ -183,9 +184,9 @@ Under **Advanced**, at the foot of step 4:
 | **Stop after (hours)** | Empty: no limit. When the time is up, no new trial starts and the run is paused. See [Set a budget or a stop time](budget-and-stop-time.md) |
 | **GPUs for the judge** | For a rig with several GPUs: how many the judge measures on. The rig's harness, its container that holds the judge and the agents, restarts to apply it. Empty: the rig's current split |
 
-## 5. Review and start
+## 6. Review and start
 
-Read the summary sentence. It ends with the brief in a few words, such as `Its brief: 1,240 characters of additional information, 3 ideas to try, 1 hypothesis.`, or `Its brief is empty.` **What control will check (the draft)** shows your answers as JSON, as the page sends them; control builds the contract from them. Then press one of:
+Read the summary sentence. When the brief has something in it, the sentence ends with it in a few words, such as `Its brief: 1,240 characters of additional information, 2 starting links, 3 ideas to try, 1 hypothesis.` **What control will check (the draft)** shows your answers as JSON, as the page sends them; control builds the contract from them. Then press one of:
 
 - **Start the campaign**: starts the first run, with agents.
 - **Try the kit first** (hill climb and goal): starts a run with no agents, so you see the kit work before an agent spends anything. See [Test a kit with known candidates](test-a-kit.md).
@@ -208,7 +209,7 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
   - `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` Choose **OpenCode v2** or **what the model needs** under **The agents run in**.
   - `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` Choose another harness under **The agents run in**, or a model from a ChatGPT subscription or an OpenAI-compatible provider.
   - For research, with one of OpenCode's free models and the agents in Pi: `… is one of OpenCode's free models, which work only inside OpenCode, and rig-1's agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.` Choose **OpenCode v2** under **The agents run in**, or another model.
-  - `The agents' context: The compaction point is a whole percent of the context window, from 50 to 95.`, or the same for a window out of range: correct **Agents' context** in step 4.
+  - `The agents' context: The compaction point is a whole percent of the context window, from 50 to 95.`, or the same for a window out of range: correct **Agents' context** in step 5.
 - If the run never shows, open **Commands** in the sidebar. The newest **assign campaign** row is **failed**, with the reason.
 
 | The reason starts with | What to do |
@@ -220,7 +221,7 @@ When nothing in the campaign must change, such as after you fixed the repository
 
 ## When the rig doesn't have the model yet
 
-When control has just given the rig a model, from step 4, the **Start a run** panel, **Edit rig**, **Settings › Providers** or MCP, the rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** doesn't start a run. Start it once the rig has the model:
+When control has just given the rig a model, from step 5, the **Start a run** panel, **Edit rig**, **Settings › Providers** or MCP, the rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** doesn't start a run. Start it once the rig has the model:
 
 1. Note the campaign's page and its address. It says, for example, `Saved. rig-1 takes my-model within a minute. Settings › Providers shows the rig taking it until then; then start the run here.`, or `rig-1 takes my-model within a minute; Settings › Providers shows it taking the model until then. Then start the run again.` after **Start the run**. When control gave the rig the model elsewhere a moment ago, **Start the campaign** says `Saved. rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then). Then start the run here.` The address is `/ui/campaigns/<name>`, such as `http://127.0.0.1:8800/ui/campaigns/sort-speed`. A campaign with no run yet is not in the **Campaigns** list, only at this address.
 2. Open **Settings › Providers**, the cog at the foot of the sidebar, and find the rig's row under **Harness and model for each rig**. While the rig hasn't taken the model, the row shows `taking my-model under Pi` (or the harness you chose). Press **refresh** until that chip is gone and the row says `Its agents run under Pi with my-model from <provider>.`
@@ -241,7 +242,7 @@ Press **Start a run** at the top of the campaign's page. A panel opens, headed *
 | **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why, up to 500. Ticked by default. It shows only with **Agents** **On**, and only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |
 | **From past research** | A search of the folders this campaign may read: its own and those you let it read. It lists the newest 40 experiments, findings, claims, notes and reports, and the box **Search past experiments, findings and notes** searches those folders. Ticked experiments join the new run's queue, after the copied ones; a ticked finding, claim, note or report becomes background in every agent's brief. It shows only with **Agents** **On**: with **Off: a try**, it hides, and nothing ticked in it is sent. See [Start a run from past research](use-past-research.md#start-a-run-from-past-research) |
 | **When a change is confirmed better** | Under **More options**: **the rig's default**, **always keep it** or **ask me every time** |
-| **GPUs for the judge** | Under **More options**: as in step 4. Empty: the rig's current split |
+| **GPUs for the judge** | Under **More options**: as in step 5. Empty: the rig's current split |
 
 The line at the foot sums it up, such as `Starts a new run on rig-1, with agents on <model>.` or `Starts a new run on rig-1, as a try: the judge only.` With **Agents** on **On** and items ticked under **From past research**, it ends with a sentence such as `It starts from 3 items of past research.` Press **Start the run**. The run uses the latest saved version. It is named `<campaign>-<n>`, or `<campaign>-try-<n>` without agents, with the first number not yet used on that rig, such as `sort-speed-2`.
 
@@ -294,7 +295,7 @@ It prints the new run and its command:
 
 ## Set the agents' context
 
-A campaign's page has a block **Agents' context**, "every run of" the campaign. It sets one context window and one compaction point for every agent of the campaign's runs, on any rig, as step 4 of **New campaign** does. Use it to run two models at the same window.
+A campaign's page has a block **Agents' context**, "every run of" the campaign. It sets one context window and one compaction point for every agent of the campaign's runs, on any rig, as step 5 of **New campaign** does. Use it to run two models at the same window.
 
 1. Open **Campaigns** in the sidebar, then the campaign, and scroll to **Agents' context**.
 2. Type a **Context window** in tokens, such as `131072`, and a **Compact at** percent, such as `70`. Leave a field empty to keep each rig's.
@@ -356,4 +357,4 @@ npx thermite run start sort-speed-model-a --rig rig-1 \
 
 The first command prints the copy, such as `{"campaign":"sort-speed-model-a","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`; the second starts a run of it. Over REST it is `POST /v1/campaigns/sort-speed/copy` with `{"name": "sort-speed-model-a"}`. Over MCP it is [`copy_campaign`](../../reference/mcp-tools.md#copy_campaign) with `{"from": "sort-speed", "name": "sort-speed-model-a"}`. A research copy's other servers are `mcp_servers` there, or `--mcp-servers-json` on the command line: see [`campaign copy`](../../reference/command-line.md#campaign-copy). The copy's own agents' context is `agents_context` there, such as `{"context_window": 131072}` (`null`: none), or `--context-window` and `--compact-at` on the command line.
 
-The copy keeps the campaign's [brief](#the-brief). To give it its own, send `notes`, `ideas` or `hypotheses` with the copy over REST or MCP, or `--info-file`, `--idea` or `--hypothesis` on the command line: each part given replaces the campaign's, and an empty one removes it. A research copy takes no ideas.
+The copy keeps the campaign's [brief](#2-the-brief). To give it its own, send `notes`, `links`, `ideas` or `hypotheses` with the copy over REST or MCP, or `--info-file`, `--link`, `--idea` or `--hypothesis` on the command line: each part given replaces the campaign's, and an empty one removes it. A research copy's links are its seeds, and it takes no ideas.

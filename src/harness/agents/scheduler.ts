@@ -210,6 +210,8 @@ export class Scheduler {
   private readonly o: Required<Omit<SchedulerOptions, Optional>> & Pick<SchedulerOptions, Optional>;
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
+  /** Research runs whose starting links this scheduler has begun to archive (goal 078). */
+  private readonly seeded = new Set<string>();
   private readonly aborts = new Map<string, AbortController>();
   /** The run each running trial (by lane) works for. */
   private readonly laneRun = new Map<string, string>();
@@ -1192,6 +1194,11 @@ export class Scheduler {
     if (!last || Date.now() - Date.parse(last) >= contract.report_cadence.digest_minutes * 60_000) {
       research.report(run, "digest");
     }
+    // The campaign's starting links, archived by the harness, beside the first trials.
+    if (!this.seeded.has(run)) {
+      this.seeded.add(run);
+      void this.archiveSeeds(run, contract);
+    }
     let epoch = this.registry.currentEpoch(run);
     if (!epoch || epoch.ended_at) {
       this.planResearchEpoch(run, contract, (epoch?.n ?? 0) + 1);
@@ -1219,6 +1226,34 @@ export class Scheduler {
     }
     if (complete && !this.running.size) this.registry.endEpoch(run, epoch.n, this.o.owner);
     return started;
+  }
+
+  /**
+   * A research run's starting links (goal 078), fetched and archived by the harness when the run
+   * starts (and again after a restart, when an archived link is found at once), one after
+   * another, beside the first trials. A link the fetcher refuses is an event with its reason
+   * (fetch_refused) and a line in Live; the run goes on without it.
+   */
+  private async archiveSeeds(run: string, contract: ResearchContract): Promise<void> {
+    if (!contract.seeds.length) return;
+    const research = this.o.research as Research;
+    let archived = 0;
+    const refused: string[] = [];
+    for (const url of contract.seeds) {
+      try {
+        const r = (await research.fetch(run, null, url)) as { refused?: string };
+        if (r.refused) refused.push(`${url} (${r.refused})`);
+        else archived++;
+      } catch (err) {
+        refused.push(`${url} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text: `starting links: ${archived} of ${contract.seeds.length} archived${refused.length ? `; not archived: ${refused.join("; ").slice(0, 1000)}` : ""}`,
+      run,
+    });
   }
 
   private static readonly RESEARCH_TASKS: { id: string; description: string }[] = [
@@ -1423,7 +1458,6 @@ export class Scheduler {
       `Your focus: ${a.focus}`,
       `Time: ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h elapsed of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h (the campaign continues after your trial).`,
       `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts, ${stats.findings} findings.`,
-      contract.seeds.length ? `Starting URLs: ${contract.seeds.join(" ")}` : "",
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",
       "Record claims only with exact quotes from archived sources, and say which question each answers.",

@@ -192,7 +192,12 @@ describe("contracts", () => {
       const r = parseContract(c);
       assert.ok(r.ok, r.ok ? "" : r.errors.join("; "));
       assert.equal(r.ok && r.sha, sha);
-      assert.ok(r.ok && !("ideas" in r.contract) && !("hypotheses" in r.contract));
+      assert.ok(
+        r.ok &&
+          !("ideas" in r.contract) &&
+          !("hypotheses" in r.contract) &&
+          !("links" in r.contract),
+      );
     }
     // A brief of any length; each part changes the hash.
     const notes = `## Background\n${"A long line about the project. ".repeat(4000)}`;
@@ -215,6 +220,11 @@ describe("contracts", () => {
     assert.ok(research.ok, research.ok ? "" : research.errors.join("; "));
     // Ideas to try are for hill climb and goal; empty entries are refused.
     assert.ok(!parseContract({ ...researchFixture, ideas: ["x"] }).ok);
+    // Starting links: a hill climb's or goal's links (web addresses); a research contract's seeds.
+    const linked = parseContract({ ...goalFixture, links: ["https://git.example.com/team/x"] });
+    assert.ok(linked.ok && linked.contract.mode === "goal" && linked.contract.links?.length === 1);
+    assert.ok(!parseContract({ ...goalFixture, links: ["not a link"] }).ok);
+    assert.ok(!parseContract({ ...researchFixture, links: ["https://a.example.com"] }).ok);
     const empty = parseContract({ ...goalFixture, hypotheses: [""] });
     assert.ok(!empty.ok && empty.errors.some((e) => e.startsWith("hypotheses.0")));
   });

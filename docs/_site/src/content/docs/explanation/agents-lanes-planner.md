@@ -98,7 +98,7 @@ The **planner** coordinates the lanes. It is one model call at the start of each
 - the old rules in words that it must convert this round, at most 5, each with its kind, its words and why;
 - the owner's messages to the planner and to everyone working that it has not read yet, each with its number and the directions it names as `:name:`;
 - in a goal campaign, the judge's latest report on which goals the champion meets;
-- the campaign's **brief** from its author, whole, when it has one: its additional information, ideas to try and hypotheses ([The campaign's brief](../reference/contract.md#the-campaigns-brief)). The planner takes them as starting points, not rules: it turns ideas that fit into experiments, and designs experiments that test the hypotheses;
+- the campaign's **brief** from its author, whole, when it has one: its additional information, starting links, ideas to try and hypotheses ([The campaign's brief](../reference/contract.md#the-campaigns-brief)). The planner takes them as starting points, not rules: it turns ideas that fit into experiments, and designs experiments that test the hypotheses;
 - the run's newest 20 **field notes**, by the lanes, the advisors and the planner itself ([Field notes and past research](#field-notes-and-past-research));
 - when the run has them, its background from past research, which the owner picked when starting the run, and one line that says what the run's `knowledge/` folder holds. The planner searches that folder, read only: with its `search_past_research` tool in Pi, or with its own read tools on the folder's files in OpenCode, Claude Code and Codex;
 - when the run's kit gives the planner [MCP servers](../how-to/campaigns/give-agents-mcp-tools.md), their tools, through the harness's gateway.

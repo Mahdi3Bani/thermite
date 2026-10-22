@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import {
@@ -31,6 +33,7 @@ const BRIEF = {
   notes: NOTES,
   ideas: ["Fuse the dequantize step into the inner loop.", "Load 128-bit vectors."],
   hypotheses: ["The kernel is memory bound at batch size 1."],
+  links: ["https://git.example.com/team/fastmat/issues/12"],
 };
 
 /**
@@ -85,9 +88,24 @@ describe("a campaign's brief (goal 078)", () => {
     assert.equal(briefOf({ notes: "  \n", ideas: [" "], hypotheses: [] }), undefined);
     assert.deepEqual(briefOf({ notes: "\n\n  indented\nnext\n\n", ideas: [" a "] }), {
       notes: "  indented\nnext",
+      links: [],
       ideas: ["a"],
       hypotheses: [],
     });
+    // The starting links: a hill climb's links, a research contract's seeds.
+    assert.deepEqual(briefOf({ links: ["https://a.example.com"] })?.links, [
+      "https://a.example.com",
+    ]);
+    assert.deepEqual(briefOf({ mode: "research", seeds: ["https://b.example.com"] })?.links, [
+      "https://b.example.com",
+    ]);
+    assert.deepEqual(briefData({ links: ["https://a.example.com"] })?.starting_links, [
+      "https://a.example.com",
+    ]);
+    assert.deepEqual(
+      briefChange({ mode: "research", seeds: ["https://x.example.com"] }, { links: [] }),
+      { mode: "research" },
+    );
     const data = briefData(BRIEF);
     assert.equal(data?.additional_information, NOTES);
     assert.deepEqual(data?.ideas_to_try, BRIEF.ideas);
@@ -147,6 +165,10 @@ describe("a campaign's brief (goal 078)", () => {
       assert.ok(b.includes(NOTES), "the additional information, whole");
       assert.match(b, /## Ideas to try\n\n1\. Fuse the dequantize step into the inner loop\./);
       assert.match(b, /## Hypotheses\n\n1\. The kernel is memory bound at batch size 1\./);
+      assert.match(
+        b,
+        /## Starting links\n\nNothing fetched these yet: fetch one when you need it, and the harness archives it\.\n\n- https:\/\/git\.example\.com\/team\/fastmat\/issues\/12/,
+      );
       assert.doesNotMatch(b, /Notes from the campaign's author/);
     }
     const file = join(x.env.service.knowledge.folder("js-1"), BRIEF_FILE);
@@ -174,13 +196,27 @@ describe("a campaign's brief (goal 078)", () => {
     assert.ok(!existsSync(join(x.env.service.knowledge.folder("js-1"), BRIEF_FILE)));
   });
 
-  test("a research run: its hypotheses are the run's first, and each research trial's brief has the brief and the questions whole", async (t) => {
+  test("a research run: its hypotheses are the run's first, its starting links are archived when it starts, and each research trial's brief has the brief and the questions whole", async (t) => {
+    // A tiny web for the starting links: one page, and one that is not there.
+    const server = createServer((req, res) =>
+      req.url === "/start.html"
+        ? void res
+            .writeHead(200, { "content-type": "text/html" })
+            .end(
+              "<html><head><title>Start</title></head><body><p>A page to start from.</p></body></html>",
+            )
+        : void res.writeHead(404).end("no"),
+    );
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    t.after(() => server.close());
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const env = makeHarnessEnv("rig-r");
     const question =
       "Which harness designs keep agents productive for days?\nFor each: who built it and what it reports.";
     const parsed = parseContract({
       ...researchFixture,
       questions: [question, "What fails?"],
+      seeds: [`${base}/start.html`, "http://127.0.0.1:1/gone.html"],
       notes: NOTES,
       hypotheses: [
         "Fresh workers lose nothing that matters.",
@@ -218,7 +254,9 @@ describe("a campaign's brief (goal 078)", () => {
     );
     const fake = await startFakeModel(() => ({ text: "done" }));
     t.after(() => fake.close());
-    const research = new Research(env.service.ledger, env.service.paths.stateDir);
+    const research = new Research(env.service.ledger, env.service.paths.stateDir, {
+      allowPrivate: true,
+    });
     const briefs: string[] = [];
     const scheduler = new Scheduler({
       service: env.service,
@@ -240,6 +278,23 @@ describe("a campaign's brief (goal 078)", () => {
     });
     await scheduler.tick();
     await scheduler.idle();
+    // The harness archived the starting links, beside the first trials, and said so in Live.
+    const deadline = Date.now() + 10_000;
+    const said = () =>
+      env.service.live.since(0, 1000).entries.find((e) => e.text.startsWith("starting links:"))
+        ?.text;
+    while (!said() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    assert.match(
+      String(said()),
+      /^starting links: 1 of 2 archived; not archived: http:\/\/127\.0\.0\.1:1\/gone\.html \(/,
+    );
+    const sources = env.service.ledger.db
+      .prepare("select url, fetched_by from source where run = 'r-1'")
+      .all() as { url: string; fetched_by: string }[];
+    assert.deepEqual(
+      sources.map((x) => [x.url, x.fetched_by]),
+      [[`${base}/start.html`, "research"]],
+    );
     assert.ok(briefs.length >= 1, "a research trial started");
     const b = briefs[0] ?? "";
     // The question whole, its second line under it.
@@ -253,6 +308,12 @@ describe("a campaign's brief (goal 078)", () => {
     assert.match(b, /The run started with these as its hypotheses \(hypotheses\/\)\./);
     assert.match(b, /1\. Fresh workers lose nothing that matters\./);
     assert.match(b, /Look for sources for and against its hypotheses\./);
+    // Its starting links are in the brief, with what the harness does with them.
+    assert.match(
+      b,
+      /## Starting links\n\nThe harness fetches and archives these when the run starts: read them under sources\/\.\n\n- http:\/\/127\.0\.0\.1:\d+\/start\.html\n- http:\/\/127\.0\.0\.1:1\/gone\.html/,
+    );
+    assert.doesNotMatch(b, /Starting URLs:/);
     assert.ok(existsSync(join(env.service.knowledge.folder("r-1"), BRIEF_FILE)));
   });
 

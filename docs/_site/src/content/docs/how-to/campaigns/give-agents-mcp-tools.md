@@ -50,7 +50,7 @@ The server now has a row in **MCP servers**: `gbrain · key in a header`, `Conne
 
 ## 2. Name the server in the campaign's kit
 
-On the **New campaign** page ([Start a campaign from the dashboard](start-from-dashboard.md)), the block **MCP servers for the agents** is the last part of **How to measure**; for a research campaign it is on **Sources**.
+On the **New campaign** page ([Start a campaign from the dashboard](start-from-dashboard.md)), the block **MCP servers for the agents** is the last part of **How to measure**; for a research campaign it is on **Time and tools**.
 
 1. Tick the server. The workers get it at once.
 2. Choose the agents that get it: **Workers**, **Planner**, **Advisors**.

@@ -9,7 +9,7 @@ import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { ControlStore } from "./store.ts";
-import { BRIEF_CORE_JS, briefFields, campaignBriefBlock } from "./ui/campaign-brief.ts";
+import { BRIEF_CORE_JS, briefPane, campaignBriefBlock } from "./ui/campaign-brief.ts";
 import { MD_CORE_JS, mdHtml } from "./ui/markdown.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 
@@ -25,12 +25,13 @@ const CPU = { type: "cpu", class: "generic-cpu" };
 
 /** The brief's page-free part, as the browser runs it. */
 const core = new Function(
-  `${BRIEF_CORE_JS}; return { briefDraft, briefSay, briefList, mdHtml };`,
+  `${BRIEF_CORE_JS}; return { briefDraft, briefSay, briefList, briefLinks, mdHtml };`,
 )() as {
   briefDraft: (
     mode: string,
-    f: { notes: string; ideas: string[]; hypotheses: string[] },
+    f: { notes: string; links: string; ideas: string[]; hypotheses: string[] },
   ) => Record<string, unknown>;
+  briefLinks: (text: string) => { links: string[]; bad: number[] };
   briefSay: (chars: number, bytes: number) => string;
   briefList: (xs: string[]) => string[];
   mdHtml: (s: string) => string;
@@ -125,6 +126,8 @@ We build **fastmat**: https://git.example.com/team/fastmat.
 ${"More background. ".repeat(3000)}`;
 const fields = {
   notes: NOTES,
+  links:
+    "  https://git.example.com/team/fastmat/issues/12\n\nhttps://docs.example.com/fastmat/design  ",
   ideas: ["  Fuse the dequantize step.  ", "", "Load 128-bit vectors.\nThen unroll by 4."],
   hypotheses: ["It is memory bound at batch size 1.", "   "],
 };
@@ -188,46 +191,79 @@ describe("a campaign's brief on the screens (goal 078)", () => {
     assert.equal(core.mdHtml("a\n\nb"), "<p>a</p><p>b</p>");
   });
 
-  test("New campaign: the brief is on the first step for every mode, with an info icon on each label; research's step 3 is its sources", async () => {
+  test("New campaign: the brief is its own step 2, for every mode, with an info icon on each label; Starting links under Additional information", async () => {
     const s = await stack();
     const page = await s.get("/ui/campaigns/new");
+    // The steps, as the owner chose them on 2026-10-22: Aim, then The brief.
+    assert.match(
+      page,
+      /<span class="k">1<\/span>Aim<\/li><li data-step="brief"><span class="k">2<\/span>The brief<\/li><li data-step="project" data-modes="hill_climb goal"><span class="k">3<\/span>Project<\/li><li data-step="measure" data-modes="hill_climb goal"><span class="k">4<\/span>How to measure<\/li><li data-step="research" data-modes="research"><span class="k">4<\/span>Time and tools<\/li><li data-step="where"><span class="k">5<\/span>Where it runs<\/li><li data-step="review"><span class="k">6<\/span>Review and start<\/li>/,
+    );
     const aim = /<section class="pane" data-pane="aim"[\s\S]*?<\/section>/.exec(page)?.[0] ?? "";
+    assert.doesNotMatch(aim, /The brief|name="notes"|name="topic"/);
+    const brief =
+      /<section class="pane" data-pane="brief"[\s\S]*?<\/section>/.exec(page)?.[0] ?? "";
     for (const label of [
       "Additional information",
+      "Starting links",
       "Hypotheses",
       "Ideas to try",
       "Topic",
       "Questions",
     ])
       assert.match(
-        aim,
+        brief,
         new RegExp(`<span class="lb">${label}<i class="ii" tabindex="0" data-tip="[^"]+">i</i>`),
         label,
       );
-    assert.match(aim, /<div class="fd" data-modes="hill_climb goal"><span class="lb">Ideas to try/);
-    assert.match(aim, /<div data-modes="research"><label class="fd"><span class="lb">Topic/);
-    assert.match(aim, /<textarea name="notes" class="md-in"/);
-    assert.match(aim, /data-bl="questions"[\s\S]*data-bl-add="questions">Add a question</);
-    // Research's third step holds its sources; its topic and questions moved to the first.
-    assert.match(page, /data-modes="research"><span class="k">3<\/span>Sources<\/li>/);
-    const sources =
+    assert.match(
+      brief,
+      /<div class="fd" data-modes="hill_climb goal"><span class="lb">Ideas to try/,
+    );
+    assert.match(brief, /<div data-modes="research"><label class="fd"><span class="lb">Topic/);
+    // Starting links directly under Additional information; its tip says what is fetched.
+    assert.match(
+      brief,
+      /<textarea name="notes" class="md-in"[\s\S]*?data-md-say>Markdown\. Empty is fine\.<\/div><\/div>\n<label class="fd"><span class="lb">Starting links<i class="ii" tabindex="0" data-tip="[^"]*Research: the harness fetches and archives them when the run starts\.[^"]*nothing fetches them first\.">i<\/i><\/span><textarea name="links"/,
+    );
+    assert.match(brief, /data-bl="questions"[\s\S]*data-bl-add="questions">Add a question</);
+    assert.match(
+      brief,
+      /<button data-back>Back<\/button><button class="primary" data-next>Next<\/button>/,
+    );
+    // Research's step 4: how long it runs and its MCP servers; its links are in the brief.
+    const research =
       /<section class="pane" data-pane="research"[\s\S]*?<\/section>/.exec(page)?.[0] ?? "";
-    assert.doesNotMatch(sources, /name="topic"|Questions/);
-    assert.match(sources, /Starting links/);
+    assert.match(research, /<h2>Time and tools<\/h2>/);
+    assert.doesNotMatch(research, /name="topic"|Questions|Starting links|name="seeds"/);
+    assert.match(research, /Run for at least/);
+    assert.equal(page.match(/name="links"/g)?.length, 1);
     // One field for the additional information: Notes for the agents is gone.
     assert.equal(page.match(/name="notes"/g)?.length, 1);
     assert.doesNotMatch(page, /Notes for the agents/);
     // The page's script has the brief's part: the preview, the boxes and the line under the text.
-    for (const piece of ["mdHtml", "data-bl-add", "briefSay", "blFill"])
+    for (const piece of [
+      "mdHtml",
+      "data-bl-add",
+      "briefSay",
+      "blFill",
+      "briefLinks",
+      "data-links-say",
+    ])
       assert.ok(NEW_CAMPAIGN_JS.includes(piece), piece);
     assert.doesNotThrow(() => new Function(NEW_CAMPAIGN_JS));
     // A draft sent back with mistakes keeps the brief, each entry in its own box.
-    const back = briefFields({
+    const back = briefPane({
+      mode: "research",
       notes: "## Kept\nas typed",
       ideas: ["one", "two"],
       hypotheses: ["h <b>"],
-      research: { topic: "t", questions: ["q1\nline 2"] },
+      research: { topic: "t", questions: ["q1\nline 2"], seeds: ["https://a.example.com/x"] },
     });
+    assert.match(
+      back,
+      /<textarea name="links" class="nc-links"[^>]*>https:\/\/a\.example\.com\/x<\/textarea>/,
+    );
     assert.match(back, /<textarea name="notes" class="md-in"[^>]*>## Kept\nas typed<\/textarea>/);
     assert.match(
       back,
@@ -236,6 +272,28 @@ describe("a campaign's brief on the screens (goal 078)", () => {
     assert.equal(back.match(/data-bl-item="ideas"/g)?.length, 2);
     assert.match(back, />h &lt;b&gt;<\/textarea>/);
     assert.match(back, />q1\nline 2<\/textarea>/);
+  });
+
+  test("Starting links as typed: every line with words, and the lines that are not web addresses", () => {
+    assert.deepEqual(core.briefLinks(fields.links), {
+      links: [
+        "https://git.example.com/team/fastmat/issues/12",
+        "https://docs.example.com/fastmat/design",
+      ],
+      bad: [],
+    });
+    assert.deepEqual(core.briefLinks("https://a.example.com\nnot a link\n\nftp://b.example.com"), {
+      links: ["https://a.example.com", "not a link", "ftp://b.example.com"],
+      bad: [2, 4],
+    });
+    assert.deepEqual(core.briefDraft("hill_climb", { ...fields, notes: "" }).links, [
+      "https://git.example.com/team/fastmat/issues/12",
+      "https://docs.example.com/fastmat/design",
+    ]);
+    assert.ok(
+      !("links" in core.briefDraft("research", fields)),
+      "research sends them as its seeds",
+    );
   });
 
   test("the line under Additional information says who gets all of it, and when it is too long to send", () => {
@@ -267,6 +325,10 @@ describe("a campaign's brief on the screens (goal 078)", () => {
       "Load 128-bit vectors.\nThen unroll by 4.",
     ]);
     assert.deepEqual(c?.hypotheses, ["It is memory bound at batch size 1."]);
+    assert.deepEqual(c?.links, [
+      "https://git.example.com/team/fastmat/issues/12",
+      "https://docs.example.com/fastmat/design",
+    ]);
     // The signed assignment carries the same contract to the rig.
     const signed = s.store.db
       .prepare("select signed from command where kind = 'assign_campaign'")
@@ -286,11 +348,20 @@ describe("a campaign's brief on the screens (goal 078)", () => {
         notes: undefined,
         ideas: undefined,
         hypotheses: undefined,
+        links: undefined,
       }),
     );
     assert.equal(bare.status, 303);
     const b = s.contract("bare") ?? {};
-    assert.ok(!("notes" in b) && !("ideas" in b) && !("hypotheses" in b));
+    assert.ok(!("notes" in b) && !("ideas" in b) && !("hypotheses" in b) && !("links" in b));
+    // A starting link that is not a web address: refused in words.
+    const badLink = await s.submit(
+      codeDraft("hill_climb", { campaign: "bad-link", links: ["git.example.com/x"] }),
+    );
+    assert.match(
+      await badLink.text(),
+      /Starting links: git\.example\.com\/x is not a web address: write it as https:\/\/…/,
+    );
   });
 
   test("the form, as the browser posts it: research keeps each question whole, its hypotheses and its additional information; ideas are not sent", async () => {
@@ -305,7 +376,8 @@ describe("a campaign's brief on the screens (goal 078)", () => {
       research: {
         topic: "Long agent tasks",
         questions: core.briefList([question, "", "What fails, and why?"]),
-        seeds: [],
+        // The brief's Starting links: a research campaign's seeds.
+        seeds: core.briefLinks(fields.links).links,
         min_duration: "8h",
       },
       ...core.briefDraft("research", fields),
@@ -317,6 +389,11 @@ describe("a campaign's brief on the screens (goal 078)", () => {
     assert.deepEqual(c?.questions, [question.trim(), "What fails, and why?"]);
     assert.deepEqual(c?.hypotheses, ["It is memory bound at batch size 1."]);
     assert.equal(c?.notes, NOTES.trimEnd());
+    assert.deepEqual(c?.seeds, [
+      "https://git.example.com/team/fastmat/issues/12",
+      "https://docs.example.com/fastmat/design",
+    ]);
+    assert.ok(!("links" in (c ?? {})));
     // Ideas sent anyway, or no question: refused in words.
     const ideas = await s.submit({ ...draft, campaign: "agent-survey-b", ideas: ["x"] });
     assert.match(await ideas.text(), /Ideas to try are for hill-climb and goal campaigns/);
@@ -340,6 +417,11 @@ describe("a campaign's brief on the screens (goal 078)", () => {
       /<ol class="kb-list"><li>Fuse the dequantize step\.<\/li><li>Load 128-bit vectors\.<br>Then unroll by 4\.<\/li><\/ol>/,
     );
     assert.match(block, /It is memory bound at batch size 1\./);
+    // Its starting links, as links.
+    assert.match(
+      block,
+      /<span class="lb">Starting links<i [^>]*>i<\/i><\/span><ul class="kb-list"><li><a href="https:\/\/git\.example\.com\/team\/fastmat\/issues\/12" rel="noopener noreferrer" target="_blank">/,
+    );
     // A long text folds, with its size; its Markdown renders.
     assert.match(
       block,
@@ -363,7 +445,8 @@ describe("a campaign's brief on the screens (goal 078)", () => {
     const kept = await s.rest("fastmat-speed", { name: "fastmat-speed-b" });
     assert.equal(kept.status, 201, await kept.text());
     const b = s.contract("fastmat-speed-b");
-    for (const k of ["notes", "ideas", "hypotheses"]) assert.deepEqual(b?.[k], source?.[k], k);
+    for (const k of ["notes", "links", "ideas", "hypotheses"])
+      assert.deepEqual(b?.[k], source?.[k], k);
     // Its own: new additional information, no ideas, the hypotheses kept.
     const own = await s.rest("fastmat-speed", {
       name: "fastmat-speed-c",
@@ -409,6 +492,10 @@ describe("a campaign's brief on the screens (goal 078)", () => {
       limits: {},
       research: { topic: "t", questions: ["q?"], seeds: [], min_duration: "8h" },
     });
+    // A research copy's links are its seeds.
+    const seeded = await s.rest("survey", { name: "survey-s", links: ["https://a.example.com/x"] });
+    assert.equal(seeded.status, 201, await seeded.text());
+    assert.deepEqual(s.contract("survey-s")?.seeds, ["https://a.example.com/x"]);
     const refused = await s.rest("survey", { name: "survey-b", ideas: ["x"] });
     assert.equal(refused.status, 400);
     assert.match(
