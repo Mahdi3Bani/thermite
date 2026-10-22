@@ -212,7 +212,10 @@ export async function writeExport(input: {
 
     const snapshotPath = join(tmp, "ledger.sqlite");
     ledger.db.exec(`vacuum into '${snapshotPath.replace(/'/g, "''")}'`);
-    // Held-out results go to promotion code only, never into an export.
+    // The held_out table, the judge's whole record of each held-out check, never goes into an
+    // export. The owner's record of one does (goal 082): the held_out_checked event, with each
+    // held-out cell's name, kind of failure and value against its threshold (at most 50 cells),
+    // is in the events table and events.jsonl, as it reaches control. No agent reads events.
     const snapshot = new DatabaseSync(snapshotPath);
     snapshot.exec("drop table if exists held_out; vacuum;");
     snapshot.close();

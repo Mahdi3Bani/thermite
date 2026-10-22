@@ -494,6 +494,16 @@ export function work() {
       .map((r) => r.name);
     snap.close();
     assert.ok(!tables.includes("held_out"));
+    // The owner's record of it does go into the export, as it reaches control (goal 082).
+    const { readFileSync } = await import("node:fs");
+    const exported = readFileSync(`${exp.dir}/events.jsonl`, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { kind: string; body: { cells?: { cell: string }[] } });
+    assert.deepEqual(
+      exported.filter((e) => e.kind === "held_out_checked").map((e) => e.body.cells?.[0]?.cell),
+      ["held"],
+    );
   });
 });
 
