@@ -656,6 +656,25 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
           run: String(e.subject),
         },
       );
+    // The run's first plan or trial on the rig waited for its MCP servers (goal 068).
+    case "mcp_servers_wait": {
+      const missing = Array.isArray(b.missing)
+        ? (b.missing as { name?: string; why?: string }[])
+        : [];
+      const waited = Number(b.waited_s ?? 0);
+      const after = waited > 0 ? `, after waiting ${waited} s for them` : "";
+      return missing.length
+        ? s(
+            `The run's work started without the MCP ${missing.length === 1 ? "server" : "servers"} ${missing.map((m) => `${String(m.name)} (${clip(String(m.why ?? ""), 200)})`).join("; ")}${after}. A later trial gets each one once the rig has it.`,
+            "warn",
+            { run: String(e.subject) },
+          )
+        : s(
+            `The run's work waited ${waited} s for its MCP servers to reach the rig, then started with them.`,
+            "",
+            { run: String(e.subject) },
+          );
+    }
     // A claim a worker recorded, in any mode: verified, or a draft with the harness's reasons.
     case "claim_added": {
       const by = e.actor === "research" ? "A worker" : e.actor;

@@ -19,7 +19,7 @@ import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
 import { clipReason } from "../judge/reasons.ts";
 import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
-import type { McpCaller } from "../mcp-gateway.ts";
+import { type McpCaller, NOT_HANDED } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
 import { type Experiment, inFamily } from "../queue.ts";
 import { writeAtomic } from "../research/folder.ts";
@@ -209,7 +209,20 @@ export interface SchedulerOptions {
   /** Backoff after unproductive trials: base delay and cap. */
   backoffBaseMs?: number | undefined;
   backoffMaxMs?: number | undefined;
+  /** How long a run waits for its MCP servers before its first plan or trial (MCP_WAIT_MS). */
+  mcpWaitMs?: number | undefined;
 }
+
+/**
+ * How long a run whose kit names MCP servers waits, before its first plan or trial on this
+ * harness, for the rig to hold each one its workers or planner get (goal 068). The supervisor
+ * hands them over with the model route, every 30 s by default, and a harness that just started
+ * or a run just assigned may not have them yet: a trial that started then would list no tools
+ * from them for its whole length. A server control says it can't give is not waited for. Pacing,
+ * not a cap: once the wait ends, the run goes on without the servers still missing, and History
+ * and Live say which and why.
+ */
+export const MCP_WAIT_MS = 2 * 60_000;
 
 /** Lifecycles of attempts the judge has not finished with. */
 const OPEN_LIFECYCLES = [
@@ -280,6 +293,7 @@ export class Scheduler {
       goalReportWaitMs: 2 * 3_600_000,
       backoffBaseMs: 15_000,
       backoffMaxMs: 10 * 60_000,
+      mcpWaitMs: MCP_WAIT_MS,
       ...opts,
     } as typeof this.o;
     this.ledger = opts.service.ledger;
@@ -438,6 +452,58 @@ export class Scheduler {
     return true;
   }
   private limitNoted: string | undefined;
+
+  /** Runs waiting for their MCP servers on this harness, since when (ms). */
+  private readonly mcpWaits = new Map<string, number>();
+  /** Runs whose wait for their MCP servers is over on this harness. */
+  private readonly mcpReady = new Set<string>();
+
+  /**
+   * Whether a run waits for the MCP servers its kit names (MCP_WAIT_MS): no plan or trial starts
+   * until the rig holds each one its workers or planner get, or control says why it can't give
+   * one, or the wait ends. Then, once, History (`mcp_servers_wait`) and Live say how long it
+   * waited and which are missing and why, and the run goes on without those: each later trial
+   * gets a server the rig holds by then. A research run's clock does not count the wait. In this
+   * process's memory: after a restart, the harness holds no server until the supervisor hands
+   * them over again, so the run waits again.
+   */
+  private waitingForMcp(run: string): boolean {
+    if (this.mcpReady.has(run)) return false;
+    const lacking = this.o.service.mcp.lacking(run);
+    const unknown = lacking.filter((l) => l.why === undefined).map((l) => l.name);
+    const since = this.mcpWaits.get(run);
+    const now = Date.now();
+    const say = (text: string) =>
+      this.o.service.live.append({ source: "planner", kind: "status", text, run });
+    const seconds = Math.round(this.o.mcpWaitMs / 1000);
+    if (unknown.length && (since === undefined || now - since < this.o.mcpWaitMs)) {
+      if (since === undefined) {
+        this.mcpWaits.set(run, now);
+        say(
+          `waiting for the MCP ${unknown.length === 1 ? "server" : "servers"} ${unknown.join(", ")}: control has not handed ${unknown.length === 1 ? "it" : "them"} to this rig yet. No plan or trial starts until ${unknown.length === 1 ? "it comes" : "they come"}, for up to ${seconds} s.`,
+        );
+      }
+      return true;
+    }
+    this.mcpReady.add(run);
+    this.mcpWaits.delete(run);
+    const missing = lacking.map((l) => ({ name: l.name, why: l.why ?? NOT_HANDED }));
+    const waited = since === undefined ? 0 : Math.round((now - since) / 1000);
+    if (since !== undefined || missing.length)
+      this.ledger.appendEvent(this.o.owner, "mcp_servers_wait", run, {
+        ...(since !== undefined ? { since: new Date(since).toISOString() } : {}),
+        waited_s: waited,
+        missing,
+      });
+    if (missing.length) {
+      say(
+        `the run goes on without the MCP ${missing.length === 1 ? "server" : "servers"} ${missing.map((s) => `${s.name} (${s.why})`).join("; ")}${since !== undefined ? `, after waiting ${waited} s` : ""}. A later trial gets each one once the rig has it.`,
+      );
+    } else if (since !== undefined) {
+      say("the run's MCP servers reached this rig: its plans and trials start with their tools.");
+    }
+    return false;
+  }
 
   /** The newest event of these kinds (for this subject, when given). */
   private newest(
@@ -1418,6 +1484,8 @@ export class Scheduler {
     }
     if (this.agentsStopped(inst.id)) return false;
     if (this.waitingForLimit(inst.id)) return false;
+    // The MCP servers the run's kit names, before its first plan or trial (goal 068).
+    if (this.waitingForMcp(inst.id)) return false;
     if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
     if (contract.mode === "goal" && this.waitingForConfirmation(id)) return false;

@@ -88,6 +88,12 @@ From the command line, `thermite assign` sends a kit's list with `--mcp-servers`
 - **In the Live view.** A call shows as a tool call, with its answer.
 - **On the server.** The calls come from the rigs, with the sign-in control holds.
 
+### Before the first trial
+
+The rig gets the servers on the same beat as its model route, every 30 seconds by default ([What a rig gets](../operate/mcp-servers.md#what-a-rig-gets)), so a run just started may not have them yet. Each trial lists its tools when it starts, so the run's first plan and trial wait for them: no plan or trial starts until the rig holds every server the kit gives its workers or planner, for up to 2 minutes. Live says `waiting for the MCP servers gbrain, papers: control has not handed them to this rig yet. No plan or trial starts until they come, for up to 120 s.`, then `the run's MCP servers reached this rig: its plans and trials start with their tools.` A server control says it can't give is not waited for.
+
+When a server is still missing as the run's work starts, the run goes on without it. Live says `the run goes on without the MCP server papers (control can't sign in to it: its sign-in ended), after waiting 30 s. A later trial gets each one once the rig has it.`, and **History** says `The run's work started without the MCP server papers (…), after waiting 30 s for them. A later trial gets each one once the rig has it.` (the event `mcp_servers_wait`, with `missing` and `waited_s`). The wait comes again after the harness restarts, which leaves it holding no server until the supervisor hands them over again. A research run's clock does not count it.
+
 ### When a server fails during a run
 
 The run goes on. The agent's call comes back as a tool error, `The MCP server gbrain failed: <why>. Go on without it.`, and the agents go on without it. The run's events record `mcp_server_failed` once for each server and kind of agent, with the reason, and `mcp_server_back` when a call works again. Its **History** tab says `The MCP server gbrain failed for the workers: <why>. The run goes on without it.`, then `The MCP server gbrain works again for the workers.` The Live view says it once, as `the MCP server gbrain failed: <why>. The workers go on without it.` (`The planner goes on without it.` for the planner), and when a call works again, `the MCP server gbrain works again.` On **Settings**, press **Read tools again**, or **Sign in again ↗** for an OAuth server whose sign-in ended. [Troubleshooting](../operate/troubleshoot.md#an-mcp-server-fails-during-a-run) has more.

@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { logStall, modelStallMs } from "../harness/agents/model-stall.ts";
 import { type ForwardTarget, forwardToProvider } from "../harness/model-forward.ts";
 
 /**
@@ -57,6 +58,10 @@ export async function serveAdvisorModel(
       },
       target,
       onUsageLimit,
+      undefined,
+      // A stream that goes silent is broken off (goal 079): the advisor's program sees a broken
+      // connection or a 504, as from any gateway, and the supervisor's log says so.
+      { ms: modelStallMs(), onStall: (ms) => logStall(ms, { advisor_proxy: true }) },
     );
   });
   app.all("*", (c) => c.json({ error: "not found" }, 404));

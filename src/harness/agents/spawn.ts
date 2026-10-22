@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Role, Runner } from "../broker/runner.ts";
 import { MODEL_ENV_NAMES, type ModelConfig, modelEnv } from "./model.ts";
+import { STALL_SETTING } from "./model-stall.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 
@@ -10,8 +11,12 @@ export type AnyTrial =
   | { kind: "code"; spec: TrialSpec }
   | { kind: "research"; spec: ResearchTrialSpec };
 
-/** What a worker process gets: the model route and the harness URL. No tokens, no broker. */
-const MODEL_ENV = [...MODEL_ENV_NAMES, "NODE_OPTIONS", "LANG"];
+/**
+ * What a worker process gets: the model route and the harness URL. No tokens, no broker. How long
+ * a model call's stream may be silent (goal 079) goes with any route.
+ */
+const ALWAYS = ["NODE_OPTIONS", "LANG", STALL_SETTING];
+const MODEL_ENV = [...MODEL_ENV_NAMES, ...ALWAYS];
 
 /**
  * The route a worker process gets. A ChatGPT sign-in's token is renewed hourly and stays in the
@@ -70,7 +75,7 @@ export async function spawnTrial(
       cwd: dir,
       env: {
         ...Object.fromEntries(
-          (model ? ["NODE_OPTIONS", "LANG"] : MODEL_ENV)
+          (model ? ALWAYS : MODEL_ENV)
             .filter((k) => process.env[k] !== undefined)
             .map((k) => [k, process.env[k] as string]),
         ),

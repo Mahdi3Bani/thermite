@@ -5,8 +5,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { startFakeModel } from "../testing/fake-model.ts";
+import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { makeJudgeEnv } from "../testing/judge-env.ts";
 import { ModelSource } from "./agents/model-source.ts";
+import { classifyProviderError } from "./agents/provider-errors.ts";
+import { Registry } from "./agents/registry.ts";
 import { createHarnessApi } from "./api.ts";
 
 /** A provider that answers every request and records what it was sent. */
@@ -227,6 +231,77 @@ describe("the model proxy", () => {
       assert.equal(env.service.usageLimitSince(later), undefined);
     } finally {
       server.close();
+    }
+  });
+
+  test("a stream that goes silent is broken off for OpenCode and Codex: a 504 before an answer, a broken connection during one, and the trial's Live says so (goal 079)", async () => {
+    const env = makeHarnessEnv();
+    const out = await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    const registry = new Registry(env.service.ledger);
+    registry.startTrial({
+      id: "t-proxy-silent",
+      run: "smoke-1",
+      lane: "lane-1",
+      epoch: 1,
+      family: "f",
+      parent: env.seedCommit,
+      token: "silent-trial-token",
+    });
+    const file = join(mkdtempSync(join(tmpdir(), "thermite-proxy-")), "model-route.json");
+    const api = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
+    env.service.modelStallMs = 300;
+    const ask = () =>
+      api.request("/v1/model-proxy/chat/completions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer trial.silent-trial-token",
+        },
+        body: JSON.stringify({ model: "m", stream: true, messages: [] }),
+      });
+    const lines = () =>
+      env.service.live
+        .since(0, 1000)
+        .entries.filter((l) => l.source === "trial:t-proxy-silent")
+        .map((l) => l.text);
+    for (const silent of ["no_answer", "open", "keep_alive"] as const) {
+      const fake = await startFakeModel(() => ({ silent }));
+      try {
+        env.service.models = new ModelSource(file, {
+          baseUrl: fake.url,
+          model: "m",
+          apiKey: "real-provider-key",
+          contextWindow: 0,
+          maxTokens: 0,
+        });
+        const since = Date.now();
+        const before = lines().length;
+        const r = await ask();
+        if (silent === "no_answer") {
+          // No answer at all: a gateway's 504, with the words.
+          assert.equal(r.status, 504);
+          assert.match(await r.text(), /the model's stream went silent for 0\.3 s/);
+        } else {
+          // During the answer: the program's connection breaks off.
+          assert.equal(r.status, 200);
+          await assert.rejects(r.text(), /the model's stream went silent for 0\.3 s/);
+        }
+        // The provider's connection is closed; the trial's answer is the provider's passing fault
+        // in the words, so its program's next stop goes on in the same session.
+        const end = Date.now() + 2000;
+        while (fake.closedEarly < 1 && Date.now() < end)
+          await new Promise((x) => setTimeout(x, 10));
+        assert.equal(fake.closedEarly, 1, silent);
+        const answer = env.service.providerAnswerSince("t-proxy-silent", since);
+        assert.equal(answer?.status, 504, silent);
+        assert.equal(classifyProviderError(String(answer?.body), answer).kind, "server", silent);
+        assert.deepEqual(lines().slice(before), [
+          "the model's stream went silent for 0.3 s: retried. The harness broke the call off; the trial goes on in the same session.",
+        ]);
+      } finally {
+        await fake.close();
+      }
     }
   });
 });

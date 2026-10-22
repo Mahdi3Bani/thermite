@@ -34,6 +34,9 @@ export interface McpCaller {
 /** How long a server's tool list is kept before it is read again. */
 const LIST_MS = 5 * 60_000;
 
+/** Why a server the run names can't be called, when control has said nothing of it yet. */
+export const NOT_HANDED = "control has not given it to this rig yet";
+
 /** A verb for a kind of agent: the planner is one ("goes"), the workers and advisors many ("go"). */
 const verb = (kind: AgentKind, one: string, many: string) => (kind === "planner" ? one : many);
 
@@ -85,6 +88,26 @@ export class McpGateway {
       .map((u) => ({ name: u.name, tools: u.tools?.[kind] }));
   }
 
+  /**
+   * The servers a run's workers or planner get that the rig does not hold now, by name: each with
+   * control's reason when control said it can't give it, else none (not handed over yet).
+   */
+  lacking(run: string): { name: string; why?: string }[] {
+    const names = new Set(
+      this.deps
+        .uses(run)
+        .filter((u) => u.agents.includes("workers") || u.agents.includes("planner"))
+        .map((u) => u.name),
+    );
+    return [...names]
+      .sort()
+      .filter((name) => !this.conns.has(name))
+      .map((name) => {
+        const why = this.missing.get(name);
+        return why === undefined ? { name } : { name, why };
+      });
+  }
+
   private key = (c: McpCaller, server: string) => `${c.run}\0${server}\0${c.kind}`;
 
   /**
@@ -127,7 +150,7 @@ export class McpGateway {
   private reachable(server: string): McpConnection | string {
     const conn = this.conns.get(server);
     if (conn) return conn;
-    return this.missing.get(server) ?? "control has not given it to this rig yet";
+    return this.missing.get(server) ?? NOT_HANDED;
   }
 
   private async session<T>(conn: McpConnection, use: (s: McpSession) => Promise<T>): Promise<T> {

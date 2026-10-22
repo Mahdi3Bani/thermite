@@ -152,6 +152,8 @@ export function kbSearchFor(cfg: Pick<AdvisorsConfig, "kb">): AdvisorTools["kbSe
 interface RunRow {
   id: string;
   campaign?: string;
+  /** The campaign's mode: a research run has no code for the teachers to read. */
+  mode?: string;
   status: string;
   owner_messages_waiting?: { teachers?: number[]; auditor?: number[]; panel?: number[] };
   /** The MCP servers its kit names, with the agents that get each (goal 068). */
@@ -648,7 +650,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           keeper: keeperFor(inst.id),
           tools: {
             ...toolsFor(),
-            ...(openFetch ? {} : { code: codeFor(inst.id) }),
+            // A research run has no code: its seed is a placeholder, with no repository on the
+            // rig, so its teachers get none of the code tools.
+            ...(openFetch || inst.mode === "research" ? {} : { code: codeFor(inst.id) }),
             // The run's MCP servers for its advisors (none with an open fetch: mcpFor says so).
             mcp: await mcpFor(inst.id),
             // Teachers with an open fetch search no past research either.

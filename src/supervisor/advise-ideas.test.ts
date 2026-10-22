@@ -5,8 +5,11 @@ import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { parseContract } from "../core/contract.ts";
 import { createHarnessApi } from "../harness/api.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
+import { researchFixture } from "../testing/fixtures.ts";
+import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { AdvisorsConfig, opportunityExperiment, teacherRound } from "./advisors.ts";
@@ -400,6 +403,52 @@ describe("the teachers put ideas first (goal 081)", () => {
         .length,
       1,
     );
+  });
+
+  test("a research run's teachers get no code tools: it has no repository for Git to read", async (t: TestContext) => {
+    const env = makeHarnessEnv("rig-r");
+    const parsed = parseContract(researchFixture);
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    const out = await env.service.applyCommand(
+      env.sign("assign_campaign", {
+        run: "r-1",
+        contract: parsed.contract,
+        contract_sha: parsed.sha,
+        imports: [],
+      }),
+    );
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    const offered: string[][] = [];
+    const results: string[] = [];
+    // A teacher that reads the code whenever it is offered the tool, as goal 081 asks.
+    const fake = await startFakeModel(({ messages, tools }) => {
+      const names = tools.map((x) => x.function.name);
+      offered.push(names);
+      const done = messages.filter((m) => m.role === "tool").map((m) => String(m.content));
+      results.push(...done);
+      if (names.includes("list_files") && done.length === 0)
+        return { toolCalls: [{ name: "list_files", args: {} }] };
+      return answer({ summary: "read", portfolio: [] });
+    });
+    t.after(() => fake.close());
+    const asked: string[] = [];
+    const cfg = config(
+      env as unknown as Env,
+      AdvisorsConfig.parse({ teachers: [runtime(fake.url, "teacher-a")] }),
+      [],
+    );
+    const inner = cfg.fetchImpl as typeof fetch;
+    cfg.fetchImpl = async (input, init) => {
+      asked.push(new URL(String(input)).pathname);
+      return inner(input, init);
+    };
+    await adviseOnce(cfg, emptyAdviseState());
+    assert.ok(offered.length > 0, "the teachers reviewed the run");
+    for (const names of offered)
+      for (const code of ["list_files", "read_file", "read_diff", "read_evidence"])
+        assert.ok(!names.includes(code), `${code} offered: ${names.join(", ")}`);
+    assert.ok(!asked.some((p) => p.startsWith("/v1/code/")), asked.join(", "));
+    assert.ok(!results.some((r) => /spawn|ENOENT/.test(r)), results.join("\n"));
   });
 
   test("in Claude Code, OpenCode and Codex the code tools are served on localhost, read only", async () => {

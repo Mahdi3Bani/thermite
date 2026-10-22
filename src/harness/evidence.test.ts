@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { parseContract } from "../core/contract.ts";
+import { researchFixture } from "../testing/fixtures.ts";
+import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../testing/judge-env.ts";
 import { createHarnessApi } from "./api.ts";
+import { GitError, patchBytes, readableDiff, treeFile, treeFiles } from "./git.ts";
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
@@ -181,5 +185,60 @@ describe("the teachers' reads of a run's code and evidence (goal 081)", () => {
     assert.equal((await get("/v1/code/diff?run=js-1&attempt=a-nope")).status, 404);
     assert.equal((await get("/v1/evidence?run=js-1&attempt=a-nope")).status, 404);
     assert.equal((await get("/v1/code/file?run=js-1&path=nope.md")).status, 404);
+  });
+
+  test("a research run has no code: the reads say so, and Git is never started in a folder that is not there", async () => {
+    // A research run's seed is a placeholder: no repository of it is on the rig. Git was started
+    // in that missing folder, and Node said only `spawn git ENOENT`.
+    const env = makeHarnessEnv("rig-r");
+    const parsed = parseContract(researchFixture);
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    const out = await env.service.applyCommand(
+      env.sign("assign_campaign", {
+        run: "r-1",
+        contract: parsed.contract,
+        contract_sha: parsed.sha,
+        imports: [],
+      }),
+    );
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    const api = createHarnessApi(env.service, tokens);
+    for (const path of [
+      "/v1/code/files?run=r-1",
+      "/v1/code/file?run=r-1&path=README.md",
+      "/v1/code/diff?run=r-1&attempt=a-0123456789abcdef",
+    ]) {
+      const r = await api.request(path, { headers: auth(tokens.supervisor) });
+      const body = (await r.json()) as { error?: string };
+      assert.equal(r.status, 400, path);
+      assert.equal(
+        body.error,
+        "run r-1 is a research run: it has no code to read. Its work is the sources, claims and notes in its research folder",
+        path,
+      );
+    }
+    // The judged reads of a research run still answer: they read no repository.
+    assert.equal(
+      (await api.request("/v1/evidence?run=r-1", { headers: auth(tokens.supervisor) })).status,
+      200,
+    );
+    // Any read of a repository that is not on the rig says so, never `spawn git ENOENT`.
+    const missing = env.service.mirrorFor("research");
+    const commit = "0".repeat(40);
+    for (const read of [
+      () => treeFiles(missing, commit),
+      () => treeFile(missing, commit, "README.md", 1000),
+      () => readableDiff(missing, commit, commit),
+      () => patchBytes(missing, commit, commit),
+    ])
+      await assert.rejects(read(), (err: Error) => {
+        assert.ok(err instanceof GitError);
+        assert.match(
+          err.message,
+          /^git [a-z-]+ failed: there is no repository research\.git on this rig$/,
+        );
+        assert.doesNotMatch(err.message, /spawn|ENOENT/);
+        return true;
+      });
   });
 });

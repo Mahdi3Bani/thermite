@@ -32,6 +32,7 @@ import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
+import { logStall, modelStallMs, stalledFor, stallWords } from "./agents/model-stall.ts";
 import { KIND_WORDS, type ProviderErrorKind } from "./agents/provider-errors.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
@@ -370,6 +371,29 @@ export class HarnessService {
       if (this.providerAnswers.size <= 256) break;
       this.providerAnswers.delete(k);
     }
+  }
+
+  /**
+   * How long a model call's stream may send no data before the model proxy breaks it off (ms;
+   * goal 079): THERMITE_MODEL_STALL_SECONDS, 600 s by default. Undefined: never.
+   */
+  modelStallMs: number | undefined = modelStallMs();
+
+  /**
+   * The model proxy broke a call off because its stream went silent (goal 079): the log says so,
+   * and a trial's Live. The trial's program then sees a broken connection or a 504, and the
+   * proxy's answer for it (noteProviderAnswer) makes it the provider's `server` error.
+   */
+  noteModelStall(trial: { id: string; run: string; lane: string } | undefined, ms: number): void {
+    logStall(ms, trial ? { trial: trial.id, run: trial.run, via: "model proxy" } : {});
+    if (trial)
+      this.live.append({
+        source: `trial:${trial.id}`,
+        kind: "status",
+        text: `${stallWords(ms)}: retried. The harness broke the call off; the trial goes on in the same session.`,
+        lane: trial.lane,
+        run: trial.run,
+      });
   }
 
   /** The newest error answer the proxy saw for a trial, if it came at or after `since` (ms). */
@@ -1688,11 +1712,25 @@ export class HarnessService {
     };
   }
 
+  /**
+   * The run's project mirror, for the teachers' code reads (goal 081). A research run has none: it
+   * works on sources, not a repository, and its seed is a placeholder whose mirror was never made,
+   * so Git would be started in a folder that does not exist.
+   */
+  private codeMirror(run: string): string {
+    const inst = this.requireRun(run);
+    if (inst.mode === "research")
+      throw new LedgerError(
+        "invalid",
+        `run ${run} is a research run: it has no code to read. Its work is the sources, claims and notes in its research folder`,
+      );
+    return this.mirrorFor(inst.seed_repo);
+  }
+
   /** The champion's commit and the run's project mirror, for the teachers' code reads (goal 081). */
   private championCode(run: string): { mirror: string; commit: string } {
-    const inst = this.requireRun(run);
     return {
-      mirror: this.mirrorFor(inst.seed_repo),
+      mirror: this.codeMirror(run),
       commit: this.ledger.currentChampion(run).commit_sha,
     };
   }
@@ -1716,8 +1754,7 @@ export class HarnessService {
 
   /** An attempt's diff, in parts, for the teachers (goal 081). */
   attemptDiff(run: string, attempt: string, offset?: number): ReturnType<typeof readAttemptDiff> {
-    const inst = this.requireRun(run);
-    return readAttemptDiff(this.ledger, this.mirrorFor(inst.seed_repo), run, attempt, offset);
+    return readAttemptDiff(this.ledger, this.codeMirror(run), run, attempt, offset);
   }
 
   /**
@@ -2428,10 +2465,21 @@ export class HarnessService {
   ): void {
     const at = new Date(w.until);
     const when = Number.isNaN(at.getTime()) ? w.until : at.toISOString().slice(11, 19);
+    // A call broken off because its stream went silent (goal 079) says so in its own words.
+    const silent = w.kind === "server" ? stalledFor(w.words) : undefined;
+    if (silent !== undefined)
+      log("harness", "a model call's stream went silent: retried", {
+        trial: trial.id,
+        run: trial.run,
+        seconds: Number(silent),
+      });
     this.live.append({
       source: `trial:${trial.id}`,
       kind: "status",
-      text: `waiting until ${when} UTC: ${KIND_WORDS[w.kind as ProviderErrorKind] ?? w.kind} (${w.words.slice(0, 300)}). The trial goes on in the same conversation.`,
+      text:
+        silent !== undefined
+          ? `the model's stream went silent for ${silent} s: retried at ${when} UTC, in the same conversation.`
+          : `waiting until ${when} UTC: ${KIND_WORDS[w.kind as ProviderErrorKind] ?? w.kind} (${w.words.slice(0, 300)}). The trial goes on in the same conversation.`,
       lane: trial.lane,
       run: trial.run,
     });

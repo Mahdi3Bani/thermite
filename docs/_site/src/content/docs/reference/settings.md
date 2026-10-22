@@ -188,6 +188,12 @@ A model chosen for the rig on control (**Settings › Providers**, or **Edit rig
 | `THERMITE_CLAUDE_BIN` | name or path | `claude` on the `PATH` | no | The Claude Code program. The supervisor reads it too |
 | `THERMITE_CODEX_BIN` | name or path | `codex` on the `PATH` | no | The Codex CLI program. The supervisor reads it too, for advisors in Codex |
 
+This one applies to every model the agents use, a route from control or the rig's own:
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_MODEL_STALL_SECONDS` | seconds | `600` | no | How long a model call's stream may send no data before it is broken off as the provider's passing fault: the agent waits and goes on in the same conversation ([Limits and pacing](limits-and-pacing.md#the-model-provider)). It detects a silent network connection; it is not a cap on research. A call that keeps sending data is never cut, however long it lasts; keep-alive comment lines and pings are not data. Raise it for a model that thinks for longer than this without sending anything. `0` turns it off. It covers the workers, the planner and the model checks in Pi, and the model proxy's calls for OpenCode and Codex; not Claude Code on a subscription, which reaches Anthropic directly. The supervisor reads it too, for its advisors. Anything else stops the service with `THERMITE_MODEL_STALL_SECONDS must be a number of seconds (0: off), not <value>` |
+
 A Claude subscription and Claude Code go only together. Any other pairing stops the harness with `a Claude subscription (THERMITE_MODEL_API=claude) runs only with THERMITE_AGENT_HARNESS=claude-code, and that harness only with it`.
 
 The Codex CLI speaks only OpenAI's Responses API, so `codex` goes only with `THERMITE_MODEL_API` `openai` (or not set) or `chatgpt`. With `openai`, the base URL's server must answer `/responses`, as OpenAI's own API does. Any other pairing stops the harness with `the Codex CLI speaks only OpenAI's Responses API: THERMITE_AGENT_HARNESS=codex needs THERMITE_MODEL_API chatgpt or openai`.

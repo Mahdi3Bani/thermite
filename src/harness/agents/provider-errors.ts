@@ -9,8 +9,9 @@ import { CHATGPT_LIMIT_CODE, CHATGPT_LIMIT_WAIT_MS } from "./model.ts";
  * - `credits`, `auth`, `route`: no credits left, a key the provider refuses, or a model it does not
  *   serve on this key. Nothing gets better by trying again: the run's agents stop and the run shows
  *   in Needs you with the provider's own words, until a model check passes again.
- * - `server`: the provider (or the way to it) failed for now, a 5xx or a broken connection. The
- *   agent waits a growing pause and goes on in the same conversation.
+ * - `server`: the provider (or the way to it) failed for now, a 5xx, a broken connection, or a
+ *   stream that sent no data for THERMITE_MODEL_STALL_SECONDS (model-stall.ts). The agent waits a
+ *   growing pause and goes on in the same conversation.
  * - `context`: the request was longer than the model's window: the conversation is compacted.
  * - `model`: anything else, such as a request the provider refused as malformed. The agent is told
  *   the call failed and goes on.
@@ -134,8 +135,9 @@ const RATE =
   /rate[_ ]?limit|too many requests|resource[_ ]exhausted|slow down|usage limit|requests per (minute|day)|tokens per (minute|day)/i;
 const CONTEXT =
   /context[_ ]?(length|window)|too long|maximum (context )?length|prompt is too long|exceeds? (the )?(model'?s? )?(context|maximum)|too many tokens/i;
+/** A server error: also a model call broken off because its stream went silent (model-stall.ts). */
 const SERVER =
-  /overloaded|bad gateway|service unavailable|gateway time-?out|internal server error|server error|upstream|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|fetch failed|network|could not be reached|connection (error|reset|refused|closed)|timed? ?out|deadline exceeded|terminated|broke off|temporarily unavailable/i;
+  /stream went silent|overloaded|bad gateway|service unavailable|gateway time-?out|internal server error|server error|upstream|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|fetch failed|network|could not be reached|connection (error|reset|refused|closed)|timed? ?out|deadline exceeded|terminated|broke off|temporarily unavailable/i;
 
 /** The HTTP status an error's text gives: "429 …", "HTTP 503", "status code 402". */
 export function statusIn(text: string): number | undefined {

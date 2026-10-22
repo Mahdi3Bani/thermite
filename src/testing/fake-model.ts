@@ -25,6 +25,12 @@ export interface ScriptedTurn {
   usage?: { prompt: number; completion: number; cached?: number; reasoning?: number };
   /** Waits this long before the reply's first token (ms). */
   delayMs?: number;
+  /**
+   * A stream that goes silent: `open` answers 200 and its event stream's headers, then sends
+   * nothing; `keep_alive` sends only comment lines (`: PROCESSING`), as a gateway does while the
+   * model behind it sends nothing; `no_answer` never answers at all. None of them ever ends.
+   */
+  silent?: "open" | "keep_alive" | "no_answer";
 }
 
 export type Script = (req: {
@@ -37,11 +43,14 @@ export type Script = (req: {
 export interface FakeModel {
   url: string;
   requests: number;
+  /** Requests whose connection the client closed before the reply ended. */
+  closedEarly: number;
   close(): Promise<void>;
 }
 
 export async function startFakeModel(script: Script): Promise<FakeModel> {
-  const state = { requests: 0 };
+  const state = { requests: 0, closedEarly: 0 };
+  const timers = new Set<ReturnType<typeof setInterval>>();
   let n = 0;
   const server: Server = createServer((req, res) => {
     let body = "";
@@ -69,8 +78,27 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
         );
         return;
       }
+      res.on("close", () => {
+        if (!res.writableEnded) state.closedEarly++;
+      });
+      if (turn.silent === "no_answer") return;
       const id = `chatcmpl-${++n}`;
       res.writeHead(200, { "content-type": "text/event-stream" });
+      if (turn.silent === "open") {
+        res.flushHeaders();
+        return;
+      }
+      if (turn.silent === "keep_alive") {
+        const ping = () => res.write(": PROCESSING\n\n");
+        ping();
+        const t = setInterval(ping, 50);
+        timers.add(t);
+        res.on("close", () => {
+          clearInterval(t);
+          timers.delete(t);
+        });
+        return;
+      }
       if (turn.delayMs) setTimeout(() => answer(res, turn, id, parsed.model), turn.delayMs);
       else answer(res, turn, id, parsed.model);
     });
@@ -82,8 +110,12 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
     get requests() {
       return state.requests;
     },
+    get closedEarly() {
+      return state.closedEarly;
+    },
     close: () =>
       new Promise<void>((r) => {
+        for (const t of timers) clearInterval(t);
         server.closeAllConnections();
         server.close(() => r());
       }),
