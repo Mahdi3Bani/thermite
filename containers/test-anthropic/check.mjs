@@ -22,7 +22,9 @@ import { startAnthropicStandIn } from "./anthropic.mjs";
 /** A made-up sign-in token: letters only, never a real one. */
 const TOKEN = "madeupsignintokenforthestandin";
 const checks = [];
-const check = (name, ok, detail) => checks.push({ name, ok: Boolean(ok), detail });
+/** One check; `log`: lines that say why it failed, printed in full when it does. */
+const check = (name, ok, detail, log) =>
+  checks.push({ name, ok: Boolean(ok), detail, ...(!ok && log?.length ? { log } : {}) });
 const here = "/opt/test-anthropic";
 process.env.THERMITE_CLAUDE_BIN = `${here}/claude`;
 const model = {
@@ -165,11 +167,13 @@ async function harness() {
   );
   await runner.remove(area);
 
-  // Goal 070: a trial that compacts. The stand-in says the conversation is large after its first
-  // reply, so the real Claude Code compacts before its next request (its window 100,000 tokens,
-  // compacted at 50%). Thermite's PreCompact hook, from Thermite's settings for the run, copies
-  // the transcript as the lane's user and adds its line to the compaction's instructions; the
-  // stand-in's summary names the file, and the harness reads the hook's copy.
+  // Goal 070: a trial that compacts. The stand-in makes two rounds and says the conversation is
+  // large after the second, so the real Claude Code compacts before its next request (its window
+  // 100,000 tokens, compacted at 50%). Thermite's PreCompact hook, from Thermite's settings for
+  // the run, copies the transcript as the lane's user and adds its line to the compaction's
+  // instructions; the stand-in's summary names the file, and the harness reads the hook's copy.
+  // Claude Code writes its debug log (DEBUG=1) in its home: on a failure, the check prints its
+  // compaction lines, with what the hooks wrote and what the transcript shows.
   const area2 = join(scratchDir, "lanes", lane, randomUUID());
   const repo2 = join(area2, "repo");
   mkdirSync(join(repo2, "src"), { recursive: true });
@@ -177,6 +181,7 @@ async function harness() {
   execFileSync("git", ["init", "--quiet", "-b", "work"], { cwd: repo2, stdio: "ignore" });
   await runner.handOver(area2, lane, { harnessReads: true });
   const compacted = [];
+  const said2 = [];
   const kept = { dir: join(scratchDir, "research", "claude-real-1", "compactions"), stem: "t-compact", readable: true };
   const ct = await runClaudeTrial(
     {
@@ -195,22 +200,25 @@ async function harness() {
       runner,
       model: { ...model, contextWindow: 100_000, compactAt: 50 },
       apiUrl: "http://127.0.0.1:9",
-      live: () => undefined,
+      live: (entries) => said2.push(...entries),
       progress: () => undefined,
       submitted: () => undefined,
       pollMs: 300,
       keptAt: kept,
       compacted: (c) => compacted.push(c),
+      env: { DEBUG: "1" },
     },
   );
   const first = compacted[0];
+  const compactedOk =
+    first?.number === 1 &&
+    first.own === true &&
+    /from Claude Code's own transcript of the session/.test(first.markdown) &&
+    /COMPACT-CHECK/.test(first.markdown) &&
+    (first.summary ?? "").includes(`${kept.dir}/t-compact-1.md`);
   check(
     "the real Claude Code compacted a trial's conversation: its PreCompact hook copied the transcript, and the summary names the kept file",
-    first?.number === 1 &&
-      first.own === true &&
-      /from Claude Code's own transcript of the session/.test(first.markdown) &&
-      /COMPACT-CHECK/.test(first.markdown) &&
-      (first.summary ?? "").includes(`${kept.dir}/t-compact-1.md`),
+    compactedOk,
     {
       compactions: ct.compactions ?? 0,
       stopped: ct.stopped,
@@ -219,9 +227,52 @@ async function harness() {
       summary: first?.summary,
       head: first?.markdown.slice(0, 300),
     },
+    compactedOk ? undefined : await compactionDiagnostics(runner, area2, said2),
   );
   await runner.remove(area2);
   runner.close();
+}
+
+/**
+ * Why a trial did not compact as expected, as lines: Claude Code's own debug log (its
+ * `autocompact:` and `Reactive compact:` lines and the hooks it ran), what Thermite's hooks wrote
+ * in the trial's area, what Claude Code's transcript shows, and the trial's last live lines. The
+ * controller takes the area back first: Claude Code keeps its files private to the lane's user.
+ */
+async function compactionDiagnostics(runner, area, live) {
+  const out = [];
+  try {
+    await runner.reclaim(area);
+  } catch (err) {
+    out.push(`(the area could not be taken back: ${String(err)})`);
+  }
+  const files = (dir) => {
+    try {
+      return readdirSync(dir).map((f) => join(dir, f));
+    } catch {
+      return [];
+    }
+  };
+  const home = join(area, "claude-home", ".claude");
+  for (const log of files(join(home, "debug")).filter((f) => f.endsWith(".txt"))) {
+    const lines = readFileSync(log, "utf8")
+      .split("\n")
+      .filter((l) => /compact|PreCompact|PostCompact|hook|settings/i.test(l));
+    out.push(`debug log ${log} (${lines.length} lines about compaction or hooks; the last 60):`);
+    out.push(...lines.slice(-60).map((l) => `  ${l.slice(0, 400)}`));
+  }
+  if (!files(join(home, "debug")).length) out.push(`no debug log under ${join(home, "debug")}`);
+  out.push(`the hooks' folder: ${files(join(area, "claude-compactions")).map((f) => f.split("/").pop()).join(", ") || "empty or missing"}`);
+  for (const project of files(join(home, "projects")))
+    for (const t of files(project).filter((f) => f.endsWith(".jsonl"))) {
+      const lines = readFileSync(t, "utf8").split("\n").filter(Boolean);
+      const boundaries = lines.filter((l) => /"subtype":"compact_boundary"/.test(l)).length;
+      const summaries = lines.filter((l) => /"isCompactSummary":true/.test(l)).length;
+      out.push(`transcript ${t}: ${lines.length} lines, ${boundaries} compaction boundaries, ${summaries} summaries`);
+    }
+  out.push("the trial's last live lines:");
+  out.push(...live.slice(-12).map((e) => `  ${e.kind}: ${String(e.text).slice(0, 300)}`));
+  return out;
 }
 
 /**

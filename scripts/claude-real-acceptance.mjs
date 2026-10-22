@@ -37,6 +37,8 @@ const report = (c) => {
   console.log(
     `${c.ok ? "PASS" : "FAIL"} ${c.name}${c.detail === undefined ? "" : `: ${JSON.stringify(c.detail).slice(0, 600)}`}`,
   );
+  // A failed check's own account of why (Claude Code's debug lines, say), in full.
+  if (!c.ok && Array.isArray(c.log)) for (const line of c.log) console.log(`  | ${line}`);
   if (!c.ok) failed++;
 };
 const logs = () => {
