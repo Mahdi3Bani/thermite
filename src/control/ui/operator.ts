@@ -850,6 +850,15 @@ const introText = (s: string) => s.replace(/^(research )?trial on [^:]+: /, "");
 
 // ---------------------------------------------------------------- a run at a glance
 
+/**
+ * Why a goal run starts no new trial while the judge confirms a champion that met every required
+ * goal (goal 086), in words; "" when it does not wait for that.
+ */
+export function confirmingWords(r: RunView): string {
+  if (r.mode !== "goal" || !r.goals_confirming) return "";
+  return `Champion #${r.goals_seq ?? "?"} met every required goal, and the judge is checking it a second time: no new trial starts until that check is done. If it agrees, the run closes; if not, the lanes go on.`;
+}
+
 /** A goal's state: its tone, mark and word. */
 export function goalState(g: RunView["goals"][number]): {
   tone: string;

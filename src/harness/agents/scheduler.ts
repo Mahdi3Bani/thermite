@@ -812,6 +812,45 @@ export class Scheduler {
     return !giveUp;
   }
 
+  /**
+   * Goal mode (goal 086): a validation of the champion found every required goal met, and only
+   * the judge's second, confirming validation is left. No new round or trial starts while it is
+   * queued or running: if it agrees, the run closes and a new trial's work would be lost. A trial
+   * already at work goes on. If it does not agree (a goal is not met again, or the validation
+   * fails), the lanes go on.
+   */
+  private waitingForConfirmation(run: string): boolean {
+    const { seq } = this.ledger.currentChampion(run);
+    const pending = this.ledger.db
+      .prepare(
+        `select count(*) as k from job where kind = 'validate' and state in ('queued', 'leased')
+           and json_extract(spec, '$.run') = ? and json_extract(spec, '$.confirm') = 1
+           and json_extract(spec, '$.champion_seq') = ?`,
+      )
+      .get(run, seq) as { k: number };
+    const waiting = Number(pending.k) > 0;
+    const noted = this.confirmNoted;
+    if (waiting && (noted?.run !== run || noted.seq !== seq)) {
+      this.confirmNoted = { run, seq };
+      this.o.service.live.append({
+        source: "planner",
+        kind: "status",
+        text: `no new trial starts: the judge is confirming that champion #${seq} meets every required goal; if it does, the run closes (a trial at work goes on until then)`,
+        run,
+      });
+    } else if (!waiting && noted?.run === run) {
+      this.confirmNoted = undefined;
+      this.o.service.live.append({
+        source: "planner",
+        kind: "status",
+        text: `trials start again: the judge's confirmation of champion #${noted.seq} did not close the run`,
+        run,
+      });
+    }
+    return waiting;
+  }
+  private confirmNoted: { run: string; seq: number } | undefined;
+
   /** New limits from the rig's settings; they apply from the next trial or check. */
   configure(p: {
     maxConcurrent?: number;
@@ -1344,6 +1383,7 @@ export class Scheduler {
     if (this.waitingForLimit(inst.id)) return false;
     if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
+    if (contract.mode === "goal" && this.waitingForConfirmation(id)) return false;
     const perEpoch = contract.lanes.trials_per_epoch;
     let epoch = this.registry.currentEpoch(id);
     if (!epoch || epoch.ended_at) {
@@ -2123,10 +2163,9 @@ export class Scheduler {
       "",
       report
         ? `# What the champion meets (the judge's check of champion #${report.champion_seq})\n${report.goals
-            .map(
-              (g) =>
-                `- ${g.goal}: ${g.status}${g.status === "met" ? "" : `. ${clipReason(g.reasons, BRIEF_GOAL_CHARS)}`}`,
-            )
+            // A met goal's reasons too: its values on the public cells (goal 086) say how much
+            // room a change has before it loses the goal. Never a held-out cell's.
+            .map((g) => `- ${g.goal}: ${g.status}. ${clipReason(g.reasons, BRIEF_GOAL_CHARS)}`)
             .join("\n")}\n`
         : "",
       "# Your lane's recent attempts and the judge's findings",

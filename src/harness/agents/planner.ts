@@ -722,7 +722,8 @@ message's id and family set to the rule's direction. A message names a direction
 :name: (its directions lists them): use that one. For plain words, use the run's direction that
 fits, or design a new one in new_families. In a goal campaign, goal_report is the judge's check of the champion: aim lanes at
 goals it does not meet yet (a goal "not run" waits on a goal it requires), never at work the
-champion already does. campaign_brief, when there is one, comes from the campaign's author: its
+champion already does. Each goal's reasons give the values the judge measured on each case, met
+or not: how far a goal is from its line, or how much room a change has before it loses one. campaign_brief, when there is one, comes from the campaign's author: its
 additional_information (background, links, what was tried, limits, what good looks like),
 starting_links, ideas_to_try and hypotheses. Use them as starting points, not rules: turn ideas that fit into
 experiments, and design experiments that test the hypotheses. field_notes holds the newest notes the lanes, the advisors and you wrote,
