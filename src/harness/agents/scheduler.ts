@@ -12,7 +12,7 @@ import {
 import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
-import { queueTarget, ruleRefusal } from "../../core/queue-target.ts";
+import { queueTarget } from "../../core/queue-target.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -28,7 +28,14 @@ import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
 import { violationsOf, violationsText } from "../v0.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
-import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
+import {
+  Coordinator,
+  focusOf,
+  type Handout,
+  PLANNER,
+  resultOf,
+  rulesInForce,
+} from "./coordinator.ts";
 import { mcpAgentTools } from "./mcp-tools.ts";
 import { type ModelConfig, withAgentsContext } from "./model.ts";
 import {
@@ -649,36 +656,9 @@ export class Scheduler {
     return SETTLED.has(String(this.ledger.getAttempt(attempt)?.lifecycle));
   }
 
-  /**
-   * The directives in force. The owner's (issued through control) come first: a supervisor
-   * directive about a family the owner has a directive for, or a supervisor lane count when the
-   * owner set one, does not apply.
-   */
+  /** The directives in force: the owner's first (rulesInForce). */
   private directives(run: string): { id: number; body: StoredRule }[] {
-    // An old rule in words (legacy, goal 066) stays in force for the planner's model until its
-    // round converts it; it has no family, so the code below and the fixed rules never keep it.
-    // An advisor's rule that freezes the queue's size or pins an experiment, set before code
-    // refused them (goal 081), never reaches the plan.
-    const all = this.ledger
-      .activeDirectives(run)
-      .filter((d) => !d.author.startsWith("supervisor") || !ruleRefusal(d.body as StoredRule))
-      .map((d) => ({
-        id: d.id,
-        owner: d.author.startsWith("control:"),
-        body: d.body as StoredRule,
-      }));
-    const ownerFamilies = new Set(
-      all.filter((d) => d.owner && d.body.family).map((d) => d.body.family),
-    );
-    const ownerLanes = all.some((d) => d.owner && d.body.kind === "lane_count");
-    return all
-      .filter(
-        (d) =>
-          d.owner ||
-          ((!d.body.family || !ownerFamilies.has(d.body.family)) &&
-            !(d.body.kind === "lane_count" && ownerLanes)),
-      )
-      .map((d) => ({ id: d.id, body: d.body }));
+    return rulesInForce(this.ledger, run);
   }
 
   private laneCount(run: string, contract: Contract): number {
@@ -1063,8 +1043,8 @@ export class Scheduler {
       directives.some(
         (d) => d.body.kind === "avoid" && d.body.family && inFamily(x, d.body.family),
       );
-    const ready = () =>
-      this.o.service.queue.queued(run).filter((x) => !given.has(x.id) && !avoided(x)).length;
+    // The one count of ready ideas, which the teachers' brief and queue_low read too.
+    const ready = () => this.o.service.queue.ready(run, directives, given).length;
     const waitingLanes = lanes.filter((l) => !handout.some((h) => h.lane === l)).length;
     // A target of 0 asks for no ideas: the lanes' ideas then wait, as before (goal 081).
     const ideas =

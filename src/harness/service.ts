@@ -28,6 +28,7 @@ import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
@@ -1595,7 +1596,9 @@ export class HarnessService {
 
   /**
    * A run's target queue depth now (goal 081): the target, the lanes it is counted for (the
-   * current round's, else the contract's), and how many experiments are queued, ready for a lane.
+   * current round's, else the contract's), and how many experiments are ready for a lane, counted
+   * as the planner's round counts them: queued, not handed out in the newest round, and in no
+   * direction an AVOID rule in force names.
    */
   queueState(run: string): { target: number; lanes: number; ready: number } {
     const contract = this.contractFor(run);
@@ -1604,7 +1607,8 @@ export class HarnessService {
     return {
       target: queueTarget(contract, lanes),
       lanes,
-      ready: this.queue.queued(run).length,
+      ready: this.queue.ready(run, rulesInForce(this.ledger, run), handedOut(this.ledger, run))
+        .length,
     };
   }
 

@@ -111,6 +111,22 @@ export class ExperimentQueue {
       .sort((a, b) => (a.place ?? 0) - (b.place ?? 0));
   }
 
+  /**
+   * Up next and ready for a lane's next trial (goal 081): queued, not handed out to a lane this
+   * round (`given`), and in no direction an AVOID rule in force names. The planner's round and
+   * the teachers' brief count the queue against its target with this one count.
+   */
+  ready(
+    run: string,
+    rules: readonly { body: { kind: string; family?: string | undefined } }[],
+    given: ReadonlySet<string> = new Set(),
+  ): Experiment[] {
+    const avoid = rules.flatMap((r) =>
+      r.body.kind === "avoid" && r.body.family ? [r.body.family] : [],
+    );
+    return this.queued(run).filter((x) => !given.has(x.id) && !avoid.some((f) => inFamily(x, f)));
+  }
+
   /** The lanes' ideas waiting for the planner or the owner, oldest first. */
   proposed(run: string): Experiment[] {
     return this.all(run).filter((x) => x.state === "proposed");

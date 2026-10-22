@@ -510,4 +510,41 @@ describe("the teachers put ideas first (goal 081)", () => {
     assert.equal(env.service.queueLow("js-1"), null, "4 of 4 ready");
     assert.equal(await teachersCalled(cfg, state), false);
   });
+
+  test("the planner's round and the teachers count ready ideas alike: none an AVOID rule names, none handed out", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const run = "js-1";
+    const { target } = env.service.queueState(run);
+    assert.ok(target >= 2, String(target));
+    const add = (title: string, family?: string) =>
+      env.service.queue.add(run, { title, ...(family ? { family } : {}), by: "owner" }, "o");
+    // Enough queued to meet the target, but two are in a direction an AVOID rule names, and one
+    // was handed out to a lane in the newest round: neither is a ready idea.
+    const plain = Array.from({ length: target }, (_, i) => add(`plain ${i}`));
+    add("tile by 32", "tiling");
+    add("tile by 64", "tiling");
+    env.ledger.addDirectiveSet(
+      run,
+      "supervisor",
+      [{ kind: "avoid", family: "tiling", rationale: "null twice", citations: ["a-1"] }],
+      true,
+    );
+    env.ledger.appendEvent("planner", "planner_handout", run, {
+      round: 1,
+      assignments: [{ lane: "lane-1", experiment: plain[0]?.id, why: "first" }],
+      notes: "n",
+    });
+    assert.equal(env.service.queueState(run).ready, target - 1);
+    env.ledger.appendEvent("planner", "queue_low", run, { round: 1, ready: target - 1, target });
+    assert.equal(env.service.queueLow(run)?.ready, target - 1, "still below its target");
+    const brief = env.service.brief(run) as { queue_target: { ready: number; below: boolean } };
+    assert.deepEqual(
+      { ready: brief.queue_target.ready, below: brief.queue_target.below },
+      { ready: target - 1, below: true },
+    );
+    // One more plain idea meets it.
+    add("plain more");
+    assert.equal(env.service.queueLow(run), null);
+  });
 });

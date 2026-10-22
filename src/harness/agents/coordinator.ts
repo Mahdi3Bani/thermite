@@ -1,5 +1,5 @@
 import type { StoredRule } from "../../core/commands.ts";
-import { ideaWords } from "../../core/queue-target.ts";
+import { ideaWords, ruleRefusal } from "../../core/queue-target.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { directionOf, type Experiment, type ExperimentQueue, inFamily } from "../queue.ts";
 import type { NewFamily, QueuePlan } from "./planner.ts";
@@ -51,6 +51,51 @@ export function resultOf(stopped: string, attempt?: string | null | undefined): 
 /** What a trial works on, as its focus: the experiment's title and details. */
 export function focusOf(x: Pick<Experiment, "title" | "details">): string {
   return x.details ? `${x.title}\n${x.details}` : x.title;
+}
+
+/**
+ * The rules for the plan in force. The owner's (issued through control) come first: a supervisor
+ * directive about a family the owner has a directive for, or a supervisor lane count when the
+ * owner set one, does not apply.
+ */
+export function rulesInForce(ledger: Ledger, run: string): { id: number; body: StoredRule }[] {
+  // An old rule in words (legacy, goal 066) stays in force for the planner's model until its
+  // round converts it; it has no family, so the code below and the fixed rules never keep it.
+  // An advisor's rule that freezes the queue's size or pins an experiment, set before code
+  // refused them (goal 081), never reaches the plan.
+  const all = ledger
+    .activeDirectives(run)
+    .filter((d) => !d.author.startsWith("supervisor") || !ruleRefusal(d.body as StoredRule))
+    .map((d) => ({
+      id: d.id,
+      owner: d.author.startsWith("control:"),
+      body: d.body as StoredRule,
+    }));
+  const ownerFamilies = new Set(
+    all.filter((d) => d.owner && d.body.family).map((d) => d.body.family),
+  );
+  const ownerLanes = all.some((d) => d.owner && d.body.kind === "lane_count");
+  return all
+    .filter(
+      (d) =>
+        d.owner ||
+        ((!d.body.family || !ownerFamilies.has(d.body.family)) &&
+          !(d.body.kind === "lane_count" && ownerLanes)),
+    )
+    .map((d) => ({ id: d.id, body: d.body }));
+}
+
+/** The experiments the run's newest hand-out gave its lanes. */
+export function handedOut(ledger: Ledger, run: string): Set<string> {
+  const e = ledger.db
+    .prepare(
+      "select body from event where kind = 'planner_handout' and subject = ? order by id desc limit 1",
+    )
+    .get(run) as { body: string } | undefined;
+  const b = (e ? JSON.parse(e.body) : {}) as { assignments?: { experiment?: unknown }[] };
+  return new Set(
+    (b.assignments ?? []).flatMap((a) => (typeof a.experiment === "string" ? [a.experiment] : [])),
+  );
 }
 
 export class Coordinator {
