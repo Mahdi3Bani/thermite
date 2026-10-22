@@ -363,6 +363,8 @@ export interface DashboardOptions {
   rigImages?: RigImages | undefined;
   /** How control reaches Kubernetes clusters (tests give their own). */
   clusterKubectl?: ClusterKubectl | undefined;
+  /** How often a draining rig's report is looked at (goal 079; default 10 s). */
+  drainWatchMs?: number | undefined;
   /** How control reaches GPU clouds' APIs (tests give their own). */
   cloudFetch?: typeof fetch | undefined;
   /** Test pods on GPU clouds (made by createControlApi). */
@@ -4716,10 +4718,17 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
     const want = controlImages(s.gpus);
     const keeps =
-      "Its volume, tokens, runs and results stay. A trial in progress stops, and the harness plans it again.";
+      "Its volume, tokens, runs and results stay. Running trials and the judge's job under way finish first: the rig starts nothing new meanwhile. Update now skips the wait: a trial in progress then stops, and its experiment goes back to the queue.";
     // New images; or the same ones after a failed update (a retry); or a new address for control.
-    const update =
-      !manage || typeof want === "string"
+    // Draining for an update (goal 079): what it waits for, and the two ways out.
+    const work = rigWork(r.rig);
+    const draining =
+      r.status === "draining" && typeof want !== "string"
+        ? `<div class="small" style="margin-top:12px">Draining before its pods restart on control's images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">${work ? `It waits for ${esc(workWords(work))} to finish, and starts nothing new.` : "It waits for its next report."} Its pods restart as soon as nothing runs.</div>${act("images-now", "Update now, without waiting")}${act("drain-cancel", "Call the update off")}`
+        : "";
+    const update = draining
+      ? draining
+      : !manage || typeof want === "string"
         ? ""
         : want.harness !== s.images.harness || want.supervisor !== s.images.supervisor
           ? `<div class="small" style="margin-top:12px">Control now deploys other images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">Its pods restart on these images. ${keeps} After a newer harness has opened its ledger, an older image may not open it.</div>${act("images", "Update to these images")}`
@@ -5275,6 +5284,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   const updateClusterRigImages = async (
     rig: string,
     by: string,
+    o: { wait?: boolean | undefined } = {},
   ): Promise<{ ok: string } | { error: string }> => {
     const r = store.clusterRig(rig);
     if (!r || r.status === "removed")
@@ -5291,6 +5301,12 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const old = r.spec.images;
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
+    // A drain under way (goal 079): asked again, it goes on waiting; asked not to wait, the
+    // update goes ahead now.
+    if (r.status === "draining" && o.wait !== false)
+      return {
+        ok: `${rig} is draining: its pods restart on the new images once its trials and the judge's job end. Update now skips the wait.`,
+      };
     // One change at a time: an update or a start still waiting for its pods is not overlapped.
     if (r.status === "updating" || r.status === "starting")
       return {
@@ -5328,6 +5344,30 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         return { ok: `${rig} already runs control's images.` };
     }
     const stopped = r.status === "stopped";
+    // Drain first (goal 079): while trials run or the judge has a job under way, the rig starts
+    // nothing new and lets those end; the watcher below restarts its pods once nothing runs.
+    // A harness too old to report its work is updated at once, as before.
+    const work = rigWork(rig);
+    if (
+      o.wait !== false &&
+      !stopped &&
+      r.status !== "draining" &&
+      work &&
+      (work.trials > 0 || work.judge_jobs > 0)
+    ) {
+      issueCommand(store, opts.privateKeyPem, {
+        rig,
+        kind: "drain_rig",
+        payload: { drain: true, reason: "its images are about to change" },
+        issuedBy: by,
+      });
+      store.setClusterRigStatus(rig, "draining");
+      store.rigSetupEvent(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
+      store.audit(by, "cluster_rig_drain", { rig, to: images });
+      return {
+        ok: `${rig} drains first: it starts nothing new, and its pods restart on the new images once ${workWords(work)} finish. Update now, on its page or with update_rig_images and wait false, skips the wait.`,
+      };
+    }
     const out = await kube.kubectl(
       clusterTarget(k),
       ["apply", "-f", "-"],
@@ -5336,6 +5376,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     );
     if (out.code !== 0) {
       store.rigSetupEvent(rig, "images", false, kubeError(out));
+      // A rig that drained for it goes back to work: the update did not happen.
+      if (r.status === "draining") {
+        undrain(rig, by);
+        store.setClusterRigStatus(rig, "failed");
+      }
       return { error: kubeError(out) };
     }
     store.setClusterRigImages(rig, images, controlAddress());
@@ -5370,6 +5415,49 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     };
   };
   if (opts.actions) opts.actions.updateRigImages = updateClusterRigImages;
+  /** What a rig still runs, as its last report says (goal 079); none from an older harness. */
+  const rigWork = (
+    rig: string,
+  ): { trials: number; judge_jobs: number; draining: unknown } | undefined => {
+    const w = (store.rigs().find((x) => x.id === rig)?.summary as { work?: unknown } | undefined)
+      ?.work as { trials?: unknown; judge_jobs?: unknown; draining?: unknown } | undefined;
+    if (!w || typeof w.trials !== "number" || typeof w.judge_jobs !== "number") return undefined;
+    return { trials: w.trials, judge_jobs: w.judge_jobs, draining: w.draining ?? null };
+  };
+  const workWords = (w: { trials: number; judge_jobs: number }) =>
+    [
+      w.trials ? `${w.trials} trial${w.trials === 1 ? "" : "s"}` : "",
+      w.judge_jobs ? `the judge's job${w.judge_jobs === 1 ? "" : "s"}` : "",
+    ]
+      .filter(Boolean)
+      .join(" and ") || "its work";
+  /** A drain ends: the rig starts work again (its images did not change). */
+  const undrain = (rig: string, by: string) =>
+    issueCommand(store, opts.privateKeyPem, {
+      rig,
+      kind: "drain_rig",
+      payload: { drain: false, reason: "the update did not happen" },
+      issuedBy: by,
+    });
+  /** The owner calls the update off: the rig goes back to work on its images. */
+  const cancelDrain = (rig: string, by: string): { ok: string } | { error: string } => {
+    const r = store.clusterRig(rig);
+    if (r?.status !== "draining") return { error: `${rig} is not draining.` };
+    undrain(rig, by);
+    store.setClusterRigStatus(rig, "running");
+    store.rigSetupEvent(rig, "drain", true, "called off: the rig goes back to work on its images");
+    return { ok: `${rig} goes back to work on its images.` };
+  };
+  // A draining rig's pods restart once its report says nothing runs any more (goal 079).
+  const drainWatch = setInterval(() => {
+    for (const r of store.clusterRigs().filter((x) => x.status === "draining")) {
+      const w = rigWork(r.rig);
+      if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
+      store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
+      void updateClusterRigImages(r.rig, "control:drain", { wait: false }).catch(() => {});
+    }
+  }, opts.drainWatchMs ?? 10_000);
+  drainWatch.unref?.();
   const addClusterRigFrom = async (
     c: Ctx,
     f: Record<string, unknown>,
@@ -5756,8 +5844,14 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         303,
       );
     if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
-    if (action === "images") {
-      const done = await updateClusterRigImages(r.rig, "owner:ui");
+    if (action === "images" || action === "images-now") {
+      const done = await updateClusterRigImages(r.rig, "owner:ui", {
+        wait: action !== "images-now",
+      });
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    if (action === "drain-cancel") {
+      const done = cancelDrain(r.rig, "owner:ui");
       return "error" in done ? back("error", done.error) : back("ok", done.ok);
     }
     if (!["stop", "start", "restart", "remove"].includes(action))

@@ -354,6 +354,30 @@ describe("planner", () => {
     await wrong.close();
     assert.equal(w.causes?.[0]?.cause, "invalid");
     assert.match(String(w.causes?.[0]?.detail), /assign each of lane-1, lane-2 exactly once/);
+    // Refused by the tool's schema, and sent again unchanged: the call ends, invalid, and does
+    // not go on asking (with no time limit, it would never stop).
+    let asks = 0;
+    const same = await startFakeModel(() => {
+      asks++;
+      return {
+        toolCalls: [
+          {
+            name: "submit_plan",
+            args: {
+              assignments: [{ lane: "lane-1", family: "f", focus: "y".repeat(5000) }],
+            },
+          },
+        ],
+      };
+    });
+    const r = await plan(base, model(same.url));
+    await same.close();
+    assert.deepEqual(
+      r.causes?.map((c) => c.cause),
+      ["invalid", "invalid"],
+    );
+    assert.match(String(r.causes?.[0]?.detail), /same refused plan again/);
+    assert.equal(asks, 4, "two model calls for each of the two tries");
     // The provider's error: provider_error, with the provider's kind and words.
     const down = await startFakeModel(() => ({ fail: 402, failMessage: "insufficient credits" }));
     const d = await plan(base, model(down.url));

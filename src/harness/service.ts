@@ -368,6 +368,27 @@ export class HarnessService {
    * research folder, and the record of it (main.ts sets it, with the research folder).
    */
   compactions?: Compactions | undefined;
+  /**
+   * The rig drains (goal 079): no new trial, plan or judge job starts, and those running end as
+   * they would. Kept in memory only: the restart it prepares for ends it.
+   */
+  draining: { since: string; reason: string; by: string } | undefined;
+
+  /** What still runs, for a drain's report: open trials and the judge's leased jobs. */
+  work(): {
+    trials: number;
+    judge_jobs: number;
+    draining: { since: string; reason: string } | null;
+  } {
+    const n = (sql: string) =>
+      Number((this.ledger.db.prepare(sql).get() as { n: number } | undefined)?.n ?? 0);
+    return {
+      trials: n("select count(*) as n from trial where ended_at is null"),
+      judge_jobs: n("select count(*) as n from job where state = 'leased'"),
+      draining: this.draining ? { since: this.draining.since, reason: this.draining.reason } : null,
+    };
+  }
+
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   get promotion(): "auto" | "owner_approval" {
     return this.settings.get().promotion;
@@ -520,6 +541,22 @@ export class HarnessService {
         return this.assignCampaign(CommandPayloads.assign_campaign.parse(payload), by);
       case "rig_check":
         return this.startRigCheck(CommandPayloads.rig_check.parse(payload), by);
+      case "drain_rig": {
+        const p = CommandPayloads.drain_rig.parse(payload);
+        this.draining = p.drain
+          ? (this.draining ?? {
+              since: this.clock().toISOString(),
+              reason: p.reason ?? "its images are about to change",
+              by,
+            })
+          : undefined;
+        this.ledger.appendEvent(by, "rig_drain", null, {
+          drain: p.drain,
+          ...(p.reason ? { reason: p.reason } : {}),
+          ...this.work(),
+        });
+        return this.work();
+      }
       case "pause_run": {
         const p = CommandPayloads.pause_run.parse(payload);
         this.ledger.setRunStatus(p.run, "paused", p.reason, by);
@@ -2010,6 +2047,9 @@ export class HarnessService {
         ...(this.models ? { model: this.models.info() } : {}),
         // What runs on this rig and how (Edit rig).
         settings: this.settings.get(),
+        // What still runs, and whether the rig drains (goal 079): control restarts a draining
+        // rig once nothing runs.
+        work: this.work(),
         ...(this.gpuSplit ? { gpu_split: this.gpuSplit } : {}),
         ...(this.subscriptionUsage && this.models?.info().source !== "none"
           ? {

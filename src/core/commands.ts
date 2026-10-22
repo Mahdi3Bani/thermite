@@ -347,6 +347,16 @@ export const CommandPayloads = {
   /** A full export (a full reset's) also carries the research archive and the ledger snapshot. */
   export_now: z.object({ full: z.boolean().default(false) }),
   /**
+   * The rig drains before its images change (goal 079): no new trial, plan or judge job starts,
+   * and those running end as they would. The rig's report says what still runs; control restarts
+   * it once nothing does, or at once when the owner skips the wait. `drain: false` ends a drain.
+   * A drain lasts until the harness restarts.
+   */
+  drain_rig: z.strictObject({
+    drain: z.boolean(),
+    reason: z.string().trim().min(1).max(500).optional(),
+  }),
+  /**
    * Owner-only full reset, after control verified that `export` (an export_now's result) was
    * pushed to the results repository. The harness refuses if research was recorded after it.
    */

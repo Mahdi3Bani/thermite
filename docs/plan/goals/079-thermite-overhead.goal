@@ -61,8 +61,8 @@ An audit of the lab's campaigns found that Thermite itself, not the models, cost
 - [x] No trial or plan starts while the workers' model check fails.
 - [x] The research clock does not count time the agents could not run.
 - [x] A trial interrupted by a restart keeps the counters its worker last reported.
-- [ ] A drain mode for image updates, on the rig's page and over `update_rig_images`, with a way to skip the wait; shutdown records running trials with their counters.
-- [ ] A lane's cache folder survives a restart in Thermite's manifests and compose: a test, and the pages say where it lives.
+- [x] A drain mode for image updates, on the rig's page and over `update_rig_images`, with a way to skip the wait; shutdown records running trials with their counters.
+- [x] A lane's cache folder survives a restart in Thermite's manifests and compose: a test, and the pages say where it lives.
 - [x] Research rounds count as research rounds, not fallbacks, in the run's figures, the metrics and the daily report.
 - [x] Every limit of the planner's answer is in its tool's schema and its prompt; each try that gives no plan records its real cause.
 - [x] The fallback plan skips directions whose goals the champion already meets.
@@ -87,6 +87,10 @@ An audit of the lab's campaigns found that Thermite itself, not the models, cost
   - **A rig's settings file** now keeps only the settings someone set, with their names. A file from before kept every setting; its 20-minute trial length was the old default and is dropped.
   - **The queue's same row** is a schema change of the harness's ledger (version 18): `experiment.cause` and `experiment.returns`, and the event `experiment_returned`. A trial that failed for another reason (a memory limit, a setup failure) tried its experiment: it is `done`, with its cause.
   - **The planner's focus** may be 4,000 characters, as details: the text past its title goes into details anyway.
+  - **A refused plan sent again.** With no time limit, a Pi planner that sends the same arguments its tool's schema refused would ask the model forever. The same refused arguments a second time end the call, as `invalid`: no progress, not a cap.
+  - **Lane caches.** Thermite's manifests, compose files and machine units keep `/scratch` on a volume, but the harness's start emptied all of it, the lanes' caches too. A start now sets each lane's cache aside and puts it back: only a real folder named for a lane and owned by that lane's user. On RunPod, `/scratch` is on the pod's container disk: the caches outlive a restart of the harness, not a stop of the pod.
+  - **The drain** is the command `drain_rig`, in the harness's memory only: the restart it prepares ends it. Control drains a rig only when its last report shows work (open trials, or jobs under the judge's lease), and looks at a draining rig's reports every 10 seconds. It has no time limit; the owner can skip it or call it off. A harness too old to report its work is updated at once, as before.
+  - **A stop** (SIGTERM) records the running trials as interrupted, with their workers' counters, and waits a few seconds for the judge's loop; a job under way is not waited for, as a container's stop gives little time, and its lease is taken back at the next start.
   - **No mockup** for the screens' changes: the **Agents stopped** card is one more card in **Needs you**, in the same form as the others; the Experiments tab adds a line to a row; Edit rig's trial length field says "no limit" when empty.
 
 ## Open questions
@@ -95,7 +99,8 @@ None.
 
 ## Progress
 
-- 2026-10-22: Provider errors by kind, the agents' stop and its card, no trial on a failing check, the research clock, counters after a restart, the queue's same row with causes, the planner's limits and causes, research rounds, the fallback's skipped directions, and every hidden default removed or made a setting. Next: the drain and the lane cache, then hands-off promotion.
+- 2026-10-22: Provider errors by kind, the agents' stop and its card, no trial on a failing check, the research clock, counters after a restart, the queue's same row with causes, the planner's limits and causes, research rounds, the fallback's skipped directions, and every hidden default removed or made a setting.
+- 2026-10-22: The drain before an image update, records of a stop, and the lanes' caches kept over a start. Next: hands-off promotion.
 
 ---
 

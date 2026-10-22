@@ -550,6 +550,8 @@ async function main(): Promise<void> {
     maxTurns: settings.get().max_turns ?? undefined,
     workersOn: () => settings.get().workers,
     plannerOn: () => settings.get().planner,
+    // A draining rig starts no trial or plan (goal 079).
+    draining: () => service.draining !== undefined,
     // Each trial runs in the harness the rig's route names: Pi (a worker process), OpenCode,
     // Claude Code or Codex.
     runTrial: (spec, signal) => {
@@ -791,8 +793,9 @@ async function main(): Promise<void> {
     while (!stopping) {
       let worked = false;
       try {
-        // The judge off (Edit rig): jobs wait in the queue, nothing is measured.
-        worked = settings.get().judge ? await executor.tick() : false;
+        // The judge off (Edit rig): jobs wait in the queue, nothing is measured. A draining rig
+        // takes no new job (goal 079): the one under way finishes first.
+        worked = settings.get().judge && !service.draining ? await executor.tick() : false;
       } catch (err) {
         log("harness", "executor error", { executor: id, error: String(err) });
       }
@@ -840,13 +843,25 @@ async function main(): Promise<void> {
     exporting(),
   ]);
 
+  // A stop (goal 079): running trials stop and are recorded as interrupted, with the counters
+  // their workers last reported. The judge's job under way is not waited for longer than a few
+  // seconds: a container's stop gives little time, and its lease is taken back at the next start.
+  // To let it finish, control drains the rig first (Update to these images).
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
     log("harness", "stopping", { signal });
     server.close();
-    await running;
-    ledger.close();
+    await scheduler
+      .shutdown(`the harness is stopping (${signal})`)
+      .catch((err) => log("harness", "trials not recorded at the stop", { error: String(err) }));
+    const ended = await Promise.race([running.then(() => true), sleep(5000).then(() => false)]);
+    if (ended) ledger.close();
+    else
+      log(
+        "harness",
+        "a judge job was under way at the stop: its lease is taken back at the next start",
+      );
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));

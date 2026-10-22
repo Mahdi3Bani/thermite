@@ -104,4 +104,36 @@ describe("the rig's own settings (Edit rig)", () => {
     };
     assert.ok(odd.status === "rejected" || odd.accepted === false, JSON.stringify(odd));
   });
+
+  test("a drain before an image update: the report says what still runs, until the drain ends (goal 079)", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    // A trial at work, and a judge job under lease.
+    env.ledger.db
+      .prepare(
+        "insert into trial (id, run, lane, epoch, family, parent_commit, started_at) values ('t-1', 'js-1', 'lane-1', 1, 'f', ?, ?)",
+      )
+      .run(env.seed, new Date().toISOString());
+    const work = () =>
+      (env.service.snapshot(0, 10) as { summary: { work: Record<string, unknown> } }).summary.work;
+    assert.deepEqual(work(), { trials: 1, judge_jobs: 0, draining: null });
+    const on = await env.service.applyCommand(
+      env.sign("drain_rig", { drain: true, reason: "its images are about to change" }),
+    );
+    assert.equal(on.status, "applied");
+    assert.ok(env.service.draining, "it drains");
+    const w = work() as { trials: number; draining: { reason: string } | null };
+    assert.equal(w.trials, 1);
+    assert.equal(w.draining?.reason, "its images are about to change");
+    assert.ok(env.ledger.db.prepare("select 1 from event where kind = 'rig_drain'").get());
+    // The trial ends: nothing runs any more, and the report says so (control restarts the rig).
+    env.ledger.db
+      .prepare("update trial set ended_at = ? where id = 't-1'")
+      .run(new Date().toISOString());
+    assert.equal((work() as { trials: number }).trials, 0);
+    // The update is called off: the drain ends.
+    await env.service.applyCommand(env.sign("drain_rig", { drain: false }));
+    assert.equal(env.service.draining, undefined);
+    assert.equal((work() as { draining: unknown }).draining, null);
+  });
 });

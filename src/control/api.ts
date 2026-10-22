@@ -271,6 +271,8 @@ export interface ControlOptions {
   rigImages?: RigImages | undefined;
   /** How control reaches Kubernetes clusters (tests give their own). */
   clusterKubectl?: ClusterKubectl | undefined;
+  /** How often a draining rig's report is looked at (goal 079; tests make it short). */
+  drainWatchMs?: number | undefined;
   /** How control reaches GPU clouds' APIs (tests give their own). */
   cloudFetch?: typeof fetch | undefined;
   /** Test pods on GPU clouds; control's loop advances them (main.ts). Made here when not given. */
@@ -1468,6 +1470,7 @@ export function createControlApi(
       machineSsh: opts.machineSsh,
       rigImages: opts.rigImages,
       clusterKubectl: opts.clusterKubectl,
+      drainWatchMs: opts.drainWatchMs,
       cloudFetch: opts.cloudFetch,
       runpodTests,
       actions,

@@ -114,6 +114,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `redirect` | None: on the dashboard, rules come from **Tell the planner**, a `message_agent` to the planner, which makes them | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
+| `drain_rig` | **Update to these images** on the page of a rig at work set up on a cluster, and **Call the update off**; control issues it as the caller | No | `update_rig_images` | `update_rig_images` | No | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
 | `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
@@ -491,6 +492,17 @@ The supervisor takes the patch from the [results repository](../how-to/operate/r
 | `full` | boolean | `false` | `true` also writes the research archive and a snapshot of the ledger. A full reset asks for a full export |
 
 The harness writes an export to its outbox for the supervisor to push. Result: `{"export", "export_id", "through_event", "attempts", "events"}`.
+
+### `drain_rig`
+
+Only control issues it, before it moves a rig at work onto new images (**Update to these images**, or [`update_rig_images`](mcp-tools.md#update_rig_images)), and to call the update off.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `drain` | boolean | `true`: the rig drains; `false`: the drain ends |
+| `reason` | text, 1 to 500 characters, optional | Why, as the event records it |
+
+While a rig drains, its harness starts no new trial, plan or judge job, and those running end as they would. Its report's `work` says what still runs, `{trials, judge_jobs, draining}`, and control restarts its pods once nothing does. A drain lasts until the harness restarts, which ends it. The event `rig_drain` records each change with the same figures. Result: `{"trials", "judge_jobs", "draining"}`.
 
 ### `wipe_state`
 

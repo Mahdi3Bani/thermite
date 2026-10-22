@@ -1192,6 +1192,25 @@ async function callPlanner(
     goesOn: "Your planning goes on: call submit_plan when your plan is ready.",
   });
   agent.prepareRequest = compactor.hook(agent);
+  // A submit_plan its schema refuses goes back to the planner with the reason. The same refused
+  // arguments a second time end the call (goal 079): it made no progress, and would go on.
+  let repeated: string | undefined;
+  const refused = new Set<string>();
+  const argsOf = new Map<string, string>();
+  agent.subscribe((e) => {
+    if (e.type === "tool_execution_start" && e.toolName === "submit_plan")
+      argsOf.set(e.toolCallId, canonicalJson(e.args ?? null));
+    if (e.type !== "tool_execution_end" || e.toolName !== "submit_plan" || !e.isError) return;
+    const args = argsOf.get(e.toolCallId) ?? "";
+    if (refused.has(args)) {
+      const why = (e.result?.content as { text?: string }[] | undefined)
+        ?.map((c) => c.text ?? "")
+        .join(" ");
+      repeated = `it sent the same refused plan again: ${(why || "its arguments broke the tool's schema").slice(0, 500)}`;
+      agent.abort();
+    }
+    refused.add(args);
+  });
   // No time limit (goal 079): the call ends when the planner answers, or when its run is paused
   // or closed (the scheduler cancels it).
   const cancel = () => agent.abort();
@@ -1202,6 +1221,7 @@ async function callPlanner(
     signal?.removeEventListener("abort", cancel);
   }
   if (tooBig) throw new PlannerCallError("provider_error", tooBig);
+  if (repeated && captured === undefined) throw new PlannerCallError("invalid", repeated);
   if (captured === undefined) {
     if (signal?.aborted) throw new PlannerCallError("cancelled", "the run stopped during the call");
     // Why it gave no plan, from its last reply (goal 079).

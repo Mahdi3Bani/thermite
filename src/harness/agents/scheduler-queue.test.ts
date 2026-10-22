@@ -645,7 +645,7 @@ describe("the planner as the queue's coordinator", () => {
     await stubborn.round();
     const epoch = body(events(stubborn.env, "epoch_started")[0]);
     assert.equal(epoch.source, "fallback");
-    assert.match(JSON.stringify(epoch.refused), /try 2: rule \d+ is an old rule in words/);
+    assert.match(JSON.stringify(epoch.refused), /try 2: refused: rule \d+ is an old rule in words/);
     assert.deepEqual(
       stubborn.env.service.ledger.activeDirectives(RUN).map((d) => d.id),
       [waits],

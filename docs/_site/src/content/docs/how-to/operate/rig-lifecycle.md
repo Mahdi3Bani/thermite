@@ -119,9 +119,16 @@ Steps:
 
 1. Open **Rigs** and choose the rig. Its **Set up by control** block says "Control now deploys other images:" with the two image names, then:
 
-   > Its pods restart on these images. Its volume, tokens, runs and results stay. A trial in progress stops, and the harness plans it again. After a newer harness has opened its ledger, an older image may not open it.
+   > Its pods restart on these images. Its volume, tokens, runs and results stay. Running trials and the judge's job under way finish first: the rig starts nothing new meanwhile. Update now skips the wait: a trial in progress then stops, and its experiment goes back to the queue. After a newer harness has opened its ledger, an older image may not open it.
 
 2. Press **Update to these images**.
+
+   When the rig is at work (its last report shows trials running or a job under the judge's lease), it **drains** first: the page says `rig-1 drains first: it starts nothing new, and its pods restart on the new images once 2 trials and the judge's job finish. …`, and the block's status says `draining`. The block says "Draining before its pods restart on control's images:", what it waits for, such as `It waits for 2 trials and the judge's job to finish, and starts nothing new.`, and offers two buttons:
+
+   - **Update now, without waiting** restarts its pods at once: a trial in progress stops, and its experiment goes back to the queue.
+   - **Call the update off** ends the drain: the rig goes back to work on its images, and its status says `running`.
+
+   Once the rig reports that nothing runs, within a minute or two of its last trial's end, control restarts its pods: a step reads "nothing runs any more: its pods restart now". A rig with nothing at work, or whose harness is too old to report its work, restarts at once.
 
    The page says `rig-1's pods restart on the new images.` The block's status, at the right of its heading, says `updating`, and **Images** names the new images. A new step reads "Its deployments applied with new images", with the old and the new name of each image that changed.
 
@@ -143,13 +150,15 @@ What changes and what stays:
 | | Its place: the cluster, the namespace or slot, the node, the GPUs and the storage |
 
 - **A stopped rig stays stopped.** The page says `rig-1 runs the new images when it starts again.`, the step ends with "at its next start", and control waits for nothing. **Start its pods** then starts it on the new images: the status says `starting`, then `running` once the pods run and the rig reports.
-- **A trial in progress stops**, as with a restart. When the harness starts again, it closes the trial as interrupted, and the lane goes on with a new one. The trial's experiment goes back to the top of the run's [experiment queue](../campaigns/choose-what-runs-next.md).
+- **A trial in progress finishes first**, unless you press **Update now, without waiting**. A trial that a restart stops is closed as interrupted when the harness starts again, with the turns and tokens its worker last reported, and the lane goes on with a new one. Its experiment goes back to the top of the run's [experiment queue](../campaigns/choose-what-runs-next.md).
+- **The judge's job under way finishes first**, unless you skip the wait. A job a restart ends starts over: its lease is taken back at the next start, and the lost lease never counts against the change.
+- **Each lane's cache folder stays**: the next trials build from it, not from nothing ([Ports, volumes and secrets](../../reference/ports-volumes-secrets.md)).
 
 :::caution[Going back to older images]
 Thermite has no rollback ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). To go back, set control's image settings to the old images, restart control, and press **Update to these images**. This works when the new harness never opened the rig's ledger, for example when the new pods never ran. A newer harness that ran may have upgraded the ledger, and an older harness refuses such a ledger before it changes anything: it stops at start, as [The harness stops at start: the ledger is newer](troubleshoot.md#the-harness-stops-at-start-the-ledger-is-newer) says. Nothing is lost then: move the rig onto the newer images again.
 :::
 
-Over MCP, the owner's and an operator's tokens do the same with `update_rig_images`. They stop, start and restart the rig with `cluster_rig`, for example `{"rig": "rig-1", "action": "start"}`; it has no `remove`. `rig_setup` shows the rig's status and each step: see [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script). The REST API has no route for these.
+Over MCP, the owner's and an operator's tokens do the same with `update_rig_images`, which drains first unless it is given `"wait": false`. They stop, start and restart the rig with `cluster_rig`, for example `{"rig": "rig-1", "action": "start"}`; it has no `remove`. `rig_setup` shows the rig's status and each step: see [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script). The REST API has no route for these.
 
 ### Try again after a failure
 
