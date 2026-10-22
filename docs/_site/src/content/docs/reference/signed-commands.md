@@ -127,10 +127,10 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
 | `accept_review` | **Needs you**: **Accept**, **Reject** | Yes | No | No | No | Yes |
 | `conclude` | **Needs you**: **End it: not possible**, **Keep going** | Yes | No | No | No | Yes |
-| `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | Yes | No | No | No | Yes |
+| `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands` | `set_rig_settings`; `start_run` with `judge_gpus` | `set_rig_settings`, but not `promotion` or `judge_gpus` | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
-Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message` and the six queue kinds. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
 
 On the dashboard, only an experiment up next has **Edit**: a lane's idea's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
 
@@ -525,7 +525,7 @@ The attempt never becomes the champion and stays in the record as `declined`. Re
 
 ### `rig_settings`
 
-The rig's own settings, as on its **Edit rig** page. Only the fields that change are sent, and no other field is allowed.
+The rig's own settings, as on its **Edit rig** page. Only the fields that change are sent, and no other field is allowed. [`POST /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings) and MCP's [`set_rig_settings`](mcp-tools.md#set_rig_settings) send it with **Edit rig**'s checks, and only the fields that differ from what the rig reports.
 
 | Field | Type | Meaning |
 | --- | --- | --- |

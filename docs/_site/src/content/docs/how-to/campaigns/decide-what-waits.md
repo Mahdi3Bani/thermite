@@ -42,7 +42,7 @@ When the judge confirms that a change is better, the run's rule decides what hap
 
 - **always keep it** (`auto`): it becomes the champion at once, unless an audit holds it.
 - **ask me every time** (`owner_approval`): it waits for you as **Your decision**.
-- **the rig's default**: the rule on the rig's **Edit rig** page, under **3 · When a change becomes the champion**: **Automatically** unless changed, or **Ask me for each change**.
+- **the rig's default**: the rule on the rig's **Edit rig** page, under **3 · When a change becomes the champion**: **Automatically** unless changed, or **Ask me for each change**. A script or an agent with the owner's token changes it with `promotion` in `POST /v1/rigs/<rig>/settings` or MCP's `set_rig_settings`; an operator's token can't.
 
 You choose a run's rule with **When a change is confirmed better**, on the **New campaign** page or under **More options** in a campaign's **Start a run** panel, or with `--promotion` on `thermite assign` or `thermite run start` (`promotion` over REST and MCP's `start_run`). The run's **Overview** tab shows the rule in force, in the block **The run**, as **Promotion**: `Automatic when the judge confirms; audits and big gains still wait for you`, `Only with your approval`, or `The rig's default (set where the rig is deployed)`.
 

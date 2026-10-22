@@ -40,6 +40,12 @@ import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
 import { neededHarness, RigModelBody, rigModelAnswer, rigModelRequest } from "./rig-model.ts";
+import {
+  RigSettingsBody,
+  rigSettingsAnswer,
+  rigSettingsRead,
+  setRigSettings,
+} from "./rig-settings.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
@@ -1271,6 +1277,33 @@ export function createControlApi(
     const agents = read(rig);
     if ("error" in agents) return c.json({ error: agents.error }, 404);
     return c.json({ rig, agents });
+  });
+
+  // A rig's own settings (goal 029): the twin of Save changes on Edit rig and of MCP's
+  // set_rig_settings. Only what differs from what the rig reports is sent, as one signed
+  // rig_settings command; nothing differing sends nothing. Refused in Edit rig's words.
+  app.post("/v1/rigs/:rig/settings", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const rig = c.req.param("rig");
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    const body = RigSettingsBody.safeParse(raw);
+    const out = body.success
+      ? setRigSettings(store, privateKeyPem, rig, body.data, "owner:api", true)
+      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+    if (out.state === "refused") {
+      store.audit("owner:api", "refused", {
+        path: `/v1/rigs/${rig}/settings`,
+        why: redact(out.error),
+      });
+      return c.json({ error: out.error }, out.status);
+    }
+    return c.json(rigSettingsAnswer(rig, out));
+  });
+
+  // The settings a rig reports, and its GPU split: the twin of MCP's rig_settings.
+  app.get("/v1/rigs/:rig/settings", admin, (c) => {
+    const rig = c.req.param("rig");
+    const read = rigSettingsRead(store, rig);
+    return read ? c.json(read) : c.json({ error: `no rig ${rig}` }, 404);
   });
 
   // A page of the audit log, newest first; older and newer are the cursors for the next pages.

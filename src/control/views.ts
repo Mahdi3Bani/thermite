@@ -372,6 +372,23 @@ function readGpuSplit(v: unknown): { set: number; judge: number } | null {
 }
 
 /**
+ * A rig's own settings (Edit rig) and its GPU split, as its last signed report gives them, read
+ * as rigView reads them; undefined for a rig control has no report of (or one retired).
+ */
+export function rigSettingsOf(
+  store: ControlStore,
+  rig: string,
+): Pick<RigView, "settings" | "gpu_split"> | undefined {
+  const u = store.rigs().find((x) => x.id === rig);
+  if (!u) return undefined;
+  const summary = u.summary as { settings?: unknown; gpu_split?: unknown } | undefined;
+  return {
+    settings: readSettings(summary?.settings),
+    gpu_split: readGpuSplit(summary?.gpu_split),
+  };
+}
+
+/**
  * Whether a rig reports: "reporting" within the stale window, "stale" after it, "offline" after
  * the longer offline window. A rig that never sent a report is offline.
  */

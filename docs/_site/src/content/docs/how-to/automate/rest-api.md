@@ -12,7 +12,7 @@ Control's REST API lets a script read rigs and runs, issue commands and follow t
 
 - **The address.** The API is on control, under `/v1`: `http://127.0.0.1:8800` on the local stack, or your control's address, such as `https://control.example.com`.
 - **The owner's token.** Every route for people and scripts, except `/v1/health` and the dashboard's icons (`/favicon.svg`, `/favicon.ico` and `/apple-touch-icon.png`), needs it as `Authorization: Bearer <token>`. (The routes rigs use take each rig's own token.) Two routes also take a reader's token: `/metrics` and a rig's live log (`/v1/rigs/<rig>/live`). Operator and agent tokens don't work on the API at all: they are for [MCP](agent-over-mcp.md).
-- **What a script can't do yet.** **New campaign**, **Settings › Providers** (its MCP servers aside: see [The REST API](../../reference/rest-api.md#mcp-servers)) and **Edit rig** on the dashboard have no REST route, except for the agents' models ([`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model)), and neither has stopping, starting or restarting a rig on a cluster, moving it onto new images, or reading a rig's setup steps (MCP has `cluster_rig`, `update_rig_images` and `rig_setup`) ([goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal)). Thermite's knowledge base has no REST route for its search or for letting a campaign read another's folder (MCP has `kb_folders`, `kb_search`, `kb_grant` and `kb_revoke`, for the operator's and the owner's tokens). A script can start a campaign with `thermite assign` ([Start a campaign from the command line](../campaigns/start-from-command-line.md)), but not one whose kit is described on the dashboard, and the command line can't name a [Git access](../campaigns/private-repository.md) for a private repository. Start those from **New campaign**. Once control keeps a campaign, from **New campaign** or a script, a script can start further runs of it as **Start a run** does, or copy it: see [Start a run of a campaign](#start-a-run-of-a-campaign) and [Copy a campaign](#copy-a-campaign).
+- **What a script can't do yet.** **New campaign** and **Settings › Providers** (its MCP servers aside: see [The REST API](../../reference/rest-api.md#mcp-servers)) on the dashboard have no REST route, and neither has stopping, starting or restarting a rig on a cluster, moving it onto new images, or reading a rig's setup steps (MCP has `cluster_rig`, `update_rig_images` and `rig_setup`) ([goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal)). Thermite's knowledge base has no REST route for its search or for letting a campaign read another's folder (MCP has `kb_folders`, `kb_search`, `kb_grant` and `kb_revoke`, for the operator's and the owner's tokens). A script can start a campaign with `thermite assign` ([Start a campaign from the command line](../campaigns/start-from-command-line.md)), but not one whose kit is described on the dashboard, and the command line can't name a [Git access](../campaigns/private-repository.md) for a private repository. Start those from **New campaign**. Once control keeps a campaign, from **New campaign** or a script, a script can start further runs of it as **Start a run** does, or copy it: see [Start a run of a campaign](#start-a-run-of-a-campaign) and [Copy a campaign](#copy-a-campaign). A rig's **Edit rig** page has its routes too: see [Change a rig's settings](#change-a-rigs-settings).
 
 Set the address and the token once in your shell. The examples use the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead. On the local stack:
 
@@ -103,6 +103,18 @@ curl -sS -H "$AUTH" -H 'content-type: application/json' \
 ```
 
 It answers `201` and `{"campaign":"sort-speed-b","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`. Start a run of the copy as above. [Copy a campaign](../../reference/rest-api.md#copy-a-campaign) lists the refusals, and [Compare two models from zero](../campaigns/start-from-dashboard.md#compare-two-models-from-zero) gives the whole path. `npx thermite campaign copy` sends the same request.
+
+## Change a rig's settings
+
+`POST /v1/rigs/<rig>/settings` does what **Save changes** on a rig's **Edit rig** page does for its parts, **Workers at a time**, its limits, its promotion rule and **GPUs for the judge**. Send only what you want to change. This gives `rig-1` three workers at a time and switches its review panel off:
+
+```sh
+curl -sS -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"lanes":3,"review":false}' \
+  "$CONTROL/v1/rigs/rig-1/settings"
+```
+
+It answers `{"rig":"rig-1","id":"<command id>","sent":{"lanes":3,"review":false},"restarts":false,"said":"Control sent 2 settings to rig-1. The rig takes the change in less than one minute."}`. Control sends only the fields that differ from what the rig reports, as one signed command; follow it as above. A request that changes nothing answers `"said":"Nothing changed."`, with `id` `null`. `GET` on the same address reads the rig's settings and its GPU split. [A rig's settings](../../reference/rest-api.md#a-rigs-settings) lists every field and refusal, such as `400` and `{"error":"Not saved: with 4 GPUs the judge takes 1 to 3 of them, and the agents at most 8."}`. Each agent's model has its own route: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model).
 
 ## Read the leaderboard
 

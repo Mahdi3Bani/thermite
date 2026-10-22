@@ -29,7 +29,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `min_duration`, `max_duration` | A research contract | `min_duration` is required | The research campaign closes after `max_duration` of running time (paused time does not count), or after `min_duration` when `max_duration` is not set: `the research window is over`. Other modes ignore both |
 | `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teachers starts no round until then. Research goes on. It counts only advisors with prices set |
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
-| Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
+| Turns per trial (`max_turns`) | **Edit rig** (or its twins, `POST /v1/rigs/<rig>/settings` and MCP's `set_rig_settings`), or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
 | A RunPod rig's spend limit (`spend_limit_usd`) | **Launch on RunPod**, or **Change the spend limit or the idle stop** on the rig's page; or the launch and the rig's limits over REST, MCP or the command line | None | Control stops the pod, its results sent out first: its runs are paused, its GPU is no longer billed and its volume stays. A start is refused until the limit is raised or cleared. See [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) |
 | A RunPod rig's idle stop (`idle_stop_minutes`) | The same | None | When no run has been at work on the rig for that many minutes (no run running, or every run paused, blocked or finished), control stops the pod as for the spend limit. At least 5 minutes. Assigning or resuming a run starts the pod again. The dashboard's launch form fills in 30 minutes, which the owner can change or clear; the REST API, MCP and the command line have no default. See [When a rig is idle](rest-api.md#when-a-rig-is-idle) |
@@ -46,8 +46,8 @@ None of these ends research. A trial that ends at its time is followed by the la
 
 | What | Default | Set by |
 | --- | --- | --- |
-| A trial's length | 20 minutes | The contract's `lanes.limits.trial_minutes` (1 to 1,440), else **Edit rig** › **One trial lasts (minutes)** or `THERMITE_TRIAL_MINUTES` |
-| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` (1 to 16) |
+| A trial's length | 20 minutes | The contract's `lanes.limits.trial_minutes` (1 to 1,440), else **Edit rig** › **One trial lasts (minutes)** (`trial_minutes` over REST and MCP), or `THERMITE_TRIAL_MINUTES` |
+| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16; `lanes` over REST and MCP), or `THERMITE_MAX_TRIALS` (1 to 16) |
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap. None about the context window: a conversation that grows is compacted (below) | Fixed |
