@@ -4,7 +4,6 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ## [Unreleased]: v0.1.0, the first public release
 
-- A decision you make leaves **Needs you** at once, with its count; the change's own page still says what you chose and what the rig did. It comes back only if the rig refuses it or the item needs you again.
 ### Install and run
 
 - Install from published images, with no build. Each release attaches a compose file that pins the images by digest, and `thermite local init` makes the stack's secret files. Building from source stays for contributors.
@@ -49,6 +48,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ### Operate
 
+- A decision you make leaves **Needs you** at once, with its count; the change's own page still says what you chose and what the rig did. It comes back only if the rig refuses it or the item needs you again.
 - Model usage. Code records each model call of the workers, the planner and the advisors, never an agent, as a `model_call` event of its run: its tokens in (cached and not cached), its tokens out with the reasoning, and its times, as far as Pi, OpenCode v2, Codex and Claude Code report them. A figure a program does not report is null, never 0. Control sums the records for a run, a campaign (all its runs on every rig) or the whole system, today, over 7 days or for all time, with output tokens a second (median, 10th and 90th percentile) and the cost: each call's tokens at its model's price (the provider's list's, as OpenRouter and Nous Portal give one, else one the owner sets with `POST /v1/model-prices` or the MCP tool `set_model_price`), "on a plan" for a subscription's calls, "no price" where none is known, and a RunPod rig's pod spend for the run it ran: `GET /v1/usage` and the MCP tool `model_usage`.
 - Model use on the screens: a run's page shows its model use and cost above its tabs, by agent and model; a campaign's page shows them in its sidebar, with each run; the new Metrics page shows the whole system's, by model and by campaign, for today (in the viewer's time zone), 7 days or all; Settings › Providers takes your price for each model (In, Cached in, Out, in $ for a million tokens) and shows the provider's own. `GET /v1/usage` and `model_usage` take `tz`.
 - Control's log pages through every entry, in the dashboard, over REST and in the `control_log` MCP tool.
