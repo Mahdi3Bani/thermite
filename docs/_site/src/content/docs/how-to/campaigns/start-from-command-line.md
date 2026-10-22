@@ -54,6 +54,7 @@ Run `thermite assign` as in the example at the top. Control signs the command an
 | `--seed GIT_URL@COMMIT` | Where the project comes from, and the full commit to start from. Without `@COMMIT`, the contract's `project.commit`. The rig keeps the project under the contract's `project.repo` name |
 | `--seed-commit C` | Instead of `--seed`: a full commit already on the rig, such as an earlier run's champion |
 | `--kit GIT_URL` | Where the kit comes from. Its commit comes from the contract. Leave it out when the rig already has that kit commit |
+| `--kit control:NAME` | Instead: the kit `NAME` that control keeps. The rig fetches the contract's kit commit from control. See [Give control a kit you wrote elsewhere](write-a-kit.md#give-control-a-kit-you-wrote-elsewhere) |
 | `--model NAME=URL` | A [model file](../../reference/glossary.md) the contract lists under `models`: a data file your project loads, such as a model's weights, with the address to fetch it from. Only a file with the contract's sha256 reaches the harness. Repeat for each model. For a large file, give the assignment time with `--ttl`: see [Bring a model's weights to a run](model-weights.md) |
 | `--agents off` | A run with no agents: only the judge works. See [Test a kit with known candidates](test-a-kit.md) |
 | `--promotion auto` or `owner` | `auto`: a confirmed win becomes the champion at once. `owner`: it waits for you. Unset: the rig's default |
@@ -117,7 +118,9 @@ The agent sends it with the `issue_command` tool, kind `assign_campaign`, then p
 
 ## Start it when the rig can't fetch
 
-Put the project and the kit in the rig's inbox yourself, as git bundles that hold the commits. This works for a private repository too. The inbox is `/inbox` in the rig's containers, and `.dev/inbox` in your Thermite folder on the local stack:
+For the kit, give control the kit's repository instead, and start the run with `--kit control:NAME`: control keeps the kit, and the rig fetches it from control. See [Give control a kit you wrote elsewhere](write-a-kit.md#give-control-a-kit-you-wrote-elsewhere).
+
+Otherwise, put the project and the kit in the rig's inbox yourself, as git bundles that hold the commits. This works for a private repository too. The inbox is `/inbox` in the rig's containers, and `.dev/inbox` in your Thermite folder on the local stack:
 
 ```sh
 mkdir -p .dev/inbox/repos

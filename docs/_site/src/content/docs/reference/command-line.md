@@ -45,7 +45,8 @@ usage: thermite <command> [options]
   token new --out F                   make a control token: write it to F (mode 0600; keep it,
                                       for example in a password manager) and print its SHA-256,
                                       the only part control's deployment needs
-  assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
+  assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C]
+         [--kit GIT_URL | --kit control:NAME]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
@@ -56,7 +57,9 @@ usage: thermite <command> [options]
                                       kit commits from their repositories, and models from their
                                       URLs, before the harness checks them. --seed-commit names a
                                       commit already on the rig (an earlier run's result); a kit
-                                      already there needs no --kit. --queue-from starts the new
+                                      already there needs no --kit. --kit control:NAME fetches
+                                      the kit NAME that control keeps (kit add, or one the New
+                                      campaign page wrote). --queue-from starts the new
                                       run's queue with a past run's untried experiments, read
                                       from control (on --rig unless RIG/ is given; it needs
                                       --control and --token-file, with --print too).
@@ -162,6 +165,18 @@ usage: thermite <command> [options]
                                       rig's compaction point. Control saves a new version of the
                                       campaign; runs started from then take it. Without either
                                       option, the settings are removed. It prints the version
+  kit add NAME BUNDLE [--ref REF] [--force] --control URL --token-file F
+                                      give control a kit repository written elsewhere, as a git
+                                      bundle file (owner's token; at most 64 MiB): control keeps
+                                      every commit with its id, and the kit's head is the
+                                      bundle's HEAD, its only branch, or --ref (a branch, a tag or
+                                      a commit). The head needs a valid kit.json at its top.
+                                      --force replaces a head the new one does not descend from;
+                                      the old head's commits stay. Rigs fetch it from control:
+                                      assign --kit control:NAME. It prints the kit's head
+  kit list --control URL --token-file F [--json]
+                                      the kits control keeps (owner's or reader's token): each
+                                      one's head, commits and kit.json's name and target
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -311,6 +326,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--seed GIT_URL[@COMMIT]` | No | | The project's repository, and the commit to start from. `COMMIT` is a full commit id (40 or 64 hexadecimal characters). Without `@COMMIT`, the contract's `project.commit` is used. The supervisor fetches that commit from the repository |
 | `--seed-commit C` | No | The contract's `project.commit` | A full commit id that is already on the rig, such as an earlier run's result. Nothing is fetched |
 | `--kit GIT_URL` | No | | The [kit](glossary.md)'s repository. The kit's commit comes from the contract's `project.kit`. Without `--kit`, the kit's commit must already be on the rig |
+| `--kit control:NAME` | No | | The kit `NAME` that control keeps: one given to it with [`thermite kit add`](#kit-add), or one the **New campaign** page wrote. The rig's supervisor fetches the contract's `project.kit.commit` from control. `NAME` is lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or digit |
 | `--model NAME=URL` | No, repeatable | | A [model file](glossary.md) the contract lists under `models` (a data file the project loads, such as a model's weights), and an `http` or `https` address to fetch it from |
 | `--note TEXT` | No | | The run's note: a text kept with the run, and shown as `Note: …` on the run's page in the [knowledge base](knowledge-base.md). Thermite does not act on it. It is sent as the command's `direction` field, a name from before a direction meant a named line of experiments |
 | `--direction D` | No | | The old name of `--note`. It still works in v0.1.0, and prints `--direction is now --note: a direction is now a named line of experiments` on standard error. With `--note` as well, the command stops: `--direction is the old name of --note: give only --note` (exit 2) |
@@ -354,7 +370,7 @@ The imports it adds to the payload:
 | Option | Import | `path` in the rig's inbox | `source` |
 | --- | --- | --- | --- |
 | `--seed` | `repo_bundle` for the contract's `project.repo` and the seed commit | `repos/<repo>-<commit>.bundle` | `{"git": "<GIT_URL>"}` |
-| `--kit` | `kit_bundle` for the contract's `project.kit` repository and commit | `repos/kit-<repo>-<commit>.bundle` | `{"git": "<GIT_URL>"}` |
+| `--kit` | `kit_bundle` for the contract's `project.kit` repository and commit | `repos/kit-<repo>-<commit>.bundle` | `{"git": "<GIT_URL>"}`, or `{"control": "kits/<NAME>"}` for `--kit control:NAME` |
 | `--model` | `model` with the contract's SHA-256 for that model | `models/<sha256>` | `{"url": "<URL>"}` |
 
 Sent, it prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. On a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod is stopped, control starts the pod first; the answer's `woke` says so, and the command also prints those words on standard error: `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.` When control can't start it, the command is not sent, and it ends with control's `409` and the reason, such as no GPU free at RunPod or the spend limit reached. [Signed commands](signed-commands.md) describes the `assign_campaign` payload and what the harness checks. The campaign's page on the dashboard can start further runs of it, and so can [`thermite run start`](#run-start): each signs the newest assignment again as a new run, with the same contract, seed and imports. A run on another rig works only if that rig already has what the imports leave out: the seed commit when `--seed` was not given, the kit's commit when `--kit` was not given, and each model the contract lists that no `--model` gave.
@@ -366,6 +382,7 @@ Sent, it prints control's answer on one line, such as `{"id":"<command id>","sta
 | `the seed commit must be a full commit id (40 or 64 hexadecimal characters)` | `--seed` without a full `@COMMIT`, and the contract's `project.commit` is not one either |
 | `--seed-commit must be a full commit id (40 or 64 hexadecimal characters)` | The commit from `--seed-commit` or the contract is not a full commit id |
 | `--kit given, but the contract names no project.kit` | `--kit` with a contract that has no kit |
+| `--kit control:NAME names a kit control keeps: "<NAME>" is not one` | `--kit control:` with a name that is not a kit's name |
 | `--model <arg>: expected NAME=URL for a model the contract lists` | No `=`, or a name the contract's `models` does not list |
 | `--agents is on or off` | Another value |
 | `--promotion is auto or owner` | Another value |
@@ -611,6 +628,37 @@ It prints control's answer on one line, such as `{"campaign":"sort-speed","versi
 | `--token-file F` | Yes | | A file with the owner's token |
 
 Each call sets the settings anew: without either option, they are removed. A value out of range ends the command before anything is sent, with exit code 2: `--context-window and --compact-at:` and why. Without `--control` and `--token-file`, it ends with `give --control and --token-file: control keeps the campaign` and exit code 2. Control's refusals come back as `<url> -> <status> <body>`: [A campaign's context settings](rest-api.md#a-campaigns-context-settings) lists them. MCP's [`set_campaign_context`](mcp-tools.md#set_campaign_context) does the same with an operator's token too.
+
+### `kit add`
+
+`thermite kit add` gives control a kit repository written elsewhere, as a [git bundle](https://git-scm.com/docs/git-bundle) file, with the owner's token (`POST /v1/kits/<name>`). Control keeps every commit of the bundle with its id, and a rig fetches the kit from control with [`assign --kit control:NAME`](#assign). [Give control a kit you wrote elsewhere](../how-to/campaigns/write-a-kit.md#give-control-a-kit-you-wrote-elsewhere) shows the steps.
+
+```sh
+git -C ~/src/project-kit bundle create ~/project-kit.bundle main
+npx thermite kit add project-kit ~/project-kit.bundle \
+  --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+It prints control's answer on one line, such as `{"name":"project-kit","head":"<commit>","previous":null,"commits":12,"kit":{"name":"project-kit","target":"cpu"},"forced":false,"refs":[…],"size":48213,"said":"…"}`, and its `said` on standard error: `Control keeps the kit project-kit at 5f0c1d2e3a4b (12 commits). Rigs fetch it with the source {"control": "kits/project-kit"}.`
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `NAME` | Yes | | The kit's name in control: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or digit. Give it the contract's `project.kit.repo` |
+| `BUNDLE` | Yes | | The bundle file, at most 64 MiB |
+| `--ref REF` | No | The bundle's `HEAD`, or its only branch | The kit's head: a branch or a tag the bundle has, or a full commit id in it |
+| `--force` | No | Off | Make the head a commit that does not descend from the kit's head. The old head's commits stay on control |
+| `--control URL` | Yes | | Control's address |
+| `--token-file F` | Yes | | A file with the owner's token |
+
+A refusal ends the command with `control refused the kit (<status>): ` and control's words (exit 2): [Kits control keeps](rest-api.md#kits-control-keeps) lists them. A bundle file it can't read ends it with the file's name and why. Without `--control` and `--token-file`, it ends with `give --control and --token-file: control keeps the kits` (exit 2). MCP's [`kit_add`](mcp-tools.md#kit_add) does the same with an operator's token too, for a bundle of at most 3,000,000 bytes.
+
+### `kit list`
+
+`thermite kit list` lists the kits control keeps (`GET /v1/kits`), with the owner's or the reader's token: one line for each, `<name>  <head>  <n> commits  <kit.json's name> on <target>`, or `control keeps no kit`. A kit whose head has no valid `kit.json` shows why in place of its name and target. `--json` prints the route's answer.
+
+```sh
+npx thermite kit list --control https://control.example.com --token-file ~/thermite-owner-token
+```
 
 ### `mcp`
 

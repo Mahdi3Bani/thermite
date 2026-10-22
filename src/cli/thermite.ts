@@ -30,7 +30,8 @@ const USAGE = `usage: thermite <command> [options]
   token new --out F                   make a control token: write it to F (mode 0600; keep it,
                                       for example in a password manager) and print its SHA-256,
                                       the only part control's deployment needs
-  assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
+  assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C]
+         [--kit GIT_URL | --kit control:NAME]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
@@ -41,7 +42,9 @@ const USAGE = `usage: thermite <command> [options]
                                       kit commits from their repositories, and models from their
                                       URLs, before the harness checks them. --seed-commit names a
                                       commit already on the rig (an earlier run's result); a kit
-                                      already there needs no --kit. --queue-from starts the new
+                                      already there needs no --kit. --kit control:NAME fetches
+                                      the kit NAME that control keeps (kit add, or one the New
+                                      campaign page wrote). --queue-from starts the new
                                       run's queue with a past run's untried experiments, read
                                       from control (on --rig unless RIG/ is given; it needs
                                       --control and --token-file, with --print too).
@@ -147,6 +150,18 @@ const USAGE = `usage: thermite <command> [options]
                                       rig's compaction point. Control saves a new version of the
                                       campaign; runs started from then take it. Without either
                                       option, the settings are removed. It prints the version
+  kit add NAME BUNDLE [--ref REF] [--force] --control URL --token-file F
+                                      give control a kit repository written elsewhere, as a git
+                                      bundle file (owner's token; at most 64 MiB): control keeps
+                                      every commit with its id, and the kit's head is the
+                                      bundle's HEAD, its only branch, or --ref (a branch, a tag or
+                                      a commit). The head needs a valid kit.json at its top.
+                                      --force replaces a head the new one does not descend from;
+                                      the old head's commits stay. Rigs fetch it from control:
+                                      assign --kit control:NAME. It prints the kit's head
+  kit list --control URL --token-file F [--json]
+                                      the kits control keeps (owner's or reader's token): each
+                                      one's head, commits and kit.json's name and target
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -592,12 +607,18 @@ async function main(argv: string[]): Promise<void> {
         const kit = contract.project.kit;
         if (values.kit) {
           if (!kit) fail("--kit given, but the contract names no project.kit");
+          // A kit control keeps (goal 096): fetched from control, as this rig.
+          const kept = /^control:(.*)$/.exec(values.kit)?.[1];
+          if (kept !== undefined && !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(kept))
+            fail(
+              `--kit control:NAME names a kit control keeps: ${JSON.stringify(kept)} is not one`,
+            );
           imports.push({
             kind: "kit_bundle",
             path: `repos/kit-${kit.repo}-${kit.commit}.bundle`,
             repo: kit.repo,
             commit: kit.commit,
-            source: { git: values.kit },
+            source: kept !== undefined ? { control: `kits/${kept}` } : { git: values.kit },
           });
         }
       }
@@ -962,6 +983,75 @@ async function main(argv: string[]): Promise<void> {
         },
       );
       process.stdout.write(`${JSON.stringify(out)}\n`);
+      return;
+    }
+    case "kit": {
+      // Kits control keeps (goal 096): a kit repository written elsewhere, given as a git bundle.
+      const [sub, ...args] = rest;
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: {
+          control: { type: "string" },
+          "token-file": { type: "string" },
+          ref: { type: "string" },
+          force: { type: "boolean" },
+          json: { type: "boolean" },
+        },
+      });
+      if (!values.control || !values["token-file"])
+        fail("give --control and --token-file: control keeps the kits");
+      const at = `${values.control.replace(/\/$/, "")}/v1/kits`;
+      const token = readFileSync(values["token-file"], "utf8").trim();
+      if (sub === "list" && !positionals.length) {
+        const out = (await get(at, token)) as {
+          kits: {
+            name: string;
+            head: string;
+            commits: number;
+            kit: { name: string; target: string } | null;
+            kit_error?: string;
+          }[];
+        };
+        if (values.json) process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+        else if (!out.kits.length) process.stdout.write("control keeps no kit\n");
+        else
+          for (const k of out.kits)
+            process.stdout.write(
+              `${k.name}  ${k.head}  ${k.commits} commit${k.commits === 1 ? "" : "s"}  ${k.kit ? `${k.kit.name} on ${k.kit.target}` : (k.kit_error ?? "no valid kit.json")}\n`,
+            );
+        return;
+      }
+      const [name, file] = positionals;
+      if (sub !== "add" || !name || !file || positionals.length > 2) fail(USAGE);
+      let bundle: Buffer;
+      try {
+        bundle = readFileSync(file);
+      } catch (err) {
+        fail(`${file}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      const q = new URLSearchParams({
+        ...(values.ref ? { ref: values.ref } : {}),
+        ...(values.force ? { force: "true" } : {}),
+      }).toString();
+      const res = await fetch(`${at}/${encodeURIComponent(name)}${q ? `?${q}` : ""}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/octet-stream",
+        },
+        body: new Uint8Array(bundle),
+      });
+      const text = await res.text();
+      let out: { said?: string; error?: string } = {};
+      try {
+        out = JSON.parse(text);
+      } catch {
+        // not JSON: shown as it came
+      }
+      if (!res.ok) fail(`control refused the kit (${res.status}): ${out.error ?? text}`);
+      process.stdout.write(`${JSON.stringify(out)}\n`);
+      if (out.said) process.stderr.write(`${out.said}\n`);
       return;
     }
     case "mcp": {

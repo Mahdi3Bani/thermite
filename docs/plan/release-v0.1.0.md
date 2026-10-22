@@ -77,6 +77,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups](goals/081-ideas-first.goal) | `VERIFIED` | [064](goals/064-experiment-queue.goal), [066](goals/066-direction-rules.goal), [074](goals/074-one-name-for-each-agent.goal) |
 | [086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed](goals/086-goal-report-values-and-confirmation-wait.goal) | `VERIFIED` | [082](goals/082-judge-findings-in-view.goal) |
 | [087 · The owner closes a run by hand](goals/087-close-a-run.goal) | `VERIFIED` | [080](goals/080-buttons-show-progress.goal) |
+| [096 · Give control a kit written elsewhere, as a git bundle](goals/096-kits-from-elsewhere.goal) | `IN_PROGRESS` | — |
 
 ### Install from images
 

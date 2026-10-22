@@ -194,4 +194,40 @@ There is no command that checks a `kit.json` on its own yet ([goal 040](https://
 
 ## 9. Test it, then use it
 
-Check that the kit gives known changes the verdicts you expect: see [Test a kit with known candidates](test-a-kit.md). Then start the campaign with **A kit in a repository** or **Upload a kit** on the [New campaign page](start-from-dashboard.md), or with [`thermite assign --kit`](start-from-command-line.md).
+Check that the kit gives known changes the verdicts you expect: see [Test a kit with known candidates](test-a-kit.md). Then start the campaign with **A kit in a repository** or **Upload a kit** on the [New campaign page](start-from-dashboard.md), or with [`thermite assign --kit`](start-from-command-line.md). When the rigs can't reach the kit's repository, give control the repository first, as the next section says.
+
+## Give control a kit you wrote elsewhere
+
+Control can keep the kit's repository itself, with its history: you give it the repository as a git bundle, and each rig fetches the kit from control, by commit, with the rig's own token. Use this when the rigs can't reach the kit's repository, or should not. Every commit keeps its id, so the commit your contract names, and the commits a kit check names, stay the same. Nothing goes into a rig's inbox by hand.
+
+1. Make a bundle of the branch that holds the commit your contract's `project.kit.commit` names:
+
+   ```sh
+   git -C ~/src/project-kit bundle create ~/project-kit.bundle main
+   ```
+
+   The bundle holds the branch's whole history, so an earlier commit of it fetches too. A bundle made with `--all` holds every branch and tag, and control then takes the bundle's `HEAD` as the kit's head.
+
+2. Give the bundle to control, with the owner's token, under the name the contract's `project.kit.repo` has:
+
+   ```sh
+   npx thermite kit add project-kit ~/project-kit.bundle \
+     --control https://control.example.com --token-file ~/thermite-owner-token
+   ```
+
+   Control checks the bundle and the head's `kit.json`, as the harness would, and prints `Control keeps the kit project-kit at 5f0c1d2e3a4b (12 commits). Rigs fetch it with the source {"control": "kits/project-kit"}.` To make another branch, a tag or a commit the head, add `--ref`. A refusal says why, such as `the bundle's head <commit> has no kit.json at its top`: [Kits control keeps](../../reference/rest-api.md#kits-control-keeps) lists each one.
+
+3. Start the run with the kit from control:
+
+   ```sh
+   npx thermite assign --contract contract.json --run sort-speed-1 \
+     --seed https://git.example.com/you/project.git \
+     --kit control:project-kit \
+     --control https://control.example.com --token-file ~/thermite-owner-token --rig rig-1
+   ```
+
+   The kit's import names `{"control": "kits/project-kit"}` as its source ([Imports](../../reference/signed-commands.md#imports)). Later runs, from the campaign's page or with `thermite run start`, use the same import.
+
+Over the REST API, send the bundle's bytes to `POST /v1/kits/<name>`, with `?ref=` and `?force=true` as needed. An agent with the owner's or the operator's token uses MCP's [`kit_add`](../../reference/mcp-tools.md#kit_add), with the bundle in base64: at most 3,000,000 bytes of bundle, as an MCP request is at most 4 MiB. The command line and REST take up to 64 MiB. `thermite kit list`, `GET /v1/kits` and MCP's `kits` show each kit control keeps, with its head.
+
+For a later version of the kit, make a new bundle and add it again: the kit's head moves forward. Control refuses a head that does not descend from the head it keeps, unless you add `--force`. Even then, control keeps the old head's commits, so a contract that names one still runs.

@@ -329,6 +329,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | The live view | The newest 20,000 lines of each rig |
 | A daily report | 200,000 characters |
 | A kit uploaded on the **New campaign** page | 64 MB and 2,000 files |
+| A kit's git bundle given to control | 64 MiB over REST and `thermite kit add`; over MCP's `kit_add`, 4,000,000 characters of base64, a bundle of at most 3,000,000 bytes, as an MCP request is at most 4 MiB |
 | A message to an agent | 1 to 4,000 characters, after control trims it. One with no words: `Write a message first.` |
 | A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations |
 | A direction's name | 2 to 41 lowercase letters, digits and dashes, written in letters, digits, spaces and dashes, plain or as `:name:` |

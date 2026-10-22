@@ -36,12 +36,12 @@ Every request except `GET /v1/health` sends a token as `Authorization: Bearer <t
 | --- | --- |
 | None | `GET /v1/health` |
 | Owner | Every route under [Routes for people and scripts](#routes-for-people-and-scripts) |
-| Reader | `GET /metrics`, `GET /v1/usage`, `GET /v1/model-prices` and `GET /v1/rigs/<rig>/live` only |
+| Reader | `GET /metrics`, `GET /v1/usage`, `GET /v1/model-prices`, `GET /v1/rigs/<rig>/live`, `GET /v1/kits` and `GET /v1/kits/<name>` only |
 | Operator, agent | None. These tokens work only on [MCP](mcp-tools.md) |
 | A rig's own token | The [routes used by rigs](#routes-used-by-rigs), for that rig only |
 | A join token | The two [join routes](#join-commands), once |
 
-Request bodies are JSON, except a champion's patch and a piece of an export's file, which are sent as raw bytes.
+Request bodies are JSON, except a champion's patch, a piece of an export's file and a kit's git bundle, which are sent as raw bytes.
 
 ## Errors
 
@@ -437,6 +437,37 @@ While a campaign is archived, control refuses `assign_campaign` and `resume_run`
 
 Each refusal is in the audit log as `refused`, with the route's path and why. Each change is there too, by `owner:api`: `campaign_archived`, `campaign_unarchived`, `campaign_moved`, `campaign_folder_created`, `campaign_folder_renamed` and `campaign_folder_deleted` ([Audit log actions](#audit-log-actions)). MCP's [`archive_campaign`](mcp-tools.md#archive_campaign) and the tools after it do the same.
 
+### Kits control keeps
+
+Control keeps kits as git repositories: those the **New campaign** page writes, and kit repositories written elsewhere that the owner gives it as a [git bundle](https://git-scm.com/docs/git-bundle). Control keeps every commit of a bundle with its id, and a rig fetches the kit from control, by commit, with `{"control": "kits/<name>"}` as the [import's source](signed-commands.md#imports). [Give control a kit you wrote elsewhere](../how-to/campaigns/write-a-kit.md#give-control-a-kit-you-wrote-elsewhere) shows the steps.
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `POST /v1/kits/<name>` | Owner | Takes a git bundle of a kit repository. Control checks it in a repository of its own (`git bundle verify`; a bundle that builds on the kit's commits may leave them out), keeps every commit it holds, and makes the kit's head the bundle's `HEAD`, its only branch, or `ref`. That commit must have a `kit.json` at its top that the harness takes. A kit control keeps already moves only to a commit that descends from its head, unless `force`; the old head's commits stay even then. Control records `owner:api` | The bundle's bytes, up to 64 MiB (`application/octet-stream`). `?ref=<ref>`: a branch or a tag the bundle has (`main`, `refs/heads/main`, `v1`), or a full commit id in it. `?force=true` | 201 for a new kit, else 200: `{name, head, previous, commits, kit, forced, refs, size, said}`, below. 400, 404, 409 or 413 `{"error":"<why>"}`, below |
+| `GET /v1/kits` | Owner, reader | The kits control keeps, by name | None | `{"kits":[{name, head, commits, kit}]}`: each kit's head commit, the number of commits in the head's history and `kit.json`'s `{name, target}`. `kit` is `null`, with `kit_error`, when the head's `kit.json` is not one the harness takes. 404 `this control keeps no kits` |
+| `GET /v1/kits/<name>` | Owner, reader | One kit, and its newest commits | None | `{name, head, commits, kit, history}`: `kit` is `{name, target, cells, metrics, verifiers, mcp_servers}` (or `null`, with `kit_error`), and `history` is `[{commit, at, subject}]`, the newest 20 commits of the head's history. 404 `control keeps no kit <name>` |
+
+`<name>` is the kit's name in control: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. Give a kit the name the contract's `project.kit.repo` has, as the **New campaign** page does for the kits it writes.
+
+In the answer to `POST /v1/kits/<name>`, `head` is the kit's head now and `previous` the head before (`null` for a new kit). `commits` is the number of commits in the head's history. `kit` is `kit.json`'s `{name, target}`. `forced` is `true` when the head was replaced by a commit that does not descend from it. `refs` lists the bundle's refs as `[{ref, commit}]`, and `size` its bytes. `said` is the same in words, such as `Control keeps the kit lab-kit at 5f0c1d2e3a4b (12 commits). Rigs fetch it with the source {"control": "kits/lab-kit"}.`, `The kit lab-kit at 9a8b7c6d5e4f (13 commits) follows the head 5f0c1d2e3a4b.`, or, for the same bundle again, `… is already its head: nothing changed.`
+
+| Status | Error |
+| --- | --- |
+| 400 | `not a kit name: "<name>" (lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or digit)` |
+| 400 | `the bundle is empty` |
+| 400 | `not a git bundle control can take: ` and git's words, such as `'the bundle' does not look like a v2 or v3 bundle file`, or `Repository lacks these prerequisite commits: <commit>` for a bundle that builds on commits control does not have |
+| 400 | `the bundle has no HEAD and <n> branches (<names>): name the one to use with ref` |
+| 400 | `the bundle has no ref <ref>: it has <names>`, or `the bundle has no commit <commit>` |
+| 400 | `the bundle's head <commit> has no kit.json at its top` |
+| 400 | `kit.json at <commit> is not JSON`, or `kit.json at <commit>: ` and each problem as `<field>: <message>`, as the harness would refuse it |
+| 400 | `force is true or false` |
+| 404 | `this control keeps no kits` |
+| 409 | `the bundle's head <commit> does not descend from the kit's head <commit>: give force to make it the head (control keeps the old head's commits)` |
+| 409 | `the kit <name> changed while control took the bundle: send it again` |
+| 413 | `the bundle is above the 67108864 bytes (64 MiB) control takes` |
+
+Each refusal is in the audit log as `refused`, with the route's path and why; each kit taken is there as `kit_added`, by `owner:api`, with the kit's `name`, `head`, `previous`, `commits`, `forced`, `size` and `by`. MCP's [`kit_add`](mcp-tools.md#kit_add) does the same with the owner's or an operator's token, for a bundle of at most 3,000,000 bytes, and [`kits`](mcp-tools.md#kits) reads. [`thermite kit add`](command-line.md#kit-add) sends a bundle file to this route.
+
 ### Rig keys, enrollment and retirement
 
 | Route | Token | What it does | Request | Answer |
@@ -691,7 +722,7 @@ Each rig's supervisor calls these with the rig's own token, for its own rig only
 | `POST /v1/rigs/<rig>/commands/<id>/ack` | Reports a command's delivery and outcome | `{status, outcome}`, `status` being `delivered`, `rejected` or `failed`; up to 256 KiB | `{"ok":true}`. 404 `no such pending command` |
 | `POST /v1/rigs/<rig>/supervisor` | The supervisor's own figures: its relay position, where its exports go and what of them waits, its push or send state, its [model downloads](model-files.md#the-supervisors-report), and advisor counts and spending. Not signed. Control records each model download that starts or ends in the rig's history | Numbers and short strings only, at most 20 downloads; up to 256 KiB | `{"ok":true}` |
 | `POST /v1/rigs/<rig>/live` | Live-log lines: the harness's batch, signed with the rig's accepted key, and the supervisor's own lines, which are not signed | `{batch, supervisor}`; up to 4 MiB | `{"added":<n>}`. 403 `rig mismatch` or `bad live signature`. 409 `the rig's report key is not accepted yet` or `live lines must be signed with the rig's pinned key` |
-| `GET /v1/rigs/<rig>/git/kits/<repo>.git/…` | A kit kept on control, served as plain HTTP Git for the supervisor to fetch | Git's file paths | The file. 404 `not found` |
+| `GET /v1/rigs/<rig>/git/kits/<repo>.git/…` | A kit kept on control, written on the **New campaign** page or given to control as a git bundle ([Kits control keeps](#kits-control-keeps)), served as plain HTTP Git for the supervisor to fetch by commit | Git's file paths | The file. 404 `not found` |
 | `GET /v1/rigs/<rig>/git-access/<name>` | The secret of a Git access from **Providers**, only for a rig whose assigned campaign uses it. Written to the audit log as `git_access_handed` | None | `{"kind":"ssh","private_key":…}` or `{"kind":"token","token":…,"username":…}`. 404 `no such Git access for this rig`. 500 `the Git access could not be unsealed (control's secrets key?)` |
 | `GET /v1/rigs/<rig>/model-route` | The model route of the rig's agents, with its key, and the planner's | None | `{route, planner}`, each `null` or a route. A route's `harness` is the [worker harness](glossary.md) its agents run in: `pi`, `opencode`, `claude-code` (a Claude subscription's route, and only that) or `codex` (a ChatGPT subscription's or an OpenAI-compatible provider's route, when the owner chose Codex). The planner's route's `harness` is where a planner with a model of its own runs. Its `context_window` is the window the provider lists for the model, or the owner's [cap](#the-agents-model) when that is lower (`0`: unknown). Its `compact_at`, only when the owner set one, is the share of the window, in percent, at which the agents' conversations are compacted; without it the harness compacts at 80%. The planner's route has the planner's own cap and point. 409 `the ChatGPT login could not be renewed: sign in again on the Providers page` or `the provider's key cannot be opened: enter it again` |
 | `GET /v1/rigs/<rig>/advisor-routes` | The advisors' model routes, by role, where the owner gave them models | None | `{teacher_models, merged_by, auditor, review_panel}`: `teacher_models` is a list of one route, or two for two teachers (empty when the owner gave the teachers none); each other role is `null` or a route. For a supervisor of an earlier version the answer also has `teachers` (the first teacher's route, which such a supervisor runs as two teachers), `combiner` (the merged by model's) and `panel` (the review panel's). A route's `harness` is where the supervisor runs that advisor: `pi`, `opencode`, `claude-code` or `codex`. Each has the role's own `context_window` and, when the owner set one, its `compact_at`, as above |
@@ -831,7 +862,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 | Group | Actions |
 | --- | --- |
-| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs`, `POST /v1/campaigns/<campaign>/copy`, `POST /v1/campaigns/<campaign>/context` or `POST /v1/rigs/<rig>/settings`, or a route that archives a campaign or changes a folder, it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
+| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs`, `POST /v1/campaigns/<campaign>/copy`, `POST /v1/campaigns/<campaign>/context`, `POST /v1/rigs/<rig>/settings` or `POST /v1/kits/<name>`, or a route that archives a campaign or changes a folder, it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
 | Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `rig_refused` and `rig_refusal_ended` (by `rig:<rig>`: control started or stopped refusing the rig for its protocol, with the reason and the builds; see [Rig versions](#rig-versions)), `git_access_handed` |
@@ -842,6 +873,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 | Test pods | `runpod_test_started`, `runpod_test_ended`, `runpod_test_done` |
 | Pull mode and rigs on RunPod | `tunnel_rig_added` (a rig minted for a pod), `tunnel_rig_pod` (its pod named), `tunnel_rig_enrolled`, `tunnel_refusals` (the requests a pod refused since its last exchange), `tunnel_rig_dropped` (a minted rig whose launch failed), `runpod_rig_launched` (by the owner: the cloud, pod, GPU and count, cloud type, data center, price, image and limits), `runpod_rig_limits` (the limits now), `runpod_rig_stop`, `runpod_rig_start`, `runpod_rig_restart` and `runpod_rig_terminate` (by the owner, as asked), `runpod_rig_stopped` (the pod stopped, why, `spend_limit`, `idle_stop` or `owner`, and the spend: by `control` at a limit, by the owner otherwise), `runpod_rig_started` (by `control`: the pod runs again, its GPUs and the runs resumed), `runpod_rig_start_refused` (by `control`: why, such as no GPU free), `runpod_rig_terminated` (by the owner: the pod removed, and the spend), `runpod_rig_terminate_refused` (by `control`: why a result could not leave) |
 | Campaigns | `campaign_version_created`, `campaign_copied` (a campaign copied: the copy, `from`, which is the source campaign with its version or its assignment's rig and run, and the copy's contract `sha`; for a research copy that names other MCP servers, also the copy's `mcp_servers`; for a copy given its own context settings, its `agents_context`; for a copy given its own brief, `own_brief`, the parts given), `campaign_context_set` (a campaign's own [context settings](#a-campaigns-context-settings) saved: the campaign, its new version and `sha`, and `agents_context`, or `null` when they were removed), `campaign_archived` and `campaign_unarchived` (the campaign, and the folder it keeps or comes back into, or `null`), `campaign_moved` (the campaign, its `folder` and the folder it came `from`, each a name or `null`), `campaign_folder_created`, `campaign_folder_renamed` (the folder's old name and its new `name`) and `campaign_folder_deleted` ([Archive a campaign, and folders](#archive-a-campaign-and-folders)) |
+| Kits | `kit_added` (a kit repository given to control as a git bundle: the kit's `name`, its `head` now and the `previous` one, the head's `commits`, whether the head was replaced (`forced`), the bundle's `size` in bytes, and `by`; see [Kits control keeps](#kits-control-keeps)) |
 | Knowledge base | `kb_grant`, `kb_revoke` (a campaign's agents may, or may no longer, read another campaign's folder), `kb_failed` (adding a report's events to the knowledge base failed) |
 | MCP servers | `mcp_server_added` and `mcp_server_changed` (which name a secret only as `set (<hint>)`, `replaced (<hint>)`, `kept` or `none`), `mcp_server_deleted`, `mcp_server_sign_in_started`, `mcp_server_signed_in`, `mcp_servers_handed` (by `rig:<rig>`: the servers a rig's supervisor was handed, and those it could not be, by name, when they changed), `mcp_moved_note_read` (**Got it** on the note about the outside knowledge base), `outside_kb_migrated` (by `control`, once at the update to 0.1.0: an outside knowledge base became an MCP server, with its old and new names, whether its token was kept, and the campaigns whose copies stopped and whose grants went). An MCP call that takes a secret logs it in `mcp:<tool>` as `given (<hint>)` |
 

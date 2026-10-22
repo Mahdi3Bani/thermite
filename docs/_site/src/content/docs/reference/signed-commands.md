@@ -639,7 +639,7 @@ A closed run is refused, whichever the answer: `run <run> is closed: it can't en
 | --- | --- | --- |
 | `{"git": "<URL>"}` | `repo_bundle`, `kit_bundle` | A git repository that has the commit: an `https://`, `ssh://`, `git://` or `file://` address, or `user@host:path`, up to 2000 characters. The supervisor fetches the commit and writes it to `path` as a bundle |
 | `{"git": "<URL>", "access": "<name>"}` | `repo_bundle`, `kit_bundle` | The same, with Git access that control keeps for a private repository, by name. See [Use a private repository](../how-to/campaigns/private-repository.md) |
-| `{"control": "kits/<name>"}` | `kit_bundle` | A kit that control wrote and keeps itself |
+| `{"control": "kits/<name>"}` | `kit_bundle` | A kit that control keeps: one the **New campaign** page wrote, or a kit repository written elsewhere that the owner gave control as a git bundle ([`POST /v1/kits/<name>`](rest-api.md#kits-control-keeps), MCP's [`kit_add`](mcp-tools.md#kit_add) or [`thermite kit add`](command-line.md#kit-add)). The supervisor fetches the commit from control, as the rig, and writes it to `path` as a bundle. Any commit of the kit's history fetches, and so does an old head that a forced replacement left |
 | `{"url": "<URL>"}` | `model` | An `http://` or `https://` address, up to 4000 characters. The supervisor downloads the file and keeps it only with the import's `sha256`, reporting its progress. See [Model files on a rig](model-files.md) |
 
 A source that cannot be fetched makes the command `failed` with `{"error": "staging: <reason>"}`. Without a source, the file must already be in the inbox.

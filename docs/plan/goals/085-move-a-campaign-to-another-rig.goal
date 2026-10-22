@@ -42,6 +42,7 @@ None yet.
 ## Progress
 
 - 2026-10-22: Goal written as a plan, from the campaign moved by hand that day.
+- 2026-10-22: One input already moves through control: a kit repository written elsewhere, given to control as a git bundle, which rigs fetch from control by commit ([096](096-kits-from-elsewhere.goal)). The champion and the models are still this goal's.
 
 ---
 

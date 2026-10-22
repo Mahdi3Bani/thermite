@@ -215,7 +215,7 @@ A rig on another machine or a cluster reports to control by connecting to it. Th
 
 1. **An HTTPS address the rigs can reach.** Compose publishes control on `127.0.0.1` only, so nothing outside this computer reaches it. Put a reverse proxy on this computer in front of `127.0.0.1:8800` (or the port you chose) that serves HTTPS under a name the rigs can reach, such as `control.example.com`. Thermite doesn't include a proxy or its configuration: use one you know. Have the proxy:
    - send `X-Forwarded-Proto: https`, so control marks the dashboard's sign-in cookie as secure;
-   - accept request bodies of up to 64 MB: rigs send champions' patches, and the New campaign page kit archives, of up to that size.
+   - accept request bodies of up to 64 MB: rigs send champions' patches, and the New campaign page kit archives, of up to that size, and `thermite kit add` sends kit bundles of up to that size.
 
    Nothing streams: the live view asks control every two seconds, and MCP answers in plain JSON.
 2. **That address, in control's settings.** In `.env`:
