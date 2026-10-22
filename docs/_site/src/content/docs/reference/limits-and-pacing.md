@@ -187,7 +187,7 @@ The dashboard calls an epoch a **round**.
 | --- | --- | --- |
 | Open attempts | 4 (`budget.max_open_attempts` in the contract) | No new trial starts while this many of the run's attempts are `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` |
 | A lane's next trial | After its last trial ended and that trial's attempt settled | The lane waits for the judge |
-| A goal run whose champion met every required goal | While the judge's second, confirming validation of that champion is queued or running | No new round or trial starts; a trial at work goes on. If the validation agrees, the run closes; if not, or if it fails, the lanes go on ([The goal report](verdicts.md#the-goal-report)) |
+| A goal run whose champion met every required goal | While the judge's second, confirming validation of that champion is queued or running | No new round or trial starts; a trial at work goes on. If the validation agrees, the run closes; if not, or if it fails or is blocked after three lost leases, the lanes go on ([The goal report](verdicts.md#the-goal-report)) |
 | One running run for each rig | Assigning or resuming a run pauses the rig's others: `replaced by <run>` | The other runs wait, paused |
 | The judge | One job at a time on each judge device; builds one at a time on the rig | Jobs wait in a queue, by priority |
 | Development runs on a shared device | A development run waits while the judge has any job queued or running, then holds the device | It waits until the judge is done or its trial ends: no time limit of its own |

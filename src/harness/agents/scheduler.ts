@@ -829,27 +829,28 @@ export class Scheduler {
       )
       .get(run, seq) as { k: number };
     const waiting = Number(pending.k) > 0;
-    const noted = this.confirmNoted;
-    if (waiting && (noted?.run !== run || noted.seq !== seq)) {
-      this.confirmNoted = { run, seq };
+    const noted = this.confirmNoted.get(run);
+    if (waiting && noted !== seq) {
+      this.confirmNoted.set(run, seq);
       this.o.service.live.append({
         source: "planner",
         kind: "status",
         text: `no new trial starts: the judge is confirming that champion #${seq} meets every required goal; if it does, the run closes (a trial at work goes on until then)`,
         run,
       });
-    } else if (!waiting && noted?.run === run) {
-      this.confirmNoted = undefined;
+    } else if (!waiting && noted !== undefined) {
+      this.confirmNoted.delete(run);
       this.o.service.live.append({
         source: "planner",
         kind: "status",
-        text: `trials start again: the judge's confirmation of champion #${noted.seq} did not close the run`,
+        text: `trials start again: the judge's confirmation of champion #${noted} did not close the run`,
         run,
       });
     }
     return waiting;
   }
-  private confirmNoted: { run: string; seq: number } | undefined;
+  /** Each run's champion whose confirmation Live was told about, so it is said once. */
+  private readonly confirmNoted = new Map<string, number>();
 
   /** New limits from the rig's settings; they apply from the next trial or check. */
   configure(p: {

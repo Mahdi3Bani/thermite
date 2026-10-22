@@ -168,5 +168,15 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
     assert.match(await c.page(RUN), WAIT);
     c.ingest([report({ complete: false })]);
     assert.doesNotMatch(await c.page(RUN), WAIT);
+
+    // A confirming validation blocked after too many lost leases will not run: the wait ends.
+    c.ingest([report({ complete: true, confirming: true })]);
+    assert.match(await c.page(RUN), WAIT);
+    c.ingest([
+      { kind: "job_queued", subject: "42", body: { attempt: null, kind: "validate" } },
+      { kind: "job_leased", subject: "42", body: { fence: 1 } },
+      { kind: "crash_infra", subject: "42", body: { fence: 1, expiries: 3, state: "blocked" } },
+    ]);
+    assert.doesNotMatch(await c.page(RUN), WAIT);
   });
 });

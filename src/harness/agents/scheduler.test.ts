@@ -1265,6 +1265,8 @@ describe("agent scheduler", () => {
     assert.equal(await scheduler.tick(), false);
     const trials = () => Number(env.ledger.db.prepare("select count(*) as n from trial").get()?.n);
     assert.equal(trials(), 1);
+    // Said once, however many ticks it waits.
+    assert.equal(live().match(/no new trial starts: the judge is confirming/g)?.length, 1);
     // The confirmation failed: the lanes go on.
     env.ledger.db
       .prepare("update job set state = 'failed', result = '{}' where id = ?")

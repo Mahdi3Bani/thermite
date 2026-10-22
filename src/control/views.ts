@@ -1360,6 +1360,17 @@ export function rigView(
         }
         break;
       }
+      case "crash_infra": {
+        // A job whose lease ran out too often is blocked: it will not run. A blocked validation
+        // leaves no completion to confirm, and the lanes go on (goal 086).
+        const j = jobs.get(String(e.subject));
+        if (!j || b.state !== "blocked") break;
+        j.finished_at = e.at;
+        j.state = "blocked";
+        const jr = j.run ? runs.get(j.run) : undefined;
+        if (jr && j.kind === "validate") jr.goals_confirming = false;
+        break;
+      }
       case "job_finished": {
         const j = jobs.get(String(e.subject));
         if (!j) break;

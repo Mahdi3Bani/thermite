@@ -91,7 +91,7 @@ The judge also checks every goal on the champion: a **validation**, once for eac
 **Completion is checked twice.** When a validation finds every required goal met (`complete: true`), the report has `confirming: true`, and the judge queues a second, independent validation of the same champion. Until it is done, the run starts no new round and no new trial. A trial at work goes on. The run's page says `Champion #<n> met every required goal, and the judge is checking it a second time: no new trial starts until that check is done.`, and **Live** says `no new trial starts: the judge is confirming that champion #<n> meets every required goal; …`.
 
 - If the second validation agrees, the run closes (`goal_complete`).
-- If it does not, or it fails, the lanes go on, and **Live** says `trials start again: the judge's confirmation of champion #<n> did not close the run`.
+- If it does not, or it fails or is blocked after three lost leases, the lanes go on, and **Live** says `trials start again: the judge's confirmation of champion #<n> did not close the run`.
 - A second validation queued for an earlier champion, when a promotion came first, counts as the first validation of the champion now: the run never closes on one validation.
 - The second validation runs the measured cases only, as the first does.
 
