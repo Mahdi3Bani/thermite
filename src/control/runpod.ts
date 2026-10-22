@@ -1,11 +1,13 @@
 /**
  * RunPod as a place for rigs (Settings › Providers): control seals the owner's API key and reads,
  * with RunPod's REST API v2, the GPU types with their prices and stock, the data centers, the
- * network volumes and the account's pods. Reading spends nothing. Control starts pods only when
+ * network volumes, the account's pods and, when asked, a pod's log (podLogs: what a pod that
+ * never enrolls printed). Reading spends nothing. Control starts pods only when
  * asked: a test pod, by the owner or an operator (runpod-tests.ts), and a rig, by the owner alone
  * (runpod-rigs.ts).
  */
 
+import { redact } from "../common/env.ts";
 import type { SecretBox } from "./secrets.ts";
 import type { ControlStore } from "./store.ts";
 
@@ -218,6 +220,257 @@ export async function terminatePod(
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   await runpodCall(key, "DELETE", `/v2/pods/${encodeURIComponent(id)}`, undefined, fetchImpl);
+}
+
+/** One line of a pod's log as RunPod streams it: from the pod's container or from RunPod's host. */
+export interface PodLogLine {
+  /** `container` (what the image printed) or `system` (RunPod's own steps: the pull, the start). */
+  source: string;
+  /** When RunPod logged it (RFC 3339). */
+  ts: string;
+  line: string;
+}
+
+/** The lines a log read asks RunPod for by default, and at most. */
+export const POD_LOG_TAIL = 200;
+export const POD_LOG_MAX_TAIL = 2000;
+/** A read stops once no line came for this long: RunPod has sent what it had, and waits for more. */
+const POD_LOG_IDLE_MS = 2_000;
+/** And after this long in all, however many lines still come. */
+const POD_LOG_TOTAL_MS = 10_000;
+
+export interface PodLogOptions {
+  /** Lines of history to ask for: 200 when not given, 2000 at most. */
+  tail?: number | undefined;
+  /** One source only; not given: both. */
+  source?: "container" | "system" | undefined;
+  /** The idle and the total stop, in ms (tests make them short). */
+  idleMs?: number | undefined;
+  totalMs?: number | undefined;
+}
+
+/** One Server-Sent Event: its type (`message` when it names none) and its data. */
+export interface SseEvent {
+  event: string;
+  data: string;
+}
+
+/**
+ * A Server-Sent Events parser, as the HTML standard reads a stream: lines end with CRLF, LF or
+ * CR; a line that starts with ":" is a comment; `data:` lines add to the event's data (joined
+ * with LF); `event:` names its type; a blank line ends the event, and one with no data is
+ * dropped. Other fields (id, retry, unknown ones) are ignored.
+ */
+export class SseParser {
+  private buf = "";
+  private data: string[] = [];
+  private type = "";
+  private first = true;
+
+  /** Takes the next piece of the stream; returns the events it ended. */
+  push(text: string): SseEvent[] {
+    this.buf += text;
+    if (this.first && this.buf.length) {
+      if (this.buf.startsWith("﻿")) this.buf = this.buf.slice(1);
+      this.first = false;
+    }
+    const out: SseEvent[] = [];
+    let start = 0;
+    for (let i = 0; i < this.buf.length; i++) {
+      const ch = this.buf[i];
+      if (ch !== "\n" && ch !== "\r") continue;
+      // A CR at the end of what came so far may be the first half of a CRLF: wait for more.
+      if (ch === "\r" && i === this.buf.length - 1) break;
+      this.line(this.buf.slice(start, i), out);
+      if (ch === "\r" && this.buf[i + 1] === "\n") i++;
+      start = i + 1;
+    }
+    this.buf = this.buf.slice(start);
+    return out;
+  }
+
+  /** The stream ended: a lone CR left ends its line; an event without its blank line is dropped. */
+  end(): SseEvent[] {
+    const out: SseEvent[] = [];
+    if (this.buf.endsWith("\r")) this.line(this.buf.slice(0, -1), out);
+    this.buf = "";
+    this.data = [];
+    this.type = "";
+    return out;
+  }
+
+  private line(l: string, out: SseEvent[]): void {
+    if (l === "") {
+      const data = this.data.join("\n");
+      if (this.data.length && data !== "") out.push({ event: this.type || "message", data });
+      this.data = [];
+      this.type = "";
+      return;
+    }
+    if (l.startsWith(":")) return;
+    const c = l.indexOf(":");
+    const field = c < 0 ? l : l.slice(0, c);
+    let value = c < 0 ? "" : l.slice(c + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+    if (field === "data") this.data.push(value);
+    else if (field === "event") this.type = value;
+  }
+}
+
+/** Terminal colour and cursor codes, which mean nothing outside a terminal. */
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, "g");
+
+/** A log line from one event's data, with what could be a credential taken out; null if not one. */
+function podLogLineOf(ev: SseEvent): PodLogLine | null {
+  if (ev.event !== "message") return null;
+  let d: unknown;
+  try {
+    d = JSON.parse(ev.data);
+  } catch {
+    return null;
+  }
+  if (!d || typeof d !== "object") return null;
+  const o = d as Json;
+  if (typeof o.line !== "string") return null;
+  return {
+    source: str(o.source),
+    ts: str(o.ts),
+    line: redact(o.line.replace(ANSI, "").replace(/\r?\n$/, "")),
+  };
+}
+
+/** Why RunPod would not stream a pod's log, in words: never the key. */
+async function podLogRefusal(r: Response, podId: string): Promise<RunpodRefused> {
+  const status = r.status;
+  if (status === 401)
+    return new RunpodRefused(
+      status,
+      "RunPod refused the key: it is wrong or was revoked. Check it in Settings › Providers",
+    );
+  if (status === 403)
+    return new RunpodRefused(
+      status,
+      `RunPod refused to show pod ${podId}'s log with this key: the key may not read pod logs. A key with read access to pods can`,
+    );
+  if (status === 404)
+    return new RunpodRefused(
+      status,
+      `RunPod has no pod ${podId}: it was removed, or it is not this key's account's`,
+    );
+  if (status === 429) {
+    const after = Number(r.headers.get("retry-after"));
+    return new RunpodRefused(
+      status,
+      `RunPod is limiting calls to its API: try again${Number.isFinite(after) && after > 0 ? ` in ${Math.ceil(after)} s` : " in a minute"}`,
+    );
+  }
+  let why = "";
+  try {
+    const p = (await r.json()) as Json;
+    why = [str(p.title), str(p.detail)].filter(Boolean).join(": ");
+  } catch {}
+  return new RunpodRefused(
+    status,
+    redact(
+      `RunPod answered ${status} for pod ${podId}'s log${why ? ` (${why.slice(0, 300)})` : ""}`,
+    ),
+  );
+}
+
+/**
+ * Reads a pod's log from RunPod (GET /v2/pods/{id}/logs, Server-Sent Events): RunPod sends the
+ * last `tail` lines first, then streams new ones live. Control reads the history and stops: once
+ * `tail` lines came, once no line came for 2 seconds, or after 10 seconds in all. The lines come
+ * oldest first, each through redact(). Throws, in words, when RunPod refuses or can't be reached.
+ */
+export async function podLogs(
+  key: string,
+  podId: string,
+  o: PodLogOptions = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<PodLogLine[]> {
+  const tail = Math.min(
+    POD_LOG_MAX_TAIL,
+    Math.max(1, Math.floor(Number.isFinite(o.tail) ? (o.tail as number) : POD_LOG_TAIL)),
+  );
+  const idleMs = o.idleMs ?? POD_LOG_IDLE_MS;
+  const totalMs = o.totalMs ?? POD_LOG_TOTAL_MS;
+  const q = new URLSearchParams({ tail: String(tail) });
+  if (o.source) q.set("source", o.source);
+  const stop = new AbortController();
+  let stopped = false;
+  const end = () => {
+    stopped = true;
+    stop.abort();
+  };
+  const all = setTimeout(end, totalMs);
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const lines: PodLogLine[] = [];
+  try {
+    let r: Response;
+    try {
+      r = await fetchImpl(`${RUNPOD_API}/v2/pods/${encodeURIComponent(podId)}/logs?${q}`, {
+        headers: { authorization: `Bearer ${key}`, accept: "text/event-stream" },
+        signal: stop.signal,
+      });
+    } catch (err) {
+      if (stopped)
+        throw new Error(`RunPod did not answer for pod ${podId}'s log within ${totalMs / 1000} s`);
+      throw new Error(
+        redact(
+          `control could not reach RunPod: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+    }
+    if (!r.ok) throw await podLogRefusal(r, podId);
+    if (!r.body) return lines;
+    const reader = r.body.getReader();
+    const parser = new SseParser();
+    const text = new TextDecoder();
+    // The idle stop counts from the answer, and again from each line (a comment is not a line).
+    const wait = () => {
+      clearTimeout(idle);
+      idle = setTimeout(end, idleMs);
+    };
+    wait();
+    const take = (events: SseEvent[]) => {
+      for (const ev of events) {
+        const l = podLogLineOf(ev);
+        if (!l) continue;
+        lines.push(l);
+        wait();
+        if (lines.length >= tail) {
+          end();
+          return;
+        }
+      }
+    };
+    while (!stopped) {
+      let chunk: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        chunk = await reader.read();
+      } catch (err) {
+        if (stopped || lines.length) break;
+        throw new Error(
+          redact(
+            `control lost RunPod's stream of pod ${podId}'s log: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+      }
+      if (chunk.done) {
+        take(parser.push(text.decode()));
+        take(parser.end());
+        break;
+      }
+      take(parser.push(text.decode(chunk.value, { stream: true })));
+    }
+    reader.cancel().catch(() => {});
+  } finally {
+    clearTimeout(all);
+    clearTimeout(idle);
+    stop.abort();
+  }
+  return lines;
 }
 
 /** Where RunPod's HTTP proxy serves a pod's port (public: what it serves must need a secret path). */

@@ -51,6 +51,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
 | `control_log`, `providers`, `rig_models`, `rig_settings`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders` | Yes | Yes | No | Yes |
+| `runpod_rig_logs` | Yes | Yes | No | No |
 | `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `set_campaign_context`, `archive_campaign`, `unarchive_campaign`, `create_campaign_folder`, `rename_campaign_folder`, `delete_campaign_folder`, `move_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `set_rig_settings` | Yes | Yes, but not the promotion rule or the GPU split | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
@@ -1087,6 +1088,20 @@ Returns the test. Error: `no test <id>`.
 | `cloud` | string, optional | every cloud | "The GPU cloud's name in Providers" |
 
 Returns a list of rigs, each a `runpod rig` as [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) describes it: its pod, `status`, `price_per_hr`, `spend_usd`, limits, enrollment and notes.
+
+### runpod_rig_logs
+
+**A RunPod rig's pod log.** Owner and operator. A reader's token does not have it: the log is the pod's own output, as a setup step's `detail` is, which [`rig_setup`](#rig_setup) does not give readers.
+
+> The newest lines of a RunPod rig's pod log, read now from RunPod's API with the GPU cloud's key: what the rig image printed (source container) and RunPod's own steps, such as the image pull (source system), oldest first. It shows why a pod runs but never enrolls, before control can see anything of the rig. Control stops reading once tail lines came, no line came for 2 seconds, or after 10 seconds. Spends nothing. Lines are redacted: what looks like a key or token is taken out.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | required | A rig launched on a GPU cloud |
+| `tail` | whole number, 1 or more, optional | `200` | "Lines to read: 200 when left out, 2000 at most". Above 2000: 2000 |
+| `source` | `container` or `system`, optional | both | "One source only; left out: both" |
+
+Returns `{rig, pod, lines: [{source, ts, line}], read_at}`, as [`GET /v1/rigs/<rig>/runpod/logs`](rest-api.md#a-pods-log) does, with the same redaction. A rig not launched on a GPU cloud gives `no rig <rig> on a GPU cloud`, and RunPod's refusal comes back in words, such as `RunPod refused to show pod <pod>'s log with this key: the key may not read pod logs. A key with read access to pods can`. The rig's page shows the last read under **Pod log** ([A rig's page](rig-page.md#pod-log)).
 
 ### runpod_launch
 

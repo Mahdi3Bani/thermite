@@ -1,6 +1,7 @@
 import type { ExportLeft, ResultsLeft } from "../results-left.ts";
 import { RUNPOD_STEP_WORDS } from "../runpod-lifecycle.ts";
 import type { RunpodRigView } from "../runpod-rig-view.ts";
+import type { KeptPodLog } from "../runpod-rigs.ts";
 import { ago, esc } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
 import type { TimelineRow } from "./operator.ts";
@@ -276,4 +277,41 @@ export function readySteps(v: RunpodRigView, reported: boolean): string {
     },
   ];
   return stepsHtml(rows);
+}
+
+/**
+ * A RunPod rig's pod log (the block Pod log): the lines of the last read, oldest first with the
+ * newest in view, each marked container or system, and the button that reads it again. The page
+ * never reads RunPod as it loads: a read holds RunPod's stream open for up to 10 seconds, and the
+ * page's script draws the page again every few seconds while it follows an action. With `auto`
+ * and nothing read yet, the page's script reads it once as the page opens (data-autoread).
+ */
+export function podLogBlock(o: {
+  rig: string;
+  kept: KeptPodLog | undefined;
+  t: string;
+  now: number;
+  auto: boolean;
+}): string {
+  const k = o.kept;
+  const rows = (k?.lines ?? [])
+    .map((l) => {
+      const src = l.source === "system" ? "system" : "container";
+      return `<div class="pl ${src}"><span class="pl-src">${src}</span><span class="pl-t" title="${esc(l.ts)}">${esc(l.ts.slice(11, 19))}</span><span class="pl-l">${esc(l.line)}</span></div>`;
+    })
+    .join("");
+  const which = k?.source ? `${k.source} lines only` : "container and system";
+  const state = !k
+    ? `<div class="empty">Not read yet.${o.auto ? " Reading it…" : ""}</div>`
+    : k.error
+      ? `<div class="flash bad">Not read: ${esc(k.error)}</div>`
+      : rows
+        ? `<div class="podlog"><div>${rows}</div></div>`
+        : `<div class="empty">RunPod has no line in this pod's log yet.</div>`;
+  const n = k?.lines.length ?? 0;
+  const when = k
+    ? `<div class="muted xs" style="margin-top:6px">Read ${esc(ago(k.read_at, o.now))} ago, at ${esc(k.read_at.slice(11, 16))} UTC${k.error ? "" : `: ${n} line${n === 1 ? "" : "s"}, ${which}, oldest first`}.</div>`
+    : "";
+  return `<div class="block" id="podlog" data-part="podlog"><div class="head"><h2>Pod log</h2><span class="chip violet">RunPod</span><span class="right">what the pod printed, the newest at the bottom</span></div><div class="card">${state}${when}
+<form class="row" method="post" action="${rigUrl(o.rig)}/runpod/logs" data-act${o.auto && !k ? " data-autoread" : ""} style="gap:10px;margin-top:10px;align-items:center"><input type="hidden" name="csrf" value="${esc(o.t)}"><button data-busy="Reading…">${k ? "Read again" : "Read the log"}</button><span class="muted xs">From RunPod's API, with the key of the GPU cloud in Settings › Providers, only when asked: a read takes up to 10 seconds. <b>container</b> lines are what the rig image printed; <b>system</b> lines are RunPod's own, such as the image pull. What looks like a key or token is taken out.</span></form></div></div>`;
 }

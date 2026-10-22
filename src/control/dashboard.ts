@@ -317,7 +317,14 @@ import {
 } from "./ui/rigs-list.ts";
 import { type LaunchForm, launchBody } from "./ui/runpod-launch.ts";
 import { RUNPOD_LAUNCH_JS } from "./ui/runpod-launch-client.ts";
-import { HISTORY_FILTERS, podBlock, podRows, podRuns, readySteps } from "./ui/runpod-rig.ts";
+import {
+  HISTORY_FILTERS,
+  podBlock,
+  podLogBlock,
+  podRows,
+  podRuns,
+  readySteps,
+} from "./ui/runpod-rig.ts";
 import { STYLE } from "./ui/style.ts";
 import {
   campaignUsageBlock,
@@ -3028,7 +3035,7 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
           summary: `${podSummary(launched)} · ${pulled.enrolled_at ? "enrolled" : "not enrolled yet"}`,
           active: "rigs",
         },
-        `<p class="run-said">${podSaid(launched, now)} Its page fills in once the rig reports for the first time.</p>${flash}<div class="card" style="margin-bottom:16px"><div class="card-head"><span class="title">Getting it ready</span></div>${readySteps(launched, false)}</div>${podSection(c, pulled.rig, now)}<div class="cols run-cols"><div>${podHistory(undefined, pulled.rig, [], now)}</div><div class="side">${pullBlock(pulled, now)}</div></div>`,
+        `<p class="run-said">${podSaid(launched, now)} Its page fills in once the rig reports for the first time.</p>${flash}<div class="card" style="margin-bottom:16px"><div class="card-head"><span class="title">Getting it ready</span></div>${readySteps(launched, false)}</div>${podLogSection(c, pulled.rig, now, true)}${podSection(c, pulled.rig, now)}<div class="cols run-cols"><div>${podHistory(undefined, pulled.rig, [], now)}</div><div class="side">${pullBlock(pulled, now)}</div></div>`,
         vs,
       );
     if (!u && pulled)
@@ -3336,6 +3343,7 @@ ${rp ? podSection(c, u.id, now) : ""}
 <div class="block" data-part="runs"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span>${u.state !== "reporting" || refusedNow ? `<span class="right">as of its last report${neverReported(u) ? "" : `, ${esc(ago(u.last_seen, now))} ago`}</span>` : ""}</div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
 ${rp ? events : ""}
 <div class="block" data-part="jobs"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
+${rp ? podLogSection(c, u.id, now, false) : ""}
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
 <div class="block" data-part="rig"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${versionFact(stateIn)}${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
@@ -6795,6 +6803,46 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       minIdle: MIN_IDLE_STOP_MINUTES,
     });
   };
+  /**
+   * A RunPod rig's pod log, as last read (Read again reads it now). `auto`: before the rig's first
+   * report, the page reads it once as it opens when nothing was read yet. None for a pod that is
+   * gone: RunPod keeps no log of it.
+   */
+  const podLogSection = (c: Ctx, rig: string, now: number, auto: boolean) => {
+    const v = opts.runpodRigs?.view(rig);
+    if (!v?.active || v.status === "TERMINATED") return "";
+    return podLogBlock({ rig, kept: opts.runpodRigs?.lastLog(rig), t: csrf(c), now, auto });
+  };
+  // Reads the pod log now (Read again): JSON for the page's script, which then draws the block
+  // again; else the rig's page at the block.
+  app.post("/ui/rigs/:rig/runpod/logs", async (c) => {
+    const rig = c.req.param("rig");
+    const rigs = opts.runpodRigs;
+    const follow = `/ui/rigs/${encodeURIComponent(rig)}/runpod/logs`;
+    const answer = (ok: boolean, said: string) =>
+      wantsJson(c)
+        ? c.json({
+            state: `read:${Date.now()}`,
+            final: true,
+            said,
+            tone: ok ? "ok" : "bad",
+            follow,
+          })
+        : c.redirect(
+            `/ui/rigs/${encodeURIComponent(rig)}?${ok ? "ok" : "error"}=${encodeURIComponent(said)}#podlog`,
+            303,
+          );
+    if (!rigs?.view(rig)) return answer(false, `${rig} is not a rig control launched on RunPod.`);
+    try {
+      const r = await rigs.logs(rig);
+      return answer(
+        true,
+        `Read ${r.lines.length} line${r.lines.length === 1 ? "" : "s"} of pod ${r.pod}'s log from RunPod.`,
+      );
+    } catch (err) {
+      return answer(false, `Not read: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
   /** A RunPod rig's history: the pod's steps, the rig's events and its state's lines, filtered. */
   const podHistory = (u: RigView | undefined, rig: string, extra: TimelineRow[], now: number) =>
     `<div class="block"><div class="head"><h2>History</h2><span class="right">newest first</span></div>${HISTORY_FILTERS}${timeline(

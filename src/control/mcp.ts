@@ -65,6 +65,7 @@ import {
   rigSettingsRead,
   setRigSettings,
 } from "./rig-settings.ts";
+import { POD_LOG_MAX_TAIL, POD_LOG_TAIL } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
   DEFAULT_IDLE_STOP_MINUTES,
@@ -1418,6 +1419,42 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         },
         audited("runpod_rigs", (a: { cloud?: string }) => launched.list(a.cloud)),
       );
+      // The pod's log is the pod's own output, like a setup step's detail: the owner's and the
+      // operator's, not a reader's (rig_setup gives readers no detail either).
+      if (role === "owner" || role === "operator")
+        server.registerTool(
+          "runpod_rig_logs",
+          {
+            title: "A RunPod rig's pod log",
+            description:
+              "The newest lines of a RunPod rig's pod log, read now from RunPod's API with the GPU cloud's key: what the rig image printed (source container) and RunPod's own steps, such as the image pull (source system), oldest first. It shows why a pod runs but never enrolls, before control can see anything of the rig. Control stops reading once tail lines came, no line came for 2 seconds, or after 10 seconds. Spends nothing. Lines are redacted: what looks like a key or token is taken out.",
+            inputSchema: {
+              rig: z.string().min(1),
+              tail: z
+                .number()
+                .int()
+                .min(1)
+                .optional()
+                .describe(
+                  `Lines to read: ${POD_LOG_TAIL} when left out, ${POD_LOG_MAX_TAIL} at most`,
+                ),
+              source: z
+                .enum(["container", "system"])
+                .optional()
+                .describe("One source only; left out: both"),
+            },
+          },
+          audited(
+            "runpod_rig_logs",
+            (a: { rig: string; tail?: number; source?: "container" | "system" }) => {
+              if (!launched.view(a.rig)) throw new Error(`no rig ${a.rig} on a GPU cloud`);
+              return launched.logs(a.rig, {
+                tail: a.tail === undefined ? undefined : Math.min(POD_LOG_MAX_TAIL, a.tail),
+                source: a.source,
+              });
+            },
+          ),
+        );
       // Launching spends money: the owner's alone (owner, 2026-10-20). An operator may not.
       if (role === "owner") {
         server.registerTool(

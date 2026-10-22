@@ -1,6 +1,14 @@
 import { log, redact } from "../common/env.ts";
 import { POD_CONFIG_ENV, PodConfig } from "../core/tunnel.ts";
-import { createPod, getPod, readRunpod, terminatePod } from "./runpod.ts";
+import {
+  createPod,
+  getPod,
+  POD_LOG_MAX_TAIL,
+  type PodLogLine,
+  podLogs,
+  readRunpod,
+  terminatePod,
+} from "./runpod.ts";
 import { noFreeGpu, RUNPOD_STEP_WORDS, RunpodLifecycle } from "./runpod-lifecycle.ts";
 import {
   idleSince,
@@ -72,6 +80,42 @@ export interface LaunchRequest {
   idle_stop_minutes?: number | null | undefined;
 }
 
+/** A read of a rig's pod log, as REST and MCP answer it: its lines oldest first. */
+export interface PodLogRead {
+  rig: string;
+  pod: string;
+  lines: PodLogLine[];
+  read_at: string;
+}
+
+/** The last read of a rig's pod log, for its page: the source it asked for, or why it failed. */
+export interface KeptPodLog extends PodLogRead {
+  source: "container" | "system" | null;
+  error: string | null;
+}
+
+/**
+ * A pod log read's query, as REST takes it: `tail` a whole number of lines, 1 or more (above
+ * 2000: 2000), and `source` container or system (not given: both).
+ */
+export function podLogQuery(
+  tail: string | undefined,
+  source: string | undefined,
+): { tail?: number; source?: "container" | "system" } | { error: string } {
+  const out: { tail?: number; source?: "container" | "system" } = {};
+  if (tail !== undefined && tail !== "") {
+    if (!/^\d+$/.test(tail) || Number(tail) < 1)
+      return { error: "tail is a whole number of lines, 1 or more" };
+    out.tail = Math.min(POD_LOG_MAX_TAIL, Number(tail));
+  }
+  if (source !== undefined && source !== "") {
+    if (source !== "container" && source !== "system")
+      return { error: "source is container or system" };
+    out.source = source;
+  }
+  return out;
+}
+
 /** A change to a rig's limits: a number sets one, null clears it, nothing keeps it. */
 export interface LimitsChange {
   spend_limit_usd?: number | null | undefined;
@@ -104,10 +148,15 @@ export class RunpodRigs {
   private readonly image: string | undefined;
   private readonly now: () => number;
   private readonly staleAfterMs: number;
+  /** A pod log read's idle and total stops, in ms; not given: podLogs' own (tests shorten them). */
+  private readonly logTimes: { idleMs?: number | undefined; totalMs?: number | undefined };
   private readonly life: RunpodLifecycle;
   private busy = false;
   /** One change to a rig's state at a time: control's loop and the owner's asks wait their turn. */
   private readonly locks = new Map<string, Promise<void>>();
+  /** Pod log reads under way, and each rig's last read (kept in memory only). */
+  private readonly logReads = new Map<string, Promise<PodLogRead>>();
+  private readonly lastLogs = new Map<string, KeptPodLog>();
 
   constructor(
     store: ControlStore,
@@ -120,6 +169,7 @@ export class RunpodRigs {
       staleAfterMs?: number | undefined;
       /** Control's command-signing key: a stop or a terminate pauses runs and asks for exports. */
       privateKeyPem?: string | undefined;
+      logTimes?: { idleMs?: number | undefined; totalMs?: number | undefined } | undefined;
     } = {},
   ) {
     this.store = store;
@@ -129,6 +179,7 @@ export class RunpodRigs {
     this.image = opts.image;
     this.now = opts.now ?? Date.now;
     this.staleAfterMs = opts.staleAfterMs ?? 180_000;
+    this.logTimes = opts.logTimes ?? {};
     this.life = new RunpodLifecycle({
       store,
       fetch: this.fetchImpl,
@@ -586,6 +637,52 @@ export class RunpodRigs {
     return this.store
       .rigSetupEvents(rig)
       .map((e) => ({ ...e, words: RUNPOD_STEP_WORDS[e.step] ?? null }));
+  }
+
+  /**
+   * Reads the rig's pod log from RunPod with the cloud's key (podLogs): its newest lines, from
+   * the container and RunPod's host, each through redact(). The last read of each rig is kept in
+   * memory, with why it failed if it did, for the rig's page; nothing is written to the store.
+   * Reads asked for while the same one is under way share it.
+   */
+  logs(
+    rig: string,
+    o: { tail?: number | undefined; source?: "container" | "system" | undefined } = {},
+  ): Promise<PodLogRead> {
+    const r = this.store.runpodRig(rig);
+    if (!r) return Promise.reject(new Error(`no rig ${rig} on a GPU cloud`));
+    const k = `${rig}\n${o.tail ?? ""}\n${o.source ?? ""}`;
+    const going = this.logReads.get(k);
+    if (going) return going;
+    const read = (async (): Promise<PodLogRead> => {
+      const key = this.key(r.cloud);
+      const source = o.source ?? null;
+      try {
+        if (!key)
+          throw new Error(
+            `the GPU cloud "${r.cloud}" was deleted, so control can't read pod ${r.pod}'s log`,
+          );
+        const lines = await podLogs(key, r.pod, { ...o, ...this.logTimes }, this.fetchImpl);
+        const out = { rig, pod: r.pod, lines, read_at: this.iso() };
+        this.lastLogs.set(rig, { ...out, source, error: null });
+        return out;
+      } catch (err) {
+        const error = redact(err instanceof Error ? err.message : String(err));
+        this.lastLogs.set(rig, { rig, pod: r.pod, lines: [], read_at: this.iso(), source, error });
+        throw new Error(error);
+      }
+    })();
+    this.logReads.set(k, read);
+    const done = () => {
+      if (this.logReads.get(k) === read) this.logReads.delete(k);
+    };
+    read.then(done, done);
+    return read;
+  }
+
+  /** The last read of the rig's pod log since control started, or why it failed; none: not read. */
+  lastLog(rig: string): KeptPodLog | undefined {
+    return this.lastLogs.get(rig);
   }
 
   view(rig: string): RunpodRigView | undefined {

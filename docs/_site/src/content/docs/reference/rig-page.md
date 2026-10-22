@@ -1,6 +1,6 @@
 ---
 title: "A rig's page"
-description: "Every part of a rig's page on the dashboard: its state and version banners, Update to control's version, Check again, its facts, and a RunPod rig's pod, limits, lifecycle and history."
+description: "Every part of a rig's page on the dashboard: its state and version banners, Update to control's version, Check again, its facts, and a RunPod rig's pod, limits, lifecycle, pod log and history."
 type: reference
 sidebar:
   order: 21
@@ -19,6 +19,7 @@ Other pages link to these places with the address and the anchor, for example `/
 | `#pod` | The pod: its cost, its limits and its lifecycle | The rig was launched on RunPod |
 | `#limits` | The form that changes the spend limit and the idle stop | The same, while the pod exists |
 | `#results` | The results that must leave the pod before it ends | The same, while the pod exists |
+| `#podlog` | **Pod log**: the pod's log, read from RunPod | The same, while the pod exists |
 | `#hist` | The history, with its filters | The rig was launched on RunPod |
 
 ## The top
@@ -105,7 +106,7 @@ The rig's volumes, tokens, key, ledger, runs and results stay. A trial in progre
 
 A key that waits for you has a card under the banners, with its fingerprint and **Accept this key**: see [Accept a rig's key](../how-to/operate/accept-a-rig-key.md).
 
-**At work** lists the runs at work now. **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**, and its state: **not run yet**, **sent**, **running** with the time so far, **passed** or **failed**, or why the rig did not run it ([Where results show](rig-checks.md#where-results-show)); for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs.
+**At work** lists the runs at work now. **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**, and its state: **not run yet**, **sent**, **running** with the time so far, **passed** or **failed**, or why the rig did not run it ([Where results show](rig-checks.md#where-results-show)); for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs. A rig on RunPod has **Pod log** under it ([Pod log](#pod-log)).
 
 **What it runs on** shows the rig's hardware, from its signed report.
 
@@ -186,8 +187,24 @@ Its heading says `N waiting`, `all out`, or `not reported`.
 
 A rig on RunPod has **History** in place of **Recent**, with filters: **All**, **The pod**, **Runs** and **The judge**. **The pod** lists its launch, each stop, start, restart and terminate, and each full reset, with what happened, such as `Pod stopped: its GPU is no longer billed, and its volume stays: …`. **Runs** and **The judge** list the rig's events.
 
+### Pod log
+
+**Pod log** shows the pod's log as RunPod keeps it: what the rig image printed and RunPod's own steps. Before the rig enrolls, it is the one place that says why a pod runs but never enrolls. Control reads it from RunPod's API (`GET /v2/pods/<pod>/logs`) with the GPU cloud's key from **Settings › Providers**. A read asks for the newest 200 lines and stops once they came, once no line came for 2 seconds, or after 10 seconds.
+
+| Part | What it shows |
+| --- | --- |
+| The lines | Oldest first, the newest at the bottom, in a box that opens scrolled to the newest. Each line has its source, `container` (what the rig image printed) or `system` (RunPod's own, such as the image pull), and its time in UTC; the full time shows when you point at it |
+| Under them | `Read 2 min ago, at 14:05 UTC: 57 lines, container and system, oldest first.` A read over MCP or REST for one source only says `system lines only` or `container lines only` |
+| **Read the log** or **Read again** | Reads the log now. The button says `Reading…` until the lines come, and the block is drawn again with them, with no refresh |
+| A refusal | `Not read:` and why, in red, such as `RunPod refused to show pod …'s log with this key: the key may not read pod logs. A key with read access to pods can` |
+| Nothing read | `Not read yet.` |
+
+Loading the page never reads RunPod: a read holds RunPod's stream open for up to 10 seconds, and the page's script loads the page again every few seconds while it follows a button. Control keeps each rig's last read in memory until it restarts, and a read over REST or MCP shows here too. Before the rig's first report, when control has no read of the log yet, the page's script presses **Read the log** once the page has opened; after the first report, the block waits for you to press it.
+
+Before control shows a line, it takes out what looks like a credential: a URL's user and password, a bearer token, and keys with a known prefix, such as `hf_`, `ghp_` or `rpa_`, which become `hf_***`. It also takes out a terminal's colour codes. A pod that is terminated has no **Pod log**: RunPod no longer has it.
+
 ### Before its first report, and after its end
 
-Before the rig's first report, its page shows **Getting it ready**: the launch, the pod pulling the image and running, control enrolling it with its one-time code, and the rig's first report, each done, under way or still to come. Then **The pod**, its history and **Pull mode**.
+Before the rig's first report, its page shows **Getting it ready**: the launch, the pod pulling the image and running, control enrolling it with its one-time code, and the rig's first report, each done, under way or still to come. Then **Pod log**, **The pod**, its history and **Pull mode**.
 
 Once the pod is terminated, the rig is retired. Its page says so, with **Bring it back**, and shows what the pod cost in all, its facts and its history.

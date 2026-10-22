@@ -9,6 +9,11 @@
  *
  * Hooks put something real behind a pod: the RunPod acceptance (scripts/runpod-acceptance.mjs)
  * starts a container of the rig image for each pod and points the pod's proxy address at it.
+ *
+ * A pod's log (GET /v2/pods/{id}/logs) is Server-Sent Events as RunPod sends them: a comment
+ * first, then the last `tail` lines (100 when not given, 5000 at most), each an event with an
+ * `id:` and a JSON `data:` line, then the lines the test adds while the stream is open. The
+ * stream stays open until the reader aborts, as RunPod's does.
  */
 
 /** The fields of RunPod's create-a-pod body (v2); any other is refused, as RunPod does. */
@@ -83,6 +88,15 @@ export interface FakePod {
   env: Record<string, string>;
   /** Where its proxy addresses lead (a hook sets it); none: the test's `proxy`, or a 404. */
   upstream?: string | undefined;
+  /** Its log, oldest first (FakeRunpod.log adds to it). */
+  logs: FakeLogLine[];
+}
+
+/** A line of a pod's log as RunPod's logs route sends it. */
+export interface FakeLogLine {
+  source: "container" | "system";
+  line: string;
+  ts: string;
 }
 
 export interface FakeRunpodOptions {
@@ -97,6 +111,8 @@ export interface FakeRunpodOptions {
   down?: boolean | undefined;
   /** The key may not read billing. */
   noBilling?: boolean | undefined;
+  /** The key may not read pod logs: RunPod answers 403. */
+  noLogs?: boolean | undefined;
   /** Before RunPod answers: a pod made, started, stopped or terminated. A throw fails the call. */
   onCreate?: ((pod: FakePod) => void | Promise<void>) | undefined;
   onStart?: ((pod: FakePod) => void | Promise<void>) | undefined;
@@ -111,7 +127,7 @@ export interface FakeRunpodOptions {
 export interface FakeRunpod {
   /** Use as control's fetch for RunPod (cloudFetch) and for pull mode (the tunnels' fetch). */
   fetch: typeof fetch;
-  calls: { method: string; host: string; path: string; body?: unknown }[];
+  calls: { method: string; host: string; path: string; search: string; body?: unknown }[];
   pods: Map<string, FakePod>;
   /** The bodies of every stop or start control asked for, in order. */
   actions(): { action: string }[];
@@ -121,6 +137,10 @@ export interface FakeRunpod {
   terminated(): string[];
   /** RunPod has (or again has) no GPU free to start a stopped pod. */
   setNoGpuOnStart(on: boolean): void;
+  /** The pod logs a line now: it goes to its log, and to every open stream of it that takes it. */
+  log(pod: string, source: "container" | "system", line: string): void;
+  /** The pod log streams open now (one the reader aborted is closed). */
+  openLogStreams(): number;
 }
 
 const json = (body: unknown, status = 200) =>
@@ -134,6 +154,48 @@ export function fakeRunpod(o: FakeRunpodOptions = {}): FakeRunpod {
   const gone: string[] = [];
   let noGpuOnStart = o.noGpuOnStart ?? false;
   let n = 0;
+  let tick = Date.parse("2026-01-01T00:00:00Z");
+  /** The open log streams: the pod, its source filter, and how to send them a line. */
+  const streams = new Set<{ pod: string; source: string | null; send: (l: FakeLogLine) => void }>();
+  const sse = (l: FakeLogLine) =>
+    `id: ${l.ts}\ndata: ${JSON.stringify({ ts: l.ts, source: l.source, line: l.line })}\n\n`;
+  const logsOf = (p: FakePod, url: URL, init?: RequestInit): Response => {
+    if (o.noLogs) return json({ title: "Forbidden", detail: "insufficient permissions" }, 403);
+    const tailRaw = url.searchParams.get("tail");
+    const tail = tailRaw === null ? 100 : Number(tailRaw);
+    const source = url.searchParams.get("source");
+    if (!Number.isInteger(tail) || tail < 0 || tail > 5000)
+      return json({ title: "Bad Request", detail: "tail must be 0 to 5000" }, 400);
+    if (source !== null && source !== "container" && source !== "system")
+      return json({ title: "Bad Request", detail: "source must be container or system" }, 400);
+    const enc = new TextEncoder();
+    const lines = p.logs.filter((l) => source === null || l.source === source);
+    const s = { pod: p.id, source, send: (_l: FakeLogLine) => {} };
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc.encode(": connected\n\n"));
+        for (const l of tail === 0 ? [] : lines.slice(-tail)) c.enqueue(enc.encode(sse(l)));
+        s.send = (l) => c.enqueue(enc.encode(sse(l)));
+        streams.add(s);
+        const signal = init?.signal;
+        const abort = () => {
+          streams.delete(s);
+          try {
+            c.error(signal?.reason ?? new DOMException("aborted", "AbortError"));
+          } catch {}
+        };
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      },
+      cancel() {
+        streams.delete(s);
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream", "cache-control": "no-cache" },
+    });
+  };
   const perGpu = (p: FakePod) => {
     const g = gpus.find((x) => x.id === p.gpu);
     return (p.cloud === "COMMUNITY" ? g?.price.community : g?.price.secure) ?? 0;
@@ -167,7 +229,13 @@ export function fakeRunpod(o: FakeRunpodOptions = {}): FakeRunpod {
     const isProxy = url.host.endsWith(".proxy.runpod.net");
     let body: unknown;
     if (!isProxy && typeof init?.body === "string") body = JSON.parse(init.body);
-    calls.push({ method, host: url.host, path: url.pathname, ...(body ? { body } : {}) });
+    calls.push({
+      method,
+      host: url.host,
+      path: url.pathname,
+      search: url.search,
+      ...(body ? { body } : {}),
+    });
     if (isProxy) return viaProxy(url, init);
     if (url.host !== "api.runpod.io")
       throw new Error(`the fake RunPod answers only RunPod's API and proxy, not ${url.host}`);
@@ -226,21 +294,23 @@ export function fakeRunpod(o: FakeRunpodOptions = {}): FakeRunpod {
         datacenter: b.dataCenterIds?.[0] ?? "EU-RO-1",
         body: body as Record<string, unknown>,
         env: b.env ?? {},
+        logs: [],
       };
       await o.onCreate?.(p);
       pods.set(p.id, p);
       return json(podJson(p), 201);
     }
-    const m = /^\/v2\/pods\/([^/]+)(\/action)?$/.exec(path);
+    const m = /^\/v2\/pods\/([^/]+)(\/action|\/logs)?$/.exec(path);
     const p = m ? pods.get(m[1] ?? "") : undefined;
     if (!m || !p) return json({ title: "Not Found" }, 404);
+    if (m[2] === "/logs") return method === "GET" ? logsOf(p, url, init) : json({}, 405);
     if (method === "DELETE") {
       await o.onTerminate?.(p);
       pods.delete(p.id);
       gone.push(p.id);
       return new Response(null, { status: 204 });
     }
-    if (m[2]) {
+    if (m[2] === "/action") {
       const action = (body as { action?: string } | undefined)?.action;
       if (action === "stop") {
         if (p.status === "EXITED")
@@ -276,5 +346,15 @@ export function fakeRunpod(o: FakeRunpodOptions = {}): FakeRunpod {
     setNoGpuOnStart: (on) => {
       noGpuOnStart = on;
     },
+    log: (pod, source, line) => {
+      const p = pods.get(pod);
+      if (!p) throw new Error(`the fake RunPod has no pod ${pod}`);
+      tick += 1000;
+      const l = { source, line, ts: new Date(tick).toISOString() };
+      p.logs.push(l);
+      for (const s of streams)
+        if (s.pod === pod && (s.source === null || s.source === source)) s.send(l);
+    },
+    openLogStreams: () => streams.size,
   };
 }

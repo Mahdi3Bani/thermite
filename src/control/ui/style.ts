@@ -1011,6 +1011,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .lcb button { justify-content: center; }
 .lcb .muted { font-size: 12px; }
 .lcb input { height: 30px; padding: 0 8px; border: 1px solid var(--input); border-radius: var(--control-radius); background: var(--background); font-size: 12.5px; width: 100%; }
+.podlog { max-height: 420px; overflow: auto; display: flex; flex-direction: column-reverse; padding: 8px 10px; background: var(--code-background); border-radius: var(--control-radius); }
+.pl { display: grid; grid-template-columns: 66px 60px minmax(0, 1fr); gap: 8px; font: 12px/18px var(--font-mono); }
+.pl-src, .pl-t { color: var(--muted-foreground); white-space: nowrap; }
+.pl.system .pl-src { color: var(--violet-foreground); }
+.pl-l { color: var(--foreground); white-space: pre-wrap; word-break: break-word; }
 .outlist { display: grid; gap: 0; }
 .outrow { display: grid; grid-template-columns: 18px minmax(0, 1fr) 120px; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .outrow:last-child { border-bottom: 0; }

@@ -517,6 +517,7 @@ The owner launches rigs on RunPod with these routes, the MCP tool [`runpod_launc
 | `GET /v1/gpu-clouds/<name>/rigs` | Owner | The rigs launched on one GPU cloud, newest first | None | `[runpod rig]`. No such cloud gives `[]` |
 | `GET /v1/rigs/<rig>/runpod` | Owner | One rig launched on a GPU cloud, with its history | None | `runpod rig` and `history`: `[{at, step, ok, detail, words}]`, oldest first. The steps are those the MCP tool [`rig_setup`](mcp-tools.md#rig_setup) lists; `words` says a RunPod step in words, such as `Pod stopped: its GPU is no longer billed, and its volume stays`, and is `null` for another step, such as a model download. 404 `{"error":"not found"}` |
 | `POST /v1/rigs/<rig>/runpod/limits` | Owner | Sets or clears the rig's spend limit and idle stop | `{spend_limit_usd, idle_stop_minutes}`: a number sets one, `null` clears it, and one left out stays | `runpod rig`. 404 `no rig <rig> on a GPU cloud`. 400 with the reason |
+| `GET /v1/rigs/<rig>/runpod/logs` | Owner | Reads the pod's log now from RunPod's API, with the GPU cloud's key: the newest lines, from the container and from RunPod's host. It spends nothing. See [A pod's log](#a-pods-log) | Query: `tail`, `source` | `{rig, pod, lines: [{source, ts, line}], read_at}`. 404 `{"error":"not found"}` for a rig not launched on a GPU cloud. 400 for a wrong `tail` or `source`. 502 with RunPod's refusal in words |
 
 What a launch takes:
 
@@ -560,6 +561,32 @@ A launch refuses with one of these, as 409 `{"error": ...}`:
 - `a rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit`, `rig <rig> exists already`
 - RunPod has none of that GPU free: `RunPod has no <n> × <GPU> free on <Secure|Community> cloud[ in <data center>] now: <RunPod's answer>. No pod was started and nothing is billed. Choose another GPU[ or any data center], or try again in a few minutes.`
 - what RunPod answered otherwise, such as `RunPod refused the key for this: a read-only key can't start or stop pods`
+
+#### A pod's log
+
+`GET /v1/rigs/<rig>/runpod/logs` reads the pod's log from RunPod (`GET /v2/pods/<pod>/logs`, Server-Sent Events). RunPod sends the last `tail` lines first, then new ones as the pod prints them; control reads what came and stops once `tail` lines came, once no line came for 2 seconds, or after 10 seconds in all. It is the one place that says why a pod runs but never enrolls: before enrollment, control sees nothing else of the rig. The MCP tool [`runpod_rig_logs`](mcp-tools.md#runpod_rig_logs) reads the same.
+
+| Query | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `tail` | whole number, 1 or more | `200` | The lines to read, the newest. Above 2000: 2000 |
+| `source` | `container` or `system` | both | `container`: what the rig image printed. `system`: RunPod's own steps, such as the image pull |
+
+```json title="GET /v1/rigs/rp-1a2b3c4d/runpod/logs?tail=3"
+{
+  "rig": "rp-1a2b3c4d",
+  "pod": "abc123xyz",
+  "lines": [
+    { "source": "system", "ts": "2026-06-01T12:02:01Z", "line": "Pulling image ghcr.io/example/thermite-rig:0.1.0-cuda" },
+    { "source": "system", "ts": "2026-06-01T12:02:40Z", "line": "Container started" },
+    { "source": "container", "ts": "2026-06-01T12:02:43Z", "line": "supervisor: waiting for control to enroll this pod" }
+  ],
+  "read_at": "2026-06-01T12:05:10.512Z"
+}
+```
+
+`lines` are oldest first; `ts` is when RunPod logged each one. Before a line leaves control, what looks like a credential is taken out of it, as in control's own log: a URL's user and password, a bearer token, and keys with a known prefix, such as `hf_…`, which becomes `hf_***`. A terminal's colour codes are taken out too. A line that is not RunPod's JSON is left out.
+
+When RunPod refuses, the 502 says why, never with the key: `RunPod refused to show pod <pod>'s log with this key: the key may not read pod logs. A key with read access to pods can` (403), `RunPod refused the key: it is wrong or was revoked. Check it in Settings › Providers` (401), `RunPod has no pod <pod>: it was removed, or it is not this key's account's` (404), `RunPod is limiting calls to its API: try again in 30 s` (429), or `control could not reach RunPod: …`. Control keeps each rig's last read, or why it failed, in memory for the rig's page ([Pod log](rig-page.md#pod-log)), and writes no line to its store.
 
 #### When a rig is idle
 

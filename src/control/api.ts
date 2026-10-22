@@ -67,7 +67,7 @@ import {
 } from "./rig-settings.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
-import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
+import { type LaunchRequest, type LimitsChange, podLogQuery, RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { bodyRefusal, StartRunBody, startRunAnswer, startRunRequest } from "./start-run.ts";
@@ -1522,6 +1522,19 @@ export function createControlApi(
     return v
       ? c.json({ ...v, history: runpodRigs.history(rig) })
       : c.json({ error: "not found" }, 404);
+  });
+  // A rig's pod log, read from RunPod with the cloud's key: the owner's, as the rig's other reads
+  // here. It spends nothing; each line is redacted before it leaves control.
+  app.get("/v1/rigs/:rig/runpod/logs", admin, async (c) => {
+    const rig = c.req.param("rig");
+    if (!runpodRigs.view(rig)) return c.json({ error: "not found" }, 404);
+    const q = podLogQuery(c.req.query("tail"), c.req.query("source"));
+    if ("error" in q) return c.json({ error: q.error }, 400);
+    try {
+      return c.json(await runpodRigs.logs(rig, q));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 502);
+    }
   });
   // Stop, start and terminate a rig's pod (the owner's alone, as the launch). Restart and the full
   // reset are the routes every rig has: /v1/rigs/<rig>/restart and /v1/rigs/<rig>/reset.

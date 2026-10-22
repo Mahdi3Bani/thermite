@@ -14,7 +14,8 @@
  * - `said` shows beside the form, or at the top of the page for a button in the header, an
  *   inline button, or a form that a redraw took away. Times in data-since count on each second.
  * - Start a run and Edit rig's Save post as before (the page they open follows the action), and
- *   their button says "Sending…" at once.
+ *   their button says "Sending…" at once. A button with data-busy says that instead, such as the
+ *   pod log's "Reading…"; a form with data-autoread is sent once as the page opens.
  *
  * FOLLOW_CORE_JS touches no page, and the tests run it as the browser does
  * (action-progress.test.ts). Without this script every form posts as before, and control answers
@@ -220,7 +221,7 @@ export const FOLLOW_JS = `
     try { body = new URLSearchParams(new FormData(form, submitter || undefined)); }
     catch { body = new URLSearchParams(new FormData(form)); }
     const o = { form, btn, label: btn ? btn.innerHTML : "", note: null };
-    if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+    if (btn) { btn.disabled = true; btn.textContent = btn.dataset.busy || "Sending…"; }
     let a;
     try {
       const res = await fetch(form.getAttribute("action"), { method: "POST", body, credentials: "same-origin", headers: { accept: "application/json" } });
@@ -287,5 +288,8 @@ export const FOLLOW_JS = `
     poll();
   }, 1000);
   scan(document);
+  // A block read on demand that has nothing to show yet reads once as the page opens (a RunPod
+  // rig's pod log before the rig reports).
+  for (const f of document.querySelectorAll("form[data-act][data-autoread]")) send(f, null);
 })();
 `;
