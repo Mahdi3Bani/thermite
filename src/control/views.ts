@@ -1,6 +1,8 @@
 import { directionOf, isLegacyRule, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { type Hardware, readHardware } from "../core/hardware.ts";
+import { clip } from "../core/kb-index.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
@@ -54,6 +56,73 @@ export interface AttemptView {
   /** The files it changes, with their line counts (null for a binary file), and how many. */
   files: { path: string; added: number | null; removed: number | null }[];
   files_total: number;
+  /**
+   * Why the static checks refused it before building (goal 082): the first 20 violations, each
+   * cut to 300 characters, and how many there were. Empty, and 0, when it was not refused or its
+   * rig's harness is older.
+   */
+  violations: string[];
+  violations_total: number;
+  /**
+   * Its newest confirmation's held-out check, for the owner (goal 082): whether every held-out
+   * cell passed, and each cell's name, kind of failure and value against its threshold. Null when
+   * no held-out check ran, or its rig's harness is older.
+   */
+  held_out: HeldOutView | null;
+}
+
+/** One held-out check of an attempt, from the judge's `held_out_checked` event. */
+export interface HeldOutView {
+  at: string;
+  pass: boolean;
+  cells: {
+    cell: string;
+    goal: string | null;
+    verifier: string | null;
+    ok: boolean;
+    kind: string | null;
+    value: number | null;
+    low: number | null;
+    high: number | null;
+    threshold: number | null;
+    op: string | null;
+    measure: string | null;
+    unit: string | null;
+  }[];
+  /** How many cells the check had; the event names at most 50. */
+  cells_total: number;
+}
+
+/** A held-out check from its event's body, each field checked: the rig's report is data. */
+function heldOutView(at: string, b: Record<string, unknown>): HeldOutView {
+  const txt = (v: unknown, n = 200) => (typeof v === "string" ? clip(v, n) : null);
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const cells = (Array.isArray(b.cells) ? b.cells : []).slice(0, 50).flatMap((x) => {
+    const c = (x ?? {}) as Record<string, unknown>;
+    if (typeof c.cell !== "string") return [];
+    return [
+      {
+        cell: clip(c.cell, 200),
+        goal: txt(c.goal),
+        verifier: txt(c.verifier),
+        ok: c.ok === true,
+        kind: txt(c.kind, 40),
+        value: num(c.value),
+        low: num(c.low),
+        high: num(c.high),
+        threshold: num(c.threshold),
+        op: c.op === ">=" || c.op === ">" || c.op === "<=" || c.op === "<" ? c.op : null,
+        measure: txt(c.measure),
+        unit: txt(c.unit, 40),
+      },
+    ];
+  });
+  return {
+    at,
+    pass: b.pass === true,
+    cells,
+    cells_total: typeof b.cells_total === "number" ? b.cells_total : cells.length,
+  };
 }
 
 /** A judge job, from its queued, leased and finished events. */
@@ -121,6 +190,11 @@ export interface RunView {
   /** When the judge last checked the goals, and on which champion. */
   goals_at: string | null;
   goals_seq: number | null;
+  /**
+   * How each goal is really checked, as the rig's kit runs it (goal 082): from the rig's
+   * `goal_checks` event when the run started. Null for a run an older harness started.
+   */
+  goal_checks: GoalChecks | null;
   /** Audits (M5): what is held for one, and how each ended. */
   audits: {
     attempt: string;
@@ -465,6 +539,41 @@ export interface RigCheckView {
   summary: string | null;
   /** A check that passed with a caveat says it here (the smoke check on noisy timing). */
   note: string | null;
+  /** The rig's id for this run of the check (rig_check's answer names it), or null. */
+  id: string | null;
+}
+
+/**
+ * Each check's newest run, from the rig's rig_check_started and rig_check_finished events: the
+ * rig's view, and a check's row on the dashboard, which reads only these events (goal 080).
+ */
+export function foldCheck(
+  checks: Record<string, RigCheckView>,
+  e: { at: string; kind: string; body: unknown },
+): void {
+  const b = (e.body ?? {}) as Record<string, unknown>;
+  const check = String(b.check ?? "");
+  const id = typeof b.id === "string" ? b.id : null;
+  if (e.kind === "rig_check_started")
+    checks[check] = {
+      check,
+      started_at: e.at,
+      finished_at: null,
+      ok: null,
+      summary: null,
+      note: null,
+      id,
+    };
+  else if (e.kind === "rig_check_finished")
+    checks[check] = {
+      check,
+      started_at: checks[check]?.started_at ?? e.at,
+      finished_at: e.at,
+      ok: b.ok === true,
+      summary: typeof b.summary === "string" ? b.summary : null,
+      note: typeof b.note === "string" ? b.note : null,
+      id: id ?? checks[check]?.id ?? null,
+    };
 }
 
 export function rigEvents(
@@ -534,6 +643,7 @@ export function rigView(
         goals: [],
         goals_at: null,
         goals_seq: null,
+        goal_checks: null,
         audits: [],
         promotion_waits: {},
         reviews: [],
@@ -579,30 +689,10 @@ export function rigView(
   for (const e of events) {
     const b = e.body ?? {};
     switch (e.kind) {
-      case "rig_check_started": {
-        const check = String(b.check ?? "");
-        checks[check] = {
-          check,
-          started_at: e.at,
-          finished_at: null,
-          ok: null,
-          summary: null,
-          note: null,
-        };
+      case "rig_check_started":
+      case "rig_check_finished":
+        foldCheck(checks, e);
         break;
-      }
-      case "rig_check_finished": {
-        const check = String(b.check ?? "");
-        checks[check] = {
-          check,
-          started_at: checks[check]?.started_at ?? e.at,
-          finished_at: e.at,
-          ok: b.ok === true,
-          summary: typeof b.summary === "string" ? b.summary : null,
-          note: typeof b.note === "string" ? b.note : null,
-        };
-        break;
-      }
       case "run_created": {
         const v = inst(String(e.subject));
         v.campaign = String(b.campaign ?? "");
@@ -672,6 +762,16 @@ export function rigView(
               )
             : [],
           files_total: typeof b.files_total === "number" ? b.files_total : 0,
+          violations: Array.isArray(b.violations)
+            ? b.violations.slice(0, 20).map((v) => clip(String(v), 300))
+            : [],
+          violations_total:
+            typeof b.violations_total === "number"
+              ? b.violations_total
+              : Array.isArray(b.violations)
+                ? b.violations.length
+                : 0,
+          held_out: null,
         };
         attempts.set(a.id, a);
         inst(a.run).attempts.push(a);
@@ -706,6 +806,15 @@ export function rigView(
             confirmDelta.set(a.id, b.delta);
           }
         }
+        break;
+      }
+      case "held_out_checked": {
+        const a = attempts.get(String(e.subject));
+        if (a) a.held_out = heldOutView(e.at, b);
+        break;
+      }
+      case "goal_checks": {
+        inst(String(e.subject)).goal_checks = parseGoalChecks(b);
         break;
       }
       case "champion_promoted": {

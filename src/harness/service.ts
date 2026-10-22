@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { z } from "zod";
 import type { McpConnect } from "../common/mcp-client.ts";
+import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
   CommandPayloads,
@@ -50,8 +51,10 @@ import {
   showFile,
   updateRef,
 } from "./git.ts";
+import { goalChecks } from "./goal-checks.ts";
 import { importBundle, importFile } from "./imports.ts";
 import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
+import { heldOutWords } from "./judge/held-out.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
@@ -61,10 +64,11 @@ import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf } from "./research/folder.ts";
+import { startingHypotheses } from "./research/research.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { ModelUsage } from "./usage.ts";
-import { checkV0 } from "./v0.ts";
+import { checkV0, violationsOf } from "./v0.ts";
 
 /** A directive set may not both avoid a direction and ask for it. */
 function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
@@ -808,6 +812,7 @@ export class HarnessService {
     // The kit is checked against the contract now, not when the judge first needs it.
     const kitRef = contract.mode !== "research" ? contract.project.kit : undefined;
     let named: McpUse[] = [];
+    let checkedKit: Kit | undefined;
     if (kitRef) {
       const mirror = this.mirrorFor(`kit-${kitRef.repo}`);
       if (!(await hasCommit(mirror, kitRef.commit))) {
@@ -827,6 +832,7 @@ export class HarnessService {
       if (problems.length)
         throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
       named = kit.mcp_servers ?? [];
+      checkedKit = kit;
     }
     // The MCP servers the kit names (a research contract's), as the signed command says them:
     // control gives the rig only those servers, so the two must agree.
@@ -867,10 +873,22 @@ export class HarnessService {
         briefing: p.briefing?.map((b) => ({ text: b.text, from: b.from })),
         actor: by,
       });
+      // A research run starts with its campaign's hypotheses as its own (goal 078).
+      if (contract.mode === "research" && contract.hypotheses?.length)
+        startingHypotheses(this.ledger, p.run, contract.hypotheses, by);
       // The MCP servers the run's agents use, and which agents get each: what the gateway and
       // the advisors read from now on (goal 068).
       if (named.length)
         this.ledger.appendEvent(by, "mcp_servers", p.run, { servers: canonicalUses(named) });
+      // How each goal is really checked, as this rig's kit runs it (goal 082): control shows it
+      // on the campaign's and the run's pages, also for a kit only the rig has.
+      if (contract.mode === "goal" && checkedKit && kitRef)
+        this.ledger.appendEvent(
+          by,
+          "goal_checks",
+          p.run,
+          goalChecks(contract, { kit: checkedKit, repo: kitRef.repo, commit: kitRef.commit }),
+        );
       // Another run's untried experiments start this run's queue, in order, each with who added
       // it, why, its state and where it came from.
       for (const s of p.queue ?? [])
@@ -1181,10 +1199,15 @@ export class HarnessService {
 
   /** What the supervisor's auditor sees for each open audit: the package and the diff. */
   async auditPackages(): Promise<
-    (AuditPackage & { diff: string; owner_messages: { id: number; at: string; text: string }[] })[]
+    (AuditPackage & {
+      campaign_brief?: BriefData;
+      diff: string;
+      owner_messages: { id: number; at: string; text: string }[];
+    })[]
   > {
     const audits = new Audits(this.ledger);
     const out: (AuditPackage & {
+      campaign_brief?: BriefData;
       diff: string;
       owner_messages: { id: number; at: string; text: string }[];
     })[] = [];
@@ -1201,8 +1224,12 @@ export class HarnessService {
         String(a.parent_commit),
         String(a.commit_sha),
       );
+      // The campaign's brief from its author, whole, before the diff (goal 078): a package too
+      // long for the auditor's window is cut at its end.
+      const brief = briefData(this.contractFor(row.run));
       out.push({
         ...pkg,
+        ...(brief ? { campaign_brief: brief } : {}),
         diff: diff.slice(0, 200_000),
         // The owner's messages the auditor has not read (to it, or to all the advisors).
         owner_messages: this.ownerMessagesFor(row.run, "auditor"),
@@ -1214,13 +1241,20 @@ export class HarnessService {
 
   /** Reviews waiting for the panel, each with the owner's messages the panel has not read. */
   reviewPackages(): (ReviewPackage & {
+    campaign_brief?: BriefData;
     owner_messages: { id: number; at: string; text: string }[];
   })[] {
-    return new Reviews(this.ledger).pending().map((r) => ({
-      ...r,
-      owner_messages: this.ownerMessagesFor(r.run, "panel"),
-      ...this.backgroundFor(r.run),
-    }));
+    return new Reviews(this.ledger).pending().map(({ diff, ...r }) => {
+      // The campaign's brief from its author, whole, before the diff (goal 078).
+      const brief = briefData(this.contractFor(r.run));
+      return {
+        ...r,
+        ...(brief ? { campaign_brief: brief } : {}),
+        diff,
+        owner_messages: this.ownerMessagesFor(r.run, "panel"),
+        ...this.backgroundFor(r.run),
+      };
+    });
   }
 
   /** A run's background from past research, for an advisor's brief or package (when it has one). */
@@ -1390,11 +1424,7 @@ export class HarnessService {
     this.requireRun(run);
     if (attempt) return oneAttempt(this.ledger, run, attempt);
     return {
-      attempts: recentAttempts(this.ledger, run, {
-        limit: 40,
-        reasonChars: 2000,
-        hypothesisChars: 2000,
-      }),
+      attempts: recentAttempts(this.ledger, run, { limit: 40, reasonChars: 2000 }),
       tried: triedCauses(this.ledger, this.queue, run, { limit: 40, causeChars: 1200 }),
     };
   }
@@ -1432,6 +1462,7 @@ export class HarnessService {
             status: string;
           }[])
         : undefined;
+    const brief = briefData(contract);
     return {
       rig: this.rig,
       run,
@@ -1449,6 +1480,9 @@ export class HarnessService {
                 required: g.required,
               }))
             : { topic: contract.topic, questions: contract.questions },
+      // The campaign's brief from its author, whole (goal 078): ahead of the long parts, so a
+      // brief cut to the teacher's window loses the evidence first.
+      ...(brief ? { campaign_brief: brief } : {}),
       editable_paths: "editable_paths" in contract ? contract.editable_paths : [],
       // Its commit: the tree the teachers read with their code tools (goal 081).
       champion: { seq: champion.seq, attempt: champion.attempt, commit: champion.commit_sha },
@@ -1474,13 +1508,10 @@ export class HarnessService {
           ...(x.result ? { result: x.result } : {}),
           ...(x.dropped_why ? { dropped: x.dropped_why.slice(0, 200) } : {}),
         })),
-      // The newest attempts with the judge's public reasons and the v0 refusals (goal 081); the
+      // The newest attempts: the planner's evidence, with a refused change's violations and a
+      // held-out failure's kind (goal 082), and the judge's public reasons (goal 081); the
       // teachers read each in full with their tools.
-      evidence: recentAttempts(this.ledger, run, {
-        limit: 20,
-        reasonChars: 400,
-        hypothesisChars: 600,
-      }),
+      evidence: recentAttempts(this.ledger, run, { limit: 20, reasonChars: 400 }),
       epochs,
       // A teachers' rule that freezes the queue or pins an experiment, set before code refused
       // them, is marked: it no longer reaches the planner (goal 081).
@@ -1956,18 +1987,26 @@ export class HarnessService {
     }
   }
 
-  /** What a proposer may see about its own attempt: lifecycle, verdict and V0 findings. */
+  /**
+   * What a proposer may see about an attempt: lifecycle, verdict and V0 findings, with the
+   * violations of a refused change at the top (`violations`, all of them).
+   */
   attemptStatus(id: string): unknown {
     const a = this.ledger.getAttempt(id);
     if (!a) throw new LedgerError("not_found", `no attempt ${id}`);
     const verdict = this.ledger.currentVerdict(id);
+    const heldOut = this.ledger.heldOutFailure(id);
     return {
       attempt: id,
       run: a.run,
+      lane: a.lane ?? null,
       lifecycle: a.lifecycle,
       commit: a.commit_sha,
       v0: a.v0 ? JSON.parse(String(a.v0)) : null,
+      violations: violationsOf(a.v0),
       verdict: verdict ? { verdict: verdict.verdict } : null,
+      // Only that a held-out check failed, and how (goal 082): never which cell, or why.
+      held_out: heldOut ? heldOutWords(heldOut) : null,
     };
   }
 

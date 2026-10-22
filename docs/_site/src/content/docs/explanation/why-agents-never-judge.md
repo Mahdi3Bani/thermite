@@ -23,7 +23,7 @@ So in Thermite, agents only propose. A **judge**, which is ordinary code that th
 | Read and edit the project in their own workspace, build it and test their changes | Read or change the judge, the project's [kit](kits.md) or its hidden test cases |
 | Use the measuring device for their own test runs while the judge is not using it, or a device of their own on a rig that has one | Run anything on the judge's device while it is timing |
 | Submit a change, with what they expect from it and any flaws they know of | Submit a number that counts |
-| See the verdict and the judge's reasons for their own lane's attempts | See hidden test results, other agents' workspaces or any credentials |
+| See the verdict and the judge's reasons for their own lane's attempts, and the state, verdict and refusals of any attempt of their campaign | See hidden test results, other agents' workspaces or any credentials |
 | Work on the experiment the planner gives them, and propose ideas for the run's queue | Decide that a campaign is finished |
 
 The [isolation](isolation.md) page explains how a rig enforces this: each agent works as its own operating-system user, with no way into the judge's files.
@@ -54,7 +54,7 @@ flowchart LR
 3. **Built.** The judge builds the change itself, as a separate user, within the kit's time, memory and disk limits. It stores what the build produced, read-only, and checks it again before every run.
 4. **Gate.** The judge runs each test case (a **cell** of the kit; the dashboard says **case**) once for the change and once for the current champion. The kit's check must pass: correct output, plus whatever else the kit checks. A failure here gives the verdict `invalid` or `crash_candidate`.
 5. **Screen.** The change and the champion are timed together, in blocks that alternate between the two in a random order, on the same device. The statistics are set in the contract before the run starts: how big a gain must be to count, and what counts as "no different". A block is thrown away and run again when the machine was slowed down by something else during it.
-6. **Confirm.** A change that looks better is measured again in fresh blocks, and decided on that new data alone. Now the judge also runs the **hidden test cases**: cases it uses only here, never while screening, so no agent can tune a change to them. Their results never reach the agents.
+6. **Confirm.** A change that looks better is measured again in fresh blocks, and decided on that new data alone. Now the judge also runs the **hidden test cases**: cases it uses only here, never while screening, so no agent can tune a change to them. When one fails, the agents learn only that a hidden check failed, and how (it timed out, crashed, failed the check, gave no number, or missed its threshold); you see which case, and its value against its threshold ([Held-out failures](../reference/verdicts.md#held-out-failures)).
 7. **Audit, sometimes.** A surprisingly large gain, or a change whose agent declared known flaws, goes to an auditor first. An audit can hold a result back, but it can never pass one. Some results then wait for your decision.
 8. **Promoted.** The champion moves only if no other change replaced it in the meantime. If one did, the change is screened again against the new champion.
 

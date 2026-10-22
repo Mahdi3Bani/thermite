@@ -20,6 +20,18 @@ import { McpUses } from "../core/mcp.ts";
 
 const Argv = z.array(z.string().min(1)).min(1);
 const Mib = z.number().int().positive();
+/** A cell's parameters: what a run receives through {params} and {params_json}. */
+const CellParams = z.record(z.string(), z.union([z.number(), z.string(), z.boolean()]));
+export type CellParams = z.infer<typeof CellParams>;
+/**
+ * A cell: its parameters alone, or `{params, timeout_s}` to give it its own time limit, which
+ * overrides `run.timeout_s` for its runs (a slow diagnostic cell need not set every cell's limit).
+ * A parameter's value is never an object, so the two forms cannot be confused.
+ */
+const Cell = z.union([
+  z.strictObject({ params: CellParams, timeout_s: z.number().int().positive().optional() }),
+  CellParams,
+]);
 /** A path inside the kit, never the whole kit. */
 const KitPath = z
   .string()
@@ -50,11 +62,11 @@ const KitFields = z.strictObject({
     rss_mib: Mib.default(4096),
     disk_mib: Mib.default(4096),
   }),
-  /** Every measurable cell and its parameters. The contract chooses which cells count. */
-  cells: z.record(
-    z.string().min(1),
-    z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])),
-  ),
+  /**
+   * Every measurable cell and its parameters, and its own time limit where it has one. The
+   * contract chooses which cells count.
+   */
+  cells: z.record(z.string().min(1), Cell),
   /** One timed run of one arm on one cell, as the run user. */
   run: z.strictObject({
     /**
@@ -181,6 +193,26 @@ export type Kit = z.infer<typeof KitSchema>;
 
 export function loadKit(dir: string): Kit {
   return KitSchema.parse(JSON.parse(readFileSync(join(dir, "kit.json"), "utf8")));
+}
+
+/** A cell as the kit gives it, in either form. */
+type KitCell = Kit["cells"][string];
+
+const wrapped = (c: KitCell): c is { params: CellParams; timeout_s?: number | undefined } =>
+  typeof (c as { params?: unknown }).params === "object" &&
+  (c as { params?: unknown }).params !== null;
+
+/** A cell's parameters, in either of its forms; undefined when the kit has no such cell. */
+export function cellParams(kit: Kit, cell: string): CellParams | undefined {
+  const c = Object.hasOwn(kit.cells, cell) ? kit.cells[cell] : undefined;
+  if (!c) return undefined;
+  return wrapped(c) ? c.params : (c as CellParams);
+}
+
+/** A cell's run time limit in seconds: its own `timeout_s`, else the kit's `run.timeout_s`. */
+export function cellTimeoutS(kit: Kit, cell: string): number {
+  const c = Object.hasOwn(kit.cells, cell) ? kit.cells[cell] : undefined;
+  return (c && wrapped(c) ? c.timeout_s : undefined) ?? kit.run.timeout_s;
 }
 
 export function expandArgv(argv: readonly string[], vars: Record<string, string>): string[] {

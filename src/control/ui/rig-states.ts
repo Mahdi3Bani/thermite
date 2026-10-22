@@ -69,8 +69,8 @@ const minutes = (ms: number) => {
 };
 
 /** A form with the CSRF token and one button. */
-const button = (action: string, label: string, t: string, cls = "", extra = "") =>
-  `<form class="inline" method="post" action="${esc(action)}"><input type="hidden" name="csrf" value="${esc(t)}">${extra}<button class="${cls}">${esc(label)}</button></form>`;
+const button = (action: string, label: string, t: string, cls = "", extra = "", attrs = "") =>
+  `<form class="inline" method="post" action="${esc(action)}"${attrs}><input type="hidden" name="csrf" value="${esc(t)}">${extra}<button class="${cls}">${esc(label)}</button></form>`;
 
 /** Retire it, behind a typed confirmation (the rig's page and its banners). */
 export function retireMenu(rig: string, t: string): string {
@@ -132,7 +132,8 @@ function selfUpdateWords(o: RigStateInput, to: string): string {
 function updateAct(o: RigStateInput, to: string): string {
   if (!o.place.update) return "";
   if (o.updating) return `<button disabled>Updating…</button>`;
-  return button(`${rigUrl(o.u.id)}/update`, `Update to ${to}`, o.csrf, "primary");
+  // data-act: the page's script sends it and follows the update's steps (goal 080).
+  return button(`${rigUrl(o.u.id)}/update`, `Update to ${to}`, o.csrf, "primary", "", " data-act");
 }
 
 /** The banner for a rig control refuses. */

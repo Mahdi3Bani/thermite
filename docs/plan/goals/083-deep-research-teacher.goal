@@ -1,5 +1,5 @@
 ---
-id: "082"
+id: "083"
 title: "A deep-research teacher that runs on a trigger"
 status: PROPOSED
 version: "0.2.0"
@@ -8,7 +8,7 @@ created: 2026-10-22
 updated: 2026-10-22
 ---
 
-# 082 · A deep-research teacher that runs on a trigger
+# 083 · A deep-research teacher that runs on a trigger
 
 **Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
 
@@ -44,7 +44,8 @@ None yet.
 ## Progress
 
 - 2026-10-22: Goal written as a plan, from the owner's request on goal 081.
+- 2026-10-22: Renumbered from 082, which goal 082 (the judge's findings in view) took first.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/082-deep-research-teacher.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/083-deep-research-teacher.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,7 +1,9 @@
+import { type Evidence, evidenceOf, Registry } from "./agents/registry.ts";
 import { GitError, readableDiff, treeFile, treeFiles } from "./git.ts";
 import { clipReason } from "./judge/reasons.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import type { ExperimentQueue } from "./queue.ts";
+import { shownViolations, violationsOf } from "./v0.ts";
 
 /**
  * What the teachers may read of a run's code and evidence (goal 081), read only: the champion's
@@ -12,11 +14,13 @@ import type { ExperimentQueue } from "./queue.ts";
  * - The code is the champion's commit in the run's project repository: the tree every worker
  *   starts from, and the diffs workers wrote. The kit (its cases, checks and references) is in
  *   another repository, which nothing here reads.
- * - The judge's findings are its verdict, its change and its reasons, and the checks that refused
- *   an attempt before it was built (v0). The judge writes held-out results only to its held_out
- *   table, never into a verdict's reasons, a measurement or an event, and a failed confirmation
- *   with held-out cells carries no figures. Nothing here reads the held_out table, measurements
- *   or the judge's jobs.
+ * - The judge's findings are the planner's evidence (registry.ts, goal 082) with the judge's
+ *   reasons: its verdict, its change and its reasons, the checks that refused an attempt before
+ *   it was built, and, for a confirmation that failed on held-out cells, only the fixed words of
+ *   how a held-out check failed. The judge writes held-out results only to its held_out table,
+ *   never into a verdict's reasons, a measurement or an event; from that table nothing here gets
+ *   more than those words: never a cell, its values, its inputs or its outputs. Nothing here
+ *   reads measurements or the judge's jobs.
  */
 
 /** The most entries one listing returns: narrow the folder for the rest. */
@@ -45,21 +49,16 @@ export function treePath(path: string): string {
   return p;
 }
 
-/** The judge's public findings on one attempt, and the worker's own words about it. */
-export interface AttemptEvidence {
-  attempt: string;
-  lane: string | null;
-  family: string | null;
+/**
+ * The judge's public findings on one attempt: the planner's evidence (its hypothesis, verdict,
+ * change, `refused` and `held_out`, goal 082), with the judge's reasons and the queue's
+ * experiment it came from.
+ */
+export interface AttemptEvidence extends Evidence {
   /** The queue's experiment the attempt came from, when it had one. */
   experiment: { id: string; title: string } | null;
-  hypothesis: string | null;
-  lifecycle: string;
-  verdict: string | null;
-  delta: number | null;
   /** The judge's reasons for its verdict (public: never a held-out result). */
   reasons: string | null;
-  /** Why the change was refused before it was built (the v0 checks), when it was. */
-  refused_before_building: string[];
   /** Only in one attempt's full evidence: its claim and its declared flaws. */
   claim?: string | null;
   known_flaws?: string[];
@@ -68,53 +67,21 @@ export interface AttemptEvidence {
 type Row = Record<string, unknown>;
 const str = (v: unknown) => (v === null || v === undefined ? null : String(v));
 
-function evidenceOf(
-  ledger: Ledger,
-  a: Row,
-  o: { reasonChars: number; hypothesisChars: number; full: boolean },
-): AttemptEvidence {
-  const id = String(a.id);
-  const v = ledger.currentVerdict(id);
-  const row = v
-    ? (ledger.db.prepare("select delta, reasons from verdict where id = ?").get(v.id) as
-        | { delta: number | null; reasons: string }
+/** The planner's evidence of an attempt, with the judge's reasons and its experiment. */
+function withReasons(ledger: Ledger, e: Evidence, reasonChars: number): AttemptEvidence {
+  const v = ledger.currentVerdict(e.attempt);
+  const reasons = v
+    ? (ledger.db.prepare("select reasons from verdict where id = ?").get(v.id) as
+        | { reasons: string }
         | undefined)
     : undefined;
   const x = ledger.db
     .prepare("select id, title from experiment where attempt = ? order by updated_at desc limit 1")
-    .get(id) as { id: string; title: string } | undefined;
-  let violations: string[] = [];
-  try {
-    violations = a.v0
-      ? ((JSON.parse(String(a.v0)) as { violations?: string[] }).violations ?? [])
-      : [];
-  } catch {
-    violations = [];
-  }
-  const hyp = str(a.hypothesis);
+    .get(e.attempt) as { id: string; title: string } | undefined;
   return {
-    attempt: id,
-    lane: str(a.lane),
-    family: str(a.family),
+    ...e,
     experiment: x ? { id: x.id, title: x.title } : null,
-    hypothesis: hyp === null ? null : clipReason(hyp, o.hypothesisChars),
-    lifecycle: String(a.lifecycle),
-    verdict: v?.verdict ?? null,
-    delta: typeof row?.delta === "number" ? row.delta : null,
-    reasons: row?.reasons ? clipReason(row.reasons, o.reasonChars) : null,
-    refused_before_building: violations.map((s) => clipReason(String(s), o.reasonChars)),
-    ...(o.full
-      ? {
-          claim: str(a.claim),
-          known_flaws: (() => {
-            try {
-              return JSON.parse(String(a.known_flaws ?? "[]")) as string[];
-            } catch {
-              return [];
-            }
-          })(),
-        }
-      : {}),
+    reasons: reasons?.reasons ? clipReason(reasons.reasons, reasonChars) : null,
   };
 }
 
@@ -122,22 +89,36 @@ function evidenceOf(
 export function recentAttempts(
   ledger: Ledger,
   run: string,
-  o: { limit: number; reasonChars: number; hypothesisChars: number },
+  o: { limit: number; reasonChars: number },
 ): AttemptEvidence[] {
-  const rows = ledger.db
-    .prepare("select * from attempt where run = ? order by created_at desc limit ?")
-    .all(run, o.limit) as Row[];
-  return rows.map((a) => evidenceOf(ledger, a, { ...o, full: false }));
+  return new Registry(ledger)
+    .evidence(run, o.limit)
+    .map((e) => withReasons(ledger, e, o.reasonChars));
 }
 
-/** One attempt of the run, in full (its reasons as the judge kept them). */
+/**
+ * One attempt of the run, in full: the same shape, with its whole hypothesis, every violation
+ * of a refused change, the judge's reasons as it kept them, its claim and its declared flaws.
+ */
 export function oneAttempt(ledger: Ledger, run: string, attempt: string): AttemptEvidence {
   const a = ledger.getAttempt(attempt);
   if (!a || String(a.run) !== run)
     throw new LedgerError("not_found", `no attempt ${attempt} in run ${run}`);
-  return evidenceOf(ledger, a, { reasonChars: 8000, hypothesisChars: 8000, full: true });
+  const all = violationsOf(a.v0);
+  return {
+    ...withReasons(ledger, evidenceOf(ledger, a), 8000),
+    hypothesis: str(a.hypothesis),
+    ...(all.length ? { refused: shownViolations(all, all.length) } : {}),
+    claim: str(a.claim),
+    known_flaws: (() => {
+      try {
+        return JSON.parse(String(a.known_flaws ?? "[]")) as string[];
+      } catch {
+        return [];
+      }
+    })(),
+  };
 }
-
 /** An experiment tried (done or dropped), with what became of it and why. */
 export interface TriedCause {
   id: string;
@@ -179,16 +160,21 @@ export function triedCauses(
         ),
       };
     if (x.attempt) {
-      const e = evidenceOf(
+      const e = withReasons(
         ledger,
-        (ledger.getAttempt(x.attempt) ?? { id: x.attempt, lifecycle: "unknown" }) as Row,
-        { reasonChars: o.causeChars, hypothesisChars: 200, full: false },
+        evidenceOf(
+          ledger,
+          (ledger.getAttempt(x.attempt) ?? { id: x.attempt, lifecycle: "unknown" }) as Row,
+        ),
+        o.causeChars,
       );
-      const said = e.refused_before_building.length
-        ? `refused before building: ${e.refused_before_building.join("; ")}`
-        : e.reasons
-          ? `the judge: ${e.reasons}`
-          : `the attempt is ${e.lifecycle}`;
+      const said = e.refused
+        ? `refused before building: ${e.refused.violations.join("; ")}${e.refused.total > e.refused.violations.length ? `; and ${e.refused.total - e.refused.violations.length} more` : ""}`
+        : e.held_out
+          ? `${e.held_out}${e.reasons ? `; the judge: ${e.reasons}` : ""}`
+          : e.reasons
+            ? `the judge: ${e.reasons}`
+            : `the attempt is ${e.lifecycle}`;
       return {
         ...base,
         result: x.result ?? "submitted",

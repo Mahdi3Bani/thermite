@@ -1127,12 +1127,9 @@ describe("control dashboard", () => {
     assert.equal(ok.status, 303);
     // The page says the command went, and the decision shows as sent, without its buttons.
     const back = String(ok.headers.get("location"));
-    assert.match(back, /sent=Control%20sent%20the%20command%20to%20rig-a/);
+    assert.match(back, /sent=Sent%20to%20rig-a%20at%20\d\d%3A\d\d%20UTC\./);
     const sent = await (await s.get(back)).text();
-    assert.match(
-      sent,
-      /Control sent the command to rig-a\. The rig does it in less than 10 seconds/,
-    );
+    assert.match(sent, /<b class="ok">Sent to rig-a at \d\d:\d\d UTC\.<\/b>/);
     // The decision leaves Needs you at once, before the rig has done it; the change's own page
     // still says what was chosen.
     const home2 = await (await s.get("/ui")).text();

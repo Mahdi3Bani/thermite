@@ -315,7 +315,8 @@ export function createHarnessApi(
 
   // The teachers' reads of a run's code and evidence (goal 081), read only: the champion's tree,
   // one of its files by lines, an attempt's diff in parts, and the judge's public findings.
-  // Nothing here reads the kit, held-out results or a measurement, and nothing writes.
+  // Nothing here reads the kit, a held-out cell or a measurement, and nothing writes: a failed
+  // held-out check is only its kind in fixed words (goal 082).
   const runOf = (c: { req: { query(k: string): string | undefined } }) =>
     z.string().min(1).max(100).parse(c.req.query("run"));
   const numberOf = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
@@ -770,11 +771,14 @@ export function createHarnessApi(
   app.get("/v1/attempts/:id", async (c) => {
     const id = c.req.param("id");
     if (trialToken(c.req.header("authorization"))) {
-      // A worker sees only its own lane's attempts.
+      // A worker reads any attempt of its own campaign on this rig: its lane's, another lane's
+      // (a hand-out may name one), or an earlier run's (the knowledge base shows those). Its
+      // brief still shows only its own lane's (goal 082).
       const { trial } = trialOf(c.req.header("authorization"));
       const a = service.ledger.getAttempt(id);
-      if (!a || String(a.run) !== trial.run || String(a.lane) !== trial.lane)
-        throw new LedgerError("not_found", `no attempt ${id} in this lane`);
+      const campaign = (run: unknown) => service.ledger.getRun(String(run))?.campaign;
+      if (!a || campaign(a.run) !== campaign(trial.run))
+        throw new LedgerError("not_found", `no attempt ${id} in this campaign`);
       return c.json(service.attemptStatus(id) as object);
     }
     if (!allows(tokens, ["supervisor", "proposer"], c.req.header("authorization")))

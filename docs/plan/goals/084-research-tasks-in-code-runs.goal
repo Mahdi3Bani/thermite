@@ -1,5 +1,5 @@
 ---
-id: "083"
+id: "084"
 title: "Research tasks inside goal and hill-climb runs, with web search"
 status: PROPOSED
 version: "0.2.0"
@@ -8,7 +8,7 @@ created: 2026-10-22
 updated: 2026-10-22
 ---
 
-# 083 · Research tasks inside goal and hill-climb runs, with web search
+# 084 · Research tasks inside goal and hill-climb runs, with web search
 
 **Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
 
@@ -40,7 +40,8 @@ None yet.
 ## Progress
 
 - 2026-10-22: Goal written as a plan, from the owner's request on goal 081.
+- 2026-10-22: Renumbered from 083: goal 082 (the judge's findings in view) took 082 first, and the deep-research teacher moved to 083.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/083-research-tasks-in-code-runs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/084-research-tasks-in-code-runs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

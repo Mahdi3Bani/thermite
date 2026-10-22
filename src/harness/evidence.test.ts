@@ -152,6 +152,12 @@ describe("the teachers' reads of a run's code and evidence (goal 081)", () => {
       assert.ok(!text.includes("HELD-OUT-MARKER"), "no held-out detail");
       assert.ok(!text.includes('"held"'), "no held-out cell");
     }
+    // Of that failed held-out check, the teachers get only its kind in fixed words (goal 082),
+    // in the same shape as the planner's evidence.
+    assert.equal(reads[2]?.body.held_out, "a held-out check failed");
+    const attempts = (reads[1]?.body.attempts ?? []) as { attempt: string; held_out?: string }[];
+    const listed = attempts.find((a) => a.attempt === fast);
+    assert.equal(listed?.held_out, "a held-out check failed");
     // The kit is another repository: its files are not in the champion's tree.
     for (const path of ["kit.json", "check.mjs", "bench/run.mjs"])
       assert.equal((await get(`/v1/code/file?run=js-1&path=${path}`)).status, 404, path);

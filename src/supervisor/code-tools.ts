@@ -9,8 +9,9 @@ import { z } from "zod";
  * serves them on localhost for the call (past-mcp.ts), as the past-research search is.
  *
  * Held-out content stays out: the harness reads only the champion's commit of the project
- * repository and the attempts' diffs (never the kit), and the judge's verdicts, reasons and
- * v0 refusals (never its held-out table or measurements). See src/harness/evidence.ts.
+ * repository and the attempts' diffs (never the kit), and the judge's verdicts, reasons and v0
+ * refusals, with, for a failed held-out check, only its kind in fixed words (goal 082): never a
+ * held-out cell, its values or its texts, and no measurement. See src/harness/evidence.ts.
  */
 
 /** A run's code and evidence, as the supervisor reads them from the harness for its teachers. */

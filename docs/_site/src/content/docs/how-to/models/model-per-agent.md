@@ -44,9 +44,9 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
    A program that can't run the model is refused in a red line under the agent's line, such as "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
 5. To change an agent's context window or the point where its conversation is compacted, see [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
 6. Read the list under **What changes when you save**, at the foot of the page. It says each change in a short sentence, such as "You change the auditor's model to my-model." and "You change where the auditor runs to Claude Code." While a line is refused, the list says why instead, such as "Not saved yet (the auditor): A Claude subscription runs only in Claude Code: …", and **Save changes** is off.
-7. Press **Save changes**.
+7. Press **Save changes**. The button says **Sending…** at once.
 
-You return to the rig's page, which says, for example, "Control sent a new model and a model for the auditor to rig-1. The rig takes the change in less than one minute."
+You return to the rig's page, which says, for example, "Control sent a new model and a model for the auditor to rig-1. The rig takes the change in less than one minute." When the save also changed the rig's settings, the line goes on with how their command stands, and changes by itself: `Sent to rig-1 at 03:41 UTC. Waiting for the rig to take it.`, then `Done. rig-1 took it at 03:41 UTC.` While the rig takes a new model for its workers, its **Checks** block follows it, and shows its model check as it runs.
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
 
@@ -158,7 +158,7 @@ The answer adds "Its context window: 131,072 tokens (capped; the provider allows
 
 The rig sets each agent's window and point. A campaign can set its own for all its runs, for example to run two rigs on different models at the same window. Each agent's window is then the lower of the campaign's and its own, and the campaign's point replaces the rig's.
 
-On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **4 · Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
+On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **5 · Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
 
 - **MCP**: [`set_campaign_context`](../../reference/mcp-tools.md#set_campaign_context) with `{ "campaign": "sort-speed", "context_window": 131072, "compact_at": 70 }`.
 - **REST**: [`POST /v1/campaigns/<campaign>/context`](../../reference/rest-api.md#a-campaigns-context-settings) with `{"context_window": 131072, "compact_at": 70}`.
