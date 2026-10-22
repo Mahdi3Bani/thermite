@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
+import { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
@@ -57,6 +58,8 @@ export interface RunRow {
   agents: boolean;
   /** The run's own promotion policy; null: the rig's default. */
   promotion: "auto" | "owner_approval" | null;
+  /** What else the run asks the owner about (goal 079); none: nothing. */
+  ask_owner: AskOwner;
 }
 
 export interface JobRow {
@@ -379,6 +382,8 @@ export class Ledger {
     agents?: boolean | undefined;
     /** The run's own promotion policy (unset: the rig's default). */
     promotion?: "auto" | "owner_approval" | undefined;
+    /** What else the run asks the owner about (goal 079). */
+    askOwner?: AskOwner | undefined;
     /** Background from past research for every agent's brief, in order (goal 065). */
     briefing?: BriefingItem[] | undefined;
     actor: string;
@@ -398,7 +403,8 @@ export class Ledger {
       const at = this.now();
       this.run(
         `insert into run (id, campaign, version, contract_sha, mode, seed_repo, seed_commit,
-           direction, status, agents, promotion, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
+           direction, status, agents, promotion, ask_owner, created_at, updated_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
         input.id,
         input.contract.campaign,
         input.contract.version,
@@ -409,6 +415,7 @@ export class Ledger {
         input.direction ?? null,
         input.agents === false ? 0 : 1,
         input.promotion ?? null,
+        input.askOwner && Object.keys(input.askOwner).length ? canonicalJson(input.askOwner) : null,
         at,
         at,
       );
@@ -459,6 +466,9 @@ export class Ledger {
         direction: input.direction ?? null,
         agents: input.agents !== false,
         promotion: input.promotion ?? null,
+        ...(input.askOwner && Object.keys(input.askOwner).length
+          ? { ask_owner: input.askOwner }
+          : {}),
         ...(briefing.length ? { briefing: briefing.length } : {}),
         // The campaign's own context settings for the run's agents, when it sets any (goal 070):
         // with each agent's route, they say what the agents work with.
@@ -1526,7 +1536,19 @@ function toRun(r: Row): RunRow {
     pause_reason: r.pause_reason === null ? null : String(r.pause_reason),
     agents: r.agents === undefined || Number(r.agents) !== 0,
     promotion: r.promotion === "auto" || r.promotion === "owner_approval" ? r.promotion : null,
+    ask_owner: askOwnerOf(r.ask_owner),
   };
+}
+
+/** A run's stored switches; anything unreadable asks nothing (a run from before goal 079). */
+function askOwnerOf(raw: unknown): AskOwner {
+  if (typeof raw !== "string" || !raw) return {};
+  try {
+    const p = AskOwner.safeParse(JSON.parse(raw));
+    return p.success ? p.data : {};
+  } catch {
+    return {};
+  }
 }
 
 function toExperiment(r: ExperimentRow): ExperimentRow {

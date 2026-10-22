@@ -106,13 +106,13 @@ A lane's next trial starts only once its last attempt is **settled**: `judged`, 
 
 ### Why a result waits
 
-A promotable result goes to the auditor first when:
+On a rig with an auditor, a promotable result goes to the auditor first when:
 
 - the agent declared known flaws (trigger `known_flaws`);
 - in a hill climb, the gain is above `acceptance.audit.absolute` (trigger `absolute`), or above `acceptance.audit.ratio_to_median` times the median of the run's earlier confirmed gains, once there are three (trigger `ratio`);
 - in a goal campaign, the contract has an `adversarial_checklist` (trigger `adversarial_checklist`).
 
-The auditor answers `clear`, `block` or `needs_owner`. An audit can hold a result back, never pass one: after `clear`, a result with declared flaws, a gain above the absolute trigger, or a rig or run that promotes only with the owner's approval still waits for the owner. Without an audit, the promotion policy decides: `auto` promotes at once, `owner_approval` waits. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows how to answer.
+The auditor answers `clear`, `block` or `needs_owner`. Its clear is the last step: the result is promoted, its declared flaws accepted (`flaws_accepted`), unless the run asks the owner. Its block stops it (`promotion_blocked`, with the auditor's reasons). On a rig with no auditor, the judge records `audit_skipped` with the trigger, and goes on. Then the run's rules decide: `owner_approval` waits for the owner; `auto` promotes at once, unless the run's `ask_owner` asks about a gain above its `above_gain` or about declared flaws (`promotion_pending`, with the reason). A promotion with declared flaws that nothing asked about accepts them, and the record says by which step. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows how to choose and how to answer.
 
 ## Outcome words on the dashboard
 
@@ -151,6 +151,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | | A full reset is about to wipe the rig | `wiping` |
 | `closed` | A goal campaign meets its goals, and a second, independent check agrees | `every required goal is met` |
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
+| | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
 | | A research campaign's time is over | `the research window is over` |
 | | A smoke check finishes its own run | `the smoke check is done` |
 | | The harness restarted during a smoke check | `its smoke check was interrupted` |

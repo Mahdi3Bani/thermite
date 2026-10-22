@@ -95,6 +95,13 @@ export interface RunView {
   seed_folder?: { folder: string; commit: string } | undefined;
   /** The run's own promotion policy (null: the rig's default, which control does not see). */
   promotion: "auto" | "owner_approval" | null;
+  /** What else the run asks the owner about (goal 079); empty: nothing (hands-off). */
+  ask_owner: {
+    above_gain?: number | undefined;
+    declared_flaws?: boolean | undefined;
+    reviews?: boolean | undefined;
+    not_possible?: boolean | undefined;
+  };
   status: string;
   pause_reason: string | null;
   champion: ChampionStep[];
@@ -536,6 +543,7 @@ export function rigView(
         mode: null,
         seed_repo: null,
         promotion: null,
+        ask_owner: {},
         status: "unknown",
         pause_reason: null,
         champion: [],
@@ -646,6 +654,15 @@ export function rigView(
             : undefined;
         v.promotion =
           b.promotion === "auto" || b.promotion === "owner_approval" ? b.promotion : null;
+        {
+          const ask = (b.ask_owner ?? {}) as Record<string, unknown>;
+          v.ask_owner = {
+            ...(typeof ask.above_gain === "number" ? { above_gain: ask.above_gain } : {}),
+            ...(ask.declared_flaws === true ? { declared_flaws: true } : {}),
+            ...(ask.reviews === true ? { reviews: true } : {}),
+            ...(ask.not_possible === true ? { not_possible: true } : {}),
+          };
+        }
         v.status = "running";
         v.champion.push({
           seq: 1,
@@ -885,6 +902,17 @@ export function rigView(
           expected_seq: typeof b.expected_seq === "number" ? b.expected_seq : null,
           reasons: null,
         });
+        break;
+      }
+      case "audit_skipped": {
+        // No auditor decides it (goal 079): the run's own rules did.
+        const a = inst(String(b.run))
+          .audits.filter((x) => x.attempt === e.subject)
+          .at(-1);
+        if (a && a.decision === null) {
+          a.decision = "skipped";
+          a.reasons = String(b.why ?? "this rig has no auditor");
+        }
         break;
       }
       case "audit_decided":

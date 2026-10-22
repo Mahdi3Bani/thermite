@@ -1105,7 +1105,7 @@ describe("control dashboard", () => {
       home,
       /The judge measured the change again on new runs: \+\d+\.\d% compared with the champion\./,
     );
-    assert.match(home, /This rig changes its champion only after you agree/);
+    assert.match(home, /It waits for you because you asked to decide every change/);
     assert.match(home, /The change becomes <b>champion #2<\/b>/);
     assert.match(home, /The champion is the version of the project that the agents start from/);
     // A form without the session's token is refused.

@@ -211,9 +211,9 @@ async function main(): Promise<void> {
     privateKeyPem: readFileSync(rigKeyPath, "utf8"),
     publicKeyPem: readFileSync(`${rigKeyPath}.pub`, "utf8"),
   };
-  // The promotion policy: confirmed wins promote on their own (auto); audits still hold
-  // surprising ones, and a gain above the absolute trigger still waits for the owner.
-  // owner_approval makes every promotion wait.
+  // The promotion policy: confirmed wins promote on their own (auto), after an auditor's clear
+  // when one is called for and the rig has an auditor; a run's ask_owner makes some wait (goal
+  // 079). owner_approval makes every promotion wait.
   const promotion = (env.THERMITE_PROMOTION ?? "auto") as PromotionPolicy;
   if (promotion !== "auto" && promotion !== "owner_approval") {
     throw new Error(`THERMITE_PROMOTION must be auto or owner_approval, not ${promotion}`);

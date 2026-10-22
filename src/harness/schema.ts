@@ -782,4 +782,8 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   alter table experiment add column cause text;
   alter table experiment add column returns integer not null default 0;
   `,
+  // 19: what a run asks the owner about (goal 079): hands-off by default, each switch asks.
+  `
+  alter table run add column ask_owner text;
+  `,
 ];

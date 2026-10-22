@@ -55,7 +55,7 @@ flowchart LR
 4. **Gate.** The judge runs each test case (a **cell** of the kit; the dashboard says **case**) once for the change and once for the current champion. The kit's check must pass: correct output, plus whatever else the kit checks. A failure here gives the verdict `invalid` or `crash_candidate`.
 5. **Screen.** The change and the champion are timed together, in blocks that alternate between the two in a random order, on the same device. The statistics are set in the contract before the run starts: how big a gain must be to count, and what counts as "no different". A block is thrown away and run again when the machine was slowed down by something else during it.
 6. **Confirm.** A change that looks better is measured again in fresh blocks, and decided on that new data alone. Now the judge also runs the **hidden test cases**: cases it uses only here, never while screening, so no agent can tune a change to them. Their results never reach the agents.
-7. **Audit, sometimes.** A surprisingly large gain, or a change whose agent declared known flaws, goes to an auditor first. An audit can hold a result back, but it can never pass one. Some results then wait for your decision.
+7. **Audit, sometimes.** On a rig with an auditor, a surprisingly large gain, or a change whose agent declared known flaws, goes to the auditor first. Its block holds the result back; its clear is the last step before the result becomes the champion. The auditor never sets a verdict. Some results then wait for your decision.
 8. **Promoted.** The champion moves only if no other change replaced it in the meantime. If one did, the change is screened again against the new champion.
 
 The [verdicts reference](../reference/verdicts.md) lists every verdict and what it means.

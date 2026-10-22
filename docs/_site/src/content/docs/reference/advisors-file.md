@@ -422,7 +422,7 @@ Each step of a round is a line in the run's **Live**, under **Advisors**, and in
 | `the auditor added to the queue: <title>` | The auditor's check, sent to the harness |
 | `audit of <attempt> (try <n>): <decision>, <effect>. <reasons>` | The auditor answered. `<effect>` is what the harness did, such as `promoted`, `blocked`, `waiting for the owner` or `none: the attempt is <state>` |
 | `review <id> of goal <goal>, <name>: pass. <reasons>` | One reviewer's answer: `pass` or `fail` |
-| `review <id>: the review panel passed it; it waits for the owner's acceptance` | Every reviewer answered, and the review panel passed the goal. Otherwise the line is `review <id>: the review panel did not pass it` |
+| `review <id>: the review panel passed it, and it was accepted (the run does not ask the owner)` | Every reviewer answered, and the review panel passed the goal. In a run that asks the owner about reviews, the line is `review <id>: the review panel passed it; it waits for the owner's acceptance`. Otherwise it is `review <id>: the review panel did not pass it` |
 | `<what failed>: <error>` | An error, such as `teachers for <run>: no teacher produced a review`. See [Error messages](#error-messages) |
 | `advisor round done: <n> teacher runs, <n> directive sets, <n> audits, <n> reviews, <n> errors` | The end of a round that did at least one of these. A count of 1 takes the singular, as in `1 teacher run, 0 directive sets, 1 audit, 0 reviews, 0 errors`. It names no run, so the Live of every run on the rig shows it |
 | `advisor round failed: <error>` | The round itself failed |

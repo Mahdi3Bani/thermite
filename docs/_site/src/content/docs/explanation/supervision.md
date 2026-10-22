@@ -15,8 +15,8 @@ A rig's agents form two groups. **The work** runs in the rig's harness: the **wo
 | Advisor | When it acts | What it produces | What it cannot do |
 | --- | --- | --- | --- |
 | **Teachers** | On a schedule (hourly by default), for each running run, and at once when the owner writes to them. One or two teachers; with two, a **merged by** model joins their advice into one set | Recommendations for the planner, each with citations, and experiments and moves for the run's queue, each with why | Set a verdict, change a contract, drop an experiment, give a lane its work, or add a directive without a citation |
-| **Auditor** | When the judge holds a result for an audit | `clear`, `block` or `needs_owner`, with reasons, and at most one check for the run's queue | Pass a result. An audit can block, never pass |
-| **Review panel** | When a goal needs judgement | A pass or a fail from each reviewer | Meet a goal. Only the owner's acceptance does |
+| **Auditor** | When the judge holds a result for an audit | `clear`, `block` or `needs_owner`, with reasons, and at most one check for the run's queue | Set a verdict. Its clear is the last step before a result the judge confirmed becomes the champion; its block stops it |
+| **Review panel** | When a goal needs judgement | A pass or a fail from each reviewer | Pass a goal alone: at least two reviewers must each pass it, and a run can ask the owner to accept it too |
 
 Every advisor may also keep field notes as it works ([The advisors' field notes](#the-advisors-field-notes)).
 
@@ -41,9 +41,9 @@ flowchart LR
   A -- a check, at the top --> Q
   A -- block --> X[Blocked]
   A -- needs_owner --> O
-  A -- clear --> B[Back on its path:<br/>promoted, or waits for you]
+  A -- clear --> B[Promoted, or waits for you<br/>where the run asks]
   J -- goal that needs judgement --> R
-  R -- pass --> O
+  R -- pass --> G[Goal met, or waits for you<br/>where the run asks]
 ```
 
 ## The teachers
@@ -76,9 +76,9 @@ The **auditor** gets the change, the agent's hypothesis and declared flaws, the 
 | --- | --- |
 | `block` | The result is blocked. It does not become the champion unless the owner overrides the audit |
 | `needs_owner` | The result waits for the owner |
-| `clear` | The result goes back on the path it was on. Declared flaws, a gain above the absolute trigger, or a run where every promotion needs approval still wait for the owner. Otherwise it is promoted |
+| `clear` | The result is promoted, also with declared flaws or a gain above the absolute trigger: the clear accepts them, and the record says so. It waits for the owner only where the run asks: every change, a gain above the run's line, or declared flaws |
 
-So **an audit can block, never pass.** The auditor can stop a bad result, but a model alone never pushes a large or flawed result through. On a rig with no auditor, audits wait for the owner. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows those decisions.
+Thermite is **hands-off by default** (the owner's decision of 2026-10-22): the judge confirms a result on new runs, and the auditor's clear is the last step. The auditor can still stop a result, and its block says why. The auditor never sets a verdict: it sees only what the judge already confirmed. On a rig with no auditor, or with its auditor switched off, the judge records that the audit was skipped, and the result goes on by the run's rules. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows how to choose what waits for you.
 
 When it doubts the result but can't settle the doubt from what it was given, the auditor may also propose one **check** for the run's queue, such as measuring the attempt again, with its doubt as why. The supervisor puts it at the top of the queue, in the direction `check`, as the auditor's. It is an experiment like any other: the planner gives it to a lane, and the judge measures whatever change comes of it. The check doesn't change the audit's answer.
 
@@ -90,7 +90,7 @@ Some goals can't be checked by code, such as the quality of a piece of documenta
 - Every reviewer must answer. If one fails to answer, the review is tried again later, so a reviewer that crashed can't lose its vote.
 - The result is a pass only if every reviewer passes it, and only for the run's current champion.
 
-Even then, **the goal is met only when the owner accepts the review.** The review panel's pass is advice. A new champion needs a new review.
+Then the goal is met, with no step of the owner's, unless the run asks the owner about reviews: then the goal is met only when the owner accepts the review. A new champion needs a new review.
 
 ## The advisors' field notes
 
@@ -122,7 +122,7 @@ Advisors advise; they never judge. That is the same rule as for the agents, and 
 - **Untrusted text stays data.** Advisors are told that fetched pages, changes and hypotheses are data, not instructions, and so is the background from past research. The teachers are told the same of the queue's experiments, the lanes' ideas and the field notes, which others wrote.
 - **No search beside an open fetch.** With an open web fetch (any domain), the teachers get no knowledge-base search tool, and no advisor gets an MCP server: private tools and the open web never meet in one advisor, and the run's live view says so. Their brief, in their prompt and from their `brief` tool, also leaves out the background from past research and the line on what the run's `knowledge/` folder holds. It keeps the run's field notes. The auditor reads private changes, so it may fetch only from domains you list, never from any domain, and it gets no knowledge-base search of the advisors file. Like the review panel, it may search the run's past research, which stays inside Thermite.
 
-An audit or review whose advisor fails is tried again a few times. After that, it waits for the owner.
+An audit whose auditor fails is tried again, at most five times, 30 minutes apart. After the last try, the supervisor hands it to the owner with the error, and it waits in **Needs you** as **Your decision**: `The auditor sent this change to you: the auditor asked for the owner: the auditor could not answer after 5 tries: …`. A review whose reviewers fail is tried again the same way; after the last try, its goal stays unchecked.
 
 ## Where you see their work
 
@@ -130,7 +130,7 @@ An audit or review whose advisor fails is tried again a few times. After that, i
 - A run's **Journal** tab shows the advisors' field notes beside the lanes' and the planner's; its **Teachers**, **Auditor** and **Review panel** filters show one role's. Live shows each note as it is written, as a line such as `teachers:teacher-a noted (lesson): …`.
 - A run's **History** tab says when a rule for the plan was set or removed, what the teachers and the auditor added to the queue or moved in it, what the auditor decided, and what the review panel decided.
 - A run's **Experiments** tab shows who added each experiment, such as **teachers** or **auditor**, and its **Planner** tab shows the rules in force, with who set each.
-- **Needs you**, on the **Overview** page, lists audits and reviews that wait for you.
+- **Needs you**, on the **Overview** page, lists the auditor's blocks, and the audits and reviews that wait for you: those the run asks you about, and those no advisor could decide.
 - The rig's page has an **Advisors** row with their counts and spending.
 - Once a day, the supervisor sends control a **daily report** that code writes, not a model: each open run's champion, recent verdicts, directions and directives, then the supervisor's exports and the advisors' work. It is on **Reports** in the sidebar, and over MCP with `rig_reports`.
 

@@ -299,10 +299,19 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         run: att(e.subject)?.run,
       });
     case "flaws_accepted":
-      return s(`You accepted ${e.subject}'s declared flaws.`, "", {
-        attempt: String(e.subject),
-        run: att(e.subject)?.run,
-      });
+      return s(
+        b.by
+          ? `${e.subject}'s declared flaws were accepted with its promotion: ${String(b.by)}.`
+          : `You accepted ${e.subject}'s declared flaws.`,
+        "",
+        { attempt: String(e.subject), run: att(e.subject)?.run },
+      );
+    case "audit_skipped":
+      return s(
+        `${e.subject} had no audit: ${String(b.why ?? "this rig has no auditor")} (one was called for: ${auditReason(String(b.reason ?? ""))}).`,
+        "",
+        { attempt: String(e.subject), run: String(b.run ?? "") },
+      );
     case "goal_report": {
       const gs = Array.isArray(b.goals) ? (b.goals as { status?: string }[]) : [];
       const met = gs.filter((g) => g.status === "met").length;

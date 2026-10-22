@@ -18,7 +18,6 @@ import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
 import type { Research } from "./research/research.ts";
-import { Reviews } from "./reviews.ts";
 import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
 
 /**
@@ -349,10 +348,17 @@ export function createHarnessApi(
           .max(8),
       })
       .parse(await c.req.json());
-    return c.json({
-      review: id,
-      result: new Reviews(service.ledger).recordPanel(id, body.results, "supervisor"),
-    });
+    return c.json({ review: id, ...service.recordReviewPanel(id, body.results, "supervisor") });
+  });
+
+  // The supervisor says which advisors it has (goal 079): whether an auditor decides this rig's
+  // audits, and its review panel's size. Without an auditor, the audits held go on by the run's
+  // rules.
+  app.put("/v1/advisors", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const body = z
+      .strictObject({ auditor: z.boolean(), panel: z.number().int().min(0).max(100) })
+      .parse(await c.req.json());
+    return c.json({ released: await service.setAdvisors(body, "supervisor") });
   });
 
   // The advisors' receipts and answers for the owner's messages: which messages an advisor role

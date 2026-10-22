@@ -267,6 +267,18 @@ const CHAMPION_IS =
 const REJECT_DOES =
   "The change does not become the champion. The record shows that you rejected it. The agents continue from the current champion.";
 
+/**
+ * Why a change waits for you (goal 079: only where the run asks, or the auditor sent it). The
+ * reason comes from the harness; one from before goal 079 may be missing.
+ */
+const waitWhy = (reason: string | null | undefined, max?: number) => {
+  if (!reason) return "This run asks you to decide every change. This is its promotion rule.";
+  const r = esc(max ? clip(reason, max) : reason);
+  return /^the auditor/i.test(reason)
+    ? `The auditor sent this change to you: ${r}.`
+    : `It waits for you because ${r}.`;
+};
+
 /** Why a change waits for an audit, in plain words. */
 const auditWhy = (reason: string, a: AttemptView | undefined) => {
   const n = a?.known_flaws.length ?? 0;
@@ -422,9 +434,7 @@ export function needs(
             kind: "Your decision",
             question: "Make this change the new champion?",
             headline: changeHeadline(r, a, id),
-            why: w?.reason
-              ? `The auditor sent this change to you: ${esc(clip(w.reason, 160))}`
-              : "This rig changes its champion only after you agree",
+            why: waitWhy(w?.reason, 160),
             chips: changeChips(r, a),
             key: `promote-${u.id}-${r.id}-${id}`,
             u,
@@ -432,7 +442,7 @@ export function needs(
             lane: a?.lane,
             since: w?.at ?? a?.updated_at,
             now,
-            facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${w?.reason ? `The auditor sent this change to you: ${esc(w.reason)}` : "This rig changes its champion only after you agree. This is its promotion rule."}</dd>`,
+            facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${waitWhy(w?.reason)}</dd>`,
             choices: [
               {
                 button: f.cmd({
@@ -470,10 +480,14 @@ export function needs(
           }),
         });
       }
-      for (const au of r.audits.filter((x) => x.decision === null || x.decision === "block")) {
+      // An audit the rig's auditor will decide needs nothing from you (goal 079): only a block
+      // does, or an audit held on a rig with no auditor that has not been let go yet.
+      const advisors = hasAdvisors(u);
+      for (const au of r.audits.filter(
+        (x) => x.decision === "block" || (x.decision === null && !advisors),
+      )) {
         const a = find(au.attempt);
         const blocked = au.decision === "block";
-        const advisors = hasAdvisors(u);
         out.push({
           kind: blocked ? "blocked" : "audit",
           rig: u.id,
@@ -797,12 +811,16 @@ export function needs(
   );
 }
 
-/** How many of the owner's decisions a run waits on. */
-export function waitingOn(r: RunView): number {
+/**
+ * How many of the owner's decisions a run waits on. With its rig: an audit that the rig's
+ * auditor will decide is not one of them (goal 079).
+ */
+export function waitingOn(r: RunView, u?: RigView): number {
+  const auditor = u ? hasAdvisors(u) : false;
   return (
     r.pending_promotions.length +
     (r.agents_stopped && r.status !== "closed" ? 1 : 0) +
-    r.audits.filter((x) => x.decision === null || x.decision === "block").length +
+    r.audits.filter((x) => x.decision === "block" || (x.decision === null && !auditor)).length +
     r.reviews.filter((x) => x.panel === "review_passed" && !x.owner).length +
     r.conclusions.filter((x) => x.decision === null).length
   );
@@ -994,7 +1012,7 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
       : r.status === "paused"
         ? ["Paused", "warn"]
         : [cap(r.status), ""];
-  const n = waitingOn(r);
+  const n = waitingOn(r, u);
   const last = r.attempts
     .map((a) => a.updated_at)
     .sort()

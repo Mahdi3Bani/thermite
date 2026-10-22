@@ -119,7 +119,7 @@ import {
 } from "./machines/ssh.ts";
 import { campaignMcpServers, McpServers } from "./mcp-servers.ts";
 import { mcpSettingsBlocks, mountMcpUi } from "./mcp-ui.ts";
-import { type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
+import { askOwnerFrom, type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
@@ -854,12 +854,22 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             })
             .join("")}</div></div>`
         : "";
-    const policyWord =
-      i.promotion === "auto"
-        ? "Automatic when the judge confirms; audits and big gains still wait for you"
-        : i.promotion === "owner_approval"
-          ? "Only with your approval"
-          : "The rig's default (set where the rig is deployed)";
+    // Hands-off by default (goal 079): what the run asks you about, if anything.
+    const asks = [
+      typeof i.ask_owner.above_gain === "number"
+        ? `a gain above ${(i.ask_owner.above_gain * 100).toFixed(1).replace(/\.0$/, "")}%`
+        : "",
+      i.ask_owner.declared_flaws ? "a change with declared flaws" : "",
+      i.ask_owner.reviews ? "a review panel's pass" : "",
+      i.ask_owner.not_possible ? 'a "not possible" ending' : "",
+    ].filter(Boolean);
+    const policyWord = `${
+      i.promotion === "owner_approval"
+        ? "Only with your approval"
+        : i.promotion === "auto"
+          ? "Automatic when the judge confirms, after the auditor's clear when an audit is called for"
+          : "The rig's default (automatic unless it was set to ask you)"
+    }${asks.length && i.promotion !== "owner_approval" ? `. It asks you about ${asks.join(", ")}` : ""}`;
     const settings = [
       [
         "Champion",
@@ -1329,6 +1339,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       }
     }
     const promotion = String(f.promotion ?? "");
+    const askOwner = askOwnerFrom(f);
+    if (typeof askOwner === "string") return newCampaignPage(c, { draft, errors: [askOwner] });
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return newCampaignPage(c, { draft, errors: [split] });
     // The agents' model: given here, or the rig's; agents never start on a rig with none.
@@ -1393,6 +1405,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           target: { type: target.type, class: target.class },
           start: startValue === "save" ? false : startValue === "try" ? "try" : true,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+          askOwner,
           by: "owner:ui",
         },
       );
@@ -1733,6 +1746,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : undefined,
           agents,
           promotion: req.promotion,
+          askOwner: req.askOwner,
           by,
           owner,
           // A command carries at most 500 experiments.
@@ -1907,6 +1921,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       c.redirect(`${campaignHref(campaign)}?start=1&error=${encodeURIComponent(m)}`, 303);
     const agents = String(f.agents ?? "on") !== "off";
     const promotion = String(f.promotion ?? "");
+    const askOwner = askOwnerFrom(f);
+    if (typeof askOwner === "string") return back(askOwner);
     const choice = String(f.agents_model ?? "").trim();
     let model: StartRunRequest["model"];
     if (choice) {
@@ -1930,6 +1946,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         // are left out, whatever the form sent.
         model: agents ? model : undefined,
         promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+        askOwner,
         judgeGpus: String(f.judge_gpus ?? ""),
         queueFrom:
           agents && String(f.copy_queue ?? "") === "1" && slash > 0
@@ -2650,7 +2667,7 @@ ${
     const live = u.runs.filter((i) => i.status === "running");
     const runsNow = live
       .map((i) =>
-        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i) }),
+        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i, u) }),
       )
       .join("");
     const checks: [string, string, string][] = [
@@ -2972,7 +2989,7 @@ ${rp ? "" : events}
     const runLink = (x: { u: RigView; r: RunView }, sub: string, cls = "") =>
       `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.u.id, x.r.id)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
     const nav = `<nav class="lruns" aria-label="Runs">
-<div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r) ? ` · <span class="warn">${waitingOn(x.r)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
+<div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r, x.u) ? ` · <span class="warn">${waitingOn(x.r, x.u)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
 ${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
 ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
 </nav>`;
@@ -3089,8 +3106,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         : r.mode === "goal"
           ? `${r.goals.filter((g) => g.status === "met").length} of ${r.goals.length} goals met`
           : signed((r.champion.filter((x) => !x.reopened).at(-1)?.cumulative ?? 1) - 1),
-      waitingOn(r)
-        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r)} wait${waitingOn(r) === 1 ? "s" : ""} for you</a>`
+      waitingOn(r, u)
+        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r, u)} wait${waitingOn(r, u) === 1 ? "s" : ""} for you</a>`
         : "",
     ]
       .filter(Boolean)
@@ -7372,7 +7389,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 </div></div>
 <div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
-<label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion. A change that the campaign sends to an audit still waits for the audit.</span></span></label>
+<label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion with no step of yours. When the campaign calls for an audit and this rig has an auditor, the auditor's clear comes first; its block stops the change. A run can still ask you about some changes (Ask me first, when you start it).</span></span></label>
 <label class="ch${s?.promotion === "owner_approval" ? " on" : ""}"><input type="radio" name="promotion" value="owner_approval"${s?.promotion === "owner_approval" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Ask me for each change</b><br><span class="muted small">Each confirmed change waits for you in Needs you.</span></span></label>
 </div><div class="muted small" style="margin-top:6px">A campaign can set its own rule when it starts; that rule comes first for its runs.</div></div>
 <div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl>${

@@ -209,6 +209,7 @@ describe("thermite run start (goal 029)", () => {
         provider: "zen",
         model: "glm-5.3-flash-free",
         promotion: "auto",
+        ask: ["gain:15", "flaws", "reviews", "not-possible"],
         "judge-gpus": "2",
         "queue-from": "rig-2/sort-speed-1",
         past: ["12", "40"],
@@ -217,6 +218,7 @@ describe("thermite run start (goal 029)", () => {
         rig: "rig-1",
         agents_model: { provider: "zen", model: "glm-5.3-flash-free" },
         promotion: "auto",
+        ask_owner: { above_gain: 0.15, declared_flaws: true, reviews: true, not_possible: true },
         judge_gpus: 2,
         queue_from: { rig: "rig-2", run: "sort-speed-1" },
         past: [12, 40],
@@ -227,6 +229,10 @@ describe("thermite run start (goal 029)", () => {
       agents: false,
     });
     assert.throws(() => runStartBody({ rig: "rig-1", "queue-from": "rig-2/" }), /names a run/);
+    assert.throws(
+      () => runStartBody({ rig: "rig-1", ask: ["always"] }),
+      /--ask is gain:PERCENT, flaws, reviews or not-possible/,
+    );
     assert.equal(
       runStartSaid({ started: true, woke: "rig-1's pod was stopped.", notes: ["a", "b"] }),
       "rig-1's pod was stopped.\na\nb\n",

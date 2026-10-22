@@ -4,11 +4,13 @@ import { type Ledger, LedgerError } from "./ledger.ts";
 
 /**
  * Audits. The judge flags a promotable result for audit (open known flaws, a gain above the
- * contract's audit trigger, or a goal campaign's adversarial checklist) and holds it. The
- * supervisor's auditor answers clear, block or needs_owner. An audit can block, never pass:
- * clear only returns the attempt to the path it was on (the promotion policy), and a gain above
- * the absolute trigger or a declared flaw still needs the owner. Each confirmation of an attempt
- * gets its own audit, against the champion it was confirmed against.
+ * contract's audit trigger, or a goal campaign's adversarial checklist) and holds it while the
+ * rig has an auditor. The supervisor's auditor answers clear, block or needs_owner. Its clear is
+ * the last step (goal 079, the owner's decision of 2026-10-22: hands-off by default): the win is
+ * promoted, even above the trigger or with declared flaws, unless the run asks the owner. Its
+ * block stops the win, with its reasons. Without an auditor, the audit is skipped and recorded
+ * so. Each confirmation of an attempt gets its own audit, against the champion it was confirmed
+ * against.
  */
 
 type Row = Record<string, unknown>;

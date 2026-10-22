@@ -90,7 +90,7 @@ curl -sS -H "$AUTH" -H 'content-type: application/json' \
   "$CONTROL/v1/campaigns/sort-speed/runs"
 ```
 
-It answers `201` and `{"started":true,"campaign":"sort-speed","rig":"rig-1","run":"sort-speed-2","command":"<command id>","status":"pending"}`. Follow the command as above. The body takes the panel's other fields too: `"agents": false` for a try, `agents_model`, `promotion`, `judge_gpus` and `past`. [Start a run from a script or an agent](../campaigns/start-from-dashboard.md#start-a-run-from-a-script-or-an-agent) maps each one, and [Campaigns](../../reference/rest-api.md#campaigns) lists every answer and refusal. A refusal has the panel's words, such as `409` and `{"error":"rig-1 has no model for its agents, so they could not work: …"}`. `npx thermite run start` sends the same request.
+It answers `201` and `{"started":true,"campaign":"sort-speed","rig":"rig-1","run":"sort-speed-2","command":"<command id>","status":"pending"}`. Follow the command as above. The body takes the panel's other fields too: `"agents": false` for a try, `agents_model`, `promotion`, `ask_owner`, `judge_gpus` and `past`. [Start a run from a script or an agent](../campaigns/start-from-dashboard.md#start-a-run-from-a-script-or-an-agent) maps each one, and [Campaigns](../../reference/rest-api.md#campaigns) lists every answer and refusal. A refusal has the panel's words, such as `409` and `{"error":"rig-1 has no model for its agents, so they could not work: …"}`. `npx thermite run start` sends the same request.
 
 ## Copy a campaign
 

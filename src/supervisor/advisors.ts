@@ -71,8 +71,9 @@ import { type AdvisorServers, type PastSearch, serveAdvisorTools } from "./past-
  * The advisors, which the supervisor runs (goal 074 names them): the teachers (one or two, and the
  * model that merges the advice of two, `merged_by`), the auditor and the review panel. They
  * advise; they never judge. Their outputs are structured and checked here, then checked again by
- * the harness: directives (with citations) steer the planner, an audit can block a promotion but
- * never pass one, and a pass of the review panel still needs the owner.
+ * the harness: directives (with citations) steer the planner; an auditor's clear is the last step
+ * before a promotion and its block stops it; a pass of the review panel is accepted unless the
+ * run asks the owner (goal 079: hands-off by default).
  *
  * Runtimes (the operator's choice, per role, or the model and harness control gives the role): an
  * OpenAI-compatible or Anthropic model route run here in Pi with read-only tools (the campaign

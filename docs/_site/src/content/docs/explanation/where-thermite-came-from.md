@@ -32,7 +32,7 @@ When the record of a campaign lives in the process that shows it, a restart lose
 
 Oversight added afterwards, by typing into a terminal, leaves no record of who asked for what, or why, and nothing stops it from overruling the measurements.
 
-**In Thermite:** every rig has a supervisor container built in. Its advisors, when the rig has them, steer the planner with directives that carry their reasons and citations, add experiments to the run's queue with why, and an audit can hold a result back but never pass one. Every instruction a person gives goes through control as a signed, recorded command, from the dashboard, the REST API or MCP. None of them can set a verdict. → [Supervision](supervision.md) and [Steer a run](../how-to/campaigns/steer-a-run.md)
+**In Thermite:** every rig has a supervisor container built in. Its advisors, when the rig has them, steer the planner with directives that carry their reasons and citations, add experiments to the run's queue with why, and an auditor can stop a result the judge confirmed, or clear it as the last step. Every instruction a person gives goes through control as a signed, recorded command, from the dashboard, the REST API or MCP. None of them can set a verdict. → [Supervision](supervision.md) and [Steer a run](../how-to/campaigns/steer-a-run.md)
 
 ## "The agent says it's faster" is not "it is faster"
 

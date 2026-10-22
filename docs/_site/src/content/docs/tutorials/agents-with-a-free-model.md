@@ -192,7 +192,7 @@ Choose **Attempts**. Each change the agent submitted is an **attempt**, with one
 | **Unclear** | The measurements could not tell, or the rig failed while measuring it |
 | **Broken** | It did not build, gave wrong answers, or crashed |
 | **Judging**, with `rejected v0` under the change | It broke a rule of the campaign, such as a change outside `src/kernel/` or one of the lines never allowed, and was refused before it was built. It never gets a verdict, so the word stays **Judging**: a known fault ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)) |
-| **Needs you** | It was confirmed faster, and waits for your decision |
+| **Needs you** | It was confirmed faster, and waits for your decision: only when the run asks you, or an auditor sent it to you |
 | **Declined** | You rejected it |
 | **Champion #2** | It was confirmed faster on fresh runs and became the new best version |
 
@@ -206,14 +206,11 @@ Choose **Attempts**. Each change the agent submitted is an **attempt**, with one
 
 ### If a change waits for you
 
-A confirmed change waits for you only when it needs a second look. That happens when its agent wrote down problems it knows the change has, or when its gain is above 15%, the limit unless a contract sets another. The sample's kernel is slow on purpose, so a good first change is often far more than 15% faster, and waits for you. The **Attempts** tab then shows **Needs you** for it. If no change waits, you see **Champion #2** in the list instead, and **Needs you** stays empty: skip to step 11. If after an hour you see only **Lost**, **Unclear** or **Broken**, that is normal for a small model: go on to step 11.
+Thermite is hands-off by default: a change the judge confirms becomes the champion with no step of yours. The sample's kernel is slow on purpose, so a good first change is often far more than 15% faster. On a rig with an **auditor**, a model that gives such surprising gains a second look, the auditor's clear would come first. This rig has none, so **What happened** says that the change `had no audit: this rig has no auditor`, and the change becomes **Champion #2**. **Needs you** stays empty.
 
-An **auditor**, a model that gives such second looks, isn't set up on this rig, so the decision is yours. **What happened** says that the change `is held for an audit`, the first line of **Overview** in the sidebar says `1 needs you`, and **Needs you** shows **Your decision** with the question `Make this change the new champion?`.
+A change waits for you only when you asked for it, when you start a run: **Ask me first about**, under **More options** in a campaign's **Start a run** panel, or on the **New campaign** page. Then **Needs you** shows **Your decision** with the question `Make this change the new champion?`, and the row says why it waits. In [Your own project](your-own-project.md) you decide a change yourself. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) explains each choice.
 
-1. Open it. It shows what the agent says it did, the problems it wrote, and what the judge measured. Read the problems: they are why the change waits. Some matter, such as a change that only wins because of how the benchmark calls it; some don't, such as a little more memory.
-2. For this tutorial, press **Reject it**, to see what happens to a change you decline. In [Your own project](your-own-project.md) you make a change the champion instead. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) explains each choice.
-
-The item leaves **Needs you** at once. On the change's own page, **Your decision** says `You selected Reject it`. After a **refresh**, **What happened** says `You declined` the change: `it will not become the champion.` The attempt now shows **Declined**.
+If after an hour you see only **Lost**, **Unclear** or **Broken**, that is normal for a small model: go on to step 11.
 
 ## 11. Pause the campaign
 

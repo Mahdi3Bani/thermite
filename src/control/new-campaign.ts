@@ -1,4 +1,4 @@
-import type { BriefingSeed } from "../core/commands.ts";
+import type { AskOwner, BriefingSeed } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
 import { buildCampaign } from "./campaign-builder.ts";
 import { issueWaking, type PodWaker } from "./issue.ts";
@@ -30,6 +30,8 @@ export interface StartInput {
   /** Save only; start a run with its agents; or try the kit (a run with no agents). */
   start: boolean | "try";
   promotion?: "auto" | "owner_approval" | undefined;
+  /** What else the run asks the owner about (goal 079); unset or empty: nothing. */
+  askOwner?: AskOwner | undefined;
   by: string;
 }
 
@@ -120,9 +122,36 @@ export async function startCampaign(deps: Deps, input: StartInput): Promise<Star
     target: input.target,
     agents: input.start !== "try",
     promotion: input.promotion,
+    askOwner: input.askOwner,
     by: input.by,
   });
   return r.ok ? { ...r, version, sha: parsed.sha } : r;
+}
+
+/** Whether any "ask me" switch is on (goal 079): none is the default, and is not sent. */
+export function askOwnerSet(a: AskOwner | undefined): a is AskOwner {
+  return Boolean(a && Object.values(a).some((v) => v !== undefined && v !== false));
+}
+
+/**
+ * The "Ask me first" fields of New campaign and Start a run (goal 079): a gain above a percent,
+ * and three boxes. Undefined: none set; a string: what is wrong, in words.
+ */
+export function askOwnerFrom(f: Record<string, unknown>): AskOwner | undefined | string {
+  const pct = String(f.ask_above_gain ?? "")
+    .trim()
+    .replace(/%$/, "");
+  const out: AskOwner = {};
+  if (pct) {
+    const n = Number(pct);
+    if (!Number.isFinite(n) || n <= 0 || n > 10_000)
+      return `Ask me first: "${pct}" is not a percent above 0 (for example 15).`;
+    out.above_gain = n / 100;
+  }
+  if (String(f.ask_declared_flaws ?? "") === "1") out.declared_flaws = true;
+  if (String(f.ask_reviews ?? "") === "1") out.reviews = true;
+  if (String(f.ask_not_possible ?? "") === "1") out.not_possible = true;
+  return askOwnerSet(out) ? out : undefined;
 }
 
 export interface RunInput {
@@ -135,6 +164,8 @@ export interface RunInput {
   /** False: a try, with no agents. */
   agents: boolean;
   promotion?: "auto" | "owner_approval" | undefined;
+  /** What else the run asks the owner about (goal 079); unset or empty: nothing. */
+  askOwner?: AskOwner | undefined;
   by: string;
   /**
    * Whether the owner's token asks: only the owner starts a stopped RunPod pod (issueWaking).
@@ -185,6 +216,7 @@ async function againLikeBefore(deps: Deps, input: RunInput): Promise<RunStarted>
     run: _old,
     agents: _agents,
     promotion: _promotion,
+    ask_owner: _askOwner,
     queue: _queue,
     briefing: _briefing,
     ...rest
@@ -197,6 +229,7 @@ async function againLikeBefore(deps: Deps, input: RunInput): Promise<RunStarted>
       run,
       ...(input.agents ? {} : { agents: false }),
       ...(input.promotion ? { promotion: input.promotion } : {}),
+      ...(askOwnerSet(input.askOwner) ? { ask_owner: input.askOwner } : {}),
       ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
       ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
     },
@@ -241,6 +274,7 @@ export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted>
         contract_sha: v.sha,
         ...(input.agents ? {} : { agents: false }),
         ...(input.promotion ? { promotion: input.promotion } : {}),
+        ...(askOwnerSet(input.askOwner) ? { ask_owner: input.askOwner } : {}),
         ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
         ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
       },
@@ -280,6 +314,7 @@ export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted>
       ...(seed ? { seed } : {}),
       ...(input.agents ? {} : { agents: false }),
       ...(input.promotion ? { promotion: input.promotion } : {}),
+      ...(askOwnerSet(input.askOwner) ? { ask_owner: input.askOwner } : {}),
       ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
       ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
       // The MCP servers the kit names (a research contract's are filled in from the contract).

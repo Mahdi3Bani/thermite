@@ -223,6 +223,23 @@ export type BriefingSeed = z.infer<typeof BriefingSeed>;
 export const MESSAGE_TARGET =
   /^(all|planner|advisors|teachers|auditor|panel|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/;
 
+/**
+ * What a run asks the owner about (goal 079). Thermite is hands-off by default: a win the judge
+ * confirms is promoted with no owner step (after its auditor's clear, when the rig has an
+ * auditor and the campaign calls for an audit), a review panel's pass is accepted and a "not
+ * possible" proposal is taken. Each switch here asks the owner instead: `above_gain`, a confirmed
+ * gain above this fraction (0.15 is 15%); `declared_flaws`, a win whose worker declared flaws;
+ * `reviews`, a review panel's pass of a subjective goal; `not_possible`, a proposal to end a goal
+ * campaign as not possible. `promotion: "owner_approval"` asks about every win.
+ */
+export const AskOwner = z.strictObject({
+  above_gain: z.number().positive().max(100).optional(),
+  declared_flaws: z.boolean().optional(),
+  reviews: z.boolean().optional(),
+  not_possible: z.boolean().optional(),
+});
+export type AskOwner = z.infer<typeof AskOwner>;
+
 export const CommandPayloads = {
   assign_campaign: z.object({
     run: IdSchema,
@@ -236,10 +253,13 @@ export const CommandPayloads = {
     /** False: a judge-only run. No worker agents run; the judge still works. */
     agents: z.boolean().optional(),
     /**
-     * The run's promotion policy: "auto" (confirmed wins promote, audits still hold surprising
-     * ones) or "owner_approval" (every promotion waits for the owner). Unset: the rig's default.
+     * The run's promotion policy: "auto" (confirmed wins promote, after an auditor's clear when
+     * the rig has one and the campaign calls for an audit) or "owner_approval" (every promotion
+     * waits for the owner). Unset: the rig's default.
      */
     promotion: z.enum(["auto", "owner_approval"]).optional(),
+    /** What else the run asks the owner about (goal 079); unset: nothing. */
+    ask_owner: AskOwner.optional(),
     /** Experiments another run had not tried, to start this run's queue with, in order. */
     queue: z.array(QueueSeed).max(500).optional(),
     /** Background from past research for every agent's brief (goal 065), in order. */

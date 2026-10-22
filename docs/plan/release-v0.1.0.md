@@ -69,7 +69,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [073 · A harness for each agent](goals/073-harness-for-each-agent.goal) | `VERIFIED` | [029](goals/029-api-mcp-coverage.goal), [056](goals/056-codex-harness.goal) |
 | [074 · One name for each agent](goals/074-one-name-for-each-agent.goal) | `VERIFIED` | [073](goals/073-harness-for-each-agent.goal) |
 | [075 · Model usage for each run, campaign and the whole system](goals/075-model-usage.goal) | `VERIFIED` | — |
-| [079 · Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion](goals/079-thermite-overhead.goal) | `IN_PROGRESS` | — |
+| [079 · Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion](goals/079-thermite-overhead.goal) | `VERIFIED` | — |
 
 ### Install from images
 

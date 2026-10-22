@@ -66,7 +66,7 @@ Optional, in every mode:
 - `objective.primary` names one of the kit's metrics, which way is better (`max` or `min`), and `min_effect`, the smallest gain that counts, as a fraction: `0.05` is 5%.
 - `cells` are measured for every change. `held_out_cells` run only when the judge confirms a change that already looked better, so a change can't win by helping only the cells agents see.
 - `acceptance.runs_per_cell` (1 to 9; 1 unless set) runs each cell several times per measurement and keeps the middle value. The **New campaign** page's **Runs per case** sets 3 unless changed, so write `3` to judge as a campaign made there does. `acceptance.equivalence_band` (0.005) is how close counts as "no change". On a noisy machine, such as a shared CPU, raise both: Thermite's own smoke check uses 3 and 0.05.
-- `acceptance.audit` sets when a confirmed win waits for an audit: a gain above `absolute` (0.15, that is 15%), or above `ratio_to_median` (3) times the median of the run's earlier wins, once it has three. See [Decide what waits for you](decide-what-waits.md#audits).
+- `acceptance.audit` sets when a confirmed win goes to the rig's auditor, if it has one: a gain above `absolute` (0.15, that is 15%), or above `ratio_to_median` (3) times the median of the run's earlier wins, once it has three. See [Decide what waits for you](decide-what-waits.md#audits).
 
 To keep a second metric from getting worse, add a guard. To refuse a change whose metric crosses a line, add a hard constraint. Both name kit metrics:
 
@@ -134,7 +134,7 @@ Each goal has an `id`, a `description` and one way to `verify` it:
 | --- | --- | --- |
 | `code` | The kit's check passes on every cell of the named verifier | `verifier`: a verifier in the kit's `kit.json` |
 | `metric_threshold` | In every cell, the metric's 95% interval over `threshold_reps` runs (5) is wholly on the passing side of `op` and `value` | `metric`: a kit metric. `cells`: leave it out for every cell |
-| `review` | The rig's review panel passes it, and then you accept it. A review panel chosen on **Edit rig** is three reviewers with one model; one in the advisors file has two to five | `criteria`. See [Configure advisors](../operate/advisors.md) |
+| `review` | The rig's review panel passes it; you accept it too when the run asks you about reviews. A review panel chosen on **Edit rig** is three reviewers with one model; one in the advisors file has two to five | `criteria`. See [Configure advisors](../operate/advisors.md) |
 
 The rest of a goal contract:
 

@@ -354,7 +354,7 @@ describe("the owner's messages to the advisors", () => {
     assert.match(lines.join("\n"), /review 1 of goal readable, reviewer-1: pass\. clear and small/);
     assert.match(
       lines.join("\n"),
-      /review 1: the review panel passed it; it waits for the owner's acceptance/,
+      /review 1: the review panel passed it, and it was accepted \(the run does not ask the owner\)/,
     );
   });
 

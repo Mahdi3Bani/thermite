@@ -1,7 +1,7 @@
 ---
 id: "079"
 title: "Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-22
 
 # 079 · Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -38,7 +38,7 @@ updated: 2026-10-22
    - the 30-minute cool-down;
    - the teachers' 24 turns, 900 seconds and 8,192 output tokens when their model comes from control.
 7. **The queue keeps its history.** An experiment whose trial ended on the provider's error or a restart is not marked failed and copied to the top of the queue: the same row goes back, and waits while the agents are stopped. The planner's and the teachers' briefs show each tried experiment's cause in words, not only "error".
-8. **Hands-off promotion.** The default promotion is automatic in every mode. A win the judge confirms is promoted with no owner step; an auditor, when one is set up, is the last step, and its block stops the win and says why. Nothing waits for the owner by default, unless the campaign is set to ask. The owner's "ask me" settings (always, above a gain, on declared flaws) are off by default, and shown on the campaign's settings and in New campaign.
+8. **Hands-off promotion.** The default promotion is automatic in every mode. A win the judge confirms is promoted with no owner step; an auditor, when one is set up, is the last step, and its block stops the win and says why. Nothing waits for the owner by default, unless the campaign is set to ask. The owner's "ask me" settings (always, above a gain, on declared flaws) are off by default, and shown on the campaign's settings and in New campaign. The other owner waits by default go the same way: a review panel's pass and a "not possible" proposal are taken unless the run asks.
 
 ## Why
 
@@ -68,10 +68,10 @@ An audit of the lab's campaigns found that Thermite itself, not the models, cost
 - [x] The fallback plan skips directions whose goals the champion already meets.
 - [x] Every default listed under What, item 6, is gone or a setting with no default value; Anthropic's API, which needs a reply limit, gets the model's maximum output or a stated 32,000.
 - [x] An experiment whose trial never really tried it goes back as the same row, with its cause; the briefs show each tried experiment's cause.
-- [ ] Hands-off promotion in every mode, with the "ask me" settings off by default, on the campaign's settings and in New campaign; contracts and runs that explicitly asked for owner approval keep it.
+- [x] Hands-off promotion in every mode, with the "ask me" settings off by default, on the campaign's settings and in New campaign; contracts and runs that explicitly asked for owner approval keep it.
 - [x] Tests: the error kinds and the no-credit stop; no trial on a failed check; the research clock; counters after a restart; the planner's causes and schema limits; the fallback skipping met goals; each removed default; the queue's same row.
-- [ ] Tests: the drain; promotion with no owner in each mode, an auditor's block, "ask me" settings, and old runs that asked for approval.
-- [ ] The pages: Limits and pacing, the contract and settings references, Promotion and audits, the research pages, troubleshooting, Update to these images, and the changelog.
+- [x] Tests: the drain; promotion with no owner in each mode, an auditor's block, "ask me" settings, and old runs that asked for approval.
+- [x] The pages: Limits and pacing, the contract and settings references, Promotion and audits, the research pages, troubleshooting, Update to these images, and the changelog.
 
 ## Decisions
 
@@ -91,6 +91,10 @@ An audit of the lab's campaigns found that Thermite itself, not the models, cost
   - **Lane caches.** Thermite's manifests, compose files and machine units keep `/scratch` on a volume, but the harness's start emptied all of it, the lanes' caches too. A start now sets each lane's cache aside and puts it back: only a real folder named for a lane and owned by that lane's user. On RunPod, `/scratch` is on the pod's container disk: the caches outlive a restart of the harness, not a stop of the pod.
   - **The drain** is the command `drain_rig`, in the harness's memory only: the restart it prepares ends it. Control drains a rig only when its last report shows work (open trials, or jobs under the judge's lease), and looks at a draining rig's reports every 10 seconds. It has no time limit; the owner can skip it or call it off. A harness too old to report its work is updated at once, as before.
   - **A stop** (SIGTERM) records the running trials as interrupted, with their workers' counters, and waits a few seconds for the judge's loop; a job under way is not waited for, as a container's stop gives little time, and its lease is taken back at the next start.
+  - **Hands-off promotion, what it covers.** A win the judge confirms is promoted when nothing asks the owner. On a rig with an auditor, the audits the contract calls for come first, and the auditor's clear is the last step, also above the absolute trigger or with declared flaws; its block stops the win, and `promotion_blocked` carries its reasons; its `needs_owner` still goes to the owner. Declared flaws nothing asks about are accepted by the promotion: `flaws_cleared_by` names the step (the auditor's clear, or no audit), and `flaws_accepted` records it. A review panel's pass (at least two reviewers, all passing) is accepted, and a "not possible" proposal closes the run, unless the run asks. Real failures stay in **Needs you**: an auditor's block, an audit or review whose advisor failed again and again, agents the provider stopped, a rig's new key, a reset and a silent rig. Full reset's confirmation and a rig's new key are not research gates and still wait for the owner.
+  - **Asks.** `ask_owner` on the run, from `assign_campaign`: `above_gain` (a fraction), `declared_flaws`, `reviews`, `not_possible`, each off unless set. It is a schema change of the harness's ledger (version 19: `run.ask_owner`). A run's `promotion: "owner_approval"`, or a rig's **Ask me for each change**, still asks about every win: a run that asked for approval keeps it. No contract field asks the owner: the promotion policy was never in a contract.
+  - **Is there an auditor?** The harness learns it from its supervisor (`PUT /v1/advisors`, each advisor round and every minute between rounds). Until the supervisor first says so after a start, an audit holds the win, as before; when it says there is no auditor (none set up, or switched off on **Edit rig**), the held wins go on by the run's rules, and `audit_skipped` records each. A supervisor from before this goal never says it, and its audits wait for the owner as before.
+  - **Needs you** leaves out an audit the rig's auditor will decide, and counts it nowhere; the run's **Promotion** line says what the run asks. The New campaign page and Start a run have an **Ask me first about** field (a percent and three boxes), and `thermite assign` and `thermite run start` take `--ask`.
   - **No mockup** for the screens' changes: the **Agents stopped** card is one more card in **Needs you**, in the same form as the others; the Experiments tab adds a line to a row; Edit rig's trial length field says "no limit" when empty.
 
 ## Open questions
@@ -100,7 +104,8 @@ None.
 ## Progress
 
 - 2026-10-22: Provider errors by kind, the agents' stop and its card, no trial on a failing check, the research clock, counters after a restart, the queue's same row with causes, the planner's limits and causes, research rounds, the fallback's skipped directions, and every hidden default removed or made a setting.
-- 2026-10-22: The drain before an image update, records of a stop, and the lanes' caches kept over a start. Next: hands-off promotion.
+- 2026-10-22: The drain before an image update, records of a stop, and the lanes' caches kept over a start. A Pi planner that sends the same refused plan again ends its call as `invalid`.
+- 2026-10-22: Hands-off promotion in every mode, the "ask me" settings, the auditor's presence from the supervisor, reviews and "not possible" endings taken unless the run asks; the pages. Every box has a test; the compose acceptances (agents, steering, judge, control, campaign, quick start) are for the maintainers to run.
 
 ---
 

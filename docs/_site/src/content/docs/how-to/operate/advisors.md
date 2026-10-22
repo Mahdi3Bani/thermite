@@ -9,8 +9,8 @@ sidebar:
 A rig's supervisor can run **the advisors**: models that watch the research but never judge it. Give them models on **Edit rig**, or in an advisors file, then check that they work.
 
 - The **teachers**, one or two, review each running run, every hour by default, and suggest directions for the planner and experiments for the run's [experiment queue](../campaigns/choose-what-runs-next.md). With two teachers, a **merged by** model joins their advice into one set.
-- The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one.
-- The **review panel** grades goals that code cannot check. A pass still needs your acceptance.
+- The **auditor** answers the judge's audits: its clear is the last step before a change becomes the champion, and its block stops it. A rig without one has no audits.
+- The **review panel** grades goals that code cannot check. Its pass meets the goal, unless the run asks you to accept it ([Decide what waits for you](../campaigns/decide-what-waits.md#reviews)).
 
 [Supervision](../../explanation/supervision.md) explains what each one may and may not do. No advisor runs until it has a model. **Edit rig** also has a switch for each part, **on** by default; a switch only lets a role run once it has a model.
 

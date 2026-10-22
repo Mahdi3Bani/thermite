@@ -26,7 +26,7 @@ Without a limit, nothing runs wild either. Code, not an agent, decides when a ca
 flowchart LR
   R((Running)) -- you pause it, a budget you set is spent,<br/>or another run starts on the rig --> P((Paused))
   P -- you resume it --> R
-  R -- goal campaign: every required goal met,<br/>or you accept that it is not possible --> C((Closed))
+  R -- goal campaign: every required goal met,<br/>or the evidence shows it is not possible --> C((Closed))
   R -- research campaign: its maximum duration is over --> C
 ```
 
@@ -61,7 +61,7 @@ No agent can end a campaign. What ends one is written in code, the same for ever
 | Mode | Ends when | Without that |
 | --- | --- | --- |
 | **Hill climb** | Never on its own | It runs until you pause it, a budget you set pauses it, or another run starts on its rig |
-| **Goal** | Every required goal is met (or, if the contract says so, enough of them), confirmed by two independent checks of the champion. Or you accept a "not possible" proposal | It has no time limit of its own |
+| **Goal** | Every required goal is met (or, if the contract says so, enough of them), confirmed by two independent checks of the champion. Or a "not possible" proposal is taken: at once, or when you accept it if the run asks you | It has no time limit of its own |
 | **Research** | Its running time reaches the contract's maximum duration. Without one, it runs until someone stops it: the minimum is a floor, never a stop. Only time the agents could work counts | The author sets the maximum, or none |
 
 A run that has stopped is **paused**, not closed, and keeps everything it found, including its experiment queue: the experiments its lanes were on go back to the top. A **closed** run is finished. Either way, its champion and its results stay, ready to take. [Campaign modes](campaign-modes.md) explains each ending in full.
