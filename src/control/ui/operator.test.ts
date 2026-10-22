@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Decision } from "../store.ts";
-import type { RigView, RunView } from "../views.ts";
+import type { AttemptView, RigView, RunView } from "../views.ts";
 import { moreText } from "./components.ts";
-import { decidedState, waitingOn } from "./operator.ts";
+import { decidedState, outcome, waitingOn } from "./operator.ts";
 
 const NOW = Date.parse("2026-10-21T21:00:00Z");
 const item = { rig: "rig-a", run: "run-1", attempt: "a-1" };
@@ -105,5 +105,20 @@ describe("a long text on the dashboard", () => {
     assert.match(html, /…<\/span> <span class="more-tog"><\/span><\/summary>/);
     assert.ok(html.endsWith("the end &lt;i&gt;</details>"), "the whole text, escaped");
     assert.doesNotMatch(html, /<i>/);
+  });
+});
+
+describe("an audit the rig's auditor will decide (goal 079)", () => {
+  const run = (audits: unknown[]) =>
+    ({ champion: [], audits, pending_promotions: [] }) as unknown as RunView;
+  const attempt = { id: "a-1", lifecycle: "awaiting_audit", history: [] } as unknown as AttemptView;
+  const rig = (auditor: boolean) =>
+    ({ supervisor: { advisors: { roles: { auditor } } } }) as unknown as RigView;
+  const held = [{ attempt: "a-1", decision: null, reason: "big_gain", at: "2026-10-22T07:00:00Z" }];
+
+  test("with an auditor it is Auditing, not Needs you; with none, or no rig given, it needs you", () => {
+    assert.deepEqual(outcome(run(held), attempt, rig(true)), { word: "Auditing", tone: "info" });
+    assert.equal(outcome(run(held), attempt, rig(false)).word, "Needs you");
+    assert.equal(outcome(run(held), attempt).word, "Needs you");
   });
 });

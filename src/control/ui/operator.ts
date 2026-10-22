@@ -1040,19 +1040,26 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
   return `<a class="rr" href="${runHref(u.id, r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
 }
 
-/** An attempt's outcome as one word a person scans for, with its tone. */
-export function outcome(r: RunView, a: AttemptView): { word: string; tone: string } {
+/**
+ * An attempt's outcome as one word a person scans for, with its tone. With its rig: an audit the
+ * rig's auditor will decide is "Auditing", not "Needs you" (goal 079).
+ */
+export function outcome(r: RunView, a: AttemptView, u?: RigView): { word: string; tone: string } {
   const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
   if (champ) return { word: `Champion #${champ.seq}`, tone: "ok" };
   const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
   if (audit?.decision === "block" || a.lifecycle === "audit_blocked")
     return { word: "Blocked", tone: "bad" };
+  const auditing = a.lifecycle === "awaiting_audit" || (audit && audit.decision === null);
   if (
-    r.pending_promotions.includes(a.id) ||
-    a.lifecycle === "awaiting_approval" ||
-    a.lifecycle === "awaiting_audit" ||
-    (audit && audit.decision === null)
+    auditing &&
+    u &&
+    hasAdvisors(u) &&
+    !r.pending_promotions.includes(a.id) &&
+    a.lifecycle !== "awaiting_approval"
   )
+    return { word: "Auditing", tone: "info" };
+  if (r.pending_promotions.includes(a.id) || a.lifecycle === "awaiting_approval" || auditing)
     return { word: "Needs you", tone: "warn" };
   if (a.lifecycle === "declined") return { word: "Declined", tone: "" };
   if (a.lifecycle === "promoted") return { word: "Promoted", tone: "ok" };
@@ -1076,7 +1083,7 @@ export function attemptRows(u: RigView, r: RunView, xs: AttemptView[], now: numb
     return `<div class="card"><div class="empty">No attempt yet: the lanes have not submitted anything.</div></div>`;
   return `<div class="card flat">${xs
     .map((a) => {
-      const o = outcome(r, a);
+      const o = outcome(r, a, u);
       const effect =
         r.mode === "goal"
           ? a.gained?.length || a.lost.length
@@ -1248,7 +1255,7 @@ export function attemptDetail(
   now: number,
   opts: { decision?: Need | undefined; patch?: string | undefined } = {},
 ): string {
-  const o = outcome(r, a);
+  const o = outcome(r, a, u);
   const base = r.champion.filter((c) => !c.reopened && c.commit === a.parent).at(-1);
   const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
   const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
@@ -1287,8 +1294,17 @@ export function attemptDetail(
                   ? `Held for an audit: ${auditReason(audit.reason)}`
                   : audit.decision === "clear"
                     ? "The auditor cleared it"
-                    : "The auditor passed it to you",
-            tone: audit.decision === "block" ? "bad" : audit.decision === "clear" ? "ok" : "warn",
+                    : audit.decision === "skipped"
+                      ? "This rig has no auditor: the audit was skipped"
+                      : "The auditor passed it to you",
+            tone:
+              audit.decision === "block"
+                ? "bad"
+                : audit.decision === "clear"
+                  ? "ok"
+                  : audit.decision === "skipped"
+                    ? ""
+                    : "warn",
           },
         ]
       : []),

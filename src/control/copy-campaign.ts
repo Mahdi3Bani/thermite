@@ -130,6 +130,7 @@ export const RUN_FIELDS = new Set([
   "contract_sha",
   "agents",
   "promotion",
+  "ask_owner",
   "queue",
   "briefing",
 ]);
