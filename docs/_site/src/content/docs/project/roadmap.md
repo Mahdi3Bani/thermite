@@ -26,7 +26,8 @@ Thermite's core is built: the judge, control and its dashboard, the agents, and 
 - rules for the planner that name the run's directions, in plain words or picked as `:name:` on the run's **Planner** tab. It is done ([goal 066](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/066-direction-rules.goal); [Make a rule: tell the planner](../how-to/campaigns/choose-what-runs-next.md#make-a-rule-tell-the-planner));
 - MCP servers for a campaign's agents, named by its kit. It is done ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal); [Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md));
 - copying a campaign under a new name, with its own empty folder in the knowledge base, to give a second model the same campaign from zero: **Copy** on the campaign's page, and its twins over REST, MCP and the command line. It is done ([goal 069](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/069-copy-a-campaign.goal); [Compare two models from zero](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero));
-- a claim's source named by the address its page was archived from, as well as by its id, still checked word for word, and each draft's reasons in the run's **History**. It is done ([goal 076](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/076-claim-sources-and-reasons.goal); [Research](../explanation/campaign-modes.md#research)).
+- a claim's source named by the address its page was archived from, as well as by its id, still checked word for word, and each draft's reasons in the run's **History**. It is done ([goal 076](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/076-claim-sources-and-reasons.goal); [Research](../explanation/campaign-modes.md#research));
+- archiving a campaign, which keeps its folder, and folders for campaigns in the dashboard's left navigation, which no longer lists the rigs. It is done ([goal 077](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/077-archive-and-folders.goal); [Archive campaigns and sort them into folders](../how-to/campaigns/archive-and-folders.md)).
 
 Also built:
 
@@ -41,7 +42,6 @@ In progress:
 
 - a cap on the context window of each agent's model, and compaction near it: an agent's conversation is kept, summarized and goes on, in every harness, the advisors' included. A campaign can set its own window and compaction point for its runs. Both work over REST and MCP, and a campaign's own over the command line too; fields for them on **Edit rig**, **New campaign**, **Copy** and the campaign's page are still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
 - a harness of the owner's choice for every kind of agent, not only the workers: Pi, OpenCode v2, Claude Code or the Codex CLI for the planner and each advisor too ([goal 073](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/073-harness-for-each-agent.goal)).
-- archiving a campaign, folders for campaigns in the dashboard's left navigation, and a navigation without the rigs. They are built, and wait for the owner's look at their screens ([goal 077](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/077-archive-and-folders.goal); [Archive campaigns and sort them into folders](../how-to/campaigns/archive-and-folders.md)).
 
 Still to come in v0.1.0:
 
