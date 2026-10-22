@@ -6,7 +6,7 @@ sidebar:
   order: 21
 ---
 
-A [rig](glossary.md)'s page shows one rig: whether it reports, its version against control's, what runs on it, its checks, and what you can do to it. Open it from [**Rigs**](rigs-list.md) or from the rig's name in the sidebar. Its address is `/ui/rigs/<rig>`. This page describes each part, from the top down. [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) and [Run a rig on RunPod](../how-to/install/runpod-rig.md) give the steps.
+A [rig](glossary.md)'s page shows one rig: whether it reports, its version against control's, what runs on it, its checks, and what you can do to it. Open it from [**Rigs**](rigs-list.md): press the rig's row. Its address is `/ui/rigs/<rig>`. This page describes each part, from the top down. [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) and [Run a rig on RunPod](../how-to/install/runpod-rig.md) give the steps.
 
 ## Places on the page
 
@@ -46,7 +46,7 @@ A button that needs typed words stays off until the words are typed exactly. Con
 
 The first lines under the title say, in a few sentences: for a RunPod rig, its pod and what it has cost; whether it reports; what runs on it; what its judge does; a check that failed; a key that waits for you; for a RunPod rig, a connection to its pod that failed.
 
-A card after an action says what happened: its words in green, or **Not done.** and the reason. A button that sends a command to the rig, such as **Export now**, **Run it** or **Pause**, says at once that the click took, and the page follows the command to its outcome with no refresh: see [Signed commands](signed-commands.md#on-the-dashboard). After **Save changes** on **Edit rig**, the green line here goes on with how the settings' command stands, such as `rig-1 took it at 03:41 UTC.`
+A card after an action says what happened: its words in green, or **Not done.** and the reason. A button that sends a command to the rig, such as **Export now**, **Run it** or **Pause**, says at once that the click took, and the page follows the command to its outcome with no refresh: see [Signed commands](signed-commands.md#on-the-dashboard). After **Save changes** on **Edit rig**, the green line here goes on with how the settings' command stands, such as `rig-1 took it at 03:41 UTC. This page shows the change when the rig next reports.`
 
 ## The reporting banner
 

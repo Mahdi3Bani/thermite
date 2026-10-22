@@ -132,10 +132,11 @@ Control answers with the point it keeps, and says it in words: `"compact_at":70`
 
 - A point outside 50 to 95 is refused: `The compaction point is a whole percent of the context window, from 50 to 95.`
 - Each request sets the point anew, as it sets the cap. Give the model again without `compact_at` and the rig goes back to 80%.
+- A rig whose harness is older than this point refuses a model route with `compact_at`: set it only on rigs on images that have it. A route without it is unchanged.
 - **Use** on this page keeps the point while the rig keeps the same model, and another model there removes it. On **Edit rig**, the workers' **Context** cell shows the point and changes it.
 - This point is for the workers' model, and for the planner when it follows the workers. The planner with its own model and each advisor take their own point, and a campaign can set its own for all its runs: see [Give each agent its own model](model-per-agent.md#set-an-agents-context-window-and-compaction).
 
-After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction shows in the run's **History** and in the trial's **Live** view, with the summary, such as "Claude Code compacted the conversation (compaction 1) at about 160,512 tokens, down to about 18,204. The trial goes on. The conversation before it is kept in the run's research folder, compactions/t-…-1.md." [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes, and how each one's conversation is kept: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
+After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction has a line in the run's **History**, and one in **Live** with the summary after it, such as "Claude Code compacted the conversation (compaction 1) at about 160,512 tokens, down to about 18,204. The trial goes on. The conversation before it is kept in the run's research folder, compactions/t-…-1.md." [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes, and how each one's conversation is kept: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
 
 ## Add a model the list leaves out
 
@@ -143,7 +144,7 @@ Some providers serve models that their list does not show. Open the provider's r
 
 ## Give a model its price
 
-[Model usage](../../reference/model-use.md) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show `no price` until you set one, in US dollars for a million tokens.
+[Model usage](../../reference/model-use.md) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show `no price` until you set one, in US dollars for a million tokens. A provider whose list makes every model free says `free, from the provider` in its row.
 
 1. Open **Settings › Providers**. Under the providers, **Model prices** lists every model of every provider that is not a subscription, in $ for a million tokens. Its **Price from** column says `provider's list`, `free`, `yours` or `no price`.
 2. In the model's row, type its **In** and **Out** prices, and **Cached in** if the provider charges less for tokens it reads from its cache (empty: the **In** price). A model whose list gives a price shows it as text: it can't be changed here.
@@ -159,7 +160,7 @@ curl -sS -X POST https://control.example.com/v1/model-prices \
   -d '{"provider": "lab", "model": "small-model", "input": 1, "cached_input": 0.1, "output": 2}'
 ```
 
-The answer says the price in words: "small-model of lab costs 1 USD per million tokens in, 0.1 USD cached and 2 USD out. Model usage prices all its calls at it." The MCP tool [`set_model_price`](../../reference/mcp-tools.md#set_model_price) does the same. A subscription's calls (a Claude or ChatGPT provider) are on its plan and take no price.
+The answer says the price in words: "small-model of lab costs 1 USD per million tokens in, 0.1 USD cached and 2 USD out. Model usage prices all its calls at it." The MCP tool [`set_model_price`](../../reference/mcp-tools.md#set_model_price) does the same. A subscription's calls (a Claude or ChatGPT provider) are on its plan and take no price: its row says `On a plan: its calls show their tokens, and “on a plan” for cost.`
 
 ## Refresh, change or delete a provider
 

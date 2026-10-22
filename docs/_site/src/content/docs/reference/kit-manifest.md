@@ -248,7 +248,7 @@ The reasons have these forms:
 | Driver refused a value | `implausible: <problems>` |
 | Check failed | The check's `reasons`, joined with `; ` |
 
-In a goal campaign, a failed run on a verifier's cell makes that goal unmet, with the run's failure as its reason, whichever arm it was. A failure on a held-out cell is recorded by its kind alone: see [Held-out failures](verdicts.md#held-out-failures).
+In a goal campaign, a failed run on a verifier's cell makes that goal unmet, with the run's failure as its reason, whichever arm it was. A held-out cell's failure is recorded with the cell's name and its kind for you; the agents learn its kind alone: see [Held-out failures](verdicts.md#held-out-failures).
 
 Each run's reason keeps at most 2,000 characters. A longer one keeps its first quarter and its last three quarters, with ` … ` where it was cut: the start says what failed, and the end of the standard error is where the error usually is. Reasons are shortened the same way where they are passed on:
 

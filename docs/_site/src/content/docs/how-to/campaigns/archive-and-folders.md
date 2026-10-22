@@ -44,7 +44,7 @@ The campaign is back in the left navigation, in the folder it kept, or in none, 
 1. In the left navigation, press the folder button beside **Campaigns**.
 2. Under **New folder**, type a name, such as `Kernels`, and press **Create**.
 
-The page says `Made the folder Kernels.`, and the folder shows in the navigation, above the campaigns in no folder. A name is one line of at most 40 characters, and two folders can't have the same name, whatever its case: `There is a folder named Kernels already.`
+The page says `Made the folder Kernels. Drag a campaign onto it, or use Move to folder on a campaign's page.`, and the folder shows in the navigation, above the campaigns in no folder. A name is one line of at most 40 characters, and two folders can't have the same name, whatever its case: `There is a folder named Kernels already.`
 
 ## Put a campaign in a folder
 

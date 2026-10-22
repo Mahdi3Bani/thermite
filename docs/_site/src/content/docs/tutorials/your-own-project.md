@@ -154,7 +154,7 @@ Press **Try the kit first**. This starts a run with no agents: the judge builds 
 
 The campaign's page opens and says `Starting local-1/primes-speed-try-1.`, then how the start goes, such as `Sent to local-1 at`, the time, and `Waiting for the rig to take it.` The rig fetches your project from your Git host and the kit from control, and checks both. Stay on the page: once the rig reports the run, usually within a minute, the page opens the run's own page by itself, at the same address. The line at the top reads `Campaigns › primes-speed › primes-speed-try-1`, then `on local-1 · hill climb · Running`, and below it is the note **A try of the kit.** The run's tabs follow: **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**. **Overview** is open.
 
-A minute or two after you pressed **Try the kit first**, press **refresh** again. Under **Recent**, on the **Overview**, you see `The judge measured the rig's noise:` and a small percentage. To learn that, the judge built your project and ran the `100k` case many times, and the check passed on every answer. Now the judge also knows how much your computer's timings vary on their own.
+A minute or two after you pressed **Try the kit first**, press **refresh**. Under **Recent**, on the **Overview**, you see `The judge measured the rig's noise:` and a small percentage. To learn that, the judge built your project and ran the `100k` case many times, and the check passed on every answer. Now the judge also knows how much your computer's timings vary on their own.
 
 This line means that the kit works. The try has nothing more to do: under **Now**, the judge is `idle`. It stays **Running** until the run you start in step 9 replaces it, so you need not wait for it.
 

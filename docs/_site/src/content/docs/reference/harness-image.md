@@ -25,7 +25,7 @@ docker build -t thermite-harness -f containers/harness/Containerfile .
 
 ## Published images
 
-For each release, the release workflow (`.github/workflows/release.yml`) builds the images from these files and pushes them to GitHub's container registry, under the repository owner's name:
+For each release, the release workflow (`.github/workflows/release.yml`) builds the images from these files and pushes them to GitHub's container registry, under the repository owner's name. It builds every layer again, without the build cache, so each image has its base's newest system packages:
 
 | Image | Name | Tags | Architectures |
 | --- | --- | --- | --- |
@@ -151,6 +151,7 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 | Base | `NODE_IMAGE` |
 | Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3` |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
+| Compaction hook and plugin | The same as in the harness image, for advisors in Claude Code and OpenCode: `/opt/thermite/dist/harness/agents/compaction-hook.js` and `/opt/thermite/dist/harness/agents/opencode-plugin.js`. Each keeps an advisor's conversation before each of that program's compactions ([Compaction](limits-and-pacing.md#compaction)) |
 | Claude Code | `/usr/local/bin/claude`, only when built with `CLAUDE_CODE_VERSION`. Advisors on a Claude subscription need it |
 | OpenCode | `/usr/local/bin/opencode`, at `OPENCODE_VERSION` (2.0.32 by default), as in the harness image, for [advisors in OpenCode](advisors-file.md#opencode-opencode-v2-in-the-supervisor). Always installed. Its MIT `LICENSE` is in `/usr/local/share/doc/opencode` |
 | Codex CLI | `/opt/codex`, with `/usr/local/bin/codex` linked to `/opt/codex/bin/codex`, at `CODEX_VERSION` (0.162.1 by default), as in the harness image, for [advisors in Codex](advisors-file.md#codex-the-codex-cli-in-the-supervisor). Installed unless that argument is empty. Its `LICENSE` (the Apache License 2.0) and `NOTICE` are in `/usr/local/share/doc/codex` |

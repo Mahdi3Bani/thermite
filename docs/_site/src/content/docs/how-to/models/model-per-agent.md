@@ -104,7 +104,7 @@ Each line's **Context** cell shows its agent's context window and its compaction
 
 Another model on a line keeps the two numbers, and checks them against the new model. Empty fields remove the agent's own cap and point.
 
-The planner with no model of its own uses the workers' cap and point. An advisor in Pi compacts its call's conversation, and the supervisor keeps the conversation with its own records. Every advisor's package, such as an audit's diff, is cut to fit its window, and the advisor is told so. An advisor in Claude Code, OpenCode v2 or Codex gets the window and the point in that program's own settings, as the workers do, and the supervisor keeps its conversation before each of that program's compactions with its own records too. [Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
+The planner with no model of its own uses the workers' cap and point. An advisor in Pi compacts its call's conversation, and the supervisor keeps the conversation with its own records. An advisor's package, such as an audit's diff, is cut to fit its window when Thermite knows the window, and the advisor is told when it is cut. An advisor in Claude Code, OpenCode v2 or Codex gets the window and the point in that program's own settings, as the workers do, and the supervisor keeps its conversation before each of that program's compactions with its own records too. [Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
 
 These are the rig's numbers. A campaign can set a smaller window and its own point for all its runs: see [Set a campaign's own context window](#set-a-campaigns-own-context-window).
 
@@ -158,7 +158,7 @@ The answer adds "Its context window: 131,072 tokens (capped; the provider allows
 
 The rig sets each agent's window and point. A campaign can set its own for all its runs, for example to run two rigs on different models at the same window. Each agent's window is then the lower of the campaign's and its own, and the campaign's point replaces the rig's.
 
-On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **5 · Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
+On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **5 Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
 
 - **MCP**: [`set_campaign_context`](../../reference/mcp-tools.md#set_campaign_context) with `{ "campaign": "sort-speed", "context_window": 131072, "compact_at": 70 }`.
 - **REST**: [`POST /v1/campaigns/<campaign>/context`](../../reference/rest-api.md#a-campaigns-context-settings) with `{"context_window": 131072, "compact_at": 70}`.
