@@ -1,0 +1,43 @@
+---
+id: "094"
+title: "Copy an ID from any page"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 094 · Copy an ID from any page
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+Next to each ID the dashboard shows (a campaign, a run, a rig, a lane, a trial, an attempt, an experiment, a command, a rule, a message), a small **Copy** button copies it with one click, with a short "Copied" in place. A second choice copies a reference that names where it is, such as `rig-1 / run-1 / attempt a-…`, or the page's link, so it can be pasted into a chat with an agent ("look at this part of the system") or sent to someone.
+
+## Why
+
+The owner, 2026-10-22: "There should be a "copy id" of things like run, campaign, worker, lane etc. So that you can copy it to reference in chats or sending links etc... I don't have a good way to copy something quickly and pass it in and say "take a look at this part of the system to figure out xyz"."
+
+## Done when
+
+- [ ] A mockup, approved by the owner, of where the buttons sit and what each copies.
+- [ ] The buttons on every page that shows those IDs, with keyboard use and a test that each copies the right text.
+- [ ] The pages that describe the dashboard.
+
+## Decisions
+
+- 2026-10-22, owner: in v0.1.1.
+
+## Open questions
+
+- Whether the reference copied is plain text, a link, or both on one click.
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's request.
+
+---
+
+Run with `/goal Complete docs/plan/goals/094-copy-id.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

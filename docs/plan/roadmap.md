@@ -102,6 +102,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [088](goals/088-new-campaign-button-progress.goal) New campaign's buttons show they were pressed · `PROPOSED`
 - [090](goals/090-info-tab.goal) An Info tab for campaigns and runs: everything they were started with · `PROPOSED`
 - [091](goals/091-needs-you-stuck-rigs.goal) Needs you shows a rig that is stuck · `PROPOSED`
+- [093](goals/093-live-shows-reasoning.goal) Live shows what the model thinks and says, not only its tool calls · `PROPOSED`
+- [094](goals/094-copy-id.goal) Copy an ID from any page · `PROPOSED`
 
 ## v0.2.0
 

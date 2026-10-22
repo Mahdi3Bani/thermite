@@ -1,0 +1,46 @@
+---
+id: "093"
+title: "Live shows what the model thinks and says, not only its tool calls"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 093 · Live shows what the model thinks and says, not only its tool calls
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A bug fix. **Live** for a run shows each agent's turn as an agent harness shows it: the model's reasoning (when the model gives it), its words between tool calls, and then the calls and their results. Today a worker's Live shows mostly its tool calls (many fetches, for example), and the model's thinking about what to call next is missing.
+
+- Find where each harness's stream (Pi, OpenCode, Claude Code, Codex) gives reasoning and text, and pass it to Live, shortened as Live shortens other lines, with a way to open a line in full.
+- Reasoning is the agent's own text: it is treated as data, never as instructions, as other agent text is, and it never carries a held-out case.
+- A filter on Live to show or hide reasoning lines.
+
+## Why
+
+The owner, 2026-10-22, watching a worker in Live: "I see tons of fetches. But I don't see any model reasoning etc that you see on typical harnesses as the model is thinking about what to call etc... Seems I don't see all the live data there is."
+
+## Done when
+
+- [ ] Live shows each harness's reasoning and text lines where the model gives them, with tests for each harness's stream.
+- [ ] The pages that describe Live.
+
+## Decisions
+
+- 2026-10-22, owner: a bug fix for v0.1.1.
+
+## Open questions
+
+- How much reasoning to keep in control's Live store (it can be long), and whether exports keep it.
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's feedback.
+
+---
+
+Run with `/goal Complete docs/plan/goals/093-live-shows-reasoning.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
