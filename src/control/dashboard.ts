@@ -761,7 +761,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const decisions = needs(c, [u], now, back).filter((n) => n.run === i.id);
     // How each goal is really checked (goal 082): as this run's rig reported its kit, else as
     // control can read the campaign's kit or contract.
-    const how = i.mode === "goal" ? goalChecksFor(i.campaign || i.id, u.id, i) : undefined;
+    const how = i.mode === "goal" ? goalChecksFor(i.campaign || i.id, vs, u.id, i) : undefined;
     const howFor = (goal: string) =>
       howCheckedDetails(
         how?.checks.goals.find((x) => x.goal === goal),
@@ -2143,6 +2143,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
    */
   const goalChecksFor = (
     name: string,
+    vs: RigView[],
     rig?: string,
     run?: RunView,
   ): { checks: GoalChecks; source: ChecksSource } | undefined => {
@@ -2162,7 +2163,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         };
     }
     if (!run) {
-      const reported = views()
+      const reported = vs
         .flatMap((u) => u.runs.map((r) => ({ u, r })))
         .filter((x) => (x.r.campaign || x.r.id) === name && x.r.goal_checks)
         .sort((a, b) => (b.r.created_at ?? "").localeCompare(a.r.created_at ?? ""))[0];
@@ -2385,7 +2386,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         );
       const waiting = c.req.query("run");
       // A goal campaign's goals, each with how it is checked (goal 082), before any run.
-      const how = goalChecksFor(name);
+      const how = goalChecksFor(name, vs);
       const savedGoals = how?.checks.goals.length
         ? `<div class="block"><div class="head"><h2>Goals</h2><span class="n">${how.checks.goals.length}</span></div><div class="card flat">${how.checks.goals
             .map(
@@ -2492,7 +2493,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const bestRun = h.best;
     // How each goal is really checked (goal 082): from the kit control keeps, else from the
     // newest run whose rig reported it, else what the contract says.
-    const how = k.mode === "goal" ? goalChecksFor(name) : undefined;
+    const how = k.mode === "goal" ? goalChecksFor(name, vs) : undefined;
     const goals =
       (k.mode === "goal" && bestRun?.goals.length
         ? `<div class="kgoals">${bestRun.goals
