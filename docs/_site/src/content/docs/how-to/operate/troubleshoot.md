@@ -141,7 +141,7 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
 ### An image update waits while the rig drains
 
 - **You see:** on the page of a rig on a cluster, after **Update to these images**, the status `draining` and `Draining before its pods restart on control's images:` with the new images.
-- **Why:** the rig was at work. It starts no new trial, plan or judge job, and its pods restart once its running trials and the judge's job end. A trial has no time limit unless someone set one, so this can take a while. If the rig's harness started again during the drain, it forgot the drain and went back to work; control sends the drain again, and the rig's history has the step `its harness started again and was not draining: asked again`.
+- **Why:** the rig was at work. It starts no new trial, plan or judge job, and its pods restart once its running trials and the judge's job end. A trial has no time limit unless someone set one, so this can take a while. If the rig's harness started again during the drain, it forgot the drain and went back to work; after two reports without the drain, control sends it again, and the rig's history has the step `its harness started again and was not draining: asked again`.
 - **Do:** wait; or press **Update now, without waiting**: its pods restart at once, and the running trials are recorded as interrupted, their experiments back at the top of the queue; or press **Call the update off**, and the rig goes back to work on its images. See [Update to these images](rig-lifecycle.md).
 
 ### A rig on a cluster never reports

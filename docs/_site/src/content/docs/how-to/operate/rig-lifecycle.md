@@ -96,7 +96,7 @@ Steps:
 1. Open the rig's page (on **Rigs**, **needs update** opens it at the banner), and press **Update to 0.2.0** in the banner. The button turns into **Sending…**, then **Updating…**, and a line at the top of the page says `The update of rig-1 to 0.2.0 began. Its steps show below as they happen.`
 2. Stay on the page: the banner shows each step as it happens, with no refresh:
    - "Its runs paused at a safe point": control pauses the running runs, and waits up to 5 minutes for the rig to take the pause.
-   - "Its containers moved onto control's images": on a machine, over SSH, control pulls both images while the rig still runs, writes its two container units again, and restarts both services. On a cluster, it applies the rig's two deployments again, at once: the runs are paused already, so the rig does not drain first as **Update to these images** does.
+   - "Its containers moved onto control's images": on a machine, over SSH, control pulls both images while the rig still runs, writes its two container units again, and restarts both services. On a cluster, it applies the rig's two deployments again, at once: the runs are paused already, so the rig does not drain first as **Update to these images** does. A judge's job under way starts over: its lease is taken back at the next start, and that counts as one of the three lost leases after which a job is `blocked`.
    - "A report reached control from control's version", within 20 minutes.
    - "The isolation check after the update", within 30 minutes.
    - "Its runs resumed".
@@ -128,7 +128,7 @@ Steps:
    - **Update now, without waiting** restarts its pods at once: a trial in progress stops, and its experiment goes back to the queue.
    - **Call the update off** ends the drain: the rig goes back to work on its images, and its status says `running`.
 
-   Once the rig reports that nothing runs, within a minute or two of its last trial's end, control restarts its pods: a step reads "nothing runs any more: its pods restart now". A rig with nothing at work, or whose harness is too old to report its work, restarts at once. A harness keeps the drain in memory only: if it starts again during the drain, its next report has no drain, and control sends the drain again, with a step that reads "its harness started again and was not draining: asked again".
+   Once the rig reports that nothing runs, within a minute or two of its last trial's end, control restarts its pods: a step reads "nothing runs any more: its pods restart now". A rig with nothing at work, or whose harness is too old to report its work, restarts at once. A harness keeps the drain in memory only: if it starts again during the drain, its reports have no drain, and after two such reports control sends the drain again, with a step that reads "its harness started again and was not draining: asked again".
 
    Then a line at the top of the page says `rig-1's pods restart on the new images.` The block's status, at the right of its heading, says `updating`, and **Images** names the new images. A new step reads "Its deployments applied with new images", with the old and the new name of each image that changed.
 

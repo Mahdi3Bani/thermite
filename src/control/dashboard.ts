@@ -5939,14 +5939,23 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     });
   /**
    * A harness keeps its drain in memory only: one that started again since it took the drain
-   * reports none, and goes back to work. Asked again, it drains again (once the last ask is
-   * taken and a report came after it, so an ask still on its way is not repeated).
+   * reports none, and goes back to work. Asked again, it drains again: once the last ask is taken
+   * and two reports after it say no drain. One is not enough: a report's summary can be read
+   * before the drain took effect and reach control after the ask was taken.
    */
+  const undrained = new Map<string, { ask: string; seen: string }>();
   const redrain = (rig: string) => {
     const last = store.latestCommands(rig, "drain_rig", 1)[0];
     if (last?.payload.drain !== true || last.status === "pending" || !last.acked_at) return;
     const seen = store.rigs().find((x) => x.id === rig)?.last_seen;
     if (!seen || Date.parse(seen) <= Date.parse(last.acked_at)) return;
+    const first = undrained.get(rig);
+    if (first?.ask !== last.id) {
+      undrained.set(rig, { ask: last.id, seen });
+      return;
+    }
+    if (first.seen === seen) return;
+    undrained.delete(rig);
     issueCommand(store, opts.privateKeyPem, {
       rig,
       kind: "drain_rig",
@@ -5974,6 +5983,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     for (const r of store.clusterRigs().filter((x) => x.status === "draining")) {
       const w = rigWork(r.rig);
       if (w && w.draining === null) redrain(r.rig);
+      else undrained.delete(r.rig);
       if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
       store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
       void updateClusterRigImages(r.rig, "control:drain", { wait: false }).catch(() => {});

@@ -695,11 +695,15 @@ describe("clusters in Providers and Add a rig", () => {
     // Not yet taken: the report without a drain is not a reason to ask again.
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(drains().length, 1);
-    // Taken, then the harness started again: its next report has no drain.
+    // Taken; one report after it without the drain may have been read before it took effect.
     const first = drains()[0];
     assert.ok(first);
     s.store.ackCommand("cpu-1", first.id, "delivered", {});
     await new Promise((r) => setTimeout(r, 5));
+    report({ trials: 1, judge_jobs: 0, draining: null });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(drains().length, 1);
+    // The next report has no drain either: the harness started again and forgot it.
     report({ trials: 1, judge_jobs: 0, draining: null });
     for (let i = 0; i < 50 && drains().length < 2; i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(drains().length, 2);
