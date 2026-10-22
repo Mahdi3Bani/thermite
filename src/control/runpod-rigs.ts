@@ -1,7 +1,7 @@
 import { log, redact } from "../common/env.ts";
 import { POD_CONFIG_ENV, PodConfig } from "../core/tunnel.ts";
 import { createPod, getPod, readRunpod, terminatePod } from "./runpod.ts";
-import { RUNPOD_STEP_WORDS, RunpodLifecycle } from "./runpod-lifecycle.ts";
+import { noFreeGpu, RUNPOD_STEP_WORDS, RunpodLifecycle } from "./runpod-lifecycle.ts";
 import {
   idleSince,
   type RigState,
@@ -255,6 +255,12 @@ export class RunpodRigs {
     } catch (err) {
       // No pod: nothing can use the rig's code.
       this.store.dropTunnelRig(minted.rig, by);
+      // RunPod's stock changes by the minute: say so, and what to do, in words.
+      const busy = noFreeGpu(err);
+      if (busy)
+        throw new Error(
+          `RunPod has no ${count} × ${gpu.name} free on ${cloudType === "SECURE" ? "Secure" : "Community"} cloud${req.datacenter ? ` in ${req.datacenter}` : ""} now: ${busy}. No pod was started and nothing is billed. Choose another GPU${req.datacenter ? " or any data center" : ""}, or try again in a few minutes.`,
+        );
       throw err;
     }
     try {

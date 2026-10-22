@@ -15,7 +15,8 @@ import {
 import { createControlApi } from "./api.ts";
 import { issueCommand } from "./issue.ts";
 import { advanceResets, confirmReset } from "./lifecycle.ts";
-import { STOP_WAIT_MS } from "./runpod-lifecycle.ts";
+import { RunpodRefused } from "./runpod.ts";
+import { noFreeGpu, STOP_WAIT_MS } from "./runpod-lifecycle.ts";
 import type { RunpodRigView } from "./runpod-rig-view.ts";
 import { RunpodRigs } from "./runpod-rigs.ts";
 import { SecretBox } from "./secrets.ts";
@@ -905,5 +906,26 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
       /pod was stopped: control started it\. The run starts once the pod runs\. Sent to rp-\w+ at \d\d:\d\d UTC\./,
     );
     assert.equal(t.view(other).status, "RUNNING");
+  });
+});
+
+describe("RunPod's no-stock answers", () => {
+  test("each wording RunPod uses for a GPU it has none of is read as no GPU free; other refusals are not", () => {
+    for (const words of [
+      "RunPod answered 400 for POST /v2/pods (Bad Request: There are no longer any instances available with the requested specifications. Please refresh and try again.)",
+      "RunPod answered 400 for POST /v2/pods (Bad Request: no capacity for that GPU)",
+      "RunPod answered 400 for POST /v2/pods/p1/start (Bad Request: not enough free GPUs on the host machine)",
+    ])
+      assert.equal(noFreeGpu(new RunpodRefused(400, words)), words);
+    assert.equal(
+      noFreeGpu(
+        new RunpodRefused(
+          400,
+          "RunPod answered 400 for POST /v2/pods (Bad Request: imageName is required)",
+        ),
+      ),
+      undefined,
+    );
+    assert.equal(noFreeGpu(new Error("no capacity")), undefined, "only RunPod's own refusals");
   });
 });

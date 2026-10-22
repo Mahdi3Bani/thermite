@@ -298,7 +298,10 @@ describe("Launch on RunPod", () => {
     // RunPod's own refusal, in its words.
     const full = await setup({ noCapacity: true });
     const refused = await (await full.send("/ui/rigs/add/runpod", LAUNCH)).text();
-    assert.match(refused, /Not launched\.<\/b> RunPod answered/);
+    assert.match(
+      refused,
+      /Not launched\.<\/b> RunPod has no 2 × .+ free on Secure cloud now: RunPod answered 400 .*No pod was started and nothing is billed\. Choose another GPU, or try again in a few minutes\./,
+    );
     assert.equal(full.rigs.view("rp-test-1"), undefined);
   });
 });

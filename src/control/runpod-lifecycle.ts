@@ -111,7 +111,7 @@ export function runpodResetRefusal(store: ControlStore, rig: string): string | u
 /** When RunPod would not start a pod because it has no GPU free for it, in words; else undefined. */
 export function noFreeGpu(err: unknown): string | undefined {
   if (!(err instanceof RunpodRefused)) return undefined;
-  return /not enough (free )?gpus?|no (free |available )?gpus?|gpus? (is |are )?not available|insufficient|capacity/i.test(
+  return /not enough (free )?gpus?|no (free |available )?gpus?|gpus? (is |are )?not available|insufficient|capacity|no (longer )?(any )?instances? (are )?available/i.test(
     err.message,
   )
     ? err.message

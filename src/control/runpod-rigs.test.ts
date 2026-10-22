@@ -214,7 +214,7 @@ describe("rigs on RunPod: the launch", () => {
     const s = setup({ noCapacity: true });
     await assert.rejects(
       s.rigs.launch("runpod", { gpu: "RTX A4000", rig: "rig-x" }, "owner:api"),
-      /RunPod answered 400 .*no capacity for that GPU/,
+      /^Error: RunPod has no 1 × .+ free on Secure cloud now: RunPod answered 400 .*no capacity for that GPU.*\. No pod was started and nothing is billed\. Choose another GPU, or try again in a few minutes\.$/,
     );
     assert.equal(s.store.tunnelRig("rig-x"), undefined);
     assert.deepEqual(s.store.runpodRigs(), []);

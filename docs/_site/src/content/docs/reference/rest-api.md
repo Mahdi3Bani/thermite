@@ -558,7 +558,8 @@ A launch refuses with one of these, as 409 `{"error": ...}`:
 - `no image: give one, or set THERMITE_RUNPOD_RIG_IMAGE on control (the one-container rig image, at a registry RunPod can pull from)`
 - `the rig's settings take only <names>, with values of letters, digits and . _ , : -`
 - `a rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit`, `rig <rig> exists already`
-- what RunPod answered, such as `RunPod answered 400 for POST /v2/pods (Bad Request: no capacity for that GPU)`, or `RunPod refused the key for this: a read-only key can't start or stop pods`
+- RunPod has none of that GPU free: `RunPod has no <n> × <GPU> free on <Secure|Community> cloud[ in <data center>] now: <RunPod's answer>. No pod was started and nothing is billed. Choose another GPU[ or any data center], or try again in a few minutes.`
+- what RunPod answered otherwise, such as `RunPod refused the key for this: a read-only key can't start or stop pods`
 
 #### When a rig is idle
 
