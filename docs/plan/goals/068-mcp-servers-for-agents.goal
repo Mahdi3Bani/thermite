@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["065"]
 created: 2026-10-20
-updated: 2026-10-21
+updated: 2026-10-22
 ---
 
 # 068 · MCP servers for a campaign's agents, named by its kit
@@ -47,6 +47,10 @@ The owner, 2026-10-20: outside knowledge bases should be plain MCP tools: add an
   - This fits the settled network rules: the harness reaches the internet, and the supervisor reaches the internet and its harness. No rule changes.
 - 2026-10-20, release lead's brief: a kit names a server in `mcp_servers` (kit.json; a research contract, which has no kit, keeps the list itself), each with `agents` and, only when narrowed, `tools` per kind of agent. Control fills the assignment's `mcp_servers`, refuses a server Settings lacks, and the harness refuses a run whose assignment differs from its kit.
 - 2026-10-20: the update from 065's outside knowledge base: each one becomes an MCP server with a key (Authorization: Bearer and its token, kept), its name made lowercase with dashes. Copies of campaign folders stop; pages already written there stay. The teachers' search grants go. The audit records `outside_kb_migrated` for each; Settings says so once, until Got it.
+- 2026-10-22, lead, from a research run whose first trial started 1 s before the harness said its MCP server was "not given to this rig yet" and 12 s before control handed it over, and ran its whole length without it: **a run whose kit names MCP servers starts no plan or trial until the rig holds them, or until a bounded wait ends.** Builder, within the brief:
+  - **Wait, not pick up.** The harness waits before the run's first plan or trial (`MCP_WAIT_MS` in `src/harness/agents/scheduler.ts`, 2 minutes: four of the supervisor's 30-second rounds) rather than giving a running trial a server that arrives later. A Pi trial's tools are fixed when its agent is made, and OpenCode, Claude Code and Codex read their MCP servers once, at their start; giving them a server later would need each program to take a changed tool list, which not all do. One wait before the work starts works the same for all four harnesses and for the planner.
+  - **What it waits for.** Every server the kit gives the workers or the planner that the harness does not hold and control has said nothing of. A server control says it can't give (`unavailable`, with why) is not waited for. The wait is in the scheduler's memory, once per run: after a restart of the harness, which then holds no server until the supervisor hands them over again, the run waits again.
+  - **When it ends.** All held, or control said why for each one missing, or 2 minutes. Then the event `mcp_servers_wait` (`since`, `waited_s`, `missing` with each name and why) and a line in Live say how long it waited and which are missing, and the run goes on without those, as before; each later trial lists its tools when it starts, so it gets a server the rig holds by then. Pacing, not a cap. A research run's clock does not count the wait, as goal 079 keeps the clock for time the agents could not run.
 
 ## Open questions
 
@@ -62,6 +66,7 @@ The owner, 2026-10-20: outside knowledge bases should be plain MCP tools: add an
   - **Removed:** goal 065's outside knowledge base (copies, the teachers' grant, `THERMITE_OUTSIDE_KB_SYNC_SECONDS`), moved into MCP servers at the update.
   - Tests with a fake MCP and OAuth server (`src/testing/fake-mcp.ts`): `src/control/mcp-servers.test.ts`, `src/control/mcp-ui.test.ts`, `src/harness/mcp-gateway.test.ts`, `src/supervisor/advise-mcp.test.ts`. The New campaign script's choices were also checked once in headless Chrome. The compose acceptances do not drive MCP servers yet.
 - 2026-10-21: Fixes from the docs review. A rig in pull mode (RunPod) got no MCP servers: the tunnel had no route for them, and the supervisor read the 404 as an older control; the route is allowed now, for the rig itself, signed and sealed (`8e00f5f`, `src/control/tunnel.test.ts`). History has sentences for `mcp_servers`, `mcp_server_failed` and `mcp_server_back`; Live says `The planner goes on without it.`, and an advisor's failure once, not twice (`0b5dd58`). An uploaded kit keeps the servers Settings lacks, and a tool limit Settings can't show, and the page says what a missing server needs (`0bc41c5`). `thermite mcp change`'s usage names `--auth` (`659cf42`).
+- 2026-10-22: Fix from a research run: a run's first plan and trial wait up to 2 minutes for the MCP servers its kit gives the workers and the planner, then go on without those still missing, saying which in Live and History (`mcp_servers_wait`); a research run's clock leaves the wait out. Tests: `src/harness/agents/scheduler-mcp.test.ts` (no trial before the hand-over, then with the servers; control's reason; the bounded wait; no wait without servers), each failing without the wait; `src/harness/research/research.test.ts` (the clock). Pages: Give agents MCP tools (Before the first trial), MCP servers, Limits and pacing, troubleshooting, the changelog.
 
 ---
 

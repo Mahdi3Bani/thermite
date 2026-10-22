@@ -259,6 +259,23 @@ test("History tells a run's MCP servers, and a server that fails and comes back,
     "ok",
     "r-1",
   ]);
+  // The run's first plan or trial waited for its servers (goal 068).
+  assert.deepEqual(
+    say("mcp_servers_wait", {
+      waited_s: 120,
+      missing: [{ name: "papers", why: "control has not given it to this rig yet" }],
+    }),
+    [
+      "The run's work started without the MCP server papers (control has not given it to this rig yet), after waiting 120 s for them. A later trial gets each one once the rig has it.",
+      "warn",
+      "r-1",
+    ],
+  );
+  assert.deepEqual(say("mcp_servers_wait", { waited_s: 12, missing: [] }), [
+    "The run's work waited 12 s for its MCP servers to reach the rig, then started with them.",
+    "",
+    "r-1",
+  ]);
 });
 
 test("History tells each claim: verified, or a draft with the harness's reasons", async () => {

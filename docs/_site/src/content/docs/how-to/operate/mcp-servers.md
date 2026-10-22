@@ -68,7 +68,7 @@ It prints the server's line, `gbrain  key …c41b  ok  31 tools  https://brain.e
 
 ## What a rig gets
 
-A rig's supervisor asks control for its MCP servers on the same beat as its model route (`THERMITE_MODEL_ROUTE_POLL_SECONDS`, 30 seconds by default). Control answers with the servers that the runs it assigned that rig name, each with its sign-in as headers, and the servers they name that it can't give, with why (`Settings has no MCP server of that name now`, or `control can't sign in to it: …`). The supervisor hands the harness the servers its workers and planner use, and keeps the advisors' in memory. Control writes `mcp_servers_handed` to its audit log, with the servers' names, when what a rig gets changes.
+A rig's supervisor asks control for its MCP servers on the same beat as its model route (`THERMITE_MODEL_ROUTE_POLL_SECONDS`, 30 seconds by default). Control answers with the servers that the runs it assigned that rig name, each with its sign-in as headers, and the servers they name that it can't give, with why (`Settings has no MCP server of that name now`, or `control can't sign in to it: …`). The supervisor hands the harness the servers its workers and planner use, and keeps the advisors' in memory. Control writes `mcp_servers_handed` to its audit log, with the servers' names, when what a rig gets changes. A run's first plan and trial wait up to 2 minutes for the harness to hold its servers: see [Before the first trial](../campaigns/give-agents-mcp-tools.md#before-the-first-trial).
 
 ## After the update from an outside knowledge base
 

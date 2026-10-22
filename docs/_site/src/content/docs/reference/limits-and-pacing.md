@@ -61,6 +61,7 @@ None of these ends research.
 | A reply cut off at the output limit (Pi) | The worker is told to think less and make one tool call, and the trial goes on | `lanes.limits.cutoffs_in_a_row` sets a [cap](#caps) |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
 | A full subscription usage window | Claude: no new trial or plan on the rig until the window resets. ChatGPT: 15 minutes, then try again | Fixed. Nothing buys more usage |
+| A run's MCP servers, before its first plan or trial | No plan or trial starts until the rig holds every [MCP server](../how-to/campaigns/give-agents-mcp-tools.md#before-the-first-trial) the kit gives the workers or the planner, for up to 2 minutes; a server control says it can't give is not waited for. Then the run goes on without those still missing, and **Live** and **History** (`mcp_servers_wait`) say which and why. Again after a restart of the harness. A research run's clock does not count it | Fixed |
 
 ### The model provider
 

@@ -770,14 +770,14 @@ export class Research {
 
   /**
    * When the run's agents could not run (goal 079), merged and in order: from each agents_stopped
-   * to the agents_resumed after it (or now), and each wait for the provider's rate limit until the
-   * time it named.
+   * to the agents_resumed after it (or now), each wait for the provider's rate limit until the
+   * time it named, and each wait for the run's MCP servers (goal 068) from its start to its end.
    */
   private agentsBlocked(run: string, now: number): [number, number][] {
     const spans: [number, number][] = [];
     let stoppedAt: number | null = null;
     for (const e of this.all(
-      "select kind, at, body from event where kind in ('agents_stopped', 'agents_resumed', 'agents_wait_for_limit') and subject = ? order by id",
+      "select kind, at, body from event where kind in ('agents_stopped', 'agents_resumed', 'agents_wait_for_limit', 'mcp_servers_wait') and subject = ? order by id",
       run,
     )) {
       const at = Date.parse(String(e.at));
@@ -785,6 +785,9 @@ export class Research {
       else if (e.kind === "agents_resumed") {
         if (stoppedAt !== null) spans.push([stoppedAt, at]);
         stoppedAt = null;
+      } else if (e.kind === "mcp_servers_wait") {
+        const since = Date.parse(String((JSON.parse(String(e.body)) as { since?: string }).since));
+        if (!Number.isNaN(since) && since < at) spans.push([since, at]);
       } else {
         const until = Date.parse(String((JSON.parse(String(e.body)) as { until?: string }).until));
         if (!Number.isNaN(until) && until > at) spans.push([at, Math.min(until, now)]);
