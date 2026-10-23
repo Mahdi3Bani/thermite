@@ -19,6 +19,8 @@ import {
   type AdvisorUsage,
   advisorFetcher,
   auditOne,
+  isResearchPackage,
+  type ResearchReviewAnswers,
   reviewOne,
   teacherRound,
   withRunContext,
@@ -935,13 +937,15 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     }
   }
 
-  // The review panel: every reviewer reviews blind; the harness needs at least two.
+  // The review panel: every reviewer reviews blind; the harness needs at least two. It reviews
+  // goals and, asked for by kind, research runs' questions (goal 112).
   if (cfg.advisors.review_panel.length && !overBudget()) {
-    const { reviews } = (await api("GET", "/v1/reviews/pending")) as {
+    const { reviews } = (await api("GET", "/v1/reviews/pending?kinds=goal,research")) as {
       reviews: {
         id: number;
         run?: string;
         goal?: string;
+        kind?: string;
         owner_messages?: OwnerMessage[];
         past_research?: string;
       }[];
@@ -953,10 +957,17 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       mark(key);
       const owner = (pkg.owner_messages ?? []).filter((m) => !told.has(m.id));
       try {
-        const results: { reviewer: string; pass: boolean; reasons: string }[] = [];
+        const results: {
+          reviewer: string;
+          pass: boolean;
+          reasons: string;
+          research?: ResearchReviewAnswers;
+        }[] = [];
         const answers: { message: number; text: string; advisor: string }[] = [];
         const journal: { by: string; notes: NoteInput[] }[] = [];
         const mcp = await mcpFor(pkg.run);
+        // A research run's review (goal 112): its reviewers may read the run's own research.
+        const research = isResearchPackage(pkg);
         // With the campaign's own context settings, when it sets any (goal 070).
         const panel = (await configFor(pkg.run)).review_panel;
         const compactions: AdvisorCompaction[] = [];
@@ -966,19 +977,28 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             pkg: { ...pkg, owner_messages: owner },
             ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
             ...(mcp ? { mcp } : {}),
+            ...(research && pkg.run ? { research: researchFor(pkg.run) } : {}),
             keeper: keeperFor(pkg.run),
           });
           count(r);
           await usageOut(pkg.run, `review ${pkg.id}`, "panel", r.usage);
           compactions.push(...(r.compactions ?? []));
           if (!r.output) continue;
-          results.push({ reviewer: runtime.name, pass: r.output.pass, reasons: r.output.reasons });
+          results.push({
+            reviewer: runtime.name,
+            pass: r.output.pass,
+            reasons: r.output.reasons,
+            ...(r.output.research ? { research: r.output.research } : {}),
+          });
           for (const a of r.output.answers) answers.push({ ...a, advisor: runtime.name });
           if (r.output.journal.length) journal.push({ by: runtime.name, notes: r.output.journal });
+          const answered = r.output.research
+            ? ` ${r.output.research.questions.filter((q) => q.answered).length} of the questions answered.`
+            : "";
           say(
             pkg.run,
             "text",
-            `review ${pkg.id}${pkg.goal ? ` of goal ${pkg.goal}` : ""}, ${runtime.name}: ${r.output.pass ? "pass" : "fail"}. ${clip(r.output.reasons, 300)}`,
+            `review ${pkg.id}${research ? " of the research questions" : pkg.goal ? ` of goal ${pkg.goal}` : ""}, ${runtime.name}: ${r.output.pass ? "pass" : "fail"}.${answered} ${clip(r.output.reasons, 300)}`,
           );
         }
         // Every reviewer must answer: a crashed dissenter must not lose its veto. The owner's

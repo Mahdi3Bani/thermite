@@ -27,12 +27,12 @@ flowchart LR
   R((Running)) -- you pause it, a budget you set is spent,<br/>or another run starts on the rig --> P((Paused))
   P -- you resume it --> R
   R -- goal campaign: every required goal met,<br/>or the evidence shows it is not possible --> C((Closed))
-  R -- research campaign: its maximum duration is over --> C
+  R -- research campaign: the review panel found every question answered,<br/>or its maximum duration is over --> C
   R -- you close it --> C
   P -- you close it --> C
 ```
 
-No code closes a hill climb: a faster program can always be tried, so it runs until you pause it, or until you close it yourself. The dashboard labels a closed goal run that met its goals **Completed**, and any other closed run **Finished**. With no run of a campaign at work, the campaign shows its newest run's label, so a campaign whose newest run completed reads **Completed** even when an older run of it is paused. It labels a paused run **Paused**, even while a decision waits in it: that decision still shows under **Needs you**. A closed run is finished for good, so nothing in it waits for you: what waited when it closed leaves **Needs you**, and the rig refuses a decision on it.
+No code closes a hill climb: a faster program can always be tried, so it runs until you pause it, or until you close it yourself. The dashboard labels a closed goal run that met its goals, and a closed research run whose questions the review panel found answered, **Completed**, and any other closed run **Finished**. With no run of a campaign at work, the campaign shows its newest run's label, so a campaign whose newest run completed reads **Completed** even when an older run of it is paused. It labels a paused run **Paused**, even while a decision waits in it: that decision still shows under **Needs you**. A closed run is finished for good, so nothing in it waits for you: what waited when it closed leaves **Needs you**, and the rig refuses a decision on it.
 
 ## What keeps a long run in order
 
@@ -65,7 +65,7 @@ No agent can end a campaign. What ends one is written in code, the same for ever
 | --- | --- | --- |
 | **Hill climb** | Never on its own | It runs until you pause it, a budget you set pauses it, or another run starts on its rig |
 | **Goal** | Every required goal is met (or, if the contract says so, enough of them), confirmed by two independent checks of the champion. Or a "not possible" proposal is taken: at once, or when you accept it if the run asks you | It has no time limit of its own |
-| **Research** | Its running time reaches the contract's maximum duration. Without one, it runs until someone stops it: the minimum is a floor, never a stop. Only time the agents could work counts | The author sets the maximum, or none |
+| **Research** | After its minimum duration, the review panel finds every question answered and every hypothesis decided, from the run's verified claims, and code checks each answer. The pass is taken at once, or when you accept it if the run asks you about reviews. Or its running time reaches the contract's maximum duration. Only time the agents could work counts | Without a pass, it runs to its maximum; without a maximum either, until you close it. The minimum is a floor, never a stop |
 
 You can also end a run of any mode yourself, for good, with **Close run** on its page: for example a paused run whose work another run finished ([Steer a run](../how-to/campaigns/steer-a-run.md#close-a-run)). That is your decision, never code's or an agent's.
 

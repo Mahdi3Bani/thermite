@@ -6,7 +6,7 @@ sidebar:
   order: 15
 ---
 
-**Nothing ends research by default.** A hill climb runs until someone pauses or closes it. A goal campaign runs until its goals are met or the evidence shows they are not possible (the owner decides that where the run asks). A research campaign runs until its `max_duration`, or, without one, until someone stops it. Every cap that can stop a campaign, and every cap on a trial, is off until you set it.
+**Nothing ends research by default.** A hill climb runs until someone pauses or closes it. A goal campaign runs until its goals are met or the evidence shows they are not possible (the owner decides that where the run asks). A research campaign runs until the review panel finds its questions answered or its `max_duration` is over, or, without either, until someone stops it. Every cap that can stop a campaign, and every cap on a trial, is off until you set it.
 
 Thermite's limits are of four kinds. Only a cap can stop a run's work, and only one you set:
 
@@ -26,7 +26,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `budget.wall_hours` | The [contract](contract.md) | None | No new trial starts. Once the running trial ends, the run is paused: `the wall-time budget is spent`. Counted from the run's creation, paused time included |
 | `budget.device_hours` | The contract | None | The same, when the judge's time on the run reaches it: `the device-hours budget is spent` |
 | `budget.llm_usd` | The contract | None | The same, when the agents' token spending reaches it: `the model budget is spent ($<amount>)`. It counts only when the rig sets both `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (prices per million tokens) |
-| `max_duration` | A research contract | None | The research campaign closes after `max_duration` of running time: `the research window is over`. Paused time does not count, and neither does time its agents could not run: while they were [stopped](#the-model-provider) or waited for the provider's rate limit. Without it, the campaign runs until someone stops it. `min_duration` (required) is a floor, never a stop: it is what a worker's brief calls "at least". Other modes ignore both |
+| `max_duration` | A research contract | None | The research campaign closes after `max_duration` of running time, its questions answered or not: `the research window is over`. Paused time does not count, and neither does time its agents could not run: while they were [stopped](#the-model-provider) or waited for the provider's rate limit. Without it, the campaign runs until the review panel finds its questions answered, or until someone stops it. `min_duration` (required) is a floor, never a stop: it is what a worker's brief calls "at least". Other modes ignore both |
 | `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teachers starts no round until then. Research goes on. It counts only advisors with prices set |
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
 | Turns per trial (`max_turns`) | **Edit rig** (or its twins, `POST /v1/rigs/<rig>/settings` and MCP's `set_rig_settings`), or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |

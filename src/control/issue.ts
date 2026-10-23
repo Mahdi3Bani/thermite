@@ -60,7 +60,6 @@ export function nobodyReads(
         : Number(roles.panel) > 0);
   const role = (x: AdvisorRole): string => {
     if (research && x === "auditor") return "A research run has no attempts to audit.";
-    if (research && x === "panel") return "A research run has no conclusions to review.";
     if (u.settings?.[x === "panel" ? "review" : x] === false)
       return `The ${ROLE_NAME[x].name} ${ROLE_NAME[x].is} off on this rig (Edit rig), so nothing would read it.`;
     return unset(x)
@@ -95,21 +94,25 @@ function checkedMessage(store: ControlStore, rig: string, payload: unknown): unk
   const campaign =
     r?.campaign ||
     (typeof p.run === "string" ? store.assignedCampaigns(rig).get(p.run) : undefined);
-  if (to === "panel" && campaign && !reviewsAGoal(store, campaign))
+  if (to === "panel" && campaign && !panelReviews(store, campaign))
     throw new Error("This run has no goal the review panel reviews, so nothing would read it.");
   return { ...p, to, text };
 }
 
 /**
- * Whether a campaign's contract has a goal checked by review: the review panel reads only for
- * one. From the version saved on control, or else the newest assignment.
+ * Whether the review panel reviews a campaign's runs: a goal checked by review, or a research
+ * campaign's questions (goal 112). The review panel reads only then. From the version saved on
+ * control, or else the newest assignment.
  */
-export function reviewsAGoal(store: ControlStore, campaign: string): boolean {
+export function panelReviews(store: ControlStore, campaign: string): boolean {
   const contract = (store.campaignVersions(campaign)[0]?.contract ??
     store.latestAssignments().get(campaign)?.payload.contract) as
-    | { goals?: { verify?: { type?: string } }[] }
+    | { mode?: string; goals?: { verify?: { type?: string } }[] }
     | undefined;
-  return (contract?.goals ?? []).some((g) => g.verify?.type === "review");
+  return (
+    contract?.mode === "research" ||
+    (contract?.goals ?? []).some((g) => g.verify?.type === "review")
+  );
 }
 
 /**

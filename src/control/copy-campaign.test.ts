@@ -499,6 +499,8 @@ describe("A research copy's MCP servers (goals 069 and 068)", () => {
             topic: "2-bit decoding",
             questions: ["Which papers help?"],
             min_duration: "1h",
+            // A floor of verified claims before the answer check (goal 112): a copy keeps it.
+            min_verified_claims: 4,
           },
           mcp_servers: [{ name: "web-search", agents: ["workers"] }],
         },
@@ -538,6 +540,7 @@ describe("A research copy's MCP servers (goals 069 and 068)", () => {
     } = source.contract as Record<string, unknown>;
     assert.deepEqual([mcp_servers, was], [uses, [{ name: "web-search", agents: ["workers"] }]]);
     assert.deepEqual(rest, sourceRest);
+    assert.equal(rest.min_verified_claims, 4, "the copy keeps the floor of verified claims");
     const reparsed = parseContract(copy.contract);
     assert.ok(reparsed.ok && reparsed.sha === copy.sha);
     const audit = s.store.listAudit(50).find((a) => a.action === "campaign_copied");

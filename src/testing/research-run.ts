@@ -45,9 +45,20 @@ export async function servePages(): Promise<{ base: string; close: () => Promise
   };
 }
 
-export async function makeResearchRun(run = "r-1") {
+/**
+ * A research run on a fresh harness, with the tiny local web served. `contract` adds to (or
+ * replaces) the fixture's contract fields; `assign` to the assignment's (ask_owner, say).
+ */
+export async function makeResearchRun(
+  run = "r-1",
+  o: { contract?: Record<string, unknown>; assign?: Record<string, unknown> } = {},
+) {
   const env = makeHarnessEnv("rig-r");
-  const parsed = parseContract({ ...researchFixture, questions: RESEARCH_QUESTIONS });
+  const parsed = parseContract({
+    ...researchFixture,
+    questions: RESEARCH_QUESTIONS,
+    ...(o.contract ?? {}),
+  });
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
   const out = await env.service.applyCommand(
     env.sign("assign_campaign", {
@@ -55,6 +66,7 @@ export async function makeResearchRun(run = "r-1") {
       contract: parsed.contract,
       contract_sha: parsed.sha,
       imports: [],
+      ...(o.assign ?? {}),
     }),
   );
   if (!(out.status === "applied" && out.accepted)) throw new Error(JSON.stringify(out));

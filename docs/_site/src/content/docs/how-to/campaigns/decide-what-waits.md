@@ -6,7 +6,7 @@ sidebar:
   order: 11
 ---
 
-Thermite is hands-off by default. A change the judge confirms becomes the new best with no step of yours, after the rig's auditor clears it when an audit is called for. A review panel's pass is accepted, and a goal campaign the evidence shows is not possible ends. Only what you ask to decide waits for you, and what goes wrong: an auditor's block, agents the model provider stopped, a rig's new key, a full reset you started and a rig that stopped reporting. This page shows how to choose what waits, where it waits and what each button does. Campaigns go on while a decision waits: agents keep working from the current [champion](../../reference/glossary.md).
+Thermite is hands-off by default. A change the judge confirms becomes the new best with no step of yours, after the rig's auditor clears it when an audit is called for. A review panel's pass is accepted, whether of a goal or of a research run's answers, and a goal campaign the evidence shows is not possible ends. Only what you ask to decide waits for you, and what goes wrong: an auditor's block, agents the model provider stopped, a rig's new key, a full reset you started and a rig that stopped reporting. This page shows how to choose what waits, where it waits and what each button does. Campaigns go on while a decision waits: agents keep working from the current [champion](../../reference/glossary.md).
 
 ![The Overview: under Needs you, a decision on a run that asks you about every change, with what the judge measured and the buttons Make it the champion and Reject it, and a rig that stopped reporting, with Open the rig](../../../../assets/screenshots/overview.webp)
 
@@ -33,6 +33,7 @@ A closed run is finished, and nothing in it waits for you: what waited in it whe
 | **Your decision** | Make this change the new champion? | The run asks you about this change (see [Choose what waits](#choose-what-waits)), the auditor sent it to you, or an audit holds it on a rig whose supervisor has not said yet that it has no auditor | **Make it the champion**, **Reject it** |
 | **Blocked** | Overrule the auditor and make this change the champion? | The rig's auditor blocked the change | **Overrule the auditor**, **Reject it** |
 | **Review** | Accept the goal "…" as met? | The rig's review panel passed a subjective goal, and the run asks you about reviews | **Accept**, **Reject** |
+| **Review** | Accept that every question is answered? | The rig's review panel found every question of a research run answered, and the run asks you about reviews | **Accept**, **Reject** |
 | **Not possible?** | End this campaign as not possible? | The [harness](../../reference/glossary.md), the rig's container that holds the judge, proposes that a goal campaign's goals can't be reached, and the run asks you about it | **End it: not possible**, **Keep going** |
 | **New key** | Accept this rig's new report key? | A rig reports with a key control has not pinned | **Accept this key** |
 | **Wipe** | Wipe this rig's state? | A full reset you started is ready for its last step | **Confirm the wipe**, **Cancel the reset** |
@@ -55,7 +56,7 @@ Next to it, **Ask me first about** chooses what else waits for you. All of it is
 | --- | --- | --- | --- |
 | **a gain above this %** | A confirmed change whose gain over the champion is above it, such as 15 | `gain:15` | `"above_gain": 0.15` |
 | **a change whose agent declared flaws** | A confirmed change whose agent wrote problems it knows the change has. Without it, the promotion accepts them, and the record says so | `flaws` | `"declared_flaws": true` |
-| **a review panel's pass of a goal** | A subjective goal the review panel passed: see [Reviews](#reviews) | `reviews` | `"reviews": true` |
+| **a review panel's pass of a goal** | A subjective goal the review panel passed, or a research run's questions it found answered: see [Reviews](#reviews) | `reviews` | `"reviews": true` |
 | **ending a goal campaign as not possible** | A "not possible" proposal: see [Not possible endings](#not-possible-endings) | `not-possible` | `"not_possible": true` |
 
 A run keeps the choices it started with. A run started with **ask me every time** keeps asking, and so does a run with no rule of its own on a rig whose **Edit rig** says **Ask me for each change**.
@@ -93,6 +94,8 @@ On **Edit rig**, the **Auditor**, **Teachers** and **Review panel** switches are
 :::
 
 **Accept** makes the goal met; the judge then checks the champion's goals again, and if every required goal is met, the campaign completes. **Reject** keeps the goal unmet.
+
+A research run asks the review panel, after its minimum duration, whether every question is answered ([When a research run ends](../../explanation/campaign-modes.md#when-a-research-run-ends)). Its pass is accepted with no step of yours, and the run's journal says `hands-off: the review panel passed it, and the run does not ask the owner`. A run that asks you about reviews waits as **Review**, `Accept that every question is answered?`, with each question's answer under **The answers**. **Accept** ends the run: no new trial starts, and once those running finish, it writes its final report, with the answers and verdicts, and closes as **Completed**. **Reject** lets it go on, with your note in its journal; the review panel is asked again only on new evidence. A rig with no review panel keeps such a run researching: its **Answer check** says so.
 
 ### "Not possible" endings
 

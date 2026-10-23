@@ -1,6 +1,12 @@
 import { canonicalJson } from "../core/canonical.ts";
 import type { GoalContract } from "../core/contract.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
+import {
+  type CheckedReviewer,
+  RESEARCH_REVIEW,
+  type ResearchPackage,
+  reviewerGaps,
+} from "./research/review.ts";
 
 /**
  * Subjective goals (verify type `review`). The champion's artifact goes to the supervisor's
@@ -11,6 +17,10 @@ import { type Ledger, LedgerError } from "./ledger.ts";
  * at least two reviewers, every one passing it, and the judge's other checks stay.
  *
  * Reviews are per champion commit: a new champion needs a new review.
+ *
+ * A research run's review (goal 112, research/review.ts) is a row here too, with the reserved goal
+ * name `research` and a marker of the evidence it saw in place of a commit. It is given only to a
+ * supervisor that asks for research reviews, so a supervisor from before it never gets one.
  */
 
 type Row = Record<string, unknown>;
@@ -30,6 +40,16 @@ export interface ReviewPackage {
   diff: string;
   requested_at: string;
 }
+
+/** A research review as the review panel gets it (goal 112): the run's evidence, no lane or model. */
+export type ResearchReviewPackage = ResearchPackage & {
+  id: number;
+  run: string;
+  requested_at: string;
+};
+
+/** The kinds of review a supervisor may ask for: goal reviews, and research reviews (goal 112). */
+export type ReviewKind = "goal" | "research";
 
 export class Reviews {
   private readonly ledger: Ledger;
@@ -91,8 +111,56 @@ export class Reviews {
     });
   }
 
-  /** Reviews waiting for the panel, as packages (no lane, model or attempt id in them). */
-  pending(): ReviewPackage[] {
+  byId(id: number): Row | undefined {
+    return this.ledger.db.prepare("select * from review where id = ?").get(id) as Row | undefined;
+  }
+
+  /**
+   * Requests a research review of a run (goal 112): once for each marker of the evidence it saw
+   * (research/review.ts decides when). Returns its id.
+   */
+  requestResearch(input: {
+    run: string;
+    marker: string;
+    pkg: ResearchPackage;
+    by: string;
+  }): number {
+    const existing = this.get(input.run, RESEARCH_REVIEW, input.marker);
+    if (existing) return Number(existing.id);
+    return this.ledger.tx(() => {
+      const r = this.ledger.db
+        .prepare(
+          "insert into review (run, goal, attempt, commit_sha, package, requested_at) values (?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          input.run,
+          RESEARCH_REVIEW,
+          null,
+          input.marker,
+          canonicalJson(input.pkg),
+          new Date().toISOString(),
+        );
+      const id = Number(r.lastInsertRowid);
+      this.ledger.appendEvent(input.by, "review_requested", input.run, {
+        review: id,
+        goal: RESEARCH_REVIEW,
+        commit: input.marker,
+        questions: input.pkg.questions.length,
+        hypotheses: input.pkg.hypotheses.length,
+        verified_claims: input.pkg.corpus.verified_claims,
+      });
+      return id;
+    });
+  }
+
+  /**
+   * Reviews waiting for the panel, as packages (no lane, model or attempt id in them): goal
+   * reviews, and research reviews only when asked for (goal 112), so a supervisor from before
+   * them never gets one it cannot answer.
+   */
+  pending(): ReviewPackage[];
+  pending(kinds: readonly ReviewKind[]): (ReviewPackage | ResearchReviewPackage)[];
+  pending(kinds: readonly ReviewKind[] = ["goal"]): (ReviewPackage | ResearchReviewPackage)[] {
     return (
       this.ledger.db
         .prepare(
@@ -100,19 +168,101 @@ export class Reviews {
            where r.panel_result is null and i.status = 'running' order by r.id`,
         )
         .all() as Row[]
-    ).map((r) => {
-      const pkg = JSON.parse(String(r.package)) as Omit<
-        ReviewPackage,
-        "id" | "run" | "commit" | "requested_at"
-      >;
-      return {
-        ...pkg,
-        id: Number(r.id),
-        run: String(r.run),
-        commit: String(r.commit_sha),
-        requested_at: String(r.requested_at),
-      };
+    )
+      .filter((r) => kinds.includes(r.goal === RESEARCH_REVIEW ? "research" : "goal"))
+      .map((r): ReviewPackage | ResearchReviewPackage => {
+        if (r.goal === RESEARCH_REVIEW)
+          return {
+            ...(JSON.parse(String(r.package)) as ResearchPackage),
+            id: Number(r.id),
+            run: String(r.run),
+            requested_at: String(r.requested_at),
+          };
+        const pkg = JSON.parse(String(r.package)) as Omit<
+          ReviewPackage,
+          "id" | "run" | "commit" | "requested_at"
+        >;
+        return {
+          ...pkg,
+          id: Number(r.id),
+          run: String(r.run),
+          commit: String(r.commit_sha),
+          requested_at: String(r.requested_at),
+        };
+      });
+  }
+
+  /** At least MIN_PANEL reviewers, each once. */
+  private static panelSize(reviewers: string[]): void {
+    if (reviewers.length < MIN_PANEL) {
+      throw new LedgerError("invalid", `the review panel needs at least ${MIN_PANEL} reviewers`);
+    }
+    if (new Set(reviewers).size !== reviewers.length) {
+      throw new LedgerError("invalid", "each reviewer counts once");
+    }
+  }
+
+  /** A review the panel may still decide: it exists, is undecided, and its run is running. */
+  private undecided(id: number): Row {
+    const row = this.byId(id);
+    if (!row) throw new LedgerError("not_found", `no review ${id}`);
+    if (row.panel_result !== null)
+      throw new LedgerError("conflict", `review ${id} is already decided`);
+    const inst = this.ledger.getRun(String(row.run));
+    if (inst?.status !== "running")
+      throw new LedgerError("invalid", `run ${String(row.run)} is not running`);
+    return row;
+  }
+
+  /**
+   * A research review's results (goal 112), as code checked them (research/review.ts), written
+   * once: review_passed only if every reviewer, at least MIN_PANEL, passes it with every answer
+   * and verdict holding. Its event says how many reviewers found each question answered, and the
+   * gaps, short.
+   */
+  recordResearchPanel(
+    id: number,
+    checked: CheckedReviewer[],
+    by: string,
+  ): "review_passed" | "review_failed" {
+    Reviews.panelSize(checked.map((r) => r.reviewer));
+    const outcome = checked.every((r) => r.pass) ? "review_passed" : "review_failed";
+    this.ledger.tx(() => {
+      const row = this.undecided(id);
+      if (row.goal !== RESEARCH_REVIEW)
+        throw new LedgerError("invalid", `review ${id} is not a research review`);
+      this.ledger.db
+        .prepare("update review set panel = ?, panel_result = ?, panel_at = ? where id = ?")
+        .run(canonicalJson(checked), outcome, new Date().toISOString(), id);
+      const indexes = [...new Set(checked.flatMap((r) => r.questions.map((q) => q.index)))].sort(
+        (a, b) => a - b,
+      );
+      const gaps = [...new Set(checked.flatMap((r) => reviewerGaps(r, 200)))];
+      // Each question's first answer that passed the check, short: what the owner reads before
+      // accepting, and what the knowledge base keeps.
+      const first = (i: number) =>
+        checked.map((r) => r.questions.find((q) => q.index === i && q.answered)).find(Boolean);
+      this.ledger.appendEvent(by, "review_panel", String(row.run), {
+        review: id,
+        goal: row.goal,
+        result: outcome,
+        reviewers: checked.length,
+        questions: indexes.map((i) => ({
+          question: i,
+          answered_by: checked.filter((r) => r.questions.some((q) => q.index === i && q.answered))
+            .length,
+          ...(first(i)
+            ? {
+                answer: (first(i)?.answer ?? "").slice(0, 500),
+                claims: (first(i)?.claims ?? []).slice(0, 10),
+              }
+            : {}),
+        })),
+        gaps: gaps.slice(0, 20),
+        ...(gaps.length > 20 ? { more_gaps: gaps.length - 20 } : {}),
+      });
     });
+    return outcome;
   }
 
   /** The panel's results, written once: review_passed only if every reviewer passes it. */
@@ -121,24 +271,16 @@ export class Reviews {
     results: { reviewer: string; pass: boolean; reasons: string }[],
     by: string,
   ): "review_passed" | "review_failed" {
-    if (results.length < MIN_PANEL) {
-      throw new LedgerError("invalid", `the review panel needs at least ${MIN_PANEL} reviewers`);
-    }
-    if (new Set(results.map((r) => r.reviewer)).size !== results.length) {
-      throw new LedgerError("invalid", "each reviewer counts once");
-    }
+    Reviews.panelSize(results.map((r) => r.reviewer));
     const outcome = results.every((r) => r.pass) ? "review_passed" : "review_failed";
     this.ledger.tx(() => {
-      const row = this.ledger.db.prepare("select * from review where id = ?").get(id) as
-        | Row
-        | undefined;
-      if (!row) throw new LedgerError("not_found", `no review ${id}`);
-      if (row.panel_result !== null)
-        throw new LedgerError("conflict", `review ${id} is already decided`);
+      const row = this.undecided(id);
+      if (row.goal === RESEARCH_REVIEW)
+        throw new LedgerError(
+          "invalid",
+          `review ${id} is a research review: it is recorded with each reviewer's answers`,
+        );
       // Only for a running campaign's current champion: a stale review is not recorded.
-      const inst = this.ledger.getRun(String(row.run));
-      if (inst?.status !== "running")
-        throw new LedgerError("invalid", `run ${String(row.run)} is not running`);
       if (this.ledger.currentChampion(String(row.run)).commit_sha !== String(row.commit_sha))
         throw new LedgerError(
           "stale",
@@ -162,7 +304,7 @@ export class Reviews {
     return outcome;
   }
 
-  /** The owner's final word on a goal the panel passed. */
+  /** The owner's final word on a goal (or a research run's answers) the panel passed. */
   ownerDecision(
     id: number,
     run: string,
@@ -188,6 +330,7 @@ export class Reviews {
         review: id,
         goal: row.goal,
         decision,
+        ...(note?.trim() ? { note: note.slice(0, 2000) } : {}),
       });
       return row;
     });

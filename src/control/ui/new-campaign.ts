@@ -18,6 +18,14 @@ export { infoLabel };
 export const QUEUE_TARGET_TIP =
   "How many experiments the queue keeps ready for the agents' next tries, for all of them together. When it holds fewer, the planner is asked for more distinct ideas, and the teachers at once when the planner has none. It is a target that drives ideas, not a cap: the queue may hold more, and nothing stops when it holds fewer. Empty: 2 for each agent. 0: ask for none. Hill climbs and goals only; a research campaign has its research plan.";
 
+/** What "Run for at least" means on a research campaign (goal 112: the time to collect). */
+export const RUN_AT_LEAST_TIP =
+  "Research collects and checks sources for at least this long: for example 8h or 2d. After it, at each digest, the review panel checks whether every question is answered. When it is, the run writes its final report and ends by itself; when it is not, the run goes on.";
+
+/** What "Verified claims before the check" means (goal 112): a floor that delays the check. */
+export const MIN_VERIFIED_CLAIMS_TIP =
+  "The fewest verified claims the run must have, in all, before the review panel first checks whether every question is answered. It only delays the check: it never ends the run. Empty: no floor, so the check needs only a verified claim for each question.";
+
 /**
  * The new-campaign page: a campaign from nothing
  * in six steps (aim, the brief, project, how to measure, where, review), with every setting
@@ -217,7 +225,8 @@ ${kitMcpSection("k", p.mcp ?? [])}
 <div class="act" style="margin-top:14px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>
 
 <section class="pane" data-pane="research" hidden><div class="sec"><h2>Time and tools</h2><p class="lead">How long the research runs, and the MCP servers its agents use. Its topic, questions and starting links are in the brief, on step 2.</p>
-${field("Run for at least", "Research keeps going this long, collecting and checking sources: for example 8h or 2d.", `<input name="min_duration" value="8h">`)}
+<div class="g3">${field("Run for at least", RUN_AT_LEAST_TIP, `<input name="min_duration" value="8h">`)}
+${field("Verified claims before the check", MIN_VERIFIED_CLAIMS_TIP, `<input name="min_verified_claims" inputmode="numeric" placeholder="no floor">`)}</div>
 ${kitMcpSection("r", p.mcp ?? [])}
 <div class="act" style="margin-top:14px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>
 

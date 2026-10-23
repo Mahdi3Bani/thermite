@@ -242,6 +242,56 @@ describe("the new-campaign page", () => {
     assert.equal(s.store.campaignVersions("matmul-bad").length, 0);
   });
 
+  test("Verified claims before the check (goal 112): beside Run for at least, explained; in the contract only when set; refused below 1", async () => {
+    const s = await stack();
+    const page = await (await s.get("/ui/campaigns/new")).text();
+    const fields =
+      /<div class="g3"><label class="fd"><span class="lb">Run for at least<i class="ii" tabindex="0" data-tip="([^"]+)">i<\/i><\/span><input name="min_duration" value="8h"><\/label>\n<label class="fd"><span class="lb">Verified claims before the check<i class="ii" tabindex="0" data-tip="([^"]+)">i<\/i><\/span><input name="min_verified_claims" inputmode="numeric" placeholder="no floor"><\/label><\/div>/.exec(
+        page,
+      );
+    assert.ok(fields, "both fields, side by side, each with its description");
+    assert.match(String(fields[1]), /the review panel checks whether every question is answered/);
+    assert.match(String(fields[2]), /It only delays the check: it never ends the run\./);
+    assert.match(String(fields[2]), /Empty: no floor/);
+    const script = await (await s.get("/ui/assets/new-campaign.js")).text();
+    assert.match(
+      script,
+      /if \(num\("min_verified_claims"\) !== undefined\) d\.research\.min_verified_claims = num\("min_verified_claims"\);/,
+    );
+    assert.match(script, /set\("min_verified_claims", back\.research\.min_verified_claims\)/);
+    const research = (campaign: string, more: Record<string, unknown>) =>
+      s.post("/ui/campaigns/new", {
+        csrf: s.csrf,
+        draft: JSON.stringify(
+          draft({
+            mode: "research",
+            campaign,
+            project: undefined,
+            kit: undefined,
+            score: undefined,
+            research: {
+              topic: "RL harnesses",
+              questions: ["Which is fastest?"],
+              min_duration: "1h",
+              ...more,
+            },
+          }),
+        ),
+        rig: "rig-a",
+        start_value: "save",
+      });
+    assert.equal((await research("rl-floor", { min_verified_claims: 12 })).status, 303);
+    const [floor] = s.store.campaignVersions("rl-floor");
+    assert.ok(floor);
+    assert.equal((floor.contract as { min_verified_claims?: unknown }).min_verified_claims, 12);
+    assert.equal((await research("rl-none", {})).status, 303);
+    const [none] = s.store.campaignVersions("rl-none");
+    assert.ok(none && !("min_verified_claims" in (none.contract as object)), "no floor: not in it");
+    const bad = await research("rl-bad", { min_verified_claims: 0 });
+    assert.match(await bad.text(), /Verified claims before the check is 1 or more/);
+    assert.equal(s.store.campaignVersions("rl-bad").length, 0);
+  });
+
   test("past research: the page links to the knowledge base, and a campaign saved without starting offers grants and From past research", async () => {
     const s = await stack();
     const page = await (await s.get("/ui/campaigns/new")).text();

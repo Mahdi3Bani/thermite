@@ -1,3 +1,4 @@
+import { RESEARCH_REVIEW } from "../../core/research-check.ts";
 import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../harness/judge/held-out.ts";
 import { type ControlStore, type Decision, fingerprint } from "../store.ts";
 import {
@@ -582,6 +583,68 @@ export function needs(
         });
       }
       for (const rv of r.reviews.filter((x) => x.panel === "review_passed" && !x.owner)) {
+        // A research run's review (goal 112): the review panel found every question answered.
+        if (rv.goal === RESEARCH_REVIEW) {
+          out.push({
+            kind: "review",
+            rig: u.id,
+            run: r.id,
+            ...card({
+              tone: "violet",
+              ic: icon.check,
+              kind: "Review",
+              question: "Accept that every question is answered?",
+              headline: "The review panel found every question of this research run answered",
+              why: "This run asks you about reviews before it ends",
+              key: `review-${u.id}-${r.id}-${rv.review}`,
+              decided: decidedState(
+                ds,
+                { rig: u.id, run: r.id, review: rv.review },
+                undefined,
+                (d) => (d.accept ? "Accept" : "Reject"),
+                now,
+              ),
+              u,
+              r,
+              now,
+              facts: `<dt>What</dt><dd>After its minimum running time, the review panel checked whether the run's verified claims answer each of its questions and decide each hypothesis. Every reviewer found every question answered, and code checked each answer: it cites only verified claims of the run, and its numbers are in them.</dd>
+<dt>Why it waits</dt><dd>This run asks you about reviews (Ask me first about: reviews), so it ends only with your word.</dd>
+<dt>The answers</dt><dd>${
+                (rv.answers ?? []).length
+                  ? `<ol class="small">${(rv.answers ?? [])
+                      .map((a) => `<li value="${a.question + 1}">${esc(clip(a.answer, 300))}</li>`)
+                      .join("")}</ol>`
+                  : "The final report holds them once the run ends."
+              } Review ${rv.review}; the final report gives every answer whole, with the claims it cites.</dd>`,
+              choices: [
+                {
+                  button: f.cmd({
+                    rig: u.id,
+                    kind: "accept_review",
+                    fields: { run: r.id, review: String(rv.review), accept: "true" },
+                    label: "Accept",
+                    cls: "primary",
+                    back,
+                  }),
+                  label: "Accept",
+                  does: "The run starts no new trial. Once its running trials end, it writes its final report, with the review panel's answers and verdicts, and closes as completed.",
+                },
+                {
+                  button: f.cmd({
+                    rig: u.id,
+                    kind: "accept_review",
+                    fields: { run: r.id, review: String(rv.review), accept: "false" },
+                    label: "Reject",
+                    back,
+                  }),
+                  label: "Reject",
+                  does: "The run goes on researching, and your rejection goes in its journal. The review panel is asked again only on new evidence.",
+                },
+              ],
+            }),
+          });
+          continue;
+        }
         out.push({
           kind: "review",
           rig: u.id,

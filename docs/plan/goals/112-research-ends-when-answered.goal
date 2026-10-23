@@ -44,14 +44,14 @@ Before this goal, a research run ended only at its `max_duration` or by the owne
 
 ## Done when
 
-- [ ] The harness asks for a research review at a digest after the minimum, only when the conditions above hold, and never twice on the same evidence. Tests.
-- [ ] The supervisor's review panel answers a research package with a research prompt and output; a supervisor from before this goal is never given one. Tests.
-- [ ] Code checks each answer's cited claims and numbers; a pass needs every reviewer; a pass closes the run with the final report and its answers, hands-off or after the owner's acceptance when the run asks; gaps reach the journal and the workers' briefs. Tests.
-- [ ] The run's page and its status words say where the check stands and why the run ended. Tests.
-- [ ] The brief's floor of verified claims: on the New campaign page (with its description), in copy_campaign and the APIs, and in the gate. Tests.
+- [x] The harness asks for a research review at a digest after the minimum, only when the conditions above hold, and never twice on the same evidence. Tests: `src/harness/research-review.test.ts`.
+- [x] The supervisor's review panel answers a research package with a research prompt and output; a supervisor from before this goal is never given one. Tests: `src/supervisor/advise-research-review.test.ts`, and `src/harness/research-review.test.ts` for `GET /v1/reviews/pending` without `kinds`.
+- [x] Code checks each answer's cited claims and numbers; a pass needs every reviewer; a pass closes the run with the final report and its answers, hands-off or after the owner's acceptance when the run asks; gaps reach the journal and the workers' briefs. Tests: `src/harness/research-review.test.ts`.
+- [x] The run's page and its status words say where the check stands and why the run ended. Tests: `src/control/research-check-ui.test.ts`.
+- [x] The brief's floor of verified claims: on the New campaign page (with its description), in copy_campaign and the APIs, and in the gate. Tests: `src/control/new-campaign-page.test.ts`, `src/control/campaign-builder.test.ts`, `src/control/copy-campaign.test.ts`, `src/harness/research-review.test.ts`.
 - [ ] The final writer writes the paper with the run's research and the rig's STE resources; code checks its citations, its numbers and, where present, the STE checker's errors; the paper leads the final report. Tests.
 - [ ] The paper's next experiments are kept in the knowledge base as experiments a goal or hill-climb run can take. Tests.
-- [ ] The pages match the code: research mode, Why Thermite runs until the job is done, the contract reference, the review panel, Decide what waits for you, events, the glossary; the changelog.
+- [x] The pages match the code: research mode, Why Thermite runs until the job is done, the contract reference, the review panel, Decide what waits for you, events, the glossary; the changelog. (Step one; step two adds its own pages.)
 - [ ] On the deployment, a research run past its minimum gets its review, and closes with its final report if the panel passes it.
 
 ## Decisions
@@ -63,6 +63,16 @@ Before this goal, a research run ended only at its `max_duration` or by the owne
   - A research review is a review of the run with the reserved name `research`, so it uses the review panel's existing store and commands, including `accept_review`.
   - The STE checker's vocabulary comes from ASD-STE100, whose notice forbids redistribution without the standard's maintenance group's permission, so Thermite does not ship it: a rig is given the checker as a resource (a path the deployment mounts), and a paper written without it says it was not checked.
   - Built in two steps: the gate, the panel and the close first; the final writer and the experiments on top of that close.
+- 2026-10-23, owner (added during the build): "For the code gate we should have also a minimal floor of verified claims (Defined on the brief for a research run)." So the research contract has an optional `min_verified_claims` (a whole number from 1, no default, so older contracts keep their hash): the run must have that many verified claims, in all, before its first review. It delays the check and never ends a run. The New campaign page sets it beside **Run for at least** (**Verified claims before the check**, empty by default); Copy keeps it, as it keeps the whole contract. This replaces the earlier "no contract field" for this one floor; the check itself still needs no field.
+- 2026-10-23, builder, within the What:
+  - The review's evidence marker is `corpus:<verified claims>:<supported findings>:<newest verified claim>`, kept where a goal review keeps its commit, so the review table's unique index refuses a second review on the same evidence. No ledger migration.
+  - The package is built when the review is asked for and kept with it. It is served, as a goal review's is, with the campaign's brief (its notes as `additional_information`), the owner's unread messages to the review panel and the run's past research. Over 200,000 characters, each question shows its corroborated claims first, then the newest, and the package says so. The reviewers also get the read-only tools that read the run's own research (goal 098).
+  - A reviewer passes only when it passed the review itself and every answer and verdict holds: its own fail counts as a fail. An undecided verdict needs its why, and the claims it names must be verified claims of the run; the numbers in its why are not checked, since it asserts nothing.
+  - The close is one function in the scheduler (`closeAnswered`), checked on every step with or without a model, once the run's running trials have ended: the step that adds a final writer can hook in there. The Answers and Verdicts sections are one block of the final report (`answerSections`), so a fuller paper can precede or replace it.
+  - The `review_panel` event of a research review carries, for each question, how many reviewers found it answered and its first answer that passed the check (cut to 500 characters), and the gaps (each cut to 200): Needs you shows the answers before the owner accepts, and the Overview shows the gaps. `review_decided` carries the owner's note, so the hands-off words are in the event too.
+  - The review panel now reads the owner's messages to it in a research run (the harness and control refused them before), since it reviews the run.
+  - The workers' brief numbers questions from 0, so its gaps section does too; the journal, digests, reports and the dashboard number them from 1.
+  - The shared names, the reserved review name and the close reason, are in `src/core/research-check.ts`, which the harness and control both read.
 
 ## Open questions
 
@@ -71,6 +81,7 @@ None yet.
 ## Progress
 
 - 2026-10-23: Goal written from the owner's words; build started.
+- 2026-10-23T17:42Z: Built on branch `goal-112-research-ends`: the check and its request at a digest (`src/harness/research/review.ts`), research reviews in the review store and its route (`kinds`), the supervisor's research prompt and answer, the close with the final report's answers and verdicts, gaps in the journal and the workers' briefs, the owner's floor `min_verified_claims` on New campaign, and the dashboard's **Answer check** line, **Completed** and the Needs you card. Tests added and checked to fail without their change; pages and changelog updated. Next: the deployment check, the last Done-when item.
 
 ---
 

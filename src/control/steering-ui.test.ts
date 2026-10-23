@@ -483,7 +483,7 @@ describe("Live's message box", () => {
     assert.doesNotMatch(await s.get(LIVE), /class="lnotice"/);
   });
 
-  test("a research run offers no planner, auditor or review panel; everyone working, kept in force, reaches each new trial", async () => {
+  test("a research run offers no planner or auditor, and its review panel (goal 112); everyone working, kept in force, reaches each new trial", async () => {
     const env = makeHarnessEnv("rig-a");
     const s = await stack(env.service, env.keys.privateKeyPem);
     const parsed = parseContract({ ...researchFixture, lanes: { count: 1, trials_per_epoch: 1 } });
@@ -506,9 +506,10 @@ describe("Live's message box", () => {
           "A research run plans its rounds with a fixed method: it has no planner to message.",
         ],
         ["auditor", "A research run has no attempts to audit."],
-        ["panel", "A research run has no conclusions to review."],
       ],
     );
+    // The review panel checks whether a research run's questions are answered (goal 112).
+    assert.equal(to.find((o) => o.to === "panel")?.greyed, undefined);
     assert.equal(to.find((o) => o.to === "all")?.hint, "Each agent reads it when it can");
     // No planner and no judge to watch either.
     assert.deepEqual(

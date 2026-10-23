@@ -24,6 +24,14 @@ import { messageText, type OwnerMessage } from "../messages.ts";
 import { type Experiment, inFamily } from "../queue.ts";
 import { writeAtomic } from "../research/folder.ts";
 import type { Research } from "../research/research.ts";
+import {
+  ANSWERED,
+  acceptedReview,
+  briefGaps,
+  researchPackage,
+  researchReviewDue,
+} from "../research/review.ts";
+import { Reviews } from "../reviews.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
 import { violationsOf, violationsText } from "../v0.ts";
@@ -363,6 +371,43 @@ export class Scheduler {
         });
       }
     }
+  }
+
+  /**
+   * A running research run whose review the review panel passed, and that was accepted (goal
+   * 112): no new trial starts in it (researchTick), and once its running trials have ended, it
+   * ends with its final report (closeAnswered). Checked on every step, with or without a model.
+   */
+  private finishAnsweredResearch(): void {
+    if (!this.o.research) return;
+    const running = this.ledger.db
+      .prepare("select id from run where mode = 'research' and status = 'running'")
+      .all() as { id: string }[];
+    for (const { id } of running) {
+      if (!acceptedReview(this.ledger, id)) continue;
+      // Its running trials end first; a close that failed is not tried again by this process.
+      if ([...this.laneRun.values()].includes(id) || this.finalFailed.has(id)) continue;
+      try {
+        this.closeAnswered(id);
+      } catch (err) {
+        this.finalFailed.add(id);
+        log("scheduler", "an answered research run could not close", {
+          run: id,
+          error: String(err),
+        });
+      }
+    }
+  }
+
+  /**
+   * The end of a research run whose questions are answered (goal 112): its final report, which
+   * holds the review panel's answers and verdicts, and the close, with the reason
+   * `every question is answered`. The one place a run ends this way, once its accepted review's
+   * running trials have ended.
+   */
+  private closeAnswered(run: string): void {
+    (this.o.research as Research).report(run, "final");
+    this.ledger.setRunStatus(run, "closed", ANSWERED, this.o.owner);
   }
 
   /** Checks every second while trials or a planner call are in flight (the tick may be waiting). */
@@ -1461,6 +1506,7 @@ export class Scheduler {
     // Stopping or draining: no new plan or trial; those running end as they would.
     if (this.halted()) return false;
     this.finishClosedResearch();
+    this.finishAnsweredResearch();
     const inst = this.run();
     if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
@@ -1548,7 +1594,8 @@ export class Scheduler {
 
   /**
    * Research: the harness owns the clock. Lanes run trial after trial (no judge to wait for)
-   * until max_duration; an hourly digest and a final report come from the ledger.
+   * until the review panel finds every question answered (goal 112) or max_duration; a digest
+   * every report_cadence.digest_minutes and a final report come from the ledger.
    */
   private async researchTick(run: string, contract: ResearchContract): Promise<boolean> {
     const research = this.o.research as Research;
@@ -1559,8 +1606,19 @@ export class Scheduler {
       this.ledger.setRunStatus(run, "closed", "the research window is over", this.o.owner);
       return false;
     }
+    // Every question is answered: no new trial starts; the run ends once those running end
+    // (finishAnsweredResearch).
+    if (acceptedReview(this.ledger, run)) return false;
     const last = research.lastReportAt(run);
     if (!last || Date.now() - Date.parse(last) >= contract.report_cadence.digest_minutes * 60_000) {
+      // At a digest, after the minimum: the review panel is asked whether every question is
+      // answered, when code finds the evidence ready and new (research/review.ts). A failure to
+      // ask is logged; the digest and the research go on, and the next digest asks again.
+      try {
+        this.askResearchReview(run, contract, clock);
+      } catch (err) {
+        log("scheduler", "the review panel was not asked", { run, error: String(err) });
+      }
       research.report(run, "digest");
     }
     // The campaign's starting links, archived by the harness, beside the first trials.
@@ -1596,6 +1654,32 @@ export class Scheduler {
     }
     if (complete && !this.running.size) this.registry.endEpoch(run, epoch.n, this.o.owner);
     return started;
+  }
+
+  /**
+   * Asks the review panel whether a research run's questions are answered (goal 112), when code
+   * finds it due: after the minimum running time, every question with a verified claim, the
+   * campaign's floor of verified claims met, no review waiting, and evidence no review saw.
+   */
+  private askResearchReview(
+    run: string,
+    contract: ResearchContract,
+    clock: { elapsed_ms: number; min_ms: number },
+  ): void {
+    const due = researchReviewDue(this.ledger, run, contract, clock);
+    if (!due.due) return;
+    const id = new Reviews(this.ledger).requestResearch({
+      run,
+      marker: due.marker,
+      pkg: researchPackage(this.ledger, run, contract),
+      by: this.o.owner,
+    });
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text: `review ${id}: the review panel is asked whether every question is answered`,
+      run,
+    });
   }
 
   /**
@@ -1831,6 +1915,8 @@ export class Scheduler {
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",
       "Record claims only with exact quotes from archived sources, and say which question each answers.",
+      // What the newest failed review found missing (goal 112), until a newer review is decided.
+      ...[briefGaps(this.ledger, run)].filter((s) => s !== undefined).map((s) => `\n${s}`),
       ...this.notesAndPast(run, a.lane, "research").map((s) => `\n${s}`),
     ]
       .filter((l) => l !== "")

@@ -18,6 +18,7 @@ import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
 import type { Research } from "./research/research.ts";
+import { ResearchVerdicts } from "./research/review.ts";
 import { KIND_PATHS, PAGE_MAX, RESEARCH_KINDS, SOURCE_CHARS_MAX } from "./run-research.ts";
 import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
 
@@ -443,9 +444,19 @@ export function createHarnessApi(
     );
   });
 
-  app.get("/v1/reviews/pending", supervisor, (c) => c.json({ reviews: service.reviewPackages() }));
+  // Goal reviews; research reviews (goal 112) only when the caller asks for them with
+  // ?kinds=goal,research, so a supervisor from before them never gets a package it cannot answer.
+  app.get("/v1/reviews/pending", supervisor, (c) => {
+    const asked = (c.req.query("kinds") ?? "goal")
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k): k is "goal" | "research" => k === "goal" || k === "research");
+    return c.json({ reviews: service.reviewPackages(asked) });
+  });
 
-  app.post("/v1/reviews/:id", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+  // A research review's answers are larger than a goal review's verdicts: one for each question
+  // and hypothesis, from each reviewer.
+  app.post("/v1/reviews/:id", supervisor, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
     const id = z.coerce.number().int().positive().parse(c.req.param("id"));
     const body = z
       .strictObject({
@@ -455,6 +466,7 @@ export function createHarnessApi(
               reviewer: z.string().min(1).max(100),
               pass: z.boolean(),
               reasons: z.string().min(1).max(8000),
+              research: ResearchVerdicts.optional(),
             }),
           )
           .min(1)

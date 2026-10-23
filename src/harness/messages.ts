@@ -161,7 +161,9 @@ export class OwnerMessages {
       }
       if (!s.review)
         return "the review panel is off on this rig (Edit rig), so nothing would read this message";
-      return contract.mode === "goal" && contract.goals.some((g) => g.verify.type === "review")
+      // A research run's questions are reviewed too (goal 112).
+      return contract.mode === "research" ||
+        (contract.mode === "goal" && contract.goals.some((g) => g.verify.type === "review"))
         ? undefined
         : "this run has no goal the review panel reviews, so the review panel would never read this message";
     };

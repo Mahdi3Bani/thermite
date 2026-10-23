@@ -73,8 +73,8 @@ Every field this example leaves out takes its default. The repository has one ex
 | `models` | list of `{name, sha256}` | `[]` | [Model files](glossary.md) the campaign uses: data files the project loads that are not in its repository, such as a model's weights. Not the agents' AI model. Each must be on the rig, or imported by the command that starts the run. The kit reaches one as `{models:<sha256>}`, and agents are told where they are |
 | `lanes` | object | `{"count": 2, "trials_per_epoch": 3}` | How the work is split. See [Lanes](#lanes) |
 | `budget` | object | `{"max_open_attempts": 4}` | Optional budgets and back-pressure. See [Budget](#budget) |
-| `min_duration` | duration | none | Research: required. The time the campaign runs at least: a floor, never a stop. Other modes: accepted, not used yet |
-| `max_duration` | duration | none | Research: when the campaign ends. It may not be shorter than `min_duration`. Without it, a research campaign runs until someone stops it. Other modes: accepted, not used yet |
+| `min_duration` | duration | none | Research: required. The time the run has to collect sources and claims: a floor, never a stop. After it, at each digest, the review panel is asked whether every question is answered, and a pass ends the run ([Research](#research)). Other modes: accepted, not used yet |
+| `max_duration` | duration | none | Research: when the run ends at the latest, its questions answered or not. It may not be shorter than `min_duration`. Without it, a research run whose questions the review panel never finds answered runs until someone closes it. Other modes: accepted, not used yet |
 | `search_policy` | object | none | Rules for research search queries. See [Search policy](#search-policy) |
 | `notes` | text | none | The campaign's additional information, from its author, in Markdown, with no length limit. See [The campaign's brief](#the-campaigns-brief) |
 | `hypotheses` | list of text, each not empty | none | What the campaign's author thinks is true, one entry each. See [The campaign's brief](#the-campaigns-brief) |
@@ -278,19 +278,20 @@ A goal campaign ends when the success policy is met on two validations of the ch
 
 ## Research
 
-`"mode": "research"`: collect sources, verified claims and findings on a topic for a set time. Research contracts have no `editable_paths` or cells, and use no kit. They need `min_duration`.
+`"mode": "research"`: collect sources, verified claims and findings on a topic until its questions are answered. Research contracts have no `editable_paths` or cells, and use no kit. They need `min_duration`.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `topic` | text | required | What to research. Briefs and reports show it |
 | `questions` | list of text, at least one | required | The questions. Each may be long and have several lines. Claims name the question they answer by its place in this list, from 0, and the plan works on the least-covered questions first. Every research worker's brief has them whole |
 | `seeds` | list of URLs | `[]` | The starting links: **Starting links** in the brief on the **New campaign** page. The harness fetches and archives them when the run starts, one after another, beside the first trials; Live says `starting links: <n> of <m> archived`, with the reason for each it could not. Every research worker's brief lists them under "Starting links". With no web search, workers follow links from these |
+| `min_verified_claims` | integer ≥ 1 | none | A floor: the run must have at least this many verified claims, in all, before the review panel first checks whether every question is answered. It only delays the check; it never ends a run. **Verified claims before the check** on the **New campaign** page. Without it, the check needs only a verified claim for each question. Left out of a contract, it is not added, so a contract written before it keeps its hash |
 | `mcp_servers` | list | none | The MCP servers the campaign's agents use, as a kit's [`mcp_servers`](kit-manifest.md#mcp-servers) names them: a research campaign has no kit. The **New campaign** page writes it from **Time and tools** › **MCP servers for the agents**. Control refuses to start a run that names a server **Settings** lacks |
 | `scope.include_domains` | list of domain names, in lowercase | `[]` | When not empty, only these domains and their subdomains are fetched. Others are refused with `outside the campaign's domains: <host>` |
 | `scope.exclude_domains` | list of domain names, in lowercase | `[]` | These domains and their subdomains are never fetched: `excluded domain <host>` |
 | `scope.source_types` | list of text | `[]` | Accepted, not used yet |
 | `scope.languages` | list of text | `[]` | Accepted, not used yet |
-| `report_cadence.digest_minutes` | integer ≥ 1 | 60 | Minutes between digests |
+| `report_cadence.digest_minutes` | integer ≥ 1 | 60 | Minutes between digests. After `min_duration`, the check whether every question is answered runs at a digest |
 | `report_cadence.report_hours` | number > 0 | 24 | Accepted, not used yet. A research run writes digests and one final report |
 | `quality.verbatim_quotes` | `true` | `true` | Always on: a claim counts only when every quote is found word for word in its archived source |
 | `quality.min_independent_sources` | integer ≥ 1 | 2 | Different domains a verified claim's quotes must come from to be listed as independently sourced. The report lists those claims apart from the rest, and says for each finding how many of its claims are |
@@ -299,7 +300,7 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | `fetch_policy.max_bytes` | integer ≥ 1 | 5000000 | The largest response fetched, in bytes. A larger one is refused: `larger than <n> bytes` |
 | `fetch_policy.allow_logins` | `false` | `false` | Always off |
 
-A research run closes when its running time reaches `max_duration`, and then writes its final report. Without `max_duration` it runs until someone stops it: `min_duration` is a floor, never a stop. Time while the run is paused does not count, and neither does time its agents could not run: while they were stopped by the provider (no credits, a refused key, no model call that worked for 30 minutes, a failing model check) or waited for its rate limit ([Limits and pacing](limits-and-pacing.md#the-model-provider)). A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
+A research run ends when its questions are answered. After `min_duration`, at a digest, the harness asks the rig's review panel when every question has at least one verified claim, the run has `min_verified_claims` verified claims if the contract sets it, no review of the run waits, and the run has new verified claims or findings since its last review. The review passes only when every reviewer, at least two, finds every question answered and gives every hypothesis a verdict, and code finds every answer's cited claims verified and its numbers in them. A pass is taken at once, or when the owner accepts it if the run asks about reviews (`ask_owner.reviews`). Then, once its running trials end, the run writes its final report, with the review panel's answers and verdicts, and closes with the reason `every question is answered`. On gaps, the run goes on. [When a research run ends](../explanation/campaign-modes.md#when-a-research-run-ends) has the whole check. A research run also closes when its running time reaches `max_duration`, answered or not, and then writes its final report. Without a pass or `max_duration` it runs until someone closes it: `min_duration` is a floor, never a stop. Time while the run is paused does not count, and neither does time its agents could not run: while they were stopped by the provider (no credits, a refused key, no model call that worked for 30 minutes, a failing model check) or waited for its rate limit ([Limits and pacing](limits-and-pacing.md#the-model-provider)). A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
 
 ## Accepted, not used yet
 
