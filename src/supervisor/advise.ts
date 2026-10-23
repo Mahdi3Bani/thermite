@@ -982,6 +982,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         // With the campaign's own context settings, when it sets any (goal 070).
         const panel = (await configFor(pkg.run)).review_panel;
         const compactions: AdvisorCompaction[] = [];
+        // Why a reviewer gave no answer, for the error that says the review was not posted.
+        const unanswered: string[] = [];
         for (const runtime of panel) {
           const r = await reviewOne({
             runtime,
@@ -994,7 +996,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           count(r);
           await usageOut(pkg.run, `review ${pkg.id}`, "panel", r.usage);
           compactions.push(...(r.compactions ?? []));
-          if (!r.output) continue;
+          if (!r.output) {
+            unanswered.push(`${runtime.name}: ${clip(r.error ?? "no answer", 300)}`);
+            continue;
+          }
           results.push({
             reviewer: runtime.name,
             pass: r.output.pass,
@@ -1017,7 +1022,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         if (results.length < cfg.advisors.review_panel.length) {
           fail(
             `review ${pkg.id}`,
-            `${results.length} of ${cfg.advisors.review_panel.length} reviewers of the review panel answered`,
+            `${results.length} of ${cfg.advisors.review_panel.length} reviewers of the review panel answered${unanswered.length ? ` (${unanswered.join("; ")})` : ""}`,
             pkg.run,
           );
           continue;

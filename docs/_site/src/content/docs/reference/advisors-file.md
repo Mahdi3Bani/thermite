@@ -300,7 +300,7 @@ Every answer is one JSON object with exactly these fields. A `cli` or `claude-co
 | Teacher | `summary`: text, 1 to 4000 characters. `portfolio`: optional, its [new opportunities](#the-portfolio). `recommendations`: optional, up to 20 directives, default `[]`. `answers`: optional, its [answers to the owner's messages](#answers-to-the-owners-messages). `moves`: optional, its [moves of queued experiments](#experiments-and-moves-for-the-queue). `experiments`: optional, plain experiments, still read |
 | Merged by | `portfolio`: optional, the teachers' portfolios merged, each opportunity with `from`. `directives`: optional, up to 20 directives, default `[]`. `moves`: optional, the teachers' moves merged. `experiments`: optional, still read |
 | Auditor | `decision`: `"clear"`, `"block"` or `"needs_owner"`. `reasons`: text, 1 to 8000 characters. `citations`: up to 20 texts of 1 to 500 characters, default `[]`. `answers`: optional, as for a teacher. `check`: optional, [one check for the queue](#experiments-and-moves-for-the-queue) |
-| Reviewer of the review panel | `pass`: `true` or `false`. `reasons`: text, 1 to 8000 characters. `answers`: optional, as for a teacher |
+| Reviewer of the review panel | `pass`: `true` or `false`. `reasons`: text of at least 1 character; longer than 8000 characters, it is cut to 8000, not refused. `answers`: optional, as for a teacher. A research review's answer also has `questions` and `hypotheses`. Fields the answer does not have are dropped, not refused |
 | Final writer | `paper`: the whole paper in Markdown, 1 to 100,000 characters. `experiments`: up to 50 next experiments, default `[]`, each `{title, why, details, findings, claims}`: a title of 1 to 200 characters, why (1 to 2000), details (up to 4000, default empty), and the ids of the supported findings and verified claims it rests on (up to 50 each; at least one in all) |
 
 Every role but the final writer, the merged by model included, may also add `journal`: its [field notes](#field-notes).
@@ -523,7 +523,7 @@ Each failed teacher round, audit and review, each failed report of the owner's m
 | `no valid answer: <output>` | A `cli`, `claude-code`, `opencode` or `codex` advisor printed no object that fits its role's answer. For `opencode` and `codex`, `<output>` is the end of its last message, or else of its last error |
 | `no teacher produced a review` | Every teacher failed in this round |
 | `the teachers' merged by model gave no directive set: <why>` | The merged by model failed |
-| `<k> of <n> reviewers of the review panel answered` | A reviewer failed, so the review is tried again later |
+| `<k> of <n> reviewers of the review panel answered (<reviewer>: <why>; …)` | A reviewer gave no usable answer, named with why, so the review is not posted, and every reviewer of the review panel answers it again later (every 30 minutes, at most 5 times) |
 | `the owner's messages to the <role> for <run>: <error>` | The supervisor could not tell the harness which of the owner's messages the role read, or their answers: `teachers`, `auditor` or, for the review panel, `panel`. The messages stay unread and are given again |
 | `the queue for <run>: <error>` | The harness did not take the advisor's experiments and moves, for example because the run is closed (`run <run> is closed: its queue and rules no longer change`). The advisor's review or audit still stands |
 | `the field notes of <name> for <run>: <error>` | The harness did not take the advisor's field notes. Its review, audit or verdict still stands |
