@@ -1,0 +1,50 @@
+---
+id: "111"
+title: "A new run reuses the judge's goal report on the same starting point"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 111 · A new run reuses the judge's goal report on the same starting point
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+A plan only; nothing of it is built.
+
+A goal campaign's new run starts by having the judge check every goal on its starting point. When another run of the same campaign has already had that check, on the same inputs, the new run can start from that report instead of measuring it all again:
+
+- **The same inputs.** The same starting commit, kit commit, contract hash, rig and target, and the same Thermite harness version. Any difference means a new check.
+- **Said plainly.** The run's page says which run's report it starts from, and when that report was made. The report keeps its own values and its own time.
+- **The judge still decides.** Reuse only skips the first check. Every attempt and the final confirming check, with its held-out cases, are measured fresh, as now.
+- **The owner can refuse it.** Start a run can ask for a fresh check.
+
+## Why
+
+On 2026-10-23 a goal campaign ran a judge-only run, then a run with workers, from the same starting commit with the same kit and contract on the same rig. The judge measured the starting point again from the beginning, about 2 h 17 min of GPU time each, and the workers' first round waited for that check (or for the goal report wait to pass). The earlier run's report had every value the new run needed.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Whether a timed goal (a speed bar) may reuse a report, or only goals the judge checks for correctness, since timings drift with the card's state.
+- Whether a report gets too old to reuse after a time, or after the rig's checks or its images change.
+- Whether reuse is the default or the owner's choice at each start.
+
+## Progress
+
+- 2026-10-23: Goal written as an idea, from two goal campaign runs that checked the same starting point.
+
+---
+
+Run with `/goal Complete docs/plan/goals/111-reuse-a-goal-report.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -185,3 +185,4 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [057](goals/057-finalize-champions.goal) Finalize a champion into reviewable branches · `PROPOSED`
 - [058](goals/058-helm-and-npm.goal) Helm charts and an npm package · `PROPOSED`
 - [059](goals/059-knowledge-base-export.goal) Research results into a knowledge base · `DROPPED` (now part of 065)
+- [111](goals/111-reuse-a-goal-report.goal) A new run reuses the judge's goal report on the same starting point · `PROPOSED`
