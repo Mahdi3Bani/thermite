@@ -20,13 +20,16 @@ Agents never judge: the workers do not decide that the research is done. Code ch
 
 - **When the check runs.** At a digest (every `report_cadence.digest_minutes`), once the run's running time has reached `min_duration`, when:
   - every question has at least one verified claim;
+  - the run has at least the brief's floor of verified claims, when its brief sets one (`min_verified_claims`, on the New campaign page beside **Run for at least**; empty by default). The floor delays the check; it never ends a run;
   - no review of the run is waiting for the panel;
   - the corpus changed since the run's last review (new verified claims or findings), so a review that found gaps is not asked again on the same evidence.
 - **What the panel gets.** A package with the topic, each question with its verified claims (their text, sources' domains and whether they are corroborated), the run's findings, and each hypothesis with the claims cited for it. Nothing about which lane or model wrote what.
 - **What each reviewer answers.** For each question: answered or not, an answer that cites verified claims, and what is missing. For each hypothesis: supported, refuted or undecided, with why and the claims it rests on.
 - **What code checks in each answer.** Every cited claim is a verified claim of the run, and every number in an answer appears in the claims it cites, as for a finding. An answer that fails the check counts as not answered, with the reason.
 - **The decision.** The review passes when every reviewer, at least two, finds every question answered and gives every hypothesis a verdict. A pass is accepted hands-off, unless the run asks the owner about reviews (**Ask me first about** reviews, `ask_owner.reviews`), as in goal mode.
-- **On a pass:** the run lets its running trials end, writes its final report and closes with the reason `every question is answered`. The final report adds the panel's answers to each question, with the claims they cite, and its verdict on each hypothesis.
+- **On a pass:** the run lets its running trials end, writes its final report and closes with the reason `every question is answered`.
+- **The final report is a research paper.** A final writer, an advisor on the supervisor, writes it as one whole paper in Simplified Technical English: what was asked, how the sources were found and checked, the answer to each question with the claims it rests on, each hypothesis's verdict, the limits of the evidence, and what to try next. It works with the run's research (read only), the panel's answers, and the style resources the rig gives it: an STE checker and its guide, which the deployment provides; Thermite does not ship the standard's vocabulary. Code checks the paper before it becomes the final report: every cited claim is a verified claim of the run, every number appears in the claims it cites, and, where the rig has the checker, the checker finds no error. The paper comes first in the final report; the panel's answers, verdicts and the corpus follow it.
+- **Experiments for other runs.** The paper's "what to try next" items are kept as experiments in the campaign's knowledge-base folder, each with why and the findings it rests on, so that a goal or hill-climb run can take them into its queue (Start a run's past items).
 - **When the panel finds gaps:** what each reviewer said is missing goes in the run's journal and in the next workers' briefs, and the run goes on.
 - **`max_duration`** still ends a run when its time is up, answered or not.
 - **A rig without a review panel:** the run keeps researching, and its page says that its check waits for a review panel.
@@ -34,6 +37,8 @@ Agents never judge: the workers do not decide that the research is done. Code ch
 ## Why
 
 The owner, 2026-10-23, about a research run 24 hours into a run with an 8-hour minimum and no maximum: "So the intent with the research harness was that the minimum time lets it grab suffecient resources and research. Then after that if it has enough data to answer the questions and hypothesis etc, then it should do that, otherwise it continues until those are suffeciently answered. I'm happy with how many claims it has. I want it to write final reports and close off cleanly without me "stopping" the run." And: "Well we have judge systems and auditors and review panels for a reason right?"
+
+Later the same day: "For the code gate we should have also a minimal floor of verified claims (Defined on the brief for a research run). Remember the final report should be written wholisticly as a research paper in STE with our STE Lints and resources available to a final writier on this. Experiments can be used to pass to a goal based run or hill climb". The research lab that runs across campaign modes is [113](113-research-lab-campaign.goal).
 
 Before this goal, a research run ended only at its `max_duration` or by the owner's **Close run**. The New campaign page sets no maximum, so its research runs ran until someone closed them. A final report was the same as a digest: it had no answers.
 
@@ -43,6 +48,9 @@ Before this goal, a research run ended only at its `max_duration` or by the owne
 - [ ] The supervisor's review panel answers a research package with a research prompt and output; a supervisor from before this goal is never given one. Tests.
 - [ ] Code checks each answer's cited claims and numbers; a pass needs every reviewer; a pass closes the run with the final report and its answers, hands-off or after the owner's acceptance when the run asks; gaps reach the journal and the workers' briefs. Tests.
 - [ ] The run's page and its status words say where the check stands and why the run ended. Tests.
+- [ ] The brief's floor of verified claims: on the New campaign page (with its description), in copy_campaign and the APIs, and in the gate. Tests.
+- [ ] The final writer writes the paper with the run's research and the rig's STE resources; code checks its citations, its numbers and, where present, the STE checker's errors; the paper leads the final report. Tests.
+- [ ] The paper's next experiments are kept in the knowledge base as experiments a goal or hill-climb run can take. Tests.
 - [ ] The pages match the code: research mode, Why Thermite runs until the job is done, the contract reference, the review panel, Decide what waits for you, events, the glossary; the changelog.
 - [ ] On the deployment, a research run past its minimum gets its review, and closes with its final report if the panel passes it.
 
@@ -53,6 +61,8 @@ Before this goal, a research run ended only at its `max_duration` or by the owne
   - Every research run gets the check; no contract field turns it on. `max_duration` stays a hard end.
   - No new screen: the run's existing blocks and status words say where the check stands.
   - A research review is a review of the run with the reserved name `research`, so it uses the review panel's existing store and commands, including `accept_review`.
+  - The STE checker's vocabulary comes from ASD-STE100, whose notice forbids redistribution without the standard's maintenance group's permission, so Thermite does not ship it: a rig is given the checker as a resource (a path the deployment mounts), and a paper written without it says it was not checked.
+  - Built in two steps: the gate, the panel and the close first; the final writer and the experiments on top of that close.
 
 ## Open questions
 

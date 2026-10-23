@@ -163,6 +163,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [043](goals/043-progress-charts.goal) Progress charts · `PROPOSED`
 - [044](goals/044-comparable-results.goal) Comparable results · `PROPOSED`
 - [045](goals/045-richer-receipts.goal) Richer receipts · `PROPOSED`
+- [113](goals/113-research-lab-campaign.goal) A research lab: one campaign that researches, builds, improves and researches again · `PROPOSED`
 
 ## v0.5.0
 

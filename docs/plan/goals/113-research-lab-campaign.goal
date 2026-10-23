@@ -1,0 +1,51 @@
+---
+id: "113"
+title: "A research lab: one campaign that researches, builds, improves and researches again"
+status: PROPOSED
+version: "0.4.0"
+depends_on: ["102", "107", "112"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 113 · A research lab: one campaign that researches, builds, improves and researches again
+
+**Status:** `PROPOSED` · **Version:** [v0.4.0](../roadmap.md#v040)
+
+## What
+
+A plan only; nothing of it is built.
+
+A research lab campaign runs across the three modes, in turn and side by side, and passes what each learns to the next:
+
+- **Research** answers questions and ends with a paper and the experiments it suggests ([112](112-research-ends-when-answered.goal)).
+- **Goal runs** build implementations from those experiments, several at once where the rigs have room, each judged as a goal campaign is.
+- **Hill-climb runs** improve what the goal runs built.
+- **Back to research** when the judges' results raise new questions: the lab writes them as a new research run's questions, with the earlier paper and results as its background.
+- **The lab itself improves.** It plans the next step from everything recorded so far, as the planner plans a round, so the campaign recursively gets better at running itself, and it runs the whole research lab with no one stepping each part.
+- **The rules stay.** Each run is judged by code its agents can't write; the owner sets what the lab may start, spend and promote, and what waits for the owner.
+
+## Why
+
+The owner, 2026-10-23: "Experiments can be used to pass to a goal based run or hill climb (In the future like v0.3.0 or v0.4.0 you'll be able to run a research lab campaign that goes across campagin types or in parallel to research, build implementations, improve, go back to research, multiple in parallel implementation goal systems,e tc as the harness recursively improes the campaign and auto does full research lab)."
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+- 2026-10-23, owner: a future version, "like v0.3.0 or v0.4.0". Placed in v0.4.0, after kits that define campaigns ([102](102-kits-define-campaigns.goal)) and several runs at once on one rig ([107](107-runs-side-by-side.goal)), both in v0.2.0.
+
+## Open questions
+
+- What starts each next run: the lab's own plan, a teacher's proposal, or the owner's approval of each step.
+- How the lab's spend and its number of runs at once are bounded, when the owner sets a limit.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/113-research-lab-campaign.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
