@@ -79,6 +79,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [103](goals/103-export-and-download.goal) Export, full or not, from the dashboard; an Exports page that downloads each export · `IN_PROGRESS`
 - [098](goals/_completed/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `VERIFIED`
 - [099](goals/_completed/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `VERIFIED`
+- [115](goals/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `IN_PROGRESS`
 
 ### Research mode
 
@@ -118,7 +119,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [109](goals/109-exports-page-shows-what-matters.goal) The Exports page shows what matters, not every slice · `PROPOSED`
 - [110](goals/110-judge-only-runs-show-progress.goal) A judge-only run shows its progress · `PROPOSED`
 - [114](goals/114-hill-climb-contract-gaps.goal) Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields · `PROPOSED`
-- [115](goals/115-record-runs-keep-outputs.goal) A judge-only record run keeps what it measured, and ends when it is recorded · `PROPOSED`
 
 ## v0.2.0
 

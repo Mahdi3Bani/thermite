@@ -1,0 +1,56 @@
+---
+id: "115"
+title: "A hill climb's first job measures its starting point, and its guards hold against it"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 115 · A hill climb's first job measures its starting point, and its guards hold against it
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010)
+
+## What
+
+A hill climb improves one main metric while its guard metrics must not fall more than a set amount. Its first job is a baseline: the judge measures the starting point on every cell before any change is judged, and everything after is held against those values.
+
+- **The baseline job.** For a hill-climb run, the judge's first job is `baseline`, ahead of every other job: it builds the starting point and runs every cell several times, and records, for each cell, the starting point's value of the main metric and of every guard metric (the median and its spread), as the run's baseline. It runs again only when the starting point changes (setup, below), not when a change is promoted.
+- **Nothing starts before it.** No round is planned and no trial starts until the run has its baseline, as a goal campaign waits for its first goal report. The run's page says what it waits for.
+- **A starting point that can't be measured yet.** When the baseline fails (the starting point does not build, a cell crashes, or a check fails), the run is in setup: the failure, in words, goes to the workers, whose work is then to make the project build and run its measurement, within the editable paths only, never the kit. The judge checks a setup change with the baseline job itself: one that it can measure becomes the run's starting point (champion #1), and its values the baseline. Agents never judge, and the kit stays the judge's.
+- **Guards against the baseline.** A guard's `max_total_regression` holds against the baseline's recorded values, not only against the sum of each step's estimate; a guard's `max_step_regression` still holds against the champion in the same block.
+- **What the baseline keeps for the kit.** During the baseline job, the kit's check may write files to a folder only the judge can read and write (for example reference outputs to compare candidates against); later jobs' checks read it. Size-capped; each file's SHA-256 is in the baseline's record. Agents can't reach it.
+- **In view.** The run's page shows the baseline: each cell's starting value of the main metric and the guards, and the noise; get_run and the run's history give it too.
+
+## Why
+
+On 2026-10-23, a speed hill climb was drafted with a separate judge-only "record run" first, because Thermite had no way for a hill climb to measure and keep its starting point's values (and a reference for its numerics guard) before judging changes. The owner: "So explain why we ran "pn-speed-record-1" instead of having this be the baseline start for a hillclimbing campaign? Why a second campaign when I would expect a hillclimb to support doing this measurement before startng experiments???" And: "Build it right now. This is a gap for v0.1.0 release. Stop pn-speed-record-1. Hillclimbs have their stat they hill climb and the stats that must not fall below a certain delta while increasing the main stat. First job should be to do a baseline run to get the seed amounts. Sometimes that might mean workers need to write code to get it working and run (Maybe they are starting from scratch)... pi-autoresearch does this well in how it does it. Maybe do a bit of research before you go off and start implementing."
+
+What Thermite did before this goal: a hill climb's first job was a daily A/A calibration of the champion (main metric only), evaluations ran ahead of it, guards compared each change with the champion of its own block and summed those steps, nothing waited for the starting point, and a starting point that could not be measured left every attempt `errored` while lanes kept working. pi-autoresearch (MIT, David Cortés and Tobi Lütke) starts with a baseline run of the unmodified code too, but only by its prompt, its secondary metrics are not guarded, and its agent writes and may change the measurement; Thermite keeps the measurement the judge's.
+
+## Done when
+
+- [ ] The baseline job: first for every hill-climb run, its values per cell and metric recorded, the run's rounds wait for it. Tests.
+- [ ] Setup: a starting point that can't be measured gives the workers its reasons; a setup change the judge can measure becomes the starting point and its values the baseline. Tests.
+- [ ] `max_total_regression` holds against the baseline's values. Tests.
+- [ ] The kit's check keeps files in the baseline's judge-only folder during the baseline job, and later checks read them; agents can't reach it. Tests.
+- [ ] The run's page, get_run and the history show the baseline. Tests.
+- [ ] The pages match the code: campaign modes, the contract and kit manifest references, write a kit, why agents never judge, verdicts and states, limits; the changelog; CREDITS.md for pi-autoresearch's part.
+- [ ] On the deployment: Campaign 3's hill climb starts with its baseline and no separate record run.
+
+## Decisions
+
+- 2026-10-23, owner: in v0.1.0, now (the words above). This goal first held a plan for record runs that keep their outputs; the owner's design replaces it.
+
+## Open questions
+
+None yet.
+
+## Progress
+
+- 2026-10-23: Plan from the owner's words, after research into pi-autoresearch and into Thermite's hill climb. Build started.
+
+---
+
+Run with `/goal Complete docs/plan/goals/115-hill-climb-baseline.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
