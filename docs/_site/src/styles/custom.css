@@ -44,3 +44,21 @@
   overflow-x: auto;
   overflow-wrap: break-word;
 }
+
+/* The home page's screenshot, under the hero: centred, as wide as the page allows. Its paragraph
+   is freed from the reading width above. */
+.sl-markdown-content .home-shot {
+  margin-bottom: 2.5rem;
+}
+.sl-markdown-content .home-shot p {
+  max-width: none;
+}
+.sl-markdown-content .home-shot img {
+  display: block;
+  margin-inline: auto;
+  width: 100%;
+  max-width: 64rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.75rem;
+  box-shadow: var(--sl-shadow-lg);
+}
