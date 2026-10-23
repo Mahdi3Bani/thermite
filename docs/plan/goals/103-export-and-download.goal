@@ -10,7 +10,7 @@ updated: 2026-10-23
 
 # 103 · Export, full or not, from the dashboard; an Exports page that downloads each export
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [024](024-runpod-models-and-results.goal), [080](080-buttons-show-progress.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [024](_completed/024-runpod-models-and-results.goal), [080](_completed/080-buttons-show-progress.goal)
 
 ## What
 

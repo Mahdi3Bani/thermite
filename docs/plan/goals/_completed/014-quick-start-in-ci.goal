@@ -1,0 +1,48 @@
+---
+id: "014"
+title: "The quick start, tested in CI"
+status: VERIFIED
+version: "0.1.0"
+part: "Install from images"
+depends_on: ["005", "011"]
+created: 2026-10-19
+updated: 2026-10-20
+- 2026-10-20: The `quick-start` job passed on GitHub with Docker in 8 min 13 s (CI run 39479049337 on `v1/build` (85b4de0)). The fast test that reads the pages runs on every pull request. Verified.
+
+---
+
+# 014 · The quick start, tested in CI
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [005](005-sample-project.goal), [011](../011-release-bundle.goal)
+
+## What
+
+A CI job follows the quick start on a clean runner: start from the release bundle, run the rig checks, and run the sample campaign to its first verdict.
+
+## Why
+
+A broken quick start must fail the build, not a tester's first hour.
+
+## Done when
+
+- [x] The job runs on every pull request and fails when the quick start breaks.
+
+## Decisions
+
+- 2026-10-20, the release lead's brief: The job runs on every push to `main` and `v1/build`, and on the pull requests that touch what the quick start runs: the containers, the compose files, the release bundle, the quick start's pages, `examples/`, the smoke kit and the test itself. Other pull requests skip it. "Every pull request" in Done when means these.
+- 2026-10-20, the release lead's brief: No images are published before the first tag, so the job builds the images from the commit and writes the bundle for them with the release's own script, `scripts/release-bundle.ts`. The agents' model is the agents acceptance's scripted model, so CI needs no key and no network model.
+- 2026-10-20, builder: The test reads its steps from the pages themselves, not from a copy kept in step by a docs-check rule. `src/testing/quick-start.ts` reads the commands, the values typed, the buttons and the quoted screen text from the two tutorials, the install page's command line section and Troubleshoot's Check the machine. Its unit test reads the real pages on every pull request, so a page that loses a step fails in seconds even when the slow job is skipped.
+- 2026-10-20, builder: With Podman, the bundle pins the images in local storage by their digests. With Docker, which knows a digest only for a pushed image, the test pushes them to a registry container on 127.0.0.1 (`registry:3.0.0`, pinned by digest). The bundle's CUDA harness names the CPU harness: no step uses it, and CI cannot build it in time.
+- 2026-10-20, builder: The test changes only what cannot work before a release, and fails when a page no longer has what a change is for: the release's files and the source (this commit's tracked files, tagged as the release) come from servers on the runner; the provider is the scripted model, added as an OpenAI-compatible provider, under OpenCode v2 as the page says; Look it up reads only `https://` addresses, so the test looks the tag up and counts the folder's files itself; the doctor checks the scripted model's address. Under Docker on Linux, the supervisor has no name for the host, so the campaign's repository is at the gateway address of the stack's network.
+- 2026-10-20, builder: The scripted model moved from `scripts/agents-acceptance.mjs` to `scripts/lib/scripted-model.mjs`, and both tests use it.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built. `scripts/quick-start-acceptance.mjs` builds the three images, writes the bundle with `scripts/release-bundle.ts`, then follows Your first run (download, `run --rm init`, `up -d`, `ps`, sign in, Overview's first line, the rig live, Isolation passed, Judge smoke run and passed, its campaign and its verdict counts as step 7 gives them), the command line and `thermite doctor` (no check failed), and Hand the work to agents (the provider and its model under OpenCode v2, the model check, the clone and the kit's archive, the New campaign form's fields, the folder's files, the kit's summary, the start, the first verdict `win_confirmed` on lane-1's change, the pause), and last the page's `down`. 43 checks. Each shell block runs as the page writes it, with the line for the tester's compose tool; `src/testing/quick-start.ts` reads the pages, and `src/testing/quick-start.test.ts` checks that it can, and that a page without a step, a download, a field or a count stops it. CI: the jobs **quick start, needed?** and **quick-start** in `.github/workflows/ci.yml` (Docker, 60-minute limit, the report kept as an artifact). Pages: contributing (the test, the two jobs), the contributor guide, writing-docs (pages a test follows), AGENTS.md.
+- 2026-10-20: Run here with Podman (podman compose, docker-compose underneath): it passed in 6.4 minutes with the image layers already built (the smoke check 2 minutes, the model check 1, the campaign to its first verdict under 1). The runs before it found one fault in the quick start: on a Mac, the agents tutorial's `tar` packs a `._kit` file beside `kit/` when the files carry extended attributes, and control refused the archive (`the archive has no kit.json at its top`). Control now leaves out `._` files, `__MACOSX` and `.DS_Store` (`src/control/kit-upload.ts`, with a test; the Start a campaign from the dashboard page says so). Cleaned up after: the stack and its volumes, its images, dangling images, the Podman VM trimmed, no `thermite-*` folders left.
+- 2026-10-20: Left: the first run on GitHub's runners, which needs a push by the maintainers. The Docker path (the registry container, the network's gateway as the source's address) has not run anywhere yet. Expected time there: about 20 minutes, most of it the three image builds with no cache; the job stops at 60.

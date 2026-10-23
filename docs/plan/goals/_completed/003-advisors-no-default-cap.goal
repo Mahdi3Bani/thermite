@@ -1,0 +1,46 @@
+---
+id: "003"
+title: "No default spend limit for advisors"
+status: VERIFIED
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 003 · No default spend limit for advisors
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+The advisors' daily spend limit (`max_usd_per_day`) has no default. A limit applies only when someone sets it.
+
+## Why
+
+No default caps is a rule for every goal. Before this goal, advisors stopped at 20 USD a day unless configured otherwise.
+
+## Done when
+
+- [x] `max_usd_per_day` is optional, and advisors apply it only when it is set. (`d2df6de`: `src/supervisor/advisors.ts`, `src/supervisor/advise.ts`)
+- [x] A test shows that advisors run with no limit when none is set. (`d2df6de`: `src/supervisor/advisors.test.ts`; the advisors and advisor-routes tests pass, 10 of 10)
+- [x] The settings docs say so. (`d2df6de`: `docs/local-development.md`)
+
+## Decisions
+
+- 2026-10-19, owner: No cap by default. Anyone who wants a limit can configure one.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-19: Built on the development branch; the commit is next.
+- 2026-10-19: Done in `d2df6de` on the development branch. Verified.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/003-advisors-no-default-cap.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

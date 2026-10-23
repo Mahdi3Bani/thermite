@@ -1,0 +1,51 @@
+---
+id: "067"
+title: "thermite assign can copy a past run's untried experiments"
+status: VERIFIED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["064"]
+created: 2026-10-20
+updated: 2026-10-20
+---
+
+# 067 · `thermite assign` can copy a past run's untried experiments
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+`thermite assign` gets an option to start the new run's queue from a past run's untried experiments, as Start a run, MCP and REST can.
+
+- **The option:** for example `--queue-from <run>`, off unless asked for.
+- **What it copies:** the past run's queued experiments in order, then its lanes' ideas, each with who added it, why and where it came from. The same seed as Start a run (`assign_campaign.queue`).
+- **Where the words come from:** control's own records of the past run, as for MCP.
+
+## Why
+
+The owner, 2026-10-20: `thermite assign` should be able to copy a past run's untried experiments, off unless asked for. Today only the dashboard, MCP and REST can.
+
+## Done when
+
+- [x] `thermite assign --queue-from <run>` (and `--print`) puts the past run's untried experiments in `assign_campaign.queue`.
+- [x] Without the option nothing is copied.
+- [x] A run without agents refuses it, as the harness does.
+- [x] Tests and the command-line reference page follow.
+
+## Decisions
+
+- 2026-10-20, owner: "Yes it should support copying a past runs untried experiments, but its not a default."
+- 2026-10-20, builder, within the v0.1.0 build brief: the option is `--queue-from [RIG/]RUN`. `RUN` alone is a run on `--rig`; `RIG/RUN` names another rig, and is needed with `--print` when no `--rig` is given. Control gives the seed through a new owner-token route, `GET /v1/rigs/<rig>/runs/<run>/untried?campaign=<campaign>`. It builds the seed with the same code as **Start a run**, then takes the words and authors from its records with the same code as MCP's `issue_command`, for the new run's campaign. So `--queue-from` needs `--control` and `--token-file`, with `--print` too. A past run with nothing untried leaves the queue empty, with a note on standard error, and the command goes on.
+
+## Open questions
+
+- None yet.
+
+## Progress
+
+- 2026-10-20: Goal written from the owner's decision.
+- 2026-10-20: Built. `src/control/queue-copy.ts` holds the seed (`untriedOf`) and the words from control's records (`copiedFromRecords`), shared by **Start a run**, MCP, the new REST route and the command line. `thermite assign --queue-from` puts the seed in `assign_campaign.queue`, sent or printed; without the option the payload has no `queue`; with `--agents off` it refuses, as the harness does. Tests: `src/cli/assign.test.ts` runs the command against a real control (order, edits, tried and dropped left out, another campaign's run marked `copied`, every refusal, the signed command). The command-line and REST references, Start a campaign from the command line, Choose what a run tries next, and the pages that said the command could not copy, describe it.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/067-assign-queue-from.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

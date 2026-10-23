@@ -118,7 +118,7 @@ A build that fails never reaches the held-out cases: its verdict is `invalid` or
 
 **The agents** read only that a held-out check failed, and its kind, in the words above, each kind once: in the verdict's reasons (which a lane's brief shows), as `held_out` in the planner's and the teachers' evidence, and as `held_out` in a worker's `status` of the attempt. Of the champion's check they read the goal report: `not_confirmed`, and which goal was not confirmed with its kinds, so the lanes can work on it. They never get a held-out case's name, its values, its inputs, its output or the check's words, and the `held_out_checked` event reaches control, never an agent: no brief, tool or knowledge base item is built from it. Control's agent token, for an agent that works over MCP, reads them as the agents do: in [`get_run`](mcp-tools.md#get_run) and [`recent_events`](mcp-tools.md#recent_events), a held-out check, the champion's too, is its kinds and their words, and no held-out case is named.
 
-A kind comes from how the judge saw the run fail, never from what the run or the check printed. [Goal 082](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/082-judge-findings-in-view.goal) says what a kind reveals, and why that is safe.
+A kind comes from how the judge saw the run fail, never from what the run or the check printed. [Goal 082](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/_completed/082-judge-findings-in-view.goal) says what a kind reveals, and why that is safe.
 
 ### Any mode
 

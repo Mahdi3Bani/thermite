@@ -1,0 +1,64 @@
+---
+id: "099"
+title: "Status words say how a run ended; a judge-only run says so"
+status: VERIFIED
+version: "0.1.0"
+depends_on: ["077", "086", "087"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 099 · Status words say how a run ended; a judge-only run says so
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [077](077-archive-and-folders.goal), [086](086-goal-report-values-and-confirmation-wait.goal), [087](087-close-a-run.goal)
+
+## What
+
+1. **A run's word.** A closed goal run whose newest goal report met every required goal, confirmed by the judge's second check, reads **Completed**, in the success colour with a check mark. Any other closed run reads **Finished**, as before. The other words do not change. The word shows on the run's page, in **Live**, under **Earlier runs**, in **Live**'s list of runs that ended, and in a campaign's **Model use**.
+2. **A campaign's word.** While one of its runs is running, a campaign shows the most urgent of those runs' words, as before: **Approval**, **Decision**, **Review**, **Audit**, **Auditing**, **Running**. Otherwise it shows its newest run's word, by when the run started: **Completed**, **Finished** or **Paused**. The left navigation shows it. The Campaigns list follows the same rule: a campaign with no run at work whose newest run is closed counts as finished, so the default filter hides it, and its **Runs** column counts completed runs apart ("N completed").
+3. **A judge-only run says so.** A run started with its agents off shows `judge only` after its mode in the line under its name, and a box on every tab of its page: `Judge only: No workers run. The judge checks the champion; the advisors' ideas wait in the queue for a run with workers.` A try of a kit keeps its own box, and a rig check's run has none. Under **The run**, **Agents** says `None: judge only. No workers run; changes come from people`. Its cards and its row under **Earlier runs** have the mark **judge only**.
+4. **Its queue says how to carry the experiments.** While experiments wait in a judge-only run's queue, its **Experiments** tab says above **Up next**: `Judge only: no worker takes these experiments, so they wait for a run with workers. To carry them over, Start a run of the campaign with Copy the untried experiments of <run> ticked.` **Start a run** opens the campaign's Start a run panel with that run chosen.
+5. **REST and MCP.** A run's view gives `goals_complete`, true when the newest goal report met the goals for good.
+
+Nothing changes in what the advisors, the planner or the judge do: only what the owner sees.
+
+## Why
+
+The owner, 2026-10-23, of the left navigation, where several campaigns all read "Paused": "Some of these campaigns were successful and finished. But show as "paused" they should show "completed" or "successful" or something like that." A campaign showed its most urgent run's word, and an old paused run outranked a newer run that had met every goal.
+
+The owner, 2026-10-23, of a goal run started with its agents off: "[it] seems to never have spun up any workers?" Nothing on the dashboard said the run was judge only, and its teachers kept adding experiments to a queue that no worker would ever take.
+
+## Done when
+
+- [x] `runState` gives **Completed** for a closed goal run with `goals_complete`, and **Finished** for any other closed run. Tests: `src/control/ui/campaigns.test.ts`, `src/control/campaign-status-ui.test.ts`.
+- [x] `campaignState` and the Campaigns list's `campaignKind` follow the newest-run rule: an older paused run and a newer completed run give **Completed** and finished; a running run still wins; every run paused gives **Paused**. Tests: `src/control/ui/campaigns.test.ts`, `src/control/campaign-status-ui.test.ts`.
+- [x] A judge-only run's page, its cards, its row under **Earlier runs** and its **Experiments** tab say what item 3 and item 4 say, and **Start a run** opens with the run chosen. Tests: `src/control/ui/campaigns.test.ts`, `src/control/campaign-status-ui.test.ts`, `src/control/dashboard.test.ts`.
+- [x] The pages match the code: Verdicts and states (run labels, judge-only runs, campaign states), the glossary, Why Thermite runs until the job is done, How it fits together, Choose what runs next, Start a campaign from the dashboard, Steer a run, Several rigs, Take the result home, Test a kit, the MCP tools and REST API references, Model use, Your first run and Your first goal campaign; the changelog has the change.
+- [x] The lead verifies the change.
+
+## Decisions
+
+- 2026-10-23, owner: "Some of these campaigns were successful and finished. But show as "paused" they should show "completed" or "successful" or something like that."
+- 2026-10-23, owner, of a goal run started with its agents off: "[it] seems to never have spun up any workers?"
+- 2026-10-23, lead, in the build brief: **Completed** for a closed goal run that met every required goal; a campaign shows its newest run's word when no run is at work or needs the owner; a judge-only run says so on its page and over its queue, with how to carry the queue to a run with workers; the advisors do not change.
+- 2026-10-23, builder, within the brief:
+  - **What counts as met.** The newest goal report's `complete`, without `confirming`: the judge's second check agreed, which is what closes the run with `every required goal is met`. A goal run the owner closed while that second check was still to come reads **Finished**. Only a goal run reads **Completed**.
+  - **The Campaigns list.** A **Completed** campaign counts as finished, with **Finished** ones, so the default filter, **Active and paused**, hides it, and **All** shows it. A campaign whose newest run is paused counts as paused, even when an older run completed. The order of the navigation and the list follows the same rule.
+  - **Which runs are judge only.** Every run whose `run_created` says `agents: false`. A try (`<campaign>-try-<n>`) keeps its own box, which says the same. A rig check's smoke run gets the header word and the mark but no box: the rig's page explains it.
+  - **Not changed.** The rig page's **Runs on this rig** keeps its words (`Closed` for a closed run), and the run's **Now** block keeps `no agents on this run: changes come from people`.
+
+## Open questions
+
+- Whether a hill climb or a research run that ended well should have a word of its own. Today only a goal run completes; any other closed run is **Finished**.
+
+## Progress
+
+- 2026-10-23: Goal written from the owner's two remarks and the lead's build brief, and built.
+  - Code: `src/control/views.ts` (`goals_complete`, `newestRun`, the campaigns' order), `src/control/ui/components.ts` (`runCompleted`, `runState`, `campaignState`, `judgeOnlyMark`, the judge-only words), `src/control/ui/campaigns.ts` (`campaignKind`, `runCounts`, **Earlier runs**, the chosen run in Start a run), `src/control/ui/queue.ts` (the queue's line), `src/control/ui/operator.ts` (the cards' mark), `src/control/dashboard.ts` (the run page's header, box and **Agents**, **Live**'s ended runs, Model use), `src/control/ui/style.ts`.
+  - Tests: `src/control/ui/campaigns.test.ts`, `src/control/campaign-status-ui.test.ts` (new), `src/control/dashboard.test.ts`. Each new test fails without the change.
+  - Checks before the commit: typecheck, Biome, the public check, every control test file, `npm run docs:build` and `npm run docs:check`. The compose acceptances were not run.
+- 2026-10-23: Checked on a deployment's control after the roll: a goal campaign whose newest run met every goal reads Completed in the navigation while two older runs of it are paused; campaigns whose newest run is paused read Paused; a judge-only run shows its box and, on Experiments, the line on carrying its queue to a run with workers. Verified.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/099-campaign-status-words.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

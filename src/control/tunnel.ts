@@ -27,7 +27,7 @@ import { type ControlStore, RIG_ID } from "./store.ts";
 
 /**
  * Control's end of the tunnel to a rig in pull mode: one control connects to through a public
- * proxy (a RunPod pod: docs/plan/goals/019-rig-only-entry.goal and 021-enrollment-codes.goal,
+ * proxy (a RunPod pod: docs/plan/goals/_completed/019-rig-only-entry.goal and 021-enrollment-codes.goal,
  * and src/supervisor/tunnel-pod.ts for the rig's end).
  *
  * A launch mints the rig and its one-time code (mint), and names the pod once RunPod made it

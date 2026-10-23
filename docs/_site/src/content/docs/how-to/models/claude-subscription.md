@@ -11,7 +11,7 @@ If you pay for a Claude Pro or Max plan, Thermite's agents can work on that plan
 A subscription is for your own Thermite only. A Thermite that several people use takes API keys.
 
 :::note[Tested with stand-ins]
-Subscriptions are built, but Thermite's tests so far run Claude Code against a stand-in for Anthropic's service, never with a real subscription. A test with a real subscription is planned in [goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/009-subscription-sign-in-tests.goal).
+Subscriptions are built, but Thermite's tests so far run Claude Code against a stand-in for Anthropic's service, never with a real subscription. A test with a real subscription is planned in [goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/_completed/009-subscription-sign-in-tests.goal).
 :::
 
 ## Before you start

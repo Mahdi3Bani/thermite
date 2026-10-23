@@ -1,0 +1,52 @@
+---
+id: "020"
+title: "A one-container rig image"
+status: VERIFIED
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: ["018"]
+created: 2026-10-19
+updated: 2026-10-20
+---
+
+# 020 · A one-container rig image
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [018](018-runpod-spike.goal)
+
+## What
+
+RunPod runs one container per pod. A combined rig image runs the broker as root and starts the supervisor under its own user, beside the role users. It removes every setuid and setgid bit at build time, and it keeps RunPod's own variables from every role. The isolation self-test checks all of this.
+
+## Why
+
+The harness and the supervisor normally run in two containers. RunPod allows one.
+
+## Done when
+
+- [x] The combined image passes the isolation self-test on RunPod and in CI.
+
+## Decisions
+
+- 2026-10-20, owner: One combined image per pod, as recommended.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built. `containers/rig/Containerfile` is the harness image (named in `HARNESS_IMAGE`; CUDA for pods, CPU for tests) with the supervisor's `openssh-client` and user added; its build removes every setuid and setgid bit and fails if one is left. Its entry point, `thermite-rig-start`, removes every `RUNPOD_` variable before `tini` starts, and passes the pod's ID on as `THERMITE_POD_ID`. With `THERMITE_ONE_CONTAINER=1` the broker (root) prepares the supervisor's places on the volume (`/workspace/thermite/...`), makes the harness token once, writes control's key from the launch, and starts the supervisor as uid 10001 with no_new_privs and in the GPU fence with no card. It restarts either part after an exit and ends both cleanly on a stop. No process it starts gets a `RUNPOD_` variable, in every image. The isolation selftest gains `pid1-environ` and `runpod-variables` probes for every role, the supervisor's places in this image, and container checks: the supervisor's user, its GPU access, set-id files and RunPod's variables. Docs: the image reference, the isolation explanation, rig checks, settings and contributing.
+- 2026-10-20: Checks. Unit tests for the broker's parts, the entry point and the selftest's new checks. `scripts/rig-image-acceptance.mjs` passed under rootless Podman: the image started as RunPod starts it (root, default capabilities, no no-new-privileges, RunPod's eight variables made up), with GPU device nodes the container could not regroup (nobody's, 0666). The selftest passed, from the controller at start and as root; the fence alone kept the other roles and the supervisor off the nodes; a killed supervisor and a killed controller started again; a stop ended both with exit code 0 in 5 s. CI now runs the same script with Docker; it has not run there yet.
+- 2026-10-20: For goals 019 and 021, the contract with this image: control's command-signing public key comes with the launch in `THERMITE_CONTROL_PUBKEY` (PEM, or PEM in base64); the broker writes it as root to `THERMITE_CONTROL_PUBKEY_FILE` (`/etc/thermite/control-signing.pub`), where both parts read it, and without it the harness waits without restarting. The supervisor's public port is `THERMITE_TUNNEL_PORT` (8000, `EXPOSE`d), the pod's ID is in `THERMITE_POD_ID`, and the supervisor's keys belong in `THERMITE_SUPERVISOR_HOME` (0700, its own). Nothing reads the port yet.
+- 2026-10-20: Left: the selftest on RunPod, with the second spike run (goal 018, a paid launch that needs the owner's OK), and the first CI run.
+- 2026-10-20: Lined up with pull mode and enrollment (goals 019 and 021). The contract written above for goals 019 and 021 is replaced: no `THERMITE_CONTROL_PUBKEY` and no `THERMITE_POD_ID`, port 8790 (`EXPOSE 8790`, `THERMITE_TUNNEL_PORT`), and the image names `THERMITE_TUNNEL_DIR` and `THERMITE_TUNNEL_ENROLLED_DIR` in the supervisor's state on the volume, with the inbox and the harness's state. The entry point passes the pod's ID on as `THERMITE_TUNNEL_POD`. The broker starts the supervisor first, then waits for enrollment and says so at once and every 10 minutes (the harness's own endless wait is gone). Root reads what the supervisor's enrollment left as data: `control.pub` and `rig.env` must be plain files of the supervisor's own, not links; the key's SHA-256 must be the launch's; `rig.env` is read through an allowlist of the names enrollment writes. Root then writes its own copy of the key to `/etc/thermite/control-signing.pub` (root's folder, 0644), the only key the harness reads, so the supervisor never chooses it; a key the supervisor writes later changes nothing. The controller gets none of pull mode's launch values but `THERMITE_TUNNEL_DIR` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`. The selftest gains the `enroll-code` and `control-key` container checks and a `control-key-write` probe. Unit tests: `src/harness/broker/one-container.test.ts`, `src/harness/selftest.test.ts`, `src/control/tunnel.test.ts`. `scripts/rig-image-acceptance.mjs` now runs control's side in the script and enrolls the pod over its published port; it passed under rootless Podman (device nodes the container can't regroup included). CI's job now runs `npm ci` first. Pages: the image reference, Settings, Rig checks, Trust between control and rigs, Isolation, Ports, volumes and secret files, Contributing. Left: the selftest on RunPod, and the first CI run.
+- 2026-10-20: The first CI run (Docker) failed at its last step: the stop ended with exit 137 after 60 s, and the broker never logged `stopped`. Cause: in pull mode the supervisor's calls wait at the tunnel's local port for control's next exchange (up to two minutes), a stop only set a flag, and the script ran the engine's stop synchronously, so its control could not answer meanwhile. The supervisor now closes pull mode's ports on `SIGTERM` or `SIGINT`: its waiting calls end with 503 at once, and it ends whether or not control is connected (`src/supervisor/main.ts`; `src/control/tunnel.test.ts` checks that a stop ends a waiting call at once). The acceptance's stop now runs with control away, after 8 s for calls to pile up. Under rootless Podman, the old supervisor fails it exactly as CI did (exit 137, 60 s, no `stopped`), and the new one passes (exit 0 in 1 s). Not run with Docker here: no Docker engine on this machine; the next CI run checks it. The `pull mode … fetch failed` lines in CI's log come from the script's own control while the script kills the supervisor and it starts again: expected.
+- 2026-10-20: The `rig-image` job passes in CI with Docker (CI run 39479049337 on `v1/build` (85b4de0)), the self-test included. Left for the box: the self-test on RunPod.
+- 2026-10-21: On RunPod (goal 018's second spike run, a test pod of the image for `5211e60`): the entry point took RunPod's variables out (none reached any process, and a role read none), and the GPU fence refused a fenced lane's open of the card. The self-test did not run there: the test pod's probe started the broker in pull mode, which needs the launch's values. The probe now starts it without them. Left: the self-test on RunPod, from the next test pod or the owner's launch.
+- 2026-10-21: The self-test ran on RunPod (goal 018's third run). It passed but for one check: RunPod's own init at PID 1 keeps RunPod's variables, which no role can read. The check now leaves out a PID 1 that is not the image's own tini, and says so; a rig on RunPod passes its start check once its image has this. Left: a rig image with the change, and the owner's launch.
+- 2026-10-21: The self-test passed on RunPod with the change (a test pod of the rig image for `5e3dabc`, an RTX 3090 on Secure cloud, 0.03 USD): no role reads RunPod's variables, PID 1 is RunPod's own init (`/usr/sbin/docker-init`) and the check says so, the fence refused every role's open of the card (Landlock ABI 4) and kept the supervisor off it, and no set-id files are left. With CI's pass (above), the box is ticked. A launched rig's own start check comes with goal 025's paid acceptance.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/020-runpod-rig-image.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

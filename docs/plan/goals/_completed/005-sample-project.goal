@@ -1,0 +1,55 @@
+---
+id: "005"
+title: "A sample project in `examples/`"
+status: VERIFIED
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-20
+---
+
+# 005 · A sample project in `examples/`
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+Put a small sample project and its kit in `examples/`, starting with the matrix-multiply project that the smoke check uses. A contract and the New campaign page can then name a folder inside a repository, so a tester points a campaign at this repository and `examples/<name>`. The quick start runs a first agent campaign on it.
+
+## Why
+
+Today a project must be a whole repository at an https or ssh git URL. A tester with no project of their own cannot run agents.
+
+## Done when
+
+- [x] `examples/` holds at least one project with its kit and a short README.
+- [x] A contract's project can name a folder in a repository. The rig fetches the repository and uses that folder as the project's root.
+- [x] New campaign offers the folder field, with a description.
+- [x] The quick start runs a first agent campaign on the sample, with a free model, to a first verdict.
+- [x] The campaign acceptance covers a project in a folder.
+
+## Decisions
+
+- 2026-10-19, owner: The sample lives in this repository under `examples/`, not in a separate repository.
+- 2026-10-20, the release lead's brief: The folder field on the New campaign page is approved as a small screen change, without a mockup.
+- 2026-10-20, builder: The sample is `examples/matmul-cpu`: `project/` is a copy of `examples/smoke-project`, and `kit/` a copy of `kits/smoke-cpu` without its candidates, named `matmul-cpu`. The smoke check keeps its own copies, so its pinned commits do not move when the sample changes. The kit stays outside the project folder, so the agents never see it.
+- 2026-10-20, builder: The contract field is `project.folder`. The supervisor fetches the repository's whole commit, as the command signs it, and does nothing else with the folder. The harness makes the run's first commit from that folder of the verified commit: the folder as its whole tree, no parent, a fixed author and time, and the message `<folder> at <commit>`. The harness does it, not the supervisor, because the harness checks everything that arrives; a commit the supervisor made could only be checked by making it again. The commit is the same on every rig, so champions move between rigs, and a champion's patch is relative to the folder.
+- 2026-10-20, builder: The quick start uploads the sample's kit as an archive (`tar -czf matmul-cpu-kit.tar.gz -C examples/matmul-cpu kit`). The page's "A kit in a repository" has no folder, and the brief allowed one new field only.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built. `examples/matmul-cpu` holds the sample's project, kit and README. The contract has `project.folder` (`src/core/contract.ts`); the harness starts the run from that folder of the signed commit (`folderCommit` in `src/harness/git.ts`, used at assignment), records the folder and the repository's commit in the run's `run_created` event and the assignment's result, and refuses a commit without the folder. The New campaign page has **Folder in the repository**, with its description; **Look it up** counts and suggests the folder's own files, and refuses a folder the commit lacks. Control shows a folder run's start and its champion patch with the folder and the repository's commit, and how to apply it (`git apply --directory`). Tests: the schema (`src/core/core.test.ts`), the builder and the lookup's paths (`src/control/campaign-builder.test.ts`), the page with the sample's kit uploaded as the quick start packs it (`src/control/new-campaign-page.test.ts`), staging through control, the relay and the harness (`src/supervisor/staging.test.ts`), a folder run judged and promoted, the same start on a second rig, and a missing folder refused (`src/harness/judge/judge.test.ts`), and the patch's words on the run page (`src/supervisor/champions.test.ts`). The tutorial "Hand the work to agents" now starts its campaign on the sample from the New campaign page; the contract, command-line, signed-command, glossary, dashboard, troubleshoot and take-the-result pages describe the folder. `scripts/campaign-acceptance.mjs` now runs a try of the sample from its folder, served as part of a larger repository.
+- 2026-10-20: Rebased onto the release bundle's quick start. The tutorial installs from the release's `compose.yaml` as before; its step 4 clones the release's source (`git clone --branch v0.1.0 … thermite-source`) to pack the sample's kit, and the New campaign page starts from the same tag. "Your first goal campaign" builds the command line in that folder.
+- 2026-10-20: Left: run the quick start on a clean stack with a free model to a first verdict, once a release tag holds the sample; run the new-campaign acceptance with its folder part. Neither has run yet.
+- 2026-10-20: The campaign acceptance passed: control took a campaign whose project is `examples/matmul-cpu/project` in a repository, the rig fetched the whole repository and started from the folder, and the sample's kit built and measured every case. Left: the quick start on the sample with a free model, after the release tag.
+- 2026-10-21: A real free model on the sample, to a first verdict: a campaign made on the New campaign page from `examples/matmul-cpu` (the project folder at the development branch's commit, the kit uploaded as the tutorial packs it), run on a lab CPU rig whose agents use OpenCode's own free model (`deepseek-v4.1-flash-free`, no key) in OpenCode v2. The planner's first answer was valid; the first trial's change was judged a confirmed win, +1,514% flops/s against the starting code (95% interval 1,347% to 1,700%, n=5), correctness checked. The page steps themselves are covered by the quick-start acceptance (a scripted model), which passed today with Podman and with Docker Desktop. Every box is ticked.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/005-sample-project.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

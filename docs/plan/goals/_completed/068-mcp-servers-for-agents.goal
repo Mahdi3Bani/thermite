@@ -1,0 +1,73 @@
+---
+id: "068"
+title: "MCP servers for a campaign's agents, named by its kit"
+status: VERIFIED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["065"]
+created: 2026-10-20
+updated: 2026-10-22
+---
+
+# 068 · MCP servers for a campaign's agents, named by its kit
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Outside knowledge bases become plain MCP tools.
+
+- **Settings:** the owner adds any MCP server to control, with OAuth or a key/secret for its auth. GBrain is added the same way as any other.
+- **Kits:** a kit says which MCP servers a campaign's agents use.
+- **What it replaces:** goal 065's "outside knowledge base" feature: copying campaign folders into it, and the teachers-only search grant.
+- **What stays:** Thermite's own knowledge base, with its folders per campaign, grants and past research (goal 065), is not affected.
+
+## Why
+
+The owner, 2026-10-20: outside knowledge bases should be plain MCP tools: add any MCP server in Settings (OAuth or key/secret), and let a kit say which ones a campaign's agents use; GBrain is added that way too.
+
+## Done when
+
+- [x] Settings › Providers takes any MCP server, with OAuth or a key/secret, sealed as other secrets are, and a check of its tools, as in the approved mockup.
+- [x] A kit names the MCP servers its campaign's agents use; the kit manifest and its check describe it.
+- [x] The agents that may use them reach them under the network rules: which agents (workers, the planner, the advisors), through which component, and how the secret travels, are decided with the design. The harness reaches only DNS, the internet and its model endpoint today.
+- [x] Goal 065's outside knowledge base feature (copies and the teachers' grant) is removed, with what happens to a deployment that has one set.
+- [x] Tests cover settings, auth, a kit's servers, and that no secret appears in pages, logs or events.
+- [x] The docs pages follow.
+
+## Decisions
+
+- 2026-10-20, owner: "This should simply just MCP tools granted to a system. We don't need anything special, but our settings should allow us to add MCP tools to the system with auth (either the oauth flow or key/secret etc) and kits should define what mcps should be used. Gbrain should be added this way as well."
+- 2026-10-20, owner: Settings › MCP servers: approved as mocked up.
+- 2026-10-20, owner: The kit's MCP servers: approved, with an advanced part that selects and unselects each server's tools for each kind of agent.
+- 2026-10-20, proposed, built; the owner confirms with the mockup: how the agents reach the servers.
+  - Control keeps each server's secret sealed. It hands a rig only the servers that the runs it assigned that rig name, as Git access and model routes are handed. The sign-in travels as headers: a key as given; an OAuth or client-credentials server as an access token that control renews.
+  - Workers and the planner call the servers through the rig's harness, as they reach the model through its proxy: the harness's MCP gateway checks the caller (a trial's token, or one the harness makes for a plan), gives it only the servers and tools its run's kit gives its kind of agent, and adds the sign-in. The secret stays in the harness's memory; no lane reads it.
+  - The advisors' calls are made by the supervisor, which keeps their share in memory. An advisor that may fetch any web page gets no MCP server, as it gets no knowledge-base search.
+  - This fits the settled network rules: the harness reaches the internet, and the supervisor reaches the internet and its harness. No rule changes.
+- 2026-10-20, release lead's brief: a kit names a server in `mcp_servers` (kit.json; a research contract, which has no kit, keeps the list itself), each with `agents` and, only when narrowed, `tools` per kind of agent. Control fills the assignment's `mcp_servers`, refuses a server Settings lacks, and the harness refuses a run whose assignment differs from its kit.
+- 2026-10-20: the update from 065's outside knowledge base: each one becomes an MCP server with a key (Authorization: Bearer and its token, kept), its name made lowercase with dashes. Copies of campaign folders stop; pages already written there stay. The teachers' search grants go. The audit records `outside_kb_migrated` for each; Settings says so once, until Got it.
+- 2026-10-22, lead, from a research run whose first trial started 1 s before the harness said its MCP server was "not given to this rig yet" and 12 s before control handed it over, and ran its whole length without it: **a run whose kit names MCP servers starts no plan or trial until the rig holds them, or until a bounded wait ends.** Builder, within the brief:
+  - **Wait, not pick up.** The harness waits before the run's first plan or trial (`MCP_WAIT_MS` in `src/harness/agents/scheduler.ts`, 2 minutes: four of the supervisor's 30-second rounds) rather than giving a running trial a server that arrives later. A Pi trial's tools are fixed when its agent is made, and OpenCode, Claude Code and Codex read their MCP servers once, at their start; giving them a server later would need each program to take a changed tool list, which not all do. One wait before the work starts works the same for all four harnesses and for the planner.
+  - **What it waits for.** Every server the kit gives the workers or the planner that the harness does not hold and control has said nothing of. A server control says it can't give (`unavailable`, with why) is not waited for. The wait is in the scheduler's memory, once per run: after a restart of the harness, which then holds no server until the supervisor hands them over again, the run waits again.
+  - **When it ends.** All held, or control said why for each one missing, or 2 minutes. Then the event `mcp_servers_wait` (`since`, `waited_s`, `missing` with each name and why) and a line in Live say how long it waited and which are missing, and the run goes on without those, as before; each later trial lists its tools when it starts, so it gets a server the rig holds by then. Pacing, not a cap. A research run's clock does not count the wait, as goal 079 keeps the clock for time the agents could not run.
+
+## Open questions
+
+- Answered 2026-10-20 (see Decisions): workers and the planner reach the servers through the harness, the advisors through the supervisor; copies already written to an outside knowledge base stay there, and control writes no more.
+
+## Progress
+
+- 2026-10-20: Goal written from the owner's decision. A design and a mockup come first.
+- 2026-10-20: Built on branch `goal-068-mcp-servers` with its pages:
+  - **Control:** MCP servers in Settings › Providers (OAuth with PKCE, dynamic registration and the callback `/v1/mcp-oauth/callback`; a key in a header; a client ID and secret; none), sealed, with each server's tools (name, what it does, reads or writes), state and last error. The owner manages them on the page, over REST (`/v1/mcp-servers`), MCP (`mcp_servers`, `mcp_server_add` and the rest) and `thermite mcp`. A server a kit names can't be deleted.
+  - **Kits:** `mcp_servers` in kit.json and research contracts; the New campaign page's block on How to measure and The question, with an Advanced part per server (a tick per tool for each kind of agent, write tools marked); a kit in a repository has its servers read from its kit.json. A missing server stops the start with its reason.
+  - **Rigs:** `/v1/rigs/{rig}/mcp-servers` (audited as `mcp_servers_handed`); the supervisor hands the harness its share; the harness's gateway serves Pi tools, an MCP endpoint per server for OpenCode, Claude Code and Codex (after goal 056: Codex names each server in its config.toml, `[mcp_servers.<name>]` with `url` and `bearer_token_env_var`, as Codex 0.162 reads it), and the planner in each harness; the supervisor serves the advisors (Pi tools, or localhost MCP for Claude Code). A failing server gives the agent a tool error and records `mcp_server_failed` once, then `mcp_server_back`.
+  - **Removed:** goal 065's outside knowledge base (copies, the teachers' grant, `THERMITE_OUTSIDE_KB_SYNC_SECONDS`), moved into MCP servers at the update.
+  - Tests with a fake MCP and OAuth server (`src/testing/fake-mcp.ts`): `src/control/mcp-servers.test.ts`, `src/control/mcp-ui.test.ts`, `src/harness/mcp-gateway.test.ts`, `src/supervisor/advise-mcp.test.ts`. The New campaign script's choices were also checked once in headless Chrome. The compose acceptances do not drive MCP servers yet.
+- 2026-10-21: Fixes from the docs review. A rig in pull mode (RunPod) got no MCP servers: the tunnel had no route for them, and the supervisor read the 404 as an older control; the route is allowed now, for the rig itself, signed and sealed (`8e00f5f`, `src/control/tunnel.test.ts`). History has sentences for `mcp_servers`, `mcp_server_failed` and `mcp_server_back`; Live says `The planner goes on without it.`, and an advisor's failure once, not twice (`0b5dd58`). An uploaded kit keeps the servers Settings lacks, and a tool limit Settings can't show, and the page says what a missing server needs (`0bc41c5`). `thermite mcp change`'s usage names `--auth` (`659cf42`).
+- 2026-10-22: Fix from a research run: a run's first plan and trial wait up to 2 minutes for the MCP servers its kit gives the workers and the planner, then go on without those still missing, saying which in Live and History (`mcp_servers_wait`); a research run's clock leaves the wait out. Tests: `src/harness/agents/scheduler-mcp.test.ts` (no trial before the hand-over, then with the servers; control's reason; the bounded wait; no wait without servers), each failing without the wait; `src/harness/research/research.test.ts` (the clock). Pages: Give agents MCP tools (Before the first trial), MCP servers, Limits and pacing, troubleshooting, the changelog.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/068-mcp-servers-for-agents.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

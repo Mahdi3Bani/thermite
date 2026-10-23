@@ -14,7 +14,7 @@ updated: 2026-10-20
 
 ## What
 
-The writers and verifiers of the documentation site (goal [060](060-docs-site.goal)) compared every page with the code. Where a user would expect something that Thermite does not do, they recorded a gap, and the pages describe only what exists. Each item below says what a user would expect, and what Thermite does now.
+The writers and verifiers of the documentation site (goal [060](_completed/060-docs-site.goal)) compared every page with the code. Where a user would expect something that Thermite does not do, they recorded a gap, and the pages describe only what exists. Each item below says what a user would expect, and what Thermite does now.
 
 ### Installing, images and compose
 
@@ -234,10 +234,10 @@ The docs describe only what exists. Each gap here is a place where a tester expe
 
 - **Gaps that other goals cover.** The docs work also found these. Each adds something to a goal that already exists:
   - [010](010-published-images.goal): name the CUDA base image for GPU harness builds, and test the arm64 images, not only build them.
-  - [012](012-version-checks.goal) or [013](013-thermite-doctor.goal): a `thermite` version command, and the version on the dashboard, so a bug report can name it.
-  - [013](013-thermite-doctor.goal): state and check the lowest versions that work of Docker, Docker Compose, Podman, podman-compose, Kubernetes and the NVIDIA driver.
-  - [016](016-small-fixes.goal): the lane limits that must agree also include New campaign's "Agents working at once", which offers 1 to 4.
-  - [022](022-runpod-launch.goal): an image from a private registry needs registry credentials for the pod.
+  - [012](_completed/012-version-checks.goal) or [013](_completed/013-thermite-doctor.goal): a `thermite` version command, and the version on the dashboard, so a bug report can name it.
+  - [013](_completed/013-thermite-doctor.goal): state and check the lowest versions that work of Docker, Docker Compose, Podman, podman-compose, Kubernetes and the NVIDIA driver.
+  - [016](_completed/016-small-fixes.goal): the lane limits that must agree also include New campaign's "Agents working at once", which offers 1 to 4.
+  - [022](_completed/022-runpod-launch.goal): an image from a private registry needs registry credentials for the pod.
   - [033](033-slot-helper.goal): the slot's role must also let control read the slot's resource quota, which control uses for the CPU, memory and volume defaults.
   - [040](040-kit-tools.goal): `kit test` needs a way to submit candidates from outside the harness container, and on rigs that control sets up, which have no proposer token.
   - [058](058-helm-and-npm.goal): a manifest and a role to run control on Kubernetes with its lifecycle driver.

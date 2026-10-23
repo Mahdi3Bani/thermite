@@ -301,7 +301,7 @@ create table if not exists control_build (
 );
 -- Rigs in pull mode, which control connects to through a public proxy (a RunPod pod): the pod
 -- once launched, the tunnel's sealed secrets, the one-time enrollment code (spent: ''), the
--- rig's settings, and the pod's keys once enrolled (docs/plan/goals/019-rig-only-entry.goal).
+-- rig's settings, and the pod's keys once enrolled (docs/plan/goals/_completed/019-rig-only-entry.goal).
 create table if not exists tunnel_rig (
   rig text primary key,
   pod text,

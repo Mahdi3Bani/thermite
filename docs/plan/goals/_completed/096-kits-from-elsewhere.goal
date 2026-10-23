@@ -1,0 +1,65 @@
+---
+id: "096"
+title: "Give control a kit written elsewhere, as a git bundle"
+status: VERIFIED
+version: "0.1.0"
+depends_on: []
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 096 · Give control a kit written elsewhere, as a git bundle
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Control takes a kit repository that was written elsewhere, with its history, and keeps it as it keeps the kits the **New campaign** page writes. Rigs then fetch the kit from control, by commit, with the rig's own token.
+
+1. **The bundle.** The owner gives control a git bundle of the kit's repository. Control checks the bundle in a repository of its own (`git bundle verify`), keeps every commit with its id, and makes the kit's head the bundle's `HEAD`, its only branch, or a ref the owner names. The head must have a `kit.json` at its top that the harness takes. A kit control keeps already moves only to a commit that descends from its head, unless the owner forces it; the old head's commits stay even then. A name that is not a kit's name, a bundle above 64 MiB, a file that is not a bundle and a head with no `kit.json` are refused in words.
+2. **REST, MCP and the command line.** `POST /v1/kits/<name>` with the owner's token takes the bundle's bytes. MCP's `kit_add` takes it as base64 with the owner's or an operator's token, within MCP's request limit. `thermite kit add` sends a bundle file. `GET /v1/kits`, `GET /v1/kits/<name>`, MCP's `kits` and `thermite kit list` show the kits control keeps, for the owner, the operator (MCP) and the reader.
+3. **Rigs fetch it from control.** An assignment's kit import names `{"control": "kits/<name>"}` as its source, as for a kit the **New campaign** page wrote. `thermite assign --kit control:NAME` makes that import.
+4. **A record.** Each kit taken is in the audit log as `kit_added`, with its name, head, size and who gave it.
+
+## Why
+
+On 2026-10-22 the owner was ready to start a campaign on a kit repository written outside Thermite: a branch whose head is a commit that a contract and a kit check already name. Control could keep only kits it wrote itself, from the **New campaign** page or an uploaded archive, which loses the repository's commits. Rigs could fetch a kit from its own repository only when they reach it, and the other way was to copy a bundle into a rig's inbox by hand. Thermite runs itself: a campaign's input reaches a rig through control, not by hand.
+
+## Done when
+
+- [x] `KitRepos.importBundle` keeps a bundle's commits with their ids, sets the kit's head, and refuses each case above in words. Tests: `src/control/kit-import.test.ts`.
+- [x] A rig's supervisor fetches a commit of a kit added this way, one that is not its head, from control's route with git itself. Test: `src/control/kit-import.test.ts`.
+- [x] REST, MCP and the command line, with their token rules, and the audit entry. Tests: `src/control/kit-import.test.ts`, `src/cli/kit.test.ts`.
+- [x] The pages match the code: Write a kit, Start a run from the command line, the REST API, MCP tools, command line, signed commands, tokens and limits references, Let an agent run Thermite over MCP, Run Thermite on one machine; the changelog has the change.
+- [x] The compose smoke and the new-campaign acceptance pass with this change.
+
+## Decisions
+
+- 2026-10-22, lead, in the build brief: control accepts a kit repository as a git bundle, keeps it with its commits, and rigs fetch it as a kit control keeps. `POST /v1/kits/<name>` (owner), MCP `kit_add` (owner and operator: the operator assigns campaigns already, and a kit is an input, not a secret), `kits` to read (owner, operator, reader), `thermite kit add`. At most 64 MiB. A head that does not descend from the kit's is refused unless forced.
+- 2026-10-22, builder, within the brief:
+  - **Where the commits live.** The kit's head is its `main` branch, as for the kits **New campaign** writes. Each object a bundle names is kept under `refs/kept/<id>`, and a head that a forced bundle replaces is kept the same way, so control never drops a commit a contract may name.
+  - **The head.** `ref` is a branch or a tag the bundle has (`main`, `refs/heads/main`, `v1`) or a full commit id in the bundle; a tag counts as the commit it names. Without `ref`: the bundle's `HEAD`, else its only branch, else a refusal that names the branches.
+  - **Checks before the kit changes.** The bundle is verified and read in a scratch repository that sees the kit's objects, so a bundle that builds on the kit's commits is taken. Nothing goes into the kit's repository until every check passed, and the head moves only if no one moved it since.
+  - **`kit.json`.** The head's `kit.json` is checked with the harness's own schema, as an uploaded kit's is.
+  - **MCP's limit.** MCP takes requests of at most 4 MiB (the SDK's default, kept for every tool), so `kit_add` takes at most 4,000,000 characters of base64: a bundle of at most 3,000,000 bytes. A larger one goes over REST or the command line.
+  - **The operator on REST.** REST has no operator token, as before: the operator adds kits over MCP. The reader's token reads `GET /v1/kits` and `GET /v1/kits/<name>`.
+  - **`thermite assign --kit control:NAME`.** The command line had no way to name a kit control keeps; this option makes the import's source `{"control": "kits/<NAME>"}`.
+  - **Screens.** None changed. The **New campaign** page does not list the kits control keeps; a campaign started on a kit added this way is assigned with `thermite assign`, `issue_command` or `POST /v1/commands`, and later runs start from its page.
+
+## Open questions
+
+- Whether the **New campaign** page should offer the kits control keeps as a fourth source of a kit, beside **Describe it here**, **A kit in a repository** and **Upload a kit**. A new choice on that page needs a mockup first.
+
+## Progress
+
+- 2026-10-22: Goal written from the build brief, and built.
+  - Code: `src/control/kit-repos.ts` (`importBundle`, `list`, `history`, `commitCount`), `src/control/kit-add.ts` (the audit entry and the answers), `src/control/api.ts` (the routes), `src/control/mcp.ts` (`kits`, `kit_add`), `src/cli/thermite.ts` (`kit add`, `kit list`, `assign --kit control:NAME`).
+  - Tests: `src/control/kit-import.test.ts` (commit ids kept, the head, a rig's fetch of an older commit through control's route with git, every refusal, a bundle that builds on the kit's commits, REST and MCP token rules, the audit entries), `src/cli/kit.test.ts` (`kit add`, `kit list`, `assign --kit control:NAME`).
+  - Checks before the commit: typecheck, Biome, the touched test files and their neighbours (MCP, start run, copy campaign, campaign context, folders, rig settings, kit repositories, kit upload, new campaign, staging, tunnel, the CLI's assign, run, campaign and MCP files), `npm run docs:build`, `npm run docs:check`, and the public check. The compose acceptances were not run: the machine's Podman VM was busy.
+- 2026-10-22: The compose smoke and the new-campaign acceptance passed with this change, on the change itself and again on a later commit, each with the full check (1231 and 1259 tests).
+- 2026-10-22: First real use. A kit written elsewhere (a goal campaign's kit of 13 commits, a bundle of half a megabyte) was given to control through `kit_add`, and a rig fetched it from control by commit and verified it when the campaign was assigned. The owner had no token file for `thermite kit add`, and writing the bundle into `kit_add` as text is impractical for an agent, so the call was made by a script that read the bundle from its file. Goal [097](../097-add-a-kit-bundle-from-the-dashboard.goal) (v0.1.1) puts a bundle upload on the dashboard and gives agents a way to send a large bundle.
+- 2026-10-22: Verified.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/096-kits-from-elsewhere.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

@@ -80,7 +80,7 @@ The queue is research state, so it lives in the harness's ledger, like the attem
 
 Before the queue, the plan existed only for the current round and was made again every round. The advisors' ideas reached the planner only as rules, a worker's idea was lost when its trial ended, and the owner could not see or change what came next. On one long campaign, the planner's model answer was refused in most rounds, so the fixed fallback plan did most of the planning.
 
-The owner wanted one list of all the upcoming experiments and of those already tried, which they can see and change, and a planner that is "really a coordinator that divvies out the work to lanes and makes sure things don't overlap" ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)). A queue that keeps its order and its reasons between rounds does both:
+The owner wanted one list of all the upcoming experiments and of those already tried, which they can see and change, and a planner that is "really a coordinator that divvies out the work to lanes and makes sure things don't overlap" ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/_completed/064-experiment-queue.goal)). A queue that keeps its order and its reasons between rounds does both:
 
 - **The planner's job gets smaller.** It gives out the next work without overlap, instead of inventing a whole plan each round, so there is less for its answer to get wrong.
 - **Everyone's ideas stay visible.** An idea from an advisor, a lane or the owner sits in one place, with who added it and why, until someone tries it or drops it.

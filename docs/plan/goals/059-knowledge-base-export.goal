@@ -26,7 +26,7 @@ A research campaign's value is its corpus, and it should outlive the run.
 
 ## Decisions
 
-- 2026-10-20: dropped as a goal of its own. Its scope is now part of [065](065-journals-and-corpus.goal), which builds a corpus from every campaign, not only research campaigns, and sends it to a knowledge base.
+- 2026-10-20: dropped as a goal of its own. Its scope is now part of [065](_completed/065-journals-and-corpus.goal), which builds a corpus from every campaign, not only research campaigns, and sends it to a knowledge base.
 
 ## Open questions
 

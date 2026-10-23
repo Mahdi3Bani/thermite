@@ -40,18 +40,18 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [001 · Plans in public docs](goals/001-plans-in-public.goal) | `VERIFIED` | — |
-| [002 · CI on every push, and repository settings](goals/002-ci-and-repository-settings.goal) | `VERIFIED` | — |
-| [003 · No default spend limit for advisors](goals/003-advisors-no-default-cap.goal) | `VERIFIED` | — |
-| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `VERIFIED` | — |
-| [005 · A sample project in `examples/`](goals/005-sample-project.goal) | `VERIFIED` | — |
-| [060 · The documentation site](goals/060-docs-site.goal) | `VERIFIED` | — |
+| [001 · Plans in public docs](goals/_completed/001-plans-in-public.goal) | `VERIFIED` | — |
+| [002 · CI on every push, and repository settings](goals/_completed/002-ci-and-repository-settings.goal) | `VERIFIED` | — |
+| [003 · No default spend limit for advisors](goals/_completed/003-advisors-no-default-cap.goal) | `VERIFIED` | — |
+| [004 · Scan the history for secrets](goals/_completed/004-secret-scan.goal) | `VERIFIED` | — |
+| [005 · A sample project in `examples/`](goals/_completed/005-sample-project.goal) | `VERIFIED` | — |
+| [060 · The documentation site](goals/_completed/060-docs-site.goal) | `VERIFIED` | — |
 | [006 · Docs for testers](goals/006-docs-for-testers.goal) | `DROPPED`, merged into 060 | — |
-| [007 · Known limits and the security model](goals/007-known-limits.goal) | `VERIFIED` | — |
-| [008 · Community files and contributor docs](goals/008-community-files.goal) | `VERIFIED` | — |
-| [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `VERIFIED` | — |
-| [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `VERIFIED` | — |
-| [080 · A button says at once that it took, and shows its outcome without a refresh](goals/080-buttons-show-progress.goal) | `VERIFIED` | [063](goals/063-scan-and-steer.goal) |
+| [007 · Known limits and the security model](goals/_completed/007-known-limits.goal) | `VERIFIED` | — |
+| [008 · Community files and contributor docs](goals/_completed/008-community-files.goal) | `VERIFIED` | — |
+| [009 · Real subscription sign-in tests](goals/_completed/009-subscription-sign-in-tests.goal) | `VERIFIED` | — |
+| [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/_completed/063-scan-and-steer.goal) | `VERIFIED` | — |
+| [080 · A button says at once that it took, and shows its outcome without a refresh](goals/_completed/080-buttons-show-progress.goal) | `VERIFIED` | [063](goals/_completed/063-scan-and-steer.goal) |
 
 ### Running campaigns
 
@@ -59,28 +59,28 @@ A tester sees what each run is doing, gives it work through one queue of experim
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `VERIFIED` | 063 |
-| [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `VERIFIED` | 062, 064 |
-| [066 · Rules name directions, picked with `:direction:`](goals/066-direction-rules.goal) | `VERIFIED` | 064 |
-| [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `VERIFIED` | 064 |
-| [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `VERIFIED` | 065 |
-| [069 · Copy a campaign](goals/069-copy-a-campaign.goal) | `VERIFIED` | 065 |
-| [056 · A Codex CLI harness](goals/056-codex-harness.goal) | `VERIFIED` | — |
-| [070 · Cap the context window of a rig's model](goals/070-model-context-cap.goal) | `VERIFIED` | — |
-| [073 · A harness for each agent](goals/073-harness-for-each-agent.goal) | `VERIFIED` | [029](goals/029-api-mcp-coverage.goal), [056](goals/056-codex-harness.goal) |
-| [074 · One name for each agent](goals/074-one-name-for-each-agent.goal) | `VERIFIED` | [073](goals/073-harness-for-each-agent.goal) |
-| [075 · Model usage for each run, campaign and the whole system](goals/075-model-usage.goal) | `VERIFIED` | — |
-| [079 · Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion](goals/079-thermite-overhead.goal) | `VERIFIED` | — |
-| [077 · Archive a campaign; folders in the left navigation; no rigs there](goals/077-archive-and-folders.goal) | `VERIFIED` | — |
-| [078 · A campaign's brief: additional information, ideas and hypotheses for every mode](goals/078-campaign-brief.goal) | `VERIFIED` | — |
-| [082 · The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check](goals/082-judge-findings-in-view.goal) | `VERIFIED` | — |
-| [081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups](goals/081-ideas-first.goal) | `VERIFIED` | [064](goals/064-experiment-queue.goal), [066](goals/066-direction-rules.goal), [074](goals/074-one-name-for-each-agent.goal) |
-| [086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed](goals/086-goal-report-values-and-confirmation-wait.goal) | `VERIFIED` | [082](goals/082-judge-findings-in-view.goal) |
-| [087 · The owner closes a run by hand](goals/087-close-a-run.goal) | `VERIFIED` | [080](goals/080-buttons-show-progress.goal) |
-| [096 · Give control a kit written elsewhere, as a git bundle](goals/096-kits-from-elsewhere.goal) | `VERIFIED` | — |
-| [103 · Export, full or not, from the dashboard; an Exports page that downloads each export](goals/103-export-and-download.goal) | `IN_PROGRESS` | [024](goals/024-runpod-models-and-results.goal), [080](goals/080-buttons-show-progress.goal) |
-| [098 · A run's teachers read what the run found: its sources, claims, findings and files](goals/098-research-teachers-read-the-research.goal) | `VERIFIED` | [081](goals/081-ideas-first.goal), [065](goals/065-journals-and-corpus.goal), [062](goals/062-research-folder.goal) |
-| [099 · Status words say how a run ended; a judge-only run says so](goals/099-campaign-status-words.goal) | `VERIFIED` | [077](goals/077-archive-and-folders.goal), [086](goals/086-goal-report-values-and-confirmation-wait.goal), [087](goals/087-close-a-run.goal) |
+| [064 · One experiment queue for each run; the planner coordinates it](goals/_completed/064-experiment-queue.goal) | `VERIFIED` | 063 |
+| [065 · Journals and a research corpus from every campaign](goals/_completed/065-journals-and-corpus.goal) | `VERIFIED` | 062, 064 |
+| [066 · Rules name directions, picked with `:direction:`](goals/_completed/066-direction-rules.goal) | `VERIFIED` | 064 |
+| [067 · `thermite assign` can copy a past run's untried experiments](goals/_completed/067-assign-queue-from.goal) | `VERIFIED` | 064 |
+| [068 · MCP servers for a campaign's agents, named by its kit](goals/_completed/068-mcp-servers-for-agents.goal) | `VERIFIED` | 065 |
+| [069 · Copy a campaign](goals/_completed/069-copy-a-campaign.goal) | `VERIFIED` | 065 |
+| [056 · A Codex CLI harness](goals/_completed/056-codex-harness.goal) | `VERIFIED` | — |
+| [070 · Cap the context window of a rig's model](goals/_completed/070-model-context-cap.goal) | `VERIFIED` | — |
+| [073 · A harness for each agent](goals/_completed/073-harness-for-each-agent.goal) | `VERIFIED` | [029](goals/029-api-mcp-coverage.goal), [056](goals/_completed/056-codex-harness.goal) |
+| [074 · One name for each agent](goals/_completed/074-one-name-for-each-agent.goal) | `VERIFIED` | [073](goals/_completed/073-harness-for-each-agent.goal) |
+| [075 · Model usage for each run, campaign and the whole system](goals/_completed/075-model-usage.goal) | `VERIFIED` | — |
+| [079 · Provider errors by kind, no hidden caps, restarts that keep work, and hands-off promotion](goals/_completed/079-thermite-overhead.goal) | `VERIFIED` | — |
+| [077 · Archive a campaign; folders in the left navigation; no rigs there](goals/_completed/077-archive-and-folders.goal) | `VERIFIED` | — |
+| [078 · A campaign's brief: additional information, ideas and hypotheses for every mode](goals/_completed/078-campaign-brief.goal) | `VERIFIED` | — |
+| [082 · The judge's findings in view: held-out failures by kind, refusals everywhere, a time limit per cell, each goal's real check](goals/_completed/082-judge-findings-in-view.goal) | `VERIFIED` | — |
+| [081 · Teachers put ideas first; a target queue depth; lanes propose follow-ups](goals/_completed/081-ideas-first.goal) | `VERIFIED` | [064](goals/_completed/064-experiment-queue.goal), [066](goals/_completed/066-direction-rules.goal), [074](goals/_completed/074-one-name-for-each-agent.goal) |
+| [086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed](goals/_completed/086-goal-report-values-and-confirmation-wait.goal) | `VERIFIED` | [082](goals/_completed/082-judge-findings-in-view.goal) |
+| [087 · The owner closes a run by hand](goals/_completed/087-close-a-run.goal) | `VERIFIED` | [080](goals/_completed/080-buttons-show-progress.goal) |
+| [096 · Give control a kit written elsewhere, as a git bundle](goals/_completed/096-kits-from-elsewhere.goal) | `VERIFIED` | — |
+| [103 · Export, full or not, from the dashboard; an Exports page that downloads each export](goals/103-export-and-download.goal) | `IN_PROGRESS` | [024](goals/_completed/024-runpod-models-and-results.goal), [080](goals/_completed/080-buttons-show-progress.goal) |
+| [098 · A run's teachers read what the run found: its sources, claims, findings and files](goals/_completed/098-research-teachers-read-the-research.goal) | `VERIFIED` | [081](goals/_completed/081-ideas-first.goal), [065](goals/_completed/065-journals-and-corpus.goal), [062](goals/_completed/062-research-folder.goal) |
+| [099 · Status words say how a run ended; a judge-only run says so](goals/_completed/099-campaign-status-words.goal) | `VERIFIED` | [077](goals/_completed/077-archive-and-folders.goal), [086](goals/_completed/086-goal-report-values-and-confirmation-wait.goal), [087](goals/_completed/087-close-a-run.goal) |
 
 ### Install from images
 
@@ -90,12 +90,12 @@ A tester pulls images in place of building them, and every remote rig has images
 | --- | --- | --- |
 | [010 · Published images and a release workflow](goals/010-published-images.goal) | `IN_PROGRESS` | — |
 | [011 · A release bundle](goals/011-release-bundle.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
-| [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `VERIFIED` | [010](goals/010-published-images.goal) |
-| [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `VERIFIED` | — |
-| [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
-| [015 · Log paging](goals/015-log-paging.goal) | `VERIFIED` | — |
-| [016 · Small fixes before the release](goals/016-small-fixes.goal) | `VERIFIED` | — |
-| [017 · Remove the legacy model names](goals/017-legacy-names.goal) | `VERIFIED` | — |
+| [012 · Version checks between control and rigs](goals/_completed/012-version-checks.goal) | `VERIFIED` | [010](goals/010-published-images.goal) |
+| [013 · `thermite doctor`](goals/_completed/013-thermite-doctor.goal) | `VERIFIED` | — |
+| [014 · The quick start, tested in CI](goals/_completed/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/_completed/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
+| [015 · Log paging](goals/_completed/015-log-paging.goal) | `VERIFIED` | — |
+| [016 · Small fixes before the release](goals/_completed/016-small-fixes.goal) | `VERIFIED` | — |
+| [017 · Remove the legacy model names](goals/_completed/017-legacy-names.goal) | `VERIFIED` | — |
 
 ### Research mode
 
@@ -103,8 +103,8 @@ Research workers build on what earlier trials learned, and a research campaign g
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [062 · A research folder agents can search and write](goals/062-research-folder.goal) | `VERIFIED` | — |
-| [076 · A claim's source by its address, and a draft's reasons for the owner](goals/076-claim-sources-and-reasons.goal) | `VERIFIED` | [062](goals/062-research-folder.goal), [065](goals/065-journals-and-corpus.goal) |
+| [062 · A research folder agents can search and write](goals/_completed/062-research-folder.goal) | `VERIFIED` | — |
+| [076 · A claim's source by its address, and a draft's reasons for the owner](goals/_completed/076-claim-sources-and-reasons.goal) | `VERIFIED` | [062](goals/_completed/062-research-folder.goal), [065](goals/_completed/065-journals-and-corpus.goal) |
 
 ### Rigs on RunPod
 
@@ -112,14 +112,14 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [018 · RunPod spike](goals/018-runpod-spike.goal) | `VERIFIED` | — |
-| [019 · Control reaches RunPod rigs through RunPod's proxy](goals/019-rig-only-entry.goal) | `VERIFIED` | — |
-| [020 · A one-container rig image](goals/020-runpod-rig-image.goal) | `VERIFIED` | [018](goals/018-runpod-spike.goal) |
-| [021 · Enrollment codes](goals/021-enrollment-codes.goal) | `VERIFIED` | — |
-| [022 · Launch a rig on RunPod](goals/022-runpod-launch.goal) | `VERIFIED` | [010](goals/010-published-images.goal), [019](goals/019-rig-only-entry.goal), [020](goals/020-runpod-rig-image.goal), [021](goals/021-enrollment-codes.goal) |
-| [023 · Stop, start and terminate RunPod rigs](goals/023-runpod-lifecycle.goal) | `VERIFIED` | [022](goals/022-runpod-launch.goal) |
-| [024 · Models into the pod, results out](goals/024-runpod-models-and-results.goal) | `VERIFIED` | — |
-| [025 · RunPod tests and how-to](goals/025-runpod-tests-and-docs.goal) | `VERIFIED` | [022](goals/022-runpod-launch.goal), [023](goals/023-runpod-lifecycle.goal), [024](goals/024-runpod-models-and-results.goal) |
+| [018 · RunPod spike](goals/_completed/018-runpod-spike.goal) | `VERIFIED` | — |
+| [019 · Control reaches RunPod rigs through RunPod's proxy](goals/_completed/019-rig-only-entry.goal) | `VERIFIED` | — |
+| [020 · A one-container rig image](goals/_completed/020-runpod-rig-image.goal) | `VERIFIED` | [018](goals/_completed/018-runpod-spike.goal) |
+| [021 · Enrollment codes](goals/_completed/021-enrollment-codes.goal) | `VERIFIED` | — |
+| [022 · Launch a rig on RunPod](goals/_completed/022-runpod-launch.goal) | `VERIFIED` | [010](goals/010-published-images.goal), [019](goals/_completed/019-rig-only-entry.goal), [020](goals/_completed/020-runpod-rig-image.goal), [021](goals/_completed/021-enrollment-codes.goal) |
+| [023 · Stop, start and terminate RunPod rigs](goals/_completed/023-runpod-lifecycle.goal) | `VERIFIED` | [022](goals/_completed/022-runpod-launch.goal) |
+| [024 · Models into the pod, results out](goals/_completed/024-runpod-models-and-results.goal) | `VERIFIED` | — |
+| [025 · RunPod tests and how-to](goals/_completed/025-runpod-tests-and-docs.goal) | `VERIFIED` | [022](goals/_completed/022-runpod-launch.goal), [023](goals/_completed/023-runpod-lifecycle.goal), [024](goals/_completed/024-runpod-models-and-results.goal) |
 
 ### The release
 
@@ -138,14 +138,14 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 
 | Decision | Answer | Goal |
 | --- | --- | --- |
-| RunPod packaging | One combined image per pod (2026-10-20) | [020](goals/020-runpod-rig-image.goal) |
-| How rigs on other networks reach control | Control connects to RunPod rigs through RunPod's proxy (2026-10-19) | [019](goals/019-rig-only-entry.goal) |
-| Who may launch on RunPod | The owner only (2026-10-20) | [022](goals/022-runpod-launch.goal) |
-| RunPod cloud | Secure cloud on demand first; Community and spot later (2026-10-20) | [022](goals/022-runpod-launch.goal) |
-| Where a pod's results go | The project's results repository when it has one, otherwise an upload to control (2026-10-20) | [024](goals/024-runpod-models-and-results.goal) |
-| Terms in the community files | No contributor agreement, no sign-off rule, the Contributor Covenant (2026-10-20) | [008](goals/008-community-files.goal) |
-| Subscription sign-in tests | Before the tag (2026-10-20) | [009](goals/009-subscription-sign-in-tests.goal) |
+| RunPod packaging | One combined image per pod (2026-10-20) | [020](goals/_completed/020-runpod-rig-image.goal) |
+| How rigs on other networks reach control | Control connects to RunPod rigs through RunPod's proxy (2026-10-19) | [019](goals/_completed/019-rig-only-entry.goal) |
+| Who may launch on RunPod | The owner only (2026-10-20) | [022](goals/_completed/022-runpod-launch.goal) |
+| RunPod cloud | Secure cloud on demand first; Community and spot later (2026-10-20) | [022](goals/_completed/022-runpod-launch.goal) |
+| Where a pod's results go | The project's results repository when it has one, otherwise an upload to control (2026-10-20) | [024](goals/_completed/024-runpod-models-and-results.goal) |
+| Terms in the community files | No contributor agreement, no sign-off rule, the Contributor Covenant (2026-10-20) | [008](goals/_completed/008-community-files.goal) |
+| Subscription sign-in tests | Before the tag (2026-10-20) | [009](goals/_completed/009-subscription-sign-in-tests.goal) |
 | How the code reaches `main` | A pull request merged as a fast-forward (2026-10-20) | [026](goals/026-ship-v0.1.0.goal) |
-| The docs site's address | usethermite.com, on Cloudflare Pages, built from `main` (2026-10-20) | [060](goals/060-docs-site.goal) |
+| The docs site's address | usethermite.com, on Cloudflare Pages, built from `main` (2026-10-20) | [060](goals/_completed/060-docs-site.goal) |
 
-One step needs the owner's GitHub account: the repository settings ([002](goals/002-ci-and-repository-settings.goal)). The image packages are public ([010](goals/010-published-images.goal)).
+One step needs the owner's GitHub account: the repository settings ([002](goals/_completed/002-ci-and-repository-settings.goal)). The image packages are public ([010](goals/010-published-images.goal)).

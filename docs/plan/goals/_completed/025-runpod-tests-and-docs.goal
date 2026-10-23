@@ -1,0 +1,57 @@
+---
+id: "025"
+title: "RunPod tests and how-to"
+status: VERIFIED
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: ["022", "023", "024"]
+created: 2026-10-19
+updated: 2026-10-21
+---
+
+# 025 · RunPod tests and how-to
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal), [023](023-runpod-lifecycle.goal), [024](024-runpod-models-and-results.goal)
+
+## What
+
+A fake RunPod API for CI, one paid acceptance run by hand, and a how-to: "Run a rig on RunPod".
+
+## Why
+
+The RunPod path must be tested without paid GPU time on every change.
+
+## Done when
+
+- [x] CI covers launch, enrollment, stop, start and terminate against the fake API.
+- [x] The paid run is recorded in Progress.
+- [x] The how-to is in the docs index.
+
+## Decisions
+
+- 2026-10-20, builder: the fake RunPod API is one module, `src/testing/fake-runpod.ts`, for the unit tests and the acceptance alike. It answers RunPod's REST API v2 (the calls `src/control/runpod.ts` makes) and RunPod's proxy, refuses every other host, and takes hooks that put something real behind a pod. Its answer when RunPod has no GPU free is made up in RunPod's style: the paid run shows RunPod's own words.
+- 2026-10-20, builder: in the acceptance, each pod is a container of the one-container rig image (the CPU harness under it), on a volume at `/workspace`. A stop removes the container and keeps the volume, as RunPod empties a stopped pod's disk; a start makes it again on the volume. Control runs in the script, as in the rig image's acceptance.
+- 2026-10-20, builder: the paid acceptance is a script the owner runs by hand against a real control (`scripts/runpod-paid-acceptance.mjs`), with a spend limit the owner gives and `--i-accept-the-cost`. It talks to control's REST API only. It also covers what goals 019 and 020 left for a real pod: the isolation check on RunPod, and requests to the pod's address from outside.
+- 2026-10-23, owner, after the paid tests: "I'm done testing RunPod. Call it good for now."
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: **The fake API.** `src/testing/fake-runpod.ts`: pods move as RunPod's do (made, started, running, stopped with no GPU, gone), a running pod costs its GPU's price, and the options refuse a launch (no capacity), refuse a start (no GPU free), or take RunPod down. `src/control/runpod-rigs.test.ts` and `src/control/runpod-lifecycle.test.ts` use it; `src/testing/rig-results.ts` plays the harness's export and the supervisor's upload for them. The older fakes in `runpod.test.ts` and `runpod-tests.test.ts` stay: they test billing and the test pods' probe.
+- 2026-10-20: **The acceptance.** `scripts/runpod-acceptance.mjs`: the owner launches a rig over REST; the pod enrolls through the fake proxy and reports; a stop sends its export to control, then stops the pod cleanly with its volume kept; a start brings it back with the same keys and enrollment, and it reports; a terminate sends a full export to control, then removes the pod and its volume and retires the rig. Every change is in the rig's history, and RunPod's API sees a create, a stop, a start and a delete, nothing more. It passed under rootless Podman (a few minutes, most of it building the images) and cleaned up after itself. It is CI's new `runpod` job, with Docker; it has not run there yet.
+- 2026-10-20: **The paid run, written, not run.** `scripts/runpod-paid-acceptance.mjs --control URL --token-file F --gpu G --spend-limit USD --i-accept-the-cost` launches one pod through control and checks the launch on Secure cloud, enrollment, reports, the isolation check at start, that requests to `https://<pod>-8790.proxy.runpod.net` from outside all get the same empty 404, the stop with its export on control, the start (or RunPod's plain refusal when no GPU is free), and the terminate. On a failure it stops the pod and says how to end it. It needs the owner's OK to spend; record its output here.
+- 2026-10-20: **The how-to.** [Run a rig on RunPod](../../../_site/src/content/docs/how-to/install/runpod-rig.md), in the install how-tos and in Start here: the account in Providers, the image, the launch over the command line, REST and MCP (the dashboard has no form yet, as it says), limits, stop, start, restart, results, terminate and the full reset.
+- 2026-10-20: Left: the first CI run of the `runpod` job, and the paid run.
+- 2026-10-20: The `runpod` job passed on GitHub (CI run 39479049337 on `v1/build` (85b4de0)). Left: the paid run, with the owner's OK.
+- 2026-10-21: The test pod form's **Image** tip and `runpod_test_start`'s description name the one-container rig image beside the CUDA harness (`659cf42`; test in `src/control/runpod-tests.test.ts`).
+- 2026-10-22: The paid run also runs the judge's smoke check on the pod's GPU, after the isolation check (about 10 to 20 minutes more of the pod). Its no-op candidate is an A/A run, so the same launch answers goal 018's last question, how noisy the pod's timing is. `--skip-smoke` leaves it out.
+- 2026-10-22: A launch on an RTX A4000 (Secure cloud) enrolled, and its smoke check ran. The broken and fallback candidates came out invalid, as expected. The known win came out inconclusive (+7.8%, [2.5%, 13.3%]), so the check failed. Cause: the kit built only `sm_60` code, so every run on the Ampere card compiled the kernel at start, and with that start-up most of each run was not the kernel; shared-memory tiling is also a small gain on Ampere. Fixed in the kit: native code for `sm_60` to `sm_90`, five times the work per case, and register tiling as the known win. The paid run is to be repeated on the next rig image.
+- 2026-10-23: The paid run, done by hand from the dashboard rather than with the script: an A40 on Secure cloud, launched by the owner with a 1 USD limit; enrolled; isolation passed with the sealed snapshot; the smoke check passed with the noisy-timing note; stop exported first; start refused by RunPod (no free GPU on the host); terminate only after every export left. About 0.20 USD. All RunPod tests so far cost about 1.26 USD of the 10 USD the owner allowed. Verified by the owner's decision above.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/025-runpod-tests-and-docs.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

@@ -15,7 +15,7 @@ The roadmap says what comes next. A goal says what one piece of work is and when
 
 A goal is one deliverable that can be checked.
 
-- **File name:** `goals/NNN-name.goal`, for example `goals/005-sample-project.goal`. The number is the goal's ID. It is never reused, and it does not change when the goal moves to another version.
+- **File name:** `goals/NNN-name.goal`, such as `goals/097-add-a-kit-bundle-from-the-dashboard.goal`; once verified, `goals/_completed/NNN-name.goal`, such as `goals/_completed/005-sample-project.goal`. The number is the goal's ID. It is never reused, and it does not change when the goal moves to another version.
 - **Format:** Markdown with a front-matter block. A goal can be run as an agent task with `/goal Complete docs/plan/goals/NNN-name.goal`.
 - **Sections:** What, Why, Done when, Decisions, Open questions, Progress.
 
@@ -47,7 +47,8 @@ A goal is one deliverable that can be checked.
 1. Set the status to `IN_PROGRESS` and add a dated line to Progress.
 2. Keep Progress short and current: what is done, what is next, what blocks it.
 3. When every "Done when" item has evidence (a commit, a test, a check), set the status to `VERIFIED`. Update its line in the roadmap.
-4. Detailed work logs that name a particular deployment stay in the maintainers' private notes. A public goal never names hosts, addresses, accounts or private projects.
+4. In the same commit, move the goal's file to [goals/_completed/](goals/_completed/) with `git mv`, and fix every link to it: the roadmap's and the release plan's lines, other goals, the docs pages and code comments that name it. Completed goals live there; open, proposed and dropped goals stay in [goals/](goals/).
+5. Detailed work logs that name a particular deployment stay in the maintainers' private notes. A public goal never names hosts, addresses, accounts or private projects.
 
 ## Rules for every goal
 

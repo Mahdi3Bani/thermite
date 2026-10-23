@@ -11,7 +11,7 @@ updated: 2026-10-19
 
 # 006 · Docs for testers
 
-**Status:** `DROPPED`, merged into [060](060-docs-site.goal) · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `DROPPED`, merged into [060](_completed/060-docs-site.goal) · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -44,7 +44,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
-- 2026-10-19: Merged into goal [060](060-docs-site.goal), the documentation site. Each page above is on that goal's page list, and the owner's choices above carry over.
+- 2026-10-19: Merged into goal [060](_completed/060-docs-site.goal), the documentation site. Each page above is on that goal's page list, and the owner's choices above carry over.
 
 ---
 

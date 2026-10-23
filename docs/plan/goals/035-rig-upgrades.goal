@@ -10,7 +10,7 @@ updated: 2026-10-19
 
 # 035 · Upgrades from control
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.3.0](../roadmap.md#v030) · **Depends on:** [012](012-version-checks.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.3.0](../roadmap.md#v030) · **Depends on:** [012](_completed/012-version-checks.goal)
 
 ## What
 

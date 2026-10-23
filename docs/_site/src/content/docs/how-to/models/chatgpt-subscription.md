@@ -11,7 +11,7 @@ If you pay for a ChatGPT Plus or Pro plan, Thermite's agents can work on that pl
 A subscription is for your own Thermite only. A Thermite that several people use takes API keys.
 
 :::note[Tested with stand-ins]
-Subscriptions are built, but Thermite's tests so far use stand-ins for OpenAI and for the Codex CLI. A test with a real sign-in is planned in [goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/009-subscription-sign-in-tests.goal).
+Subscriptions are built, but Thermite's tests so far use stand-ins for OpenAI and for the Codex CLI. A test with a real sign-in is planned in [goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/_completed/009-subscription-sign-in-tests.goal).
 :::
 
 ## Before you start

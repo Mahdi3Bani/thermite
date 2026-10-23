@@ -1,0 +1,107 @@
+---
+id: "019"
+title: "Control reaches RunPod rigs through RunPod's proxy"
+status: VERIFIED
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-20
+---
+
+# 019 · Control reaches RunPod rigs through RunPod's proxy
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Rigs on RunPod
+
+## What
+
+A rig on RunPod never connects to control. Its supervisor serves one port, which RunPod's HTTP proxy makes reachable at `https://<pod>-<port>.proxy.runpod.net`. Control connects to it: it pulls the rig's reports and delivers its commands, model routes and other settings there.
+
+Only control can use that port. Everyone else, a lane inside the same pod included, gets the same empty 404, and nothing changes.
+
+## Why
+
+- Control stays private. Nothing of the place control runs in is opened to the internet, and it works with control on a laptop behind a home router.
+- No tunnel, VPN or public entry to set up before RunPod works.
+
+## Threat model
+
+- **Anyone can send requests to the pod's address.** It is public, and the pod's ID is not a secret: it appears in RunPod's console, API and logs.
+- **RunPod's proxy ends TLS.** The proxy (and the network it runs on) can read, change, delay, drop or replay what passes. RunPod hosts the pod, so it is trusted with what runs there, but it must not see secrets it does not need, such as model API keys.
+- **Lanes and agents share the container.** On RunPod the harness and the supervisor run in one container, so a role can connect to the port directly, from inside.
+- **RunPod's settings are visible.** A pod's environment shows in RunPod's console and API. Long-lived secrets never go there.
+- **Out of scope.** A RunPod host that is itself hostile can read the pod's memory and disk. Choose Secure cloud for work that must stay private.
+
+## Defenses
+
+1. **Nothing answers without control's signature.**
+   - Every request carries an Ed25519 signature by control's signing key over the method, the path, the rig's ID, the pod's ID, a timestamp, a random nonce and the SHA-256 of the body.
+   - The pod checks it with control's public key, which it gets at launch (public material only).
+   - It refuses a timestamp more than 60 s off its clock, a nonce it has seen in the last 5 minutes, and another rig's or pod's ID.
+   - Anything refused gets the same plain 404 with no body. Nothing says why.
+2. **A secret path in front.** The server answers only under a random 256-bit path prefix that control sets at launch. Any other path gets a 404 before the body is read. This only cuts noise and parsing; the signature is what grants access.
+3. **Answers are signed too.**
+   - Every answer is signed by the rig's own key, over the request's nonce and the SHA-256 of the answer, so the proxy can't swap in another answer or replay an old one.
+   - Reports stay signed by the harness, as from every rig today.
+   - Control drops any answer that does not verify against the keys it pinned for that rig.
+4. **Enrollment with no long-lived secret in RunPod's settings.**
+   - At launch, control puts only public material in the pod's environment (control's public key, the rig's ID, the path prefix), plus a one-time enrollment code that expires after 30 minutes.
+   - The pod makes its own keys at its first start, kept in its state volume, readable only by the supervisor's user.
+   - Control's first signed request carries the code. The pod answers with its public keys, bound to the code (HMAC). Control pins the keys, and the code is spent: a second enrollment is refused.
+5. **Secrets end to end.** Model routes with API keys, Git access tokens and other secrets reach the pod sealed to the pod's key (X25519 sealed box). The proxy never sees them in plain text.
+6. **A small server.**
+   - POST only, on three fixed paths: pull reports, deliver commands, deliver settings.
+   - Bodies from control of at most 1 MB; header and request timeouts; at most 4 connections; a rate limit.
+   - It runs as the supervisor's own user. It listens on all interfaces inside the container because RunPod's proxy needs that.
+7. **Roles can't use it or its keys.** A lane that connects from inside meets the same checks. The isolation self-test also checks that no role can read the supervisor's keys.
+8. **Refusals are visible.** The pod counts refused requests and reports the count. Control shows it on the rig's page and in its log.
+9. **Fail closed.** With no enrollment, keys that don't verify, or a clock off by more than the window, the pod serves nothing, and control says why on the rig's page.
+
+## Done when
+
+- [x] A RunPod rig enrolls, reports and takes commands through control's pulls only.
+- [x] Tests:
+  - an unsigned, wrongly signed, stale, replayed, other-rig or other-pod request gets the same 404 and changes nothing;
+  - a changed or replayed answer is dropped by control;
+  - a second enrollment, or one after the code expired, is refused;
+  - secrets never cross the wire in plain text (checked with a recording proxy in the test).
+- [x] A scan of a test pod's address from outside finds nothing but 404s.
+- [x] The docs describe the model, the defenses and what stays out of scope.
+
+## Decisions
+
+- 2026-10-19, owner: Control reaches RunPod rigs through RunPod's HTTP proxy (it pulls), not through a public entry to control or a VPN in the pod: "We do this... But we need to focus focus focus on the security of the RunPod server and that it can't get hacked/hijacked from this and only our control can hit that service running on its port web proxy thing..." This replaces the rig-only entry first planned here.
+- 2026-10-20, lead: Reuse the signed command and signed report formats and keys; no new crypto scheme. Pull mode is per rig: rigs under compose, on machines and on clusters keep dialing out. The pod gets no control key in advance (the RunPod spike, goal 018): control's key and the rig's settings arrive through enrollment, and RunPod's own key in the pod is never used.
+- 2026-10-20, lead, from the owner's rule of no default caps: an enrollment code expires only when the launch sets an expiry.
+
+### Where the build departs from the design above (2026-10-20)
+
+1. **Two paths, not three.** The pod serves `enroll` and `exchange`. One exchange carries all three directions: the rig's reports and its other calls out, control's answers (commands, model routes, other settings) in. Why: the supervisor makes its usual calls to a local port, and control answers them in-process on the same routes, with the same checks, as for a rig that dials out. Every feature (reports, commands and their outcomes, the live view, model and advisor routes, Git access, kits over Git, past research, champions, daily reports) then works in pull mode with no second copy. Only the routes a rig may use for itself are answered.
+2. **Control's key arrives at enrollment.** The launch puts only the SHA-256 of control's command-signing key in the pod's environment; control's first request brings the key, and the pod takes it only if the SHA-256 matches. Why: the lead's direction above. The protection is the same as a key in the environment.
+3. **The code never crosses the network.** Control's first request carries an HMAC proof of the code, bound to the rig, the pod and the request's nonce, not the code itself. The pod's answer binds its keys to the code the same way. Why: the proxy never sees the code, and a wrong code is still refused by the pod.
+4. **No expiry unless set** (the design said 30 minutes). Why: the decision above.
+5. **The code is spent at the pod at control's first exchange**, not at its first enrollment answer. Why: that exchange is sealed to the pinned key, so it proves control pinned it; an enrollment answer lost on the way can be asked for again until then. Control spends the code when it pins the keys.
+6. **Request signatures use the format of signed commands**: Ed25519 over canonical JSON, with control's command-signing key. A request's own `v` and `kind` keep it from ever passing for a command (tested).
+7. **Nonces are kept on disk**, so a request replayed after the pod restarts is still refused.
+8. **Large answers cross in parts.** Requests from control stay within 1 MiB; an answer to one of the rig's calls that is larger (a kit's Git pack, say) crosses in parts over several exchanges. The pod's answers to control carry the rig's calls, up to a 64 MiB champion patch, so control reads at most 96 MiB of one answer.
+9. **A refused request's body is let through unread** (up to 4 MiB, then the connection is cut), and only then answered with the 404. Why: a 404 sent while a body still arrives ends in a connection reset, which differs from the same empty 404.
+10. **The supervisor's local port refuses the same way**: anyone without the supervisor's token (a random value in its memory), a lane included, gets the same empty 404, counted with the public port's refusals.
+11. **RunPod's key and the code leave the supervisor's environment** at start, so nothing the supervisor starts (git, an advisor's tools) inherits them.
+12. **A full reset keeps the pod's keys and enrollment**, so control's trust in the pod survives it.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-19: Changed by the owner's decision above; the security design written here, before any code.
+- 2026-10-20: Pull mode built on both ends and wired in: control's loop connects to each rig in pull mode (`src/control/tunnel.ts`, `main.ts`); the supervisor starts pull mode from its launch values (`src/supervisor/tunnel-pod.ts`, `main.ts`); the rig's page shows **Pull mode** (enrollment, last exchange, refused requests, last error); `GET /v1/rigs` lists the rigs in pull mode; the isolation self-test checks the pod's keys. Tests (`src/core/tunnel.test.ts`, `src/control/tunnel.test.ts`), with a recording proxy, a real pod end and control's API in-process: every refusal (unsigned, wrong key, stale, future, other rig, other pod, replayed, too large, wrong path, a lane on either port) gets the same empty 404 and changes nothing; a replay after a restart is refused; a changed or old answer is dropped and its call retried; a pull from start to end with a harness and the supervisor's own relay (a report pins the harness's key; a command reaches the harness and its outcome reaches control; a model route with its key); no secret, code, token or plain JSON crosses the proxy; a 2.5 MB answer crosses in parts. Pages: Trust between control and rigs (Rigs in pull mode), Settings (Pull mode), Ports, volumes and secret files, Rig checks, REST API, Who holds your keys, the glossary.
+- 2026-10-20: Next: the first rig on RunPod (goals 020 and 022), then the scan of a test pod's address from outside.
+- 2026-10-20: The one-container rig image (goal 020) runs pull mode end to end on this machine: control's code enrolls the image over its port, root gives the harness control's key only after checking it against the launch's SHA-256, and the rig's reports reach control through control's pulls only (`scripts/rig-image-acceptance.mjs`, passed under rootless Podman). Left: the first rig on RunPod (goal 022's launch, which waits for the owner's OK to spend), and then the scan of its address.
+- 2026-10-22: On RunPod. A rig the owner launched from the dashboard (an RTX A4000 on Secure cloud) enrolled through control's pulls, reported, and took commands only that way: a smoke check asked for through control, and the export control asked for before its idle stop. A scan of the pod's public address from outside, on 20 paths, got only empty 404s. Verified.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/019-rig-only-entry.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

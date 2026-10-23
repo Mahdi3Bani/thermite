@@ -14,7 +14,7 @@ updated: 2026-10-22
 
 ## What
 
-The dashboard takes a kit repository written elsewhere, as a git bundle file, as [096](096-kits-from-elsewhere.goal) lets REST, MCP and the command line do today. The owner picks the file, names the kit, and sees what control kept: the head commit, the number of commits, the kit's name and target, or the refusal in words. Control keeps every commit with its id, so a contract that names a commit still matches.
+The dashboard takes a kit repository written elsewhere, as a git bundle file, as [096](_completed/096-kits-from-elsewhere.goal) lets REST, MCP and the command line do today. The owner picks the file, names the kit, and sees what control kept: the head commit, the number of commits, the kit's name and target, or the refusal in words. Control keeps every commit with its id, so a contract that names a commit still matches.
 
 An agent that works through MCP gets a way to send a bundle that is not one long text argument: for example, a short-lived upload link that control makes for one bundle, which the agent's own tools can send the file to.
 

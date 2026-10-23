@@ -1,0 +1,146 @@
+---
+id: "063"
+title: "Campaigns, runs and live views you can scan; steering as one message box"
+status: VERIFIED
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-20
+updated: 2026-10-20
+---
+
+# 063 · Campaigns, runs and live views you can scan; steering as one message box
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+The dashboard's campaign, run and live views are rebuilt so that a person can see at a glance what is at work now, find any campaign or run, start a run, and steer a run by writing to its agents.
+
+- **Campaigns list:**
+  - "At work now" first: one card per running run, with what each agent and the judge is doing and the run's result so far.
+  - Then "Waiting for you", then every campaign as one row: its runs counted by state, its best result, its last activity and its rigs.
+  - Filters (at work, paused, rig checks, all) and a search box. The smoke checks that control runs on each new rig are hidden unless asked for.
+- **A campaign's page:**
+  - "Start a run" is always in the page's header. It opens a short form:
+    - where the run goes (only rigs with the right hardware, each shown as free or busy);
+    - where it starts from;
+    - agents on or off, with a model picked there if the rig has none;
+    - more options, collapsed.
+  - The page shows the runs at work first, then the earlier runs in one table, newest first. A paused run can be resumed from its row. There are no tabs, one per run, any more.
+  - Campaigns assigned through MCP, the API or the CLI can also start a run, from their latest run's assignment.
+- **Live, per run:**
+  - The Live page lists the runs at work first, then idle rigs, then runs that ended recently.
+  - A run's view has one entry per lane, one for the advisors and one for the judge, not one per trial; trials show as dividers in the lane's stream.
+  - The advisors' entry shows their work as it happens: what each teacher read and suggested, the rules the combiner set and why, and each audit and review with its outcome and reason. Today the supervisor writes only "advisor round started" and "done" lines.
+  - A trial that ended, or was cut off by a restart, no longer shows "working".
+  - The stream is easy to read: an agent's text as paragraphs, a tool call as one line with its result, runs of steps folded, and research records (sources, claims, findings) as labelled lines.
+- **Steering as one message box, in Live:**
+  - The run page has no Steer tab any more. Live is the one place to watch a run and write to it: its message box sits under the stream, and the "Message" buttons on the campaign and run pages open Live with the box ready. Its recipients:
+    - **everyone working**, the default;
+    - **a lane**;
+    - **the planner**, for hill-climb and goal runs only;
+    - **the advisors**: all of them, the teachers, the auditor or the review panel. An advisor reads the message at once (the teachers in a round that starts then; the auditor and the review panel before their next audit or review) and answers in Live and in the run's Sent list.
+  - Under the box, the page says when the chosen recipient will read the message.
+  - The lane being watched is the lane being written to, and the other way round.
+  - A message can stay in force: it goes into every new trial's brief until the owner removes it.
+  - Each message shows in the stream with who has read it and when, and the answers advisors give. A "You" filter shows only the owner's messages and their answers.
+  - The stream gets the space: no side panel. A one-line header (the run, its rig, its progress, Open the run, Pause, and Restart the lanes under ⋯), one row of filters (everyone, each lane, planner, judge, advisors, you), and a one-row message box: who it goes to, the text (whose placeholder says when they will read it), keep in force, Send. The list of runs folds away on narrow screens. Messages kept in force sit behind a small "kept" button, each with Remove. The queue and the rules are on the run page, not in Live ([064](064-experiment-queue.goal)).
+  - Only the judge takes no messages: it is code that measures, not an agent. The auditor still decides each audit itself; the owner overrules a judge or auditor decision on its card.
+
+## Why
+
+The owner's feedback on 2026-10-20:
+
+- **Campaigns list:** it lists every run of every campaign, rig checks included. It doesn't show what is live, and it is hard to explore.
+- **A campaign's page:** it has one tab per run and no visible way to start a run. The "Start another run" form exists, but only at the bottom, and only for campaigns made on the New campaign page.
+- **Live:** it is per rig and lists one session per trial, in the order of the latest line, so it fills with near-identical rows. Long tool calls can show as raw JSON.
+- **Steering:** the form mixes pause, reset, rules and a link. The message box defaults to the planner. On a research run, a message to the planner is never read, yet control still reports it as delivered.
+
+## Done when
+
+- [x] The Campaigns list, a campaign's page and Live match the approved mockups; the run page's Steer tab is gone.
+- [x] Start a run works from every campaign's page, including campaigns that were not made on the New campaign page.
+- [x] Live lists runs at work first, has one entry per lane and one for the advisors, and marks ended trials correctly.
+- [x] The advisors' entry in Live shows each teacher run, rule set, audit and review as it happens, with its reason.
+- [x] The owner can message all advisors, the teachers, the auditor or the review panel; each reads the message as described above and its answer appears in Live and the run's Sent list.
+- [x] A message reaches the chosen agents. Pi workers read it at their next step. OpenCode and Claude Code workers read it at their next step too, or the page says plainly when they will.
+- [x] Control shows who has read each message, from the rig's own record, not only that the rig stored it.
+- [x] A research run offers no planner as a recipient. "Everyone working" and messages kept in force reach its lanes.
+- [x] No message is lost: a message taken from the queue is always given to an agent.
+- [x] Tests cover the lists and filters, start a run, the lane grouping in Live, delivery to each kind of worker, and read receipts.
+
+## Decisions
+
+- 2026-10-20, owner: the five points of feedback above. Designs are chosen by mockup first, as for the earlier dashboard pages.
+- 2026-10-20: the recipients are the agents (lanes, planner) and the advisors. The judge takes no messages: it is code, and what anyone writes must not change a measurement. Only the owner can message an advisor (a signed owner command); agents cannot.
+- 2026-10-20, owner, on the final mockups: "yes these all look better. Build it". "Everyone working" reaches the lanes and the planner; the advisors have their own choice.
+- 2026-10-20, owner, on the Live mockup: choosing a lane (or everyone) at the top of Live also sets who the message box writes to. The lane you watch is the lane you write to, and choosing a recipient below shows that lane's stream.
+- 2026-10-20, owner, on the Live mockup: "why can't I view advisors?" Live gets an Advisors entry with the advisors' work as it happens.
+- 2026-10-20, owner, on Live with a side panel: "the live tab gives you an area the size of a pea to actually see messages... what the actual overloaded screen is this?" Live has no side panel; the stream gets the room.
+- 2026-10-20, owner: rules for the plan move to a Planner tab ([064](064-experiment-queue.goal)), out of Live and the message area.
+- 2026-10-20, owner, "Yeah thats a better design": steering lives only in Live (one message box, with In force beside the stream); no Steer tab on the run page.
+- 2026-10-20, owner: "advisors need to be viewable and interactable too!" The owner can message each advisor role, and advisors answer. This replaces the earlier choice to keep the auditor out of reach of messages.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-20: Goal written from the owner's feedback. Mockups made from the dashboard's own shell and stylesheet, with data shaped like a real deployment: the Campaigns list, a campaign's page with Start a run, Live per run, and the run's Steer tab.
+- 2026-10-20: Defects found while mapping the current code:
+  - On research runs, planner messages are never read, yet they are reported as delivered.
+  - OpenCode and Claude Code workers read a message only when nudged after they stop without submitting.
+  - An OpenCode research trial drops messages taken on its third pass.
+  - A trial cut off by a restart shows "working" for ever.
+  - Research rounds appear in the timeline as "the model's plan was refused", though they are planned by a fixed method on purpose.
+- 2026-10-20: The rig side of steering is built (core, harness, supervisor):
+  - `message_agent` also goes to `all`, `teachers`, `auditor` and `panel`, and can be kept in force (`keep`, for `all` or a lane); `unkeep_message` ends one. Both are the owner's only.
+  - The harness refuses a message nothing would read, with the reason: the planner of a research run, a part switched off on Edit rig, the auditor of a research run, the panel of a run with no review goal, an unknown lane or trial, a closed run.
+  - Ledger version 13 records each read (a lane with its trial, the planner, each advisor role). The events `agent_message` (with the text), `agent_message_read`, `agent_message_unkept` and `advisor_answer` let control show messages and receipts from events alone.
+  - A read is recorded only when the text reached the agent. The OpenCode research trial no longer drops messages on its third pass; a Pi worker no longer loses one fetched on the turn a limit stops; a message to a trial that ended goes to its lane's next trial, which is told so.
+  - Messages kept in force go into every new trial's brief, code and research alike, until removed.
+  - The teacher pair's round starts at once for a new message to it; the auditor and the review panel get messages in their next package. Each advisor answers in its output, and the supervisor reports reads and answers to the harness (`POST /v1/advisor-messages`). Each step of an advisor round is a line in Live, with its run.
+  - Research epochs say `plan: "research"` (with their notes) in `epoch_started`.
+  - OpenCode and Claude Code take no message into a run under way: they read a message when their current run ends without a submission. After a submission no worker takes a message: the trial is over, so the lane's next trial reads it in its brief and can act on it. When each agent reads a message is in [How it fits together](../../../_site/src/content/docs/explanation/how-it-fits-together.md#the-owners-messages).
+
+- 2026-10-20: Built on the control side: the Campaigns list (at work, waiting, one row per campaign, filters and search, rig checks hidden); a campaign's page with Start a run (also for campaigns assigned over the API, MCP or the CLI); a run's page with tabs; Live for one run with filters and the one-row message box; research rounds worded as set by the research plan; trials cut off by a restart no longer shown as working. The rig's side of messaging (recipients, kept messages, read receipts, advisors' answers) is in progress.
+
+- 2026-10-20: Fixes from the docs work, on `v1/build`:
+  - **When a message counts as read.** A trial reads the messages in its brief once its agent is at work. A trial that fails first leaves them for the lane's next trial.
+  - **Advisor prompts.** They carry the owner's messages first and never cut them.
+  - **Ledger upgrade.** It counts the advisors' earlier messages as read, so none is given again.
+  - **The day's spending limit.** When it is reached, a message to the teacher pair starts no round, and the live view says once that it waits for the next day.
+  - **Review panel and auditor.** Their reads count only with a posted review or audit, so a retry gives the messages again.
+  - **Advisors' answers.** One malformed answer no longer drops the others.
+  - **Who can receive a message.** Recipients that no reader covers are refused or greyed out.
+  - **Live.**
+    - Messages, receipts and answers draw as soon as their line arrives.
+    - A lane that starts later gets its own filter.
+    - The rig-wide view points to each run's Live.
+  - **The Planner tab** shows a message that was not taken.
+  - **Screen text.** Pause has its reason again. "Finished" is ordered right in the sidebar. The texts for Start a run, Live and the Planner tab match what they do.
+  - **Rigs on a cluster.** A rig offers a retry after a failed update, and control's new address when only that changed. Start, restart and update wait for each other.
+
+  Still to do: the compose acceptances, then the roll.
+
+- 2026-10-20: Checked and deployed. The full `npm run check` and the compose acceptances (smoke, agents, Claude Code, steering, control, campaign, cluster) passed. The maintainers' control and rigs run it, each rig's ledger kept and its isolation check passing. The pages are on the docs site. Still open: the acceptance tests do not drive Live's message box or the Planner tab.
+
+- 2026-10-20: Verified. Each box checked against the code, the tests and the pages.
+  - **Tests that drive the pages.** `src/control/steering-ui.test.ts`, in the fast suite, drives Live's message box and the run page's tabs as a browser does. It reads each form from the page's HTML and posts it as a person fills it in; for a drag, it sends the request that the dashboard's script sends. A real harness takes the commands through the supervisor's relay, and its events and live lines come back to control the same way. No browser runs: the script only shows and hides what control drew.
+  - **What they cover.**
+    - Every recipient, keep and Remove.
+    - The greyed-out recipients of a hill climb and of a research run, and the rig's refusal of a lane that the run doesn't have.
+    - The receipts and the advisors' answers under **You**, which is the run's Sent list since the Steer tab went.
+    - Control's record of who read each message, built from the rig's events.
+    - The hint for Pi, OpenCode and Claude Code workers.
+    - A kept message in each new trial of a research run.
+    - A lane that stops working after **Restart the lanes** or a restart of the harness.
+    - Start a run's rig states: free, busy, other hardware.
+  - **A fix from the mockup check.** The approved Live mockup has **Restart the lanes** under **⋯** in Live's header. It was missing; it is built now.
+  - **Rig checks** are control's own runs, hidden from the Campaigns list. They have no Start a run.
+  - **Older receipts.** Live shows a run's newest 600 lines. Older receipts are in MCP `run_queue`, which lists each message with who read it.
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/063-scan-and-steer.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

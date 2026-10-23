@@ -1,0 +1,240 @@
+---
+id: "060"
+title: "The documentation site"
+status: VERIFIED
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-20
+---
+
+# 060 · The documentation site
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+A documentation site for Thermite, built with [Astro Starlight](https://starlight.astro.build/) from `docs/_site/`.
+
+- It is written for a person who has never seen Thermite.
+- An agent can read all of it through `llms.txt` and `llms-full.txt`.
+- It covers everything Thermite does at the commit where the work starts, and nothing that it does not do yet.
+
+### Where things live
+
+| Path | What it holds |
+| --- | --- |
+| `docs/_site/package.json` and its lockfile | The site's own dependencies, pinned to exact versions. The core's dependencies and the images do not change. |
+| `docs/_site/astro.config.mjs` | The site's configuration, sidebar and plugins |
+| `docs/_site/src/content.config.ts` | The page schema. Every page must have a title, a description and a Diátaxis type, or the build fails. |
+| `docs/_site/src/content/docs/` | Every page, in `tutorials/`, `how-to/`, `reference/`, `explanation/` and `project/`, plus the home page and Start here |
+| `docs/_site/src/assets/` | Screenshots and images |
+| `scripts/` | The docs checks |
+| `.dev/site/` | The built site (git-ignored) |
+| `docs/` | Repository docs: the docs index, how to write and check the docs, and the contributor material. The plans stay in `docs/plan/`. |
+
+The site uses these plugins, or their equals if step 2 finds a better one:
+
+- `starlight-llms-txt` for `llms.txt`, `llms-full.txt` and `llms-small.txt`;
+- `starlight-links-validator`, which fails the build on a broken internal link or anchor;
+- a Mermaid plugin, so diagrams render the same on GitHub and on the site.
+
+Search is Starlight's built-in Pagefind. It needs no outside service.
+
+The user pages now in `docs/` move into the site with `git mv`, so each page keeps one source and its history. GitHub still shows them as Markdown. These are the quick start, architecture, campaign modes, judging, kits, write a kit, the kit, contract and settings references, and the glossary. `docs/local-development.md` is split: its operator tasks become how-to guides in the site, and its contributor part stays in `docs/` for goal 008.
+
+### The pages
+
+Every page has one [Diátaxis](https://diataxis.fr/) type:
+
+- **Tutorials** teach by doing.
+- **How-to guides** help with one task.
+- **Reference** describes the parts.
+- **Explanation** says why.
+
+The list below is where the work starts. Step 2 fixes it with the owner.
+
+- **Hubs:** Home. Start here, which offers a path for each reader: try it on one computer, run it on your GPUs, give it your own project, or let an agent run Thermite.
+- **Tutorials.** Each one is one path that works end to end:
+  1. Your first run: start Thermite on your computer and watch the judge check a rig.
+  2. Hand the work to agents, with a free model.
+  3. Your own project, from the New campaign page.
+  4. Your first goal campaign.
+- **How-to guides:**
+  - **Install and rigs:** Install Thermite on one machine (Docker or Podman). Add a rig on a machine over SSH. Add a rig on a Kubernetes cluster. Join a rig yourself where control cannot connect. Give a rig several GPUs. Build the images and push them to your own registry. Extend the harness image. Test a GPU on RunPod.
+  - **Models:** Choose a model: a free model first, then a model server on your own machine, then API keys, then subscriptions. Connect a provider. Use a Claude subscription. Use a ChatGPT subscription. Give each agent its own model.
+  - **Campaigns and kits:** Start a campaign from the dashboard. Start a campaign from the command line. Write a contract for each mode. Write a kit for your project. Test a kit with known candidates. Use a private repository. Set a budget or a stop time. Steer a run. Choose what a run tries next: the experiment queue and the planner's rules (added 2026-10-20, when goal 064 built the queue). Use past research in a new run (added 2026-10-20, with goal 065). Decide what waits for you: promotions, audits, reviews and "not possible" endings. Run a campaign on several rigs. Take the result.
+  - **Operate:** Check a rig. Accept a rig's key. Set up the results repository. Configure advisors. Connect an outside knowledge base (added 2026-10-20, with goal 065). Stop, restart, remove and fully reset a rig. Make and change tokens. Cancel a pending command. Troubleshoot: failed checks, port clashes, the Podman VM's disk and memory, slow builds, and where the logs are.
+  - **Automate:** Let an agent run Thermite over MCP. Script Thermite with the REST API.
+- **Reference:** Settings. The contract. The kit manifest (`kit.json`). The advisors file. The command line. The REST API. The MCP tools. Signed commands. Tokens and what each may do. Rig checks. Verdicts and attempt states. The harness image: its contents, toolchains and users. Ports, volumes and secret files. Limits and pacing. The knowledge base (added 2026-10-20, with goal 065). Compatibility: Node.js, container engines, compose tools and GPUs. The glossary.
+- **Explanation:** What Thermite is. How the parts fit together: rigs, control and targets. Campaign modes. Why agents never judge. Why the benchmark lives in a kit, outside the project. Kits and rigs, side by side. Agents, lanes and the planner. Journals and the knowledge base (added 2026-10-20, with goal 065). Supervision: teachers, audits and review panels. Trust between control and rigs. Isolation inside a rig. Sharing a device. Why Thermite runs until the job is done. Who holds your keys. Where Thermite came from.
+- **Project:** The roadmap and plans (links to `docs/plan/`). Getting help. Contributing, security and conduct (links to the files that goal 008 writes).
+
+### Writing rules
+
+- **One page, one type.** A short part of another type is fine. A page that has become two documents is split and linked. The page schema makes the type required. The maintainers' write-docs skill has a classify, write and audit procedure for this.
+- **The opening says what the reader will do or learn, and why,** in the reader's words. What they need comes next.
+- **Plain, everyday words and short sentences.** The first time a page uses a Thermite term, it explains the term or links it to the glossary. The aim is readable English, not strict Simplified Technical English.
+- **Each step says what the reader sees after it.** Screens, buttons and fields are named exactly as the dashboard shows them.
+- **Only what exists.**
+  - Every command, flag, setting, route and field on a page exists in the code at the start commit.
+  - A planned feature gets one line and a link to its goal. It is never described as if it existed.
+- **No default caps, stated correctly.** No page calls a pacing or per-process limit something that ends research. Caps are off unless someone sets them. Pages that use a paid key say to set a budget or a stop time first.
+- **Public content.**
+  - Examples use made-up names: `gpu-host-1`, `rig-1`, `control.example.com`.
+  - Screenshots come only from the dashboard demo's made-up data.
+  - Known gaps go on goal 007's page, which the owner reviews. Other pages describe how things work.
+
+### Work, in order
+
+1. **Inventory** (read-only subagents, one for each area):
+   - Areas: control and the dashboard; the REST API, MCP and the command line; the harness (judge, kits, contracts, agents); the supervisor (advisors, git, lifecycle); deployment (images, compose, machines, clusters, RunPod).
+   - Each agent lists its area's features, commands, settings and screen labels, each with the file it comes from, and maps the existing docs onto the page list.
+   - Notes go in `.dev/docs-work/`.
+2. **Skeleton and mockup.**
+   - Set up the Starlight project with pinned versions, the page schema and the plugins.
+   - Write the sidebar with a stub for every page.
+   - Write the home page, Start here, one finished page of each type, and the checks.
+   - Show the owner the built site. **The owner approves the look and the page list before step 3.**
+3. **Write** (subagents in parallel, up to 8 at a time):
+   - One writer for each group of pages.
+   - Each writer changes only its own files, and works from the inventory and the code.
+4. **Verify** (fresh subagents):
+   - For each page: check every claim against the code, run a Diátaxis audit, and read it for plain words.
+   - Follow each tutorial, and each how-to guide that runs locally, end to end on a clean local stack. Use only local stand-ins, such as the acceptance tests' SSH container and kind cluster, never a real host or cluster.
+   - A fresh reader that sees only the built site tries each tutorial and how-to guide, and reports where it got stuck.
+   - Fix what they find and check again, until nothing is left.
+5. **Integrate:**
+   - Move the old pages and fix every link in the repository.
+   - Update `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md`. AGENTS.md says how to build and check the docs, and that a change in behaviour updates its page.
+   - Add the docs build and checks to CI, and a workflow that deploys the site to GitHub Pages from `main`.
+
+### Not in this goal
+
+- **Pages for what is not built yet.** Each later goal adds or changes its own pages. For example: published images and the release bundle (010, 011), `thermite doctor` (013), rigs on RunPod (019–025), the Logs page (027).
+- **The known-limits page and the security model:** goal 007 writes them into the site.
+- **SECURITY.md, CONTRIBUTING.md and the other community files:** goal 008.
+- **Reference generated from new code registries** (settings, events, OpenAPI): goals 029 and 050.
+- **Other things left out:** versioned docs, translations and video.
+- **Changes to Thermite itself.** A gap found while writing becomes a new goal.
+
+## Why
+
+The docs today are twelve dense pages, written for the people who built Thermite. A tester who has never seen it needs a way in: what it is, a first run that works, then how to do each task. Agents that install, operate or work on Thermite need the same facts, in one file they can read whole.
+
+## Done when
+
+- [x] The owner approved the look and the page list. The approval is in Decisions.
+- [x] `npm run docs:build` builds the site from `docs/_site/` with pinned versions, with no errors or warnings. The page schema and the link validator pass.
+- [x] Every page on the approved list exists. Each has a title, a one-line description and one type, and sits in its type's section.
+- [x] The inventory maps every feature built at the start commit to at least one page.
+- [x] `npm run docs:check` passes. It checks:
+  - that each page sits in the section of its type;
+  - that `llms-full.txt` holds every page;
+  - that every `thermite` command on a page exists;
+  - that every setting a page names exists in the code, and that every setting the code reads is in the settings reference;
+  - that every contract, `kit.json` and `advisors.json` example parses with the real schema.
+- [x] The built site has `/llms.txt` in the [llms.txt format](https://llmstxt.org/), which leads an agent to every page, and `/llms-full.txt` with every page in full. Each page also has a Markdown copy at its address plus `.md`.
+- [x] Search works in the built site with no outside service.
+- [x] Each tutorial was followed end to end on a clean local stack, and each how-to guide that runs locally was followed once. Progress records what ran, and which pages need paid services or real hardware and were not run.
+- [x] A fresh reader that saw only the built site found no step that it could not follow, or each of its findings is fixed.
+- [x] The old user pages are moved, and no tracked file links to a moved page. `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md` point to the site.
+- [x] CI builds and checks the docs. Cloudflare Pages builds the site from `main` and serves it at usethermite.com. (A workflow deployed it to GitHub Pages until 2026-10-20.)
+- [x] `npm run check` passes, and the public check passes over the new files.
+
+## Decisions
+
+- 2026-10-19, owner: One documentation site, built from `docs/_site/`. Repository docs stay in `docs/`, and the plans in `docs/plan/`.
+- 2026-10-19, owner: The site is built with Astro Starlight, not MkDocs.
+  - The owner first asked for MkDocs. Then the state of MkDocs was reviewed:
+    - MkDocs no longer makes releases that work with its plugins;
+    - Material for MkDocs gets security fixes only until 2027-05-05;
+    - Zensical, the successor, is still young.
+  - Starlight runs on Node and TypeScript, like the rest of Thermite. Its page schema can require a Diátaxis type, and a maintained plugin writes `llms.txt`.
+- 2026-10-19, owner: The pages follow Diátaxis: tutorials, how-to guides, reference and explanation.
+- 2026-10-19, owner: The docs must be approachable for an average person. Agents read them through `llms.txt` and `llms-full.txt`.
+- 2026-10-19, owner: Subagents write the pages in parallel. This goal is written first and run with `/goal`.
+- 2026-10-19, owner: Approved the site's look and the 73-page list at step 2, so the writing can start.
+- 2026-10-19, owner: Gaps in Thermite found by this work go into one new goal, with a checklist worded for the public repository. Anything about security goes only to the maintainers' private notes. The docs describe only what exists.
+- 2026-10-19, owner: Tutorial 4 gets its own example: a goal contract for the smoke kit and project in `examples/contracts/`, checked with the real schema and run end to end.
+- 2026-10-19, owner: The contract reference lists fields that are accepted but not used yet, each marked so.
+- 2026-10-19, owner: To run tutorial 4 end to end, create a small public test repository on the owner's GitHub account; the owner deletes it afterwards.
+- 2026-10-20, owner: The site will be served from Cloudflare, under a domain the owner chooses, and the owner deploys it later. Until then the site is built and checked here and not published. The GitHub Pages workflow goes.
+- 2026-10-20, owner: The site is served at usethermite.com by Cloudflare Pages, built from `main`, with a Fathom Analytics site of its own. The code moves to `main` now, so the site can build from it. Work stays on the development branch.
+
+## Open questions
+
+- **Starlight upgrades.** Starlight is still 0.x, so a minor version can break things. Recommended: pin exact versions, and upgrade on purpose, one version at a time.
+- **The old pages.** Recommended: move them with `git mv`, so each page has one source. Copies left in `docs/` would drift.
+- **Merged goals.** This goal takes in goal 006 (Docs for testers) and goal 041 (Kits and rigs, explained): their pages are on the list above, and the owner's choices in 006 carry over. Both are marked `DROPPED` as merged. Goal 050 keeps only the two-command start and a generated settings reference.
+
+## Progress
+
+- 2026-10-19: Goal written. It draws on the owner's request, the earlier private publishing plan's documentation section, and the current docs.
+- 2026-10-19: Work started from `7a2bc35`. Step 1 (inventory) and the Starlight skeleton run first.
+- 2026-10-19: Step 1 done. Five read-only agents inventoried control and the dashboard, the API, MCP and command line, the harness, the supervisor, and deployment and settings, with file and line evidence. Their notes are in the maintainers' working folder.
+- 2026-10-19: Step 2 built, waiting for the owner's review:
+  - the Starlight project with pinned versions (Astro 7.3.8, Starlight 0.42.6), the page schema, the link validator, `llms.txt` with every page, `llms-full.txt`, `llms-small.txt`, one file per section and a Markdown copy of each page;
+  - all 73 pages in the sidebar, as stubs where not yet written; the ten old user pages moved in with `git mv`;
+  - the home page, Start here and one finished page of each type: Your first run, Check a rig, Tokens and roles, Why agents never judge;
+  - `npm run docs:check`, a CI job and a GitHub Pages workflow;
+  - `docs/writing-docs.md`, the guide every writer follows.
+- 2026-10-19: Tutorial 1's steps ran from a fresh clone on a local Podman stack: the isolation check passed at start, and the smoke check passed with all 12 candidates judged as expected in about 100 seconds on a laptop CPU.
+- 2026-10-19: Step 3 done. Nine writers wrote the 66 remaining pages from the inventories and the code, each with a file of evidence and a file of gaps.
+- 2026-10-19: Step 4, checking:
+  - **Against the code.** Fresh verifiers checked every page's claims against the code, ran a Diátaxis audit and read for plain words. They corrected about 175 claims, fixed the pages that mixed types, and took every description of a security weakness off the pages.
+  - **Fresh readers.** Two readers that saw only the built site tried every how-to guide (139 findings) and every tutorial, with the home page and Start here (45 findings). Six fixers fixed each finding or recorded why it needed no change, and made the pages agree with each other and with the code on the words they use.
+  - **Tutorials, run end to end** on a clean local stack (Podman, from a fresh clone, images from the build cache): 1 Your first run, about 5 minutes after the build; 2 Hand the work to agents, about 30 minutes with a free model; 3 Your first goal campaign, about 15 minutes, no model; 4 Your own project, about 30 minutes, against a throwaway public test repository. Each page was corrected to what happened. The tutorials' order is now 1, 2, 3 (goal campaign), 4 (own project).
+  - **How-to guides, followed once** on local stacks of their own:
+    - ran fully: tokens, the REST API, cancel a command, check a rig, accept a rig's key, the results repository (with a stand-in SSH Git host), stop, restart, retire and fully reset a rig, write a contract, test a kit, steer a run, budgets and stop times, take the result, run a campaign on several rigs, write a kit, install on one machine, push the images to your own registry (a local registry), extend the harness image;
+    - ran in part: let an agent run Thermite over MCP (with curl, not a client's settings), start a campaign from the command line, decide what waits for you (promotions only), configure advisors (with a scripted model), connect a provider, choose a model and give each agent its own model (free models were rate-limited; a stand-in model server did the rest), and troubleshoot (spot checks);
+    - through the repository's stand-ins: add a rig on a machine (the rig deploy acceptance), add a rig on a cluster (the cluster acceptance on kind), join a rig yourself (a stand-in machine, and a namespace on kind), give a rig several GPUs (the multi-GPU acceptance on fake GPUs);
+    - not run: test a GPU on RunPod (a paid service), the Claude and ChatGPT subscriptions (the owner's accounts), a private repository (a private repository on a Git host), and providers that need a paid key.
+  - **Gaps.** What the code lacks went into goal [061](../061-gaps-found-by-the-docs.goal): 164 items. Two of them were code bugs found by running the guides, now fixed on the development branch: rigs on machines that never reported (`4ec8705`), and the planner under OpenCode (`9a8f803`). Security items went to the maintainers' private notes only.
+- 2026-10-19: Step 5 done. The old pages moved and every link in the repository points to them; `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md` point to the site; `docs/local-development.md` keeps only the contributor material; CI builds and checks the site, and `.github/workflows/docs.yml` publishes it to GitHub Pages from `main`. A dashboard screenshot from the demo is in the README and on the home page, and `scripts/docs-screenshots.mjs` takes it again.
+
+- 2026-10-19: Rebased onto the development branch at `d3932fe`. Its newer commits (the research folder and findings, research under OpenCode, RunPod spending in Providers, the `set_rig_model` MCP tool, the agents' model on New campaign, the wait after failed trials) are now on the 31 pages they touch, and goal 061 marks what they fixed.
+- 2026-10-19: Verified. `npm run docs:build` builds with no errors or warnings; `npm run docs:check` passes for all 73 pages; `npm run check` passes (typecheck, lint, 367 tests, the public check). CI's docs job and the Pages workflow run for the first time when the code is pushed; turning GitHub Pages on needs the owner's account, and the first deploy follows the code's move to `main` (goal 026).
+- 2026-10-20: The pages follow the development branch to `0143506`:
+  - goal 063's rebuilt Campaigns list, campaign and run pages, Live and the owner's messages;
+  - goal 064's experiment queue;
+  - goal 065's field notes, the Journal tab, the knowledge base, grants, past research, briefings and outside knowledge bases;
+  - the fixes that followed each one;
+  - cluster rigs moving onto control's images.
+
+  The work went in several passes as the branch moved:
+  - inventories of each set of commits;
+  - writers;
+  - verifiers checking every changed claim against the code;
+  - fresh readers;
+  - followers.
+
+  The followers ran tutorials 1 to 4, Steer a run, and most of Choose what a run tries next on fresh local stacks, through the dashboard's own forms, with OpenCode's free models and the public test project. Goal 065's pages were checked against the code only: no compose acceptance covers that goal yet, and the shared VM was busy.
+
+  Five new pages (78 in all):
+  - how-to guides: "Choose what a run tries next", "Use past research in a new run" and "Connect an outside knowledge base";
+  - reference: "The knowledge base";
+  - explanation: "Journals and the knowledge base".
+
+  The screenshots are taken again from the demo, which now has a made-up queue and field notes for one run. The README and home page show a run's page.
+
+  Code gaps found on the way went to the development session as they came up. Most are fixed on the branch; the rest wait for its next batch. Security items went to the maintainers' private notes only.
+- 2026-10-20: The GitHub Pages workflow (`.github/workflows/docs.yml`) is removed, by the owner's decision above. CI still builds and checks the site on every pull request and on `main`.
+- 2026-10-20: The site moves to usethermite.com:
+  - its address and base path are `https://usethermite.com/`;
+  - Fathom Analytics counts page views, without cookies;
+  - `public/_headers` gives Cloudflare a Content Security Policy and other security headers, with `noindex` on the `pages.dev` address;
+  - `public/robots.txt` points to the sitemap.
+
+  The policy was tested in headless Chrome against the built site, served with those headers. Diagrams, code copy buttons, the theme and search all work, with no policy errors. A stricter policy was refused, as it should be. `docs/writing-docs.md` says how Cloudflare builds the site. The first build follows the push of `main`.
+- 2026-10-21: The site is live at https://usethermite.com, built by Cloudflare Pages from `main` at `79a0096`.
+  - `www` and plain `http` redirect to it.
+  - The headers above are served, with `noindex` on the `pages.dev` address only.
+  - `llms.txt`, `llms-full.txt`, the sitemap and the Markdown copies load, and a missing page gives 404.
+  - In headless Chrome on the live site, diagrams, code copy and search work, and Fathom records a page view for each page.
+  - Cloudflare's own analytics script, injected by default, is refused by the policy; Fathom is the site's analytics.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/060-docs-site.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

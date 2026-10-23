@@ -29,7 +29,7 @@ import { BUILD_HEADERS } from "../core/version.ts";
 
 /**
  * The rig's end of the tunnel, for a rig in pull mode: one control connects to, through a public
- * proxy (a RunPod pod: docs/plan/goals/019-rig-only-entry.goal). The rig never connects to
+ * proxy (a RunPod pod: docs/plan/goals/_completed/019-rig-only-entry.goal). The rig never connects to
  * control. Instead:
  *
  * - The supervisor makes its usual calls to control at a local address (127.0.0.1) that takes

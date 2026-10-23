@@ -19,7 +19,7 @@ A plan only; nothing of it is built.
 A new run on one rig can start from a run's champion on another rig, with the same inputs, through control alone:
 
 - **The champion.** **Start a run** (and `start_run`, REST and the command line) takes a run to start from, on any rig. Control gets that run's champion as a Git bundle: from the project's results repository when it has one, else from the source rig's supervisor, which bundles the champion's ref. The new rig's supervisor imports it as it imports a seed today, and checks that the commit is the one asked for.
-- **The inputs.** The new run's imports repeat the source run's: each model by its address and hash ([024](024-runpod-models-and-results.goal)), and each repository by its commit. An input that the source rig got with no address (put in its inbox by hand) is named, and the run does not start until the owner gives an address for it or chooses to go on without it.
+- **The inputs.** The new run's imports repeat the source run's: each model by its address and hash ([024](_completed/024-runpod-models-and-results.goal)), and each repository by its commit. An input that the source rig got with no address (put in its inbox by hand) is named, and the run does not start until the owner gives an address for it or chooses to go on without it.
 - **What the owner sees.** The new run says where it started from: the rig, the run and the champion's number. The source run is not changed. The owner pauses or closes it, as now.
 
 ## Why
@@ -42,7 +42,7 @@ None yet.
 ## Progress
 
 - 2026-10-22: Goal written as a plan, from the campaign moved by hand that day.
-- 2026-10-22: One input already moves through control: a kit repository written elsewhere, given to control as a git bundle, which rigs fetch from control by commit ([096](096-kits-from-elsewhere.goal)). The champion and the models are still this goal's.
+- 2026-10-22: One input already moves through control: a kit repository written elsewhere, given to control as a git bundle, which rigs fetch from control by commit ([096](_completed/096-kits-from-elsewhere.goal)). The champion and the models are still this goal's.
 
 ---
 

@@ -14,7 +14,7 @@ updated: 2026-10-19
 
 ## What
 
-`thermite init`, `up`, `down`, `status` and `demo` start and run Thermite from the published images. The docs site's settings reference is generated from the code. The docs site itself is goal [060](060-docs-site.goal).
+`thermite init`, `up`, `down`, `status` and `demo` start and run Thermite from the published images. The docs site's settings reference is generated from the code. The docs site itself is goal [060](_completed/060-docs-site.goal).
 
 ## Why
 
@@ -36,7 +36,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
-- 2026-10-19: The docs site moved to goal [060](060-docs-site.goal) in v0.1.0. This goal keeps the two-command start and the generated settings reference.
+- 2026-10-19: The docs site moved to goal [060](_completed/060-docs-site.goal) in v0.1.0. This goal keeps the two-command start and the generated settings reference.
 
 ---
 

@@ -1,0 +1,66 @@
+---
+id: "009"
+title: "Real subscription sign-in tests"
+status: VERIFIED
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-21
+---
+
+# 009 · Real subscription sign-in tests
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+Run a real Sign in with ChatGPT and a real Claude Code token once each, with the owner, on a local control: sign in, give a rig the model, run a trial, and wait at a usage limit.
+
+## Why
+
+Subscriptions are built, but they are tested only against stand-ins.
+
+## Done when
+
+- [x] Both sign-ins work from start to end once, and the results are in Progress. (The wait at a usage limit is left out for v0.1.0: see Decisions, 2026-10-22.)
+- [x] Any fix they need is committed.
+
+## Decisions
+
+- 2026-10-18, owner: Subscriptions come before the first release.
+- 2026-10-18, owner: A subscription serves only its owner's own Thermite. A Thermite that several people use takes API keys.
+- 2026-10-21, the lead session, from the build's evidence (see Progress): Claude Code's own sandbox stays off in a rig, and the rig's isolation holds its commands, as for OpenCode and Codex. The sandbox cannot start inside a rig, and its scrub refuses a headless agent's edits and commands. The token reaches Claude Code on a file descriptor, never in an environment or a file. Advisors keep the scrub until the open question below is decided. Shown to the owner with the build.
+- 2026-10-20, owner: The tests run before the tag, as recommended.
+- 2026-10-21, owner: Advisors also run Claude Code without the scrub, now, for v0.1.0. `bubblewrap` leaves the images.
+- 2026-10-22, owner: the wait at a usage limit is left out of this test for v0.1.0: "we don't need to fix every hole before release... leave that test out." A full usage window is handled as a rate limit by the harness (goal 079) and is tested against stand-ins only.
+
+## Open questions
+
+- Answered 2026-10-21 (see Decisions): advisors run Claude Code without the scrub, and `bubblewrap` leaves the images.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: The owner signed in on the maintainers' control: a Claude subscription and Sign in with ChatGPT. Both list their models in Providers.
+  - **ChatGPT:** a rig given `gpt-5.6-luna` under Pi passed the model check, with a correct tool call in 2.9 s.
+  - **Claude:** the model check failed only because that rig's harness image has no Claude Code (it is built without the option). The shell's note (`claude: No such file or directory`) now reads as the reason and the fix (`claudeExitWords`). Left: the Claude check on an image built with Claude Code, a trial on each, and a usage limit.
+- 2026-10-21: On a rig with an image built with Claude Code 2.1.305, Claude Code signed in and answered, but every Bash command failed: "Failed to create bridge sockets after 5 attempts". Reproduced with the real Claude Code 2.1.305 in the harness image, run as a rig runs it, against a stand-in for Anthropic's API, with no subscription and no network.
+  - **Cause.** `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` makes Claude Code's own sandbox mandatory. The sandbox puts its network bridge's socket in `TMPDIR` (`claude-http-` and 16 hex digits, `.sock`), and a socket's path holds at most 108 bytes: a `TMPDIR` of 74 bytes works, one of 75 fails. The model check's and the planner's `TMPDIR` has 75 bytes, a trial's 78 or 79, so `socat` could not listen and the sandbox never started. `CLAUDE_CODE_TMPDIR` does not move the socket.
+  - **Behind it.** With a short `TMPDIR` the sandbox still cannot start in a rig. The GPU fence (Landlock) refuses bubblewrap's mounts (`bwrap: Failed to make / slave: Operation not permitted`), and so do a container's own confinement (SELinux, in the local test) and its masked `/proc`; with the scrub, Claude Code refuses its weaker nested mode. The scrub also forces Claude Code's default permission mode: a headless run is refused file edits, reads outside its folder and most commands. Claude Code brings its own ripgrep, so no ripgrep goes in the images.
+  - **Fix.** The harness runs Claude Code without the scrub. Its own sandbox stays off, and the rig's isolation (the role's user, the GPU fence, the limits) holds its commands, as for OpenCode and Codex. The token reaches Claude Code on file descriptor 3 (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`), so it is in no environment and no file, and the agent's commands still get no credentials. An advisor's call gets its own folder as `TMPDIR`: in the one-container rig image `/tmp` is closed to the supervisor's user, and Claude Code stopped with `EACCES: permission denied, mkdir '/tmp/claude-10001'`. `socat` leaves the images; `bubblewrap` stays for the advisors.
+  - **Test.** `scripts/claude-real-acceptance.mjs`, about 3 minutes with the image's layers cached: the model check, a planner call, a trial and an advisor's call with the real Claude Code, under the broker and the GPU fence. It passes with the fix and fails 7 of its checks on an image without it. Unit tests check the shell that gives Claude Code the token on descriptor 3 and the advisor's folder; the stand-in compose test (`scripts/claude-acceptance.mjs`) checks the descriptor too.
+  - Left: the steps that need a real subscription (both boxes).
+- 2026-10-21: Advisors run Claude Code without the scrub, as the owner decided.
+  - **Advisors.** The supervisor gives the token on file descriptor 3 (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`, from the same shared settings as the harness), on a pipe of its own, and keeps stdin for the prompt: an audit's package can be larger than one command-line argument may be. The rest of the advisor's environment is as before, its folder as `TMPDIR` included, and so are its limits: none of Claude Code's own tools, no settings, only its MCP tools.
+  - **Images.** `bubblewrap` left the harness image (CPU and CUDA), the supervisor image and so the rig image. Nothing else used it.
+  - **Tests.** A unit test checks the advisor's token on descriptor 3, in no environment, with no scrub, and a 200,000-character package on stdin. The real-binary acceptance now reads the advisor's processes in `/proc` (no token and no scrub in any environment, the descriptor named) and checks that the image has no bubblewrap; its scrub note is gone. The stand-in acceptance checks the auditor's token on descriptor 3 and no scrub.
+  - Next: the compose acceptances for this change (Claude Code, real Claude Code, the rig image and steering), then the steps that need a real subscription.
+- 2026-10-21: A real Claude Code trial run on the owner's Claude subscription (Claude Code 2.1.305, model sonnet-5.5, on a lab rig with the sample in `examples/matmul-cpu`, one agent). The planner's first answer was valid; three trials each submitted a change (4 to 7 turns, 75,000 to 117,000 tokens in each); the judge confirmed each as a win (+68%, +82% and +78% flops/s against the starting code, n=5). The run was then paused to keep the subscription's quota. Found and fixed on the way: control compared the model a rig reports (Claude Code's name, `claude-sonnet-5-5`) with the subscription's id (`sonnet-5.5`), so it never saw the rig take the model and refused to start runs there (`sameModel`, `src/control/providers.ts`). Left: the wait at a usage limit, and the same trial with Sign in with ChatGPT.
+- 2026-10-21: The same trial with Sign in with ChatGPT: the sample on a lab CPU rig with the owner's ChatGPT subscription (GPT-6.1 Sol) in the Codex CLI. The planner's first answer was valid; the first trial's change was judged a confirmed win, +60.6% flops/s against the starting code (95% interval 34.1% to 92.2%, n=5). The run was then paused. Both subscriptions have now signed in, given a rig the model and run judged trials. Left for the first box: a wait at a usage limit, seen on a real plan.
+
+- 2026-10-22: Both sign-ins have worked from start to end once (see 2026-10-21): each signed in, gave a rig the model, passed the model check and ran a trial whose change the judge confirmed as a win. The owner left the usage-limit wait out of v0.1.0. `VERIFIED`.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/009-subscription-sign-in-tests.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

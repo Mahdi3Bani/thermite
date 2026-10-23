@@ -60,7 +60,8 @@ The full list, with dates, is in [docs/plan/decisions.md](docs/plan/decisions.md
 - Record as you go, as [How Thermite is planned](docs/plan/README.md) says:
   - a decision goes in the goal it affects, and in [decisions.md](docs/plan/decisions.md) if it shapes the whole product;
   - a new idea becomes a new goal, slotted into the roadmap by priority;
-  - progress goes in the goal.
+  - progress goes in the goal;
+  - a goal that is verified moves to `docs/plan/goals/_completed/` in the same commit, with every link to it fixed.
 
   Work logs, evidence and reviews that name a particular deployment stay out of tracked files: keep them in `.internal/`, which Git ignores.
 - **Thermite runs itself.** Operate campaigns only through Thermite's control (dashboard, REST, MCP or CLI): assigning, pausing and resuming runs, messaging agents, decisions, kits and rig checks. Where Thermite has no way to do something, that is a gap to fix in Thermite, not one to work around. Machines, clusters, image rolls, network policy, secrets and the model endpoint belong to whoever runs the infrastructure.

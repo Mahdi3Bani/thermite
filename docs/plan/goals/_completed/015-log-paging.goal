@@ -1,0 +1,44 @@
+---
+id: "015"
+title: "Log paging"
+status: VERIFIED
+version: "0.1.0"
+part: "Install from images"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-20
+---
+
+# 015 · Log paging
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Install from images
+
+## What
+
+The log page and the `control_log` MCP tool page through every entry with a cursor, not only the newest 300.
+
+## Why
+
+A log you cannot page through hides the failure you are looking for.
+
+## Done when
+
+- [x] Paging works in the dashboard and over MCP, with tests.
+
+## Decisions
+
+- 2026-10-19, owner: The audit log needs paging.
+- 2026-10-20, the v0.1.0 build brief: plain Older and Newer links on the log page, in the existing style, are approved as a small change. REST pages the same way, as the log has a route.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built. Each audit entry's id is the cursor. The **Audit log** page shows 300 entries a page, newest first, with **Older** and **Newer** links. `control_log` takes `before` or `after` and returns `{entries, older, newer}`. `GET /v1/audit` takes the same and adds `older` and `newer` to its answer; it refuses a cursor that is not a whole number. Tests: `src/control/audit-paging.test.ts` (the store, REST and the page) and `src/control/mcp.test.ts` (MCP). The reference pages for MCP, REST and limits, and Troubleshoot, describe it.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/015-log-paging.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

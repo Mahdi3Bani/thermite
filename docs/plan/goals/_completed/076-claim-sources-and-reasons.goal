@@ -1,0 +1,64 @@
+---
+id: "076"
+title: "A claim's source by its address, and a draft's reasons for the owner"
+status: VERIFIED
+version: "0.1.0"
+depends_on: ["062", "065"]
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 076 · A claim's source by its address, and a draft's reasons for the owner
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Research mode · **Depends on:** [062](062-research-folder.goal), [065](065-journals-and-corpus.goal)
+
+## What
+
+- A claim's quote names its source by the id `fetch` returned (`s-…`). A quote that names it by the address the page was archived from, or by its file name in the research folder (`sources/s-….txt`), is taken as that source's id when it names exactly one archived source. The claim records what was cited (`resolved_from`). When it names none or several, the problem says what the source could be.
+- The tools say so: `add_claim`'s `source` is described as the id that `fetch` returned, with the address taken when the page was archived.
+- A number that comes from a heading or a label of the claim's text ("Question 0:", "# Claim c-…") is refused as before, and its problem says to give a question's number in `question`, not in the text.
+- The `claim_added` event carries a draft's problems and the quotes' source ids, and the run's **History** shows each claim, with a draft's reasons in words.
+
+The verification itself stays as strict: a quote counts only when it is word for word in the archived text of the source it names. Agents never judge.
+
+## Why
+
+Two 8-hour research runs had the same topic and the same web tools, on two local models. One verified 155 claims. The other verified 0, with 82 drafts. A read-only look at the code found that it verified correctly. The weaker model's claims stayed drafts because:
+
+- 39 drafts: the quote was word for word in an archived source, but the claim named the source by its address (such as an `https://arxiv.org/abs/…` page) or by its `s-….txt` file name, not by its `s-…` id. The claim's file in the research folder showed "no such source", although that address was archived.
+- 36 drafts: the claim's text carried headings such as "Question 0:" or "# Claim c-verify-005", which added numbers that the quotes did not have.
+- 7 drafts: quotes from pages never archived, or paraphrases. These are right as drafts.
+
+The agent got each draft's reasons back from `add_claim`, but the `claim_added` event had neither the reasons nor the quotes' sources, so the owner could not see why.
+
+## Done when
+
+- [x] A quote's address (as fetched, as its redirects ended, or after the archive's own normalization) or file name (`s-….txt`, `s-….md`, alone or at the end of a path) that names exactly one archived source is checked against that source, word for word, and the claim records `resolved_from`. An address of none or of several sources, an archived address written another way, and the file name of no source are drafts whose problems say what the source could be.
+- [x] `add_claim`'s parameters (Pi) and usage text (`thermite-trial research`) describe `source` as the id `fetch` returned, with the address taken when the page was archived.
+- [x] A number from a heading or a label is still refused; its problem says where it comes from and to give a question's number in `question`.
+- [x] `claim_added` carries `sources` and `problems` (`[]` when verified), and History shows each claim, with a draft's reasons.
+- [x] Tests: address and file-name resolution, an ambiguous and an unknown address, the event's new fields, and the unchanged refusal of a quote that is not in its source.
+- [x] The pages that describe claims, `add_claim`, drafts and History match the code.
+
+## Decisions
+
+- 2026-10-21, lead, in the build brief: resolve a quote's address or file name to its source's id only when it names exactly one archived source; keep the check word for word; describe `source` in the tools; keep the number check as it is and say where a heading's number comes from; put the reasons and the sources in `claim_added`, and show them in History.
+- 2026-10-21, builder, within the brief:
+  - **Which addresses name a source.** A source's address as it was fetched and the address its redirects ended at, both as the archive keeps them: parsed as a URL, without the `#` part. An address that both a source's fetch and another source's redirect give is ambiguous, and names both.
+  - **An address written another way** (`http` for `https`, without its scheme or `www.`, with a `/` at the end, in other letter case) is named in the problem as what the source could be, never taken: only the archive's own form resolves.
+  - **The answer** has `resolved`, `[{cited, source}]`, when an address or file name was taken, so the worker learns the id. A claim recorded before with the same text and the same resolved quotes is answered again, as before.
+  - **The event's problems** are at most 20, each cut to 300 characters, and `more_problems` counts the rest; the claim's record keeps them all. `sources` gives what was cited when it names no archived source.
+  - **History** has a line for every claim, verified or a draft, as a run's other records do; a draft's line shows its first three problems, and says how many more. A draft from before this change shows no reasons. It is a new line in an existing tab, not a new screen, so no mockup.
+  - **A heading** is a Markdown heading line, or a label at a line's start that numbers a question or a claim ("Question 0:", "Claim c-005:"). A label such as "Q4:" is not one, since it may be a fact (a quarter).
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-21: Built and verified. `Research.addClaim` resolves a quote's source (`src/harness/research/research.ts`); the claim's file shows `cited as` (`src/harness/research/folder.ts`); Pi's parameters and the command's usage describe `source` (`src/harness/agents/research-agent-tools.ts`, `src/harness/agents/research-tools.ts`); History says each claim (`src/control/ui/words.ts`). Tests: `src/harness/research/research.test.ts` (the address as fetched and as its redirect ended, file names in a path and alone, `.txt` and `.md`, an unknown, an ambiguous and a near address, an id that is not one, a quote not in the source it names, the heading's number, the event's fields and its 20 problems), `src/harness/research/folder.test.ts` (`cited as`), `src/control/ui/campaigns.test.ts` (History). Pages: Campaign modes, the command line, Verdicts and states, the glossary; the changelog. The agents and steering acceptances run at roll time.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/076-claim-sources-and-reasons.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

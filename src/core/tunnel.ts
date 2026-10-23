@@ -18,7 +18,7 @@ import { signJson, verifyJson } from "./commands.ts";
 
 /**
  * The tunnel between control and a rig in pull mode: a rig control connects to, through a public
- * proxy (a RunPod pod: docs/plan/goals/019-rig-only-entry.goal). The proxy ends TLS, so it could
+ * proxy (a RunPod pod: docs/plan/goals/_completed/019-rig-only-entry.goal). The proxy ends TLS, so it could
  * read, change or replay what passes; these keep it to moving bytes.
  *
  * - Control signs every request with its command-signing key, in the format of signed commands
