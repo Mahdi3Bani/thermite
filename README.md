@@ -1,9 +1,8 @@
 # Thermite
 
-> [!WARNING]
-> **Thermite is under heavy development.** It changes every day, and some parts will break. If you don't want to take every update as it comes, pin a release: install from a tagged release's bundle, whose compose file pins every image by digest, and update when you choose. Most of Thermite can be driven from the dashboard, and its REST API and MCP server work well with coding agents, which can help you set it up, test it and run it.
+**Put AI agents to work on your code. Keep only what's proven.**
 
-**Autoresearch that burns through everything.** Agents propose changes; code they cannot touch measures them, judges them and keeps the best. Run many research campaigns across your machines, and steer them all from one dashboard.
+Thermite is open-source **autoresearch**: AI agents that run experiments in a loop, for hours or days, on your own machines. You set the goal: a faster program, a list of checks to pass, or a question to answer. A judge that the agents can't see or change measures every attempt, and keeps only what it confirms. One dashboard, with a REST API and MCP, shows and steers every campaign on every machine.
 
 [![ci](https://github.com/iammrduncan/thermite/actions/workflows/ci.yml/badge.svg)](https://github.com/iammrduncan/thermite/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -12,34 +11,62 @@
 
 [Quick start](docs/_site/src/content/docs/tutorials/first-run.md) · [Documentation](https://usethermite.com) · [Architecture](docs/_site/src/content/docs/explanation/how-it-fits-together.md) · [Roadmap](docs/plan/roadmap.md) · [Changelog](CHANGELOG.md) · [Discord](https://discord.gg/3Qs2uejUf9)
 
-Point Thermite at a project and a goal: make a kernel faster without breaking its tests, reach a list of goals, or research a topic for eight hours. It runs many agents in parallel, each trying one change at a time. A judge that the agents can't read or modify builds every change, times it, checks it and decides what counts. Wins are kept and built on. Losses are kept too, with the reason they lost. One dashboard, with a REST API and MCP, shows and steers every campaign on every machine.
+> [!WARNING]
+> **Thermite is under heavy development.** It changes every day, and some parts will break. If you don't want to take every update as it comes, pin a release: install from a tagged release's bundle, whose compose file pins every image by digest, and update when you choose. Most of Thermite can be driven from the dashboard, and its REST API and MCP server work well with coding agents, which can help you set it up, test it and run it.
 
 > **Status:** work is toward v0.1.0, the first public release. The judge, control, agents and supervision are built and pass their acceptance tests. See the [release plan](docs/plan/release-v0.1.0.md) and the [roadmap](docs/plan/roadmap.md).
 
 ![The dashboard's page for one run: a decision that waits for the owner, the champion's gains over time and what each lane works on now](docs/_site/src/assets/screenshots/run.webp)
 
-## Why Thermite
+## The idea
 
-- **Agents propose; code judges.** An agent never grades its own work. It submits a change and a claim, and a judge it cannot modify measures the change. "The agent says it's faster" and "it is faster" stay separate.
-- **It runs until the job is done.** There are no default caps on turns, submissions, failures or wall time. A campaign runs until its goals are met, its time box ends or you stop it; only the limits you configure apply.
-- **No state lives in an agent.** Every agent call starts fresh, with context the harness builds from its record of what has been tried, measured and decided. A crashed or confused session loses nothing.
-- **Wide search, not early convergence.** Workers run in parallel without seeing each other's work. A stateless planner gives each one a different direction.
-- **Nothing useful is thrown away.** Each campaign builds on its best confirmed result, and keeps every losing attempt with its code and its verdict.
-- **People stay in charge.** Surprisingly large gains wait for an audit, and the largest also for your approval. You can pause, redirect, reset and reassign any run from the dashboard, the API or an MCP client.
+A lot of engineering is a loop. Change something, measure it, keep it if it is better, undo it if it isn't, and try the next idea. **Autoresearch** hands that loop to AI agents, so it runs through the night, on many ideas at once, without you.
+
+The hard part is trusting the results. An agent asked to make a number go up will sometimes make it only look higher: it skips the slow case, moves the timer, or just reports a win. So in Thermite, agents only propose. A separate program, the **judge**, builds each change, runs it against the best version so far on the same hardware, checks that its output is still right, and decides. The agents can neither read the judge nor change it.
+
+## What you can point it at
+
+Each campaign is one of three kinds, called **modes**:
+
+| Mode | Use it to | It runs until | For example |
+| --- | --- | --- | --- |
+| **Hill climb** | Push one number, such as speed, size or accuracy, as far as it goes, with guards so that nothing else gets worse | You stop it | Make a matmul kernel faster without breaking its tests |
+| **Goal** | Meet a list of checks: it builds, it loads the model, its answers match | Every required goal is met, or the evidence shows that they cannot be | Port a library to a new platform: it builds, matches its goldens and meets a speed target |
+| **Research** | Answer a question from sources. Code checks every quote, word for word, against the page it came from | Its longest time is up, or you close it | How do modern memory allocators keep tail latency low? |
+
+The modes combine: a hill climb or a goal campaign can read what a research campaign found. [Choose a campaign mode](docs/_site/src/content/docs/how-to/campaigns/choose-a-mode.md) helps you pick, [campaign modes](docs/_site/src/content/docs/explanation/campaign-modes.md) explains each, and the [contract reference](docs/_site/src/content/docs/reference/contract.md) has every field.
 
 ## How a campaign runs
 
+1. **You set the goal.** On the dashboard, or from a script or your own AI assistant, say what to improve and how to measure it: where the project is, which files the agents may change, and a **kit** that builds, runs and checks it. The **New campaign** page can write a simple kit from your answers.
+2. **Agents try ideas side by side.** Each agent works in its own **lane**, on its own copy of the code. A stateless planner gives each lane a different experiment from one shared queue, so the search stays wide. Every agent session starts fresh from the run's records, so a crash loses nothing.
+3. **The judge decides.** It builds each change and measures it against the best version so far, on the same device. A change that looks better must hold up again before it counts: on fresh runs, and on test cases the agents never saw when the campaign has them.
+4. **Wins become the new starting point.** The best confirmed version is the **champion**, and the next ideas build on it. A change that loses is kept too, with its code and the judge's reasons.
+5. **You watch, steer and take the result.** Follow each agent live, add ideas, send the agents a message or pause the run. When you are happy, download the champion as a patch for your project.
+
 ```mermaid
 flowchart LR
-  Planner["Planner<br/>(stateless)"] -- a direction per lane --> Workers["Workers<br/>(one fresh agent per trial)"]
-  Workers -- a change and a claim --> Judge["Judge<br/>(code the agents cannot write)"]
+  Planner["Planner<br/>(gives each lane an experiment)"] --> Workers["Workers<br/>(a fresh agent for each trial)"]
+  Workers -- a change and a claim --> Judge["Judge<br/>(code the agents cannot change)"]
   Judge -- confirmed win --> Champion[(Champion)]
-  Judge -- loss, with its reason --> Ledger[(Ledger)]
+  Judge -- every result, with its reasons --> Ledger[(Ledger)]
   Champion --> Planner
   Ledger --> Planner
 ```
 
-Each project comes with a **kit**: the judge's half of the project, which says how candidates are built, run, timed and checked. Agents never see it. The CPU smoke kit ships 12 known candidates, among them a real speed-up, a no-op, a timer edit, a reference fallback, NaN output, memory and disk exhaustion and an attempt to overwrite the champion; the judge acceptance test requires each one to get its expected verdict. [Kits](docs/_site/src/content/docs/explanation/kits.md) and [judging](docs/_site/src/content/docs/explanation/why-agents-never-judge.md) explain the mechanism.
+## Why you can trust the results
+
+- **Agents never grade their own work.** They submit a change and what they expect it to do. "The agent says it's faster" and "it is faster" stay separate: only the judge's measurement counts.
+- **The judge holds the clock.** It times each change and the champion in alternating blocks on the same device, decides with statistics, and times the champion against itself once a day to learn how noisy the machine is.
+- **A surprising win gets a second look.** On a rig with an auditor, an unusually large gain is audited before it is kept. You can also ask to approve every new champion yourself.
+- **You can watch it catch cheats.** Each project comes with a **kit**, the judge's half of the project: how a change is built, run, timed and checked. Agents never see it. Thermite's CPU smoke kit ships 12 changes whose right verdicts are known: a real speed-up, a no-op, a timer edit, a fallback to the reference code, NaN output, memory and disk exhaustion, and an attempt to overwrite the champion. The judge acceptance test requires each one to get its expected verdict, and the [quick start](docs/_site/src/content/docs/tutorials/first-run.md) shows it on your computer. [Kits](docs/_site/src/content/docs/explanation/kits.md) and [judging](docs/_site/src/content/docs/explanation/why-agents-never-judge.md) explain the mechanism.
+
+## What you get
+
+- **It keeps going.** There are no default caps on turns, submissions, failures or wall time. A campaign runs until its goals are met, its time is up or you stop it; only the limits you configure apply.
+- **Your machines, your models.** Run it on your own computer, on machines with GPUs over SSH, on a Kubernetes cluster, or on a RunPod GPU by the hour. The agents use a free model, a model server of your own, an API key, or a Claude or ChatGPT subscription.
+- **Nothing useful is thrown away.** Every losing attempt is kept with its code and its verdict. Agents keep field notes as they work, and each campaign's records go into a knowledge base that later runs read.
+- **People stay in charge.** One dashboard shows every campaign on every machine, live. You can pause, redirect, message, reset and reassign any run from the dashboard, the REST API or an MCP client, and decide which wins wait for your approval.
 
 ## Quick start
 
@@ -63,16 +90,6 @@ With Podman, write `podman compose` in place of `docker compose`. The first star
 The [quick start](docs/_site/src/content/docs/tutorials/first-run.md) walks through every step, including taking the winning patch back to your project. To build Thermite from its source code instead, see the [contributor guide](docs/local-development.md).
 
 **Just want to look around?** `npm ci && node --experimental-strip-types scripts/dashboard-demo.ts` serves the dashboard with synthetic campaigns and rigs at <http://127.0.0.1:8810/ui>, with no containers. It prints the token to sign in with.
-
-## Campaign modes
-
-| Mode | It runs until | Example |
-| --- | --- | --- |
-| **Hill climb** | You stop it. It improves a metric under guard rails. | Make a matmul kernel faster without breaking its tests. |
-| **Goal** | Every goal is met, or a goal is shown to be impossible. | Port a library to a new platform: it builds, matches its goldens and meets a speed target. |
-| **Research** | The time box ends. It builds a sourced corpus on a topic. | How do modern memory allocators keep tail latency low? |
-
-Details are in [campaign modes](docs/_site/src/content/docs/explanation/campaign-modes.md) and the [contract reference](docs/_site/src/content/docs/reference/contract.md).
 
 ## Architecture
 

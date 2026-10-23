@@ -58,8 +58,11 @@ function frontMatter(text) {
     if (line.startsWith("'")) return line.slice(1, -1).replaceAll("''", "'");
     return line;
   };
+  // A splash page's hero title (an indented `title:` under `hero:`) is its heading in llms-full.txt.
+  const hero = /^hero:\n(?:[ \t]+.*\n)*?[ \t]+title:[ \t]*(.*)$/m.exec(block[1])?.[1]?.trim();
   return {
     title: field("title"),
+    heroTitle: hero?.startsWith('"') ? JSON.parse(hero) : hero,
     description: field("description"),
     type: field("type"),
     body: text.slice(block[0].length),
@@ -426,8 +429,9 @@ if (checkBuild) {
         problems.push(`.dev/site/${page.slug}.md: no Markdown copy`);
       if (!llms.includes(`/${page.slug}.md)`))
         problems.push(`.dev/site/llms.txt: does not list ${page.slug}`);
-      if (page.title && !full.includes(`# ${page.title}\n`))
-        problems.push(`.dev/site/llms-full.txt: does not hold "${page.title}"`);
+      const heading = page.heroTitle ?? page.title;
+      if (heading && !full.includes(`# ${heading}\n`))
+        problems.push(`.dev/site/llms-full.txt: does not hold "${heading}"`);
     }
   }
 }

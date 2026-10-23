@@ -1,66 +1,121 @@
 ---
 title: Thermite
-description: "Thermite runs research campaigns with AI agents. Agents propose changes; code they cannot touch measures them, judges them and keeps the best."
+description: "Thermite is open-source autoresearch: AI agents run experiments on your code for hours or days, and a judge they cannot touch keeps only what is proven better."
 type: hub
 template: splash
 sidebar:
   order: 0
 hero:
-  tagline: AI agents propose changes to your project. A judge they cannot touch measures every change and keeps only what is really better. Run many campaigns at once, and watch and steer them all from one dashboard.
+  title: "Put AI agents to work on your code. Keep only what's proven."
+  tagline: "Thermite is open-source autoresearch: AI agents that run experiments in a loop, for hours or days, on your own machines. You set the goal: a faster program, a list of checks to pass, or a question to answer. A judge the agents can't see or change measures every attempt, and keeps only what it confirms."
   image:
     file: ../../assets/hero.svg
   actions:
     - text: Start here
       link: start-here/
       icon: right-arrow
-    - text: Your first run
-      link: tutorials/first-run/
+    - text: How it works
+      link: "#how-a-campaign-runs"
       variant: minimal
-    - text: How judging works
-      link: explanation/why-agents-never-judge/
+    - text: GitHub
+      link: https://github.com/iammrduncan/thermite
+      icon: github
       variant: minimal
 ---
 
-import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import { Card, CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
 import HowItWorks from "../../components/HowItWorks.astro";
 
 <div class="home-shot">
 
 ![The dashboard's page for one run: its model use, cost and tokens at the top, the champion's gains over time, what each lane works on now, and the run's champion and promotion rule](../../assets/screenshots/run.webp)
 
+<p class="home-cap">One run on the dashboard: what it has cost, how far the best version has come, and what each agent works on now.</p>
+
 </div>
 
-New to Thermite? [Start here](start-here.md). It says what you need, which pages to read first, and what words such as rig, lane and champion mean.
+## The idea
 
-## What Thermite does
+A lot of engineering is a loop. Change something, measure it, keep it if it is better, undo it if it isn't, and try the next idea. **Autoresearch** hands that loop to AI agents, so it runs through the night, on many ideas at once, without you.
 
-You give Thermite a project and a way to measure it: make this program faster, make these tests pass, or find out what is known about a question. AI agents then work on it for as long as it takes. Each agent proposes a change. Thermite's judge, which the agents can neither see nor edit, builds the change, measures it and decides whether it counts.
+The hard part is trusting the results. An agent asked to make a number go up will sometimes make it only look higher: it skips the slow case, moves the timer, or just reports a win. So in Thermite, agents only propose. A separate program, the **judge**, builds each change, runs it against the best version so far on the same hardware, checks that its output is still right, and decides. The agents can neither read the judge nor change it.
+
+## What you can point it at
+
+Each campaign is one of three kinds, called **modes**:
 
 <CardGrid>
-  <Card title="Agents propose, code judges" icon="approve-check">
-    An agent never grades its own work. The judge measures every change on the same machine,
-    against the same reference, and keeps a record of why each one won or lost.
+  <Card title="Make it faster: a hill climb" icon="rocket">
+    Push one number, such as speed, size or accuracy, as far as it will go, with guards so that
+    nothing else gets worse. *For example: a faster matrix multiply on your GPU.* It runs until you
+    stop it. [Try one](tutorials/agents-with-a-free-model.md).
   </Card>
-  <Card title="It keeps going" icon="rocket">
-    Nothing stops a campaign by default: no limit on turns, attempts, failures or time. A goal
-    campaign ends when its goals are met. A hill climb runs until you pause it, or until a
-    [budget or stop time](how-to/campaigns/budget-and-stop-time.md) that you set.
+  <Card title="Make it work: a goal campaign" icon="approve-check">
+    List what the result must do, as checks: it builds, it loads the model, its answers match.
+    Agents work until every check passes. *For example: support a new quantized format.*
+    [Try one](tutorials/first-goal-campaign.md).
   </Card>
-  <Card title="Three campaign modes" icon="puzzle">
-    A **hill climb** pushes a number up without breaking anything else. A **goal** campaign works
-    until a list of goals is met. A **research** campaign studies a question for a set time and
-    writes a sourced report. [Campaign modes](explanation/campaign-modes.md) compares them. In every
-    mode, agents keep field notes as they work, and each campaign's research goes into a
-    [knowledge base](explanation/journals-and-knowledge.md) that later runs can read.
+  <Card title="Find out: a research campaign" icon="magnifier">
+    Ask a question. Agents read the web and record claims with quotes, and code checks every quote,
+    word for word, against the page it came from. You get a report built on checked sources.
+    *For example: which papers improve 2-bit decoding?*
   </Card>
-  <Card title="One place to watch and steer" icon="laptop">
-    A dashboard, a REST API and MCP show every campaign on every rig. People and their agents can
-    pause, redirect and message the work, and choose what the agents try next. Only you approve
-    what matters.
+  <Card title="Or combine them" icon="puzzle">
+    Research first, then change the code: a hill climb or a goal campaign can read what a research
+    campaign found. [Choose a campaign mode](how-to/campaigns/choose-a-mode.md) helps you pick.
   </Card>
 </CardGrid>
 
-## How it works
+## How a campaign runs
+
+<Steps>
+
+1. **You set the goal.** On the dashboard, or from a script or your own AI assistant, say what to improve and how to measure it: where the project is, which files the agents may change, and a **kit** that builds, runs and checks it. The **New campaign** page can write a simple kit from your answers.
+
+2. **Agents try ideas side by side.** Each agent works in its own **lane**, on its own copy of the code. A planner gives each lane a different experiment from one shared queue, so the search stays wide. Every agent session starts fresh from the run's records, so a crash loses nothing.
+
+3. **The judge decides.** It builds each change and measures it against the best version so far, on the same device. A change that looks better must hold up again before it counts: on fresh runs, and on test cases the agents never saw when the campaign has them.
+
+4. **Wins become the new starting point.** The best confirmed version is the **champion**, and the next ideas build on it. A change that loses is kept too, with the judge's reasons.
+
+5. **You watch, steer and take the result.** Follow each agent live, add ideas, send the agents a message or pause the run. When you are happy, download the champion as a patch for your project.
+
+</Steps>
+
+## Why you can trust the results
+
+- **Agents never grade their own work.** They submit a change and what they expect it to do. Only the judge's measurement counts.
+- **The judge holds the clock.** It times each change and the champion in alternating blocks on the same device, decides with statistics, and times the champion against itself once a day to learn how noisy the machine is.
+- **A surprising win gets a second look.** On a rig with an auditor, an unusually large gain is audited before it is kept. You can also ask to approve every new champion yourself.
+- **You can watch it catch cheats.** Thermite's own smoke check submits a dozen changes whose right verdicts are known: a real speed-up, a no-op, a timer edit, a fallback to the reference code, NaN output, memory and disk exhaustion, and an attempt to overwrite the champion. Each must get its expected verdict. [Your first run](tutorials/first-run.md) shows it on your computer.
+
+[Why agents never judge](explanation/why-agents-never-judge.md) follows a change through every step.
+
+## What you get
+
+<CardGrid>
+  <Card title="It keeps going" icon="clock">
+    Nothing stops a campaign by default: no limit on turns, attempts, failures or time. A goal
+    campaign ends when its goals are met. Set a
+    [budget or a stop time](how-to/campaigns/budget-and-stop-time.md) when you want one.
+  </Card>
+  <Card title="Your machines, your models" icon="laptop">
+    Run it on your own computer, on machines with GPUs, on a Kubernetes cluster, or on a RunPod GPU
+    by the hour. The agents use a free model, a model server of your own, an API key, or a Claude or
+    ChatGPT subscription.
+  </Card>
+  <Card title="One place to watch and steer" icon="analytics">
+    One dashboard shows every campaign on every machine, live. A REST API and MCP give your scripts
+    and your own AI assistant the same view and the same controls. Only you approve what matters.
+  </Card>
+  <Card title="Nothing is forgotten" icon="notes">
+    Every attempt is kept with its verdict, and the agents keep field notes as they work. Each
+    campaign's records go into a [knowledge base](explanation/journals-and-knowledge.md) that later
+    runs can read.
+  </Card>
+</CardGrid>
+
+## Under the hood
 
 Thermite has two kinds of part. **Control** is the one place you watch and steer from. **Rigs** do the research, each on its own machine, cluster node or cloud pod, and each rig is two containers: a **harness**, where the agents and the judge work, and a **supervisor**, which links the rig to control and runs its advisors.
 
@@ -81,6 +136,25 @@ Thermite has two kinds of part. **Control** is the one place you watch and steer
 The third mode, **research**, has no project to change and no kit. Its workers read sources through the rig's archiving fetcher and record claims with exact quotes. Code finds every quote, word for word, in the archived page before a claim counts, and the run ends with a report when its time is up or you close it.
 
 [How the parts fit together](explanation/how-it-fits-together.md) explains each part, [Agents, lanes and the planner](explanation/agents-lanes-planner.md) a trial, [Why agents never judge](explanation/why-agents-never-judge.md) the judge, and [Supervision](explanation/supervision.md) the advisors.
+
+## Try it
+
+You need Linux or macOS, Docker or Podman, and about twenty minutes. No GPU, no paid model and no account: the first tutorials use a free model, or none.
+
+<CardGrid>
+  <LinkCard
+    title="1. Your first run"
+    description="Start Thermite on your computer and watch its judge give a dozen known changes, cheats included, their right verdicts."
+    href="tutorials/first-run/"
+  />
+  <LinkCard
+    title="2. Hand the work to agents"
+    description="Connect a free model and watch agents make a small program faster, while the judge measures every change."
+    href="tutorials/agents-with-a-free-model/"
+  />
+</CardGrid>
+
+Thermite is young and changes every day. Its agents run the code that a model writes on your computer, so read [Known limits](reference/known-limits.md) before you give it a model.
 
 ## Find your way
 
