@@ -9,6 +9,7 @@ import { parseContract } from "../core/contract.ts";
 import { createControlApi } from "./api.ts";
 import { issueCommand } from "./issue.ts";
 import { ControlStore } from "./store.ts";
+import { STYLE } from "./ui/style.ts";
 
 /**
  * Archive a campaign, and folders for campaigns in the left navigation (goal 077): over REST, MCP
@@ -439,6 +440,15 @@ describe("The navigation and archive on the dashboard (goal 077)", () => {
     }
     // The status bar at the foot still counts them.
     assert.match(await s.page("/ui"), /2 rigs/);
+  });
+
+  test("a campaign in the navigation shows a link's pointer; the grabbing hand only while it is held or dragged", () => {
+    assert.match(STYLE, /\.side-row\[draggable="true"\] \{ cursor: pointer; \}/);
+    assert.match(
+      STYLE,
+      /\.side-row\[draggable="true"\]:active, \.side-dragging \.side-row \{ cursor: grabbing; \}/,
+    );
+    assert.doesNotMatch(STYLE, /\.side-row\[draggable="true"\] \{ cursor: grab; \}/);
   });
 
   test("folders hold their campaigns; drag and drop and Move to folder move them; a folder with campaigns is not deleted", async () => {

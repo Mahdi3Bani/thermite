@@ -98,7 +98,8 @@ details.side-folder > summary .n { margin-left: auto; font-size: 11px; color: va
 .fmenu > summary { list-style: none; }
 .fmenu > .menu-pop { top: 28px; width: 224px; }
 .fsep { height: 1px; background: var(--border); margin: 4px 0; }
-.side-row[draggable="true"] { cursor: grab; }
+.side-row[draggable="true"] { cursor: pointer; }
+.side-row[draggable="true"]:active, .side-dragging .side-row { cursor: grabbing; }
 .side-row[aria-current] { background: var(--sidebar-row-active); box-shadow: 0 0 0 1px var(--border); }
 .side-row.dragging { opacity: .4; }
 .side-drop { display: none; margin: 4px 2px 0; padding: 6px 10px; border: 1px dashed var(--input); border-radius: var(--control-radius); font-size: 12px; color: var(--muted-foreground); }
