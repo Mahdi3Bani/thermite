@@ -1,7 +1,7 @@
 ---
 id: "099"
 title: "Status words say how a run ended; a judge-only run says so"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 depends_on: ["077", "086", "087"]
 created: 2026-10-23
@@ -10,7 +10,7 @@ updated: 2026-10-23
 
 # 099 · Status words say how a run ended; a judge-only run says so
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [077](077-archive-and-folders.goal), [086](086-goal-report-values-and-confirmation-wait.goal), [087](087-close-a-run.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [077](077-archive-and-folders.goal), [086](086-goal-report-values-and-confirmation-wait.goal), [087](087-close-a-run.goal)
 
 ## What
 
@@ -34,7 +34,7 @@ The owner, 2026-10-23, of a goal run started with its agents off: "[it] seems to
 - [x] `campaignState` and the Campaigns list's `campaignKind` follow the newest-run rule: an older paused run and a newer completed run give **Completed** and finished; a running run still wins; every run paused gives **Paused**. Tests: `src/control/ui/campaigns.test.ts`, `src/control/campaign-status-ui.test.ts`.
 - [x] A judge-only run's page, its cards, its row under **Earlier runs** and its **Experiments** tab say what item 3 and item 4 say, and **Start a run** opens with the run chosen. Tests: `src/control/ui/campaigns.test.ts`, `src/control/campaign-status-ui.test.ts`, `src/control/dashboard.test.ts`.
 - [x] The pages match the code: Verdicts and states (run labels, judge-only runs, campaign states), the glossary, Why Thermite runs until the job is done, How it fits together, Choose what runs next, Start a campaign from the dashboard, Steer a run, Several rigs, Take the result home, Test a kit, the MCP tools and REST API references, Model use, Your first run and Your first goal campaign; the changelog has the change.
-- [ ] The lead verifies the change.
+- [x] The lead verifies the change.
 
 ## Decisions
 
@@ -57,6 +57,7 @@ The owner, 2026-10-23, of a goal run started with its agents off: "[it] seems to
   - Code: `src/control/views.ts` (`goals_complete`, `newestRun`, the campaigns' order), `src/control/ui/components.ts` (`runCompleted`, `runState`, `campaignState`, `judgeOnlyMark`, the judge-only words), `src/control/ui/campaigns.ts` (`campaignKind`, `runCounts`, **Earlier runs**, the chosen run in Start a run), `src/control/ui/queue.ts` (the queue's line), `src/control/ui/operator.ts` (the cards' mark), `src/control/dashboard.ts` (the run page's header, box and **Agents**, **Live**'s ended runs, Model use), `src/control/ui/style.ts`.
   - Tests: `src/control/ui/campaigns.test.ts`, `src/control/campaign-status-ui.test.ts` (new), `src/control/dashboard.test.ts`. Each new test fails without the change.
   - Checks before the commit: typecheck, Biome, the public check, every control test file, `npm run docs:build` and `npm run docs:check`. The compose acceptances were not run.
+- 2026-10-23: Checked on a deployment's control after the roll: a goal campaign whose newest run met every goal reads Completed in the navigation while two older runs of it are paused; campaigns whose newest run is paused read Paused; a judge-only run shows its box and, on Experiments, the line on carrying its queue to a run with workers. Verified.
 
 ---
 

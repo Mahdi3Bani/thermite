@@ -76,7 +76,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [087](goals/087-close-a-run.goal) The owner closes a run by hand · `VERIFIED`
 - [096](goals/096-kits-from-elsewhere.goal) Give control a kit written elsewhere, as a git bundle · `VERIFIED`
 - [098](goals/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `VERIFIED`
-- [099](goals/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `IN_PROGRESS`
+- [099](goals/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `VERIFIED`
 
 ### Research mode
 
