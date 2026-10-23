@@ -1,7 +1,7 @@
 ---
 id: "098"
 title: "A run's teachers read what the run found: its sources, claims, findings and files"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 depends_on: ["081", "065", "062"]
 created: 2026-10-22
@@ -10,7 +10,7 @@ updated: 2026-10-22
 
 # 098 · A run's teachers read what the run found: its sources, claims, findings and files
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -38,7 +38,7 @@ The owner, 2026-10-22: "advisors on research run have access to the knowledge ba
 - [x] A research run's brief carries `research` ahead of the long parts, with the counts, each question's coverage and the newest report cut to 4,000 characters. Test: `src/harness/run-research.test.ts`.
 - [x] A research run's teachers get the four tools in Pi and read through them; a hill-climb run's teachers get none while its trials recorded nothing; teachers with an open fetch get none, and Live says so once; in Claude Code, OpenCode and Codex the tools are served on localhost, read only, and allowed by name. Tests: `src/supervisor/advise-research.test.ts`.
 - [x] The pages match the code: the advisors file reference (the teachers' row, the tools, The run's own research, the Live line), Advisors, Supervision, Campaign modes, Journals and the knowledge base, the knowledge base reference and Limits and pacing; the changelog has the change.
-- [ ] The compose acceptances the change needs pass: the compose smoke (the harness's API changed) and the steering acceptance (the advisors changed).
+- [x] The compose acceptances the change needs pass: the compose smoke (the harness's API changed) and the steering acceptance (the advisors changed).
 
 ## Decisions
 
@@ -53,6 +53,7 @@ The owner, 2026-10-22: "advisors on research run have access to the knowledge ba
   - **Sizes.** Pages: 20 items by default, at most 50, and at most 60,000 characters (items past it go to the next page). A source: 8,000 characters by default, at most 20,000. A file: 400 lines by default, at most 2,000, and at most 60,000 characters; over 8 MiB not read. A search: 10 hits by default, at most 50, each with an excerpt of about 600 characters around the first word. The brief's newest report: 4,000 characters.
   - **The search** reads words as `search_past_research` does (each word of 2 or more characters, the first 8, every one in the item, within words), newest first, over sources' titles, addresses and archived text, claims and their quotes, hypotheses, findings, notes, report sections and the lanes' text files. The report itself is left out: it is made of the claims and findings.
   - **With an open fetch,** the brief keeps its `research` summary (the counts, coverage and the start of the newest report), as it keeps the field notes; the tools that read the rest are withheld. A research run no longer says it reads no code: it has none to withhold.
+- 2026-10-22, owner: in v0.1.0, asked of the lead's question whether to build it: "Yes research advisors should have all the information available to them... duh."
 
 ## Open questions
 
@@ -64,6 +65,7 @@ None.
   - Code: `src/harness/run-research.ts` (the reads and the brief's summary), `src/harness/api.ts` (the routes), `src/harness/service.ts` (the brief), `src/supervisor/research-tools.ts` (the tools), `src/supervisor/advise.ts` (the wiring, the Live line), `src/supervisor/advisors.ts` (Pi's tools, the teachers' prompt), `src/supervisor/past-mcp.ts` (the local MCP server).
   - Tests: `src/harness/run-research.test.ts` (each kind, paging and caps, a source in parts, a file by lines, refused paths, the search, the supervisor's token only, the brief's summary, a hill-climb run), `src/supervisor/advise-research.test.ts` (a research run's teachers read through the tools, the tools follow the brief in a hill-climb run, none with an open fetch, the local MCP server). Each new test fails without the change.
   - Checks before the commit: typecheck, Biome, the public check, the new test files and their neighbours, `npm run docs:build` and `npm run docs:check`. The compose acceptances were not run.
+- 2026-10-22: On the change, the full check (1269 tests), the compose smoke, the steering acceptance and the Claude Code and Codex acceptances passed. Merged into the development branch with the owner's yes. Verified.
 
 ---
 

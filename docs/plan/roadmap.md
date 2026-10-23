@@ -75,7 +75,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [086](goals/086-goal-report-values-and-confirmation-wait.goal) A goal report keeps what it measured; lanes wait while a met champion is confirmed · `VERIFIED`
 - [087](goals/087-close-a-run.goal) The owner closes a run by hand · `VERIFIED`
 - [096](goals/096-kits-from-elsewhere.goal) Give control a kit written elsewhere, as a git bundle · `VERIFIED`
-- [098](goals/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `IN_PROGRESS`
+- [098](goals/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `VERIFIED`
 
 ### Research mode
 
