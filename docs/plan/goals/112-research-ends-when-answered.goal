@@ -1,0 +1,67 @@
+---
+id: "112"
+title: "A research run ends when the review panel finds its questions answered"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: ["062", "065", "076", "079", "098"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 112 · A research run ends when the review panel finds its questions answered
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010)
+
+## What
+
+A research run's minimum duration is the time it has to collect sources and claims. After it, the run checks whether its questions and hypotheses are answered. When they are, it writes its final report, with the answers, and closes itself. When they are not, it keeps researching what is missing and checks again later. The owner does not have to stop it.
+
+Agents never judge: the workers do not decide that the research is done. Code checks the evidence first, and the supervisor's review panel decides, as it already does for a goal campaign's subjective goals.
+
+- **When the check runs.** At a digest (every `report_cadence.digest_minutes`), once the run's running time has reached `min_duration`, when:
+  - every question has at least one verified claim;
+  - no review of the run is waiting for the panel;
+  - the corpus changed since the run's last review (new verified claims or findings), so a review that found gaps is not asked again on the same evidence.
+- **What the panel gets.** A package with the topic, each question with its verified claims (their text, sources' domains and whether they are corroborated), the run's findings, and each hypothesis with the claims cited for it. Nothing about which lane or model wrote what.
+- **What each reviewer answers.** For each question: answered or not, an answer that cites verified claims, and what is missing. For each hypothesis: supported, refuted or undecided, with why and the claims it rests on.
+- **What code checks in each answer.** Every cited claim is a verified claim of the run, and every number in an answer appears in the claims it cites, as for a finding. An answer that fails the check counts as not answered, with the reason.
+- **The decision.** The review passes when every reviewer, at least two, finds every question answered and gives every hypothesis a verdict. A pass is accepted hands-off, unless the run asks the owner about reviews (**Ask me first about** reviews, `ask_owner.reviews`), as in goal mode.
+- **On a pass:** the run lets its running trials end, writes its final report and closes with the reason `every question is answered`. The final report adds the panel's answers to each question, with the claims they cite, and its verdict on each hypothesis.
+- **When the panel finds gaps:** what each reviewer said is missing goes in the run's journal and in the next workers' briefs, and the run goes on.
+- **`max_duration`** still ends a run when its time is up, answered or not.
+- **A rig without a review panel:** the run keeps researching, and its page says that its check waits for a review panel.
+
+## Why
+
+The owner, 2026-10-23, about a research run 24 hours into a run with an 8-hour minimum and no maximum: "So the intent with the research harness was that the minimum time lets it grab suffecient resources and research. Then after that if it has enough data to answer the questions and hypothesis etc, then it should do that, otherwise it continues until those are suffeciently answered. I'm happy with how many claims it has. I want it to write final reports and close off cleanly without me "stopping" the run." And: "Well we have judge systems and auditors and review panels for a reason right?"
+
+Before this goal, a research run ended only at its `max_duration` or by the owner's **Close run**. The New campaign page sets no maximum, so its research runs ran until someone closed them. A final report was the same as a digest: it had no answers.
+
+## Done when
+
+- [ ] The harness asks for a research review at a digest after the minimum, only when the conditions above hold, and never twice on the same evidence. Tests.
+- [ ] The supervisor's review panel answers a research package with a research prompt and output; a supervisor from before this goal is never given one. Tests.
+- [ ] Code checks each answer's cited claims and numbers; a pass needs every reviewer; a pass closes the run with the final report and its answers, hands-off or after the owner's acceptance when the run asks; gaps reach the journal and the workers' briefs. Tests.
+- [ ] The run's page and its status words say where the check stands and why the run ended. Tests.
+- [ ] The pages match the code: research mode, Why Thermite runs until the job is done, the contract reference, the review panel, Decide what waits for you, events, the glossary; the changelog.
+- [ ] On the deployment, a research run past its minimum gets its review, and closes with its final report if the panel passes it.
+
+## Decisions
+
+- 2026-10-23, owner: build it now (the owner's words above), with the review panel deciding.
+- 2026-10-23, builder, within the brief:
+  - Every research run gets the check; no contract field turns it on. `max_duration` stays a hard end.
+  - No new screen: the run's existing blocks and status words say where the check stands.
+  - A research review is a review of the run with the reserved name `research`, so it uses the review panel's existing store and commands, including `accept_review`.
+
+## Open questions
+
+None yet.
+
+## Progress
+
+- 2026-10-23: Goal written from the owner's words; build started.
+
+---
+
+Run with `/goal Complete docs/plan/goals/112-research-ends-when-answered.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

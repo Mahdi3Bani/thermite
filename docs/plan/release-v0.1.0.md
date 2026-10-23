@@ -107,6 +107,7 @@ Research workers build on what earlier trials learned, and a research campaign g
 | --- | --- | --- |
 | [062 · A research folder agents can search and write](goals/_completed/062-research-folder.goal) | `VERIFIED` | — |
 | [076 · A claim's source by its address, and a draft's reasons for the owner](goals/_completed/076-claim-sources-and-reasons.goal) | `VERIFIED` | [062](goals/_completed/062-research-folder.goal), [065](goals/_completed/065-journals-and-corpus.goal) |
+| [112 · A research run ends when the review panel finds its questions answered](goals/112-research-ends-when-answered.goal) | `IN_PROGRESS` | [062](goals/_completed/062-research-folder.goal), [065](goals/_completed/065-journals-and-corpus.goal), [079](goals/_completed/079-thermite-overhead.goal), [098](goals/_completed/098-research-teachers-read-the-research.goal) |
 
 ### Rigs on RunPod
 
