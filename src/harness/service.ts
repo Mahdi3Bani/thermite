@@ -70,6 +70,7 @@ import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
+import { type PaperPackage, type PaperSubmission, Papers } from "./research/paper.ts";
 import { startingHypotheses } from "./research/research.ts";
 import {
   checkResearchPanel,
@@ -590,17 +591,86 @@ export class HarnessService {
 
   /**
    * The supervisor's advisors, as it last said (goal 079): whether an auditor decides this rig's
-   * audits, and how many reviewers its review panel has. Unknown until it says.
+   * audits, how many reviewers its review panel has, and whether a final writer writes research
+   * papers (goal 112; a supervisor from before it does not say, which reads as none). Unknown
+   * until it says.
    */
-  advisors: { auditor: boolean; panel: number; at: string } | undefined;
+  advisors: { auditor: boolean; panel: number; writer: boolean; at: string } | undefined;
 
   /**
    * The supervisor says which advisors it has (goal 079). Without an auditor, the audits held for
    * one go on by the run's rules: promoted, or to the owner where the run asks.
    */
-  async setAdvisors(a: { auditor: boolean; panel: number }, by: string): Promise<string[]> {
-    this.advisors = { ...a, at: this.clock().toISOString() };
+  async setAdvisors(
+    a: { auditor: boolean; panel: number; writer?: boolean | undefined },
+    by: string,
+  ): Promise<string[]> {
+    this.advisors = {
+      auditor: a.auditor,
+      panel: a.panel,
+      writer: a.writer === true,
+      at: this.clock().toISOString(),
+    };
     return a.auditor ? [] : this.releaseHeldAudits(by);
+  }
+
+  /** A research run's folder follows a change the research service did not make (main.ts sets it). */
+  researchChanged?: ((run: string) => void) | undefined;
+
+  /** Research runs' final papers (goal 112). */
+  get papers(): Papers {
+    return new Papers(this.ledger, (run) => this.contractFor(run));
+  }
+
+  /** The research runs waiting for their paper, each as the final writer's package (goal 112). */
+  paperPackages(): (PaperPackage & { campaign_brief?: BriefData })[] {
+    return this.papers.pending().map((pkg) => {
+      const brief = briefData(this.contractFor(pkg.run));
+      return { ...pkg, ...(brief ? { campaign_brief: brief } : {}) };
+    });
+  }
+
+  /**
+   * A research run's paper, as the supervisor posts it (goal 112): checked by code, then accepted
+   * or refused with its problems. Accepted, it is the run's paper.md and leads its final report,
+   * which the scheduler writes once the run's running trials have ended; then the run closes.
+   */
+  submitPaper(run: string, input: PaperSubmission, by: string): ReturnType<Papers["submit"]> {
+    const out = this.papers.submit(run, input, by);
+    if (!out.accepted) {
+      this.live.append({
+        source: "planner",
+        kind: "status",
+        text: `the final writer's paper was refused: ${out.problems.length} ${out.problems.length === 1 ? "problem" : "problems"}, the first: ${out.problems[0]?.problem ?? ""}`.slice(
+          0,
+          600,
+        ),
+        run,
+      });
+      return out;
+    }
+    this.journal.writeAll(
+      run,
+      [
+        {
+          kind: "decision",
+          text: `The research paper by the final writer ${input.writer} passed the harness's checks${input.ste.checked ? " and the rig's STE checker" : "; the rig has no STE checker, so its style was not checked"}. It leads the final report. The run ends once its running trials end.`,
+        },
+      ],
+      { by: "harness", actor: by, source: "supervisor" },
+    );
+    this.live.append({
+      source: "planner",
+      kind: "status",
+      text: `the research paper is in: ${out.cited} claims cited, ${out.experiments.length} next ${out.experiments.length === 1 ? "experiment" : "experiments"}${input.ste.checked ? ", STE checked" : ", STE not checked (no checker)"}`,
+      run,
+    });
+    try {
+      this.researchChanged?.(run);
+    } catch (err) {
+      log("harness", "research folder not updated", { run, error: String(err) });
+    }
+    return out;
   }
 
   /**

@@ -282,6 +282,7 @@ See [Set up the results repository](../how-to/operate/results-repository.md).
 | `THERMITE_OUTBOX_DIR` | path | `/outbox` | no | The harness's outbox. The supervisor reads exports from it |
 | `THERMITE_ADVISORS_FILE` | path to a JSON file | not set | path to a secret | The [advisors file](advisors-file.md), the advisors' models when control gives them none: the teachers, their merged by model, the auditor and the review panel. A role given a model on **Edit rig** uses that model instead. Not set, and no role given a model: no advisors run |
 | `THERMITE_CLAUDE_BIN` | name or path | `claude` on the `PATH` | no | The Claude Code program, for advisors that run in Claude Code |
+| `THERMITE_STE_CHECKER` | path to a script | not set | no | A Simplified Technical English checker for the final writer's research papers, which the deployment provides: Thermite ships none. The supervisor runs it with Node as `node <path> --json --mode descriptive -`, the text on its input, and reads its JSON report; it runs it itself on each paper it posts, and the harness refuses a paper it found an error in. The guide `reference/ste-guide.md` beside the script's folder, when there is one, goes in the writer's prompt. Not set: papers are not checked for STE, and say so ([The research paper](../explanation/campaign-modes.md#the-research-paper)) |
 
 ## Command line
 

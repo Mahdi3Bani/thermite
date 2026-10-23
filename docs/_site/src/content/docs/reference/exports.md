@@ -24,7 +24,7 @@ The harness makes a normal export every hour when something new happened (the **
 | Part | A normal export | A full export |
 | --- | --- | --- |
 | Events, attempts, champion patches, field notes, research notes, briefings and knowledge items since the last export | Yes | Yes |
-| `research/<run>/folder/…`: the [research folder](../explanation/campaign-modes.md#research) of each run that finished in this export (a research run whose final report it holds, or a hill-climb or goal run that was closed and recorded sources, claims or notes, or compacted a conversation) | Yes | Yes |
+| `research/<run>/folder/…`: the [research folder](../explanation/campaign-modes.md#research) of each run that finished in this export (a research run whose final report it holds, with its research paper as `paper.md` when it has one, or a hill-climb or goal run that was closed and recorded sources, claims or notes, or compacted a conversation) | Yes | Yes |
 | `research/<run>/folder-<export>/…`: the research folder of every other research run, and of every other hill-climb or goal run that recorded sources, claims or notes, or compacted a conversation, as it stands now: running, paused, closed or broken | No | Yes |
 | `research/<run>/…`, other files: each run's archive of the web pages it fetched | No | Yes |
 | `ledger.sqlite`: a snapshot of the ledger, which holds every event, claim, source, finding, report and note, without the table of held-out results | Written each time; it leaves the rig at most once a day | Always, and it always leaves the rig |

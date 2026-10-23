@@ -365,6 +365,8 @@ async function main(): Promise<void> {
     onChange: (run) => void researchFolder.sync(run),
   });
   service.researchFolder = (run) => researchFolder.exportFiles(run);
+  // A research run's paper, once accepted, is its folder's paper.md at once (goal 112).
+  service.researchChanged = (run) => void researchFolder.sync(run);
   // Each compaction's conversation, kept in the run's research folder, and its record (goal 070).
   service.compactions = new Compactions({ ledger, live: service.live, folder: researchFolder });
 

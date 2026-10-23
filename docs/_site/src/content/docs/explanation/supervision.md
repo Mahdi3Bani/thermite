@@ -1,6 +1,6 @@
 ---
 title: "Supervision"
-description: "What the advisors do: the teachers and their merged by model, the auditor and the review panel; what they produce, and what they can never do."
+description: "What the advisors do: the teachers and their merged by model, the auditor, the review panel and the final writer; what they produce, and what they can never do."
 type: explanation
 sidebar:
   order: 9
@@ -8,7 +8,7 @@ sidebar:
 
 Each rig can run a few extra models, called **advisors**, that watch over the research. They bring new ideas for the run's queue, give the planner advice, look hard at surprising results, and review goals that code cannot check. This page explains each one, and the limits that keep it an adviser and never a judge.
 
-A rig's agents form two groups. **The work** runs in the rig's harness: the **workers** change the code, one trial each, and the **planner** picks what each worker tries next ([Agents, lanes and the planner](agents-lanes-planner.md)). **The advisors** run in the rig's **supervisor**, the container that connects the rig to everything outside it: the **teachers**, the **auditor** and the **review panel**. They are off until you configure them. [Configure advisors](../how-to/operate/advisors.md) shows how, and the [advisors file reference](../reference/advisors-file.md) lists every field. Other words used here are in the [glossary](../reference/glossary.md).
+A rig's agents form two groups. **The work** runs in the rig's harness: the **workers** change the code, one trial each, and the **planner** picks what each worker tries next ([Agents, lanes and the planner](agents-lanes-planner.md)). **The advisors** run in the rig's **supervisor**, the container that connects the rig to everything outside it: the **teachers**, the **auditor**, the **review panel** and, for research runs, the **final writer**. They are off until you configure them. [Configure advisors](../how-to/operate/advisors.md) shows how, and the [advisors file reference](../reference/advisors-file.md) lists every field. Other words used here are in the [glossary](../reference/glossary.md).
 
 ## The advisors
 
@@ -17,6 +17,7 @@ A rig's agents form two groups. **The work** runs in the rig's harness: the **wo
 | **Teachers** | On a schedule (hourly by default), for each running run; at once when the owner writes to them; and at once when the planner's round leaves the run's queue below its target. One or two teachers; with two, a **merged by** model joins their advice into one set | First, a **portfolio** of new opportunities, each written to the run's queue as an experiment; then, only when new evidence calls for one, a rule for the planner with its citations; and moves of queued experiments, each with why | Set a verdict, change a contract, drop an experiment, give a lane its work, add a directive without a citation, or set a rule that freezes the queue's size or pins an experiment |
 | **Auditor** | When the judge holds a result for an audit | `clear`, `block` or `needs_owner`, with reasons, and at most one check for the run's queue | Set a verdict. Its clear is the last step before a result the judge confirmed becomes the champion; its block stops it |
 | **Review panel** | When a goal needs judgement | A pass or a fail from each reviewer | Pass a goal alone: at least two reviewers must each pass it, and a run can ask the owner to accept it too |
+| **Final writer** | When the review panel's pass of a research run is accepted; with the first teacher's model | The run's research paper in Simplified Technical English, and its next experiments | Change a verdict, cite a claim that is not verified, or get its paper accepted: code checks it, and the supervisor runs the STE checker |
 
 Every advisor may also keep field notes as it works ([The advisors' field notes](#the-advisors-field-notes)).
 
@@ -154,7 +155,13 @@ The review panel also decides when a **research** run's questions are answered (
 - For each question, a reviewer says whether it is answered, with an answer that cites verified claims, or what is missing. For each hypothesis, it gives a verdict: supported, refuted or undecided, with why and the claims it rests on.
 - Code checks each answer: every cited claim must be a verified claim of the run, and every number in the answer must be in those claims. An answer that fails counts as not answered, with the reason. The result is a pass only if every reviewer, at least two, found every question answered and gave every hypothesis a valid verdict.
 
-A pass ends the run with its final report, with no step of the owner's, unless the run asks the owner about reviews. When the review panel finds gaps, each reviewer's findings go in the run's journal, by `panel:` and the reviewer's name, and in the next research workers' briefs; the run goes on, and is not asked again on the same evidence. A supervisor from before this check is never given a research run's review: the harness gives one only to a supervisor that asks for it.
+A pass ends the run, with no step of the owner's, unless the run asks the owner about reviews: the [final writer](#the-final-writer) writes the run's research paper, which leads its final report. When the review panel finds gaps, each reviewer's findings go in the run's journal, by `panel:` and the reviewer's name, and in the next research workers' briefs; the run goes on, and is not asked again on the same evidence. A supervisor from before this check is never given a research run's review: the harness gives one only to a supervisor that asks for it.
+
+## The final writer
+
+The **final writer** writes a research run's paper once the review panel's pass of the run is accepted ([The research paper](campaign-modes.md#the-research-paper)). It uses the model of the rig's first teacher. The harness lists the runs that wait for a paper, each with the review panel's checked answers and verdicts, the campaign's brief and the run's figures; only a supervisor that knows the final writer asks for that list, and the supervisor tells the harness, with its other advisors, whether it has one.
+
+The writer reads the run's research with the teachers' read-only tools, and checks its drafts with two more: `check_paper`, the harness's own checks of a paper, and `ste_check`, the rig's Simplified Technical English checker when the deployment gives one. It reports; it does not judge. The paper's verdicts must be ones the review panel gave, every number must come from the claims a paragraph cites, and the supervisor, not the model, runs the STE checker on the paper it posts. The harness decides: it accepts the paper, or refuses it with each problem. Its next experiments go to the campaign's folder in the knowledge base, for other runs to take.
 
 ## The advisors' field notes
 

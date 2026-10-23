@@ -1,4 +1,5 @@
 import type { KbKind } from "./kb.ts";
+import { PAPER_ACCEPTED } from "./research-check.ts";
 
 /**
  * How a run's events become the items of its campaign's folder in Thermite's knowledge base
@@ -109,6 +110,7 @@ export const KB_EVENT_KINDS = [
   "finding_added",
   "research_final",
   "research_digest",
+  PAPER_ACCEPTED,
 ] as const;
 
 const lines = (xs: string[]) => xs.filter(Boolean).join("\n");
@@ -498,6 +500,36 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
         e.at,
       );
       return;
+    // A research run's paper (goal 112): each next experiment its final writer gave, as an
+    // experiment of the campaign's folder, which a goal or hill-climb run can take into its queue.
+    // Its details say what it rests on, in words: a run that takes it cannot read this run.
+    case PAPER_ACCEPTED: {
+      const xs = Array.isArray(b.experiments) ? b.experiments : [];
+      for (const x of xs) {
+        if (!x || typeof x !== "object" || !str((x as Row).id)) continue;
+        const y = x as Row;
+        const rests = Array.isArray(y.rests_on) ? y.rests_on.map(str).filter(Boolean) : [];
+        const details = lines([
+          str(y.details),
+          rests.length
+            ? `It rests on, from the research paper of run ${run}:\n${rests.map((r) => `- ${r}`).join("\n")}`
+            : "",
+        ]);
+        t.put(
+          run,
+          "experiment",
+          ref(y.id),
+          {
+            title: str(y.title) || `experiment ${str(y.id)}`,
+            body: lines([details, str(y.why) ? `Why: ${str(y.why)}` : ""]),
+            by: `writer:${str(b.writer) || "final writer"}`,
+            meta: { details, why: str(y.why), family: "" },
+          },
+          e.at,
+        );
+      }
+      return;
+    }
     case "research_final":
     case "research_digest":
       if (str(b.report))

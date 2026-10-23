@@ -8,6 +8,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 import { type AdvisorCode, CODE_TOOL_NAMES, registerCodeTools } from "./code-tools.ts";
+import { type AdvisorPaper, PAPER_TOOL_NAMES, registerPaperTools } from "./paper-tools.ts";
 import {
   type AdvisorResearch,
   RESEARCH_TOOL_NAMES,
@@ -80,15 +81,19 @@ export async function serveAdvisorTools(o: {
   code?: AdvisorCode | undefined;
   /** The teachers' read-only tools for the run's own research (goal 098), on the same server. */
   research?: AdvisorResearch | undefined;
+  /** The final writer's checks of its paper (goal 112), on the same server. */
+  paper?: AdvisorPaper | undefined;
 }): Promise<PastSearchServer> {
   const token = randomBytes(24).toString("hex");
   const search = o.pastSearch;
   const code = o.code;
   const research = o.research;
+  const paper = o.paper;
   const build = () => {
     const server = new McpServer({ name: "thermite-past-research", version: "1.0.0" });
     if (code) registerCodeTools(server, code);
     if (research) registerResearchTools(server, research);
+    if (paper) registerPaperTools(server, paper);
     if (search)
       server.registerTool(
         PAST_SEARCH_TOOL,
@@ -140,7 +145,7 @@ export async function serveAdvisorTools(o: {
     await make().connect(transport);
     return transport.handleRequest(c.req.raw);
   };
-  const thermite = Boolean(search || code || research);
+  const thermite = Boolean(search || code || research || paper);
   if (thermite) app.all("/mcp", serving(build));
   const mcp = o.mcp;
   if (mcp)
@@ -174,6 +179,7 @@ export async function serveAdvisorTools(o: {
       ...(search ? [PAST_MCP_TOOL] : []),
       ...(code ? CODE_TOOL_NAMES.map((n) => `mcp__${PAST_MCP_SERVER}__${n}`) : []),
       ...(research ? RESEARCH_TOOL_NAMES.map((n) => `mcp__${PAST_MCP_SERVER}__${n}`) : []),
+      ...(paper ? PAPER_TOOL_NAMES.map((n) => `mcp__${PAST_MCP_SERVER}__${n}`) : []),
       // A server's name allows each of its tools.
       ...(mcp?.servers ?? []).map((s) => `mcp__${s}`),
     ],

@@ -11,7 +11,8 @@ import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited, claimNumbers, numbersIn } from "./checks.ts";
 import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
-import { answerSections, checkLine } from "./review.ts";
+import { Papers } from "./paper.ts";
+import { acceptedReview, answerSections, checkLine } from "./review.ts";
 
 /** The research service's operations a hill-climb or goal run takes (its code trials' tools). */
 const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n));
@@ -848,9 +849,22 @@ export class Research {
    * A report version from the ledger: sections, the verified claims with their sources, the
    * hypotheses with their support, the open questions, and numbers in the sections that appear
    * in no archived source and no verified claim (flagged, not hidden).
+   *
+   * A final report of a run whose questions are answered (goal 112) starts with its research
+   * paper, when code accepted one; the review panel's answers and verdicts and the corpus follow
+   * it, as an appendix. Without a paper it says why: `noPaper`, or what the records show.
    */
-  report(run: string, kind: "digest" | "final") {
+  report(run: string, kind: "digest" | "final", opts: { noPaper?: string | undefined } = {}) {
     const c = this.contract(run);
+    const papers = new Papers(this.ledger, () => c);
+    const paper = kind === "final" ? papers.accepted(run) : undefined;
+    const noPaper =
+      kind === "final" && !paper && acceptedReview(this.ledger, run)
+        ? (opts.noPaper ??
+          (papers.requested(run)
+            ? "the run ended before the final writer's paper passed the harness's checks"
+            : "the run ended before a final writer was asked for one"))
+        : undefined;
     const stats = this.stats(run);
     const clock = this.clock(run);
     const sources = new Map(
@@ -913,8 +927,9 @@ export class Research {
       // Where the check that every question is answered stands (goal 112).
       ...(kind === "digest" ? [checkLine(this.ledger, run, c, clock)] : []),
       "",
-      // The review panel's answers and verdicts (goal 112): one block, so a fuller final paper
-      // can precede or replace it later.
+      // Why an answered run has no research paper (goal 112).
+      ...(noPaper ? [`Research paper: none, ${noPaper}.`, ""] : []),
+      // The review panel's answers and verdicts (goal 112): one block, after the paper.
       ...(kind === "final" ? answerSections(this.ledger, run, c, fence) : []),
       "## Questions",
       // A question may have several lines (goal 078): its further lines stay under it.
@@ -960,7 +975,17 @@ export class Research {
           ]
         : []),
     ];
-    const body = lines.join("\n");
+    // The paper first, whole; then the rest as its appendix, under a heading of its own.
+    const body = paper
+      ? [
+          String(paper.paper).replace(/\s+$/, ""),
+          "",
+          "---",
+          "",
+          `# Appendix: the review panel's answers and the corpus of ${c.title}`,
+          ...lines.slice(1),
+        ].join("\n")
+      : lines.join("\n");
     this.ledger.tx(() => {
       this.ledger.db
         .prepare("insert into report_version (run, kind, body, created_at) values (?, ?, ?, ?)")
@@ -976,6 +1001,9 @@ export class Research {
           min_ms: clock.min_ms,
           max_ms: clock.max_ms,
           min_verified_claims: c.min_verified_claims ?? null,
+          // A final report: whether it starts with a research paper, or why not (goal 112).
+          ...(kind === "final" ? { paper: paper !== undefined } : {}),
+          ...(noPaper ? { no_paper: noPaper } : {}),
           unsupported_numbers: unsupported.length,
           report: body.slice(0, 60_000),
         },

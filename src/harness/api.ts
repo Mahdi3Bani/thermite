@@ -17,6 +17,7 @@ import { SEARCH_MAX } from "./knowledge.ts";
 import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
+import { PAPER_MAX, PaperSubmission } from "./research/paper.ts";
 import type { Research } from "./research/research.ts";
 import { ResearchVerdicts } from "./research/review.ts";
 import { KIND_PATHS, PAGE_MAX, RESEARCH_KINDS, SOURCE_CHARS_MAX } from "./run-research.ts";
@@ -476,12 +477,52 @@ export function createHarnessApi(
     return c.json({ review: id, ...service.recordReviewPanel(id, body.results, "supervisor") });
   });
 
+  // The research runs that wait for their paper (goal 112), each as the final writer's package:
+  // the review panel's checked answers and verdicts, the brief, the corpus figures and the rules
+  // the paper is checked against. Only a supervisor from goal 112 asks for it.
+  app.get("/v1/research/papers/pending", supervisor, (c) =>
+    c.json({ papers: service.paperPackages() }),
+  );
+  // A draft checked by the harness's code, for the final writer's check_paper tool: each problem
+  // with its line. Nothing is recorded.
+  app.post(
+    "/v1/research/papers/:run/check",
+    supervisor,
+    bodyLimit({ maxSize: 1024 * 1024 }),
+    async (c) => {
+      const body = z
+        .strictObject({ paper: z.string().min(1).max(PAPER_MAX) })
+        .parse(await c.req.json());
+      return c.json(service.papers.check(c.req.param("run"), body.paper));
+    },
+  );
+  // The final writer's paper, with the STE checker's result the supervisor ran on its text:
+  // accepted, or refused with its problems (goal 112).
+  app.post(
+    "/v1/research/papers/:run",
+    supervisor,
+    bodyLimit({ maxSize: 2 * 1024 * 1024 }),
+    async (c) =>
+      c.json(
+        service.submitPaper(
+          c.req.param("run"),
+          PaperSubmission.parse(await c.req.json()),
+          "supervisor",
+        ) as object,
+      ),
+  );
+
   // The supervisor says which advisors it has (goal 079): whether an auditor decides this rig's
-  // audits, and its review panel's size. Without an auditor, the audits held go on by the run's
-  // rules.
+  // audits, its review panel's size, and whether a final writer writes research runs' papers
+  // (goal 112; left out by a supervisor from before it: none). Without an auditor, the audits
+  // held go on by the run's rules.
   app.put("/v1/advisors", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
     const body = z
-      .strictObject({ auditor: z.boolean(), panel: z.number().int().min(0).max(100) })
+      .strictObject({
+        auditor: z.boolean(),
+        panel: z.number().int().min(0).max(100),
+        writer: z.boolean().optional(),
+      })
       .parse(await c.req.json());
     return c.json({ released: await service.setAdvisors(body, "supervisor") });
   });

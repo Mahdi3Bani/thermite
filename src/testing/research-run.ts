@@ -82,6 +82,8 @@ export async function makeResearchRun(
     allowPrivate: true,
     onChange: (r) => void folder.sync(r),
   });
+  // As main.ts sets it: an accepted research paper is the folder's paper.md at once (goal 112).
+  env.service.researchChanged = (r) => void folder.sync(r);
   return { env, research, folder, base, run, close };
 }
 
