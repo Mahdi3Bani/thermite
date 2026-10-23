@@ -63,7 +63,7 @@ export function effectiveGpuLists(
       set: 0,
     };
   if (env.THERMITE_GPUS === undefined) return { judge: env.THERMITE_GPU_INDEX ?? "0", set: 0 };
-  const cards = parseIndexList(env.THERMITE_GPUS, "THERMITE_GPUS");
+  const cards = parseIndexList(env.THERMITE_GPUS, "THERMITE_GPUS", MAX_GPU_SET);
   if (cards.length === 1) return { judge: String(cards[0]), set: 1 };
   const fits = (j: number | null | undefined) =>
     typeof j === "number" &&
@@ -99,8 +99,14 @@ export function savedJudgeGpus(stateDir: string): number | null {
   }
 }
 
-/** "0", "0,1" or "2, 3" (THERMITE_GPU_INDEX and THERMITE_DEV_GPU_INDEX) as card indices. */
-export function parseIndexList(text: string, what: string): number[] {
+/** A rig's whole GPU set (THERMITE_GPUS): the judge's cards and the agents' together. */
+export const MAX_GPU_SET = 2 * IDS.maxCards;
+
+/**
+ * "0", "0,1" or "2, 3" (THERMITE_GPU_INDEX and THERMITE_DEV_GPU_INDEX) as card indices: at most
+ * `max`, the cards of one kind unless the list is the whole set.
+ */
+export function parseIndexList(text: string, what: string, max: number = IDS.maxCards): number[] {
   const list = text
     .split(",")
     .map((x) => x.trim())
@@ -109,9 +115,9 @@ export function parseIndexList(text: string, what: string): number[] {
     throw new Error(`${what} is a GPU index or a list of them, such as 0 or 0,1: not "${text}"`);
   const n = list.map(Number);
   if (new Set(n).size !== n.length) throw new Error(`${what} names a GPU twice: "${text}"`);
-  if (n.length > IDS.maxCards)
+  if (n.length > max)
     throw new Error(
-      `${what} names ${n.length} GPUs; a rig takes at most ${IDS.maxCards} of each kind`,
+      `${what} names ${n.length} GPUs; a rig takes at most ${max === IDS.maxCards ? `${max} of each kind` : max}`,
     );
   return n;
 }

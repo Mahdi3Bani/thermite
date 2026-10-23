@@ -418,5 +418,20 @@ describe("a rig configured with its GPU set", () => {
     // A split that doesn't fit falls back to the default.
     assert.equal(effectiveGpuLists(set, 4).judge, "4,5");
     assert.equal(effectiveGpuLists(set, 0).judge, "4,5");
+    // A set takes up to 16 cards: 8 of each kind at most.
+    const ten = { THERMITE_GPUS: "0,1,2,3,4,5,6,7,8,9", THERMITE_JUDGE_GPUS: "2" };
+    assert.deepEqual(effectiveGpuLists(ten), {
+      judge: "0,1",
+      dev: "2,3,4,5,6,7,8,9",
+      set: 10,
+    });
+    // One judge card would leave the agents 9: the default split instead.
+    assert.equal(effectiveGpuLists({ ...ten, THERMITE_JUDGE_GPUS: "1" }).judge, "0,1,2,3,4");
+    const sixteen = Array.from({ length: 16 }, (_, i) => i).join(",");
+    assert.equal(effectiveGpuLists({ THERMITE_GPUS: sixteen }).set, 16);
+    assert.throws(
+      () => effectiveGpuLists({ THERMITE_GPUS: `${sixteen},16` }),
+      /THERMITE_GPUS names 17 GPUs; a rig takes at most 16$/,
+    );
   });
 });
