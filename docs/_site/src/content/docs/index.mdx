@@ -22,6 +22,7 @@ hero:
 ---
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import HowItWorks from "../../components/HowItWorks.astro";
 
 New to Thermite? [Start here](start-here.md). It says what you need, which pages to read first, and what words such as rig, lane and champion mean.
 
@@ -53,6 +54,26 @@ You give Thermite a project and a way to measure it: make this program faster, m
 </CardGrid>
 
 ![The dashboard's page for one run: its model use, cost and tokens at the top, the champion's gains over time, what each lane works on now, and the run's champion and promotion rule](../../assets/screenshots/run.webp)
+
+## How it works
+
+Thermite has two kinds of part. **Control** is the one place you watch and steer from. **Rigs** do the research, each on its own machine, cluster node or cloud pod, and each rig is two containers: a **harness**, where the agents and the judge work, and a **supervisor**, which links the rig to control and runs its advisors.
+
+<HowItWorks />
+
+### A run, step by step
+
+1. **You start a campaign** on control: from **New campaign** on the dashboard, over the REST API or MCP, or with the `thermite` command line. Its **contract** says what counts, such as a number to push up or a list of goals, and its **kit** says how to build and measure your project. Control sends the rig you choose a signed command to start the run.
+2. **The rig takes it.** The supervisor fetches the project, the kit and any model files the command names, each by its commit or its hash, and hands the command to the harness. The harness checks the signature, and that what was fetched is what the command named.
+3. **The planner hands out the work.** The run has one **experiment queue**, a list of what to try. At the start of each round, the planner gives each **lane** its next experiment, and a starting point: the champion, or the lane's own best result. No two lanes get the same experiment.
+4. **A worker tries it.** Each **trial** is a fresh agent session, which the harness builds from its records: the experiment, the lane's recent results with the judge's reasons, and the campaign's brief. The worker changes its own copy of the code, may test it in runs that never count, and submits one change with what it expects it to do.
+5. **The judge decides.** It builds the change, times it against the champion on the same device, in alternating blocks, and checks its output against the reference. A change that looks better is measured again on fresh runs, and on hidden test cases when the contract has them, before it counts. No agent can read or change the judge.
+6. **A confirmed win becomes the champion,** the code that the next trials build on. When the campaign calls for an audit, the auditor's clear is the last step. When you asked to decide yourself, the win waits for you under **Needs you**.
+7. **The advisors steer.** The teachers read the results and the champion's code, add ideas to the queue and give the planner rules, each with its reasons. The review panel scores goals that code can't measure. The advisors never set a verdict.
+8. **Everything is recorded, and reaches you.** The rig's **ledger** keeps every experiment, attempt, measurement and verdict. The supervisor sends it all to control, where you follow the run on **Live** and its page, and steer it with signed commands: pause it, message its agents, add experiments. It pushes the results to git, and control files each campaign's records in its folder of the knowledge base, for later runs to read.
+9. **Round after round,** until the goals are met, a budget or stop time you set runs out, or you stop it. Nothing stops a campaign by default.
+
+[How the parts fit together](explanation/how-it-fits-together.md) explains each part, [Agents, lanes and the planner](explanation/agents-lanes-planner.md) a trial, [Why agents never judge](explanation/why-agents-never-judge.md) the judge, and [Supervision](explanation/supervision.md) the advisors.
 
 ## Find your way
 

@@ -1,0 +1,354 @@
+---
+// The home page's "How it works" diagram: Thermite's parts as nested boxes, in plain HTML, so
+// it wraps on a phone, follows the site's light and dark themes and stays real text. The
+// numbers in it match the steps of a run that the home page lists under it.
+---
+
+<figure class="hiw not-content" aria-labelledby="hiw-caption">
+  <div class="top">
+    <div class="box you">
+      <p class="name">You</p>
+      <p>and your scripts and agents, through the dashboard, the REST API, MCP or the <code>thermite</code> command line.</p>
+      <span class="n" title="Step 1">1</span>
+    </div>
+    <div class="link across"><span class="arrow" aria-hidden="true"></span><span>watch and steer</span></div>
+    <div class="box control">
+      <p class="name">Control <span class="role">one central service</span></p>
+      <p class="note">It shows what the rigs report and signs what you decide. It measures nothing and decides no verdict.</p>
+      <div class="parts four">
+        <div class="part"><b>Dashboard</b><span>every campaign, run and rig; <b>Live</b> and <b>Needs you</b></span></div>
+        <div class="part"><b>REST API, MCP, CLI</b><span>the same actions for scripts and agents</span></div>
+        <div class="part"><b>Store</b><span>campaigns, kits, reports and signed commands, with keys sealed</span></div>
+        <div class="part"><b>Knowledge base</b><span>a folder for each campaign, which later runs read</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="link down wide">
+    <span class="arrow" aria-hidden="true"></span>
+    <span><b>The rig dials out:</b> reports and live lines go up, signed commands come down. Control never connects into a rig.</span>
+    <span class="n" title="Step 8">8</span>
+  </div>
+
+  <div class="box rig">
+    <p class="name">A rig <span class="role">one of many: on your machine, a Kubernetes cluster or a RunPod pod</span></p>
+    <p class="note">Two containers, split by what each is trusted with. A rig works on one run at a time.</p>
+
+    <div class="box container supervisor">
+      <p class="name">Supervisor <span class="role">the rig's link to the outside</span></p>
+      <p class="note">It holds the rig's git and control credentials, and runs no code that an agent wrote.</p>
+      <div class="parts sup">
+        <div class="part"><b>Relay</b><span>carries reports up and commands down; it can forge neither</span><span class="n" title="Step 2">2</span></div>
+        <div class="part"><b>Git</b><span>fetches the project, kit and models a command names; pushes the results</span></div>
+        <div class="group">
+          <p class="gname">The advisors <span class="role">they steer; they never judge</span></p>
+          <div class="parts three">
+            <div class="part"><b>Teachers</b><span>read the results and the champion's code; add ideas to the queue and rules for the planner</span><span class="n" title="Step 7">7</span></div>
+            <div class="part"><b>Auditor</b><span>checks a surprising win before it is kept</span><span class="n" title="Step 6">6</span></div>
+            <div class="part"><b>Review panel</b><span>scores the goals that code can't measure</span><span class="n" title="Step 7">7</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="link down"><span class="arrow" aria-hidden="true"></span><span>commands in, signed events out</span></div>
+
+    <div class="bottom">
+      <div class="box container harness">
+        <p class="name">Harness <span class="role">where the research happens</span></p>
+        <p class="note">It runs code that agents wrote, so it reaches only its model and the internet.</p>
+        <div class="flow">
+          <div class="part"><b>Experiment queue and planner</b><span>one list of what to try; each round, the planner gives each lane its next experiment, never the same one to two lanes</span><span class="n" title="Step 3">3</span></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="part lanes">
+            <b>Lanes</b>
+            <span class="worker">worker · lane 1</span>
+            <span class="worker">worker · lane 2</span>
+            <span class="worker more">…</span>
+            <span>each trial is a fresh agent session in its own copy of the code, and submits one change</span>
+            <span class="n" title="Step 4">4</span>
+          </div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="part judge"><b>Judge</b><span>builds the change, times it against the champion, and confirms a win on fresh runs and hidden cases</span><span class="n" title="Step 5">5</span></div>
+          <span class="arrow" aria-hidden="true"></span>
+          <div class="part"><b>Champion</b><span>the best code so far, which the next trials build on</span><span class="n" title="Step 6">6</span></div>
+        </div>
+        <div class="parts two base">
+          <div class="part"><b>Ledger</b><span>the rig's own database: every experiment, attempt, measurement, verdict and champion</span><span class="n" title="Step 8">8</span></div>
+          <div class="part"><b>Broker</b><span>starts every process as its own user, so no agent can read or change the judge</span></div>
+        </div>
+      </div>
+      <div class="link across"><span class="arrow" aria-hidden="true"></span><span>timed runs</span></div>
+      <div class="box target">
+        <p class="name">Target</p>
+        <p>The CPU or the GPUs the work is measured on, through a target driver. The judge holds the clock; nothing a change prints is its score.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="outside">
+    <div class="box ext"><b>Model providers</b><span>the agents' and the advisors' models: API keys, Claude or ChatGPT subscriptions, or a server of your own</span></div>
+    <div class="box ext"><b>Git</b><span>your project, its kits and your results repository</span></div>
+  </div>
+
+  <figcaption id="hiw-caption">
+    Thermite's parts: you steer through control; each rig's supervisor links it to control and to git and runs its advisors; its harness runs the planner, the workers in their lanes and the judge, which measures every change on the target. The numbers are the steps of a run, below.
+  </figcaption>
+</figure>
+
+<style>
+  .hiw {
+    --hiw-line: var(--sl-color-gray-5);
+    --hiw-soft: var(--sl-color-gray-6);
+    --hiw-card: var(--sl-color-bg);
+    margin: 1.5rem 0 1rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--sl-color-text);
+  }
+  .hiw p {
+    margin: 0;
+  }
+  .hiw code {
+    font-size: 0.8125rem;
+  }
+  .box {
+    position: relative;
+    border: 1px solid var(--hiw-line);
+    border-radius: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: var(--hiw-card);
+  }
+  .name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--sl-color-white);
+  }
+  .role {
+    font-weight: 400;
+    font-size: 0.8125rem;
+    color: var(--sl-color-gray-3);
+    margin-inline-start: 0.375rem;
+  }
+  .note {
+    color: var(--sl-color-gray-2);
+    margin: 0.25rem 0 0.75rem !important;
+  }
+  .top {
+    display: grid;
+    grid-template-columns: minmax(10rem, 1fr) auto 3.5fr;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .you {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+  .control {
+    border: 2px solid var(--sl-color-accent);
+  }
+  .rig {
+    border: 2px dashed var(--sl-color-gray-3);
+    background: transparent;
+  }
+  .container {
+    background: var(--hiw-soft);
+  }
+  .supervisor {
+    margin-top: 0.25rem;
+  }
+  .parts {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .parts.four {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .parts.three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .parts.two {
+    grid-template-columns: 1fr 1fr;
+  }
+  .parts.sup {
+    grid-template-columns: 1fr 1fr 3fr;
+  }
+  .part {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border: 1px solid var(--hiw-line);
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    background: var(--hiw-card);
+  }
+  .part > b {
+    color: var(--sl-color-white);
+  }
+  .part > span:not(.n):not(.worker) {
+    color: var(--sl-color-gray-2);
+  }
+  .group {
+    border: 1px solid var(--hiw-line);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    background: var(--sl-color-accent-low);
+  }
+  .gname {
+    font-weight: 700;
+    color: var(--sl-color-white);
+    margin: 0 0 0.375rem 0.25rem !important;
+  }
+  .bottom {
+    display: grid;
+    grid-template-columns: 4fr auto 1fr;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+  .flow {
+    display: grid;
+    grid-template-columns: 1.2fr auto 1.2fr auto 1.2fr auto 1fr;
+    align-items: stretch;
+    gap: 0.375rem;
+    margin-bottom: 0.5rem;
+  }
+  .flow > .arrow {
+    align-self: center;
+  }
+  .judge {
+    border: 2px solid var(--sl-color-accent);
+  }
+  .worker {
+    display: block;
+    font-family: var(--sl-font-mono);
+    font-size: 0.75rem;
+    border: 1px dashed var(--hiw-line);
+    border-radius: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    color: var(--sl-color-white);
+  }
+  .worker.more {
+    border: none;
+    padding: 0 0.5rem;
+  }
+  .target {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.375rem;
+    background: var(--hiw-soft);
+  }
+  .target > p:not(.name) {
+    color: var(--sl-color-gray-2);
+  }
+  .outside {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+  .ext {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-style: dotted;
+  }
+  .ext > b {
+    color: var(--sl-color-white);
+  }
+  .ext > span {
+    color: var(--sl-color-gray-2);
+  }
+  .link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: var(--sl-color-gray-2);
+    font-size: 0.8125rem;
+    position: relative;
+  }
+  .link.across {
+    flex-direction: column;
+    padding: 0 0.25rem;
+    text-align: center;
+    max-width: 7rem;
+  }
+  .link.down {
+    padding: 0.5rem 0;
+    text-align: center;
+  }
+  .link.wide {
+    padding: 0.625rem 2.5rem;
+  }
+  .arrow::before {
+    content: "→";
+    font-size: 1.25rem;
+    line-height: 1;
+    color: var(--sl-color-accent);
+  }
+  .link.down .arrow::before {
+    content: "⇅";
+  }
+  .link.across .arrow::before {
+    content: "⇄";
+  }
+  .n {
+    position: absolute;
+    top: -0.625rem;
+    right: -0.5rem;
+    min-width: 1.375rem;
+    height: 1.375rem;
+    border-radius: 999px;
+    background: var(--sl-color-accent);
+    color: var(--sl-color-black);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.375rem;
+    text-align: center;
+  }
+  .link .n {
+    position: static;
+    flex: none;
+  }
+  figcaption {
+    margin-top: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--sl-color-gray-3);
+  }
+
+  /* On a narrow screen every row stacks, and the arrows point down. */
+  @media (max-width: 56rem) {
+    .top,
+    .bottom,
+    .flow,
+    .parts.four,
+    .parts.three,
+    .parts.sup,
+    .parts.two,
+    .outside {
+      grid-template-columns: 1fr;
+    }
+    .link.across {
+      flex-direction: row;
+      max-width: none;
+      padding: 0.25rem 0;
+    }
+    .link.wide {
+      padding: 0.5rem 0;
+    }
+    .arrow::before,
+    .link.across .arrow::before {
+      content: "↓";
+    }
+    .link.down .arrow::before {
+      content: "⇅";
+    }
+    .flow > .arrow {
+      justify-self: center;
+    }
+  }
+</style>

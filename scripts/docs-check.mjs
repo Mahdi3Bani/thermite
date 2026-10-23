@@ -68,7 +68,7 @@ function frontMatter(text) {
 
 // A placeholder such as <campaign> outside code is read as an HTML tag, and the site hides it.
 const htmlTags =
-  /^<\/?(a|b|br|code|details|div|em|i|img|kbd|li|ol|p|span|strong|sub|summary|sup|table|td|th|tr|ul|Aside|Card|CardGrid|LinkCard|Steps|TabItem|Tabs)\b/;
+  /^<\/?(a|b|br|code|details|div|em|i|img|kbd|li|ol|p|span|strong|sub|summary|sup|table|td|th|tr|ul|Aside|Card|CardGrid|HowItWorks|LinkCard|Steps|TabItem|Tabs)\b/;
 function placeholders(body) {
   const prose = body.replace(/```[\s\S]*?```/g, "").replace(/``[^`]*``|`[^`\n]*`/g, "");
   return [...prose.matchAll(/<\/?[A-Za-z][\w-]*(?:\s[^>\n]*)?>/g)]
