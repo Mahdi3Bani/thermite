@@ -71,7 +71,19 @@ import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
 import { startingHypotheses } from "./research/research.ts";
-import { type ReviewPackage, Reviews } from "./reviews.ts";
+import {
+  checkResearchPanel,
+  RESEARCH_REVIEW,
+  type ResearchPackage,
+  type ResearchVerdicts,
+  reviewerGaps,
+} from "./research/review.ts";
+import {
+  type ResearchReviewPackage,
+  type ReviewKind,
+  type ReviewPackage,
+  Reviews,
+} from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { RunResearch } from "./run-research.ts";
 import { ModelUsage } from "./usage.ts";
@@ -593,14 +605,23 @@ export class HarnessService {
 
   /**
    * A review panel's results (goal 079). A pass is accepted with no owner step, unless the run
-   * asks the owner (`ask_owner.reviews`); the goal tree is checked again.
+   * asks the owner (`ask_owner.reviews`); the goal tree is checked again. A research review's
+   * results (goal 112) are checked by code first (recordResearchPanel).
    */
   recordReviewPanel(
     id: number,
-    results: { reviewer: string; pass: boolean; reasons: string }[],
+    results: {
+      reviewer: string;
+      pass: boolean;
+      reasons: string;
+      research?: ResearchVerdicts | undefined;
+    }[],
     by: string,
   ): { result: "review_passed" | "review_failed"; accepted?: true } {
     const reviews = new Reviews(this.ledger);
+    const asked = reviews.byId(id);
+    if (asked?.goal === RESEARCH_REVIEW)
+      return this.recordResearchPanel(reviews, asked, results, by);
     const result = reviews.recordPanel(id, results, by);
     const row = this.ledger.db.prepare("select run from review where id = ?").get(id) as
       | { run: string }
@@ -614,6 +635,64 @@ export class HarnessService {
       "harness (hands-off)",
     );
     this.ledger.enqueueJob({ kind: "validate", priority: 40, spec: { run: row.run }, actor: by });
+    return { result, accepted: true };
+  }
+
+  /**
+   * A research review's results (goal 112): each reviewer's answers checked by code against the
+   * package it was given (research/review.ts), and recorded with each failed check's reason. On
+   * gaps, each reviewer's findings go in the run's journal and the run goes on. A pass is accepted
+   * hands-off, unless the run asks the owner about reviews; once accepted, the scheduler ends the
+   * run when its running trials end, with its final report.
+   */
+  private recordResearchPanel(
+    reviews: Reviews,
+    row: Record<string, unknown>,
+    results: {
+      reviewer: string;
+      pass: boolean;
+      reasons: string;
+      research?: ResearchVerdicts | undefined;
+    }[],
+    by: string,
+  ): { result: "review_passed" | "review_failed"; accepted?: true } {
+    const id = Number(row.id);
+    const run = String(row.run);
+    const pkg = JSON.parse(String(row.package)) as ResearchPackage;
+    const checked = checkResearchPanel(this.ledger, run, pkg, results);
+    const result = reviews.recordResearchPanel(id, checked, by);
+    const panelNote = (reviewer: string, text: string) =>
+      this.journal.writeAll(run, [{ kind: "observation", text: text.slice(0, 2000) }], {
+        by: `panel:${reviewer}`,
+        actor: by,
+        source: "supervisor",
+      });
+    if (result === "review_failed") {
+      // One note for each reviewer: what it found missing, and each answer that failed the check.
+      for (const r of checked) {
+        const gaps = reviewerGaps(r);
+        panelNote(
+          r.reviewer,
+          r.pass
+            ? `Review ${id}: this reviewer found every question answered; the review panel as a whole did not.`
+            : `Review ${id}: not every question is answered yet. ${gaps.join(". ")}.`,
+        );
+      }
+      return { result };
+    }
+    if (this.askFor(run).reviews) return { result };
+    const words = "hands-off: the review panel passed it, and the run does not ask the owner";
+    reviews.ownerDecision(id, run, true, words, "harness (hands-off)");
+    this.journal.writeAll(
+      run,
+      [
+        {
+          kind: "decision",
+          text: `Review ${id}: ${words}. Every question is answered: the run writes its final report and ends once its running trials end.`,
+        },
+      ],
+      { by: "harness", actor: "harness (hands-off)", source: "supervisor" },
+    );
     return { result, accepted: true };
   }
 
@@ -939,7 +1018,27 @@ export class HarnessService {
       case "accept_review": {
         const p = CommandPayloads.accept_review.parse(payload);
         this.decidingRun(p.run, "accept_review");
-        new Reviews(this.ledger).ownerDecision(p.review, p.run, p.accept, p.note, by);
+        const row = new Reviews(this.ledger).ownerDecision(p.review, p.run, p.accept, p.note, by);
+        // A research review (goal 112): accepted, the run ends once its running trials end; not
+        // accepted, it goes on, and a new review needs new evidence. The owner's word goes in
+        // the run's journal.
+        if (row.goal === RESEARCH_REVIEW) {
+          const note = p.note?.trim();
+          this.journal.writeAll(
+            p.run,
+            [
+              {
+                kind: "decision",
+                text: (p.accept
+                  ? `The owner accepted review ${p.review}: every question is answered. The run writes its final report and ends once its running trials end.${note ? ` The owner's note: ${note}` : ""}`
+                  : `The owner did not accept review ${p.review}. The run goes on; the review panel is asked again only on new evidence.${note ? ` The owner's note: ${note}` : ""}`
+                ).slice(0, 2000),
+              },
+            ],
+            { by: "owner", actor: by, source: "supervisor" },
+          );
+          return { review: p.review, decision: p.accept ? "accepted" : "rejected" };
+        }
         // The goal tree is checked again with the owner's word.
         this.ledger.enqueueJob({
           kind: "validate",
@@ -1576,20 +1675,33 @@ export class HarnessService {
     return out;
   }
 
-  /** Reviews waiting for the panel, each with the owner's messages the panel has not read. */
-  reviewPackages(): (ReviewPackage & {
+  /**
+   * Reviews waiting for the panel, each with the owner's messages the panel has not read: goal
+   * reviews, and research reviews (goal 112) only for a supervisor that asks for them.
+   */
+  reviewPackages(kinds: readonly ReviewKind[] = ["goal"]): ((
+    | ReviewPackage
+    | ResearchReviewPackage
+  ) & {
     campaign_brief?: BriefData;
     owner_messages: { id: number; at: string; text: string }[];
   })[] {
-    return new Reviews(this.ledger).pending().map(({ diff, ...r }) => {
-      // The campaign's brief from its author, whole, before the diff (goal 078).
-      const brief = briefData(this.contractFor(r.run));
+    return new Reviews(this.ledger).pending(kinds).map((pkg) => {
+      // The campaign's brief from its author, whole, before the diff or the evidence (goal 078).
+      const brief = briefData(this.contractFor(pkg.run));
+      const extra = {
+        ...(brief ? { campaign_brief: brief } : {}),
+        owner_messages: this.ownerMessagesFor(pkg.run, "panel"),
+        ...this.backgroundFor(pkg.run),
+      };
+      if (!("diff" in pkg)) return { ...pkg, ...extra };
+      const { diff, ...r } = pkg;
       return {
         ...r,
         ...(brief ? { campaign_brief: brief } : {}),
         diff,
-        owner_messages: this.ownerMessagesFor(r.run, "panel"),
-        ...this.backgroundFor(r.run),
+        owner_messages: extra.owner_messages,
+        ...this.backgroundFor(pkg.run),
       };
     });
   }

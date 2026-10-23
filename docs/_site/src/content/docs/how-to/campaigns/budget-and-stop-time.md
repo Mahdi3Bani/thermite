@@ -6,7 +6,7 @@ sidebar:
   order: 7
 ---
 
-Thermite runs a campaign until its job is done: a hill climb until you stop it, a goal campaign until its goals are met, and a research campaign until its `max_duration`, or, without one, until you stop it. Nothing else stops it unless you set a limit. [Why Thermite runs until the job is done](../../explanation/runs-until-done.md) says why.
+Thermite runs a campaign until its job is done: a hill climb until you stop it, a goal campaign until its goals are met, and a research campaign until the review panel finds its questions answered or its `max_duration` is over, or, without either, until you stop it. Nothing else stops it unless you set a limit. [Why Thermite runs until the job is done](../../explanation/runs-until-done.md) says why.
 
 Set a limit when you want one, and always before agents use a paid model key.
 
@@ -62,7 +62,7 @@ When a limit is reached, no new trial starts. The trials that are running go on 
 
 The run's state is **Paused**, and its **History** says, for example, `Run sort-speed-1 paused: the wall-time budget is spent.` Its queued judge jobs wait too. Nothing is lost: the champion and every verdict stay.
 
-A research campaign ends by its own time instead: after `max_duration` of running time it writes its final report and closes with `the research window is over`. Without `max_duration` it runs until you stop it: `min_duration` is a floor, never a stop. Time its agents could not work, stopped by the model provider or waiting for its rate limit, does not count.
+A research campaign ends by itself instead: after `min_duration`, when the review panel finds every question answered, it writes its final report and closes with `every question is answered` ([When a research run ends](../../explanation/campaign-modes.md#when-a-research-run-ends)). After `max_duration` of running time it writes its final report and closes with `the research window is over`, answered or not. Without a pass and without `max_duration` it runs until you stop it: `min_duration` is a floor, never a stop. Time its agents could not work, stopped by the model provider or waiting for its rate limit, does not count.
 
 ## Go on after a limit
 

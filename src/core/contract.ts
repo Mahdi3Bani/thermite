@@ -347,6 +347,13 @@ export const ResearchContract = z.strictObject({
    */
   seeds: z.array(z.url()).default([]),
   /**
+   * A floor of verified claims (goal 112): the run must have at least this many, in total, before
+   * the review panel is first asked whether its questions are answered. It delays the check; it
+   * never ends a run. Optional and without a default, so contracts written before it keep their
+   * hash; left out, the check needs only a verified claim for each question.
+   */
+  min_verified_claims: z.number().int().min(1).optional(),
+  /**
    * The MCP servers the campaign's agents use (goal 068), as a kit names them: a research
    * campaign has no kit. Optional and without a default, so contracts written before it keep
    * their hash.

@@ -9,7 +9,9 @@ import { parseDuration } from "../../core/duration.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
+import { checkCited, claimNumbers, numbersIn } from "./checks.ts";
 import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
+import { answerSections, checkLine } from "./review.ts";
 
 /** The research service's operations a hill-climb or goal run takes (its code trials' tools). */
 const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n));
@@ -44,11 +46,6 @@ export function normalizeQuote(s: string): string {
     .replace(/ /g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/** Numbers as written (1,200 and 3.5 and 42), for checking claims and sections. */
-function numbersIn(s: string): string[] {
-  return [...s.matchAll(/\d[\d,.]*\d|\d/g)].map((m) => m[0]);
 }
 
 /** A label at a line's start that numbers a question or a claim: "Question 0:", "Claim c-005:". */
@@ -623,30 +620,9 @@ export class Research {
    */
   addFinding(run: string, lane: string | null, input: unknown) {
     const f = FindingInput.parse(input);
-    const problems: string[] = [];
     const cited = [...new Set(f.supporting)];
-    const claims: Row[] = [];
-    for (const id of cited) {
-      const cl = this.get("select * from claim where run = ? and id = ?", run, id);
-      if (!cl) problems.push(`no claim ${id}`);
-      else if (Number(cl.verified) !== 1) problems.push(`claim ${id} is a draft, not verified`);
-      else claims.push(cl);
-    }
-    const known = new Set(
-      claims.flatMap((cl) => [
-        ...numbersIn(String(cl.text)),
-        ...(JSON.parse(String(cl.quotes)) as { quote: string }[]).flatMap((q) =>
-          numbersIn(q.quote),
-        ),
-      ]),
-    );
-    for (const num of new Set([
-      ...numbersIn(f.text),
-      ...numbersIn(f.summary),
-      ...numbersIn(f.why_it_matters),
-    ])) {
-      if (!known.has(num)) problems.push(`the number ${num} is not in the claims it cites`);
-    }
+    // The check a review panel's answer shares (checks.ts).
+    const { problems } = checkCited(this.ledger, run, cited, [f.text, f.summary, f.why_it_matters]);
     const supported = problems.length === 0;
     // The same statement again: a supported one is kept once, and a draft refused for the same
     // reasons is answered again, not recorded again, so a worker that resends it in a loop learns
@@ -725,7 +701,8 @@ export class Research {
    * Running time against the contract's durations. Paused time does not count, and neither does
    * time the agents could not run (goal 079): while they were stopped (no credits, a refused key,
    * a failing model check) or waited for the provider's rate limit. The minimum is a floor, never
-   * a stop: a run ends at its maximum, and runs on without one until someone stops it.
+   * a stop: after it, a run ends when the review panel finds every question answered (goal 112),
+   * at its maximum, or when the owner closes it.
    */
   clock(run: string) {
     const c = this.contract(run);
@@ -891,14 +868,7 @@ export class Research {
       run,
     );
     // A number in a section is supported only by a verified claim (its text or its quotes).
-    const supported = new Set(
-      claims.flatMap((cl) => [
-        ...numbersIn(String(cl.text)),
-        ...(JSON.parse(String(cl.quotes)) as { quote: string }[]).flatMap((q) =>
-          numbersIn(q.quote),
-        ),
-      ]),
-    );
+    const supported = claimNumbers(claims);
     const unsupported: string[] = [];
     for (const s of sections) {
       for (const num of numbersIn(String(s.body))) {
@@ -940,7 +910,12 @@ export class Research {
       `Report: ${kind}, ${new Date().toISOString()}. Elapsed ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h.`,
       `Corpus: ${stats.sources} sources from ${stats.domains} domains; ${stats.verified} verified claims (${stats.corroborated} from at least ${min} independent domains), ${stats.drafts} drafts; ${stats.findings} findings, ${stats.draft_findings} draft findings.`,
       `Last hour: ${stats.last_hour.sources} new sources, ${stats.last_hour.verified} newly verified claims, ${stats.last_hour.questions_covered} questions newly covered.`,
+      // Where the check that every question is answered stands (goal 112).
+      ...(kind === "digest" ? [checkLine(this.ledger, run, c, clock)] : []),
       "",
+      // The review panel's answers and verdicts (goal 112): one block, so a fuller final paper
+      // can precede or replace it later.
+      ...(kind === "final" ? answerSections(this.ledger, run, c, fence) : []),
       "## Questions",
       // A question may have several lines (goal 078): its further lines stay under it.
       ...stats.questions.map(
@@ -997,6 +972,10 @@ export class Research {
         {
           ...stats,
           elapsed_ms: clock.elapsed_ms,
+          // So the run's page can say when the answer check starts (goal 112).
+          min_ms: clock.min_ms,
+          max_ms: clock.max_ms,
+          min_verified_claims: c.min_verified_claims ?? null,
           unsupported_numbers: unsupported.length,
           report: body.slice(0, 60_000),
         },

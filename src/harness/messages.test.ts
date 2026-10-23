@@ -267,7 +267,7 @@ describe("the owner's messages", () => {
     assert.equal(events(env, "agent_message").length, 2);
   });
 
-  test("a research run has no planner to message and no audits; everyone working reaches its lanes", async () => {
+  test("a research run has no planner to message and no audits, its review panel reads (goal 112); everyone working reaches its lanes", async () => {
     const env = makeHarnessEnv("rig-r");
     const parsed = parseContract(researchFixture);
     if (!parsed.ok) throw new Error(parsed.errors.join("; "));
@@ -294,7 +294,9 @@ describe("the owner's messages", () => {
     );
     assert.match(String((await msg("auditor")).result.error), /a research run has no audits/);
     assert.deepEqual((await msg("all")).result.readers, ["lane-1", "lane-2"]);
-    assert.deepEqual((await msg("advisors")).result.readers, ["teachers"]);
+    // The review panel checks whether a research run's questions are answered (goal 112).
+    assert.deepEqual((await msg("panel")).result.readers, ["panel"]);
+    assert.deepEqual((await msg("advisors")).result.readers, ["teachers", "panel"]);
   });
 
   test("the advisors: the brief and the supervisor's route record reads and answers, only for messages to that role", async () => {
