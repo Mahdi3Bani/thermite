@@ -95,3 +95,7 @@ You want your own AI assistant to watch and steer campaigns for you.
 | **Champion** | The best confirmed result of a run so far. The starting point is champion #1. |
 
 The [glossary](reference/glossary.md) has every term.
+
+## Ask the community
+
+Stuck, or want to share a result? Thermite's community meets on the [Hackers in the Loop Discord](https://discord.gg/3Qs2uejUf9). [Getting help](project/getting-help.md) says where to report a bug, and what to put in a report.

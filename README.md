@@ -132,7 +132,7 @@ More in [architecture](docs/_site/src/content/docs/explanation/how-it-fits-toget
 
 ## Community and contributing
 
-Questions, ideas and results go in our [Discord](https://discord.gg/3Qs2uejUf9). Bugs and feature requests go in [GitHub issues](https://github.com/iammrduncan/thermite/issues).
+Thermite's community meets on the [Hackers in the Loop Discord](https://discord.gg/3Qs2uejUf9): questions, ideas and results go there. Bugs and feature requests go in [GitHub issues](https://github.com/iammrduncan/thermite/issues).
 
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) has the essentials. There is no contributor agreement and no sign-off rule. Read [CONVENTIONS.md](CONVENTIONS.md) before you change the code, and run `npm run check` (typecheck, lint, tests and the public-content check) before you open a pull request. The [contributor guide](docs/local-development.md) lists the compose and acceptance tests for changes to containers, the judge or control.
 - **Code of conduct:** the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md).
