@@ -22,6 +22,7 @@ The Exports page lists every export control holds, for every rig: hundreds after
 - **The slices folded:** a line such as "214 smaller exports (each holds what changed since the one before it)", with **Show all**.
 - **Words at the top** that say the difference between a full export and a what-changed one, and that a full export is the one to download for a run's whole record.
 - **A run's record in one step,** from the run's page: ask for a full export and download it when it arrives.
+- **What an export holds, before the download:** each export's own page with its files (path, size, kept or still arriving), as `GET /v1/rigs/<rig>/exports/<name>` already gives them over REST. A full export's page names the runs whose research folders it holds and says whether it has the ledger snapshot.
 - **Keeping fewer:** whether control can drop slices that a later full export holds in full, with the owner's say, so control's store does not grow without end.
 
 ## Why
@@ -47,3 +48,4 @@ The owner, 2026-10-23, on the new Exports page: "wow there are a lot more export
 ---
 
 Run with `/goal Complete docs/plan/goals/109-exports-page-shows-what-matters.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+- 2026-10-23: Added "what an export holds": on the deployment, a full export of a research run reached control, but the dashboard could not show whether it held the run's folder and the ledger snapshot without a download.
