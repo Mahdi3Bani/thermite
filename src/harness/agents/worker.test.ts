@@ -253,6 +253,8 @@ describe("worker trial", () => {
     const warnedAt = seen.findIndex((u) => u.includes("turns are left in this trial"));
     assert.equal(warnedAt, 4, "warned once, after turn 4 (10 turns before the limit)");
     assert.equal(seen.at(-1)?.split("turns are left").length, 2, "only once");
+    // A trial that measures is told to record its numbers before the end.
+    assert.match(seen[warnedAt] ?? "", /record what you measured now as notes, with the numbers/);
   });
 
   test("without a configured cap a trial is not cut off by its number of turns", async () => {
