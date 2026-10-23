@@ -188,6 +188,7 @@ async function main(): Promise<void> {
     results_remote: Boolean(remote),
     results_to: remote ? "repository" : uploadToControl ? "control" : "none",
     hf_token: Boolean(hfToken),
+    ste_checker: Boolean(env.THERMITE_STE_CHECKER),
     advisors: advisors
       ? {
           teachers: advisors.teachers.length,
@@ -244,10 +245,12 @@ async function main(): Promise<void> {
   };
   /**
    * Tells the harness which advisors decide (goal 079): without an auditor, the audits it holds
-   * go on by each run's rules instead of waiting. An older harness does not know the call. Said
-   * again every minute between rounds: a harness that restarted forgets it.
+   * go on by each run's rules instead of waiting; without a final writer (goal 112: the first of
+   * the teachers on, which writes research papers), an answered research run closes without a
+   * paper. An older harness does not know the call. Said again every minute between rounds: a
+   * harness that restarted forgets it.
    */
-  let told: { auditor: boolean; panel: number } | undefined;
+  let told: { auditor: boolean; panel: number; writer: boolean } | undefined;
   let toldAt = 0;
   const tellAdvisors = async (a = told) => {
     if (!a) return;
@@ -270,7 +273,7 @@ async function main(): Promise<void> {
       const advisors = await refreshAdvisors();
       if (!advisors) {
         // No role has an advisor: look again later (the owner may give one a model).
-        await tellAdvisors({ auditor: false, panel: 0 });
+        await tellAdvisors({ auditor: false, panel: 0, writer: false });
         const until = Date.now() + Math.max(intervalMs, 30_000);
         while (!stopping && Date.now() < until) {
           await new Promise((r) => setTimeout(r, 250));
@@ -289,7 +292,11 @@ async function main(): Promise<void> {
           auditor: on.auditor ? advisors.auditor : undefined,
           review_panel: on.review ? advisors.review_panel : [],
         };
-        await tellAdvisors({ auditor: Boolean(active.auditor), panel: active.review_panel.length });
+        await tellAdvisors({
+          auditor: Boolean(active.auditor),
+          panel: active.review_panel.length,
+          writer: active.teachers.length > 0,
+        });
         adviseState = await adviseOnce(
           {
             harnessUrl,
@@ -300,6 +307,8 @@ async function main(): Promise<void> {
             // review) is a line in the live view, with its run.
             live: (line) => supervisorLive.append({ source: "supervisor", ...line }),
             mcp: advisorMcp,
+            // The deployment's STE checker for research papers (goal 112), when it gives one.
+            steChecker: env.THERMITE_STE_CHECKER || undefined,
           },
           adviseState,
         );
@@ -310,6 +319,7 @@ async function main(): Promise<void> {
           sets: a.directive_sets - before.directive_sets,
           audits: a.audits - before.audits,
           reviews: a.reviews - before.reviews,
+          papers: (a.papers ?? 0) - (before.papers ?? 0),
           errors: a.errors - before.errors,
         };
         // A round that did nothing says nothing: the live view is for what happens.
@@ -318,7 +328,7 @@ async function main(): Promise<void> {
           supervisorLive.append({
             source: "supervisor",
             kind: "status",
-            text: `advisor round done: ${n(did.teachers, "teacher run")}, ${n(did.sets, "directive set")}, ${n(did.audits, "audit")}, ${n(did.reviews, "review")}, ${n(did.errors, "error")}`,
+            text: `advisor round done: ${n(did.teachers, "teacher run")}, ${n(did.sets, "directive set")}, ${n(did.audits, "audit")}, ${n(did.reviews, "review")}, ${did.papers ? `${n(did.papers, "research paper")}, ` : ""}${n(did.errors, "error")}`,
           });
       } catch (err) {
         log("supervisor", "advisor loop error", { error: String(err) });

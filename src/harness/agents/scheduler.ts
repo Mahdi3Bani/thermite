@@ -13,6 +13,7 @@ import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { queueTarget } from "../../core/queue-target.ts";
+import { NO_WRITER } from "../../core/research-check.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -375,20 +376,48 @@ export class Scheduler {
 
   /**
    * A running research run whose review the review panel passed, and that was accepted (goal
-   * 112): no new trial starts in it (researchTick), and once its running trials have ended, it
-   * ends with its final report (closeAnswered). Checked on every step, with or without a model.
+   * 112): no new trial starts in it (researchTick). It waits for its research paper: the harness
+   * asks the supervisor's final writer for it once, and the run ends when code accepted the paper
+   * and its running trials have ended (closeAnswered). A rig whose supervisor says it has no final
+   * writer ends the run without one, once its trials have ended; until the supervisor says, the
+   * run waits. Checked on every step, with or without a model.
    */
   private finishAnsweredResearch(): void {
     if (!this.o.research) return;
     const running = this.ledger.db
       .prepare("select id from run where mode = 'research' and status = 'running'")
       .all() as { id: string }[];
+    const papers = this.o.service.papers;
     for (const { id } of running) {
       if (!acceptedReview(this.ledger, id)) continue;
+      let noPaper: string | undefined;
+      if (!papers.accepted(id)) {
+        const advisors = this.o.service.advisors;
+        // The supervisor has not said yet whether it has a final writer: the run waits.
+        if (!advisors) continue;
+        if (advisors.writer) {
+          try {
+            if (papers.request(id, this.o.owner))
+              this.o.service.live.append({
+                source: "planner",
+                kind: "status",
+                text: "the final writer is asked for the run's research paper",
+                run: id,
+              });
+          } catch (err) {
+            log("scheduler", "the research paper was not asked for", {
+              run: id,
+              error: String(err),
+            });
+          }
+          continue;
+        }
+        noPaper = NO_WRITER;
+      }
       // Its running trials end first; a close that failed is not tried again by this process.
       if ([...this.laneRun.values()].includes(id) || this.finalFailed.has(id)) continue;
       try {
-        this.closeAnswered(id);
+        this.closeAnswered(id, noPaper);
       } catch (err) {
         this.finalFailed.add(id);
         log("scheduler", "an answered research run could not close", {
@@ -401,12 +430,19 @@ export class Scheduler {
 
   /**
    * The end of a research run whose questions are answered (goal 112): its final report, which
-   * holds the review panel's answers and verdicts, and the close, with the reason
-   * `every question is answered`. The one place a run ends this way, once its accepted review's
-   * running trials have ended.
+   * starts with its research paper, then holds the review panel's answers and verdicts, and the
+   * close, with the reason `every question is answered`. The one place a run ends this way, once
+   * its paper is in (or its rig has no final writer, `noPaper`) and its running trials have ended.
    */
-  private closeAnswered(run: string): void {
-    (this.o.research as Research).report(run, "final");
+  private closeAnswered(run: string, noPaper?: string | undefined): void {
+    (this.o.research as Research).report(run, "final", { noPaper });
+    if (noPaper)
+      this.o.service.live.append({
+        source: "planner",
+        kind: "status",
+        text: `every question is answered; the run ends with no research paper: ${noPaper}`,
+        run,
+      });
     this.ledger.setRunStatus(run, "closed", ANSWERED, this.o.owner);
   }
 

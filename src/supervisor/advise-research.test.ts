@@ -55,6 +55,13 @@ function runtime(url: string, name: string) {
 
 const answer = { toolCalls: [{ name: "answer", args: { summary: "read", portfolio: [] } }] };
 
+/**
+ * A read of a run's own research. The final writer's look at the papers to write (goal 112), which
+ * a rig with teachers makes each round, is not one.
+ */
+const readsResearch = (p: string) =>
+  p.startsWith("/v1/research/") && p !== "/v1/research/papers/pending";
+
 describe("a run's teachers read what the run found (goal 098)", () => {
   test("a research run's teachers read its claims, a source, a lane's file and a search before they propose", async (t: TestContext) => {
     const r = await makeResearchRun();
@@ -123,10 +130,12 @@ describe("a run's teachers read what the run found (goal 098)", () => {
     assert.match(results[1] ?? "", /Long research campaigns need a clock the workers cannot stop/);
     assert.match(results[2] ?? "", /3\\tWhat we know: the harness archived 42 pages\./);
     assert.match(results[3] ?? "", new RegExp(ids.claims.clock));
-    assert.deepEqual(
-      asked.filter((p) => p.startsWith("/v1/research/")),
-      ["/v1/research/claims", "/v1/research/source", "/v1/research/file", "/v1/research/search"],
-    );
+    assert.deepEqual(asked.filter(readsResearch), [
+      "/v1/research/claims",
+      "/v1/research/source",
+      "/v1/research/file",
+      "/v1/research/search",
+    ]);
     assert.ok(!asked.some((p) => p.startsWith("/v1/code/")), asked.join(", "));
   });
 
@@ -147,7 +156,7 @@ describe("a run's teachers read what the run found (goal 098)", () => {
     assert.ok(offered.length > 0);
     for (const name of CODE) assert.ok(offered.at(-1)?.includes(name), name);
     for (const name of RESEARCH) assert.ok(!offered.at(-1)?.includes(name), name);
-    assert.ok(!asked.some((p) => p.startsWith("/v1/research/")), asked.join(", "));
+    assert.ok(!asked.some(readsResearch), asked.join(", "));
 
     // Its trials recorded a source and a claim (goal 065): now they get both.
     const pages = await servePages();
@@ -181,7 +190,7 @@ describe("a run's teachers read what the run found (goal 098)", () => {
     state = await adviseOnce(cfg, { ...state, lastTeacherAt: {} });
     for (const name of [...RESEARCH, ...CODE]) assert.ok(!offered.at(-1)?.includes(name), name);
     assert.ok(offered.at(-1)?.includes("fetch_url"));
-    assert.ok(!open.some((p) => p.startsWith("/v1/research/")), open.join(", "));
+    assert.ok(!open.some(readsResearch), open.join(", "));
     const said = lines.filter((l) =>
       l.includes(
         `so they read none of the run's own sources, claims, hypotheses, findings, notes or files: only the summary in their brief`,

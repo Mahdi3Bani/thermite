@@ -16,16 +16,21 @@ import { dirname, join } from "node:path";
 import { BRIEF_FILE, briefFile } from "../../core/brief.ts";
 import { COMPACTIONS_DIR } from "../../core/compaction.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
+import { PAPER_ACCEPTED } from "../../core/research-check.ts";
 import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
+
+/** The research paper's file in a research run's folder (goal 112). */
+export const PAPER_FILE = "paper.md";
 
 /**
  * A research run's folder: everything the run has learned, as files a worker can search with
  * ordinary tools, and a working area for each lane.
  *
  *   INDEX.md, REPORT.md                 the harness writes them
+ *   paper.md                            the research paper, once code accepted it (goal 112)
  *   sources/ claims/ findings/          from the harness's records, kept current as they change
  *   hypotheses/ notes/ report/
  *   lanes/LANE/                         each lane's files, as they were when its last trial ended
@@ -376,6 +381,13 @@ export class ResearchFolder {
         ? `<!-- the ${report.kind} report of ${report.created_at}, written by the harness -->\n\n${report.body}\n`
         : "No report yet: the harness writes one at each digest and at the end.\n",
     );
+    // The run's research paper, once code accepted it (goal 112): whole, with its references.
+    const paper = this.ledger.latestEventBody(PAPER_ACCEPTED, run)?.paper;
+    if (typeof paper === "string") this.changed(join(root, PAPER_FILE), paper);
+    const paperLine =
+      typeof paper === "string"
+        ? [`- ${PAPER_FILE}: the run's research paper, which leads its final report`]
+        : [];
 
     // The newest state of each file each lane wrote.
     const files = this.all(
@@ -403,6 +415,7 @@ export class ResearchFolder {
         "## What is here",
         "",
         "- REPORT.md: the newest report (a digest, or the final report)",
+        ...paperLine,
         ...briefLine,
         `- sources/: ${sources.length} archived pages as text, one file each (claims quote these words)`,
         `- claims/: ${claims.length} claims, ${verified} verified and ${claims.length - verified} drafts (the first line says which)`,

@@ -24,16 +24,19 @@ import {
   reviewOne,
   teacherRound,
   withRunContext,
+  writePaper,
 } from "./advisors.ts";
 import type { AdvisorCode } from "./code-tools.ts";
 import type { PastSearch } from "./past-mcp.ts";
 import type { AdvisorResearch } from "./research-tools.ts";
+import { NO_STE_CHECKER, steCheckerAt, steResultOf, steToolAnswer } from "./ste-checker.ts";
 
 /**
  * The supervisor's advisor loop: the teachers review each running run on their cadence, and at
- * once when the owner has written to it; the auditor answers open audits, and the review panel
- * answers open reviews. Everything goes through the harness API with the supervisor's token,
- * which cannot write verdicts, champions or contracts. Each run is kept in the supervisor's
+ * once when the owner has written to it; the auditor answers open audits, the review panel
+ * answers open reviews, and the final writer writes the paper of each research run whose
+ * questions the review panel found answered (goal 112). Everything goes through the harness API
+ * with the supervisor's token, which cannot write verdicts, champions or contracts. Each run is kept in the supervisor's
  * home, the figures go to control, and each step is a line in the live view.
  *
  * The owner's messages reach an advisor in its brief or package (owner_messages). When the
@@ -69,6 +72,11 @@ export interface AdviseConfig {
    * gave the rig for advisors, and each run's servers as its kit names them (read each round).
    */
   mcp?: { gateway: McpGateway; uses: Map<string, McpUse[]> } | undefined;
+  /**
+   * The deployment's STE checker for the final writer's papers (goal 112): THERMITE_STE_CHECKER,
+   * a script run with Node. None: the papers are not checked for style, and say so.
+   */
+  steChecker?: string | undefined;
 }
 
 export interface AdviseState {
@@ -102,6 +110,8 @@ export interface AdviseState {
     directives: number;
     audits: number;
     reviews: number;
+    /** Research papers the harness accepted from the final writer (goal 112). */
+    papers?: number | undefined;
     errors: number;
     tokens_in: number;
     tokens_out: number;
@@ -124,6 +134,7 @@ export function emptyAdviseState(): AdviseState {
       directives: 0,
       audits: 0,
       reviews: 0,
+      papers: 0,
       errors: 0,
       tokens_in: 0,
       tokens_out: 0,
@@ -1045,6 +1056,122 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       }
     }
   }
+  // The final writer (goal 112): the rig's first teacher's model writes the research paper of
+  // each research run whose review panel found every question answered. The supervisor runs the
+  // STE checker itself on the paper it posts; the harness checks the rest and accepts or refuses
+  // it. A refused paper is written again at the next round, with the problems in its package; a
+  // try that gave no paper, after retryMs. No cap on tries.
+  const writer = cfg.advisors.teachers[0];
+  if (writer && !overBudget()) {
+    const ste = steCheckerAt(cfg.steChecker);
+    let papers: { run: string; review: number }[] = [];
+    try {
+      papers = ((await api("GET", "/v1/research/papers/pending")) as { papers: typeof papers })
+        .papers;
+    } catch (err) {
+      // A harness from before goal 112 has no papers to write: nothing to say.
+      if (!String(err).includes("-> 404")) fail("the research papers to write", err);
+    }
+    for (const pkg of papers) {
+      const run = pkg.run;
+      const key = `paper:${run}:${pkg.review}`;
+      const t = next.tried[key];
+      if (t && now - Date.parse(t) < retryMs) continue;
+      delete next.tried[key];
+      next.tries[key] = (next.tries[key] ?? 0) + 1;
+      const failed = (err: unknown) => {
+        next.tried[key] = new Date().toISOString();
+        fail(`the research paper of ${run}`, err, run);
+      };
+      // With the campaign's own context settings, when it sets any (goal 070).
+      const runtime = (await configFor(run)).teachers[0] ?? writer;
+      const path = `/v1/research/papers/${encodeURIComponent(run)}`;
+      const checkDraft = async (markdown: string) =>
+        (await api("POST", `${path}/check`, { paper: markdown })) as {
+          ok: boolean;
+          problems: { line: number | null; problem: string }[];
+        };
+      say(
+        run,
+        "status",
+        `the final writer (${runtime.name}) writes the research paper${(next.tries[key] ?? 1) > 1 ? ` (try ${next.tries[key]})` : ""}${ste ? "" : `; ${NO_STE_CHECKER}, so its style is not checked`}`,
+      );
+      try {
+        const r = await writePaper({
+          runtime,
+          pkg,
+          keeper: keeperFor(run),
+          research: researchFor(run),
+          guide: ste?.guide,
+          paper: {
+            check: checkDraft,
+            ste: async (text) =>
+              ste ? steToolAnswer(await ste.check(text)) : { checked: false, why: NO_STE_CHECKER },
+          },
+          // In Pi, the writer revises within its call until the checks pass. A check that fails
+          // to run takes the answer: the supervisor checks it again below, and the harness last.
+          accept: async (o) => {
+            try {
+              const c = await checkDraft(o.paper);
+              const errors = ste
+                ? (await ste.check(o.paper)).findings.filter((f) => f.severity === "error")
+                : [];
+              const all = [
+                ...c.problems.map((p) => `${p.line ? `line ${p.line}: ` : ""}${p.problem}`),
+                ...errors.map((f) => `line ${f.line}: STE ${f.rule}: ${f.message}`),
+              ];
+              return all.length ? clip(all.slice(0, 40).join("; "), 6000) : undefined;
+            } catch {
+              return undefined;
+            }
+          },
+        });
+        count(r);
+        await usageOut(run, `final paper ${pkg.review}`, "teachers", r.usage);
+        if (!r.output) {
+          failed(r.error ?? "no paper");
+          continue;
+        }
+        const paper = r.output.paper;
+        const posted = (await api("POST", path, {
+          writer: runtime.name,
+          paper,
+          experiments: r.output.experiments,
+          ste: ste
+            ? steResultOf(await ste.check(paper), paper)
+            : { checked: false, why: NO_STE_CHECKER },
+        })) as {
+          accepted: boolean;
+          cited?: number;
+          experiments?: string[];
+          problems?: { line: number | null; problem: string }[];
+        };
+        if (posted.accepted) {
+          s.papers = (s.papers ?? 0) + 1;
+          say(
+            run,
+            "text",
+            `the research paper is in: ${posted.cited ?? 0} claims cited, ${posted.experiments?.length ?? 0} next experiments kept in the knowledge base${ste ? ", STE checked" : ""}`,
+          );
+        } else {
+          const ps = posted.problems ?? [];
+          say(
+            run,
+            "status",
+            `the harness refused the research paper (${ps.length} ${ps.length === 1 ? "problem" : "problems"}): ${clip(ps.map((p) => `${p.line ? `line ${p.line}: ` : ""}${p.problem}`).join("; "), 400)}. The final writer writes it again at the next round`,
+          );
+        }
+        record(`paper-${run}`, {
+          writer: runtime.name,
+          posted,
+          ...(r.compactions?.length ? { compactions: r.compactions } : {}),
+        });
+      } catch (err) {
+        failed(err);
+      }
+    }
+  }
+
   // Old retry markers go after a week (an open audit's are renewed by each try or hand-off; a
   // closed audit's went above).
   for (const [k, t] of Object.entries(next.tried)) {

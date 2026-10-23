@@ -24,14 +24,16 @@ export function claimNumbers(claims: Row[]): Set<string> {
 
 /**
  * Text that cites claims, checked: every cited id must be a verified claim of the run, and every
- * number in the texts must appear in those claims (their text or their quotes). Returns the
- * verified claims cited and each problem in words; no problem means the text holds.
+ * number in the texts must appear in those claims (their text or their quotes), or in `also`: the
+ * numbers the harness itself gives the text's writer, such as a research paper's corpus figures.
+ * Returns the verified claims cited and each problem in words; no problem means the text holds.
  */
 export function checkCited(
   ledger: Ledger,
   run: string,
   cited: string[],
   texts: string[],
+  also: Iterable<string> = [],
 ): { claims: Row[]; problems: string[] } {
   const problems: string[] = [];
   const claims: Row[] = [];
@@ -44,6 +46,7 @@ export function checkCited(
     else claims.push(cl);
   }
   const known = claimNumbers(claims);
+  for (const n of also) known.add(n);
   for (const num of new Set(texts.flatMap(numbersIn))) {
     if (!known.has(num)) problems.push(`the number ${num} is not in the claims it cites`);
   }

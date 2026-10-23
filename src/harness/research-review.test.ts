@@ -607,10 +607,32 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     assert.equal(s.env.service.ledger.getRun(RUN)?.status, "running");
     release();
     await sch.idle();
+    // Until the supervisor says whether it has a final writer, the run waits (goal 112).
+    await sch.tick();
+    assert.equal(
+      s.env.service.ledger.getRun(RUN)?.status,
+      "running",
+      "it waits for the supervisor",
+    );
+    // A rig with no final writer: the run closes with the review panel's answers, and says why it
+    // has no research paper.
+    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: false }, "supervisor");
     await sch.tick();
     const run = s.env.service.ledger.getRun(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", ANSWERED]);
     const final = lastFinal(s);
+    assert.match(final, /Research paper: none, no final writer on this rig\./);
+    assert.equal(
+      s.ledger.latestEventBody("research_final", RUN)?.no_paper,
+      "no final writer on this rig",
+    );
+    assert.equal(
+      s.ledger.db
+        .prepare("select count(*) as n from event where kind like 'research_paper_%'")
+        .get()?.n,
+      0,
+      "no paper is asked for",
+    );
     assert.match(
       final,
       /## Answers\nThe review panel found every question answered \(review \d+, 2 reviewers\)\./,
@@ -696,6 +718,8 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
       s.env.sign("accept_review", { run: RUN, review: second, accept: true }),
     );
     assert.ok(yes.status === "applied" && yes.accepted, JSON.stringify(yes));
+    // This rig's supervisor has no final writer (goal 112).
+    await s.env.service.setAdvisors({ auditor: false, panel: 2 }, "supervisor");
     await sch.tick();
     await sch.idle();
     await sch.tick();

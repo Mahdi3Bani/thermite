@@ -246,6 +246,7 @@ import {
   modeName,
   moreText,
   num,
+  paperHref,
   pct,
   type RunTab,
   reportingTag,
@@ -841,6 +842,15 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             : [];
           const most = Math.max(1, ...qs.map((q) => num(q.verified)));
           const unsupported = num(r.unsupported_numbers);
+          // The research paper, once code accepted it (goal 112): a link to it as a file, and the
+          // paper itself beside the latest report.
+          const paper = i.paper?.state === "in" && i.paper.text ? i.paper : undefined;
+          const paperLine = paper
+            ? `<div class="small" style="margin-top:6px"><b>Research paper:</b> by the final writer${paper.writer ? ` ${esc(paper.writer)}` : ""}, ${paper.ste_checked ? "checked against the rig's STE checker" : "not checked for STE"}; ${paper.experiments} next ${paper.experiments === 1 ? "experiment" : "experiments"} kept in the knowledge base. <a href="${esc(paperHref(u.id, i.id))}">paper.md</a></div>`
+            : "";
+          const paperText = paper
+            ? `<details data-k="paper-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Research paper</summary><pre class="report" style="margin-top:8px">${esc(String(paper.text))}</pre></details>`
+            : "";
           return `<div class="block"><div class="head"><h2>Research questions</h2><span class="right">${esc(String(r.kind ?? ""))} · ${esc(ago(String(r.at ?? ""), now))} ago</span></div><div class="card">${
             qs.length
               ? `<div class="muted small" style="margin-bottom:10px">Verified claims for each of the run's questions. A bar is measured against the question with the most.</div>`
@@ -853,7 +863,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 return `<div class="rq"><div class="rq-head"><span class="rq-text" title="${esc(words)}"><b>Q${n + 1}</b> ${esc(words || "(no words)")}</span><span class="rq-v">${v} verified ${v === 1 ? "claim" : "claims"}</span></div><div class="bar ok"><i style="width:${((v / most) * 100).toFixed(1)}%"></i></div></div>`;
               })
               .join("") || `<div class="muted small">No question coverage yet.</div>`
-          }</div><div class="small rcheck" style="margin-top:10px"><b>Answer check:</b> ${esc(researchCheckWords(i, u))}</div>${unsupported ? `<div class="note warn">${unsupported} ${unsupported === 1 ? "number" : "numbers"} in the latest report ${unsupported === 1 ? "appears" : "appear"} in no archived source and no verified claim. The report flags each one.</div>` : ""}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
+          }</div><div class="small rcheck" style="margin-top:10px"><b>Answer check:</b> ${esc(researchCheckWords(i, u))}</div>${paperLine}${unsupported ? `<div class="note warn">${unsupported} ${unsupported === 1 ? "number" : "numbers"} in the latest report ${unsupported === 1 ? "appears" : "appear"} in no archived source and no verified claim. The report flags each one.</div>` : ""}${paperText}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
         })()
       : "";
     // The changes that waited when the run closed (goal 087): they left Needs you.
@@ -3402,6 +3412,21 @@ ${rp ? "" : events}
     return c.body(new Uint8Array(p.patch), 200, {
       "content-type": "text/x-diff; charset=utf-8",
       "content-disposition": `attachment; filename="${name.replace(/[^\w.-]/g, "_")}"`,
+    });
+  });
+
+  // A research run's paper (goal 112), as its rig's report carries it: the Markdown file, with
+  // the references the harness appended (the same text is paper.md in the run's research folder).
+  // Shown as plain text: it is the agents' writing.
+  app.get("/ui/rigs/:rig/runs/:run/paper.md", (c) => {
+    const run = c.req.param("run");
+    const p = views()
+      .find((u) => u.id === c.req.param("rig"))
+      ?.runs.find((r) => r.id === run)?.paper;
+    if (p?.state !== "in" || !p.text) return c.text("No research paper for that run yet.", 404);
+    return c.body(p.text, 200, {
+      "content-type": "text/plain; charset=utf-8",
+      "content-disposition": `inline; filename="${`${run}-paper.md`.replace(/[^\w.-]/g, "_")}"`,
     });
   });
 

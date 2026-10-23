@@ -185,11 +185,16 @@ function noReviewPanel(u: Pick<RigView, "supervisor" | "settings">): string {
     : "";
 }
 
+/** A research run's paper as a Markdown file (goal 112), from its rig's report. */
+export const paperHref = (rig: string, run: string) =>
+  `/ui/rigs/${encodeURIComponent(rig)}/runs/${encodeURIComponent(run)}/paper.md`;
+
 /**
  * Where a research run's answer check stands (goal 112), in one line for its Overview: before
  * the minimum running time, waiting for verified claims, the review panel checking, not yet (with
- * the newest gaps), passed and waiting for the owner, or answered. From the newest digest and the
- * run's research reviews.
+ * the newest gaps), passed and waiting for the owner, answered with the final writer writing the
+ * paper, answered with the paper in, or ended. From the newest digest or final report, the run's
+ * research reviews and its paper's events.
  */
 export function researchCheckWords(
   i: RunView,
@@ -197,10 +202,24 @@ export function researchCheckWords(
 ): string {
   const newest = i.reviews.filter((r) => r.goal === RESEARCH_REVIEW).at(-1);
   const which = newest ? ` (review ${newest.review})` : "";
-  if (i.status === "closed")
-    return i.pause_reason === ANSWERED
-      ? `Answered: the review panel found every question answered${which}. The final report holds its answers and its verdicts on the hypotheses.`
-      : "The run ended before the review panel found every question answered: its final report says so.";
+  const paper = i.paper;
+  const final = (i.research ?? {}) as { kind?: unknown; no_paper?: unknown };
+  if (i.status === "closed") {
+    if (i.pause_reason !== ANSWERED)
+      return "The run ended before the review panel found every question answered: its final report says so.";
+    if (paper?.state === "in")
+      return `Answered: the review panel found every question answered${which}. The final report starts with the research paper, then the review panel's answers and its verdicts on the hypotheses.`;
+    const none =
+      final.kind === "final" && typeof final.no_paper === "string"
+        ? ` There is no research paper: ${final.no_paper}.`
+        : "";
+    return `Answered: the review panel found every question answered${which}. The final report holds its answers and its verdicts on the hypotheses.${none}`;
+  }
+  // The final writer's paper (goal 112): asked for, being written, then in.
+  if (newest?.owner === "accepted" && paper?.state === "in")
+    return `Answered: the review panel found every question answered${which}. The research paper is in${paper.ste_checked ? ", checked against the rig's STE checker" : ", not checked for STE (the rig has no checker)"}. The run ends once its running trials end.`;
+  if (newest?.owner === "accepted" && paper?.state === "writing")
+    return `Answered: the review panel found every question answered${which}. The final writer is writing the paper${paper.refused ? `; the harness refused its last draft (${paper.refused.problems[0] ?? "see History"})` : ""}. The run ends once the paper is in and its running trials end.`;
   if (newest?.owner === "accepted")
     return `Answered: the review panel found every question answered${which}. The run writes its final report and ends once its running trials end.`;
   if (newest && newest.panel === null) {
