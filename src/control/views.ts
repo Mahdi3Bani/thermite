@@ -1,7 +1,12 @@
 import { directionOf, isLegacyRule, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { type Hardware, readHardware } from "../core/hardware.ts";
 import { clip } from "../core/kb-index.ts";
-import { RESEARCH_REVIEW } from "../core/research-check.ts";
+import {
+  PAPER_ACCEPTED,
+  PAPER_REFUSED,
+  PAPER_REQUESTED,
+  RESEARCH_REVIEW,
+} from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
 import {
@@ -287,6 +292,22 @@ export interface RunView {
     gaps: string[] | null;
     answers: { question: number; answer: string }[] | null;
   }[];
+  /**
+   * A research run's paper (goal 112): asked of the supervisor's final writer once the review
+   * panel's pass was accepted (`writing`), with the newest refusal of a draft while it is still
+   * written, then accepted (`in`), with the paper itself. Null until it is asked for.
+   */
+  paper: {
+    state: "writing" | "in";
+    requested_at: string;
+    refused: { at: string; problems: string[] } | null;
+    at: string | null;
+    writer: string | null;
+    ste_checked: boolean | null;
+    experiments: number;
+    /** The paper, with the references the harness appended, as its event carries it. */
+    text: string | null;
+  } | null;
   /** "Not possible" proposals and the owner's decisions. */
   conclusions: {
     proposal: number;
@@ -746,6 +767,7 @@ export function rigView(
         audits: [],
         promotion_waits: {},
         reviews: [],
+        paper: null,
         conclusions: [],
         published: null,
         published_trees: {},
@@ -1148,6 +1170,47 @@ export function rigView(
             );
         }
         if (r && e.kind === "review_decided") r.owner = String(b.decision);
+        break;
+      }
+      // A research run's paper (goal 112): asked for, refused with problems, then in.
+      case PAPER_REQUESTED: {
+        inst(String(e.subject)).paper = {
+          state: "writing",
+          requested_at: e.at,
+          refused: null,
+          at: null,
+          writer: null,
+          ste_checked: null,
+          experiments: 0,
+          text: null,
+        };
+        break;
+      }
+      case PAPER_REFUSED: {
+        const p = inst(String(e.subject)).paper;
+        if (p && p.state === "writing")
+          p.refused = {
+            at: e.at,
+            problems: (Array.isArray(b.problems) ? b.problems : [])
+              .filter((x): x is string => typeof x === "string")
+              .slice(0, 5)
+              .map((x) => x.slice(0, 300)),
+          };
+        break;
+      }
+      case PAPER_ACCEPTED: {
+        const v = inst(String(e.subject));
+        const ste = (b.ste ?? {}) as { checked?: unknown };
+        v.paper = {
+          state: "in",
+          requested_at: v.paper?.requested_at ?? e.at,
+          refused: null,
+          at: e.at,
+          writer: typeof b.writer === "string" ? b.writer : null,
+          ste_checked: ste.checked === true,
+          experiments: Array.isArray(b.experiments) ? b.experiments.length : 0,
+          text: typeof b.paper === "string" ? b.paper : null,
+        };
         break;
       }
       case "conclusion_proposed": {

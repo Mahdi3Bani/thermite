@@ -558,6 +558,28 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       });
     case "review_decided":
       return s(`You ${String(b.decision)} a review.`, "", { run: String(e.subject) });
+    // A research run's paper (goal 112).
+    case "research_paper_requested":
+      return s("The final writer was asked to write the research paper.", "", {
+        run: String(e.subject),
+      });
+    case "research_paper_refused": {
+      const problems = Array.isArray(b.problems) ? b.problems.map(String) : [];
+      return s(
+        `The harness refused the final writer's paper: ${Number(b.count) || problems.length} ${Number(b.count) === 1 ? "problem" : "problems"}${problems[0] ? `, the first: ${clip(problems[0], 200)}` : ""}.`,
+        "warn",
+        { run: String(e.subject) },
+      );
+    }
+    case "research_paper_accepted": {
+      const ste = (b.ste ?? {}) as { checked?: unknown };
+      const n = Array.isArray(b.experiments) ? b.experiments.length : 0;
+      return s(
+        `The research paper passed the harness's checks${ste.checked === true ? " and the rig's STE checker" : " (no STE checker on the rig)"}. It cites ${Number(b.cited_claims) || 0} claims, and ${n} next ${n === 1 ? "experiment" : "experiments"} went to the knowledge base.`,
+        "ok",
+        { run: String(e.subject) },
+      );
+    }
     case "conclusion_proposed":
       return s(
         "The harness proposes ending the campaign as not possible: it needs your decision.",

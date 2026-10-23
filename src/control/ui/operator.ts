@@ -1069,6 +1069,13 @@ export function runBrief(
       "",
       "muted",
     );
+  // A research run's final writer, while it writes the run's paper (goal 112).
+  if (r.status === "running" && r.paper?.state === "writing")
+    row(
+      "writer",
+      `the final writer is writing the paper${r.paper.refused ? ` <span class="muted">· the harness refused its last draft ${esc(ago(r.paper.refused.at, now))} ago</span>` : ""}`,
+      esc(span(r.paper.requested_at, now)),
+    );
   // The planner, only when it waits for something.
   const planner = store
     .liveTail(u.id, 40, "planner")
