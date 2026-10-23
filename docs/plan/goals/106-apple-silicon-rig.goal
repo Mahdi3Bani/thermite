@@ -25,7 +25,7 @@ A rig on a Mac with Apple silicon can run campaigns that use its GPU and its uni
 
 ## Why
 
-The owner, 2026-10-23, on the one-machine install: "If they have just mac it will pick up the unified memory and the apple silicon GPU for running mlx style stuff etc..." For v0.1.0 the install says plainly that a Mac's rig gets the virtual machine's CPUs and memory and no Apple GPU ([037](037-gpu-compose.goal)).
+The owner, 2026-10-23, on the one-machine install: "If they have just mac it will pick up the unified memory and the apple silicon GPU for running mlx style stuff etc..." For v0.1.0 the install says plainly that a Mac's rig gets the virtual machine's CPUs and memory and no Apple GPU ([037](_completed/037-gpu-compose.goal)).
 
 ## Done when
 

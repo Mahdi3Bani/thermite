@@ -20,7 +20,7 @@ A rig can use AMD GPUs as it uses NVIDIA ones: a harness image built on ROCm, th
 
 ## Why
 
-The owner, 2026-10-23, on the one-machine install: "If they ahve 10 radeon/nvidia gpus it will pick that up." For v0.1.0 the install finds AMD cards and says they are not used yet ([037](037-gpu-compose.goal)); using them needs a ROCm image and device fences that Thermite does not have.
+The owner, 2026-10-23, on the one-machine install: "If they ahve 10 radeon/nvidia gpus it will pick that up." For v0.1.0 the install finds AMD cards and says they are not used yet ([037](_completed/037-gpu-compose.goal)); using them needs a ROCm image and device fences that Thermite does not have.
 
 ## Done when
 

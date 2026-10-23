@@ -1,7 +1,7 @@
 ---
 id: "037"
 title: "The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Install from images"
 depends_on: ["011", "013"]
@@ -11,7 +11,7 @@ updated: 2026-10-23
 
 # 037 · The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Install from images
 
 ## What
 
@@ -33,7 +33,7 @@ A tester with one GPU machine should not need Kubernetes or SSH deploys to use i
 
 - [x] `thermite local init` and `thermite doctor` say what the local rig gets on Linux, on Linux with NVIDIA GPUs with and without NVIDIA's runtime or a CDI spec, on Linux with AMD GPUs, and on a Mac with Apple silicon, with Docker and with Podman: unit tests with stand-in command outputs (`src/cli/machine.test.ts`, `src/cli/doctor.test.ts`).
 - [x] `compose.gpu.yaml` for Docker and for Podman, with the split the broker reads: unit tests; both files merged with the release's compose file by `docker compose config` and `podman compose config`.
-- [ ] The local rig starts under each file on a machine with NVIDIA GPUs, Docker with NVIDIA's runtime and Podman with a CDI spec, and passes its isolation self-test and judge smoke check. (Podman: done on 2026-10-23, below. Docker: not run; the test machine has no Docker.)
+- [x] The local rig starts under each file on a machine with NVIDIA GPUs, Docker with NVIDIA's runtime and Podman with a CDI spec, and passes its isolation self-test and judge smoke check. (Podman: done on 2026-10-23, below. Docker: not run, as the test machine had none; the owner accepted the Podman test for v0.1.0.)
 - [x] The pages say what each kind of machine gets: "Install Thermite on one machine", Your first run, Troubleshoot, the command line, Give a rig several GPUs, Compatibility.
 
 ## Decisions
@@ -43,6 +43,7 @@ A tester with one GPU machine should not need Kubernetes or SSH deploys to use i
 - 2026-10-23, the lead: one GPU is shared; with more, the judge gets 1 and the agents the rest, unless the owner changes it on Edit rig.
 - 2026-10-23: the release's `init` service runs in a container with no network, so it can't ask the engine or run NVIDIA's programs. It reads the GPUs from the driver's `/proc/driver/nvidia/gpus`, and the engine from the file each engine puts in its containers, writes `compose.gpu.yaml`, and says that the toolkit was not checked. `thermite doctor` and `thermite local init`, run on the machine, check it.
 - 2026-10-23: a rig's GPU set (`THERMITE_GPUS`) takes up to 16 GPUs. The broker refused more than 8, although control sets rigs up on machines with up to 16.
+- 2026-10-23, owner: the test with Podman is enough for v0.1.0; a Docker start with NVIDIA's runtime is not needed for it ("Yeah good enough").
 
 ## Open questions
 
@@ -60,7 +61,8 @@ None.
   - The judge smoke check passed in 3 minutes: `smoke on smoke-cuda: all 4 candidates were judged as expected`; the GPU peaked at 52 °C.
   - Found: under rootless Podman the broker can't change the device files' group (`EPERM` on `chown /dev/nvidia*`), so the GPU fence (Landlock) alone keeps the roles off the card, as on RunPod. The pages now say so (Install Thermite on one machine; Rig checks). Also fixed: the words for one GPU ("its NVIDIA GPU … gives it to containers").
   - Left: Docker with NVIDIA's runtime, which the machine did not have. Whether a Docker start is needed for v0.1.0 is the owner's call.
+- 2026-10-23: Verified, with the owner's answer above.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/037-gpu-compose.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/_completed/037-gpu-compose.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).
