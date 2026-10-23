@@ -334,6 +334,9 @@ async function main(): Promise<void> {
     if (reclaimed.length)
       log("harness", "reclaimed leases at start", { executor: id, jobs: reclaimed });
   }
+  // After the reclaim, which can put a closed run's job back in the queue.
+  const cancelled = ledger.endClosedRunJobs("controller-start");
+  if (cancelled.length) log("harness", "cancelled closed runs' jobs at start", { jobs: cancelled });
 
   const devRuns = new DevRuns({
     runner,

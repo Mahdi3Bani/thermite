@@ -29,6 +29,7 @@ const SETTLED = new Set([
   "duplicate",
   "errored",
   "audit_blocked",
+  "not_judged",
 ]);
 
 export async function receivePropagation(

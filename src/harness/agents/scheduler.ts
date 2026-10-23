@@ -93,6 +93,7 @@ const SETTLED = new Set([
   "awaiting_approval",
   "awaiting_audit",
   "audit_blocked",
+  "not_judged",
 ]);
 const KEEP = new Set(["win_screened", "win_confirmed"]);
 

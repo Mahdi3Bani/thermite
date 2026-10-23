@@ -40,6 +40,7 @@ const LIFECYCLE: Record<string, string> = {
   duplicate: "the same change as an earlier attempt",
   rejected: "refused",
   errored: "failed in the judge",
+  not_judged: "not judged: its run closed first",
 };
 
 /** A verdict in words, with the measured change when there is one. */
