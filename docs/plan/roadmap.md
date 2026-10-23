@@ -49,7 +49,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [011](goals/011-release-bundle.goal) A release bundle · `IN_PROGRESS`
 - [012](goals/_completed/012-version-checks.goal) Version checks between control and rigs · `VERIFIED`
 - [013](goals/_completed/013-thermite-doctor.goal) `thermite doctor` · `VERIFIED`
-- [037](goals/037-gpu-compose.goal) The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs · `IN_PROGRESS`
+- [037](goals/_completed/037-gpu-compose.goal) The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs · `VERIFIED`
 - [014](goals/_completed/014-quick-start-in-ci.goal) The quick start, tested in CI · `VERIFIED`
 - [015](goals/_completed/015-log-paging.goal) Log paging · `VERIFIED`
 - [016](goals/_completed/016-small-fixes.goal) Small fixes before the release · `VERIFIED`

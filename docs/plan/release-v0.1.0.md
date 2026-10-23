@@ -93,7 +93,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | [011 · A release bundle](goals/011-release-bundle.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
 | [012 · Version checks between control and rigs](goals/_completed/012-version-checks.goal) | `VERIFIED` | [010](goals/010-published-images.goal) |
 | [013 · `thermite doctor`](goals/_completed/013-thermite-doctor.goal) | `VERIFIED` | — |
-| [037 · The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs](goals/037-gpu-compose.goal) | `IN_PROGRESS` | [011](goals/011-release-bundle.goal), [013](goals/_completed/013-thermite-doctor.goal) |
+| [037 · The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs](goals/_completed/037-gpu-compose.goal) | `VERIFIED` | [011](goals/011-release-bundle.goal), [013](goals/_completed/013-thermite-doctor.goal) |
 | [014 · The quick start, tested in CI](goals/_completed/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/_completed/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
 | [015 · Log paging](goals/_completed/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/_completed/016-small-fixes.goal) | `VERIFIED` | — |
