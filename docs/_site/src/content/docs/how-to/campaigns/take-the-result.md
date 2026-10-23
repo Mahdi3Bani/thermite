@@ -8,6 +8,8 @@ sidebar:
 
 A run's result is its [champion](../../reference/glossary.md): the best version of your project that the judge has confirmed. Thermite never pushes to your project. You download the champion as a patch and apply it yourself, to the commit the run started from.
 
+This is the result of a hill climb or a goal campaign. A research campaign changes no code: its result is its report, which **Latest report** on the run's **Overview** opens, and its research folder, which the rig's export after the final report carries ([Get a rig's results from control](../operate/exports-on-control.md)).
+
 ## Before you start
 
 - The run has a champion beyond its starting point: on the run's **Overview** tab, **The run** block shows **Champion** as `#2` or higher. The starting point itself is champion #1.

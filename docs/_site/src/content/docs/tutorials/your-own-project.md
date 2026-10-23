@@ -92,7 +92,7 @@ In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** 
 
 On **1 Aim**:
 
-1. Keep **Hill climb** chosen. A **hill climb** improves one measured number, here how long the program takes.
+1. Keep **Hill climb** chosen. A **hill climb** improves one measured number, here how long the program takes. The other cards, **Reach a list of goals** and **Research a question**, are Thermite's other two [campaign modes](../explanation/campaign-modes.md).
 2. **Campaign name**: `primes-speed`
 3. **Title**: `Count primes faster`
 4. Press **Next**.
@@ -261,6 +261,7 @@ This is the last tutorial. From here, the how-to guides help with your own proje
 
 ## Next
 
+- [Choose a campaign mode](../how-to/campaigns/choose-a-mode.md): a goal campaign or a research campaign for your next piece of work.
 - [Write a kit for your project](../how-to/campaigns/write-a-kit.md): kits for real projects, with their own scripts and cases.
 - [Start a campaign from the dashboard](../how-to/campaigns/start-from-dashboard.md): every field of the New campaign page.
 - [Use a private repository](../how-to/campaigns/private-repository.md): a project that isn't public.

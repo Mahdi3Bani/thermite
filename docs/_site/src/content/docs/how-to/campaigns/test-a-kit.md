@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-Before agents spend time or money, check the campaign's [kit](../../reference/glossary.md). Start a run with no agents (a try of the kit), read what the judge makes of the starting point, then submit a few changes whose right [verdicts](../../reference/verdicts.md) you already know. Thermite's own **Judge smoke** check does this for its smoke kits: see [Check a rig](../operate/check-a-rig.md).
+Before agents spend time or money, check the campaign's [kit](../../reference/glossary.md). Hill climbs and goal campaigns have one; a research campaign has no kit, so this page is not for it. Start a run with no agents (a try of the kit), read what the judge makes of the starting point, then submit a few changes whose right [verdicts](../../reference/verdicts.md) you already know. Thermite's own **Judge smoke** check does this for its smoke kits: see [Check a rig](../operate/check-a-rig.md).
 
 ## Before you start
 

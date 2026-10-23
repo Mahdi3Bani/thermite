@@ -6,7 +6,7 @@ sidebar:
   order: 4
 ---
 
-A [kit](../../reference/glossary.md) is the judge's recipe for your project: how to build a change, run it on test cases, time it and check its output. This guide gives your project a kit in its own repository, pinned by commit. Agents never see it.
+A [kit](../../reference/glossary.md) is the judge's recipe for your project: how to build a change, run it on test cases, time it and check its output. This guide gives your project a kit in its own repository, pinned by commit. Agents never see it. A hill climb and a goal campaign need a kit; a research campaign has none ([Choose a campaign mode](choose-a-mode.md)).
 
 [Kits](../../explanation/kits.md) explains why the kit lives outside the project, and the [kit manifest reference](../../reference/kit-manifest.md) has every field. For a first campaign, the **New campaign** page can write a simple kit for you: see [Start a campaign from the dashboard](start-from-dashboard.md).
 
