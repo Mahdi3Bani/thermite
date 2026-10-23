@@ -1,0 +1,49 @@
+---
+id: "104"
+title: "Change a cloud rig's GPU and settings, keeping its state"
+status: PROPOSED
+version: "0.3.0"
+depends_on: ["022", "023"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 104 · Change a cloud rig's GPU and settings, keeping its state
+
+**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030)
+
+## What
+
+A plan only; nothing of it is built.
+
+A rig launched on a GPU cloud can move to another GPU, another number of GPUs or another data center, and change its pod's settings (container disk, volume size, idle stop), from its page and over REST and MCP, keeping its identity, its runs and its results:
+
+- **When it can't start.** A stopped pod whose host has no free GPU now can't start; its page says so already. It offers **Start on another GPU**: the GPU types in stock now, with their prices, and the owner's choice.
+- **The move.** Control takes a full export first, as a stop does, so the rig's record is on control. It launches a new pod on the chosen GPU, gives it the rig's state (from the sealed snapshot, carried by control or by a volume that is not tied to one host), and enrolls it as the same rig: its keys, its token and its ledger come back, so the owner is not asked for a new key. The old pod is terminated only once the new one reports.
+- **A change of settings** works the same way: a pod's GPU type and count, disk and volume can't change in place on the cloud, so a change is a move.
+- **The owner decides.** Every move is the owner's (it changes what is billed), and the rig's history records it: from what, to what, why, and what it cost.
+
+## Why
+
+On 2026-10-23, in the paid RunPod test, a rig was stopped and then could not start again: "There are not enough free GPUs on the host machine to start this pod." A stopped pod's volume is tied to the machine it ran on, so the rig could only wait for that machine's GPU, or be terminated and launched again from nothing. With an idle stop on, any cloud rig can meet this when it wakes. The owner: "for v0.3.0 allow changing pod config/rig config (switch GPUs to an available GPU)."
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+- 2026-10-23, owner: in v0.3.0.
+
+## Open questions
+
+- Where the state travels: through control (the sealed snapshot, uploaded and handed to the new pod), or on a volume not tied to one host (RunPod's network volumes), which also lets a stopped rig start on any host in its data center.
+- Whether a move to a different GPU type should rerun the rig's checks (isolation and smoke) before its runs resume, since timing changes with the card.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the paid RunPod test and the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/104-change-a-cloud-rigs-gpu.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

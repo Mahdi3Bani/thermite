@@ -48,6 +48,7 @@ Thermite's settled decisions already reach measurement targets through target dr
 
 - 2026-10-23: Goal written as a plan, from the owner's decision.
 - 2026-10-23: Moved to v0.1.1 by the owner's timing; RunPod first; spend caps decided. Goal [101](101-secondary-judge.goal) adds the outside service's checks.
+- 2026-10-23: Found in the paid RunPod test: a stopped pod can start again only on its own host, which may have no free GPU. On-demand pods should not depend on one host: a new pod per batch, with the image cached and any state on control or on a volume not tied to a host.
 
 ---
 

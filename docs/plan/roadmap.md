@@ -143,6 +143,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [037](goals/037-gpu-compose.goal) GPU rigs under compose · `PROPOSED`
 - [038](goals/038-lane-network-rules.goal) Keep lanes off the local network · `PROPOSED`
 - [039](goals/039-cluster-ranges-and-key-rotation.goal) Cluster ranges and key rotation · `PROPOSED`
+- [104](goals/104-change-a-cloud-rigs-gpu.goal) Change a cloud rig's GPU and settings, keeping its state · `PROPOSED`
 
 ## v0.4.0
 
