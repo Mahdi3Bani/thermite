@@ -118,6 +118,10 @@ Questions, ideas and results go in our [Discord](https://discord.gg/3Qs2uejUf9).
 - **Code of conduct:** the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md).
 - **Security:** report a problem privately, as [SECURITY.md](SECURITY.md) says, never in a public issue.
 
+## Credits
+
+Thermite builds on other people's research and software. [CREDITS.md](CREDITS.md) lists the papers, systems, programs, libraries, standards and services it draws on, runs or ships, each with its licence.
+
 ## License
 
 [MIT](LICENSE)

@@ -8,6 +8,7 @@
 //   - every contract, kit.json and advisors.json example parses with the real schema;
 //   - no page names an agent by an old name (goal 074): "teacher pair", "combiner", "panelist",
 //     "the supervisor's advisors", or "panel" alone for the review panel, outside code;
+//   - the Credits page is CREDITS.md, as `npm run docs:credits` writes it;
 //   - after `npm run docs:build`: llms.txt lists every page, llms-full.txt holds every page, and
 //     every page has its Markdown copy.
 // Usage: node --experimental-strip-types scripts/docs-check.mjs [--allow-stubs] [--no-build]
@@ -15,6 +16,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { creditsFile, creditsPage, creditsPageFile } from "./credits-page.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const docsRoot = join(root, "docs/_site/src/content/docs");
@@ -389,6 +391,27 @@ if (settingsPage) {
     if (!documented.has(name) && !internalSettings.has(name))
       problem(settingsPage.file, `${name} is read by the code but not documented here`);
 } else problems.push("docs/_site/src/content/docs/reference/settings.md: missing");
+
+// --- The Credits page ------------------------------------------------------------------------
+
+// CREDITS.md is the one copy: the site's page is it below its heading (scripts/credits-page.mjs).
+if (!existsSync(creditsFile)) problems.push("CREDITS.md: missing");
+else {
+  let want;
+  try {
+    want = creditsPage();
+  } catch (err) {
+    problem(creditsFile, err instanceof Error ? err.message : String(err));
+  }
+  const have = existsSync(creditsPageFile) ? readFileSync(creditsPageFile, "utf8") : null;
+  if (want !== undefined && have !== want)
+    problem(
+      creditsPageFile,
+      have === null
+        ? "missing: run `npm run docs:credits` to write it from CREDITS.md"
+        : "does not match CREDITS.md: run `npm run docs:credits`, and change CREDITS.md, not the page",
+    );
+}
 
 // --- The built site ---------------------------------------------------------------------------
 
