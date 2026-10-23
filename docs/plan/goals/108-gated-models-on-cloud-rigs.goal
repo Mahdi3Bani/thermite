@@ -1,0 +1,43 @@
+---
+id: "108"
+title: "Gated models on cloud rigs"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 108 · Gated models on cloud rigs
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is built.
+
+A rig launched on a GPU cloud can import a gated model, one whose source needs the owner's token (a gated model on Hugging Face, for example), as a rig on a machine or a cluster can with `THERMITE_HF_TOKEN_FILE`. Control gives the pod the token at launch as a launch value it keeps no copy of, as it does the snapshot key, held only by the part of the rig that fetches models and never reachable by agents; the isolation self-test checks that no other role can read it. The launch page says which models it allows, and a launch without it says why a gated import fails.
+
+## Why
+
+A RunPod launch gives the pod no token for a gated model source, so a campaign that needs a gated model can't run on a RunPod rig. Found on 2026-10-23 while the docs were checked against the goals: the RunPod page's note on gated models pointed to a goal already verified, with no plan left for the gap.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Whether control keeps the token for later launches (a secret in Settings, per cloud account) or the owner gives it at each launch.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the docs check.
+
+---
+
+Run with `/goal Complete docs/plan/goals/108-gated-models-on-cloud-rigs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
