@@ -1,0 +1,53 @@
+---
+id: "107"
+title: "Several runs at once on one rig, within its resources"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 107 · Several runs at once on one rig, within its resources
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+Today a rig runs one run at a time: starting a run pauses the one at work. A rig should run several at once while they fit in what it has:
+
+- **What a run needs.** A run declares, or its kit does, what its trials and its judge need: GPU memory, GPUs, CPU cores, memory and disk. A research run needs little: model calls and fetches.
+- **What the rig has.** The rig knows its devices and their memory, its cores and its memory, and what its runs use now.
+- **Admission.** A new run starts beside the others when what it needs fits; otherwise it waits, or the owner chooses which run pauses. Many research runs can share one CPU rig.
+- **Measurements stay clean.** The judge's measurements must not share a device or the time it measures with another run's work in a way that changes its results: a run that measures on a GPU gets that GPU to itself while it measures, as the judge's card does today; runs that share a device are told so, and their contracts can refuse it.
+- **Isolation between runs.** Each run's agents see only their own run's files, as today's lanes do.
+- **The dashboard** shows what each run uses and what the rig has left, and why a run waits.
+
+## Why
+
+The owner, 2026-10-23: "Additioonally for v0.2.0 we need to think about concurrency. For a local machine they should be able to run many research and maybe goal or hill climbing if it doesn't take up all the resources available for a rig/machine. For example maybe their hill climb only takes 10gb of VRAM out of 64 gb of VRAM available... They should be allowed to run more than one hill climb on the same machine... This comes with its own set of challenges, but we should solve this. Deep research path itself uses very little resources. You should be allowed to run many of those against a single CPU rig or local machine..."
+
+This fits goal [102](102-kits-define-campaigns.goal), where rigs become the slots and boundaries that kits run in.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+- 2026-10-23, owner: in v0.2.0.
+
+## Open questions
+
+- How a run's needs are known: declared by the kit, measured from its first trials, or both.
+- How the judge keeps clean measurements when two runs measure on one machine: a queue per device, time windows, or one judge for the rig.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/107-runs-side-by-side.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

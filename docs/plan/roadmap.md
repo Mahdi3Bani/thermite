@@ -128,6 +128,9 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [089](goals/089-dashboard-performance.goal) Faster dashboard pages · `PROPOSED`
 - [092](goals/092-knowledge-explore-and-dumps.goal) Explore the knowledge base, and dump it to outside stores · `PROPOSED`
 - [102](goals/102-kits-define-campaigns.goal) Kits define how a campaign runs; rigs are the slots it runs in · `PROPOSED`
+- [105](goals/105-amd-gpus.goal) AMD GPUs in rigs · `PROPOSED`
+- [106](goals/106-apple-silicon-rig.goal) A rig on Apple silicon that uses its GPU · `PROPOSED`
+- [107](goals/107-runs-side-by-side.goal) Several runs at once on one rig, within its resources · `PROPOSED`
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
 - [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`

@@ -1,0 +1,43 @@
+---
+id: "105"
+title: "AMD GPUs in rigs"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["037"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 105 · AMD GPUs in rigs
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+A rig can use AMD GPUs as it uses NVIDIA ones: a harness image built on ROCm, the broker's device fences for AMD's device nodes (`/dev/kfd` and the render nodes under `/dev/dri`), the GPU split between the judge and the agents, the isolation self-test with AMD cards, a target class for kits, and a smoke kit in HIP. The one-machine install finds AMD cards and gives them to its rig, and so do machines and clusters.
+
+## Why
+
+The owner, 2026-10-23, on the one-machine install: "If they ahve 10 radeon/nvidia gpus it will pick that up." For v0.1.0 the install finds AMD cards and says they are not used yet ([037](037-gpu-compose.goal)); using them needs a ROCm image and device fences that Thermite does not have.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Which ROCm versions and cards to support first, and where to test them: the maintainers have no AMD card today.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/105-amd-gpus.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

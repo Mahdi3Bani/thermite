@@ -1,0 +1,49 @@
+---
+id: "106"
+title: "A rig on Apple silicon that uses its GPU"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 106 · A rig on Apple silicon that uses its GPU
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+A rig on a Mac with Apple silicon can run campaigns that use its GPU and its unified memory, such as MLX work. Containers on macOS run in a Linux virtual machine with no access to the Apple GPU (Metal), so such a rig runs natively on macOS, without containers. It needs:
+
+- **Isolation without Linux's tools.** The rig's isolation rests on Linux users, groups and Landlock. A native macOS rig needs its own fence with the same promises (agents can't read the judge, its kits, the ledger or secrets, and can't change measurements), with macOS's own mechanisms, and an isolation self-test that proves them.
+- **The judge and the agents on one GPU.** Apple silicon has one GPU and shared memory, so the judge's measurements and the agents' runs share it, as a rig with one GPU does today, with the agents' runs waiting while the judge measures.
+- **A target class and a smoke kit** for Apple silicon (Metal or MLX).
+- **Setup** from the one-machine install and from **Add a rig**, with the same checks.
+
+## Why
+
+The owner, 2026-10-23, on the one-machine install: "If they have just mac it will pick up the unified memory and the apple silicon GPU for running mlx style stuff etc..." For v0.1.0 the install says plainly that a Mac's rig gets the virtual machine's CPUs and memory and no Apple GPU ([037](037-gpu-compose.goal)).
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Which macOS mechanism can fence the agents as strictly as Linux users, groups and Landlock do, and whether it can be tested in CI.
+- Whether the judge on a native Mac rig should time with the GPU idle for the agents, or keep its own measurement windows.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/106-apple-silicon-rig.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
