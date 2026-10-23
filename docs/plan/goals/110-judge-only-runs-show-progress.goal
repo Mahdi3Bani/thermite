@@ -1,0 +1,48 @@
+---
+id: "110"
+title: "A judge-only run shows its progress"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 110 · A judge-only run shows its progress
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is built.
+
+A run with no agents, such as a goal campaign's check of its starting point, can take hours while the judge checks every goal. Its page should say what is happening:
+
+- **Goals fill in as they are checked.** Each goal shows met, unmet or not checked yet as soon as the judge has its result, with its values, instead of every goal staying blank until the whole check ends. The goal at work is marked, with how far it is.
+- **The right words at the top.** A judge-only run started to check a campaign says so ("Judge only: the judge checks the starting point; no agents work on this run"), not "A try of the kit", which fits only a run started to try a kit.
+- **No lane wording.** Attempts, Now and the other blocks don't speak of lanes that never run ("No attempt yet: the lanes have not submitted anything").
+- **No advisors unless asked.** A judge-only run's teachers, auditor and review panel don't run by default, since no worker acts on their ideas; the owner can turn them on for the run, for example to prepare experiments for a run with workers that follows.
+
+## Why
+
+The owner, 2026-10-23, on a goal campaign's second judge-only check, about 1 h 40 min in: "pn-quality-try-1 feels broken, whats up?" The run was working: the judge was on its eleventh goal. But the Goals block showed every goal blank, the top of the page called it a try of the kit, the Attempts block spoke of lanes, and its advisors had used about 99,000 tokens on ideas no worker would take.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+- 2026-10-23, owner: in v0.1.1 ("yeah file as v0.1.1 goal").
+
+## Open questions
+
+- Whether the judge reports each goal's result as it finishes (a new event) or control works it out from the job's progress.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's question.
+
+---
+
+Run with `/goal Complete docs/plan/goals/110-judge-only-runs-show-progress.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
