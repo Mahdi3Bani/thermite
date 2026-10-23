@@ -26,7 +26,7 @@ Choose a card: it sets the campaign's mode. [Choose a campaign mode](choose-a-mo
 | --- | --- | --- |
 | **Hill climb** | Improve one measured number, such as speed, size or accuracy | Never on its own: you pause it or close it |
 | **Reach a list of goals** | Work until checks you write all pass | Every goal is met |
-| **Research a question** | Collect sourced findings. No code changes | Never on its own: made here, it has no end time, and runs until you close it ([Time and tools](#time-and-tools)) |
+| **Research a question** | Collect sourced findings. No code changes | The rig's review panel finds every question answered, or you close it ([Time and tools](#time-and-tools)) |
 
 Fill in **Campaign name** (lowercase letters, digits, dots and dashes, such as `sort-speed`) and **Title** (one sentence; agents read it too). Runs are named after the campaign: `sort-speed-1`, `sort-speed-2`. Using a name again saves a new version of that campaign, and the page doesn't warn you that the name is in use. Nothing that ran changes: runs that exist keep their version, and later runs use the new one. This is how you change a campaign made here, such as its stop time: fill in the page again with the same name. The page starts empty each time.
 
