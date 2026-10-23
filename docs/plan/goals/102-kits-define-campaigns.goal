@@ -1,0 +1,55 @@
+---
+id: "102"
+title: "Kits define how a campaign runs; rigs are the slots it runs in"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 102 · Kits define how a campaign runs; rigs are the slots it runs in
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+Today the shape of a campaign is written into Thermite's code: three modes (hill climb, goal, research), each with its own job kinds, its own judge flow and its own agents' tools, and one harness image for every kit. A kit only fills in what the mode leaves open: the cells, the metrics, the checks and the build.
+
+The aim: **a kit says how a campaign that uses it runs**, as a plugin or a configuration that Thermite loads, without a change to Thermite's own code.
+
+- **What a kit defines:** the job kinds and their order (measure, gate, screen, confirm, verify, research, submit to an outside service), what each job runs and where, what decides a result, what the agents may do and with which tools, what the dashboard shows of it, and its settings, set per campaign.
+- **Kits for today's modes:** a hill-climbing kit, a goal-proving kit and a deep-research kit, which reproduce the three modes as kits. New ones come the same way, such as a kit for a public kernel contest (on-demand GPUs, an outside service's checks on a schedule, a daily submission: goals [100](100-on-demand-gpus.goal) and [101](101-secondary-judge.goal)).
+- **Kits ship their images.** A kit names or builds the images its jobs run in (for example a contest's own serving image), instead of every kit running in one harness image.
+- **Rigs are infrastructure.** A rig is a slot and its boundaries: the machine or pod, its devices, its network and secret rules, its isolation and its limits. Kits are deployed onto rigs; a rig no longer knows what a campaign is.
+- **What stays in Thermite:** the ledger and its events, isolation and the trust boundaries (agents never judge; a kit's judging code runs where agents can't write it), control, the dashboard's frame, secrets and the supervisor's git and relay work.
+
+## Why
+
+The owner, 2026-10-23: "Right now the shape of jobs and their execution is tied to hardcoded stuff on thermite. These should be driven by kits, such that you can write a kit that is loaded and defines whats available to run a campaign using it. A hillclimbing kit, a goal proving kit, a deep research kit, and now an open kernel contest kit. These shouldn't require a rewrite or features added to thermite themselves, the kits should operate as almost plugins/configuration that deploy this. And then the configuration etc happens at per kit. Rigs become pure infra resources available for kits to run on. Kits ship their own image definitions etc. Rigs are the slots and boundaries."
+
+Each new kind of campaign so far needed changes across the harness, the judge, the supervisor and the dashboard (research mode, goal mode, and next the contest's on-demand GPUs and outside checks).
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet. When accepted, this changes settled decisions: the three campaign modes become three kits, and the harness image is no longer one image for every kit. Those go in [decisions](../decisions.md) with the owner's words.
+
+## Open questions
+
+- How a kit's own code runs safely: what a kit may declare (a configuration, a fixed set of building blocks) against what it may run (its own code, in which sandbox, with what trust), since a kit's judging code decides results.
+- How kits for today's three modes keep today's runs and ledgers readable.
+- Whether goals 100 and 101 are built first in Thermite's code, then moved into a contest kit, or wait for this goal.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/102-kits-define-campaigns.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
