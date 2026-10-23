@@ -59,7 +59,10 @@ export default defineConfig({
           },
         },
       ],
-      social: [{ icon: "github", label: "GitHub", href: repo }],
+      social: [
+        { icon: "github", label: "GitHub", href: repo },
+        { icon: "discord", label: "Discord", href: "https://discord.gg/3Qs2uejUf9" },
+      ],
       editLink: { baseUrl: `${repo}/edit/main/docs/_site/` },
       lastUpdated: true,
       customCss: ["./src/styles/custom.css"],
