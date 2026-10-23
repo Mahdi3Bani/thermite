@@ -10,7 +10,7 @@ A rig's supervisor can run **the advisors**: models that watch the research but 
 
 - The **teachers**, one or two, review each running run, every hour by default and at once when its queue runs low. They bring a portfolio of new ideas for the run's [experiment queue](../campaigns/choose-what-runs-next.md) first, and rules for the planner only when new evidence calls for one. With two teachers, a **merged by** model joins their advice, and drops no distinct idea.
 - The **auditor** answers the judge's audits: its clear is the last step before a change becomes the champion, and its block stops it. A rig without one has no audits.
-- The **review panel** grades goals that code cannot check. Its pass meets the goal, unless the run asks you to accept it ([Decide what waits for you](../campaigns/decide-what-waits.md#reviews)).
+- The **review panel** grades goals that code cannot check, and decides when a research run's questions are answered. Its pass meets the goal, or ends the research run with its final report, unless the run asks you to accept it ([Decide what waits for you](../campaigns/decide-what-waits.md#reviews)). A rig without one leaves such goals unmet, and keeps such research runs researching.
 
 [Supervision](../../explanation/supervision.md) explains what each one may and may not do. No advisor runs until it has a model. **Edit rig** also has a switch for each part, **on** by default; a switch only lets a role run once it has a model.
 
@@ -161,7 +161,7 @@ Wait a minute, then press **refresh** in the status bar, the line along the bott
   - `the teachers added to the queue: …`, with the titles of their portfolio's experiments, `the teachers moved …`, with their ids, and `refused: add "…": it repeats x-… (up next)` for an idea already waiting;
   - `audit of …`, with the attempt, which try of that audit it is (`(try 1)`), the auditor's decision, what it did to the result and why; after the last try, `audit of …: the auditor could not answer after 5 tries, so it waits for the owner`, or, when that hand-off fails, `audit of …: handing it to the owner (tried again in 30 minutes): …`;
   - `the auditor added to the queue: …`, with the title of its check;
-  - `review …`, with each reviewer's pass or fail and why, then the review panel's outcome;
+  - `review …`, with each reviewer's pass or fail and why, then the review panel's outcome; for a research run, `review 3 of the research questions, reviewer-1: pass. 2 of the questions answered. …`;
   - `advisor round done: …`, the round's counts, when the round did something.
 
   The rig's own live view (the **Live** button on the rig's page) shows the same lines when you choose **Supervisor** in its list.
