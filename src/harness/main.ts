@@ -53,7 +53,7 @@ import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
-import { ResearchFolder } from "./research/folder.ts";
+import { ResearchFolder, SAVED_LANES_DIR } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
 import { lanesFromEnv, RigSettingsStore, trialMinutesFromEnv } from "./rig-settings.ts";
 import {
@@ -348,7 +348,7 @@ async function main(): Promise<void> {
   const researchFolder = new ResearchFolder({
     ledger,
     scratchRoot: join(paths.scratchDir, "research"),
-    stateRoot: join(paths.stateDir, "research-work"),
+    stateRoot: join(paths.stateDir, SAVED_LANES_DIR),
     runner,
     knowledge: service.knowledge,
   });

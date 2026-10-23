@@ -78,6 +78,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed](goals/086-goal-report-values-and-confirmation-wait.goal) | `VERIFIED` | [082](goals/082-judge-findings-in-view.goal) |
 | [087 · The owner closes a run by hand](goals/087-close-a-run.goal) | `VERIFIED` | [080](goals/080-buttons-show-progress.goal) |
 | [096 · Give control a kit written elsewhere, as a git bundle](goals/096-kits-from-elsewhere.goal) | `VERIFIED` | — |
+| [098 · A run's teachers read what the run found: its sources, claims, findings and files](goals/098-research-teachers-read-the-research.goal) | `IN_PROGRESS` | [081](goals/081-ideas-first.goal), [065](goals/065-journals-and-corpus.goal), [062](goals/062-research-folder.goal) |
 
 ### Install from images
 

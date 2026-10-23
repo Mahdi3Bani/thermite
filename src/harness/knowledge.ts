@@ -139,6 +139,22 @@ export const HIT_TEXT = 4000;
 export const SEARCH_DEFAULT = 10;
 export const SEARCH_MAX = 50;
 
+/**
+ * A search's words: each word of 2 or more characters, the first 8, in lower case. An item
+ * matches when its text has every one (this search and the run's own, run-research.ts).
+ */
+export function searchWords(q: string): string[] {
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 1)
+    .slice(0, 8);
+}
+
+/** How many hits a search gives: SEARCH_DEFAULT when not told, from 1 to SEARCH_MAX. */
+export const searchLimit = (n: number | undefined) =>
+  Math.max(1, Math.min(SEARCH_MAX, Math.floor(n ?? SEARCH_DEFAULT)));
+
 /** An item's file read back: its front block, its title and its text. */
 function readItem(md: string): Omit<KnowledgeHit, "file"> | undefined {
   if (!md.startsWith("---\n")) return undefined;
@@ -291,13 +307,9 @@ export class Knowledge {
     o: { kinds?: string[] | undefined; limit?: number | undefined } = {},
   ): KnowledgeSearch {
     const index = this.index(run);
-    const words = q
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 1)
-      .slice(0, 8);
+    const words = searchWords(q);
     const kinds = o.kinds?.length ? new Set(o.kinds) : undefined;
-    const limit = Math.max(1, Math.min(SEARCH_MAX, Math.floor(o.limit ?? SEARCH_DEFAULT)));
+    const limit = searchLimit(o.limit);
     const files = join(this.saved(run), "files");
     const found: KnowledgeHit[] = [];
     const entries = Object.entries(index)

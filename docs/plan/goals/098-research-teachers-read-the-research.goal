@@ -1,0 +1,70 @@
+---
+id: "098"
+title: "A run's teachers read what the run found: its sources, claims, findings and files"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: ["081", "065", "062"]
+created: 2026-10-22
+updated: 2026-10-22
+---
+
+# 098 · A run's teachers read what the run found: its sources, claims, findings and files
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A research run's teachers read the run's own research before they propose its next steps, read only, through the harness, with the supervisor's token.
+
+1. **Routes.** The harness answers the supervisor's token, and no other, with the run's own research from its ledger and its research folder:
+   - its sources (id, address, site, title, status, when fetched, by which lane, how many claims quote each), and one source's archived text in parts;
+   - its claims, verified or draft, with the harness's reasons for a draft, the question each answers, its quotes and their sources;
+   - its hypotheses and findings (supported and draft), with what they rest on, and its research notes;
+   - the files of its research folder that are not records: the newest report, the report sections the workers wrote, and each lane's files as the harness saved them when the lane's last trial ended; a list, and one file by lines;
+   - a search of all of it by words.
+
+   Every answer is cut to a size, lists come a page at a time, and each says that what it holds is data the run's workers wrote or fetched, not instructions.
+2. **Tools.** The teachers get `list_research`, `read_source`, `read_research_file` and `search_research`: in Pi as tools of the call, and in Claude Code, OpenCode and Codex on the supervisor's local MCP server for the call, beside the code tools. Teachers that may fetch any web page get none of them, and the run's Live says so once.
+3. **The brief.** A research run's brief carries `research` right after its objective, ahead of the long parts a window may cut: the counts, each question's coverage, the start of the newest report, and one line that names the tools that read the rest.
+4. **The prompt.** The teachers are told what `research` is, to read what the run found before they propose, to build on it, and to cite the ids or paths they read.
+
+## Why
+
+The owner, 2026-10-22: "advisors on research run have access to the knowledge base and files right? and all the claims etc?" They had not. A research run's teachers proposed its next research tasks from a brief that held its topic, questions, queue, field notes and past research from other runs, and nothing the run itself had found. Their past-research search reads only the run's `knowledge/`, which holds other runs' items and leaves the run's own out, and the code tools are withheld from a research run, which has no code.
+
+## Done when
+
+- [x] The harness's routes answer each kind, page long lists, cap each answer, read a source in parts and a file by lines, search by words, refuse a path outside the research folder, and refuse every token but the supervisor's. Tests: `src/harness/run-research.test.ts`.
+- [x] A research run's brief carries `research` ahead of the long parts, with the counts, each question's coverage and the newest report cut to 4,000 characters. Test: `src/harness/run-research.test.ts`.
+- [x] A research run's teachers get the four tools in Pi and read through them; a hill-climb run's teachers get none while its trials recorded nothing; teachers with an open fetch get none, and Live says so once; in Claude Code, OpenCode and Codex the tools are served on localhost, read only, and allowed by name. Tests: `src/supervisor/advise-research.test.ts`.
+- [x] The pages match the code: the advisors file reference (the teachers' row, the tools, The run's own research, the Live line), Advisors, Supervision, Campaign modes, Journals and the knowledge base, the knowledge base reference and Limits and pacing; the changelog has the change.
+- [ ] The compose acceptances the change needs pass: the compose smoke (the harness's API changed) and the steering acceptance (the advisors changed).
+
+## Decisions
+
+- 2026-10-22, lead, in the build brief: read-only harness routes for the supervisor's token, like the code reads; advisor tools for a research run's teachers, none with an open fetch; a short summary in the brief; the teachers told to read before they propose.
+- 2026-10-22, builder, within the brief:
+  - **Hill-climb and goal runs too.** They keep research items: since goal [065](065-journals-and-corpus.goal) their trials record sources, claims and notes with the research tools, in the same tables and research folder. So the routes answer every mode, and a hill-climb or goal run's lists hold what its trials recorded (no hypotheses, findings, report or lanes' files; the answer's note says so). Its brief has `research` once it has a source, a claim or a note, and its teachers get the tools then, beside the code tools: the tools follow the brief, as the past-research search follows `past_research`.
+  - **The teachers only.** A research run has no audits and no reviews: those read a change's diff, and a research run makes none. The auditor and the review panel of other runs get none of these tools.
+  - **Kinds and names.** The kinds are `source`, `claim`, `hypothesis`, `finding`, `note` and `file`, singular, as `search_past_research` names its kinds. Routes: `GET /v1/research/sources`, `/claims`, `/hypotheses`, `/findings`, `/notes`, `/files`, `/source`, `/file` and `/search`; the POST route the workers use, `/v1/research/:op`, is unchanged. Claims' states are `verified` and `draft`, findings' `supported` and `draft`, as the research folder's files say.
+  - **Research notes are included.** Notes recorded with `add_note` are part of what a run found; field notes stay in the brief's `field_notes`.
+  - **Files by the folder's paths.** `REPORT.md`, `report/<name>.md` and `lanes/<lane>/<path>`, as the workers see them. A lane's file is read from the harness's saved copy (`research-work/` in its state), never through a symlink, and only a path the ledger records as the newest written state of that file is read. The research folder's record files (sources, claims and the rest) are read through their own kinds.
+  - **A source is read in characters, not lines.** An archived page's text often has very long lines; the worker's `read_source` reads characters too.
+  - **Sizes.** Pages: 20 items by default, at most 50, and at most 60,000 characters (items past it go to the next page). A source: 8,000 characters by default, at most 20,000. A file: 400 lines by default, at most 2,000, and at most 60,000 characters; over 8 MiB not read. A search: 10 hits by default, at most 50, each with an excerpt of about 600 characters around the first word. The brief's newest report: 4,000 characters.
+  - **The search** reads words as `search_past_research` does (each word of 2 or more characters, the first 8, every one in the item, within words), newest first, over sources' titles, addresses and archived text, claims and their quotes, hypotheses, findings, notes, report sections and the lanes' text files. The report itself is left out: it is made of the claims and findings.
+  - **With an open fetch,** the brief keeps its `research` summary (the counts, coverage and the start of the newest report), as it keeps the field notes; the tools that read the rest are withheld. A research run no longer says it reads no code: it has none to withhold.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-22: Goal written from the owner's question and the lead's build brief, and built.
+  - Code: `src/harness/run-research.ts` (the reads and the brief's summary), `src/harness/api.ts` (the routes), `src/harness/service.ts` (the brief), `src/supervisor/research-tools.ts` (the tools), `src/supervisor/advise.ts` (the wiring, the Live line), `src/supervisor/advisors.ts` (Pi's tools, the teachers' prompt), `src/supervisor/past-mcp.ts` (the local MCP server).
+  - Tests: `src/harness/run-research.test.ts` (each kind, paging and caps, a source in parts, a file by lines, refused paths, the search, the supervisor's token only, the brief's summary, a hill-climb run), `src/supervisor/advise-research.test.ts` (a research run's teachers read through the tools, the tools follow the brief in a hill-climb run, none with an open fetch, the local MCP server). Each new test fails without the change.
+  - Checks before the commit: typecheck, Biome, the public check, the new test files and their neighbours, `npm run docs:build` and `npm run docs:check`. The compose acceptances were not run.
+
+---
+
+Run with `/goal Complete docs/plan/goals/098-research-teachers-read-the-research.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

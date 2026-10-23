@@ -18,6 +18,7 @@ import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
 import type { Research } from "./research/research.ts";
+import { KIND_PATHS, PAGE_MAX, RESEARCH_KINDS, SOURCE_CHARS_MAX } from "./run-research.ts";
 import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
 
 /**
@@ -353,6 +354,74 @@ export function createHarnessApi(
   app.get("/v1/evidence", supervisor, (c) => {
     const attempt = z.string().min(1).max(64).optional().parse(c.req.query("attempt"));
     return c.json(service.evidence(runOf(c), attempt) as object);
+  });
+
+  // The teachers' reads of a run's own research (goal 098), read only: each kind a page at a
+  // time, one source's archived text in parts, one file of its research folder by lines, and a
+  // search of all of it by words. Every answer is cut to a size and marked as data. A worker's
+  // token reads none of it: workers read the research folder itself.
+  const pageQuery = z.object({
+    offset: z.number().int().min(0).optional(),
+    limit: z.number().int().min(1).max(PAGE_MAX).optional(),
+    question: z.number().int().min(0).max(1000).optional(),
+    state: z.string().min(1).max(20).optional(),
+  });
+  for (const kind of RESEARCH_KINDS)
+    app.get(`/v1/research/${KIND_PATHS[kind]}`, supervisor, (c) => {
+      const q = pageQuery.parse({
+        offset: numberOf(c.req.query("offset")),
+        limit: numberOf(c.req.query("limit")),
+        question: numberOf(c.req.query("question")),
+        state: c.req.query("state") || undefined,
+      });
+      return c.json(service.runResearch.list(runOf(c), kind, q));
+    });
+  app.get("/v1/research/source", supervisor, (c) => {
+    const q = z
+      .object({
+        source: z.string().min(1).max(100),
+        offset: z.number().int().min(0).optional(),
+        limit: z.number().int().min(1).max(SOURCE_CHARS_MAX).optional(),
+      })
+      .parse({
+        source: c.req.query("source"),
+        offset: numberOf(c.req.query("offset")),
+        limit: numberOf(c.req.query("limit")),
+      });
+    return c.json(service.runResearch.source(runOf(c), q.source, q.offset, q.limit));
+  });
+  app.get("/v1/research/file", supervisor, (c) => {
+    const q = z
+      .object({
+        path: z.string().min(1).max(500),
+        offset: z.number().int().min(1).optional(),
+        limit: z.number().int().min(1).max(100_000).optional(),
+      })
+      .parse({
+        path: c.req.query("path"),
+        offset: numberOf(c.req.query("offset")),
+        limit: numberOf(c.req.query("limit")),
+      });
+    return c.json(service.runResearch.file(runOf(c), q.path, q.offset, q.limit));
+  });
+  app.get("/v1/research/search", supervisor, (c) => {
+    const q = z
+      .object({
+        q: z.string().max(300).default(""),
+        kinds: z.string().max(200).optional(),
+        limit: z.number().int().min(1).max(SEARCH_MAX).optional(),
+      })
+      .parse({
+        q: c.req.query("q") ?? undefined,
+        kinds: c.req.query("kinds") || undefined,
+        limit: numberOf(c.req.query("limit")),
+      });
+    return c.json(
+      service.runResearch.search(runOf(c), q.q, {
+        kinds: q.kinds?.split(",").map((k) => k.trim()),
+        limit: q.limit,
+      }),
+    );
   });
 
   app.get("/v1/audits/pending", supervisor, async (c) =>
