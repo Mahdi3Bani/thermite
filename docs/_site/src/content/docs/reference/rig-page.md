@@ -40,14 +40,14 @@ The buttons at the right:
 
 - **Edit rig** opens the rig's settings and models.
 - **Live** opens what the rig's agents and judge do now.
-- **Export now** sends the signed `export_now` command.
+- **Export** opens a choice under **What to export**: **What changed** (what the rig recorded since its last export) or **Full export** (also a snapshot of the ledger, every run's research folder, finished or not, and the pages each run fetched). Its **Export** button sends the signed `export_now` command with `full` as you chose, and a line at the top of the page says the export was asked for and that it shows on the **Exports** page when all its files reach control. The **Exports page** link in it, and **its exports on control** on the **Results** row of a rig that sends its exports to control, open the [Exports page](exports.md#download-an-export) for this rig.
 - **⋯** has **Restart the rig's containers** (with a deployment driver only), **Full reset** (type `reset <rig>`) and **Retire it** (type `retire <rig>`). For a rig on RunPod it has only **Retire it**, and says that its pod's changes are on the page, under **The pod**. Retiring stops nothing: a pod that still exists keeps running and costing money, and the menu says to terminate it instead.
 
 A button that needs typed words stays off until the words are typed exactly. Control checks them again when the form arrives.
 
 The first lines under the title say, in a few sentences: for a RunPod rig, its pod and what it has cost; whether it reports; what runs on it; what its judge does; a check that failed; a key that waits for you; for a RunPod rig, a connection to its pod that failed.
 
-A card after an action says what happened: its words in green, or **Not done.** and the reason. A button that sends a command to the rig, such as **Export now**, **Run it** or **Pause**, says at once that the click took, and the page follows the command to its outcome with no refresh: see [Signed commands](signed-commands.md#on-the-dashboard). After **Save changes** on **Edit rig**, the green line here goes on with how the settings' command stands, such as `rig-1 took it at 03:41 UTC. This page shows the change when the rig next reports.`
+A card after an action says what happened: its words in green, or **Not done.** and the reason. A button that sends a command to the rig, such as **Export**, **Run it** or **Pause**, says at once that the click took, and the page follows the command to its outcome with no refresh: see [Signed commands](signed-commands.md#on-the-dashboard). After **Save changes** on **Edit rig**, the green line here goes on with how the settings' command stands, such as `rig-1 took it at 03:41 UTC. This page shows the change when the rig next reports.`
 
 ## The reporting banner
 

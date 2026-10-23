@@ -1,12 +1,12 @@
 ---
 title: "Exports"
-description: "Where a rig's exports go, what control keeps of them, the supervisor's export figures, and how control tells that a rig's results have left it."
+description: "What a normal and a full export hold, where a rig's exports go, what control keeps of them and how it gives them back as one archive, the supervisor's export figures, and how control tells that a rig's results have left it."
 type: reference
 sidebar:
   order: 19
 ---
 
-An [export](glossary.md) is what a rig's harness writes when something new happened: the new attempts, champions, events and notes since the last export, and a copy of its ledger. The rig's supervisor sends each export off the rig. This page says where it goes, what control keeps of it, how the supervisor reports it, and how control tells that a rig's results have left it. [Get a rig's results from control](../how-to/operate/exports-on-control.md) gives the steps.
+An [export](glossary.md) is what a rig's harness writes when something new happened: the new attempts, champions, events and notes since the last export, and a copy of its ledger. The rig's supervisor sends each export off the rig. This page says what an export holds, where it goes, what control keeps of it and how control gives it back, how the supervisor reports it, and how control tells that a rig's results have left it. [Get a rig's results from control](../how-to/operate/exports-on-control.md) gives the steps.
 
 ```sh
 curl -fsS -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
@@ -16,6 +16,20 @@ curl -fsS -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
 ```json
 {"left":true,"why":"every export has left the rig: they are on control","to":"control","waiting":0,"champions_waiting":0,"reported_at":"2026-10-20T12:01:00.000Z"}
 ```
+
+## Normal and full exports
+
+The harness makes a normal export every hour when something new happened (the **Exports** switch on **Edit rig**), and when you choose **What changed** under **Export**. A full export is made when you choose **Full export** under **Export**, and by a full reset, a RunPod pod's terminate and the command `export_now` with `{"full": true}`. Its manifest says `"full": true`.
+
+| Part | A normal export | A full export |
+| --- | --- | --- |
+| Events, attempts, champion patches, field notes, research notes, briefings and knowledge items since the last export | Yes | Yes |
+| `research/<run>/folder/…`: the [research folder](../explanation/campaign-modes.md#research) of each run that finished in this export (a research run whose final report it holds, or a hill-climb or goal run that was closed and recorded sources, claims or notes, or compacted a conversation) | Yes | Yes |
+| `research/<run>/folder-<export>/…`: the research folder of every other research run, and of every other hill-climb or goal run that recorded sources, claims or notes, or compacted a conversation, as it stands now: running, paused, closed or broken | No | Yes |
+| `research/<run>/…`, other files: each run's archive of the web pages it fetched | No | Yes |
+| `ledger.sqlite`: a snapshot of the ledger, which holds every event, claim, source, finding, report and note, without the table of held-out results | Written each time; it leaves the rig at most once a day | Always, and it always leaves the rig |
+
+A run's folder in a full export goes beside the place its end exports to, under the export's name, because a results repository never replaces a file it already has: the folder exported when the run finishes still reaches `research/<run>/folder/`. A folder leaves out the working areas and the past research in its `knowledge/`, which are in their own runs' exports. [Set up the results repository](../how-to/operate/results-repository.md#what-gets-pushed) lists every file.
 
 ## Where exports go
 
@@ -52,6 +66,26 @@ The routes are in the [REST API reference](rest-api.md#routes-used-by-rigs). A r
 
 Control never deletes an export. They take room in control's state volume until you remove them yourself.
 
+## Download an export
+
+The dashboard's **Exports** page, in the sidebar, lists every export control keeps, for every rig, newest first. To see one rig's, press the rig's name above the table, follow **its exports on control** on the rig's **Results** row or the **Exports page** link under **Export**, or add `?rig=<rig>`. Only the owner reads it: the dashboard signs in with the owner's token.
+
+| Column | Meaning |
+| --- | --- |
+| **Rig** | The rig that sent it |
+| **Export** | Its name: the time the harness made it, and 8 hexadecimal characters |
+| **Kind** | `full`, or `what changed` for a normal export |
+| **Made** | When control received its start |
+| **Complete** | When its last file reached control and passed its check, or `still arriving` |
+| **Events** | The rig's ledger events it holds, such as `181–245`, or `none new` |
+| **Files** | How many files it holds, or `k of n` while they arrive |
+| **Size** | The size of all its files |
+| **Download** | One `.tar.gz` of the export, for a complete one only |
+
+The download is `<rig>-<export>.tar.gz`. It holds one folder, `<rig>-<export>/`, with the export's `manifest.json` and every file at its path in the export, each as control checked it against the manifest's SHA-256. Control builds the archive from what it keeps as it sends it, so it never holds a second copy. A tar archive in the POSIX format, compressed with gzip, which `tar -xzf` unpacks on Linux and macOS. Each download is in the audit log as `export_downloaded`.
+
+Over REST, `GET /v1/rigs/<rig>/exports/<name>/archive` gives the same file with the owner's token ([REST API](rest-api.md)). It answers 404 with `{"error": …}` for an export control does not have (`no such export`), one still arriving (`the export is still arriving: not every file reached control`), a control with no exports folder, and a file gone from control's folder. Over MCP, the tool [`exports`](mcp-tools.md) lists them, for the owner's and an operator's token; it downloads nothing.
+
 ## The supervisor's export figures
 
 The supervisor reports these every round, unsigned. They are `supervisor.export` in `GET /v1/rigs/<rig>/view`.
@@ -78,7 +112,7 @@ The answer is yes only when all of these hold:
 - for a rig that sends to control, no champion patch waits either;
 - with `export`: for a results repository, the supervisor reports that export pushed; for control, control holds every file of it.
 
-Results recorded after the rig's last export are in no export yet. To include them, export first (**Export now**, or the `export_now` command) and ask about that export by name.
+Results recorded after the rig's last export are in no export yet. To include them, export first (**Export** on the rig's page, or the `export_now` command) and ask about that export by name.
 
 | Field | Meaning |
 | --- | --- |

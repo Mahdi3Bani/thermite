@@ -924,9 +924,10 @@ export function createControlApi(
   });
 
   // Exports a rig without a results repository sends to control, and the owner reads back.
+  const exportFiles = opts.exportsDir ? new ExportFiles(opts.exportsDir) : undefined;
   mountExports(app, {
     store,
-    files: opts.exportsDir ? new ExportFiles(opts.exportsDir) : undefined,
+    files: exportFiles,
     rigAuth,
     admin,
   });
@@ -1678,6 +1679,7 @@ export function createControlApi(
       control,
       offlineAfterMs: opts.offlineAfterMs,
       rigUpdates: opts.rigUpdates,
+      exportFiles,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

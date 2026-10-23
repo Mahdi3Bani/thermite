@@ -78,6 +78,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [086 · A goal report keeps what it measured; lanes wait while a met champion is confirmed](goals/086-goal-report-values-and-confirmation-wait.goal) | `VERIFIED` | [082](goals/082-judge-findings-in-view.goal) |
 | [087 · The owner closes a run by hand](goals/087-close-a-run.goal) | `VERIFIED` | [080](goals/080-buttons-show-progress.goal) |
 | [096 · Give control a kit written elsewhere, as a git bundle](goals/096-kits-from-elsewhere.goal) | `VERIFIED` | — |
+| [103 · Export, full or not, from the dashboard; an Exports page that downloads each export](goals/103-export-and-download.goal) | `IN_PROGRESS` | [024](goals/024-runpod-models-and-results.goal), [080](goals/080-buttons-show-progress.goal) |
 | [098 · A run's teachers read what the run found: its sources, claims, findings and files](goals/098-research-teachers-read-the-research.goal) | `VERIFIED` | [081](goals/081-ideas-first.goal), [065](goals/065-journals-and-corpus.goal), [062](goals/062-research-folder.goal) |
 | [099 · Status words say how a run ended; a judge-only run says so](goals/099-campaign-status-words.goal) | `VERIFIED` | [077](goals/077-archive-and-folders.goal), [086](goals/086-goal-report-values-and-confirmation-wait.goal), [087](goals/087-close-a-run.goal) |
 

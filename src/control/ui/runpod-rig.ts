@@ -192,7 +192,7 @@ function resultsBlock(
   const waiting = (r?.waiting ?? 0) + (r?.champions_waiting ?? 0);
   const head =
     !r || r.waiting === null ? "not reported" : waiting ? `${waiting} waiting` : "all out";
-  return `<div class="block" style="margin-top:16px" id="results"><div class="head"><h2>Results in the pod</h2><span class="n">${esc(head)}</span><span class="right">what must leave the pod before it ends</span></div><div class="card"><div class="outlist">${rows.join("")}</div><div class="muted xs" style="margin-top:8px">From the rig's supervisor${r?.reported_at ? `, ${esc(ago(r.reported_at, now))} ago` : ""} (unsigned). Control checks every file of an export it receives against the export's manifest. A stop sends what waits out first, and a terminate waits until all of it has left.${v.active ? " <b>Export now</b>, at the top of the page, sends what waits now." : ""}</div></div></div>`;
+  return `<div class="block" style="margin-top:16px" id="results"><div class="head"><h2>Results in the pod</h2><span class="n">${esc(head)}</span><span class="right">what must leave the pod before it ends</span></div><div class="card"><div class="outlist">${rows.join("")}</div><div class="muted xs" style="margin-top:8px">From the rig's supervisor${r?.reported_at ? `, ${esc(ago(r.reported_at, now))} ago` : ""} (unsigned). Control checks every file of an export it receives against the export's manifest. A stop sends what waits out first, and a terminate waits until all of it has left.${v.active ? " <b>Export</b>, at the top of the page, sends what waits now." : ""}</div></div></div>`;
 }
 
 /** The pod block of a RunPod rig's page. */

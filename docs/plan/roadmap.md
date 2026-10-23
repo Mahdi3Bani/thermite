@@ -75,6 +75,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [086](goals/086-goal-report-values-and-confirmation-wait.goal) A goal report keeps what it measured; lanes wait while a met champion is confirmed · `VERIFIED`
 - [087](goals/087-close-a-run.goal) The owner closes a run by hand · `VERIFIED`
 - [096](goals/096-kits-from-elsewhere.goal) Give control a kit written elsewhere, as a git bundle · `VERIFIED`
+- [103](goals/103-export-and-download.goal) Export, full or not, from the dashboard; an Exports page that downloads each export · `IN_PROGRESS`
 - [098](goals/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `VERIFIED`
 - [099](goals/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `VERIFIED`
 

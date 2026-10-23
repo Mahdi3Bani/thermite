@@ -86,7 +86,7 @@ The deploy key has a second use: the supervisor also fetches a campaign's projec
 
 ## 4. See that pushes work
 
-Open the rig's page (**Rigs** in the sidebar, then the rig) and press **Export now** to export at once, rather than wait for the hour. Then, after a minute or two, press **refresh** in the status bar, the line along the bottom of the page:
+Open the rig's page (**Rigs** in the sidebar, then the rig) and press **Export**, then **Export** under the choice, to export at once rather than wait for the hour. **Full export** also sends the ledger, the research archive and every run's research folder. Then, after a minute or two, press **refresh** in the status bar, the line along the bottom of the page:
 
 - The **Results** row of the **The rig** block says `N exports · pushed … ago`.
 - On your git host, the repository has two branches for the rig. If you can reach the repository from your computer, list them:
@@ -121,9 +121,10 @@ Each rig has two branches. Commits are made by `thermite <thermite@localhost>`.
 | | `knowledge/<export>.jsonl` | The runs' part of their campaigns' folders in the [knowledge base](../../reference/knowledge-base.md#the-export): each item added or changed since the last export, with its run, its writer and its time. Only when there are some |
 | | `exports/<export>.json` | The export's manifest: each file with its SHA-256 |
 | | `research/<run>/folder/…` | The [research folder](../../explanation/campaign-modes.md#research) of each run that finished in that export: a research run whose final report it holds, or a hill-climb or goal run that was closed and recorded sources, claims or notes, or compacted a conversation. The past research in the folder's `knowledge/` is left out: those records are in their own runs' exports |
+| | `research/<run>/folder-<export>/…` | Only from a full export: the research folder of every other run that has one, finished or not, as it stood then ([Normal and full exports](../../reference/exports.md#normal-and-full-exports)) |
 | | `research/<run>/…`, other files | Only from a full export (a full reset takes one): each run's archive of the web pages it fetched |
 | `thermite/<rig>/ledger` | `ledger.sqlite`, `manifest.json` | A copy of the rig's ledger, at most once a day, and with every full export. Its table of held-out results is left out. Its events, like `events/<export>.jsonl`, hold the judge's `held_out_checked` events: each held-out case's name, kind and value, never its inputs or output |
 
 The attempts branch only grows: a file already published there is never replaced. The supervisor commits only files that the export's manifest lists, with the SHA-256 it lists. An export that fails that check is never pushed, and the **Results** row says `export … refused: …`.
 
-How often the harness exports is its setting `THERMITE_EXPORT_MINUTES` (60 by default), and the **Exports** switch on **Edit rig** turns hourly exports off. **Export now** works either way.
+How often the harness exports is its setting `THERMITE_EXPORT_MINUTES` (60 by default), and the **Exports** switch on **Edit rig** turns hourly exports off. **Export** on a rig's page works either way.

@@ -2611,8 +2611,9 @@ export class HarnessService {
   }
 
   /**
-   * An export for the supervisor to push. A full export (a full reset's) also carries the
-   * research archive, and the supervisor always pushes its ledger snapshot.
+   * An export for the supervisor to push. A full export (a full reset's, or the owner's choice
+   * on Export) also carries the research archive and every run's research folder, and the
+   * supervisor always pushes its ledger snapshot.
    */
   async export(actor: string, opts: { full?: boolean } = {}) {
     return writeExport({

@@ -11,17 +11,17 @@ A run's result is its [champion](../../reference/glossary.md): the best version 
 ## Before you start
 
 - The run has a champion beyond its starting point: on the run's **Overview** tab, **The run** block shows **Champion** as `#2` or higher. The starting point itself is champion #1.
-- The rig has published that champion with an export. Exports happen every hour when there is something new, while the rig's **Exports** switch on **Edit rig** is on. To publish at once, open the rig's page and press **Export now**.
+- The rig has published that champion with an export. Exports happen every hour when there is something new, while the rig's **Exports** switch on **Edit rig** is on. To publish at once, open the rig's page, press **Export**, then **Export** under the choice.
 - A minute or two after the export, the rig's supervisor has uploaded the patch to control. Control keeps it only if it matches what the rig published. This works on every rig, with or without a results repository.
 
 ## 1. Download the patch
 
 1. Open **Campaigns**, then the campaign. A campaign with no run at work whose newest run is closed, **Completed** or **Finished**, shows only when you choose the filter **All**. Open the run: press its name on its card under **At work now**, or in its row under **Earlier runs**. The run's page opens on its **Overview** tab.
-2. In the block **The run**, beside **Champion**, press the link **download champion #N as a patch**. The link shows only once the rig has exported the champion: press **refresh** after **Export now**. The note beside it, such as `(applies to 0123abcd)`, names the commit the patch applies to: the run's starting commit.
+2. In the block **The run**, beside **Champion**, press the link **download champion #N as a patch**. The link shows only once the rig has exported the champion: press **refresh** after **Export**. The note beside it, such as `(applies to 0123abcd)`, names the commit the patch applies to: the run's starting commit.
 
 The champion's own page, which you reach from its row under **Champions** or **Attempts**, has the same link. To see whether another rig's judge has confirmed the champion too, see [Run a campaign on several rigs](several-rigs.md#4-check-the-result).
 
-The file is named `<run>-champion-<n>-on-<commit>.patch`, such as `sort-speed-1-champion-3-on-0123abcd.patch`. If you see `No patch for that champion yet.`, the rig has not exported since the promotion, or the upload has not arrived: press **Export now** on the rig's page, wait a minute or two, and try again.
+The file is named `<run>-champion-<n>-on-<commit>.patch`, such as `sort-speed-1-champion-3-on-0123abcd.patch`. If you see `No patch for that champion yet.`, the rig has not exported since the promotion, or the upload has not arrived: press **Export** on the rig's page, then **Export** under the choice, wait a minute or two, and try again.
 
 ## 2. Apply it
 

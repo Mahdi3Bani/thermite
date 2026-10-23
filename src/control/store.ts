@@ -1980,6 +1980,15 @@ export class ControlStore {
     ).map(rigExportOf);
   }
 
+  /** The exports every rig sent to control, newest first (the Exports page, goal 103). */
+  allRigExports(limit = 500): RigExport[] {
+    return (
+      this.db
+        .prepare("select * from rig_export order by created_at desc, rig, name desc limit ?")
+        .all(limit) as Row[]
+    ).map(rigExportOf);
+  }
+
   /** A file of an export arrived with its SHA-256; the export is complete with its last file. */
   rigExportFileDone(rig: string, name: string, path: string): { complete: boolean } {
     return this.tx(() => {

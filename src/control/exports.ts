@@ -12,11 +12,12 @@ import {
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { Hono, MiddlewareHandler } from "hono";
+import type { Context, Hono, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { canonicalJson } from "../core/canonical.ts";
 import type { ControlStore, RigExport } from "./store.ts";
+import { type TarEntry, tarGz } from "./tar-gz.ts";
 
 /**
  * Exports kept on control, for rigs with no results repository (src/supervisor/export-upload.ts
@@ -26,7 +27,8 @@ import type { ControlStore, RigExport } from "./store.ts";
  * complete once every file it promised is kept. Only the owner reads them back.
  *
  * On disk: `<dir>/<rig>/<export>/manifest.json` and `<dir>/<rig>/<export>/files/<path>`, a file
- * still arriving as `<path>.part`.
+ * still arriving as `<path>.part`. A complete export downloads as one archive (goal 103): a
+ * .tar.gz of its manifest and its files under `<rig>-<export>/`, built as it streams.
  */
 
 /** An export's name, as the harness makes them: a time and 8 hexadecimal characters. */
@@ -87,6 +89,37 @@ export class ExportFiles {
     if (e.done.includes(path)) return e.files[path]?.size ?? 0;
     const part = `${this.file(e.rig, e.name, path)}.part`;
     return existsSync(part) ? statSync(part).size : 0;
+  }
+
+  /**
+   * A complete export's archive entries: its manifest, then every file at its path, all under
+   * `<rig>-<export>/`. Words instead when the export is not complete or a file is not on disk as
+   * control kept it.
+   */
+  archiveEntries(e: RigExport): TarEntry[] | string {
+    if (e.complete_at === null)
+      return "the export is still arriving: not every file reached control";
+    const top = archiveName(e).replace(/\.tar\.gz$/, "");
+    const entries: TarEntry[] = [
+      {
+        path: `${top}/manifest.json`,
+        data: Buffer.from(`${canonicalJson(e.manifest)}\n`),
+        mtime: new Date(e.created_at),
+      },
+    ];
+    for (const path of Object.keys(e.files).sort()) {
+      const want = e.files[path] as { size: number; sha256: string };
+      const on = this.file(e.rig, e.name, path);
+      if (!existsSync(on)) return `${path} is gone from control's folder`;
+      const st = statSync(on);
+      if (st.size !== want.size) return `${path} on control has ${st.size} bytes, not ${want.size}`;
+      entries.push({
+        path: `${top}/${path}`,
+        data: { file: on, size: want.size },
+        mtime: st.mtime,
+      });
+    }
+    return entries;
   }
 
   writeManifest(rig: string, name: string, manifest: unknown): void {
@@ -159,8 +192,36 @@ export class ExportFiles {
   }
 }
 
+/** The file name an export downloads as: `<rig>-<export>.tar.gz`. */
+export const archiveName = (e: Pick<RigExport, "rig" | "name">): string =>
+  `${e.rig}-${e.name}.tar.gz`;
+
+/**
+ * A complete export as one .tar.gz, for the owner (REST and the dashboard): 404 with the reason
+ * for an export control does not have, or has not all of.
+ */
+export function archiveResponse(
+  c: Context,
+  o: { store: ControlStore; files: ExportFiles | undefined; by: string },
+  rig: string,
+  name: string,
+): Response {
+  const e = EXPORT_NAME.test(name) ? o.store.rigExport(rig, name) : undefined;
+  if (!e) return c.json({ error: "no such export" }, 404);
+  if (!o.files)
+    return c.json({ error: "control keeps no exports: it has no folder for them" }, 404);
+  const entries = o.files.archiveEntries(e);
+  if (typeof entries === "string") return c.json({ error: entries }, 404);
+  o.store.audit(o.by, "export_downloaded", { rig, export: name, files: entries.length - 1 });
+  return c.body(Readable.toWeb(tarGz(entries)) as ReadableStream, 200, {
+    "content-type": "application/gzip",
+    "content-disposition": `attachment; filename="${archiveName(e)}"`,
+    "cache-control": "no-store",
+  });
+}
+
 /** An export as the owner's list shows it. */
-function summary(files: ExportFiles | undefined, e: RigExport) {
+export function exportSummary(files: ExportFiles | undefined, e: RigExport) {
   return {
     name: e.name,
     full: e.full,
@@ -262,7 +323,7 @@ export function mountExports(
 
   app.get("/v1/rigs/:rig/exports", o.admin, (c) =>
     c.json({
-      exports: store.rigExports(c.req.param("rig"), 1000).map((e) => summary(files, e)),
+      exports: store.rigExports(c.req.param("rig"), 1000).map((e) => exportSummary(files, e)),
     }),
   );
 
@@ -270,7 +331,7 @@ export function mountExports(
     const e = store.rigExport(c.req.param("rig"), c.req.param("name"));
     if (!e) return c.json({ error: "no such export" }, 404);
     return c.json({
-      ...summary(files, e),
+      ...exportSummary(files, e),
       manifest: e.manifest,
       files: Object.entries(e.files).map(([path, f]) => ({
         path,
@@ -280,6 +341,11 @@ export function mountExports(
       })),
     });
   });
+
+  // The whole export as one .tar.gz: its manifest and every file (goal 103).
+  app.get("/v1/rigs/:rig/exports/:name/archive", o.admin, (c) =>
+    archiveResponse(c, { store, files, by: "owner:api" }, c.req.param("rig"), c.req.param("name")),
+  );
 
   app.get("/v1/rigs/:rig/exports/:name/file", o.admin, (c) => {
     const e = store.rigExport(c.req.param("rig"), c.req.param("name"));

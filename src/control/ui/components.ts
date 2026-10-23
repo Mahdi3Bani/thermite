@@ -79,6 +79,7 @@ export const icon = {
     '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
   ),
   shield: svg('<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>'),
+  download: svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>'),
   book: svg(
     '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
   ),
@@ -386,6 +387,7 @@ export interface Shell {
     | "knowledge"
     | "commands"
     | "reports"
+    | "exports"
     | "audit"
     | "settings"
     | "";
@@ -504,6 +506,7 @@ export function shell(s: Shell, body: string): string {
     ${nav("/ui/knowledge", "knowledge", icon.book, "Knowledge")}
     ${nav("/ui/commands", "commands", icon.list, "Commands")}
     ${nav("/ui/reports", "reports", icon.file, "Reports")}
+    ${nav("/ui/exports", "exports", icon.download, "Exports")}
     ${nav("/ui/audit", "audit", icon.shield, "Audit log")}
   </nav>
   ${navCampaigns(camps, s.nav)}
