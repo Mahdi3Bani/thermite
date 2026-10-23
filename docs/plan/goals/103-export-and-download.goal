@@ -3,7 +3,7 @@ id: "103"
 title: "Export, full or not, from the dashboard; an Exports page that downloads each export"
 status: IN_PROGRESS
 version: "0.1.0"
-depends_on: ["024", "080"]
+depends_on: ["024", "080", "112"]
 created: 2026-10-23
 updated: 2026-10-23
 ---
@@ -45,6 +45,7 @@ On 2026-10-23 the owner wanted to take a research run's whole record (knowledge,
   - **Where an unfinished run's folder goes.** In a full export, the folder of a run that did not finish in it goes to `research/<run>/folder-<export>/`, beside `research/<run>/folder/`. A results repository never replaces a file it already has, so a folder taken mid-run at the final place would hide the folder the run's end exports.
   - **The archive.** A gzip-compressed POSIX tar (ustar, with pax records for a path ustar can't hold), written by a small writer in `src/control/tar-gz.ts` with Node's zlib: no new dependency. Everything sits under one folder, `<rig>-<export>/`, so unpacking several archives keeps them apart. Control streams it from the files it keeps; each download is in the audit log as `export_downloaded`.
   - **What the page says.** The words after **Export** name the kind of export asked for and say it shows on the **Exports** page when all its files reach control; a rig with a results repository pushes it there instead.
+- 2026-10-23, owner: the last box waits for goal 112, so that the research run's full export holds its final paper, not only its corpus: "I need the export to be a fully cohesive research report not just a brain dump."
 
 ## Open questions
 
