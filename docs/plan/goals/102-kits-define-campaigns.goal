@@ -45,6 +45,7 @@ None yet. When accepted, this changes settled decisions: the three campaign mode
 - How a kit's own code runs safely: what a kit may declare (a configuration, a fixed set of building blocks) against what it may run (its own code, in which sandbox, with what trust), since a kit's judging code decides results.
 - How kits for today's three modes keep today's runs and ledgers readable.
 - Whether goals 100 and 101 are built first in Thermite's code, then moved into a contest kit, or wait for this goal.
+- Metrics are kit-wide today, so one kit commit can't serve two campaigns that measure different cells (seen on 2026-10-23, drafting a speed hill climb on a quality campaign's kit). A kit that defines campaigns could name metrics per campaign.
 
 ## Progress
 

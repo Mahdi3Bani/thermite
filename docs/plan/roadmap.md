@@ -117,6 +117,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [108](goals/108-gated-models-on-cloud-rigs.goal) Gated models on cloud rigs · `PROPOSED`
 - [109](goals/109-exports-page-shows-what-matters.goal) The Exports page shows what matters, not every slice · `PROPOSED`
 - [110](goals/110-judge-only-runs-show-progress.goal) A judge-only run shows its progress · `PROPOSED`
+- [114](goals/114-hill-climb-contract-gaps.goal) Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields · `PROPOSED`
+- [115](goals/115-record-runs-keep-outputs.goal) A judge-only record run keeps what it measured, and ends when it is recorded · `PROPOSED`
 
 ## v0.2.0
 
