@@ -200,7 +200,7 @@ Each probe's result is the error the operation met (refused, as it must be), `re
 
 `<devices>` is one of these:
 
-- `shared (fence: <fence>)`: one device for all, with how the broker keeps the other roles off it. `groups`: the device nodes' group; `groups+landlock`: the group and the GPU fence; `landlock`: the fence alone, where the nodes keep the owner and mode they came with, as on RunPod;
+- `shared (fence: <fence>)`: one device for all, with how the broker keeps the other roles off it. `groups`: the device nodes' group; `groups+landlock`: the group and the GPU fence; `landlock`: the fence alone, where the nodes keep the owner and mode they came with, as on RunPod and under rootless Podman;
 - `shared`: one device, with no record from the broker of how;
 - `shared, NOT SET UP: <error>`: the broker could neither give the nodes to the `gpu` group nor fence them;
 - `dedicated: judge <nodes>, development <nodes>`;

@@ -139,6 +139,7 @@ To tell that it worked, open the rig's page: **What it runs on** shows the **Jud
 - The CUDA image is the release's, unless `.env` names another in `THERMITE_RIG_HARNESS_CUDA_IMAGE`.
 - `init` writes the file again each time it runs, from what the machine has then, for the engine that runs it. Put changes of your own in another override file. With both Docker and Podman installed, `npx thermite local init .dev --engine podman` names the engine.
 - Only `local-1` gets the GPUs. `local-2`, the second rig, runs on the CPU.
+- With rootless Podman, the harness container can't change the GPU device files' group. The harness's log then says `could not set the gpu group on /dev/nvidia0` (and the same for each NVIDIA device file), and the isolation check says `devices: shared (fence: landlock)`: the GPU fence, which uses the Linux kernel's Landlock, keeps the other roles off the card on its own, as on RunPod ([Isolation inside a rig](../../explanation/isolation.md#gpus-device-groups-and-the-fence)). This is expected. A kernel without Landlock can't fence the card: the rig then neither times on it nor gives it to development runs ([Compatibility](../../reference/compatibility.md)).
 
 ### Give the virtual machine more, on a Mac
 
