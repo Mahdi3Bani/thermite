@@ -44,8 +44,8 @@ The owner, 2026-10-23, on the new Exports page: "wow there are a lot more export
 ## Progress
 
 - 2026-10-23: Goal written as a plan, from the owner's words.
+- 2026-10-23: Added "what an export holds": on the deployment, a full export of a research run reached control, but the dashboard could not show whether it held the run's folder and the ledger snapshot without a download.
 
 ---
 
 Run with `/goal Complete docs/plan/goals/109-exports-page-shows-what-matters.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
-- 2026-10-23: Added "what an export holds": on the deployment, a full export of a research run reached control, but the dashboard could not show whether it held the run's folder and the ledger snapshot without a download.
