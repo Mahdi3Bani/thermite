@@ -55,6 +55,7 @@ The owner merges into `main` and makes the tag (2026-10-20: "I will handle mergi
 - 2026-10-21, owner: The judge's smoke check passes, with a note that the machine's timing is noisy, when the no-op change is its only inconclusive result.
 - 2026-10-20, owner: The owner merges the code into `main` and makes the tag. The project is not ready for a version tag yet.
 - 2026-10-20, owner: The code moved to `main` early, at the development branch's state that day, so the docs site can build from `main` (goal 060). Work stays on the development branch, and `main` follows it. The release is still this goal's pull request and tag.
+- 2026-10-23, owner: the project is ready for v0.1.0 once goal 115 (a hill climb's first job measures its starting point) is in: "if we get this fix in for baseline then I think buddy we ready for v0.1.0 release."
 
 ## Open questions
 
