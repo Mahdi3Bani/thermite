@@ -13,6 +13,7 @@ import {
   ago,
   esc,
   icon,
+  judgeOnlyMark,
   modeAvatar,
   moreText,
   reportingTag,
@@ -1035,7 +1036,7 @@ export function runBrief(
     );
   const champ = r.champion.filter((c) => !c.reopened).at(-1);
   const head = opts.heading
-    ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(u.id, r)}">${esc(r.campaign || r.id)} › ${esc(r.id)}</a><span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
+    ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(u.id, r)}">${esc(r.campaign || r.id)} › ${esc(r.id)}</a>${judgeOnlyMark(r)}<span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
     : "";
   return `<section class="brief">${head}${rows.join("")}</section>`;
 }

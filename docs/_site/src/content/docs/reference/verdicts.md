@@ -244,7 +244,8 @@ A run's page and its **Live** header show the run with one label: the first that
 
 | Label | When |
 | --- | --- |
-| **Finished** | The run is `closed` |
+| **Completed** | A goal run is `closed`, and its newest goal report met every required goal, confirmed by the judge's second check: it closed with `every required goal is met` |
+| **Finished** | Any other `closed` run: the owner closed it, a goal campaign ended as not possible, a research run's time is over, a smoke check is done, or a hill climb was closed |
 | **Paused** | The run is `paused`, even when a decision waits in it |
 | **Approval** | A result waits for the owner's approval |
 | **Decision** | A "not possible" proposal waits for the owner |
@@ -255,14 +256,24 @@ A run's page and its **Live** header show the run with one label: the first that
 
 What waits in a paused run still shows in **Needs you**, as for a running one. What waited in a closed run does not.
 
-A campaign's page lists its paused and closed runs under **Earlier runs**, with the state **Paused** or **Finished** and, under **Why it stopped**, the reason the run recorded.
+A campaign's page lists its paused and closed runs under **Earlier runs**, with the state **Paused**, **Completed** or **Finished** and, under **Why it stopped**, the reason the run recorded.
+
+### Judge-only runs
+
+A run started with its agents off (**Agents** › **Off: a try** on **Start a run**, `--agents off`, or `agents: false` over REST and MCP) is judge only: no workers run on it. The judge still checks the champion and measures the changes people submit. Its advisors still work, so the teachers may add experiments to its queue, but no lane ever takes one. The dashboard says so:
+
+- The line under the run's name reads, for example, `on rig-1 · goal · judge only · Running`.
+- On every tab of the run's page, a box says `Judge only: No workers run. The judge checks the champion; the advisors' ideas wait in the queue for a run with workers.` A try of a kit, named `<campaign>-try-<n>`, has its own box instead (`A try of the kit.`), and a rig check's run has none.
+- Under **The run** on its **Overview**, **Agents** says `None: judge only. No workers run; changes come from people`.
+- When experiments wait in its queue, its **Experiments** tab says above **Up next**: `Judge only: no worker takes these experiments, so they wait for a run with workers. To carry them over, Start a run of the campaign with Copy the untried experiments of <run> ticked.` **Start a run** there opens the campaign's **Start a run** panel with that run chosen under **Experiments to start with** ([Start a campaign from the dashboard](../how-to/campaigns/start-from-dashboard.md)).
+- Its card under **At work now** (on **Campaigns** and its campaign's page) or **At work** (on **Overview** and its rig's page), and its row under **Earlier runs**, have the mark **judge only** beside its name. A rig check's run has it too.
 
 ## Campaign states
 
-A **campaign** has no state of its own: its runs do.
+A **campaign** has no state of its own: its runs do. While one of its runs is running, the campaign is at work. Otherwise its newest run, by when it started, decides, so an older paused run does not hide that a newer one completed.
 
-- **The Campaigns page** (in the sidebar) counts a campaign as at work when one of its runs is running, paused when none runs and one is paused, and finished when every run is closed. Campaigns named `rig-check-…`, which the [smoke check](rig-checks.md#smoke-check) makes, are rig checks. The filters are **Active and paused** (the default), **At work**, **Paused**, **Rig checks**, **All** and **Archived**. The default hides finished campaigns, rig checks and archived campaigns; **All** shows every campaign, archived ones too. The **Runs** column counts each campaign's runs as "N at work", "N paused" and "N finished".
-- **The sidebar's Campaigns section** lists every campaign that is not archived, finished ones too: those in folders first, in their folders, then those in no folder ([Archive campaigns and sort them into folders](../how-to/campaigns/archive-and-folders.md)). A rig check's campaign shows only while it is at work. Each shows its most urgent run's label, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Running**, **Paused**, **Finished**. A paused run's label is always **Paused**, so a campaign whose only open run is paused shows **Paused**.
+- **The Campaigns page** (in the sidebar) counts a campaign as at work when one of its runs is running. Otherwise it counts it as paused when its newest run is paused, and as finished when its newest run is closed, **Completed** or **Finished**, even when an older run is paused. Campaigns named `rig-check-…`, which the [smoke check](rig-checks.md#smoke-check) makes, are rig checks. The filters are **Active and paused** (the default), **At work**, **Paused**, **Rig checks**, **All** and **Archived**. The default hides finished campaigns, rig checks and archived campaigns; **All** shows every campaign, archived ones too. The **Runs** column counts each campaign's runs as "N at work", "N paused", "N completed" and "N finished".
+- **The sidebar's Campaigns section** lists every campaign that is not archived, finished ones too: those in folders first, in their folders, then those in no folder ([Archive campaigns and sort them into folders](../how-to/campaigns/archive-and-folders.md)). A rig check's campaign shows only while it is at work. Each shows one label. While one of its runs is running, that is the most urgent of those runs' labels, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Auditing**, **Running**. Otherwise it is its newest run's label: **Completed**, **Finished** or **Paused**. So a campaign whose newest run met its goals shows **Completed**, even with an older run paused, and a campaign whose newest run is paused shows **Paused**.
 
 A campaign appears on the **Campaigns** page once a rig reports a run of it. A campaign saved on the **New campaign** page, or copied with **Copy** on a campaign's page or over REST, MCP or the command line, with no run yet is not listed there; its own page says "Saved on control, with no run yet." beside a **Start a run of** button with its name. That page also opens for a campaign assigned over MCP, the REST API or the command line whose run no rig reports now. It then says "Assigned to a rig over the API, MCP or the CLI; no run of it reports now." beside the same button.
 

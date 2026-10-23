@@ -16,7 +16,7 @@ A run's result is its [champion](../../reference/glossary.md): the best version 
 
 ## 1. Download the patch
 
-1. Open **Campaigns**, then the campaign. A campaign whose runs have all finished shows only when you choose the filter **All**. Open the run: press its name on its card under **At work now**, or in its row under **Earlier runs**. The run's page opens on its **Overview** tab.
+1. Open **Campaigns**, then the campaign. A campaign with no run at work whose newest run is closed, **Completed** or **Finished**, shows only when you choose the filter **All**. Open the run: press its name on its card under **At work now**, or in its row under **Earlier runs**. The run's page opens on its **Overview** tab.
 2. In the block **The run**, beside **Champion**, press the link **download champion #N as a patch**. The link shows only once the rig has exported the champion: press **refresh** after **Export now**. The note beside it, such as `(applies to 0123abcd)`, names the commit the patch applies to: the run's starting commit.
 
 The champion's own page, which you reach from its row under **Champions** or **Attempts**, has the same link. To see whether another rig's judge has confirmed the champion too, see [Run a campaign on several rigs](several-rigs.md#4-check-the-result).

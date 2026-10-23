@@ -237,6 +237,7 @@ import {
   hardwareCard,
   hardwareLine,
   icon,
+  JUDGE_ONLY_WORDS,
   kpi,
   meter,
   modeAvatar,
@@ -246,6 +247,7 @@ import {
   pct,
   type RunTab,
   reportingTag,
+  runCompleted,
   runHref,
   runKey,
   runState,
@@ -771,7 +773,12 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       report: usageData(store, { campaign: k.name }).report,
       run: (rig, run) => {
         const x = k.runs.find((y) => y.rig.id === rig && y.run.id === run);
-        return x ? { href: runHref(rig, x.run), state: runStateWord(x.run.status) } : undefined;
+        return x
+          ? {
+              href: runHref(rig, x.run),
+              state: runCompleted(x.run) ? "completed" : runStateWord(x.run.status),
+            }
+          : undefined;
       },
     });
 
@@ -1040,7 +1047,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
           ? `${i.epoch?.assignments.length ?? lanesAtWork} lane${(i.epoch?.assignments.length ?? lanesAtWork) === 1 ? "" : "s"} · ${i.agents.trials} trial${i.agents.trials === 1 ? "" : "s"} done · ${i.agents.submitted} submitted`
           : i.has_agents
             ? "On: they start work at the first round"
-            : "None: changes come from people",
+            : "None: judge only. No workers run; changes come from people",
       ],
       [
         "Started",
@@ -1810,6 +1817,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           key: runKey(x.rig.id, x.run.id),
           label: `${x.run.id} (${up} up next${ideas ? `, ${ideas} lane idea${ideas === 1 ? "" : "s"}` : ""})`,
         })),
+      // A judge-only run's queue links here with itself chosen (goal 099).
+      copyPick: c.req.query("copy"),
     });
   };
   /**
@@ -2545,14 +2554,18 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             { href: "/ui/campaigns", text: "Campaigns" },
             { href: campaignHref(name), text: name },
           ],
-          summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${reportingTag(sel.rig)} · ${esc(modeName(sel.run.mode))} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
+          summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${reportingTag(sel.rig)} · ${esc(modeName(sel.run.mode))}${agents ? "" : " · judge only"} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
           active: "campaigns",
           actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a>${agents ? `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>` : ""}${quick}${more}`,
         },
         `${note}${
           /-try-\d+$/.test(sel.run.id)
             ? `<div class="card hl" style="margin-bottom:12px"><b>A try of the kit.</b> No agents work on this run: the judge builds the starting point and runs every case on its own. When the results look right, <a href="${campaignHref(name)}?start=1">start the campaign</a>.</div>`
-            : ""
+            : agents || isRigCheck(name)
+              ? ""
+              : // Any other run started with its agents off (goal 099): say so plainly. A rig
+                // check's smoke run is the rig page's to explain.
+                `<div class="card hl" style="margin-bottom:12px"><b>Judge only:</b> ${esc(JUDGE_ONLY_WORDS)}</div>`
         }${runSection(c, sel.rig, sel.run, vs, now, view)}`,
         vs,
       );
@@ -2630,7 +2643,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
 ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`).join("")}
 <div data-part="earlier">${
         earlier.length
-          ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
+          ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused, completed and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
               earlier.map((x) => ({
                 ...x,
                 // A hill climb's champion that other rigs confirmed (cross-verified).
@@ -3462,7 +3475,7 @@ ${rp ? "" : events}
     const nav = `<nav class="lruns" aria-label="Runs" data-part="lruns">
 <div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r, x.u) ? ` · <span class="warn">${waitingOn(x.r, x.u)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
 ${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
-${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
+${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${runCompleted(x.r) ? "completed" : x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
 </nav>`;
     if (!sel)
       return page(

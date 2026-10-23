@@ -26,7 +26,7 @@ A trial is one worker's session in a [lane](../../reference/glossary.md): it end
 
 ## Pause, resume or restart the lanes
 
-1. Open **Campaigns** in the sidebar. A running run has a card under **At work now**, on the Campaigns page and on its campaign's page: press its name, shown as `<campaign> › <run>`. A paused run is on its campaign's page, under **Earlier runs**, which lists the paused and finished runs: press the campaign in the table under **All campaigns**, then the run. The run's page opens.
+1. Open **Campaigns** in the sidebar. A running run has a card under **At work now**, on the Campaigns page and on its campaign's page: press its name, shown as `<campaign> › <run>`. A paused run is on its campaign's page, under **Earlier runs**, which lists the paused, completed and finished runs: press the campaign in the table under **All campaigns**, then the run. The run's page opens.
 2. In the run's header:
    - To pause, press **Pause**. A small menu opens. It says `The lanes' running trials stop and no new ones start. Its jobs waiting for the judge wait until you resume, so the judge's time goes to running runs. Resume picks up from the same champion.` You may say why in **why (optional)**, up to 500 characters. Press **Pause the run**.
    - To resume a paused run, press **Resume**.

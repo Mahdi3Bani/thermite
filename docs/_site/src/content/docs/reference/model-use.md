@@ -94,7 +94,7 @@ The campaign's sidebar has its own **Model use**, over all its runs on every rig
 - **Tokens out**, with the reasoning tokens.
 - **Calls**, with the time in calls under it.
 - **Output speed**, with the median time to the first token.
-- A table of its runs: **Run** (a link to the run's page, with `at work`, `paused` or `finished` and its rig), **In**, **Out** and **Cost**. A run's cost includes its pod's spend on RunPod.
+- A table of its runs: **Run** (a link to the run's page, with `at work`, `paused`, `completed` or `finished` and its rig), **In**, **Out** and **Cost**. A run's cost includes its pod's spend on RunPod.
 - **By model, on Metrics ›** opens Metrics.
 
 A campaign whose runs have made no model call yet says `No model call recorded yet.`

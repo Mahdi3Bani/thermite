@@ -32,7 +32,7 @@ flowchart LR
   P -- you close it --> C
 ```
 
-No code closes a hill climb: a faster program can always be tried, so it runs until you pause it, or until you close it yourself. The dashboard labels a closed run **Finished**. It labels a paused run **Paused**, even while a decision waits in it: that decision still shows under **Needs you**. A closed run is finished for good, so nothing in it waits for you: what waited when it closed leaves **Needs you**, and the rig refuses a decision on it.
+No code closes a hill climb: a faster program can always be tried, so it runs until you pause it, or until you close it yourself. The dashboard labels a closed goal run that met its goals **Completed**, and any other closed run **Finished**. With no run of a campaign at work, the campaign shows its newest run's label, so a campaign whose newest run completed reads **Completed** even when an older run of it is paused. It labels a paused run **Paused**, even while a decision waits in it: that decision still shows under **Needs you**. A closed run is finished for good, so nothing in it waits for you: what waited when it closed leaves **Needs you**, and the rig refuses a decision on it.
 
 ## What keeps a long run in order
 

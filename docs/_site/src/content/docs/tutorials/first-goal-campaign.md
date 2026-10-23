@@ -73,9 +73,9 @@ It prints `{"id":"…","status":"pending"}`. Control has signed a command, and w
 
 The first thing the judge does in a goal campaign is check which goals the project already meets. Look at it on the dashboard:
 
-1. Within a minute, open **Campaigns** in the sidebar and press **refresh**. At the top, under **At work now**, a card shows your run: `smoke-cpu-goal › goal-start-1`, `on local-1`, `0/1 goals`. It has no **Message** button: no agent works on this run to read one.
+1. Within a minute, open **Campaigns** in the sidebar and press **refresh**. At the top, under **At work now**, a card shows your run: `smoke-cpu-goal › goal-start-1`, marked **judge only**, `on local-1`, `0/1 goals`. It has no **Message** button: no agent works on this run to read one.
 2. In the table under **All campaigns**, choose **smoke-cpu-goal**. The campaign's page opens. Under **What it is for**, it shows the contract's `title`, and below it the goal `faster`. Under **At work now**, the same card shows the campaign's only run so far. A **run** is the campaign at work on one rig.
-3. On the card, press the run's name, `smoke-cpu-goal › goal-start-1`. The run's own page opens. The line at the top reads `Campaigns › smoke-cpu-goal › goal-start-1`, then `on local-1 · goal · Running`. On the right are the buttons **Live**, **Pause** and **⋯** (it holds **Close run**, which ends a run for good), but no **Message**: with no agents, the run has no lanes or planner to message. Below it are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**. This tutorial uses the run's **Overview** tab, which is open, and its **History** tab.
+3. On the card, press the run's name, `smoke-cpu-goal › goal-start-1`. The run's own page opens. The line at the top reads `Campaigns › smoke-cpu-goal › goal-start-1`, then `on local-1 · goal · judge only · Running`. On the right are the buttons **Live**, **Pause** and **⋯** (it holds **Close run**, which ends a run for good), but no **Message**: with no agents, the run has no lanes or planner to message. A box under the line says `Judge only: No workers run. The judge checks the champion; the advisors' ideas wait in the queue for a run with workers.` Below it are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**. This tutorial uses the run's **Overview** tab, which is open, and its **History** tab.
 
 On the run's **Overview** tab, the **Goals** block says `0 of 1 met`, and under the goal `faster`, marked **unmet**, a line like this:
 
@@ -172,7 +172,7 @@ You submit it from inside the rig's harness container, where the agents work too
 
 ## 7. Watch the goal be met
 
-It takes less than a minute. Stay on the page of `goal-1`. Press **refresh** until the line at the top says **Finished** after `on local-1 · goal`. On the run's **Overview** tab, **Recent** shows the newest ten lines of the story, newest at the top. Read them from the bottom up:
+It takes less than a minute. Stay on the page of `goal-1`. Press **refresh** until the line at the top says **Completed** after `on local-1 · goal · judge only`. On the run's **Overview** tab, **Recent** shows the newest ten lines of the story, newest at the top. Read them from the bottom up:
 
 1. The judge screens your change: it builds it and checks the goal. It says the change `looked like goal progress; being confirmed on fresh runs. Newly met: faster.`
 2. It checks the change again on fresh runs: `confirmed: it meets more goals and loses none. Newly met: faster.` Then your change `became champion #2`. Champion #1 was the project as it started.
@@ -181,7 +181,7 @@ It takes less than a minute. Stay on the page of `goal-1`. Press **refresh** unt
 
 To see the whole story, from `Run goal-1 started`, open the run's **History** tab: it keeps every line, also newest first.
 
-The run's state is now **Finished**. On the run's **Overview** tab, the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`, and under it the line with the speed the judge measured, now above your goal. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more. In the table, the row for **smoke-cpu-goal** says `1 paused` and `1 finished` under **Runs**, and `1/1 goals met` under **Best so far**. The paused run is `goal-start-1`, which you left paused in step 5. It uses nothing while it is paused, but it keeps the campaign's row under **Active and paused**, and the sidebar shows the campaign as **Paused**. Nothing more runs: `goal-1` stopped once its goal was met.
+The run's state is now **Completed**: it closed because it met its goal. On the run's **Overview** tab, the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`, and under it the line with the speed the judge measured, now above your goal. The sidebar shows the campaign as **Completed** too, because a campaign with no run at work shows its newest run's state. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more, and the table's default filter, **Active and paused**, no longer lists **smoke-cpu-goal**. Choose the filter **All**: the row for **smoke-cpu-goal** says `1 paused` and `1 completed` under **Runs**, and `1/1 goals met` under **Best so far**. The paused run is `goal-start-1`, which you left paused in step 5. It uses nothing while it is paused. Nothing more runs: `goal-1` stopped once its goal was met.
 
 ## What you did
 

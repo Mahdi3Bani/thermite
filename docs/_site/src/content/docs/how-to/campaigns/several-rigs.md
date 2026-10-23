@@ -31,7 +31,7 @@ This works for a campaign made on the **New campaign** page, which runs its late
 
 Every run must start from the same commit, as **Start a run** does: a rig can take another rig's champion only when it has the commit that champion started from.
 
-The campaign's page then shows each running run as a card under **At work now**, and paused and finished runs under **Earlier runs**. Each run has its own page: press its name.
+The campaign's page then shows each running run as a card under **At work now**, and paused, completed and finished runs under **Earlier runs**. Each run has its own page: press its name.
 
 ## 2. Publish a champion
 

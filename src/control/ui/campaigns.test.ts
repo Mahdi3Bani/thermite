@@ -96,6 +96,207 @@ test("a paused run reads as paused, whatever decision waits in it", async () => 
   assert.equal(runState(r("closed", approval)).text, "Finished");
 });
 
+/** A run for the status words (goal 099): its state, mode, start and its goals' end. */
+const statusRun = (
+  id: string,
+  status: string,
+  created_at: string,
+  more: Partial<RunView> = {},
+): RunView =>
+  ({
+    id,
+    campaign: "quality",
+    status,
+    mode: "goal",
+    created_at,
+    goals_complete: false,
+    audits: [],
+    pending_promotions: [],
+    conclusions: [],
+    reviews: [],
+    attempts: [],
+    timeline: [],
+    champion: [],
+    goals: [],
+    research: null,
+    ...more,
+  }) as unknown as RunView;
+
+test("a closed goal run that met its goals reads Completed; any other closed run, Finished (goal 099)", async () => {
+  const { runState } = await import("./components.ts");
+  const met = { goals_complete: true } as Partial<RunView>;
+  const st = (r: RunView) => [runState(r).text, runState(r).cls];
+  assert.deepEqual(st(statusRun("q-1", "closed", "2026-10-20T00:00:00Z", met)), [
+    "Completed",
+    "ok",
+  ]);
+  // Closed with its goals unmet (the owner closed it, or "not possible"): Finished.
+  assert.deepEqual(st(statusRun("q-1", "closed", "2026-10-20T00:00:00Z")), ["Finished", "muted"]);
+  // Only a goal run completes: a hill climb never meets goals.
+  assert.deepEqual(
+    st(statusRun("h-1", "closed", "2026-10-20T00:00:00Z", { ...met, mode: "hill_climb" })),
+    ["Finished", "muted"],
+  );
+  // A paused or running run keeps its word, whatever its last report said.
+  assert.equal(runState(statusRun("q-1", "paused", "2026-10-20T00:00:00Z", met)).text, "Paused");
+  assert.equal(runState(statusRun("q-1", "running", "2026-10-20T00:00:00Z", met)).text, "Running");
+});
+
+test("a campaign reads as its newest run when none is at work; a run at work still wins (goal 099)", async () => {
+  const { campaignState } = await import("./components.ts");
+  const met = { goals_complete: true } as Partial<RunView>;
+  const k = (...runs: RunView[]): CampaignView => ({
+    name: "quality",
+    mode: "goal",
+    runs: runs.map((run) => ({ rig, run })),
+  });
+  const old = statusRun("q-1", "paused", "2026-10-20T00:00:00Z");
+  const older = statusRun("q-0", "paused", "2026-10-19T00:00:00Z");
+  const done = statusRun("q-2", "closed", "2026-10-21T00:00:00Z", met);
+  // Two older paused runs and a newer one that completed: Completed, in any order.
+  const both = k(older, done, old);
+  assert.deepEqual([campaignState(both).text, campaignState(both).cls], ["Completed", "ok"]);
+  assert.equal(campaignKind(both), "finished");
+  // A newer paused run after a completed one: Paused, and the list counts it as paused.
+  const again = k(done, statusRun("q-3", "paused", "2026-10-22T00:00:00Z"));
+  assert.equal(campaignState(again).text, "Paused");
+  assert.equal(campaignKind(again), "paused");
+  // A newer run closed without meeting its goals: Finished.
+  assert.equal(
+    campaignState(k(old, statusRun("q-4", "closed", "2026-10-22T00:00:00Z"))).text,
+    "Finished",
+  );
+  // Any run at work wins over the newest run's end, and the most urgent of those first.
+  const working = statusRun("q-5", "running", "2026-10-18T00:00:00Z");
+  assert.equal(campaignState(k(done, working)).text, "Running");
+  assert.equal(campaignKind(k(done, working)), "active");
+  const asks = statusRun("q-6", "running", "2026-10-17T00:00:00Z", {
+    pending_promotions: ["a-1"],
+  });
+  assert.equal(campaignState(k(working, done, asks)).text, "Approval");
+  // Every run paused: Paused.
+  assert.equal(campaignState(k(older, old)).text, "Paused");
+  assert.equal(campaignState(k()).text, "Idle");
+});
+
+test("the Campaigns list hides a campaign whose newest run completed, and counts it apart (goal 099)", () => {
+  const camps: CampaignView[] = [
+    {
+      name: "quality",
+      mode: "goal",
+      runs: [
+        { rig, run: statusRun("q-1", "paused", "2026-10-20T00:00:00Z") },
+        {
+          rig,
+          run: statusRun("q-2", "closed", "2026-10-21T00:00:00Z", { goals_complete: true }),
+        },
+        { rig, run: statusRun("q-3", "closed", "2026-10-19T00:00:00Z") },
+      ],
+    },
+  ];
+  const body = (f: string) =>
+    campaignsListBody({
+      camps,
+      atWork: [],
+      waiting: [],
+      filter: campaignFilter(f),
+      query: "",
+      now: Date.parse("2026-10-22T00:00:00Z"),
+      best: () => "2/2 goals met",
+      about: () => "",
+    });
+  assert.doesNotMatch(body(""), /<b>quality<\/b>/);
+  assert.doesNotMatch(body("paused"), /<b>quality<\/b>/);
+  assert.match(
+    body("all"),
+    /<span class="kdot pause">1 paused<\/span><span class="kdot ok">1 completed<\/span><span class="kdot done">1 finished<\/span>/,
+  );
+});
+
+test("Earlier runs reads Completed for a run that met its goals, and marks a judge-only run (goal 099)", async () => {
+  const { earlierRuns } = await import("./campaigns.ts");
+  const html = earlierRuns(
+    [
+      statusRun("q-2", "closed", "2026-10-21T00:00:00Z", { goals_complete: true }),
+      statusRun("q-1", "closed", "2026-10-20T00:00:00Z", { has_agents: false }),
+    ].map((run) => ({ rig, run, result: "", action: "" })),
+    Date.parse("2026-10-22T00:00:00Z"),
+  );
+  assert.match(
+    html,
+    /<td><span class="kst ok">Completed<\/span><\/td><td><a [^>]*><b>q-2<\/b><\/a><\/td>/,
+  );
+  assert.match(
+    html,
+    /<td><span class="kst done">Finished<\/span><\/td><td><a [^>]*><b>q-1<\/b><\/a> <span class="chip" title="[^"]*">judge only<\/span><\/td>/,
+  );
+});
+
+test("a judge-only run's queue says no worker takes it, and how to carry it to a run with workers (goal 099)", async () => {
+  const { experimentsTab, judgeOnlyQueueLine } = await import("./queue.ts");
+  const waiting = (state: string) =>
+    [
+      {
+        id: "x-000000000001",
+        title: "tile the loop",
+        state,
+        position: 0,
+        by: "teacher",
+        family: "",
+        why: "",
+        at: "2026-10-21T00:00:00Z",
+        updated_at: "2026-10-21T00:00:00Z",
+      },
+    ] as unknown as RunView["queue"];
+  const run = (has_agents: boolean, queue: RunView["queue"]) =>
+    statusRun("q-1", "running", "2026-10-20T00:00:00Z", {
+      has_agents,
+      queue,
+      at_work: {},
+    } as Partial<RunView>);
+  const LINE =
+    /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/quality\?start=1&amp;copy=rig-a%2Fq-1">Start a run<\/a> of the campaign with <b>Copy the untried experiments of<\/b> q-1 ticked\./;
+  const tab = (r: RunView) =>
+    experimentsTab({
+      u: rig,
+      r,
+      now: Date.parse("2026-10-22T00:00:00Z"),
+      csrf: "c",
+      back: "/ui/campaigns/quality?run=rig-a%2Fq-1&view=experiments",
+      cmd: () => "",
+      families: [],
+    });
+  assert.match(tab(run(false, waiting("queued"))), LINE);
+  assert.match(judgeOnlyQueueLine(rig, run(false, waiting("proposed"))), LINE);
+  // A run with workers, or nothing waiting: no line.
+  assert.doesNotMatch(tab(run(true, waiting("queued"))), /Judge only/);
+  assert.equal(judgeOnlyQueueLine(rig, run(false, [])), "");
+  assert.equal(judgeOnlyQueueLine(rig, run(false, waiting("done"))), "");
+});
+
+test("Start a run chooses the run to copy from that the link names (goal 099)", () => {
+  const html = (copyPick?: string) =>
+    startDrawer({
+      campaign: "quality",
+      csrf: "c",
+      open: true,
+      rigs: [{ id: "rig-a", hardware: "6 CPU", stale: false, model: "m-1" }],
+      models: [],
+      from: "Control assigns the campaign again.",
+      copyFrom: [
+        { key: "rig-a/q-2", label: "q-2 (3 up next)" },
+        { key: "rig-a/q-1", label: "q-1 (1 up next)" },
+      ],
+      copyPick,
+    });
+  assert.match(
+    html("rig-a/q-1"),
+    /<option value="rig-a\/q-1" selected>q-1 \(1 up next\)<\/option>/,
+  );
+  assert.doesNotMatch(html("rig-a/q-1"), /value="rig-a\/q-2" selected/);
+  assert.doesNotMatch(html(), / selected>/);
+});
+
 test("the Planner tab counts rounds, and says plainly when the planner is off", async () => {
   const { plannerTab } = await import("./queue.ts");
   const tab = (settings: Record<string, unknown> | null, epochs: number) =>
