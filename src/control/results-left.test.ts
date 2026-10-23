@@ -237,7 +237,10 @@ describe("model downloads in the rig's report and history", () => {
       page,
       /<dt>Models<\/dt><dd><b>llama-8b<\/b>: downloading, 3\.2 GB of 16\.1 GB \(19%\)<\/dd>/,
     );
-    assert.match(page, /sent to control .* ago<\/span> · 2 waiting to leave the rig/);
+    assert.match(
+      page,
+      /sent to control .* ago<\/span> · <a href="[^"]+">its exports on control<\/a> · 2 waiting to leave the rig/,
+    );
     assert.equal((await report([model({ state: "done", bytes: 16_100_000_000 })])).status, 200);
     const page2 = await (await control.request("/ui/rigs/rig-a", { headers: { cookie } })).text();
     assert.match(page2, /<b>llama-8b<\/b>: 16\.1 GB, its SHA-256 checked/);

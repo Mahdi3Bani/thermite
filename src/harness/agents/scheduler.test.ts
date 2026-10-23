@@ -1380,7 +1380,8 @@ describe("agent scheduler", () => {
     // A met goal's reasons too: a code goal's values on its public cases (goal 086).
     assert.match(
       String(briefs[0]),
-      /- correct: met\. verifier correctness passed on small: small: ops_per_s \d\.\d{5}e\+\d+\n/,
+      // Then the other numbers the check printed at its top level.
+      /- correct: met\. verifier correctness passed on small: small: ops_per_s \d\.\d{5}e\+\d+, value \d\.\d{5}e\+\d+\n/,
     );
     assert.match(String(briefs[0]), /- fast: unmet\. /);
     await fake.close();
