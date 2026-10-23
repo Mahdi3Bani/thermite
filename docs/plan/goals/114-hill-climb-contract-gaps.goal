@@ -1,0 +1,48 @@
+---
+id: "114"
+title: "Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 114 · Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is built.
+
+Drafting a speed hill climb for a GPU engine showed what a hill-climb contract can't say today:
+
+- **A check once per candidate.** Correctness checks (goldens, a bit-exact file check, kernel tolerances) run inside a screened cell, so they repeat in every block. A gate that runs once for each candidate before screening, and refuses it on a failure, saves most of a block's time on a slow card. The contract schema has `hard_constraints` of kind `check`, which the hill climb does not use yet.
+- **Held-out cells at their cost.** A held-out cell runs three times for each arm, the champion included, at confirmation. One run for the champion, kept from its own confirmation, would halve that.
+- **The fields goal mode has.** `adversarial_checklist` and `insufficient`, which tell the agents and the auditor what does not count, exist only for goal campaigns.
+- **`monitor_only`**: accepted in a contract, and used nowhere. Either use it or refuse it in words.
+
+## Why
+
+On 2026-10-23, drafting a hill climb that makes a quantized model's decode faster on one GPU, each block carried about a minute of correctness checks that could run once per candidate; its held-out confirmation cost six runs where three would do; and the draft had no place for "what does not count" beyond the notes.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Whether a once-per-candidate check runs on the judge's card or may run on another one.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the draft of a speed hill climb.
+
+---
+
+Run with `/goal Complete docs/plan/goals/114-hill-climb-contract-gaps.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
