@@ -116,6 +116,18 @@ describe("what the local rig gets", () => {
     ]);
   });
 
+  test("one GPU reads as one: its GPU, given to containers as it, shared", async () => {
+    const r = rigReport(
+      await on({ files: nvidiaFiles, cmds: { ...withNvidiaRuntime, ...smi(RTX), ...ctk } }, [
+        "docker",
+      ]),
+    );
+    assert.equal(
+      r.lines[1],
+      `The rig can also have its NVIDIA GPU (${RTX}): Docker gives it to containers through NVIDIA's runtime. The judge and the agents share it.`,
+    );
+  });
+
   test("Docker without NVIDIA's runtime keeps the CPU rig, and says how to register it", async () => {
     const noRuntime = rigReport(
       await on({ files: nvidiaFiles, cmds: { ...dockerInfo(), ...smi(RTX), ...ctk } }, ["docker"]),
