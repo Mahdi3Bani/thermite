@@ -17,6 +17,7 @@ import {
 import { FolderSchema, MAX_LANES, parseContract } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { queueTarget, queueTargetNote } from "../core/queue-target.ts";
+import { RESEARCH_REVIEW } from "../core/research-check.ts";
 import { isFree, knownTimeZone, type UsagePeriod } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, goalChecks } from "../harness/goal-checks.ts";
@@ -93,8 +94,8 @@ import {
   issueCommand,
   issueWaking,
   nobodyReads,
+  panelReviews,
   propagateChampion,
-  reviewsAGoal,
 } from "./issue.ts";
 import {
   JOIN_HOURS,
@@ -248,6 +249,7 @@ import {
   pct,
   type RunTab,
   reportingTag,
+  researchCheckWords,
   runCompleted,
   runHref,
   runKey,
@@ -851,7 +853,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 return `<div class="rq"><div class="rq-head"><span class="rq-text" title="${esc(words)}"><b>Q${n + 1}</b> ${esc(words || "(no words)")}</span><span class="rq-v">${v} verified ${v === 1 ? "claim" : "claims"}</span></div><div class="bar ok"><i style="width:${((v / most) * 100).toFixed(1)}%"></i></div></div>`;
               })
               .join("") || `<div class="muted small">No question coverage yet.</div>`
-          }</div>${unsupported ? `<div class="note warn">${unsupported} ${unsupported === 1 ? "number" : "numbers"} in the latest report ${unsupported === 1 ? "appears" : "appear"} in no archived source and no verified claim. The report flags each one.</div>` : ""}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
+          }</div><div class="small rcheck" style="margin-top:10px"><b>Answer check:</b> ${esc(researchCheckWords(i, u))}</div>${unsupported ? `<div class="note warn">${unsupported} ${unsupported === 1 ? "number" : "numbers"} in the latest report ${unsupported === 1 ? "appears" : "appear"} in no archived source and no verified claim. The report flags each one.</div>` : ""}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
         })()
       : "";
     // The changes that waited when the run closed (goal 087): they left Needs you.
@@ -914,8 +916,11 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             )
             .join("")}</tbody></table></div></div>`
         : "",
-      i.reviews.length
+      // A research run's reviews (goal 112) are not goals': its Overview's Answer check says
+      // where they stand.
+      i.reviews.some((r) => r.goal !== RESEARCH_REVIEW)
         ? `<div class="block"><div class="head"><h2>Reviews of subjective goals</h2></div><div class="card flat"><table><thead><tr><th>Goal</th><th>Commit</th><th>Review panel</th><th>You</th></tr></thead><tbody>${i.reviews
+            .filter((r) => r.goal !== RESEARCH_REVIEW)
             .slice(-8)
             .reverse()
             .map(
@@ -3566,8 +3571,9 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         : w === "advisors" || r.has_agents === false
           ? "advisors"
           : "all";
-    // The review panel reads only for a goal it reviews (a goal checked by review).
-    const reviewed = reviewsAGoal(store, r.campaign || r.id);
+    // The review panel reads only for a goal it reviews (a goal checked by review) or a research
+    // run's questions (goal 112).
+    const reviewed = panelReviews(store, r.campaign || r.id);
     // Who would read nothing: off on the rig, or not set up on its supervisor. Control refuses
     // a message to them with the same words (issue.ts).
     const off = (v: string) => nobodyReads(u, v, r);

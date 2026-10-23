@@ -180,6 +180,15 @@ export const CampaignDraft = z.strictObject({
       // The starting links (goal 078): the harness archives them when a run starts.
       seeds: z.array(z.string()).default([]),
       min_duration: DurationSchema,
+      /**
+       * The floor of verified claims before the review panel first checks whether every
+       * question is answered (goal 112): the contract's min_verified_claims. Left out: no floor.
+       */
+      min_verified_claims: z
+        .number()
+        .int("Verified claims before the check is a whole number")
+        .min(1, "Verified claims before the check is 1 or more")
+        .optional(),
     })
     .optional(),
   lanes: z.number().int().min(1).max(MAX_LANES, MAX_LANES_REASON).default(2),
@@ -398,6 +407,9 @@ export function buildCampaign(
       questions,
       seeds: d.research.seeds,
       min_duration: d.research.min_duration,
+      ...(d.research.min_verified_claims !== undefined
+        ? { min_verified_claims: d.research.min_verified_claims }
+        : {}),
       // A research campaign has no kit: its contract names its MCP servers.
       ...(d.mcp_servers?.length ? { mcp_servers: d.mcp_servers } : {}),
     });

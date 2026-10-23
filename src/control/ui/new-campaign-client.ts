@@ -356,6 +356,8 @@ ${BRIEF_PAGE_JS}
     if (cw.n || ca.n) d.agents_context = Object.assign({}, cw.n ? { context_window: cw.n } : {}, ca.n ? { compact_at: ca.n } : {});
     if (mode === "research") {
       d.research = { topic: val("topic"), questions: briefList(blItems("questions")), seeds: briefLinks(form.elements.links ? form.elements.links.value : "").links, min_duration: val("min_duration") };
+      // The floor of verified claims before the answer check (goal 112): left out when empty.
+      if (num("min_verified_claims") !== undefined) d.research.min_verified_claims = num("min_verified_claims");
       d.mcp_servers = picked(blockOf("r"));
       return d;
     }
@@ -515,7 +517,7 @@ ${BRIEF_PAGE_JS}
         .catch(() => {});
     }
     if (back.agents_context) { set("context_window", back.agents_context.context_window); set("compact_at", back.agents_context.compact_at); }
-    if (back.research) { set("topic", back.research.topic); blFill("questions", back.research.questions); set("min_duration", back.research.min_duration); }
+    if (back.research) { set("topic", back.research.topic); blFill("questions", back.research.questions); set("min_duration", back.research.min_duration); set("min_verified_claims", back.research.min_verified_claims); }
     $$('.ch[data-group="mode"]').forEach((c) => { c.classList.toggle("on", c.dataset.value === back.mode); });
     choice.mode = back.mode;
     // The MCP servers as they were chosen (a kit in a repository: as its kit.json named them).

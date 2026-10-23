@@ -228,6 +228,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | `closed` | A goal campaign meets its goals, and a second, independent check agrees, with the held-out cases of the goals met ([The goal report](#the-goal-report)) | `every required goal is met` |
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
 | | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
+| | A research run's review panel found every question answered, and the pass was accepted (hands-off, or by the owner where the run asks), once its running trials ended ([When a research run ends](../explanation/campaign-modes.md#when-a-research-run-ends)) | `every question is answered` |
 | | A research campaign's time is over | `the research window is over` |
 | | The owner closes it by hand (`close_run`, **Close run** under **⋯** on the run's page), running or paused | the reason given: what you typed in **Why**, or the payload's `reason` |
 | | A smoke check finishes its own run | `the smoke check is done` |
@@ -245,12 +246,12 @@ A run's page and its **Live** header show the run with one label: the first that
 
 | Label | When |
 | --- | --- |
-| **Completed** | A goal run is `closed`, and its newest goal report met every required goal, confirmed by the judge's second check: it closed with `every required goal is met` |
+| **Completed** | A goal run is `closed`, and its newest goal report met every required goal, confirmed by the judge's second check: it closed with `every required goal is met`. Or a research run is `closed` with `every question is answered` |
 | **Finished** | Any other `closed` run: the owner closed it, a goal campaign ended as not possible, a research run's time is over, a smoke check is done, or a hill climb was closed |
 | **Paused** | The run is `paused`, even when a decision waits in it |
 | **Approval** | A result waits for the owner's approval |
 | **Decision** | A "not possible" proposal waits for the owner |
-| **Review** | The review panel passed a goal, and the owner has not answered yet |
+| **Review** | The review panel passed a goal, or found a research run's questions answered, and the owner has not answered yet |
 | **Audit** | An audit blocked a result: it waits for you |
 | **Auditing** | An audit is open: the rig's auditor decides it |
 | **Running** | Otherwise |

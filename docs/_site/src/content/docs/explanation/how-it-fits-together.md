@@ -152,7 +152,7 @@ Live's box offers all of them but a single trial, which only the REST API, MCP a
 
 - the planner when it is off on **Edit rig**, or of a research run;
 - an advisor role switched off on **Edit rig**, or one that the rig's supervisor reports it has not set up;
-- the auditor or the review panel of a research run;
+- the auditor of a research run;
 - the lanes or the planner of a run without agents (a try, where the judge alone measures the kit).
 
 Such a message never reaches the rig. Its sender gets control's reason at once (**Live** shows it as **Not sent.**), and control's audit log records it. Then the harness checks again what reaches it, with what only the rig knows, such as a lane the run doesn't have, a closed run, or the review panel of a run with no goal it reviews. The command then shows as failed on the **Commands** page, with the reason, and once the rig's answer is back, **Live** shows **Not sent.** and the rig's reason above the message box. The run's **Planner** tab does the same for a message to the planner, above **Tell the planner**. Live also greys out each recipient that would never read the message, with the same reason, and its box takes no message of spaces alone.
@@ -169,7 +169,7 @@ Such a message never reaches the rig. Its sender gets control's reason at once (
 | Any worker, after it submits | It doesn't. A submission ends the trial, and the lane's next trial reads the message in its brief, where it can act on it |
 | The planner | In its next plan, if the model's plan is used. While the planner is off, its model can't be reached, or both its answers are refused, the message waits |
 | The teachers | In a round that starts at once, for a running run. Between rounds, the supervisor looks for new messages to the teachers every few seconds; a round already under way finishes first |
-| The auditor and the review panel | In the package of their next audit or review. One comes only when the judge holds a result for an audit, or a goal needs a review |
+| The auditor and the review panel | In the package of their next audit or review. One comes only when the judge holds a result for an audit, a goal needs a review, or a research run's questions are checked |
 
 **Answers.** Each advisor that reads a message is asked to answer it in one or two sentences, as part of the answer it gives anyway. The supervisor passes the reads and the answers to the harness, which records them. An answer is for the owner only: it can't change a verdict, pause a run or reach a worker. [Supervision](supervision.md#the-owners-messages) says more.
 

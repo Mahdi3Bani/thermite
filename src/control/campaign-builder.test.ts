@@ -305,6 +305,22 @@ describe("the new-campaign page's builder", () => {
       },
     });
     assert.ok(research.ok, JSON.stringify(!research.ok && research.errors));
+    // No floor of verified claims unless one is given (goal 112); one given is in the contract.
+    assert.ok(research.ok && !("min_verified_claims" in research.contract));
+    const floor = buildCampaign({
+      mode: "research",
+      campaign: "two-bit-decoding",
+      title: "2-bit decoding on old GPUs",
+      target: { type: "cpu", class: "generic-cpu" },
+      research: {
+        topic: "Decoding speed of 2-bit models on Pascal GPUs",
+        questions: ["Which kernels are fastest?"],
+        min_duration: "8h",
+        min_verified_claims: 20,
+      },
+    });
+    assert.ok(floor.ok, JSON.stringify(!floor.ok && floor.errors));
+    if (floor.ok) assert.equal(floor.contract.min_verified_claims, 20);
     const missing = buildCampaign({ ...hillClimb, project: undefined });
     assert.equal(missing.ok, false);
   });

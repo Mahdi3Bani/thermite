@@ -1,4 +1,5 @@
 import type { Hardware } from "../../core/hardware.ts";
+import { ANSWERED, RESEARCH_REVIEW } from "../../core/research-check.ts";
 import {
   type CampaignView,
   campaignViews,
@@ -157,9 +158,79 @@ export const judgeOnlyMark = (r: Pick<RunView, "has_agents">) =>
     ? ` <span class="chip" title="Started with its agents off: no workers run on it, and the judge works alone.">judge only</span>`
     : "";
 
-/** A closed goal run whose newest goal report met its goals for good (goal 099). */
-export const runCompleted = (i: Pick<RunView, "status" | "mode" | "goals_complete">) =>
-  i.status === "closed" && i.mode === "goal" && i.goals_complete === true;
+/**
+ * A closed goal run whose newest goal report met its goals for good (goal 099), or a research run
+ * that closed because the review panel found every question answered (goal 112).
+ */
+export const runCompleted = (
+  i: Pick<RunView, "status" | "mode" | "goals_complete"> & {
+    pause_reason?: string | null | undefined;
+  },
+) =>
+  i.status === "closed" &&
+  ((i.mode === "goal" && i.goals_complete === true) ||
+    (i.mode === "research" && i.pause_reason === ANSWERED));
+
+/**
+ * Why the review panel can't check a research run on this rig (goal 112), or "": the review panel
+ * is off on the rig, or its supervisor has none set up. Unknown (no report yet) is not a reason.
+ */
+function noReviewPanel(u: Pick<RigView, "supervisor" | "settings">): string {
+  if (u.settings?.review === false) return "the review panel is off on this rig (Edit rig)";
+  const sup = u.supervisor as { advisors?: { roles?: Record<string, unknown> } | null } | null;
+  const roles =
+    sup && "advisors" in sup ? (sup.advisors === null ? {} : sup.advisors?.roles) : undefined;
+  return roles !== undefined && !(Number(roles.panel) > 0)
+    ? "this rig's supervisor has no review panel set up"
+    : "";
+}
+
+/**
+ * Where a research run's answer check stands (goal 112), in one line for its Overview: before
+ * the minimum running time, waiting for verified claims, the review panel checking, not yet (with
+ * the newest gaps), passed and waiting for the owner, or answered. From the newest digest and the
+ * run's research reviews.
+ */
+export function researchCheckWords(
+  i: RunView,
+  u: Pick<RigView, "supervisor" | "settings">,
+): string {
+  const newest = i.reviews.filter((r) => r.goal === RESEARCH_REVIEW).at(-1);
+  const which = newest ? ` (review ${newest.review})` : "";
+  if (i.status === "closed")
+    return i.pause_reason === ANSWERED
+      ? `Answered: the review panel found every question answered${which}. The final report holds its answers and its verdicts on the hypotheses.`
+      : "The run ended before the review panel found every question answered: its final report says so.";
+  if (newest?.owner === "accepted")
+    return `Answered: the review panel found every question answered${which}. The run writes its final report and ends once its running trials end.`;
+  if (newest && newest.panel === null) {
+    const none = noReviewPanel(u);
+    return none
+      ? `The check waits for a review panel: ${none}. The run keeps researching.`
+      : `The review panel checks whether every question is answered${which}.`;
+  }
+  if (newest?.panel === "review_passed" && !newest.owner)
+    return `The review panel found every question answered${which}. It waits for your acceptance in Needs you.`;
+  const d = (i.research ?? {}) as Record<string, unknown>;
+  const hours = (ms: number) => `${(ms / 3_600_000).toFixed(1)} h`;
+  const min = num(d.min_ms);
+  if (min > 0 && num(d.elapsed_ms) < min)
+    return `The check starts once the run has run for its minimum, ${hours(min)}. At the newest digest it had run ${hours(num(d.elapsed_ms))}.`;
+  const qs = Array.isArray(d.questions) ? (d.questions as { verified?: unknown }[]) : [];
+  const bare = qs.flatMap((q, n) => (num(q.verified) === 0 ? [n + 1] : []));
+  if (bare.length)
+    return `Waiting for a verified claim on question${bare.length === 1 ? "" : "s"} ${bare.join(", ")}.`;
+  const floor = num(d.min_verified_claims);
+  if (floor > 0 && num(d.verified) < floor)
+    return `Waiting for verified claims: ${num(d.verified)} of the ${floor} the campaign asks for.`;
+  if (newest?.panel === "review_failed") {
+    const gaps = (newest.gaps ?? []).slice(0, 2).join("; ");
+    return `Not yet: review ${newest.review} found gaps${gaps ? `: ${gaps}` : ""}. The run goes on, and the review panel is asked again on new evidence.`;
+  }
+  if (newest?.owner === "rejected")
+    return `Not yet: you did not accept review ${newest.review}. The run goes on, and the review panel is asked again on new evidence.`;
+  return "The review panel is asked at the next digest whether every question is answered.";
+}
 
 /**
  * What a run needs, or is doing, as one coloured label (Magnesium's status words). A paused run

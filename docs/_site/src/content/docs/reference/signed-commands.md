@@ -373,10 +373,9 @@ Control checks every message before it signs it, wherever it comes from: a run's
 | `A research run plans its rounds with a fixed method: it has no planner to message.` | `planner`, in a research run |
 | `The planner is off on this rig (Edit rig), so nothing would read it.` | `planner`, with the planner switched off on **Edit rig** |
 | `A research run has no attempts to audit.` | `auditor`, in a research run |
-| `A research run has no conclusions to review.` | `review_panel`, in a research run |
 | `The teachers are off on this rig (Edit rig), so nothing would read it.`, and `The auditor is off …` or `The review panel is off …` | `teachers`, `auditor` or `review_panel`, with that role switched off on **Edit rig** |
 | `This rig's supervisor has no teachers set up, so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `review_panel`, when the rig's supervisor reports that it has no such role |
-| `This run has no goal the review panel reviews, so nothing would read it.` | `review_panel`, when the run's contract has no goal checked by review |
+| `This run has no goal the review panel reviews, so nothing would read it.` | `review_panel`, when the run's contract has no goal checked by review and is not a research contract (the review panel checks a research run's questions) |
 | `This rig's supervisor has no advisors set up, so nothing would read it.` | `advisors`, when the supervisor reports none of the three roles |
 | `No advisor would read it.`, followed by the reason for each role, in the order teachers, auditor, review panel | `advisors`, when each of the three roles has one of the reasons above |
 
@@ -396,7 +395,7 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | `the auditor is off on this rig (Edit rig), so nothing would read this message` | `auditor`, with the auditor switched off |
 | `a research run has no audits, so the auditor would never read this message` | `auditor`, in a research run |
 | `the review panel is off on this rig (Edit rig), so nothing would read this message` | `panel`, with the review panel switched off |
-| `this run has no goal the review panel reviews, so the review panel would never read this message` | `panel`, in a run with no goal checked by review |
+| `this run has no goal the review panel reviews, so the review panel would never read this message` | `panel`, in a hill-climb run, or a goal run with no goal checked by review |
 | `none of the advisors would read this message: <each reason, joined by "; ">` | `advisors`, when no role would read it |
 | `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes. A lane within it, but above the number a `lane_count` rule leaves at work, is accepted |
 | `no trial t-… in run <run>` | A trial the run does not have |
@@ -598,7 +597,7 @@ The **History** of the run at work at the time says what changed, such as "You c
 
 ### `accept_review`
 
-The owner's final word on a goal that the review panel passed.
+The owner's final word on a goal that the review panel passed, or on a research run's questions that it found answered.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -607,7 +606,7 @@ The owner's final word on a goal that the review panel passed.
 | `accept` | boolean | `true` accepts, `false` rejects |
 | `note` | text up to 2000 characters | Optional |
 
-The judge then checks the champion's goals again. A closed run is refused: `run <run> is closed: its goals are not checked again`. Result: `{"review", "decision": "accepted"}` or `"rejected"`.
+For a goal, the judge then checks the champion's goals again. For a research run's review, `true` ends the run: no new trial starts, and once those running end, it writes its final report and closes with `every question is answered`; `false` lets it go on, and a new review needs new evidence. Either way the run's journal records the owner's word and `note`. A closed run is refused: `run <run> is closed: its goals are not checked again`. Result: `{"review", "decision": "accepted"}` or `"rejected"`.
 
 ### `conclude`
 

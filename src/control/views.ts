@@ -1,6 +1,7 @@
 import { directionOf, isLegacyRule, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { type Hardware, readHardware } from "../core/hardware.ts";
 import { clip } from "../core/kb-index.ts";
+import { RESEARCH_REVIEW } from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
 import {
@@ -271,13 +272,20 @@ export interface RunView {
     string,
     { expected_seq: number | null; reason: string | null; at: string }
   >;
-  /** Subjective-goal reviews: the panel's result, then the owner's. */
+  /**
+   * Subjective-goal reviews: the panel's result, then the owner's. A research run's reviews (goal
+   * 112) have the goal `research`; `gaps` holds what its reviewers found missing, short, and
+   * `answers` each question's first answer that passed the harness's check, short (questions
+   * numbered from 0); both null until the review panel decided, and for a goal's review.
+   */
   reviews: {
     review: number;
     goal: string;
     commit: string;
     panel: string | null;
     owner: string | null;
+    gaps: string[] | null;
+    answers: { question: number; answer: string }[] | null;
   }[];
   /** "Not possible" proposals and the owner's decisions. */
   conclusions: {
@@ -1117,13 +1125,28 @@ export function rigView(
           commit: String(b.commit),
           panel: null,
           owner: null,
+          gaps: null,
+          answers: null,
         });
         break;
       }
       case "review_panel":
       case "review_decided": {
         const r = inst(String(e.subject)).reviews.find((x) => x.review === Number(b.review));
-        if (r && e.kind === "review_panel") r.panel = String(b.result);
+        if (r && e.kind === "review_panel") {
+          r.panel = String(b.result);
+          // A research review's gaps (goal 112): the reviewers' words, kept short.
+          if (Array.isArray(b.gaps))
+            r.gaps = b.gaps
+              .filter((g): g is string => typeof g === "string")
+              .map((g) => g.slice(0, 300));
+          if (r.goal === RESEARCH_REVIEW && Array.isArray(b.questions))
+            r.answers = (b.questions as Record<string, unknown>[]).flatMap((q) =>
+              q && typeof q.answer === "string" && Number.isInteger(q.question)
+                ? [{ question: Number(q.question), answer: q.answer.slice(0, 500) }]
+                : [],
+            );
+        }
         if (r && e.kind === "review_decided") r.owner = String(b.decision);
         break;
       }
