@@ -336,6 +336,13 @@ export function gpuWords(names: string[], kind = "NVIDIA"): string {
   return `${plural(names.length, `${kind} GPU`)}${models ? ` (${models})` : ""}`;
 }
 
+/** The machine's GPUs after "have": "its NVIDIA GPU (…)" for one, "the 2 NVIDIA GPUs (…)" for more. */
+function theGpus(names: string[]): string {
+  return names.length === 1
+    ? `its ${gpuWords(names).replace(/^1 /, "")}`
+    : `the ${gpuWords(names)}`;
+}
+
 /** The split in words: who gets which share, and why when the rig can't take every GPU. */
 export function splitWords(n: number): string {
   const plan = localGpuPlan(n);
@@ -413,7 +420,7 @@ export function rigReport(m: MachineFacts): RigReport {
   } else if (n && m.pass?.ok === true) {
     gpus = { engine: e.name, names: m.nvidia.names };
     lines.push(
-      `The rig can also have the ${gpuWords(m.nvidia.names)}: ${ENGINE_LABEL[e.name]} gives them to containers through ${m.pass.how}. ${splitWords(n)}`,
+      `The rig can also have ${theGpus(m.nvidia.names)}: ${ENGINE_LABEL[e.name]} gives ${n === 1 ? "it" : "them"} to containers through ${m.pass.how}. ${splitWords(n)}`,
     );
   } else if (n && m.pass?.ok === "unchecked") {
     gpus = { engine: e.name, names: m.nvidia.names };
@@ -422,7 +429,7 @@ export function rigReport(m: MachineFacts): RigReport {
         ? "NVIDIA's container toolkit, with its runtime registered with Docker"
         : "NVIDIA's container toolkit and its CDI spec";
     lines.push(
-      `The rig can also have the ${gpuWords(m.nvidia.names)}. ${splitWords(n)} That needs ${needs}, which can't be checked from inside a container: run thermite doctor on the machine to check it.`,
+      `The rig can also have ${theGpus(m.nvidia.names)}. ${splitWords(n)} That needs ${needs}, which can't be checked from inside a container: run thermite doctor on the machine to check it.`,
     );
   } else if (n && m.pass?.ok === false) {
     status = "warn";
