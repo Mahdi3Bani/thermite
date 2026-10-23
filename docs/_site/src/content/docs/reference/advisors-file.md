@@ -333,15 +333,15 @@ A teacher's main product: as many new opportunities as are distinct and evidence
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `portfolio` | list | Optional. Each item an opportunity |
-| `portfolio[].title` | text, 1 to 200 characters | What to try, in a few words |
-| `portfolio[].family` | text, 1 to 80 characters | Optional. Its direction |
-| `portfolio[].mechanism` | text, 1 to 2000 characters | Why it would help here, from what the teacher read |
-| `portfolio[].gain_bound` | text, 1 to 300 characters | The most it may gain, and on what, such as `up to 8% on the large cases` |
-| `portfolio[].experiment` | text, 1 to 2000 characters | The smallest experiment that tells whether the mechanism holds |
-| `portfolio[].control` | text, 1 to 1000 characters | The matched control it is compared with |
-| `portfolio[].stop` | text, 1 to 1000 characters | When to stop pursuing it |
-| `portfolio[].new_because` | text, 1 to 1000 characters | Why it is new since the teachers' last round (the brief's `teacher_ideas`) |
-| `portfolio[].citations` | 1 to 20 texts of 1 to 500 characters | What it rests on: attempt ids, files of the champion, addresses or paper ids. At least one |
+| `portfolio[].title` | text of at least 1 character; a longer one is cut to 200 | What to try, in a few words |
+| `portfolio[].family` | text of at least 1 character; a longer one is cut to 80 | Optional. Its direction |
+| `portfolio[].mechanism` | text of at least 1 character; a longer one is cut to 2000 | Why it would help here, from what the teacher read |
+| `portfolio[].gain_bound` | text of at least 1 character; a longer one is cut to 300 | The most it may gain, and on what, such as `up to 8% on the large cases` |
+| `portfolio[].experiment` | text of at least 1 character; a longer one is cut to 2000 | The smallest experiment that tells whether the mechanism holds |
+| `portfolio[].control` | text of at least 1 character; a longer one is cut to 1000 | The matched control it is compared with |
+| `portfolio[].stop` | text of at least 1 character; a longer one is cut to 1000 | When to stop pursuing it |
+| `portfolio[].new_because` | text of at least 1 character; a longer one is cut to 1000 | Why it is new since the teachers' last round (the brief's `teacher_ideas`) |
+| `portfolio[].citations` | 1 to 20 texts of at least 1 character, each cut to 500 | What it rests on: attempt ids, files of the champion, addresses or paper ids. At least one |
 | `portfolio[].from` | up to 40 texts | The merged by model's only: the ids of the teachers' opportunities it holds, `<teacher>#<n>` |
 
 Each opportunity is checked on its own: one that does not fit, such as one without citations, is left out, and the supervisor's record of the round says why (`teacher-a's opportunity 3 ("…"): citations: …`). The rest stand, and a bad opportunity never costs the review. A list that is not a list is taken as empty.

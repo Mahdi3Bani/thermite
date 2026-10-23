@@ -12,7 +12,7 @@ import { researchFixture } from "../testing/fixtures.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
-import { AdvisorsConfig, opportunityExperiment, teacherRound } from "./advisors.ts";
+import { AdvisorsConfig, Opportunity, opportunityExperiment, teacherRound } from "./advisors.ts";
 import { serveAdvisorTools } from "./past-mcp.ts";
 
 /**
@@ -216,6 +216,15 @@ describe("the teachers put ideas first (goal 081)", () => {
     assert.ok((x.details ?? "").length <= 4000);
     assert.match(x.details ?? "", /^Mechanism: m+/);
     assert.equal(x.family, "memory");
+  });
+
+  test("a part longer than its limit is cut, not refused: the opportunity is kept", () => {
+    const o = Opportunity.parse(
+      opp("Reuse", { gain_bound: "g".repeat(400), citations: ["c".repeat(600)] }),
+    );
+    assert.equal(o.gain_bound.length, 300);
+    assert.equal(o.citations[0]?.length, 500);
+    assert.equal(o.title, "Reuse");
   });
 
   test("the merged by model drops no distinct idea: code adds back what it left out", async (t: TestContext) => {
