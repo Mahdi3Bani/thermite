@@ -1,0 +1,53 @@
+---
+id: "101"
+title: "A secondary judge: an outside service's checks on a schedule, and its submissions"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["100"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 101 · A secondary judge: an outside service's checks on a schedule, and its submissions
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is built.
+
+Some campaigns are scored in the end by someone else: a contest's own judge, a benchmark service, a customer's test bench. Their checks are few and rationed (a few a day), and slow. Thermite's own judge measures every change; a **secondary judge** asks the outside service, sparingly, whether it agrees about the champion.
+
+- **Our judge stays the judge.** Verdicts, promotion and the queue follow Thermite's own measurements. The outside result is a second record of the champion: kept with it, shown on the run's page, and given to the agents as a fact (the outside score and its change), never as a verdict.
+- **Checks on a schedule, only when worth one.** Every N hours, set by the owner, the secondary judge looks at the champion. If the champion's measured gain over the last champion checked outside is above a threshold, it spends one of the day's outside checks on it; otherwise it spends none. It keeps a count of what the service allows each day, never goes over it, and says on the run's page what it spent and what is left.
+- **A submission once a day, only when better.** At a time the owner sets, if the champion is better than the last one submitted (by our measurements, and by the outside check where one ran), it submits it, and records the submission's id and the service's answer. The owner turns submissions on; with them off, the secondary judge only checks.
+- **Secrets.** The service's token is the owner's, made by the owner after signing in to the service. Thermite holds it with the other secrets (in the supervisor or control, as model keys are), never in an agent's reach. Thermite never signs in for the owner.
+- **A difference is a warning.** When the outside check and Thermite's own judge disagree about a champion beyond a margin, the run's page says so and the owner is asked: a change that times well only on Thermite's machine is the first thing the outside service's reruns would catch.
+- **An adapter per service:** how to check, how to submit, how to read the answer, and the service's daily limits. The first adapter is for a public kernel challenge's command-line tool (its kernel and serving tracks, each with its own limits).
+
+## Why
+
+The owner, 2026-10-23, entering a public kernel challenge that allows a few outside checks and one or several submissions a day: "We also need a timed live check with their systems. We get 3 serving checks a day, and several kernel checks. We should set timed interval for secondary judge (runs their contest checks) that triggers at a specific interval of time and only if our personal checks have recorded increases that would signal the need to check. Once a day if our checks have shown increase we can do a submission."
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+- 2026-10-23, owner: checks on a set interval, only when Thermite's own checks recorded a gain; a submission at most once a day, only when Thermite's checks show a gain (the words above). The owner's words are the standing approval for that daily submission in the owner's campaign.
+- 2026-10-23, owner: built after v0.1.0's release steps, with goal [100](100-on-demand-gpus.goal), for live tests within days.
+
+## Open questions
+
+- The interval and the gain threshold: per campaign or per adapter; their defaults (none, by the rule of no default caps: the owner sets them).
+- Whether the agents see the outside score at once, or only at their next trial's brief.
+- How a disagreement margin is set, and what happens to promotion while one stands.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/101-secondary-judge.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
