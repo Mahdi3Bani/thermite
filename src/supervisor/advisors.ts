@@ -1395,16 +1395,27 @@ const proposals = <T extends z.ZodType>(item: T, max?: number) =>
  * since the teachers' last round, and what it rests on. Each one becomes an experiment for the
  * run's queue (opportunityExperiment).
  */
+/**
+ * A part of an opportunity, cut to its length rather than refused: an opportunity dropped for one
+ * long part loses the whole idea, as a teacher's long gain_bound once did.
+ */
+const part = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .transform((s) => s.slice(0, max));
+
 export const Opportunity = z.object({
-  title: z.string().trim().min(1).max(200),
-  family: z.string().trim().min(1).max(80).optional(),
-  mechanism: z.string().trim().min(1).max(2000),
-  gain_bound: z.string().trim().min(1).max(300),
-  experiment: z.string().trim().min(1).max(2000),
-  control: z.string().trim().min(1).max(1000),
-  stop: z.string().trim().min(1).max(1000),
-  new_because: z.string().trim().min(1).max(1000),
-  citations: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
+  title: part(200),
+  family: part(80).optional(),
+  mechanism: part(2000),
+  gain_bound: part(300),
+  experiment: part(2000),
+  control: part(1000),
+  stop: part(1000),
+  new_because: part(1000),
+  citations: z.array(part(500)).min(1).max(20),
 });
 export type Opportunity = z.infer<typeof Opportunity>;
 /** A merged opportunity: the ids of the teachers' opportunities it holds. */

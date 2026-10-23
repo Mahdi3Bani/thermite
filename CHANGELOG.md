@@ -35,6 +35,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ### Campaigns
 
+- A teacher's opportunity is no longer left out for a part longer than its limit, such as a `gain_bound` over 300 characters: the part is cut to its limit.
 - A reviewer's answer of the review panel is no longer thrown away for a reason longer than 8,000 characters (it is cut) or for a field of its own (it is dropped). A reviewer that gives no usable answer is named, with why, in the supervisor's error: `<k> of <n> reviewers of the review panel answered (<reviewer>: <why>)`.
 - Three campaign modes: hill climb, goal and research.
 - The New campaign page and Start a run. Start a run also works without the browser: `POST /v1/campaigns/<campaign>/runs`, the MCP tool `start_run` and `thermite run start` take the same fields and give the same refusals. A campaign's project can be a folder inside a repository. A sample project and its kit are in `examples/matmul-cpu`.
