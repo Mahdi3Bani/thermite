@@ -97,6 +97,8 @@ When verified claims together show something, a worker records a **finding**: th
 
 Workers can also write research notes, propose hypotheses that cite verified claims, and draft report sections. The report shows those sections as worker sections, never as findings, and flags any number in them that is in no archived source and no verified claim.
 
+On the run's **Overview** tab, the block **Research questions** shows the newest digest or final report: each question by its number and words (the full words on hover), with its count of verified claims and a bar measured against the question with the most. Below them, a line counts the numbers in the latest report that appear in no archived source and no verified claim, such as `3 numbers in the latest report appear in no archived source and no verified claim. The report flags each one.`, and **Latest report** opens the report.
+
 **The research folder.** Each run has a folder of files that its workers search and add to. The harness writes most of it from its records and keeps it current while the workers record. The workers can read what the harness writes and the lanes' saved files, and change only their own lane's working area:
 
 ```text

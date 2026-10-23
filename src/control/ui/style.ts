@@ -303,6 +303,10 @@ details.menu[open] > .menu-body { position: absolute; right: 0; top: 38px; z-ind
 .meter .k { color: var(--muted-foreground); } .meter .v { text-align: right; font-variant-numeric: tabular-nums; }
 .bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: 999px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: #52525b; border-radius: 999px; }
+.rq { display: grid; gap: 4px; font-size: 12px; }
+.rq-head { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; }
+.rq-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rq-v { color: var(--muted-foreground); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bar.primary > i { background: var(--primary); } .bar.ok > i { background: var(--success); } .bar.warn > i { background: #ea580c; } .bar.bad > i { background: var(--error); }
 .stack-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--border); gap: 1px; }
 .stack-bar > i { display: block; height: 100%; }

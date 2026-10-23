@@ -822,17 +822,25 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const research = i.research
       ? (() => {
           const r = i.research as Record<string, unknown>;
+          // The harness's digest names each question's words `question` (the run's contract order).
           const qs = Array.isArray(r.questions)
-            ? (r.questions as { q?: unknown; verified?: unknown }[])
+            ? (r.questions as { question?: unknown; verified?: unknown }[])
             : [];
           const most = Math.max(1, ...qs.map((q) => num(q.verified)));
-          return `<div class="block"><div class="head"><h2>Research questions</h2><span class="right">${esc(String(r.kind ?? ""))} · ${esc(ago(String(r.at ?? ""), now))} ago</span></div><div class="card"><div class="stack">${
+          const unsupported = num(r.unsupported_numbers);
+          return `<div class="block"><div class="head"><h2>Research questions</h2><span class="right">${esc(String(r.kind ?? ""))} · ${esc(ago(String(r.at ?? ""), now))} ago</span></div><div class="card">${
+            qs.length
+              ? `<div class="muted small" style="margin-bottom:10px">Verified claims for each of the run's questions. A bar is measured against the question with the most.</div>`
+              : ""
+          }<div class="stack">${
             qs
-              .map((q) =>
-                meter(String(q.q ?? ""), `${num(q.verified)} claims`, num(q.verified) / most, "ok"),
-              )
+              .map((q, n) => {
+                const words = String(q.question ?? "").trim();
+                const v = num(q.verified);
+                return `<div class="rq"><div class="rq-head"><span class="rq-text" title="${esc(words)}"><b>Q${n + 1}</b> ${esc(words || "(no words)")}</span><span class="rq-v">${v} verified ${v === 1 ? "claim" : "claims"}</span></div><div class="bar ok"><i style="width:${((v / most) * 100).toFixed(1)}%"></i></div></div>`;
+              })
               .join("") || `<div class="muted small">No question coverage yet.</div>`
-          }</div>${num(r.unsupported_numbers) ? `<div class="note warn">${num(r.unsupported_numbers)} numbers in the report have no source.</div>` : ""}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
+          }</div>${unsupported ? `<div class="note warn">${unsupported} ${unsupported === 1 ? "number" : "numbers"} in the latest report ${unsupported === 1 ? "appears" : "appear"} in no archived source and no verified claim. The report flags each one.</div>` : ""}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
         })()
       : "";
     // The changes that waited when the run closed (goal 087): they left Needs you.
