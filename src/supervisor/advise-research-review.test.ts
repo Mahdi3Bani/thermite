@@ -229,4 +229,43 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       1,
     );
   });
+  test("a long answer with a field of its own is kept, its reasons cut; a reviewer with no answer is named in the error", async (t) => {
+    const s = await waiting(t);
+    const answer = {
+      pass: true,
+      reasons: "Answered. ".repeat(1200),
+      verdict_summary: "a field the answer does not have",
+      questions: [
+        { index: 0, answered: true, answer: "Yes.", claims: [s.ids.claims.verified], missing: "" },
+      ],
+      hypotheses: [],
+    };
+    const good = await startFakeModel(() => ({ toolCalls: [{ name: "answer", args: answer }] }));
+    const silent = await startFakeModel(() => ({ text: "I would rather not answer." }));
+    t.after(() => good.close());
+    t.after(() => silent.close());
+    const rt = AdvisorsConfig.parse({ review_panel: [runtime(good.url, "reviewer-1")] })
+      .review_panel[0] as never;
+    const pkg = new Reviews(s.ledger).pending(["research"])[0];
+    const r = await reviewOne({ runtime: rt, pkg });
+    assert.ok(r.output, r.error);
+    assert.equal(r.output.reasons.length, 8000, "the reasons are cut, not refused");
+    assert.equal((r.output as Record<string, unknown>).verdict_summary, undefined);
+
+    const state = await adviseOnce(
+      config(
+        s.env.service,
+        AdvisorsConfig.parse({
+          review_panel: [runtime(good.url, "reviewer-1"), runtime(silent.url, "reviewer-2")],
+        }),
+        [],
+      ),
+      emptyAdviseState(),
+    );
+    assert.equal(state.stats.reviews, 0);
+    assert.match(
+      String(state.stats.last_error),
+      /^review \d+: 1 of 2 reviewers of the review panel answered \(reviewer-2: .+\)/,
+    );
+  });
 });

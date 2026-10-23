@@ -1610,9 +1610,19 @@ const AuditAnswerSchema = Type.Object({
   journal: JOURNAL_FIELD,
 });
 
-export const PanelAnswer = z.strictObject({
+/**
+ * A reviewer's reasons, cut to 8,000 characters rather than refused: a long but sound answer is
+ * kept. An answer's unknown fields are dropped (z.object, not strictObject) for the same reason:
+ * a reviewer whose answer is refused leaves the review unposted, and its whole panel runs again.
+ */
+const longText = z
+  .string()
+  .min(1)
+  .transform((s) => s.slice(0, 8000));
+
+export const PanelAnswer = z.object({
   pass: z.boolean(),
-  reasons: z.string().min(1).max(8000),
+  reasons: longText,
   answers: OwnerAnswers,
   journal: LenientNotes,
 });
@@ -1649,9 +1659,9 @@ const leniently = <T extends z.ZodType>(item: T) =>
       return r.success ? [r.data as z.infer<T>] : [];
     }),
   );
-export const ResearchPanelAnswer = z.strictObject({
+export const ResearchPanelAnswer = z.object({
   pass: z.boolean(),
-  reasons: z.string().min(1).max(8000),
+  reasons: longText,
   questions: leniently(ResearchQuestionAnswer),
   hypotheses: leniently(ResearchHypothesisVerdict),
   answers: OwnerAnswers,
