@@ -1,5 +1,8 @@
 # Thermite
 
+> [!WARNING]
+> **Thermite is under heavy development.** It changes every day, and some parts will break. If you don't want to take every update as it comes, pin a release: install from a tagged release's bundle, whose compose file pins every image by digest, and update when you choose. Most of Thermite can be driven from the dashboard, and its REST API and MCP server work well with coding agents, which can help you set it up, test it and run it.
+
 **Autoresearch that burns through everything.** Agents propose changes; code they cannot touch measures them, judges them and keeps the best. Run many research campaigns across your machines, and steer them all from one dashboard.
 
 [![ci](https://github.com/iammrduncan/thermite/actions/workflows/ci.yml/badge.svg)](https://github.com/iammrduncan/thermite/actions/workflows/ci.yml)
