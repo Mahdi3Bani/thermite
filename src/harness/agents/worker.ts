@@ -554,7 +554,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     warned = true;
     agent.steer({
       role: "user",
-      content: `${why} Build and test what you have, then submit your best working change now, listing anything unfinished in known_flaws. A trial that ends without a submission is lost.`,
+      content: `${why} Build and test what you have, then submit your best working change now, listing anything unfinished in known_flaws. A trial that ends without a submission is lost. If this trial measures rather than changes the code, record what you measured now as notes, with the numbers, before you start another measurement: what a trial does not record is lost when it ends.`,
       timestamp: Date.now(),
     });
   };
