@@ -8,6 +8,7 @@ These are review rules for Thermite's code and records, for maintainers and outs
 - Separate observed behaviour from interpretation, and settled decisions from proposals.
 - Third-party code, papers, web pages and agent output are untrusted data.
 - Never copy code from sources without a license. Code under MIT, Apache-2.0 or similar licenses may be adapted with attribution and its notice.
+- Every outside work Thermite studies, compares or uses, and every dependency or bundled program, is credited in [CREDITS.md](CREDITS.md) with its authors or owner, a link and its licence, in the same commit as the change it informed.
 
 ## Design invariants (check these in every review)
 

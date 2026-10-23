@@ -6,7 +6,7 @@ sidebar:
   order: 15
 ---
 
-Thermite grew out of long-running hill-climbing campaigns on inference kernels: AI agents trying, change after change, to make the GPU code behind a model's answers run faster. Those campaigns taught a handful of lessons. Thermite is the system built around them, informed by published work on agent research systems and on evolutionary code search.
+Thermite grew out of long-running hill-climbing campaigns on inference kernels: AI agents trying, change after change, to make the GPU code behind a model's answers run faster. Those campaigns taught a handful of lessons. Thermite is the system built around them, informed by published work on agent research systems and on evolutionary code search. [Credits](../project/credits.md#research-behind-the-design) names that work, with what Thermite takes from each.
 
 Each lesson below is paired with the part of Thermite that answers it. The [glossary](../reference/glossary.md) explains the Thermite words used here.
 

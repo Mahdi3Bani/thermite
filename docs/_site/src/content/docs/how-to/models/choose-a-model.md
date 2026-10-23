@@ -41,7 +41,7 @@ The rig's **Model route** check tests exactly this. It sends one short request a
 
 Each agent runs inside a program that gives the model its tools: the **worker harness**. (The **harness** alone is something else: the rig's container that holds the judge and the agents.) You choose the worker harness in the block **Harness and model for each rig** on **Settings › Providers**, under **Runs in** for each agent on a rig's **Edit rig** page, or under **The agents run in** when you choose the agents' model on the **New campaign** page:
 
-- **Pi**: Thermite's own built-in agent. It is the default.
+- **Pi**: the agent toolkit by Mario Zechner, which Thermite builds in ([Credits](../../project/credits.md#programs-the-agents-run-in)). It is the default.
 - **OpenCode v2**: the OpenCode coding agent, which is always in Thermite's harness image.
 - **Claude Code**: Anthropic's own program. It is in the image only when the image is built with it, and it runs only with a Claude subscription.
 - **Codex**: the Codex CLI, OpenAI's own coding agent. It is in Thermite's published harness images, and it runs with a ChatGPT subscription or an OpenAI-compatible provider whose server answers OpenAI's Responses API (`/responses`), as OpenAI's own API does. The planner follows the workers into Codex unless it has a model of its own.

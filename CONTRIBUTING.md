@@ -26,7 +26,7 @@ Thank you for helping. Fixes, documentation, kits, bug reports and ideas are all
    ```
 
 3. Make the change in small commits. Each message says what the commit does.
-4. Update the documentation in the same pull request: every page that describes what you changed, such as screens and their text, commands, settings, routes, events, errors and limits. [Writing the documentation](docs/writing-docs.md) says how.
+4. Update the documentation in the same pull request: every page that describes what you changed, such as screens and their text, commands, settings, routes, events, errors and limits. [Writing the documentation](docs/writing-docs.md) says how. When the change draws on outside work, such as a paper, a system you studied, or a new dependency or bundled program, add it to [CREDITS.md](CREDITS.md) with its licence, and run `npm run docs:credits`.
 5. Run the checks below, then open a pull request. Its form asks what the change does and why, which checks you ran, and which pages you changed.
 
 ## The checks

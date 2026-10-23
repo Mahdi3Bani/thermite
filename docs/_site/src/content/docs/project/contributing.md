@@ -169,6 +169,8 @@ npm run docs:check
 
 A change to what Thermite does also updates the pages that describe it, in the same commit: screens and their text, commands, settings, routes, events, errors and limits. Run `npm run docs:build` and `npm run docs:check` before you commit.
 
+A change that draws on outside work, such as a paper, a system you studied, or a new dependency or bundled program, also adds it to `CREDITS.md`, at the repository's root, with its licence. Then run `npm run docs:credits`: the [Credits](credits.md) page is written from that file, and `npm run docs:check` fails when the two differ.
+
 ## Plans and ideas
 
 Every planned change is a goal in [docs/plan/](https://github.com/iammrduncan/thermite/blob/main/docs/plan/README.md). That page says how goals are written and how an idea becomes one. A change that settles a design question records the decision in its goal.

@@ -22,6 +22,7 @@
     "docs:dev": "npm --prefix docs/_site run dev",
     "docs:build": "npm --prefix docs/_site run build",
     "docs:check": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/docs-check.mjs",
+    "docs:credits": "node scripts/credits-page.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run check:public",
     "dev:init": "node scripts/dev-init.mjs",
     "smoke:compose": "node scripts/compose-smoke.mjs",

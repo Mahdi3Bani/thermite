@@ -99,6 +99,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 - The judge's smoke check passes on a machine with noisy timing when the only wrong result is the no-op's `inconclusive` in place of `neutral`. It then says so in a note: the timing on this machine is noisy, and results there need more repeats. Any other wrong result still fails it.
 - The CUDA smoke check works on newer GPUs. Its kit builds native code for every GPU generation from Pascal to Hopper (`sm_60` to `sm_90`), with PTX for newer ones, so no run compiles the kernel when it starts. Each case does five times the work, and its known win is register tiling, several times faster than the naive kernel. Before, on an Ampere card, starting the process took most of each run, and the known win of shared-memory tiling came out at 8%, under the contract's 10%.
 - The documentation site has tutorials, how-to guides, reference and explanation. Agents read it through `llms.txt`. It includes the known limits and the security model.
+- `CREDITS.md`, also the documentation site's Credits page: the research, systems, programs, libraries, standards and services Thermite draws on, runs or ships, each with its licence.
 - `SECURITY.md`, `CONTRIBUTING.md` and a code of conduct (the Contributor Covenant 2.1). CI runs on every push to the development branch: the checks, the docs site, a secret scan, the compose smoke test, the rig image, RunPod against a fake API, and the quick start from the release bundle.
 
 ### Removed
