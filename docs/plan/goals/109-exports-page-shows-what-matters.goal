@@ -1,0 +1,49 @@
+---
+id: "109"
+title: "The Exports page shows what matters, not every slice"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["103"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 109 · The Exports page shows what matters, not every slice
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is built.
+
+The Exports page lists every export control holds, for every rig: hundreds after a few days, since a rig exports every hour that something changed and before every stop, update, drain and terminate. A normal export holds only what changed since the one before it, so one alone is a slice of the rig's record, and the list looks like noise.
+
+- **By default, what a person wants:** each rig's full exports and its newest export, and, for each run, the export that holds its record.
+- **The slices folded:** a line such as "214 smaller exports (each holds what changed since the one before it)", with **Show all**.
+- **Words at the top** that say the difference between a full export and a what-changed one, and that a full export is the one to download for a run's whole record.
+- **A run's record in one step,** from the run's page: ask for a full export and download it when it arrives.
+- **Keeping fewer:** whether control can drop slices that a later full export holds in full, with the owner's say, so control's store does not grow without end.
+
+## Why
+
+The owner, 2026-10-23, on the new Exports page: "wow there are a lot more exports there than I realized, why so much junk exports?", then "nah leave exports alone for now, fiel a v0.1.1 idea around this".
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+- 2026-10-23, owner: in v0.1.1; the page stays as built for v0.1.0.
+
+## Open questions
+
+- Whether a full export holds everything a slice does (patches, champions, briefings), so that slices it covers can be dropped safely.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/109-exports-page-shows-what-matters.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
