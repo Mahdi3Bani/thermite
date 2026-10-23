@@ -1,0 +1,42 @@
+---
+id: "046"
+title: "Web search for research mode"
+status: VERIFIED
+version: "0.5.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 046 · Web search for research mode
+
+**Status:** `VERIFIED` · **Version:** [v0.5.0](../../roadmap.md#v050)
+
+## What
+
+A search provider in Providers, used by research workers and, where the owner allows it, by advisors. Today research follows seed links only.
+
+## Why
+
+Research mode cannot build a sourced corpus without search.
+
+## Done when
+
+- [x] A research campaign finds and cites sources through the provider. (Through an MCP server, goal [068](068-mcp-servers-for-agents.goal): a research campaign's workers searched the web with a search and browsing server's tools and recorded verified claims from what they found, beyond their starting links.)
+
+## Decisions
+
+- 2026-10-23, lead, on the owner's question ("I feel like the research already gets our MCP so it can do web search right?"): web search reaches research workers, and advisors where a campaign allows it, as an MCP server the campaign names ([068](068-mcp-servers-for-agents.goal)), not as a search provider of its own in Providers. That meets this goal, so no search provider is built.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+- 2026-10-23: Met by goal 068's MCP servers. The pages say how research searches the web (Campaign modes; Known limits, where the limit now reads that research searches only through an MCP server). Verified.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/046-web-search.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

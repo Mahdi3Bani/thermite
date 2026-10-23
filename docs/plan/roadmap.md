@@ -165,7 +165,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 **Unattended for days.** Campaigns in all three modes run for days with no person watching, and research mode can search the web. Proposed.
 
-- [046](goals/046-web-search.goal) Web search for research mode · `PROPOSED`
+- [046](goals/_completed/046-web-search.goal) Web search for research mode · `VERIFIED` (through MCP servers, 068)
 - [047](goals/047-research-planner.goal) A model planner for research mode · `PROPOSED`
 - [048](goals/048-validation-scenarios.goal) Six validation scenarios · `PROPOSED`
 - [049](goals/049-multi-day-test-fire.goal) The multi-day test fire · `PROPOSED`

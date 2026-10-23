@@ -14,7 +14,7 @@ Thermite is at version 0.x. This page lists what to know before you run it: the 
 | [Under compose, that code can reach your local network](#under-compose-that-code-can-reach-your-local-network) | [Goal 038](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/038-lane-network-rules.goal), v0.3.0 |
 | [There are no default caps](#there-are-no-default-caps) | No goal: it is a decision |
 | [Timing on RunPod is noisier](#timing-on-runpod-is-noisier) | No goal: it comes with shared machines |
-| [Research mode has no web search](#research-mode-has-no-web-search) | [Goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal), v0.5.0 |
+| [Research mode searches the web only through an MCP server](#research-mode-searches-the-web-only-through-an-mcp-server) | No goal: give the campaign a search server |
 | [Runs of several days are not yet proven](#runs-of-several-days-are-not-yet-proven) | [Goal 049](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/049-multi-day-test-fire.goal), v0.5.0 |
 | [0.x versions make no upgrade promise](#0x-versions-make-no-upgrade-promise) | No goal yet: it holds until 1.0 |
 
@@ -55,11 +55,9 @@ A RunPod GPU is in a machine that other customers' pods share. Their work can sl
 
 **Removed by:** no goal. It comes with shared machines. For the most exact timing, use a machine of your own.
 
-## Research mode has no web search
+## Research mode searches the web only through an MCP server
 
-Research workers can't search the web. They start from the contract's starting pages (`seeds`) and follow the links of the pages already archived ([the research contract](contract.md#research)). Their `search` tool answers that the rig has no web search. So a research campaign finds only what its starting pages lead to.
-
-**Removed by:** [goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal), Web search for research mode (v0.5.0).
+Research workers have no search of their own: their `search` tool answers that the rig has no web search. They search the web with the tools of an MCP server that the campaign gives them, such as a search or browsing server you add in **Settings** ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)). Without one, they start from the contract's starting pages (`seeds`) and follow the links of the pages already archived ([the research contract](contract.md#research)), so a research campaign finds only what its starting pages lead to.
 
 ## Runs of several days are not yet proven
 

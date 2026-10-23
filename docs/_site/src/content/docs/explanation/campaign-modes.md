@@ -129,9 +129,10 @@ A Claude subscription runs only in Claude Code, which doesn't run research worke
 
 **When it ends.** When its running time reaches the contract's maximum duration. Without a maximum it runs until someone stops it: the minimum duration is a floor, never a stop. Only time the agents could work counts: time spent paused does not, and neither does time the agents were stopped by the model provider (no credits, a refused key, no model call that worked for 30 minutes, a failing model check) or waited for its rate limit. When the time is up, the trials still running finish, the final report is written and the run is closed. The report has no pass or fail; it is what the claims and findings support.
 
+**Web search.** Research workers search the web through an MCP server the campaign gives them ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)). Without one, they start from the campaign's starting links and follow the links of pages already archived.
+
 Some things are not built yet:
 
-- Web search in the research tools: workers start from the campaign's starting links and follow the links of pages already archived ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal)).
 - A model planner for research ([goal 047](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/047-research-planner.goal)).
 
 ## Choosing a mode
