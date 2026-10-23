@@ -5,6 +5,10 @@
 #   docker compose run --rm init    # first: makes .dev/ next to this file, with your tokens
 #   docker compose up -d
 #
+# On Linux with NVIDIA GPUs, init also writes compose.gpu.yaml next to this file, which puts the
+# rig on the CUDA harness and every GPU. Then start with both files:
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d
+#
 # Then open http://127.0.0.1:8800/ui and sign in with the token in .dev/secrets/control-admin-token.
 # The source, the documentation and the other releases: @@REPO_URL@@
 #
@@ -14,8 +18,9 @@ name: thermite
 services:
   # Makes .dev/ next to this file: random tokens in .dev/secrets/, the inbox and the advisors'
   # folder, as `npm run dev:init` does in a checkout. It keeps every file that is there already,
-  # and gives what it makes to the owner of this folder. Run it before the first `up`, and again
-  # after you take a newer release. It has no network.
+  # and gives what it makes to the owner of this folder. It says what the rig can use: CPUs, memory
+  # and GPUs. Run it before the first `up`, and again after you take a newer release. It has no
+  # network.
   init:
     image: @@CONTROL_IMAGE@@
     command: ["thermite", "local", "init", "/work/.dev"]

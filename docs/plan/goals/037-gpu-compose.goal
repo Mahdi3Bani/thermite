@@ -1,32 +1,48 @@
 ---
 id: "037"
-title: "GPU rigs under compose"
-status: PROPOSED
-version: "0.3.0"
-depends_on: []
+title: "The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Install from images"
+depends_on: ["011", "013"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-23
 ---
 
-# 037 · GPU rigs under compose
+# 037 · The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs
 
-**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
 
 ## What
 
-Compose overlays for Docker with NVIDIA's container toolkit and for Podman with CDI, a generator for one rig per card, and a how-to for a GPU rig.
+Thermite on one machine gives its rig what the machine has, so that a tester can start work at once:
+
+- `thermite local init` and `thermite doctor` find out what the local rig can use: the CPUs and memory that Docker or Podman gives containers (on a Mac, its virtual machine's), the NVIDIA GPUs and whether the engine can give them to containers (Docker: NVIDIA's runtime; Podman: a CDI spec), AMD GPUs, and a Mac's Apple silicon. A tool that is missing is "not found", never an error.
+- With NVIDIA GPUs that the engine can pass, `thermite local init` writes `compose.gpu.yaml` next to `compose.yaml`: the local rig's harness on the CUDA image with every GPU (Docker: a device reservation for NVIDIA's driver, `count: all`; Podman: the CDI device `nvidia.com/gpu=all`), and the split the broker reads: one GPU shared by the judge and the agents; with more, the judge gets 1 and the agents the rest, 8 at most; 16 GPUs at most. Edit rig can change the split. A machine without NVIDIA GPUs is unchanged.
+- Where the engine can't pass the GPUs, both commands say what is missing and how to install it, and the rig stays on the CPU.
+- AMD GPUs and a Mac's Apple GPU are found and explained, not used: Thermite's GPU images are CUDA only, and containers on macOS run in a Linux virtual machine that can't reach the Apple GPU.
+- "Install Thermite on one machine" says what each kind of machine gets.
 
 ## Why
+
+The owner, 2026-10-23: "one note for v0.1.0 that we should fix and implement... Docs for thermite on one machine. The rig created should mount all CPUs and GPUs to the rig that it finds... So that they can hit the ground running. If they have just mac it will pick up the unified memory and the apple silicon GPU for running mlx style stuff etc... If they ahve 10 radeon/nvidia gpus it will pick that up."
 
 A tester with one GPU machine should not need Kubernetes or SSH deploys to use it.
 
 ## Done when
 
-- [ ] A GPU rig starts under both overlays and passes the isolation self-test.
+- [x] `thermite local init` and `thermite doctor` say what the local rig gets on Linux, on Linux with NVIDIA GPUs with and without NVIDIA's runtime or a CDI spec, on Linux with AMD GPUs, and on a Mac with Apple silicon, with Docker and with Podman: unit tests with stand-in command outputs (`src/cli/machine.test.ts`, `src/cli/doctor.test.ts`).
+- [x] `compose.gpu.yaml` for Docker and for Podman, with the split the broker reads: unit tests; both files merged with the release's compose file by `docker compose config` and `podman compose config`.
+- [ ] The local rig starts under each file on a machine with NVIDIA GPUs, Docker with NVIDIA's runtime and Podman with a CDI spec, and passes its isolation self-test and judge smoke check.
+- [x] The pages say what each kind of machine gets: "Install Thermite on one machine", Your first run, Troubleshoot, the command line, Give a rig several GPUs, Compatibility.
 
 ## Decisions
 
-None yet.
+- 2026-10-23, the owner: this goal moves from v0.3.0 to v0.1.0.
+- 2026-10-23, the lead: for v0.1.0, NVIDIA GPUs are used through NVIDIA's container toolkit; AMD GPUs and a Mac's Apple GPU are found and explained, not used. A ROCm image and Apple's GPU are for later goals, which the lead files. One rig for each card, in this goal's first version, is not part of it.
+- 2026-10-23, the lead: one GPU is shared; with more, the judge gets 1 and the agents the rest, unless the owner changes it on Edit rig.
+- 2026-10-23: the release's `init` service runs in a container with no network, so it can't ask the engine or run NVIDIA's programs. It reads the GPUs from the driver's `/proc/driver/nvidia/gpus`, and the engine from the file each engine puts in its containers, writes `compose.gpu.yaml`, and says that the toolkit was not checked. `thermite doctor` and `thermite local init`, run on the machine, check it.
+- 2026-10-23: a rig's GPU set (`THERMITE_GPUS`) takes up to 16 GPUs. The broker refused more than 8, although control sets rigs up on machines with up to 16.
 
 ## Open questions
 
@@ -35,6 +51,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
+- 2026-10-23: Moved to v0.1.0, with the owner's words; What and Done when rewritten to that scope. Built: the machine's facts and what the rig gets (`src/cli/machine.ts`); `thermite doctor`'s **Local rig** check, and its GPU container toolkit check now asks what the engine needs (Docker's runtime, Podman's CDI spec); `thermite local init` prints `rig:` lines and writes `compose.gpu.yaml` (`--engine` names the engine); the broker takes a GPU set of up to 16. Checked: the unit tests; `docker compose config` and `podman compose config` (through docker-compose) merge each file with the release's compose file, and a checkout's file with its `compose.yaml`; Podman reads the CDI device name from a compose file (`unresolvable CDI devices nvidia.com/gpu=all` where no CDI spec exists). Not done: a start on a machine with NVIDIA GPUs. The fake GPUs of `containers/test-gpu` are files that the harness's test entry makes in the container, not devices that the engine passes, so they can't test the device part of the files. Next: the lead checks the rig on a GPU machine.
 
 ---
 

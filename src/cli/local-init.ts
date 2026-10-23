@@ -5,10 +5,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { GPU_OVERRIDE } from "./machine.ts";
 
 /**
  * The local compose stack's folder, `.dev/`: random tokens in `secrets/`, the inbox, the outbox
@@ -16,7 +18,8 @@ import { dirname, join } from "node:path";
  * `thermite local init`; a checkout makes the same layout with `npm run dev:init`
  * (scripts/dev-init.mjs, which needs no build). Files that exist are kept, so the tokens stay
  * the same from one start to the next; only the rig tokens map is written again, from the rig
- * tokens.
+ * tokens. Where the machine has NVIDIA GPUs the rig can have, the command also writes
+ * compose.gpu.yaml next to `.dev/` (see machine.ts and writeGpuOverride).
  */
 
 /** The token files, each made once: control's, then each rig's (local-1 and local-2). */
@@ -133,4 +136,28 @@ export function localInit(root: string, owner?: Owner): LocalInitResult {
     give(map);
   }
   return { made, kept };
+}
+
+/** The folder that holds `.dev/`, through a link to it (a source checkout links the release's). */
+const stackDir = (root: string) => dirname(realpathSync(root));
+
+/** The compose file next to `.dev/`, when there is one. */
+export function readStackCompose(root: string): string | undefined {
+  try {
+    return readFileSync(join(stackDir(root), "compose.yaml"), "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Writes compose.gpu.yaml next to `.dev/` (mode 0644), again at every run, as the machine is now,
+ * and gives it to `owner` when one is given. Returns its path.
+ */
+export function writeGpuOverride(root: string, text: string, owner?: Owner): string {
+  const path = join(stackDir(root), GPU_OVERRIDE);
+  writeFileSync(path, text, { mode: 0o644 });
+  chmodSync(path, 0o644);
+  if (owner) chownSync(path, owner.uid, owner.gid);
+  return path;
 }

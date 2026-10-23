@@ -15,8 +15,9 @@ This guide sets Thermite up to stay on one computer: control and one rig run as 
 - A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and disk space for the images (about 2.5 GB) and for what your projects build.
 - **Docker** with Docker Compose, or **Podman** with `podman compose` or podman-compose. On a Mac, start Podman's virtual machine first (`podman machine start`).
 - `curl`, and access to `github.com` and `ghcr.io`, where the release and its images are.
+- For the rig to use NVIDIA GPUs: Linux, NVIDIA's driver and NVIDIA's container toolkit. See [Use the machine's NVIDIA GPUs](#use-the-machines-nvidia-gpus).
 
-To check the computer before the first `up`, build [the command line](#the-command-line) and run `npx thermite doctor` in its folder. It checks Docker or Podman and the compose tool, port 8800, free disk and the clock, and, on a computer with an NVIDIA GPU, the driver and NVIDIA's container toolkit. Each problem it finds comes with a `Fix:` line. See [Check the machine](../operate/troubleshoot.md#check-the-machine).
+To check the computer before the first `up`, build [the command line](#the-command-line) and run `npx thermite doctor` in its folder. It checks Docker or Podman and the compose tool, port 8800, free disk and the clock, and, on a computer with an NVIDIA GPU, the driver and NVIDIA's container toolkit. It also says what the rig will get: CPUs, memory and GPUs. Each problem it finds comes with a `Fix:` line. See [Check the machine](../operate/troubleshoot.md#check-the-machine).
 
 ## Start it
 
@@ -30,7 +31,7 @@ docker compose up -d             # or: podman compose up -d
 ```
 
 - **The release.** Each [release](https://github.com/iammrduncan/thermite/releases) has two files: `compose.yaml` and a short `README.md`. `releases/latest/download/` gets the newest release's; `releases/download/v0.1.0/` gets the files of `v0.1.0`. The compose file's first line names its release, such as `# Thermite 0.1.0`, and it pins each image by its digest, so the same file always runs the same images.
-- **The tokens.** `run --rm init` runs the `init` container once. It writes local tokens to `.dev/secrets/`, next to `compose.yaml`, and its last line is `local init: .dev ready` with the number of files it made and kept. Run it before the first `up`: `up` stops with an error about a missing secret file until the tokens are there. It keeps every file that exists, so it is safe to run again. It runs as root in its container, with no network. Where root in a container is root on the computer, as with Docker on Linux, it gives what it makes to the owner of your `thermite` folder, so you can read and change the files.
+- **The tokens.** `run --rm init` runs the `init` container once. It writes local tokens to `.dev/secrets/`, next to `compose.yaml`, and its last line is `local init: .dev ready` with the number of files it made and kept. Before that, lines that start with `rig:` say what the rig can use ([What the rig gets](#what-the-rig-gets)). Run it before the first `up`: `up` stops with an error about a missing secret file until the tokens are there. It keeps every file that exists, so it is safe to run again. It runs as root in its container, with no network. Where root in a container is root on the computer, as with Docker on Linux, it gives what it makes to the owner of your `thermite` folder, so you can read and change the files.
 - **The images.** The first `up` downloads them, which takes a few minutes. Later starts take seconds.
 
 Check that it works:
@@ -68,11 +69,92 @@ Run `npx thermite` in your `thermite-source` folder; from another folder, `npx` 
 | Container | What it is |
 | --- | --- |
 | `control` | The dashboard, the REST API and MCP, on port 8800 |
-| `harness` | The rig `local-1`: its judge and its agents, on the CPU. It has no port outside the stack |
+| `harness` | The rig `local-1`: its judge and its agents, on the CPU, or on the machine's NVIDIA GPUs with `compose.gpu.yaml`. It has no port outside the stack |
 | `supervisor` | The rig's link to control. It also does the rig's git work |
 | `init` | Makes `.dev/` and your tokens, then stops. `up` runs it too; it finds the files there and keeps them |
 
-`docker compose --profile two-rigs up -d` adds a second CPU rig, `local-2`. The compose stack has no GPU rig: GPU rigs run on other machines ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal) plans one under compose).
+`docker compose --profile two-rigs up -d` adds a second rig, `local-2`, which always runs on the CPU.
+
+## What the rig gets
+
+The compose file sets no CPU or memory limits, so the rig can use all that Docker or Podman has. What that is depends on the machine:
+
+| Machine | The rig gets |
+| --- | --- |
+| Linux | Every CPU and all the memory |
+| Linux with NVIDIA GPUs | Every CPU and all the memory, and every NVIDIA GPU once NVIDIA's container toolkit is installed and Thermite starts with `compose.gpu.yaml` ([below](#use-the-machines-nvidia-gpus)). Without the toolkit, the CPUs and memory only |
+| Linux with AMD GPUs | Every CPU and all the memory. The AMD GPUs are found but not used yet: Thermite's GPU images are built on CUDA, which runs on NVIDIA GPUs only, and AMD GPUs need a ROCm image, which Thermite does not have yet |
+| A Mac, with Apple silicon or Intel | The CPUs and memory of Docker's or Podman's virtual machine ([give it more](#give-the-virtual-machine-more-on-a-mac)). No GPU: containers on macOS run in a Linux virtual machine, which can't reach the Apple GPU (Metal), so MLX-style work can't run in a rig yet |
+
+`init` says what it found, in lines that start with `rig:`. On a Linux machine with Docker, for example:
+
+```text
+rig: The containers have 32 CPUs and 134.0 GB of memory (on a Mac, the virtual machine's), and the stack sets no limits, so the rig can use all of them.
+```
+
+`init` runs in a container, so it sees the CPUs and memory that containers get and the GPUs that NVIDIA's driver lists, but not the machine's programs. `npx thermite doctor`, from [the command line](#the-command-line), checks the machine itself: its **Local rig** check says the same, names AMD and Apple GPUs, and says how to fix what keeps a GPU from the rig.
+
+### Use the machine's NVIDIA GPUs
+
+On Linux, the rig can use every NVIDIA GPU on the machine. It then runs the CUDA harness, the release's image for GPUs, and splits the GPUs between the judge and the agents:
+
+| GPUs | The split |
+| --- | --- |
+| 1 | The judge and the agents share it |
+| 2 to 9 | The judge gets 1, the agents the rest |
+| 10 to 16 | The agents get 8, the judge the rest |
+| More than 16 | The rig takes the first 16: 8 for the judge, 8 for the agents |
+
+Change the split later on the rig's page, with **Edit rig** ([Give a rig several GPUs](several-gpus.md#change-the-split-later)).
+
+1. Install NVIDIA's driver, so that `nvidia-smi` lists the GPUs, and [NVIDIA's container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Then let the engine use the toolkit:
+
+   ```sh
+   sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker   # Docker
+   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml                            # Podman
+   ```
+
+   Docker gets the GPUs through NVIDIA's runtime, and Podman through the CDI spec. Make the CDI spec again after each driver update.
+2. Run `init`:
+
+   ```sh
+   docker compose run --rm init     # or: podman compose run --rm init
+   ```
+
+   It writes `compose.gpu.yaml` next to `compose.yaml`, and says so: `wrote compose.gpu.yaml: start Thermite with docker compose -f compose.yaml -f compose.gpu.yaml up -d`. Its `rig:` line says that it can't check the toolkit from its container.
+3. Check the toolkit from the machine itself: in your `thermite-source` folder, run `npx thermite doctor`. Its **GPU container toolkit** check says `ok`, and its **Local rig** check names the GPUs. If not, do what the `Fix:` line says.
+
+   Or, in place of steps 2 and 3, run `npx thermite local init .dev` in `thermite-source`: on the machine itself it checks the toolkit too, and writes `compose.gpu.yaml` next to `compose.yaml` only when the engine can give containers the GPUs.
+4. Start Thermite with the file:
+
+   ```sh
+   docker compose -f compose.yaml -f compose.gpu.yaml up -d   # or: podman compose -f compose.yaml -f compose.gpu.yaml up -d
+   ```
+
+   The first start downloads the CUDA harness, which takes several gigabytes. Name `compose.gpu.yaml` in every later `up`, as [Settings and override files](#settings-and-override-files) says. A start without it puts the rig back on the CPU.
+
+To tell that it worked, open the rig's page: **What it runs on** shows the **Judge** and **Dev runs** GPUs. Then run its **Isolation** and **Judge smoke** checks ([Check a rig](../operate/check-a-rig.md)): the isolation check passes and names the GPU layout.
+
+- `compose.gpu.yaml` gives the harness the CUDA image, the machine's GPUs, and the settings that split them (`THERMITE_TARGET`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`, or `THERMITE_GPU_INDEX` for one GPU: see [Give a rig several GPUs](several-gpus.md#the-settings-behind-the-split)). Docker gets every GPU through a device reservation for NVIDIA's driver; Podman through the CDI device `nvidia.com/gpu=all`, with SELinux labels off for the harness, as on rigs that control sets up.
+- The CUDA image is the release's, unless `.env` names another in `THERMITE_RIG_HARNESS_CUDA_IMAGE`.
+- `init` writes the file again each time it runs, from what the machine has then, for the engine that runs it. Put changes of your own in another override file. With both Docker and Podman installed, `npx thermite local init .dev --engine podman` names the engine.
+- Only `local-1` gets the GPUs. `local-2`, the second rig, runs on the CPU.
+
+### Give the virtual machine more, on a Mac
+
+On a Mac, the rig gets the CPUs and memory of Docker's or Podman's virtual machine, not all of the Mac's. To give it more:
+
+- **Podman:** stop the virtual machine, set its CPUs and its memory in MB, then start it again:
+
+  ```sh
+  podman machine stop
+  podman machine set --cpus 8 --memory 16384
+  podman machine start
+  ```
+
+- **Docker Desktop:** set the CPUs and memory in Docker Desktop's **Settings › Resources**.
+
+The **Local rig** check of `npx thermite doctor` gives the numbers for your Mac. Start Thermite again afterwards, with your `up -d` command.
 
 ## Where your data lives
 
@@ -153,6 +235,7 @@ Any other setting needs an **override file**: a second compose file next to `com
 
 | File | Made in | What it adds |
 | --- | --- | --- |
+| `compose.gpu.yaml` | Written by `init` on a machine with NVIDIA GPUs: [Use the machine's NVIDIA GPUs](#use-the-machines-nvidia-gpus) | The CUDA harness and the machine's GPUs for the rig `local-1` |
 | `compose.tokens.yaml` | [Use an owner's token of your own](#use-an-owners-token-of-your-own) | Control's token settings |
 | `compose.claude.yaml` | [Use a Claude subscription](../models/claude-subscription.md#2-build-the-images-with-claude-code) | Claude Code in the harness and supervisor images. It builds them from the source code: the published images never carry Claude Code |
 | `compose.model.yaml` | [Connect a model provider](../models/connect-a-provider.md#use-the-rigs-own-settings-instead) | Model settings that `compose.yaml` doesn't pass, such as `THERMITE_AGENT_HARNESS` |
@@ -172,7 +255,7 @@ services:
 **Name every override file you use in every later `up`,** each with `-f`, after `-f compose.yaml`. That includes the `up` after an update. Compose reads only the files it is given, so a start that leaves one out drops what that file adds. For example, with all of them:
 
 ```sh
-docker compose -f compose.yaml -f compose.tokens.yaml -f compose.claude.yaml \
+docker compose -f compose.yaml -f compose.gpu.yaml -f compose.tokens.yaml -f compose.claude.yaml \
   -f compose.model.yaml -f compose.harness.yaml -f compose.results.yaml \
   -f compose.lifecycle.yaml -f compose.local.yaml up -d
 ```

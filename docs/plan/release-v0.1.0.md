@@ -16,12 +16,13 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-20:** The owner took the recommended answer to each open decision, except the docs site's address: the site will be served from Cloudflare, under a domain the owner chooses, and the owner deploys it later. The answers are in the table below and in each goal.
 - **2026-10-20:** The owner merges the code into `main` and makes the tag, when the project is ready for one.
 - **2026-10-20:** The docs site is served at usethermite.com by Cloudflare Pages, built from `main`. So the code moved to `main` early, at the development branch's state that day. Work stays on the development branch, and `main` follows it.
+- **2026-10-23:** The local rig uses what its machine has: every CPU and all the memory, and on Linux every NVIDIA GPU through NVIDIA's container toolkit. AMD GPUs and a Mac's Apple GPU are found and explained, not used yet (goal 037, moved from v0.3.0).
 
 ## What a tester gets
 
 **In v0.1.0:**
 
-- Control and a CPU rig on one machine, started from published images with one compose file. Building from source stays for contributors.
+- Control and a rig on one machine, started from published images with one compose file. The rig uses every CPU and all the memory the container engine has and, on Linux with NVIDIA's container toolkit, every NVIDIA GPU. Building from source stays for contributors.
 - The rig checks from the dashboard, and `thermite doctor` for the machine.
 - A first agent campaign on the sample project, with a free model or the tester's own key.
 - The New campaign page, the Providers page, kits and all three campaign modes.
@@ -92,6 +93,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | [011 · A release bundle](goals/011-release-bundle.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
 | [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `VERIFIED` | [010](goals/010-published-images.goal) |
 | [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `VERIFIED` | — |
+| [037 · The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs](goals/037-gpu-compose.goal) | `IN_PROGRESS` | [011](goals/011-release-bundle.goal), [013](goals/013-thermite-doctor.goal) |
 | [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
 | [015 · Log paging](goals/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/016-small-fixes.goal) | `VERIFIED` | — |

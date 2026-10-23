@@ -35,6 +35,8 @@ Leave **GPUs for the judge** empty for half. The note under the fields says what
 
 On a machine, a GPU that another rig control set up there already uses shows "used by rig …" and can't be ticked.
 
+The local stack's rig is not added there: it gets every NVIDIA GPU of its machine from `compose.gpu.yaml`, which `thermite local init` writes. The judge gets 1 and the agents the rest, as long as the agents get 8 at most ([Use the machine's NVIDIA GPUs](one-machine.md#use-the-machines-nvidia-gpus)). Change the split as below.
+
 ## Change the split later
 
 Once a rig has its GPU set, these places change the judge's share. When the share changes, the rig's harness restarts to regroup the GPUs, so running trials and judge jobs start again.
@@ -53,7 +55,7 @@ A rig without a GPU set of two or more has no such field on Edit rig. From a cam
 
 ## The settings behind the split
 
-Control writes these settings on the harness of each rig it sets up. They are here for reference: Thermite ships no other way to run a GPU harness, and no guide covers running one by other means. Such a harness would need them set on its container:
+Control writes these settings on the harness of each rig it sets up, and `thermite local init` writes them in `compose.gpu.yaml` for the local stack's rig. They are here for reference: no guide covers running a GPU harness by other means. Such a harness would need them set on its container:
 
 | Setting | Value |
 | --- | --- |
@@ -67,7 +69,6 @@ Instead, the cards can be named outright: `THERMITE_GPU_INDEX` for the judge (`0
 
 `THERMITE_RUN_CPUS` sets the CPUs timed runs are pinned to: `auto` (the default on a GPU rig: the CPUs close to each judge card), `off`, or a CPU list.
 
-The local compose stack has no GPU rig: its harness runs on the CPU ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal) plans GPU rigs under compose).
 
 ## Check the split
 

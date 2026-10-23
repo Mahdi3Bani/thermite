@@ -20,9 +20,13 @@ import {
  */
 interface Machine {
   platform?: NodeJS.Platform;
+  arch?: string;
   env?: Record<string, string>;
   cmds?: Record<string, Partial<RunResult>>;
   files?: string[];
+  /** Files' text by path, and folders' entries by path. */
+  texts?: Record<string, string>;
+  dirs?: Record<string, string[]>;
   free?: Record<string, number>;
   busy?: number[];
   http?: Record<string, HttpResult>;
@@ -34,6 +38,9 @@ function probes(m: Machine): Probes & { asked: string[] } {
   return {
     asked,
     platform: m.platform ?? "linux",
+    arch: m.arch ?? "x64",
+    cpus: 16,
+    memBytes: 64e9,
     env: m.env ?? {},
     cwd: "/home/me/thermite",
     run: async (cmd, args) => {
@@ -42,6 +49,8 @@ function probes(m: Machine): Probes & { asked: string[] } {
       return { code: 0, stdout: "", stderr: "", missing: false, ...r };
     },
     exists: (path) => (m.files ?? []).includes(path),
+    readText: (path) => m.texts?.[path],
+    list: (dir) => m.dirs?.[dir] ?? [],
     freeBytes: (path) => m.free?.[path],
     portInUse: async (port) => (m.busy ?? []).includes(port),
     get: async (url) => {
@@ -59,6 +68,7 @@ const podmanMac: Record<string, Partial<RunResult>> = {
   "podman compose version": { stdout: "podman-compose version 1.2.0\n" },
   "podman info --format json": {
     stdout: JSON.stringify({
+      host: { cpus: 16, memTotal: 64e9 },
       store: {
         graphRoot: "/var/home/core/.local/share/containers/storage",
         graphRootAllocated: 100e9,
@@ -101,6 +111,7 @@ describe("thermite doctor", () => {
         ["clock", "skip"],
         ["gpu-driver", "skip"],
         ["gpu-toolkit", "skip"],
+        ["rig", "ok"],
         ["control", "skip"],
         ["model", "skip"],
       ],
@@ -460,6 +471,83 @@ describe("thermite doctor", () => {
     assert.equal(one(cpu, "gpu-driver").status, "skip");
     assert.equal(one(cpu, "gpu-toolkit").status, "skip");
     assert.match(one(cpu, "gpu-driver").said, /no NVIDIA GPU\. A CPU rig needs no GPU driver/);
+  });
+
+  test("local rig: what it gets, and the toolkit check asks of the engine what it needs", async () => {
+    const smi = {
+      "nvidia-smi --query-gpu=name,driver_version --format=csv,noheader": {
+        stdout: "NVIDIA L4, 550.54.15\nNVIDIA L4, 550.54.15\n",
+      },
+    };
+    const ctk = {
+      "nvidia-ctk --version": { stdout: "NVIDIA Container Toolkit CLI version 1.17.3\n" },
+    };
+    const info = (runtimes: string[]) => ({
+      "docker info --format {{json .}}": {
+        stdout: JSON.stringify({
+          NCPU: 32,
+          MemTotal: 128e9,
+          Runtimes: Object.fromEntries(runtimes.map((r) => [r, {}])),
+        }),
+      },
+    });
+    const ready = await doctor(
+      probes({
+        files: ["/dev/nvidia0"],
+        cmds: { ...dockerLinux, ...info(["runc", "nvidia"]), ...smi, ...ctk },
+      }),
+    );
+    assert.deepEqual(
+      [one(ready, "gpu-toolkit").status, one(ready, "gpu-toolkit").said],
+      [
+        "ok",
+        "NVIDIA's container toolkit 1.17.3 is installed, and Docker gives containers the GPUs through NVIDIA's runtime.",
+      ],
+    );
+    const rig = one(ready, "rig");
+    assert.equal(rig.status, "ok");
+    assert.equal(
+      rig.said,
+      "Docker gives containers this machine's 32 CPUs and 128.0 GB of memory. The stack sets no limits, so the rig can use all of them. The rig can also have the 2 NVIDIA GPUs (NVIDIA L4 ×2): Docker gives them to containers through NVIDIA's runtime. The judge gets 1, the agents 1. thermite local init writes compose.gpu.yaml, which gives them to the rig. Then start Thermite with docker compose -f compose.yaml -f compose.gpu.yaml up -d.",
+    );
+    assert.match(formatReport(ready), /^ok {4}Local rig: Docker gives containers/m);
+
+    const noRuntime = await doctor(
+      probes({
+        files: ["/dev/nvidia0"],
+        cmds: { ...dockerLinux, ...info(["runc"]), ...smi, ...ctk },
+      }),
+    );
+    assert.equal(one(noRuntime, "gpu-toolkit").status, "fail");
+    assert.match(
+      one(noRuntime, "gpu-toolkit").fix ?? "",
+      /nvidia-ctk runtime configure --runtime=docker/,
+    );
+    assert.equal(one(noRuntime, "rig").status, "warn");
+    assert.match(
+      formatReport(noRuntime),
+      /^WARN {2}Local rig: .* but the rig can't have them yet: Docker has no NVIDIA runtime.*\n {6}Fix: Register NVIDIA's runtime with Docker: .* Then run thermite local init again\.$/m,
+    );
+
+    // AMD's GPUs are found, and not used.
+    const amd = await doctor(
+      probes({
+        cmds: { ...dockerLinux, ...info(["runc"]) },
+        dirs: { "/sys/class/drm": ["card0"] },
+        texts: { "/sys/class/drm/card0/device/vendor": "0x1002\n" },
+      }),
+    );
+    assert.match(one(amd, "gpu-driver").said, /Its AMD GPUs are not used yet/);
+    assert.match(one(amd, "rig").said, /This machine has 1 AMD GPU\. The rig does not get it/);
+    assert.equal(one(amd, "rig").status, "ok");
+
+    // A Mac with Apple silicon: no GPU in the containers.
+    const mac = await doctor(probes({ platform: "darwin", arch: "arm64", cmds: podmanMac }));
+    assert.match(one(mac, "gpu-driver").said, /can't reach its Apple GPU/);
+    assert.match(one(mac, "rig").said, /MLX-style work can't run in a rig yet/);
+
+    // No engine answers: the rig is not checked.
+    assert.equal((await check({}, "rig")).status, "skip");
   });
 
   test("control: answers, nothing listens, the name does not resolve, or another server", async () => {

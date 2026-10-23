@@ -69,14 +69,16 @@ See [Add a rig on a Kubernetes cluster](../how-to/install/rig-on-a-cluster.md).
 | Point | Status | How it is tested |
 | --- | --- | --- |
 | GPU vendor | NVIDIA only: `nvidia-smi`, `/dev/nvidia*` device nodes, CDI on machines, the device plugin or dynamic resource allocation on clusters | |
-| GPUs on one rig | Up to 8 for the judge and 8 for the agents. Up to 16 on a rig control sets up on a machine or cluster; 8 on a joined namespace | The multi-GPU acceptance, with four fake GPUs (plain files and a stand-in `nvidia-smi`) |
+| GPUs on one rig | Up to 8 for the judge and 8 for the agents. Up to 16 on a rig control sets up on a machine or cluster, and on the local stack's rig; 8 on a joined namespace | The multi-GPU acceptance, with four fake GPUs (plain files and a stand-in `nvidia-smi`) |
 | Several judge GPUs | They must be the same model. Otherwise only the first one judges, and the rig's hardware report says why | Not tested |
 | CUDA | A CUDA 12.x development image as the harness's base. The published CUDA harness is built on `nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by digest in the release workflow. CUDA 13 dropped older architectures. RunPod test pods ask for hosts with CUDA 12.6 or later | No test in the repository. A RunPod test pod checks one real GPU host: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
 | GPU architecture of the CUDA smoke kit | Built for `sm_60` | |
 | NVIDIA driver | No minimum is stated or checked. A machine's check reports the driver and CUDA versions | Not tested |
 | NVIDIA container toolkit | 1.20.1-1 when control installs it, with a CDI specification for Podman | Not tested: the machines acceptance installs only Podman |
 | Landlock (Linux kernel) | Used for the GPU fence when the kernel has it | Multi-GPU acceptance; the RunPod test's probe |
-| GPU rigs under compose | Not available. [Goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal) plans them | |
+| GPU rigs under compose | The local stack's rig, `local-1`, with `compose.gpu.yaml`, which `thermite local init` writes: Docker with NVIDIA's runtime, Podman with a CDI spec ([Use the machine's NVIDIA GPUs](../how-to/install/one-machine.md#use-the-machines-nvidia-gpus)) | Unit tests of the file and of what each kind of machine gets; the file merged by `docker compose config` and `podman compose config`. Not yet on a real GPU ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal)) |
+| AMD GPUs | Found by `thermite doctor` and `thermite local init`, not used: the GPU images are CUDA only | |
+| A Mac's Apple GPU | Not reachable: containers on macOS run in a Linux virtual machine. The rig gets the virtual machine's CPUs and memory | |
 
 Without Landlock, and with device nodes that cannot be given their own groups, a GPU rig neither times nor allows development runs; it never falls back to sharing. [Sharing a device](../explanation/sharing-a-device.md) explains why, and [Give a rig several GPUs](../how-to/install/several-gpus.md) shows how to set the split.
 

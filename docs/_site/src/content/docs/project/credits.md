@@ -214,6 +214,7 @@ Every package Thermite runs, with those packages' own dependencies, is under a p
 | [Semantic Versioning](https://semver.org/) | Tom Preston-Werner | CC BY 3.0 | The release's version tags |
 | IETF RFCs: Ed25519 ([RFC 8032](https://www.rfc-editor.org/rfc/rfc8032)), HKDF ([RFC 5869](https://www.rfc-editor.org/rfc/rfc5869)), PKCE ([RFC 7636](https://www.rfc-editor.org/rfc/rfc7636)), dynamic client registration ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)), timestamps ([RFC 3339](https://www.rfc-editor.org/rfc/rfc3339)), private addresses ([RFC 1918](https://www.rfc-editor.org/rfc/rfc1918)), robots.txt ([RFC 9309](https://www.rfc-editor.org/rfc/rfc9309)) | The IETF | The IETF Trust's licence | Signed commands, sealed secrets, MCP sign-in, and the research fetcher |
 | AES-256-GCM ([NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final)) | NIST | A U.S. government work | Sealed secrets |
+| [Container Device Interface](https://github.com/cncf-tags/container-device-interface) (CDI) | The CNCF's Container Orchestrated Devices working group | Apache-2.0 | How Podman gives a rig's harness its NVIDIA GPUs, as `nvidia.com/gpu` devices: on machines that control sets rigs up on, and in the local stack's `compose.gpu.yaml` |
 
 ## Services Thermite works with
 
@@ -225,7 +226,7 @@ Every package Thermite runs, with those packages' own dependencies, is under a p
 
 ## Tools Thermite is tested with
 
-[Podman](https://github.com/containers/podman), [Docker](https://www.docker.com/) and their compose tools; [Kubernetes](https://github.com/kubernetes/kubernetes) and [kind](https://github.com/kubernetes-sigs/kind) (Apache-2.0 each), with systemd's Quadlet units for rigs on machines; [NVIDIA's device plugin](https://github.com/NVIDIA/k8s-device-plugin) and [DRA driver](https://github.com/kubernetes-sigs/dra-driver-nvidia-gpu) (Apache-2.0); Fedora's and Debian's images as stand-in machines; [uv](https://github.com/astral-sh/uv) (Apache-2.0 OR MIT) to run the statistics reference script; and Chrome, which takes the documentation's screenshots. A manual long-run test starts its research from two Wikipedia articles (CC BY-SA 4.0), which it fetches when it runs.
+[Podman](https://github.com/containers/podman), [Docker](https://www.docker.com/) and their compose tools; [Kubernetes](https://github.com/kubernetes/kubernetes) and [kind](https://github.com/kubernetes-sigs/kind) (Apache-2.0 each), with systemd's Quadlet units for rigs on machines; [NVIDIA's device plugin](https://github.com/NVIDIA/k8s-device-plugin) and [DRA driver](https://github.com/kubernetes-sigs/dra-driver-nvidia-gpu) (Apache-2.0); [NVIDIA's container toolkit](https://github.com/NVIDIA/nvidia-container-toolkit) (Apache-2.0), which gives containers the GPUs, through its runtime for Docker and its CDI spec for Podman, and which `thermite doctor` and `thermite local init` check for; Fedora's and Debian's images as stand-in machines; [uv](https://github.com/astral-sh/uv) (Apache-2.0 OR MIT) to run the statistics reference script; and Chrome, which takes the documentation's screenshots. A manual long-run test starts its research from two Wikipedia articles (CC BY-SA 4.0), which it fetches when it runs.
 
 ## The maintainers' own public projects
 

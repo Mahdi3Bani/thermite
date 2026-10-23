@@ -10,7 +10,7 @@ Find the problem you see, then follow what to do. On a new machine, or when Ther
 
 ## Check the machine
 
-Most first-run problems are in the machine, not in Thermite. `thermite doctor` checks it: the container engine and its compose tool, control's port, free disk, the clock, the GPU driver and NVIDIA's container toolkit where there is a GPU, and whether control and the model server answer.
+Most first-run problems are in the machine, not in Thermite. `thermite doctor` checks it: the container engine and its compose tool, control's port, free disk, the clock, the GPU driver and NVIDIA's container toolkit where there is a GPU, what the local rig gets (its CPUs, memory and GPUs), and whether control and the model server answer.
 
 1. Run it on the machine that has the problem, in your `thermite-source` folder: the command line, built once from the source of the release you run, as [The command line](../install/one-machine.md#the-command-line) says. It needs Node.js 22.19 or later and git, and works before Thermite is started.
 
@@ -28,7 +28,7 @@ Most first-run problems are in the machine, not in Thermite. `thermite doctor` c
 
 3. Do what each `Fix:` line says, then run the doctor again.
 
-The last line says `No check failed.` when the machine is ready. A check that says `skip` did not apply: for example, a machine without an NVIDIA GPU needs no GPU driver. [Command line](../../reference/command-line.md#doctor) lists every check and its limits.
+The last line says `No check failed.` when the machine is ready. A check that says `skip` did not apply: for example, a machine without an NVIDIA GPU needs no GPU driver. The **Local rig** line says what the rig on this machine gets, and warns when the machine has NVIDIA GPUs that the rig can't have yet ([What the rig gets](../install/one-machine.md#what-the-rig-gets)). [Command line](../../reference/command-line.md#doctor) lists every check and its limits.
 
 ## Where the logs are
 
