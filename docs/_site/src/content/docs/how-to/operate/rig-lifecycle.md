@@ -190,8 +190,8 @@ Control records the address it gives each rig. A rig set up by a control too old
 
 **Set up by control:** removing the rig deletes everything on it. These rigs have no results repository: they send their exports to control, which keeps them with the rig's events and the patch of each champion the rig has exported. So, before you remove it:
 
-1. On the rig's page, press **Export now**, and wait a minute or two: the rig sends that export, and its champions' patches, to control.
-2. Check that every result has left the rig: see [Get a rig's results from control](exports-on-control.md#4-check-that-every-result-has-left-the-rig).
+1. On the rig's page, press **Export**, choose **Full export**, press **Export** under the choice, and wait a minute or two: the rig sends that export, and its champions' patches, to control.
+2. Check that every result has left the rig: see [Get a rig's results from control](exports-on-control.md#3-check-that-every-result-has-left-the-rig).
 
 Then, in the **Set up by control** block, open "Remove it from …", type `remove rig-1`, and press **Remove the rig**. On a machine, control stops the services and deletes the rig's units, files and volumes. On a cluster, it deletes the namespace it made, or the rig's objects in its slot. Either way it retires the rig, so its token stops working.
 
@@ -255,7 +255,7 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
 
    It prints the start of the commit and its message, `local-1: export <name>, …`. Both must match the **Detail**.
 
-   For a rig that sends its exports to control, the **Detail** says `export <name> is on control, every file checked against its manifest; check it there (GET /v1/rigs/<rig>/exports/<name>), then confirm the wipe`. Read that export's listing, as in [Get a rig's results from control](exports-on-control.md#3-download-an-exports-files): its `complete_at` is set, and `full` is `true`.
+   For a rig that sends its exports to control, the **Detail** says `export <name> is on control, every file checked against its manifest; check it there (GET /v1/rigs/<rig>/exports/<name>), then confirm the wipe`. Find that export on the **Exports** page, or read its listing as in [Get a rig's results from control](exports-on-control.md#the-scripted-way): it is complete (`complete_at` is set), and its kind is `full` (`full` is `true`).
 
 4. Press **Confirm the wipe**, on **Reports** or in the **Wipe** item of **Needs you**. To stop instead, press **Cancel** on **Reports** or **Cancel the reset** in **Needs you**. You can cancel until the wipe starts.
 

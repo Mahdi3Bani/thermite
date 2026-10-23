@@ -39,6 +39,7 @@ import {
   copyCampaignFields,
 } from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
+import { exportSummary } from "./exports.ts";
 import { issueWaking, propagateChampion } from "./issue.ts";
 import { briefingSeedOf, type KbKind } from "./kb.ts";
 import {
@@ -560,6 +561,27 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
               return { ...item, result: kb.resultOf(x) };
             });
         },
+      ),
+    );
+  // The exports control keeps (goal 103): a list only; the owner downloads them over REST or on
+  // the dashboard's Exports page.
+  if (role === "owner" || role === "operator")
+    server.registerTool(
+      "exports",
+      {
+        title: "Exports on control",
+        description:
+          "The exports rigs without a results repository sent to control, newest first: each one's rig, name, whether it is full, its event range, files and size, and when it was made and completed (complete_at null: still arriving). The owner downloads a complete one as one .tar.gz on the dashboard's Exports page, or over REST at GET /v1/rigs/{rig}/exports/{name}/archive; there is no download over MCP.",
+        inputSchema: {
+          rig: z.string().min(1).optional(),
+          limit: z.number().int().min(1).max(500).default(50),
+        },
+      },
+      audited("exports", (a: { rig?: string; limit: number }) =>
+        (a.rig ? store.rigExports(a.rig, a.limit) : store.allRigExports(a.limit)).map((e) => ({
+          rig: e.rig,
+          ...exportSummary(undefined, e),
+        })),
       ),
     );
   // Which folders a campaign's agents may read: the owner's choice, or an operator's for them.

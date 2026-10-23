@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
@@ -293,5 +302,237 @@ describe("exports sent to control", () => {
     assert.equal(ok.status, 200);
     assert.deepEqual(await ok.json(), { received: patch.length, done: true, complete: false });
     assert.deepEqual(s.store.rigExport("rig-a", NAME)?.done, ["attempts/a-1.patch"]);
+  });
+});
+
+/** Every file under a folder, by its path from there. */
+const filesUnder = (dir: string): string[] =>
+  (readdirSync(dir, { recursive: true }) as string[]).filter((p) =>
+    statSync(join(dir, p)).isFile(),
+  );
+
+/** Signs in to the dashboard with the owner's token: the session's cookie. */
+async function signIn(control: ReturnType<typeof setup>["control"]): Promise<string> {
+  const login = await control.request("/ui/login", {
+    method: "POST",
+    body: new URLSearchParams({ token: OWNER }),
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
+  return (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+}
+
+describe("Export and the Exports page (goal 103)", () => {
+  // A path ustar can't hold (a name of 123 characters: a pax record) and one it holds split at a
+  // "/" (more than 100 characters in all).
+  const longName = `research/r-1/folder/${"n".repeat(120)}.md`;
+  const deepPath = `research/r-1/folder/${"sub/".repeat(25)}deep.md`;
+  const fullFiles = () => ({
+    ...files(),
+    [longName]: Buffer.from("# a note with a long name\n"),
+    [deepPath]: Buffer.alloc(1300, 7),
+  });
+  const PART = "20261020T160000Z-11111111";
+
+  test("a complete export downloads as one .tar.gz of its manifest and files; only the owner's token gets it", async () => {
+    const s = setup();
+    const f = fullFiles();
+    writeExport(s.outbox, NAME, f, true);
+    await uploadExportsOnce(s.cfg, { queue: [NAME], uploaded: [] });
+    assert.ok(s.store.rigExport("rig-a", NAME)?.complete_at);
+
+    const res = await s.control.request(`/v1/rigs/rig-a/exports/${NAME}/archive`, {
+      headers: s.as(OWNER),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), "application/gzip");
+    assert.equal(
+      res.headers.get("content-disposition"),
+      `attachment; filename="rig-a-${NAME}.tar.gz"`,
+    );
+    // The system's tar reads it: every file at its path, under <rig>-<export>/, and the manifest.
+    const tgz = join(s.root, "export.tar.gz");
+    writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
+    const out = join(s.root, "unpacked");
+    mkdirSync(out);
+    execFileSync("tar", ["-xzf", tgz, "-C", out]);
+    const top = join(out, `rig-a-${NAME}`);
+    assert.deepEqual(filesUnder(top).sort(), ["manifest.json", ...Object.keys(f)].sort());
+    const manifest = JSON.parse(readFileSync(join(top, "manifest.json"), "utf8")) as {
+      full: boolean;
+      files: Record<string, string>;
+    };
+    assert.equal(manifest.full, true);
+    for (const [rel, bytes] of Object.entries(f)) {
+      const got = readFileSync(join(top, rel));
+      assert.deepEqual(got, bytes, rel);
+      assert.equal(sha(got), manifest.files[rel], `${rel}: its SHA-256 is the manifest's`);
+    }
+    assert.ok(
+      s.store.listAudit(10).some((a) => a.action === "export_downloaded"),
+      "the download is in the audit log",
+    );
+
+    // No token, or a rig's: refused.
+    for (const headers of [{}, s.as(RIG_A), s.as(RIG_B)])
+      assert.equal(
+        (await s.control.request(`/v1/rigs/rig-a/exports/${NAME}/archive`, { headers })).status,
+        401,
+      );
+    // An export control does not have: 404.
+    for (const path of [
+      "/v1/rigs/rig-a/exports/20261020T150000Z-00000000/archive",
+      `/v1/rigs/rig-b/exports/${NAME}/archive`,
+    ])
+      assert.equal((await s.control.request(path, { headers: s.as(OWNER) })).status, 404, path);
+    // One still arriving: 404, and it says why.
+    writeExport(s.outbox, PART, files());
+    s.breakAfter(3);
+    await uploadExportsOnce(s.cfg, { queue: [PART], uploaded: [] });
+    assert.equal(s.store.rigExport("rig-a", PART)?.complete_at, null);
+    const part = await s.control.request(`/v1/rigs/rig-a/exports/${PART}/archive`, {
+      headers: s.as(OWNER),
+    });
+    assert.equal(part.status, 404);
+    assert.match(((await part.json()) as { error: string }).error, /still arriving/);
+    rmSync(s.root, { recursive: true, force: true });
+  });
+
+  test("the Exports page lists every export with its fields, and Download only for a complete one", async () => {
+    const s = setup();
+    writeExport(s.outbox, NAME, fullFiles(), true);
+    await uploadExportsOnce(s.cfg, { queue: [NAME], uploaded: [] });
+    writeExport(s.outbox, PART, files());
+    s.breakAfter(3);
+    await uploadExportsOnce(s.cfg, { queue: [PART], uploaded: [] });
+    const cookie = await signIn(s.control);
+    const get = (path: string) => s.control.request(path, { headers: { cookie } });
+
+    const html = await (await get("/ui/exports")).text();
+    assert.match(html, /<a href="\/ui\/exports" class="on">.*<span>Exports<\/span><\/a>/);
+    const rows = [
+      ...html.matchAll(/<tr data-export="([^"]+)" data-rig="([^"]+)">([\s\S]*?)<\/tr>/g),
+    ];
+    assert.deepEqual(rows.map((r) => r[1]).sort(), [NAME, PART].sort());
+    const done = rows.find((r) => r[1] === NAME)?.[3] ?? "";
+    const arriving = rows.find((r) => r[1] === PART)?.[3] ?? "";
+    assert.match(done, /<b>rig-a<\/b>/);
+    assert.match(done, /<span class="chip ok">full<\/span>/);
+    assert.match(done, /<td class="num nowrap">1–7<\/td>/, "its event range");
+    assert.match(done, /<td class="num">7<\/td>/, "its files");
+    assert.match(done, /KiB<\/td>/, "its size");
+    assert.match(done, new RegExp(`href="/ui/exports/rig-a/${NAME}/archive" download>Download`));
+    assert.match(arriving, /what changed/);
+    assert.match(arriving, /still arriving/);
+    assert.doesNotMatch(arriving, /archive/, "no Download for an export still arriving");
+
+    // The rig's filter, as the rig's page links to it.
+    const other = await (await get("/ui/exports?rig=rig-b")).text();
+    assert.doesNotMatch(other, /<tr data-export=/);
+    assert.match(other, /No export from rig-b on control/);
+
+    // The dashboard's Download: the same archive, for the owner's session only.
+    const dl = await get(`/ui/exports/rig-a/${NAME}/archive`);
+    assert.equal(dl.status, 200);
+    assert.equal(
+      dl.headers.get("content-disposition"),
+      `attachment; filename="rig-a-${NAME}.tar.gz"`,
+    );
+    assert.ok((await dl.arrayBuffer()).byteLength > 100);
+    const anon = await s.control.request(`/ui/exports/rig-a/${NAME}/archive`);
+    assert.equal(anon.status, 303, "no session: sign in first");
+    assert.equal((await get(`/ui/exports/rig-a/${PART}/archive`)).status, 404);
+    rmSync(s.root, { recursive: true, force: true });
+  });
+
+  test("Export on a rig's page sends export_now with full as the owner chose, and says where it will show", async () => {
+    const s = setup();
+    s.store.ingest({
+      rig: "rig-a",
+      ledger_id: "ledger-a",
+      cursor: 0,
+      next: 1,
+      events: [
+        {
+          id: 1,
+          at: new Date().toISOString(),
+          actor: "harness",
+          kind: "run_created",
+          subject: "r-1",
+          body: {
+            campaign: "papers",
+            version: 1,
+            mode: "research",
+            seed: { repo: "proj", commit: "a".repeat(40) },
+          },
+        },
+      ],
+      summary: {},
+    });
+    const cookie = await signIn(s.control);
+    // A run's page has Export too: it exports the rig that holds the run.
+    const run = await (
+      await s.control.request(`/ui/campaigns/papers?run=${encodeURIComponent("rig-a/r-1")}`, {
+        headers: { cookie },
+      })
+    ).text();
+    assert.match(run, /class="stack export-now"/);
+    assert.match(run, /<b>Export rig-a, the rig that holds r-1\.<\/b>/);
+    const html = await (await s.control.request("/ui/rigs/rig-a", { headers: { cookie } })).text();
+    const form =
+      /<form method="post" action="\/ui\/commands" class="stack export-now">([\s\S]*?)<\/form>/.exec(
+        html,
+      )?.[1];
+    assert.ok(form, "Export's form is on the rig's page");
+    assert.match(
+      form,
+      /<span class="lb">What to export<i class="ii" tabindex="0" data-tip="[^"]+">i<\/i><\/span>/,
+    );
+    assert.match(form, /<input type="radio" name="full" value="false" checked/);
+    assert.match(form, /<input type="radio" name="full" value="true"(?! checked)/);
+    assert.match(form, /<a href="\/ui\/exports\?rig=rig-a">Exports page<\/a>/);
+    const hidden = Object.fromEntries(
+      [...form.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [
+        m[1],
+        m[2],
+      ]),
+    );
+    assert.equal(hidden.kind, "export_now");
+    // As the page's script sends the form, with each choice.
+    for (const full of ["true", "false"]) {
+      const r = await s.control.request("/ui/commands", {
+        method: "POST",
+        body: new URLSearchParams({ ...hidden, full }),
+        headers: {
+          cookie,
+          accept: "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+      });
+      assert.equal(r.status, 200);
+      const a = (await r.json()) as { said: string; follow: string };
+      const id = decodeURIComponent(
+        a.follow.replace(/^\/ui\/commands\//, "").replace(/\.json$/, ""),
+      );
+      const cmd = s.store.commandRow(id);
+      assert.equal(cmd?.kind, "export_now");
+      assert.deepEqual(cmd?.payload, { full: full === "true" });
+      assert.match(
+        a.said,
+        full === "true" ? /A full export was asked for\./ : /An export was asked for\./,
+      );
+      assert.match(a.said, /it shows on the Exports page/);
+    }
+    // Without the script: the page it lands on says so too.
+    const plain = await s.control.request("/ui/commands", {
+      method: "POST",
+      body: new URLSearchParams({ ...hidden, full: "true" }),
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    });
+    assert.equal(plain.status, 303);
+    assert.match(
+      decodeURIComponent(plain.headers.get("location") ?? ""),
+      /A full export was asked for\. When all its files reach control, it shows on the Exports page/,
+    );
+    rmSync(s.root, { recursive: true, force: true });
   });
 });

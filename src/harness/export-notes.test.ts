@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { ControlStore } from "../control/store.ts";
+import { parseContract } from "../core/contract.ts";
 import { exportOnce } from "../supervisor/git-export.ts";
+import { researchFixture } from "../testing/fixtures.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { Registry } from "./agents/registry.ts";
 import { LocalRunner } from "./broker/runner.ts";
@@ -161,6 +163,61 @@ describe("a run's export holds its journal, its research notes and its briefing"
       `research/${RUN}/folder/INDEX.md`,
     ])
       assert.ok(pushed.includes(f), `${f} in ${pushed.join(", ")}`);
+  });
+
+  test("a full export holds every run's research folder, finished or not; a normal one only finished runs'", async () => {
+    const { env, s, research } = await setup();
+    // A research run, still running, and the hill climb that recorded a note, not closed.
+    const parsed = parseContract({ ...researchFixture, lanes: { count: 1, trials_per_epoch: 1 } });
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    const out = await s.applyCommand(
+      env.sign("assign_campaign", {
+        run: "r-1",
+        contract: parsed.contract,
+        contract_sha: parsed.sha,
+        imports: [],
+      }),
+    );
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    research.addNote("r-1", "lane-1", "The paper's table 3 has the numbers.", [], "t-9");
+    research.addNote(RUN, "lane-1", "Aligned loads matter.", [], "t-1");
+    assert.notEqual(s.ledger.getRun("r-1")?.status, "closed");
+    assert.notEqual(s.ledger.getRun(RUN)?.status, "closed");
+    const folderFiles = (dir: string, run: string) =>
+      Object.keys(manifestOf(dir).files).filter((f) => f.startsWith(`research/${run}/folder`));
+
+    const normal = await s.export("test");
+    assert.deepEqual(folderFiles(normal.dir, "r-1"), [], "a normal export waits for the run's end");
+    assert.deepEqual(folderFiles(normal.dir, RUN), []);
+
+    const full = await s.export("test", { full: true });
+    const name = full.dir.split("/").pop();
+    const m = manifestOf(full.dir) as { full?: boolean; files: Record<string, string> };
+    assert.equal(m.full, true);
+    for (const run of ["r-1", RUN]) {
+      // Beside the place the run's end exports to, under the export's name.
+      const place = `research/${run}/folder-${name}`;
+      const files = folderFiles(full.dir, run);
+      assert.ok(
+        files.length > 0 && files.every((f) => f.startsWith(`${place}/`)),
+        files.join(", "),
+      );
+      assert.ok(files.includes(`${place}/INDEX.md`), `${run}: ${files.join(", ")}`);
+      assert.ok(
+        files.some((f) => f.startsWith(`${place}/notes/`)),
+        `${run}'s notes: ${files.join(", ")}`,
+      );
+      for (const f of files) assert.ok(existsSync(join(full.dir, f)), f);
+    }
+    const notes = folderFiles(full.dir, "r-1").filter((f) => f.includes("/notes/"));
+    assert.ok(
+      notes.some((f) => readFileSync(join(full.dir, f), "utf8").includes("table 3")),
+      notes.join(", "),
+    );
+    // The run's end still exports its folder at its own place.
+    s.ledger.setRunStatus(RUN, "closed", "done", "test");
+    const last = await s.export("test");
+    assert.ok(folderFiles(last.dir, RUN).includes(`research/${RUN}/folder/INDEX.md`));
   });
 
   test("an export holds the run's part of its campaign's folder: the items control files, each with its origin", async () => {

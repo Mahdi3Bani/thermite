@@ -23,7 +23,8 @@ import { championFiles } from "./propagation.ts";
  * the events since then, the runs' field notes, research notes and briefings since then, the
  * runs' part of their campaigns' folders in the knowledge base that changed since then, a
  * consistent ledger snapshot, each new run champion as a patch against its seed (what other rigs
- * need to judge it themselves), and the research folder of each run that finished.
+ * need to judge it themselves), and the research folder of each run that finished. A full export
+ * also holds the research archive and the research folder of every run, finished or not.
  */
 
 export interface ExportResult {
@@ -39,10 +40,16 @@ export async function writeExport(input: {
   outboxDir: string;
   rig: string;
   actor: string;
-  /** A full export (before a full reset): also the research archive, marked in the manifest. */
+  /**
+   * A full export (a full reset's, or the owner's choice): also the research archive and every
+   * run's research folder, finished or not, marked in the manifest.
+   */
   full?: boolean | undefined;
   researchDir?: string | undefined;
-  /** A research run's folder (research/folder.ts): exported with the run's final report. */
+  /**
+   * A research run's folder (research/folder.ts): exported with the run's final report, and in
+   * every full export.
+   */
   researchFolder?: ((run: string) => { root: string; files: string[] }) | undefined;
 }): Promise<ExportResult> {
   const { ledger } = input;
@@ -194,7 +201,18 @@ export async function writeExport(input: {
           )
           .map((e) => String(e.subject)),
       ]);
-      for (const run of finished) {
+      // Where each run's folder goes in the export: a run that finished, at research/<run>/folder/.
+      const at = new Map([...finished].map((run) => [run, `research/${run}/folder`]));
+      // A full export also takes the folder of every other run that has one (goal 103): a
+      // research run's, and a hill-climb or goal run's that recorded research, so a run's whole
+      // record can leave the rig even while it runs, is paused or is broken. It goes beside the
+      // final one, under the export's name: a results repository never replaces a file it has,
+      // so the folder the run's end exports must not be taken already.
+      if (input.full)
+        for (const r of ledger.listRuns())
+          if (!at.has(r.id) && (r.mode === "research" || recorded(r.id)))
+            at.set(r.id, `research/${r.id}/folder-${name}`);
+      for (const [run, place] of at) {
         let folder: { root: string; files: string[] };
         try {
           folder = input.researchFolder(run);
@@ -202,7 +220,7 @@ export async function writeExport(input: {
           continue;
         }
         for (const f of folder.files) {
-          const rel = `research/${run}/folder/${f}`;
+          const rel = `${place}/${f}`;
           mkdirSync(dirname(join(tmp, rel)), { recursive: true });
           writeFileSync(join(tmp, rel), readFileSync(join(folder.root, f)));
           researchRel.push(rel);

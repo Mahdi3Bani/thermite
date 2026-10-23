@@ -35,7 +35,7 @@ The campaign's page then shows each running run as a card under **At work now**,
 
 ## 2. Publish a champion
 
-A champion beyond the starting point can be sent once its rig has published it, with its next export. Exports happen every hour when there is something new. To publish at once, open the rig's page and press **Export now**.
+A champion beyond the starting point can be sent once its rig has published it, with its next export. Exports happen every hour when there is something new. To publish at once, open the rig's page, press **Export**, then **Export** under the choice.
 
 ## 3. Send the champion to another rig
 
@@ -71,7 +71,7 @@ After **Send champion #N**, the dashboard answers with a plain page that says `r
 | Reason | What it means |
 | --- | --- |
 | `the source run has no champion beyond its seed` | Nothing has won yet |
-| `champion seq N is not published yet (it is published with the rig's next export)` | Wait for the export, or press **Export now** |
+| `champion seq N is not published yet (it is published with the rig's next export)` | Wait for the export, or press **Export** on the rig's page |
 | `<run> runs <campaign>, not <campaign>` | The receiving run is another campaign's |
 | `the target works on <repo>, the champion is in <repo>` | The two runs work on different projects |
 

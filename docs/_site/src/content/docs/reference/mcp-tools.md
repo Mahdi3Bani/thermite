@@ -48,7 +48,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `list_rigs`, `get_run`, `run_queue`, `recent_events`, `leaderboard`, `model_usage`, `rig_reports`, `list_commands`, `command_status` | Yes | Yes | Yes | Yes |
 | `issue_command` | Yes, the owner's kinds | Yes, the operator's kinds | Yes, the agent's kinds | No |
 | `propagate_champion` | Yes | Yes | Yes | No |
-| `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
+| `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`, `exports` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
 | `control_log`, `providers`, `rig_models`, `rig_settings`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders`, `kits` | Yes | Yes | No | Yes |
 | `runpod_rig_logs` | Yes | Yes | No | No |
@@ -340,6 +340,19 @@ An outside knowledge base is no longer a grant: a campaign's kit names an [MCP s
 > The campaign's agents no longer read the other campaign's folder. New runs start without it.
 
 The same inputs as `kb_grant`. Returns `{revoked: true, reads}`. Error: `<campaign> does not read <reads>`. Control writes it to its audit log as `kb_revoke`. Each running run of the campaign loses the folder from its `knowledge/` at its supervisor's next sync.
+
+### exports
+
+**Exports on control.** Owner and operator.
+
+> The exports rigs without a results repository sent to control, newest first: each one's rig, name, whether it is full, its event range, files and size, and when it was made and completed (complete_at null: still arriving). The owner downloads a complete one as one .tar.gz on the dashboard's Exports page, or over REST at GET /v1/rigs/{rig}/exports/{name}/archive; there is no download over MCP.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string, optional | every rig | One rig's exports only |
+| `limit` | whole number, 1 to 500 | 50 | How many exports |
+
+Returns `[{rig, name, full, from_event, through_event, files, files_kept, bytes, bytes_received, created_at, complete_at}]`, newest first, with `bytes_received` always `null`. [Exports](exports.md#download-an-export) says what each holds and how to download one.
 
 
 ### rig_setup

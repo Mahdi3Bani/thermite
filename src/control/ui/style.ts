@@ -713,6 +713,7 @@ details.menu > summary { list-style: none; }
 details.menu > summary::-webkit-details-marker { display: none; }
 .menu-pop { position: absolute; right: 0; top: 38px; z-index: 30; width: 280px; padding: 10px; display: grid; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 14%); font-size: 13px; }
 /* Close run, in a run's ⋯ (goal 087) */
+.menu-pop.export-pop { width: min(340px, 86vw); } .export-now { gap: 8px; } .export-now .ch { margin-bottom: 0; padding: 10px 12px; } .export-now button { justify-content: center; }
 .close-run { gap: 8px; } .close-run label { display: flex; flex-direction: column; gap: 5px; } .close-run input { width: 100%; } .close-run button { justify-content: center; }
 /* Start a run: a panel from the right */
 .drawer-wrap { position: fixed; inset: 0; z-index: 50; }

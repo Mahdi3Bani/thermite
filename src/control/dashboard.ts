@@ -87,6 +87,7 @@ import {
 } from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
+import { archiveResponse, type ExportFiles } from "./exports.ts";
 import { makeDeployKey } from "./git-keys.ts";
 import {
   issueCommand,
@@ -265,6 +266,7 @@ import {
   agentsTable,
 } from "./ui/edit-rig.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
+import { EXPORT_WHERE, exportMenu, exportsBody, exportsHref } from "./ui/exports.ts";
 import { FOLLOW_JS } from "./ui/follow-client.ts";
 import { type ChecksSource, howChecked, howCheckedDetails } from "./ui/goal-checks.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
@@ -436,6 +438,8 @@ export interface DashboardOptions {
   offlineAfterMs?: number | undefined;
   /** Updates of rigs to control's version (tests give their own, with short waits). */
   rigUpdates?: RigUpdates | undefined;
+  /** The exports rigs send control (made by createControlApi); none: control keeps none. */
+  exportFiles?: ExportFiles | undefined;
 }
 
 /** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
@@ -2556,7 +2560,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           ],
           summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${reportingTag(sel.rig)} · ${esc(modeName(sel.run.mode))}${agents ? "" : " · judge only"} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
           active: "campaigns",
-          actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a>${agents ? `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>` : ""}${quick}${more}`,
+          actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a>${agents ? `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>` : ""}${quick}${exportMenu({ csrf: csrf(c), rig: sel.rig.id, run: sel.run.id, back })}${more}`,
         },
         `${note}${
           /-try-\d+$/.test(sel.run.id)
@@ -3297,9 +3301,11 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
                 ex.remote === true
                   ? ` · <span title="${esc(ex.last_push_at ?? "")}">pushed ${esc(ago(String(ex.last_push_at ?? ""), now) || "?")} ago</span>`
                   : ex.to === "control"
-                    ? ex.last_upload_at
-                      ? ` · <span title="${esc(ex.last_upload_at)}">sent to control ${esc(ago(String(ex.last_upload_at), now) || "?")} ago</span>`
-                      : " · sent to control: none yet"
+                    ? `${
+                        ex.last_upload_at
+                          ? ` · <span title="${esc(ex.last_upload_at)}">sent to control ${esc(ago(String(ex.last_upload_at), now) || "?")} ago</span>`
+                          : " · sent to control: none yet"
+                      } · <a href="${exportsHref(u.id)}">its exports on control</a>`
                     : " · no results repository"
               }${typeof ex.waiting === "number" && ex.waiting > 0 ? ` · ${num(ex.waiting)} waiting to leave the rig` : ""}${ex.last_error ? `<div class="bad xs">${esc(String(ex.last_error).slice(0, 300))}</div>` : ""}`,
             ],
@@ -3333,7 +3339,7 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
 <div class="small"><b>Retire it.</b> <span class="muted">For a rig that is gone: it leaves the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay, and you can bring it back. It stops nothing where the rig runs.</span>${rp?.active ? ` <b class="warn">Its pod keeps running at RunPod, and costs money: terminate it instead, under The pod.</b>` : ""}</div>
 <input name="confirm" placeholder="type: retire ${esc(u.id)}" data-confirm="retire ${esc(u.id)}" aria-label="Type retire ${esc(u.id)} to confirm"><button class="danger" style="justify-content:center">Retire it</button></form>`;
     const actions = `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Edit rig</a><a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/live">${icon.terminal}Live</a>
-${cmdForm(c, { rig: u.id, kind: "export_now", label: "Export now", back })}
+${exportMenu({ csrf: t, rig: u.id, back })}
 <details class="menu"><summary class="btn">${icon.dots}</summary><div class="menu-body">
 ${
   rp
@@ -3925,6 +3931,43 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       body || `<div class="card"><div class="empty">No hill climb yet.</div></div>`,
     );
   });
+
+  // ---------------------------------------------------------------- exports (goal 103)
+  // Every export control keeps, for every rig, newest first; a complete one downloads as one
+  // .tar.gz. Owner only, as the whole dashboard is (its session is the owner's).
+  app.get("/ui/exports", (c) => {
+    const vs = views();
+    const all = store.allRigExports(1000);
+    const rig = c.req.query("rig") || undefined;
+    const rigs = [...new Set([...all.map((e) => e.rig), ...vs.map((u) => u.id)])].sort();
+    if (rig && !rigs.includes(rig)) rigs.push(rig);
+    return page(
+      c,
+      {
+        title: "Exports",
+        summary: rig
+          ? `the exports <a href="/ui/rigs/${encodeURIComponent(rig)}">${esc(rig)}</a> sent to control, newest first`
+          : "the exports rigs sent to control, newest first",
+        active: "exports",
+      },
+      exportsBody({
+        exports: all,
+        rigs,
+        rig,
+        kept: opts.exportFiles !== undefined,
+        now: Date.now(),
+      }),
+      vs,
+    );
+  });
+  app.get("/ui/exports/:rig/:name/archive", (c) =>
+    archiveResponse(
+      c,
+      { store, files: opts.exportFiles, by: "owner:ui" },
+      c.req.param("rig"),
+      c.req.param("name"),
+    ),
+  );
 
   app.get("/ui/reports", (c) => {
     const now = Date.now();
@@ -8266,7 +8309,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       resume_run: { run },
       close_run: { run, reason: String(f.reason ?? "").trim() },
       reset_workers: { run },
-      export_now: {},
+      // Export (goal 103): what changed since the last export, or a full one, as the owner chose.
+      export_now: { full: f.full === "true" },
       rig_check: { check: String(f.check ?? ""), ...(f.force === "true" ? { force: true } : {}) },
       approve_promotion: { run, attempt: String(f.attempt ?? "") },
       decline_promotion: { run, attempt: String(f.attempt ?? "") },
@@ -8360,7 +8404,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     // The page says the command went; the rig's answer shows where the command was given.
     const to = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`);
     const [path, hash] = to.split("#");
-    const sent = `${woke ? `${woke} ` : ""}Sent to ${String(f.rig)} at ${clockUtc(cmd?.issued_at ?? new Date(now).toISOString())}.`;
+    const sent = `${woke ? `${woke} ` : ""}Sent to ${String(f.rig)} at ${clockUtc(cmd?.issued_at ?? new Date(now).toISOString())}.${kind === "export_now" ? ` ${f.full === "true" ? "A full export was asked for." : "An export was asked for."} ${EXPORT_WHERE}` : ""}`;
     return c.redirect(
       `${path}${path?.includes("?") ? "&" : "?"}sent=${encodeURIComponent(sent)}${hash ? `#${hash}` : ""}`,
       303,

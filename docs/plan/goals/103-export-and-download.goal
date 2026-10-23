@@ -1,0 +1,62 @@
+---
+id: "103"
+title: "Export, full or not, from the dashboard; an Exports page that downloads each export"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: ["024", "080"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 103 · Export, full or not, from the dashboard; an Exports page that downloads each export
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [024](024-runpod-models-and-results.goal), [080](080-buttons-show-progress.goal)
+
+## What
+
+The owner takes a run's whole record off its rig from the dashboard, and downloads it from control as one file.
+
+1. **Export, full or not.** **Export** in the header of a rig's page, and of a run's page (it exports the rig that holds the run), opens a small choice under **What to export**, with its info icon: **What changed** (what the rig recorded since its last export) or **Full export** (also a snapshot of the ledger, every run's research folder, finished or not, and each run's archive of the pages it fetched). Its **Export** button sends the signed `export_now` command with `full` as chosen. The button shows it was pressed, and the page says the export was asked for and that it shows on the **Exports** page when all its files reach control.
+2. **A full export holds every run's research folder.** Besides the research folder of each run that finished in it, a full export holds the current folder of every other research run, and of every hill-climb or goal run that recorded sources, claims or notes, or compacted a conversation, even one still running, paused or broken. Normal exports stay as they were.
+3. **The Exports page.** A dashboard page, in the sidebar after **Reports** and linked from each rig's page: every export control keeps, for every rig, newest first, with its rig, name, kind (full or what changed), when it was made and completed, its event range, file count and size. A filter by rig. A complete export has **Download**: one `<rig>-<export>.tar.gz` of its manifest and every file at its path, built by control from what it keeps. One still arriving says `still arriving` and has no download. Owner only.
+4. **REST and MCP.** `GET /v1/rigs/<rig>/exports/<name>/archive`, with the owner's token, gives the same archive. The MCP tool `exports` lists the exports for the owner and an operator; it downloads nothing.
+5. What is exported by itself, and how exports are pushed or sent, do not change.
+
+## Why
+
+On 2026-10-23 the owner wanted to take a research run's whole record (knowledge, field notes, claims, reports, the research folder, the archived pages) off a rig. Exports already reached control for rigs without a results repository, and the rig's page had **Export now**, but the dashboard could not download an export, **Export now** could not ask for a full one, and a run's research folder left the rig only when the run finished. The owner's words, verbatim:
+
+> No add that now for v0.1.0 cause that research is broken. We need an export button and confirm full or not and then an export page that lists all available exports for download. Don't mock it up, just build it, don't run lots of checks just deploy it after valdiating basic features work.
+
+## Done when
+
+- [x] **Export** on a rig's page and a run's page sends `export_now` with `full: true` or `false` as chosen, and says where the export will show. Test: `src/control/exports.test.ts`.
+- [x] A full export holds a running research run's folder, and a running hill climb's that recorded a note; a normal export does not; the run's end still exports its folder at `research/<run>/folder/`. Test: `src/harness/export-notes.test.ts`.
+- [x] The archive route gives a `.tar.gz` whose files match the export's kept files and their SHA-256, with the manifest; it refuses without the owner's token, and answers 404 for an unknown or incomplete export. Test: `src/control/exports.test.ts`.
+- [x] The Exports page lists each export with its fields, and **Download** only for a complete one; the dashboard's download needs the owner's session. Test: `src/control/exports.test.ts`.
+- [x] The pages match the code: Get a rig's results from control, Exports, REST API, MCP tools, signed commands, the rig's page, glossary, Set up the results repository, Stop, restart, remove or reset a rig, Take the result, Several rigs, Automate over REST, Your own project; the changelog has the change.
+- [ ] On the deployment: a full export of a rig holding a research run reaches control, shows on the Exports page, and its download unpacks with the run's research folder and the ledger snapshot.
+
+## Decisions
+
+- 2026-10-23, owner: build it now for v0.1.0, without a mockup, and deploy after the basic features are checked (above).
+- 2026-10-23, builder, within the brief:
+  - **The choice.** A menu under **Export** in the page's header, as **Pause** opens its own, with two choices and **What changed** chosen at first. No typed words: an export destroys nothing.
+  - **Where an unfinished run's folder goes.** In a full export, the folder of a run that did not finish in it goes to `research/<run>/folder-<export>/`, beside `research/<run>/folder/`. A results repository never replaces a file it already has, so a folder taken mid-run at the final place would hide the folder the run's end exports.
+  - **The archive.** A gzip-compressed POSIX tar (ustar, with pax records for a path ustar can't hold), written by a small writer in `src/control/tar-gz.ts` with Node's zlib: no new dependency. Everything sits under one folder, `<rig>-<export>/`, so unpacking several archives keeps them apart. Control streams it from the files it keeps; each download is in the audit log as `export_downloaded`.
+  - **What the page says.** The words after **Export** name the kind of export asked for and say it shows on the **Exports** page when all its files reach control; a rig with a results repository pushes it there instead.
+
+## Open questions
+
+- Whether control should delete old exports, or let the owner delete one from the Exports page: today control never deletes an export.
+
+## Progress
+
+- 2026-10-23: Goal written from the owner's words and the build brief, and built.
+  - Code: `src/harness/outbox.ts` (every run's folder in a full export), `src/control/tar-gz.ts` (the archive writer), `src/control/exports.ts` (`archiveEntries`, `archiveResponse`, the REST route), `src/control/store.ts` (`allRigExports`), `src/control/ui/exports.ts` (the **Export** menu and the Exports page), `src/control/dashboard.ts` (the routes, the rig's and the run's headers, `export_now`'s `full`), `src/control/command-progress.ts` (the words after **Export**), `src/control/mcp.ts` (`exports`), `src/control/ui/components.ts` (the sidebar).
+  - Tests: `src/control/exports.test.ts` (the archive, unpacked by the system's `tar`, with a long path; token rules; 404s; the Exports page; the dashboard's download; the Export form's choice on a rig's page and a run's), `src/control/tar-gz.test.ts` (the tar writer's blocks, checksum and pax records), `src/harness/export-notes.test.ts` (a full export's folders). Each new test of a change fails without it.
+  - Checks before the commit: typecheck, Biome, the touched test files and their neighbours, `npm run docs:build`, `npm run docs:check`, and the public check. No compose acceptance was run, as the owner asked.
+
+---
+
+Run with `/goal Complete docs/plan/goals/103-export-and-download.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
