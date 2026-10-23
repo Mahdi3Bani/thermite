@@ -21,21 +21,41 @@ export interface GoalCellValues {
 /** At most this many cells' values a goal keeps. */
 export const GOAL_VALUES_CELLS = 100;
 
+/** At most this many of a check's own numbers a cell keeps, after the kit's metrics. */
+export const CHECK_NUMBERS_MAX = 24;
+
 /**
  * One run's values. A run that passed: every kit metric the judge worked out. A run whose output
  * the kit's check refused: the numbers the check reported for the kit's metrics taken from the
- * check, so an unmet goal shows by how much. A crash or refused outputs: none.
+ * check, so an unmet goal shows by how much. Then, for either, the other numbers the check
+ * reported at its top level (a ratio, both sides of a comparison, a count), by their names, at
+ * most CHECK_NUMBERS_MAX: a kit's metrics must be numbers in every cell's check, so a kit whose
+ * cells check different things declares none, and its values are these. A crash or refused
+ * outputs: none.
  */
 export function runValues(kit: Pick<Kit, "metrics">, r: ArmRun): Record<string, number> {
-  if (r.kind === "ok") {
-    return Object.fromEntries(Object.entries(r.metrics).filter(([, v]) => Number.isFinite(v)));
-  }
-  if (r.kind !== "invalid") return {};
+  if (r.kind === "crash") return {};
   const out: Record<string, number> = {};
-  for (const [name, m] of Object.entries(kit.metrics)) {
-    if (!("from" in m) || m.from !== "check") continue;
-    const v = r.check.details[m.field];
-    if (typeof v === "number" && Number.isFinite(v)) out[name] = v;
+  if (r.kind === "ok") {
+    for (const [k, v] of Object.entries(r.metrics)) if (Number.isFinite(v)) out[k] = v;
+  } else {
+    for (const [name, m] of Object.entries(kit.metrics)) {
+      if (!("from" in m) || m.from !== "check") continue;
+      const v = r.check.details[m.field];
+      if (typeof v === "number" && Number.isFinite(v)) out[name] = v;
+    }
+  }
+  // The check's own numbers. Fields a kit metric reads are already there, under the metric's name.
+  const read = new Set(
+    Object.values(kit.metrics).flatMap((m) => ("from" in m && m.from === "check" ? [m.field] : [])),
+  );
+  let added = 0;
+  for (const [k, v] of Object.entries(r.check.details)) {
+    if (added >= CHECK_NUMBERS_MAX) break;
+    if (k === "pass" || k === "reasons" || read.has(k) || k in out) continue;
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    out[k.slice(0, 64)] = v;
+    added++;
   }
   return out;
 }
@@ -64,8 +84,9 @@ export function parseGoalValues(raw: unknown): GoalCellValues[] | null {
   return out.length ? out : null;
 }
 
-/** A value as a threshold goal's reasons give one: six significant figures. */
-const fig = (v: number) => v.toPrecision(6);
+/** A value as a threshold goal's reasons give one: six significant figures; a small count as it is. */
+const fig = (v: number) =>
+  Number.isInteger(v) && Math.abs(v) < 1e6 ? String(v) : v.toPrecision(6);
 
 /**
  * Cells' values in words, as a threshold goal's reasons give its own: "small: ops_per_s

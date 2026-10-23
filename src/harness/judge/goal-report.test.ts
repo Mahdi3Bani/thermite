@@ -8,7 +8,13 @@ import { Registry } from "../agents/registry.ts";
 import { Scheduler } from "../agents/scheduler.ts";
 import { createHarnessApi } from "../api.ts";
 import { LocalRunner } from "../broker/runner.ts";
-import { type GoalCellValues, parseGoalValues, runValues, valuesText } from "./goal-values.ts";
+import {
+  CHECK_NUMBERS_MAX,
+  type GoalCellValues,
+  parseGoalValues,
+  runValues,
+  valuesText,
+} from "./goal-values.ts";
 import type { ArmRun } from "./measure.ts";
 
 /**
@@ -320,7 +326,8 @@ describe("a code goal's values", () => {
       ratio: { unit: "", from: "check" as const, field: "ratio" },
     },
   };
-  const ok = (metrics: Record<string, number>) => ({ kind: "ok", metrics }) as unknown as ArmRun;
+  const ok = (metrics: Record<string, number>, details: Record<string, unknown> = {}) =>
+    ({ kind: "ok", metrics, check: { pass: true, reasons: [], details } }) as unknown as ArmRun;
   const invalid = (failure: string, details: Record<string, unknown>) =>
     ({
       kind: "invalid",
@@ -335,9 +342,10 @@ describe("a code goal's values", () => {
       seconds: 0.5,
       ratio: 1.0021,
     });
-    // Only the kit's metrics taken from the check, and only numbers.
+    // The kit's metrics taken from the check, then the check's other numbers by their names.
     assert.deepEqual(runValues(kit, invalid("check", { ratio: 1.07, note: 3, other: "x" })), {
       ratio: 1.07,
+      note: 3,
     });
     assert.deepEqual(runValues(kit, invalid("check", { ratio: "1.07" })), {});
     assert.deepEqual(runValues(kit, invalid("outputs", {})), {});
@@ -345,6 +353,37 @@ describe("a code goal's values", () => {
       runValues(kit, { kind: "crash", failure: "timeout", reason: "", outcome: {} } as never),
       {},
     );
+  });
+
+  test("a kit with no metrics: the numbers each cell's check reported, by their names", () => {
+    const none = { metrics: {} };
+    // A cell whose check failed: by how much (a ratio, and both sides of it).
+    assert.deepEqual(
+      runValues(
+        none,
+        invalid("check", {
+          pass: false,
+          reasons: ["over 1.005"],
+          ppl_a1: 5.65357,
+          ppl_pn3: 6.07793,
+          ratio: 1.0751,
+          prompt: "prose-32k",
+          extra: { nested: 1 },
+          bad: Number.NaN,
+        }),
+      ),
+      { ppl_a1: 5.65357, ppl_pn3: 6.07793, ratio: 1.0751 },
+    );
+    // A cell that passed: its counts too; flags and lists are not numbers.
+    assert.deepEqual(
+      runValues(none, ok({}, { recalled: 8, depths: 8, exact: true, lost: ["c3"] })),
+      { recalled: 8, depths: 8 },
+    );
+    // At most CHECK_NUMBERS_MAX of them a cell.
+    const wide = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`n${i}`, i + 1]));
+    assert.equal(Object.keys(runValues(none, ok({}, wide))).length, CHECK_NUMBERS_MAX);
+    // A kit metric that reads a field keeps it under the metric's name, not twice.
+    assert.deepEqual(runValues(kit, invalid("check", { ratio: 1.07 })), { ratio: 1.07 });
   });
 
   test("in words as a threshold goal gives its own; at most 100 cases, and how many more", () => {
@@ -360,7 +399,7 @@ describe("a code goal's values", () => {
       ok: true,
       metrics: { x: i + 1 },
     }));
-    assert.match(valuesText(many), /; c99: x 100\.000; and 3 more cells$/);
+    assert.match(valuesText(many), /; c99: x 100; and 3 more cells$/);
   });
 
   test("read back from a report, each field checked", () => {

@@ -552,7 +552,7 @@ describe("the champion's held-out check (goal 086)", () => {
     assert.equal(correct?.status, "unmet");
     assert.match(
       String(correct?.reasons),
-      /^not confirmed: a held-out check failed the kit's check; on the measured cells: verifier correctness passed on small: small: ops_per_s \S+$/,
+      /^not confirmed: a held-out check failed the kit's check; on the measured cells: verifier correctness passed on small: small: ops_per_s \S+, value \S+$/,
     );
     assert.equal(report.goals.find((g) => g.goal === "speedy")?.status, "met");
     // The goal tree: correct is not met, so a change that meets it again is progress.
