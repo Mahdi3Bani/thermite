@@ -123,7 +123,7 @@ A full reset empties the harness's state, scratch and outbox, keeping only the r
 | `./.dev/advisors` (a folder) | both supervisors | `/etc/thermite/advisors` | read-only |
 | `.` (the folder that holds `compose.yaml`) | init, in a release's compose file | `/work` | read-write. It runs as root, with only the capabilities `CHOWN`, `DAC_OVERRIDE` and `FOWNER` |
 
-The `init` service makes the `.dev/` folders, next to `compose.yaml`: it runs `thermite local init` with that folder mounted at `/work`. In a checkout of the source code, `npm run dev:init` makes the same folders. `docker compose down -v` removes the named volumes; without `-v` they keep their state.
+The `init` service makes the `.dev/` folders, next to `compose.yaml`: it runs `thermite local init` with that folder mounted at `/work`. On a machine with NVIDIA GPUs, it also writes `compose.gpu.yaml` there, which gives the harness the machine's GPUs ([Use the machine's NVIDIA GPUs](../how-to/install/one-machine.md#use-the-machines-nvidia-gpus)). In a checkout of the source code, `npm run dev:init` makes the same folders. `docker compose down -v` removes the named volumes; without `-v` they keep their state.
 
 ### Machines
 

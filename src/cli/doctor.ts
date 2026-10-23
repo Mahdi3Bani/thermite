@@ -1,20 +1,35 @@
 import { execFile } from "node:child_process";
-import { existsSync, statfsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statfsSync } from "node:fs";
 import { connect, createServer } from "node:net";
+import { arch, cpus, totalmem } from "node:os";
+import {
+  CDI_GENERATE,
+  CDI_SPECS,
+  detectOnMachine,
+  ENGINE_LABEL,
+  type EngineName,
+  GPU_OVERRIDE,
+  type MachineFacts,
+  rigReport,
+  upWithGpus,
+} from "./machine.ts";
 
 /**
  * `thermite doctor`: checks the machine that runs Thermite, where most first-run failures are.
  * It checks the container engine and its compose tool, control's port, free disk, the clock, the
- * GPU driver and NVIDIA's container toolkit where there is a GPU, and whether control and the
- * model's server answer. Each check says what it found and, when something is wrong, how to fix
- * it, in short plain sentences. Every probe goes through one interface, so each check is tested
- * with stand-ins. Nothing here changes the machine.
+ * GPU driver and NVIDIA's container toolkit where there is a GPU, what the local rig gets (CPUs,
+ * memory and GPUs: see machine.ts), and whether control and the model's server answer. Each
+ * check says what it found and, when something is wrong, how to fix it, in short plain
+ * sentences. Every probe goes through one interface, so each check is tested with stand-ins.
+ * Nothing here changes the machine.
  */
 
 export type Status = "ok" | "warn" | "fail" | "skip";
 
 export interface Finding {
-  /** A short id: engine, compose, port, disk, clock, gpu-driver, gpu-toolkit, control, model. */
+  /**
+   * A short id: engine, compose, port, disk, clock, gpu-driver, gpu-toolkit, rig, control, model.
+   */
   check: string;
   title: string;
   status: Status;
@@ -40,10 +55,19 @@ export type HttpResult =
 /** Everything the checks ask of the machine. */
 export interface Probes {
   platform: NodeJS.Platform;
+  /** The processor's architecture, as Node names it: x64, arm64. */
+  arch: string;
+  /** This machine's CPUs and memory, as its own system counts them. */
+  cpus: number;
+  memBytes: number;
   env: Record<string, string | undefined>;
   cwd: string;
   run(cmd: string, args: string[]): Promise<RunResult>;
   exists(path: string): boolean;
+  /** A file's text, or undefined when it cannot be read. */
+  readText(path: string): string | undefined;
+  /** A folder's entries; none when it cannot be read. */
+  list(dir: string): string[];
   /** Free bytes on the file system that holds the path, or undefined when it cannot be read. */
   freeBytes(path: string): number | undefined;
   /** Whether a program listens on the port at 127.0.0.1. */
@@ -72,7 +96,6 @@ export const FOLDER_WARN_BYTES = 5e9;
 export const CLOCK_FAIL_S = 300;
 export const CLOCK_WARN_S = 30;
 
-type EngineName = "docker" | "podman";
 interface Engine {
   name: EngineName;
   installed: boolean;
@@ -82,7 +105,6 @@ interface Engine {
   reason: string;
 }
 
-const LABEL: Record<EngineName, string> = { docker: "Docker", podman: "Podman" };
 const lastLine = (s: string) =>
   s
     .split("\n")
@@ -117,6 +139,12 @@ async function probeEngine(p: Probes, name: EngineName): Promise<Engine> {
   };
 }
 
+/** The engines that answer: Docker, Podman, both or neither. */
+export async function answeringEngines(p: Probes): Promise<EngineName[]> {
+  const engines = [await probeEngine(p, "docker"), await probeEngine(p, "podman")];
+  return engines.filter((e) => e.answers).map((e) => e.name);
+}
+
 /** How to make an installed engine answer, from the platform and its own error. */
 function engineFix(e: Engine, platform: NodeJS.Platform): string {
   if (e.name === "docker") {
@@ -144,7 +172,7 @@ function engineFinding(engines: Engine[], platform: NodeJS.Platform): Finding {
     };
   const silent = installed.filter((e) => !e.answers);
   const silentText = silent
-    .map((e) => `${LABEL[e.name]} is installed, but it does not answer: ${ending(e.reason)}`)
+    .map((e) => `${ENGINE_LABEL[e.name]} is installed, but it does not answer: ${ending(e.reason)}`)
     .join(" ");
   if (!answering.length)
     return {
@@ -158,7 +186,10 @@ function engineFinding(engines: Engine[], platform: NodeJS.Platform): Finding {
     check: "engine",
     title,
     status: "ok",
-    said: [answering.map((e) => `${LABEL[e.name]} ${e.version} answers.`).join(" "), silentText]
+    said: [
+      answering.map((e) => `${ENGINE_LABEL[e.name]} ${e.version} answers.`).join(" "),
+      silentText,
+    ]
       .filter(Boolean)
       .join(" "),
   };
@@ -209,7 +240,7 @@ async function composeFinding(p: Probes, engines: Engine[]): Promise<Finding> {
     check: "compose",
     title,
     status: "fail",
-    said: `No compose tool works with ${missingFor.map((n) => LABEL[n]).join(" or ")}.`,
+    said: `No compose tool works with ${missingFor.map((n) => ENGINE_LABEL[n]).join(" or ")}.`,
     fix: missingFor
       .map((n) =>
         n === "docker"
@@ -419,27 +450,19 @@ async function clockFinding(p: Probes, opts: DoctorOptions): Promise<Finding> {
   };
 }
 
-// ---------------------------------------------------------------- the GPU
+// ---------------------------------------------------------------- the GPU and the local rig
 
-const CDI_SPECS = ["/etc/cdi/nvidia.yaml", "/var/run/cdi/nvidia.yaml"];
-
-async function hasNvidiaGpu(p: Probes): Promise<boolean> {
-  if (p.exists("/dev/nvidia0") || p.exists("/proc/driver/nvidia/gpus")) return true;
-  const pci = await p.run("lspci", []);
-  return (
-    pci.code === 0 &&
-    pci.stdout.split("\n").some((l) => /NVIDIA/i.test(l) && /VGA|3D|Display/i.test(l))
-  );
-}
-
-async function gpuFindings(p: Probes): Promise<Finding[]> {
+function gpuFindings(p: Probes, m: MachineFacts): Finding[] {
   const driver = "GPU driver";
   const toolkit = "GPU container toolkit";
-  if (p.platform !== "linux" || !(await hasNvidiaGpu(p))) {
-    const said =
-      p.platform === "darwin"
+  if (m.platform !== "linux" || !m.nvidia.present) {
+    const said = m.appleSilicon
+      ? "Thermite uses NVIDIA GPUs on Linux only: containers on a Mac can't reach its Apple GPU. A CPU rig needs no GPU driver."
+      : m.platform === "darwin"
         ? "Thermite uses NVIDIA GPUs on Linux only. A CPU rig needs no GPU driver."
-        : "This machine has no NVIDIA GPU. A CPU rig needs no GPU driver.";
+        : m.amd.count
+          ? "This machine has no NVIDIA GPU. Its AMD GPUs are not used yet: the Local rig check says why. A CPU rig needs no GPU driver."
+          : "This machine has no NVIDIA GPU. A CPU rig needs no GPU driver.";
     return [
       { check: "gpu-driver", title: driver, status: "skip", said },
       {
@@ -451,17 +474,14 @@ async function gpuFindings(p: Probes): Promise<Finding[]> {
     ];
   }
   const out: Finding[] = [];
-  const smi = await p.run("nvidia-smi", [
-    "--query-gpu=name,driver_version",
-    "--format=csv,noheader",
-  ]);
-  const gpus = smi.stdout
+  const smi = m.nvidia.smi;
+  const gpus = (smi?.stdout ?? "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
   const driverFix =
     "Install NVIDIA's driver for this GPU. Restart the machine if the install asks you to. Then check that nvidia-smi lists the GPU.";
-  if (smi.missing)
+  if (!smi || smi.missing)
     out.push({
       check: "gpu-driver",
       title: driver,
@@ -487,16 +507,39 @@ async function gpuFindings(p: Probes): Promise<Finding[]> {
       said: `nvidia-smi lists ${gpus.length} GPU${gpus.length === 1 ? "" : "s"}: ${names.join(", ")}${version ? `. Driver ${version}.` : "."}`,
     });
   }
-  const generate = "sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml";
-  const ctk = await p.run("nvidia-ctk", ["--version"]);
+  const ctk = m.nvidia.toolkit;
+  const v = ctk ? /version\s+([0-9][\w.-]*)/i.exec(ctk.stdout)?.[1] : undefined;
+  const installed = `NVIDIA's container toolkit${v ? ` ${v}` : ""} is installed`;
+  // The engine the rig runs on decides what the toolkit must give it: Docker its runtime,
+  // Podman a CDI spec.
+  if (m.engine && m.pass && m.pass.ok !== "unchecked") {
+    const label = ENGINE_LABEL[m.engine.name];
+    out.push(
+      m.pass.ok
+        ? {
+            check: "gpu-toolkit",
+            title: toolkit,
+            status: "ok",
+            said: `${installed}, and ${label} gives containers the GPUs through ${m.pass.how}.`,
+          }
+        : {
+            check: "gpu-toolkit",
+            title: toolkit,
+            status: "fail",
+            said: m.pass.why,
+            fix: m.pass.fix,
+          },
+    );
+    return out;
+  }
   const spec = CDI_SPECS.find((f) => p.exists(f));
-  if (ctk.missing || ctk.code !== 0)
+  if (!ctk || ctk.missing || ctk.code !== 0)
     out.push({
       check: "gpu-toolkit",
       title: toolkit,
       status: "fail",
       said: "NVIDIA's container toolkit is not installed. Containers get the GPUs through it.",
-      fix: `Install NVIDIA's container toolkit. Then make its CDI spec: ${generate}. When control sets the rig up on this machine, it can install the toolkit for you.`,
+      fix: `Install NVIDIA's container toolkit. Then make its CDI spec: ${CDI_GENERATE}. When control sets the rig up on this machine, it can install the toolkit for you.`,
     });
   else if (!spec)
     out.push({
@@ -504,18 +547,33 @@ async function gpuFindings(p: Probes): Promise<Finding[]> {
       title: toolkit,
       status: "fail",
       said: "NVIDIA's container toolkit is installed, but it has no CDI spec. The CDI spec tells Podman which GPUs there are.",
-      fix: `Make the CDI spec: ${generate}. Make it again after each driver update.`,
+      fix: `Make the CDI spec: ${CDI_GENERATE}. Make it again after each driver update.`,
     });
-  else {
-    const v = /version\s+([0-9][\w.-]*)/i.exec(ctk.stdout)?.[1];
+  else
     out.push({
       check: "gpu-toolkit",
       title: toolkit,
       status: "ok",
-      said: `NVIDIA's container toolkit${v ? ` ${v}` : ""} is installed, with its CDI spec in ${spec}.`,
+      said: `${installed}, with its CDI spec in ${spec}.`,
     });
-  }
   return out;
+}
+
+/** What the local rig gets on this machine: CPUs and memory, and the GPUs it can and can't use. */
+function rigFinding(m: MachineFacts): Finding {
+  const r = rigReport(m);
+  const said = [...r.lines];
+  if (r.gpus)
+    said.push(
+      `thermite local init writes ${GPU_OVERRIDE}, which gives them to the rig. Then start Thermite with ${upWithGpus(r.gpus.engine)}.`,
+    );
+  return {
+    check: "rig",
+    title: "Local rig",
+    status: r.status,
+    said: said.join(" "),
+    fix: r.fix,
+  };
 }
 
 // ---------------------------------------------------------------- control and the model
@@ -646,13 +704,18 @@ async function modelFinding(p: Probes, opts: DoctorOptions): Promise<Finding> {
 /** Every check, in the order a first install meets them. */
 export async function doctor(p: Probes, opts: DoctorOptions = {}): Promise<Finding[]> {
   const engines = [await probeEngine(p, "docker"), await probeEngine(p, "podman")];
+  const machine = await detectOnMachine(
+    p,
+    engines.filter((e) => e.answers).map((e) => e.name),
+  );
   return [
     engineFinding(engines, p.platform),
     await composeFinding(p, engines),
     await portFinding(p, opts),
     await diskFinding(p, engines),
     await clockFinding(p, opts),
-    ...(await gpuFindings(p)),
+    ...gpuFindings(p, machine),
+    rigFinding(machine),
     await controlFinding(p, opts),
     await modelFinding(p, opts),
   ];
@@ -688,6 +751,9 @@ export function formatReport(findings: Finding[]): string {
 export function machineProbes(): Probes {
   return {
     platform: process.platform,
+    arch: arch(),
+    cpus: cpus().length,
+    memBytes: totalmem(),
     env: process.env,
     cwd: process.cwd(),
     run: (cmd, args) =>
@@ -708,6 +774,20 @@ export function machineProbes(): Probes {
         );
       }),
     exists: (path) => existsSync(path),
+    readText: (path) => {
+      try {
+        return readFileSync(path, "utf8");
+      } catch {
+        return undefined;
+      }
+    },
+    list: (dir) => {
+      try {
+        return readdirSync(dir);
+      } catch {
+        return [];
+      }
+    },
     freeBytes: (path) => {
       try {
         const s = statfsSync(path);

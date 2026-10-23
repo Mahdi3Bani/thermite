@@ -43,6 +43,7 @@ import {
   cardsOf,
   effectiveGpuLists,
   type GpuLayout,
+  MAX_GPU_SET,
   parseIndexList,
   readLayout,
   runRole,
@@ -238,7 +239,9 @@ async function main(): Promise<void> {
     join(paths.stateDir, "rig-settings.json"),
   );
   // A rig configured with its GPU set: the broker split it for this start (the lists it gave).
-  const gpuSet = env.THERMITE_GPUS ? parseIndexList(env.THERMITE_GPUS, "THERMITE_GPUS").length : 0;
+  const gpuSet = env.THERMITE_GPUS
+    ? parseIndexList(env.THERMITE_GPUS, "THERMITE_GPUS", MAX_GPU_SET).length
+    : 0;
   const judgeNow =
     gpuSet >= 2 ? parseIndexList(env.THERMITE_GPU_INDEX ?? "0", "THERMITE_GPU_INDEX").length : 0;
   const service = new HarnessService({

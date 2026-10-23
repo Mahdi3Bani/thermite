@@ -49,6 +49,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [011](goals/011-release-bundle.goal) A release bundle · `IN_PROGRESS`
 - [012](goals/_completed/012-version-checks.goal) Version checks between control and rigs · `VERIFIED`
 - [013](goals/_completed/013-thermite-doctor.goal) `thermite doctor` · `VERIFIED`
+- [037](goals/037-gpu-compose.goal) The local rig uses what its machine has: CPUs, memory and NVIDIA GPUs · `IN_PROGRESS`
 - [014](goals/_completed/014-quick-start-in-ci.goal) The quick start, tested in CI · `VERIFIED`
 - [015](goals/_completed/015-log-paging.goal) Log paging · `VERIFIED`
 - [016](goals/_completed/016-small-fixes.goal) Small fixes before the release · `VERIFIED`
@@ -140,14 +141,13 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ## v0.3.0
 
-**Rigs you can trust.** Setting up and removing rigs on machines and clusters is safe to repeat, GPU rigs work under compose, and lanes are kept off the local network. Proposed.
+**Rigs you can trust.** Setting up and removing rigs on machines and clusters is safe to repeat, and lanes are kept off the local network. Proposed.
 
 - [032](goals/032-deploy-checks.goal) Checks before a rig is deployed · `PROPOSED`
 - [033](goals/033-slot-helper.goal) Slots made easy · `PROPOSED`
 - [034](goals/034-trustworthy-removal.goal) Removal you can trust · `PROPOSED`
 - [035](goals/035-rig-upgrades.goal) Upgrades from control · `IN_PROGRESS`
 - [036](goals/036-install-it-yourself.goal) "I will install it myself" · `PROPOSED`
-- [037](goals/037-gpu-compose.goal) GPU rigs under compose · `PROPOSED`
 - [038](goals/038-lane-network-rules.goal) Keep lanes off the local network · `PROPOSED`
 - [039](goals/039-cluster-ranges-and-key-rotation.goal) Cluster ranges and key rotation · `PROPOSED`
 - [104](goals/104-change-a-cloud-rigs-gpu.goal) Change a cloud rig's GPU and settings, keeping its state · `PROPOSED`

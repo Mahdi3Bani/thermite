@@ -5,14 +5,23 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
-import { chooseOwner, LOCAL_TOKEN_FILES, localInit } from "./local-init.ts";
+import {
+  chooseOwner,
+  LOCAL_TOKEN_FILES,
+  localInit,
+  readStackCompose,
+  writeGpuOverride,
+} from "./local-init.ts";
+import { GPU_OVERRIDE } from "./machine.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "thermite.ts");
@@ -126,7 +135,36 @@ describe("thermite local init", () => {
     assert.match(first.stdout, /local init: \.dev ready \(17 made, 0 kept\)\n$/);
     for (const name of LOCAL_TOKEN_FILES) assert.ok(!first.stdout.includes(secret(root, name)));
     const second = await cli("local", "init", root);
-    assert.equal(second.stdout, "local init: .dev ready (0 made, 9 kept)\n");
+    // Before its last line, it says what the rig gets on the machine that runs the test.
+    const lines = second.stdout.trimEnd().split("\n");
+    assert.equal(lines.at(-1), "local init: .dev ready (0 made, 9 kept)");
+    assert.ok(lines.length >= 2, "it says what the rig gets");
+    for (const line of lines.slice(0, -1))
+      assert.match(line, new RegExp(`^(rig: [A-Z]|wrote ${GPU_OVERRIDE}: start Thermite with )`));
     await assert.rejects(cli("local", "init"), (e: { code?: number }) => e.code === 2);
+    await assert.rejects(
+      cli("local", "init", root, "--engine", "lxc"),
+      (e: { code?: number; stderr?: string }) =>
+        e.code === 2 && /--engine is docker or podman/.test(e.stderr ?? ""),
+    );
+  });
+
+  test("compose.gpu.yaml goes next to .dev, through a link to it, and is written again", () => {
+    const root = fresh();
+    localInit(root);
+    const stack = dirname(root);
+    writeFileSync(join(stack, "compose.yaml"), "name: thermite\n");
+    // A source checkout links the release's .dev folder as its own.
+    const source = mkdtempSync(join(tmpdir(), "thermite-source-"));
+    symlinkSync(root, join(source, ".dev"));
+    assert.equal(readStackCompose(join(source, ".dev")), "name: thermite\n");
+    const path = writeGpuOverride(join(source, ".dev"), "services: {}\n");
+    // macOS's temporary folder is behind a link: the path is the resolved one.
+    assert.equal(path, join(realpathSync(stack), GPU_OVERRIDE));
+    assert.equal(readFileSync(path, "utf8"), "services: {}\n");
+    assert.equal(statSync(path).mode & 0o777, 0o644);
+    writeGpuOverride(root, "services:\n  harness: {}\n");
+    assert.equal(readFileSync(path, "utf8"), "services:\n  harness: {}\n");
+    assert.equal(readStackCompose(join(source, "missing")), undefined);
   });
 });

@@ -34,6 +34,8 @@ The commands are for Docker. With Podman, write `podman compose` in place of `do
 
 4. Open <http://127.0.0.1:8800/ui>. Paste the token from `.dev/secrets/control-admin-token` into **Admin token**, then press **Sign in**.
 
+The rig gets every CPU and all the memory that Docker or Podman has: on a Mac, its virtual machine's. On Linux with NVIDIA GPUs and NVIDIA's container toolkit, step 2 also writes `compose.gpu.yaml`, which puts the rig on the CUDA harness and every GPU. Start Thermite with both files: `docker compose -f compose.yaml -f compose.gpu.yaml up -d`. [What the rig gets](@@REPO_URL@@/blob/@@TAG@@/docs/_site/src/content/docs/how-to/install/one-machine.md#what-the-rig-gets) says what each kind of machine gets.
+
 Keep the folder: it holds your tokens. To stop Thermite, run `docker compose down` in the folder. Do not add `-v`: `down -v` deletes the volumes, and all that Thermite recorded with them.
 
 ## Next steps
@@ -65,6 +67,6 @@ The compose file pins each image by its digest. The same images also have the ta
 | Supervisor | `@@SUPERVISOR_IMAGE@@` | `@@SUPERVISOR_TAG@@` |
 | Rig for RunPod, CUDA | `@@RIG_CUDA_IMAGE@@` | `@@RIG_CUDA_TAG@@` |
 
-The compose file runs the CPU harness. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA harness (for GPU rigs) and the supervisor. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
+The compose file runs the CPU harness, or the CUDA harness with `compose.gpu.yaml`. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA harness (for GPU rigs) and the supervisor. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
 
 The source code is at <@@REPO_URL@@>, under the MIT license. The harness images also carry OpenCode (MIT) and the Codex CLI (Apache-2.0), and the control image carries kubectl (Apache-2.0), each with its license.

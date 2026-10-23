@@ -8,8 +8,24 @@ import { briefChange } from "../core/brief.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { agentsContextRefusal } from "../core/compaction.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
-import { doctor, doctorExit, formatReport, machineProbes } from "./doctor.ts";
-import { chooseOwner, localInit, parentOwner } from "./local-init.ts";
+import { answeringEngines, doctor, doctorExit, formatReport, machineProbes } from "./doctor.ts";
+import {
+  chooseOwner,
+  localInit,
+  parentOwner,
+  readStackCompose,
+  writeGpuOverride,
+} from "./local-init.ts";
+import {
+  containerEngine,
+  detectInContainer,
+  detectOnMachine,
+  GPU_OVERRIDE,
+  gpuOverride,
+  harnessImageFrom,
+  rigReport,
+  upWithGpus,
+} from "./machine.ts";
 import { type Enrolled, formatRigList, type RigList, writeRigFiles } from "./rig.ts";
 
 /**
@@ -193,10 +209,14 @@ const USAGE = `usage: thermite <command> [options]
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
-  local init DIR                      make DIR, the local compose stack's .dev folder: random
+  local init DIR [--engine docker|podman]
+                                      make DIR, the local compose stack's .dev folder: random
                                       tokens in DIR/secrets, the inbox, the outbox and the
                                       advisors' folder. Files that exist are kept. Run as root,
-                                      it gives what it makes to the owner of DIR's parent folder
+                                      it gives what it makes to the owner of DIR's parent folder.
+                                      It says what the local rig gets (CPUs, memory, GPUs), and
+                                      with NVIDIA GPUs the rig can have, writes compose.gpu.yaml
+                                      next to DIR for the engine named, or the one it finds
   selftest isolation [--force]        inside the harness container, as root, with the rig idle: check that role
                                       users cannot reach the ledger, kits, builds or secrets
 `;
@@ -1221,8 +1241,18 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case "local": {
-      const [sub, dir, ...extra] = rest;
-      if (sub !== "init" || !dir || extra.length) fail(USAGE);
+      const [sub, ...args] = rest;
+      if (sub !== "init") fail(USAGE);
+      const { values, positionals } = parseArgs({
+        args,
+        options: { engine: { type: "string" } },
+        allowPositionals: true,
+      });
+      const [dir, ...extra] = positionals;
+      if (!dir || extra.length) fail(USAGE);
+      const engine = values.engine;
+      if (engine !== undefined && engine !== "docker" && engine !== "podman")
+        fail("--engine is docker or podman");
       const root = resolve(dir);
       const owner = chooseOwner(process.getuid?.(), parentOwner(root));
       const { made, kept } = localInit(root, owner);
@@ -1233,6 +1263,27 @@ async function main(argv: string[]): Promise<void> {
         process.stdout.write(
           `gave what it made to ${owner.uid}:${owner.gid}, the owner of the folder that holds ${name}\n`,
         );
+      // What the local rig gets. In the release's init service (a container) the engine is the
+      // one that runs it, and the GPUs are the ones the driver lists.
+      const p = machineProbes();
+      const box = containerEngine(p);
+      const machine = box
+        ? await detectInContainer(p, engine ?? box)
+        : await detectOnMachine(p, await answeringEngines(p), engine);
+      const report = rigReport(machine);
+      for (const line of report.lines) process.stdout.write(`rig: ${line}\n`);
+      if (report.fix) process.stdout.write(`rig: Fix: ${report.fix}\n`);
+      if (report.gpus) {
+        const text = gpuOverride(
+          report.gpus.engine,
+          report.gpus.names,
+          harnessImageFrom(readStackCompose(root)),
+        );
+        writeGpuOverride(root, text, owner);
+        process.stdout.write(
+          `wrote ${GPU_OVERRIDE}: start Thermite with ${upWithGpus(report.gpus.engine)}\n`,
+        );
+      }
       process.stdout.write(
         `local init: ${name} ready (${made.length} made, ${kept.length} kept)\n`,
       );
