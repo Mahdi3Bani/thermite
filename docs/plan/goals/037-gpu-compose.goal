@@ -33,7 +33,7 @@ A tester with one GPU machine should not need Kubernetes or SSH deploys to use i
 
 - [x] `thermite local init` and `thermite doctor` say what the local rig gets on Linux, on Linux with NVIDIA GPUs with and without NVIDIA's runtime or a CDI spec, on Linux with AMD GPUs, and on a Mac with Apple silicon, with Docker and with Podman: unit tests with stand-in command outputs (`src/cli/machine.test.ts`, `src/cli/doctor.test.ts`).
 - [x] `compose.gpu.yaml` for Docker and for Podman, with the split the broker reads: unit tests; both files merged with the release's compose file by `docker compose config` and `podman compose config`.
-- [ ] The local rig starts under each file on a machine with NVIDIA GPUs, Docker with NVIDIA's runtime and Podman with a CDI spec, and passes its isolation self-test and judge smoke check.
+- [ ] The local rig starts under each file on a machine with NVIDIA GPUs, Docker with NVIDIA's runtime and Podman with a CDI spec, and passes its isolation self-test and judge smoke check. (Podman: done on 2026-10-23, below. Docker: not run; the test machine has no Docker.)
 - [x] The pages say what each kind of machine gets: "Install Thermite on one machine", Your first run, Troubleshoot, the command line, Give a rig several GPUs, Compatibility.
 
 ## Decisions
@@ -52,6 +52,14 @@ None.
 
 - 2026-10-19: Goal written from the roadmap.
 - 2026-10-23: Moved to v0.1.0, with the owner's words; What and Done when rewritten to that scope. Built: the machine's facts and what the rig gets (`src/cli/machine.ts`); `thermite doctor`'s **Local rig** check, and its GPU container toolkit check now asks what the engine needs (Docker's runtime, Podman's CDI spec); `thermite local init` prints `rig:` lines and writes `compose.gpu.yaml` (`--engine` names the engine); the broker takes a GPU set of up to 16. Checked: the unit tests; `docker compose config` and `podman compose config` (through docker-compose) merge each file with the release's compose file, and a checkout's file with its `compose.yaml`; Podman reads the CDI device name from a compose file (`unresolvable CDI devices nvidia.com/gpu=all` where no CDI spec exists). Not done: a start on a machine with NVIDIA GPUs. The fake GPUs of `containers/test-gpu` are files that the harness's test entry makes in the container, not devices that the engine passes, so they can't test the device part of the files. Next: the lead checks the rig on a GPU machine.
+- 2026-10-23: Started on a real NVIDIA machine, with the owner's go: one NVIDIA GeForce RTX 4070 SUPER (12 GB, driver 580, CUDA 13.0), Ubuntu, x86_64, 14 CPUs, 32 GB, rootless Podman 5.7 with NVIDIA's container toolkit 1.20 and its CDI spec, podman-compose 1.5. From a fresh clone of `main`:
+  - `thermite doctor`: every line `ok`; its **GPU container toolkit** and **Local rig** lines named the CDI spec, the 14 CPUs, the memory and the one GPU, shared by the judge and the agents.
+  - `thermite local init .dev`: its `rig:` lines said the same and it wrote `compose.gpu.yaml`.
+  - `podman compose -f compose.yaml -f compose.gpu.yaml up -d --build`: no CDI error; `local-1` reported the GPU (`shared`, target `cuda-gpu`), and **What it runs on** named it for the judge and the development runs.
+  - The isolation self-test passed at start and on command: `isolation holds: every probe of 8 roles came out as it must (devices: shared (fence: landlock))`.
+  - The judge smoke check passed in 3 minutes: `smoke on smoke-cuda: all 4 candidates were judged as expected`; the GPU peaked at 52 °C.
+  - Found: under rootless Podman the broker can't change the device files' group (`EPERM` on `chown /dev/nvidia*`), so the GPU fence (Landlock) alone keeps the roles off the card, as on RunPod. The pages now say so (Install Thermite on one machine; Rig checks). Also fixed: the words for one GPU ("its NVIDIA GPU … gives it to containers").
+  - Left: Docker with NVIDIA's runtime, which the machine did not have. Whether a Docker start is needed for v0.1.0 is the owner's call.
 
 ---
 
