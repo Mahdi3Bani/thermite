@@ -1,7 +1,7 @@
 ---
 id: "018"
 title: "RunPod spike"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 018 · RunPod spike
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
 
 ## What
 
@@ -32,13 +32,14 @@ The RunPod rig's design depends on these answers.
 
 ## Done when
 
-- [ ] Each question has a recorded answer.
-- [ ] The design choices in goals 019 to 024 are confirmed or changed.
+- [x] Each question has a recorded answer.
+- [x] The design choices in goals 019 to 024 are confirmed or changed.
 
 ## Decisions
 
 - 2026-10-18, owner: Go for the spike: about one hour of paid GPU time.
 - 2026-10-19, owner: Use the cheapest GPU. Test pods can be started from Providers, REST and MCP, so an agent can run a test later.
+- 2026-10-23, owner, after the paid tests: "I'm done testing RunPod. Call it good for now."
 
 ## Open questions
 
@@ -71,6 +72,7 @@ The RunPod rig's design depends on these answers.
 - 2026-10-21: A fourth test pod, of the rig image for `5e3dabc` (an RTX 3090 on Secure cloud, the RTX 2000 Ada being out of stock; 0.03 USD): every step passed, the isolation self-test included. RunPod spend for the spike so far: about 0.08 USD.
 - 2026-10-22: The A/A noise is now measured by the paid run of goal 025: it runs the judge's smoke check on the launched rig, whose no-op candidate is an A/A run, and prints its verdict (neutral inside the equivalence band, or inconclusive with the noisy-timing note). One owner's launch then answers this question too.
 - 2026-10-22: First answer, from an RTX A4000 on Secure cloud: the smoke check's A/A run gave a block sigma of 5.8% (A/A 0.41%, [-4.29%, 5.34%]), against 0.8% on a lab GPU rig. That run's processes were mostly start-up: the kit compiled the kernel at every start (fixed in goal 025). The figure is to be measured again with the fixed kit.
+- 2026-10-23: Answered on real pods. A/A noise: an RTX A4000 with the old CUDA smoke kit gave a block sigma of 5.8%; an A40 with the fixed kit passed the smoke check with the noisy-timing note (the no-op inconclusive, the known win confirmed at +37% with a wide interval, [9.9%, 70.7%]): GPU cloud timing is noisy, and campaigns there need more runs per case. Design choices confirmed: one container per pod (020), pulls through RunPod's proxy only (019), enrollment codes (021), the owner's launch from the dashboard with a spend limit and an idle stop (022), the rig's state on the pod's disk with a sealed snapshot on its volume (023), results to control (024). Changed: a stopped pod is tied to its host, which may have no free GPU (goal 104). Verified by the owner's decision above.
 
 ---
 

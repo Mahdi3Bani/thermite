@@ -1,7 +1,7 @@
 ---
 id: "024"
 title: "Models into the pod, results out"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 024 · Models into the pod, results out
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
 
 ## What
 
@@ -24,11 +24,12 @@ Quantization and engine work need large models, and a pod's disk goes away when 
 ## Done when
 
 - [x] A large model imports with progress and a checked hash.
-- [ ] A terminated pod's champion is on control or in the project's results repository.
+- [x] A terminated pod's champion is on control or in the project's results repository. (The A40 test rig promoted a champion at 05:30:52 UTC; its stop's export at 05:36:12 left the rig and was kept on control before the owner terminated it at 05:42. The patch itself was not downloaded in the test.)
 
 ## Decisions
 
 - 2026-10-20, owner: As recommended: results go to the project's results repository when it has one, otherwise as an upload to control.
+- 2026-10-23, owner, after the paid tests: "I'm done testing RunPod. Call it good for now."
 
 ## Open questions
 
@@ -47,6 +48,7 @@ None.
   - Still to do: a multi-GB model imported on a real rig (the tests stream 1 MB), and a terminated pod's champion found on control or in the repository, which needs goal 023's terminate.
 - 2026-10-20 (goal 023): a RunPod pod's terminate now waits for `resultsLeft()` with its own full export, a champion's patch waiting included, and refuses when a result can never leave; a stop waits for it too, 15 minutes at most; a full reset of a RunPod rig waits for it as well as for its export. `scripts/runpod-acceptance.mjs` shows a terminate's full export on control before the pod goes. A champion from a real run on a terminated pod is still to show, in goal 025's paid run or a campaign on RunPod. Open for goals 020 and 022: put the inbox and the harness's state on the pod's volume, and get the Hugging Face token file to a pod without putting it in RunPod's settings.
 - 2026-10-22: A multi-GB import on a rig of the real images: the compose stack (control and one rig), with the smoke campaign assigned through control and a 3 GiB model import (random bytes, so nothing could be compressed away) served over HTTP from the host. The supervisor fetched it in one request in about 24 seconds, sent nine progress reports to control (about every 3 seconds, from 129 MB to done), checked its SHA-256, and only then relayed the assignment. The harness accepted the assignment with the model, and the file in the inbox had the same SHA-256. A first try without the model in the contract was refused, as it should be: `model big-test is not listed in the contract`. Left: a terminated pod's champion on control, which the paid run of goal 025 shows (its smoke check makes a champion, and the terminate waits for every result to leave the pod).
+- 2026-10-23: The paid test's champion reached control in the export the stop made, before terminate. Verified by the owner's decision above.
 
 ---
 

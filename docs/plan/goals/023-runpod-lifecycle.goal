@@ -1,7 +1,7 @@
 ---
 id: "023"
 title: "Stop, start and terminate RunPod rigs"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: ["022"]
@@ -11,7 +11,7 @@ updated: 2026-10-22
 
 # 023 · Stop, start and terminate RunPod rigs
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal)
 
 ## What
 
@@ -23,7 +23,7 @@ A rig you pay for by the hour must stop when it has no work, and it must not los
 
 ## Done when
 
-- [ ] Each action works against a fake RunPod API in CI, and once on RunPod.
+- [x] Each action works against a fake RunPod API in CI, and once on RunPod. (On RunPod: stop, by the idle stop and by the owner, each after its export left; terminate, twice, each only after every export left. Start could not be shown: RunPod had no free GPU on the stopped pod's host. Restart and full reset ran against the fake API only. The owner accepted this.)
 - [x] Terminate refuses while exports are still pending.
 
 ## Decisions
@@ -44,6 +44,7 @@ A rig you pay for by the hour must stop when it has no work, and it must not los
 - 2026-10-22, owner: "Seal it". RunPod's volume ignores file permissions, so a folder of mode 0700 keeps no user out, and the snapshot holds the ledger and the pod's tunnel keys. The snapshot is sealed with a key control mints for each pod at its launch, which only root holds in the pod.
 - 2026-10-22, builder: the seal. Control mints 32 random bytes for each launch (`THERMITE_STATE_SNAPSHOT_KEY`, base64url, a launch value) and keeps no copy: RunPod keeps it in the pod's settings, which a stopped pod keeps. The broker reads it first thing at start and deletes it from its own environment, and the controller's and supervisor's environments filter it out as well; the snapshot helper gets it on its standard input, never in its arguments. Without it no snapshot is taken or restored, and the log says why. HKDF-SHA-256 derives three keys from it: file contents, file names, manifest. Each file is AES-256-GCM with a fresh 12-byte nonce (`THMSEAL1`, a kind byte, the nonce, ciphertext, tag), and its name is the HMAC-SHA-256 of its content. The manifest (format 2: rig, sequence number, time, reason, and each entry's part, path, type, mode, owner, time, size, sealed name and SHA-256) is sealed whole. The folder is flat: `manifest`, `manifest.new` while one is written, the sealed files, `.new-<random>` while one is written. A file unchanged since the last snapshot whose sealed file is there is not read; content sealed already is not sealed again; after the rename onto `manifest`, sealed files no manifest names are removed. Root works from inside the folder (its working folder, checked to be the folder it entered) by bare names, so a user who swaps the folder for a link can't send root's writes or removals elsewhere. A restore takes the newest manifest that verifies and is this rig's, and every file must verify against it (size, tag, SHA-256, keyed hash); anything else refuses the whole snapshot, logs `the snapshot did not verify: <why>`, and the rig starts empty. An unsealed snapshot from the image before is never restored, and is removed only where no other user may write in the folder.
 - 2026-10-22, builder: the isolation check. The snapshot folder passes as `sealed, closed to …` or, on a volume that lets the users in, `open, sealed: …`, as long as it holds only the sealed manifest, sealed files, files being sealed and empty probe files; a file without the seal's header, an unsealed snapshot or any other name fails (`FOUND …`). A new container check and a new role probe, `snapshot-key`, look for the key in every environment they can read. The roles' `state-snapshot-list` and `state-snapshot-create` probes are one probe, `state-snapshot`, which removes its empty file again.
+- 2026-10-23, owner, after the paid tests: "I'm done testing RunPod. Call it good for now."
 
 ## Open questions
 
@@ -76,6 +77,7 @@ A rig you pay for by the hour must stop when it has no work, and it must not los
   Pages: the harness image reference (Where the state lives: the seal, what it does not stop; How it starts; Paths), Settings (`THERMITE_STATE_SNAPSHOT_KEY`), Rig checks (`state-snapshot`, `snapshot-key`), Isolation, Trust between control and rigs (the one launch secret that lasts as long as the pod), Who holds your keys, Run a rig on RunPod (what a stop keeps), Troubleshooting (no key; the snapshot did not verify, and why the pod can't enroll again), Ports, volumes and secrets, REST API, CHANGELOG. Left for the paid run (goal 025): the isolation check's `open, sealed` on a real pod, and whether RunPod's volume takes the renames, removals and `fsync` the seal uses.
 - 2026-10-22: On RunPod, two actions worked: stop, by the idle stop (no run at work for 30 minutes; control asked for an export first, and it reached control before the stop), and terminate, by the owner ("every export has left the rig: they are on control"). Start, restart and full reset on RunPod are left for the next launch, which also tests the sealed snapshot.
 - 2026-10-23: The paid test on an A40 (Secure cloud): stop worked (an export first, then the pod stopped, "every export has left the rig: they are on control"). Start was refused by RunPod: "There are not enough free GPUs on the host machine to start this pod." A stopped pod's volume is tied to its host; Thermite said so in words and kept the volume. Moving a rig to another GPU is goal [104](104-change-a-cloud-rigs-gpu.goal) (v0.3.0).
+- 2026-10-23: The owner terminated the A40 test rig after its stop; terminate said "every export has left the rig: they are on control". On a fresh pod the sealed snapshot was in place and the isolation check passed ("open, sealed", no role holds the key). Start after stop, restart and full reset on RunPod are left for a later launch; goal 104 covers a start on another host. Verified by the owner's decision above.
 
 ---
 
