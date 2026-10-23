@@ -17,7 +17,8 @@ import { Research } from "./research/research.ts";
 /**
  * The owner closes a run by hand (goal 087): close_run ends it for good, as goal completion does,
  * with the owner's reason. Its trials stop as for a pause, nothing new starts, its jobs waiting
- * for the judge never run, it can't be paused or resumed again, and its records and export stay.
+ * for the judge are cancelled (their changes not judged), it can't be paused or resumed again,
+ * and its records and export stay.
  */
 
 type Applied = { status: string; accepted?: boolean; result?: unknown; reason?: string };
@@ -134,11 +135,18 @@ describe("close_run (goal 087)", () => {
     assert.equal(count(env, "select count(*) as n from trial"), 1, "no new trial");
     assert.equal(count(env, "select count(*) as n from epoch"), epochs, "no new round");
 
-    // The judge leases no job of a closed run: the change stays queued, its attempt kept.
+    // Its job waiting for the judge is cancelled, so the rig counts nothing queued; the change
+    // is not judged, and its attempt stays.
     assert.equal(await env.judge.tick(), false);
     assert.equal(
       env.ledger.db.prepare("select state from job where attempt = ?").get(sub.attempt)?.state,
-      "queued",
+      "cancelled",
+    );
+    assert.equal(count(env, "select count(*) as n from job where state = 'queued'"), 0);
+    assert.equal(env.ledger.getAttempt(sub.attempt)?.lifecycle, "not_judged");
+    assert.equal(
+      env.ledger.latestEventBody("attempt_lifecycle", sub.attempt)?.lifecycle,
+      "not_judged",
     );
     assert.equal(env.ledger.currentVerdict(sub.attempt), undefined);
     assert.ok(env.ledger.getAttempt(sub.attempt), "the attempt stays");
@@ -206,6 +214,47 @@ describe("close_run (goal 087)", () => {
       [env.ledger.getRun("js-1")?.status, env.ledger.getRun("js-1")?.pause_reason],
       ["closed", "done elsewhere"],
     );
+  });
+
+  test("at start, a run closed before closes cancelled its jobs gets them cancelled; a paused run's, a running run's and a taken job stay", async () => {
+    const env = makeJudgeEnv({});
+    await env.service.applyCommand(env.assign);
+    const sub = (await env.service.submitAttempt(
+      { run: "js-1", patch_base64: env.patch(FAST_KERNEL), hypothesis: "h", known_flaws: [] },
+      "proposer",
+    )) as { attempt: string };
+    const validate = env.ledger.enqueueJob({ kind: "validate", spec: { run: "js-1" }, actor: "t" });
+    const taken = env.ledger.enqueueJob({ kind: "validate", spec: { run: "js-1" }, actor: "t" });
+    env.ledger.db
+      .prepare("update job set state = 'leased', lease_owner = 'executor-0' where id = ?")
+      .run(taken);
+    // Closed as before this change: the status alone, its jobs left queued.
+    env.ledger.db.prepare("update run set status = 'closed' where id = 'js-1'").run();
+    const state = (id: number) =>
+      String(env.ledger.db.prepare("select state from job where id = ?").get(id)?.state);
+    const attemptJob = Number(
+      env.ledger.db.prepare("select id from job where attempt = ?").get(sub.attempt)?.id,
+    );
+    assert.equal(state(attemptJob), "queued");
+
+    assert.deepEqual(
+      env.ledger.endClosedRunJobs("controller-start").sort(),
+      [attemptJob, validate].sort(),
+    );
+    assert.deepEqual(
+      [state(attemptJob), state(validate), state(taken)],
+      ["cancelled", "cancelled", "leased"],
+    );
+    assert.equal(env.ledger.getAttempt(sub.attempt)?.lifecycle, "not_judged");
+    assert.deepEqual(env.ledger.endClosedRunJobs("controller-start"), [], "once is enough");
+
+    // A paused or running run's jobs wait as before.
+    for (const status of ["paused", "running"]) {
+      env.ledger.db.prepare("update run set status = ? where id = 'js-1'").run(status);
+      const j = env.ledger.enqueueJob({ kind: "validate", spec: { run: "js-1" }, actor: "t" });
+      assert.deepEqual(env.ledger.endClosedRunJobs("controller-start"), []);
+      assert.equal(state(j), "queued", status);
+    }
   });
 
   test("a win the judge confirms after its run closed does not become the champion (the owner, 2026-10-22)", async () => {

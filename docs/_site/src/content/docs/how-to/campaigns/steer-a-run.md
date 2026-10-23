@@ -52,7 +52,7 @@ Close a run you no longer want, such as a paused run whose work another run fini
 What happens on the rig:
 
 - The run's running trials stop, as for a pause, and its planner call is cancelled. No new round or trial starts.
-- Its jobs waiting for the judge never run. A job the judge was already measuring finishes, and its verdict is recorded.
+- Its jobs waiting for the judge are cancelled: they never run, and the rig's page no longer counts them as queued. A change that waited for one shows `not judged: its run closed first`. A job the judge was already measuring finishes, and its verdict is recorded.
 - A research run's final report is written once its last trial has ended.
 - Its experiments, attempts, champion and journal stay, and the rig's next export carries the close.
 - Nothing in it waits for you any more. A decision that waited in it, such as a change waiting for approval, an audit, a review or a "not possible" proposal, leaves **Needs you** and every count of it once the rig has reported the close. A win the judge confirms after the close, from a job it was already measuring, is held the same way. Such a change shows **Run closed** in the run's attempts, and its own page says `The run closed while this change waited for a decision. It does not become the champion, and the rig refuses a decision on it.`, with no buttons. The run's **Overview** adds how many there were, such as `When it closed, 1 change waited for a decision.`

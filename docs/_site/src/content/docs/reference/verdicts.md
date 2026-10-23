@@ -32,7 +32,7 @@ flowchart LR
   X --> N
 ```
 
-The diagram leaves out three returns to `queued`: after one infrastructure failure, when the champion changed before confirmation, and when another change became the champion first. After a second infrastructure failure the attempt is `errored`. The owner can also decline an attempt in `awaiting_audit`. A patch that does not apply to its parent never becomes an attempt: the submission is refused and counted as a `submission_refused` event.
+The diagram leaves out three returns to `queued`: after one infrastructure failure, when the champion changed before confirmation, and when another change became the champion first. After a second infrastructure failure the attempt is `errored`. When its run closes, an attempt still `queued` becomes `not_judged`, and the judge never takes its job. The owner can also decline an attempt in `awaiting_audit`. A patch that does not apply to its parent never becomes an attempt: the submission is refused and counted as a `submission_refused` event.
 
 ## Verdicts
 
@@ -151,8 +151,9 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | `promoted` | It became the champion | "became the champion" |
 | `declined` | The owner said no. It never becomes the champion | "declined by you" |
 | `errored` | Infrastructure failed twice. Not counted against the research | "failed in the judge" |
+| `not_judged` | Its run closed while it waited in the queue. A closed run is never resumed, so its job is cancelled and it gets no verdict | "not judged: its run closed first" |
 
-A lane's next trial starts only once its last attempt is **settled**: `judged`, `promoted`, `rejected_v0`, `duplicate`, `errored`, `awaiting_approval`, `awaiting_audit` or `audit_blocked`. Attempts in `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` count as **open** against the contract's `budget.max_open_attempts`.
+A lane's next trial starts only once its last attempt is **settled**: `judged`, `promoted`, `rejected_v0`, `duplicate`, `errored`, `not_judged`, `awaiting_approval`, `awaiting_audit` or `audit_blocked`. Attempts in `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` count as **open** against the contract's `budget.max_open_attempts`.
 
 ### Why a change was refused
 

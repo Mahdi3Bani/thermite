@@ -517,6 +517,7 @@ export class Ledger {
       );
       if (r.changes === 0) throw new LedgerError("not_found", `no run ${id}`);
       this.appendEvent(actor, "run_status", id, { status, reason });
+      if (status === "closed") this.endClosedRunJobs(actor, id);
     });
   }
 
@@ -860,6 +861,33 @@ export class Ledger {
         owner,
       );
       for (const r of rows) this.requeue(r, actor, "crash_infra");
+      return rows.map((r) => Number(r.id));
+    });
+  }
+
+  /**
+   * A closed run is never resumed, so the judge never takes its queued jobs: they are cancelled,
+   * and an attempt that waited for one ends as not_judged. A leased job finishes as it is. With
+   * no run, every closed run's: at start, for runs closed before a close did this.
+   */
+  endClosedRunJobs(actor: string, run?: string): number[] {
+    return this.tx(() => {
+      const rows = this.all<Row>(
+        `select j.id, j.attempt, a.lifecycle from job j
+         left join attempt a on a.id = j.attempt
+         join run i on i.id = coalesce(a.run, json_extract(j.spec, '$.run'))
+         where j.state = 'queued' and i.status = 'closed' ${run === undefined ? "" : "and i.id = ?"}`,
+        ...(run === undefined ? [] : [run]),
+      );
+      for (const r of rows) {
+        this.run(
+          "update job set state = 'cancelled', updated_at = ? where id = ?",
+          this.now(),
+          Number(r.id),
+        );
+        if (r.attempt !== null && r.lifecycle === "queued")
+          this.setAttemptLifecycle(String(r.attempt), "not_judged", actor);
+      }
       return rows.map((r) => Number(r.id));
     });
   }
