@@ -35,8 +35,12 @@
   max-width: 72ch;
 }
 
-/* Tables of settings and fields scroll inside their own box on narrow screens. */
+/* Tables of settings and fields scroll inside their own box on narrow screens. A table inside a
+   list item would inherit the item's `overflow-wrap: anywhere`, which lets the browser squeeze a
+   column until its words break letter by letter: in a table, a word breaks only when it alone is
+   wider than the page. */
 .sl-markdown-content table {
   display: block;
   overflow-x: auto;
+  overflow-wrap: break-word;
 }

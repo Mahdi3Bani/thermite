@@ -187,5 +187,5 @@ To tell that it worked: `GET /v1/rigs/<rig>/runpod` answers the launched rig wit
 - **Community cloud and spot pods.**
 - **Network volumes.** A rig's volume is its pod's, and goes with the pod.
 - **Another image for a running rig.** Control can't move a pod onto another image: terminate the rig and launch a new one.
-- **Gated models.** A Hugging Face token for gated models can't reach a pod yet ([goal 024](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/_completed/024-runpod-models-and-results.goal)).
+- **Gated models.** A Hugging Face token for gated models can't reach a pod yet: a rig's supervisor reads one from `THERMITE_HF_TOKEN_FILE` ([Model files on a rig](../../reference/model-files.md)), but a launch from control gives a pod no such file.
 - **Registry sign-in.** The image must be pullable without a login.
