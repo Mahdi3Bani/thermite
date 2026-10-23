@@ -239,6 +239,12 @@ export interface RunView {
    */
   goals_confirming: boolean;
   /**
+   * The newest goal report found the goals met for good: every required goal (or the k of n the
+   * contract asks for) met, and confirmed by the judge's second check (goal 086). A closed goal
+   * run with it reads Completed on the dashboard (goal 099).
+   */
+  goals_complete: boolean;
+  /**
    * The newest held-out check of the run's champion, for the owner (goal 086): the second
    * validation of a champion that met every required goal runs the held-out cells of the goals
    * met. As an attempt's `held_out`, with the champion it checked. Null when none ran.
@@ -726,6 +732,7 @@ export function rigView(
         goals_at: null,
         goals_seq: null,
         goals_confirming: false,
+        goals_complete: false,
         champion_held_out: null,
         goal_checks: null,
         audits: [],
@@ -1060,6 +1067,8 @@ export function rigView(
         v.goals_seq = typeof b.champion_seq === "number" ? b.champion_seq : null;
         // Every required goal met, and the second check still to come (goal 086).
         v.goals_confirming = b.complete === true && b.confirming === true;
+        // Met for good: complete, and not the first check that a second one must confirm.
+        v.goals_complete = b.complete === true && b.confirming !== true;
         break;
       }
       case "audit_requested": {
@@ -1542,8 +1551,19 @@ export interface CampaignView {
 }
 
 /**
+ * A campaign's newest run, by when it started (goal 099): with no run at work, the campaign
+ * stands where its newest run stands, so an older paused run does not hide a newer one's end.
+ */
+export function newestRun(k: CampaignView): CampaignView["runs"][number] | undefined {
+  let best: CampaignView["runs"][number] | undefined;
+  for (const x of k.runs)
+    if (!best || (x.run.created_at ?? "") > (best.run.created_at ?? "")) best = x;
+  return best;
+}
+
+/**
  * Groups runs by campaign: Campaign ▸ Run (on a rig) ▸ Lane ▸ Trial ▸ Attempt. Campaigns with a
- * live run come first.
+ * live run come first, then those whose newest run is paused.
  */
 export function campaignViews(vs: RigView[]): CampaignView[] {
   const by = new Map<string, CampaignView>();
@@ -1558,7 +1578,7 @@ export function campaignViews(vs: RigView[]): CampaignView[] {
   const rank = (c: CampaignView) =>
     c.runs.some((x) => x.run.status === "running")
       ? 0
-      : c.runs.some((x) => x.run.status === "paused")
+      : newestRun(c)?.run.status === "paused"
         ? 1
         : 2;
   return [...by.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));

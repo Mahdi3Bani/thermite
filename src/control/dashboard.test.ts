@@ -1752,10 +1752,34 @@ describe("control dashboard", () => {
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
     const page = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1")).text();
-    assert.match(page, /<dt>Agents<\/dt><dd>None: changes come from people<\/dd>/);
+    assert.match(
+      page,
+      /<dt>Agents<\/dt><dd>None: judge only\. No workers run; changes come from people<\/dd>/,
+    );
+    // It says plainly that it is judge only (goal 099).
+    assert.match(page, /<b>Judge only:<\/b> No workers run\./);
+    assert.match(page, / · judge only · /);
     assert.match(page, /<a class="btn" href="\/ui\/live\?run=rig-a%2Fjs-1">/);
     assert.doesNotMatch(page, />Message<\/a>/);
     assert.doesNotMatch(page, /Restart the lanes/);
+    // An experiment in its queue waits for a run with workers; the queue says how to carry it.
+    const tab = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=experiments";
+    assert.doesNotMatch(await (await s.get(tab)).text(), /no worker takes these experiments/);
+    const added = await s.post("/ui/commands", {
+      rig: "rig-a",
+      run: "js-1",
+      csrf: s.csrfFrom(await (await s.get(tab)).text()),
+      back: tab,
+      kind: "queue_add",
+      title: "unroll the loop by 4",
+    });
+    assert.equal(added.status, 303);
+    await s.relay();
+    await s.relay();
+    assert.match(
+      await (await s.get(tab)).text(),
+      /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/js-sum\?start=1&amp;copy=rig-a%2Fjs-1">Start a run<\/a>/,
+    );
     // Its Live: everyone working and the lanes are greyed out, and the box starts elsewhere.
     const live = await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text();
     assert.match(

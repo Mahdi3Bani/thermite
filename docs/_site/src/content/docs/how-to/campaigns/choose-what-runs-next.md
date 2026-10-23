@@ -14,12 +14,12 @@ Each run keeps an **experiment queue**: a list, in order, of what its [lanes](..
 
 ## Before you start
 
-- A run with agents that is running or paused. A finished run still shows the forms, but the rig refuses every change to its queue or its rules, and **Commands** shows why: `run sort-speed-1 is closed: its queue and rules no longer change`. On a run without agents, such as a try or a run started with `--agents off`, the forms work, but no lane ever takes an experiment, rules have nothing to steer, and control refuses a message to the planner: **Not sent.** `This run has no agents (the judge alone tries the kit), so nothing would read it.`
+- A run with agents that is running or paused. A finished run still shows the forms, but the rig refuses every change to its queue or its rules, and **Commands** shows why: `run sort-speed-1 is closed: its queue and rules no longer change`. On a run without agents, such as a try or a run started with `--agents off`, the forms work, but no lane ever takes an experiment, rules have nothing to steer, and control refuses a message to the planner: **Not sent.** `This run has no agents (the judge alone tries the kit), so nothing would read it.` While experiments wait in such a run's queue, the tab says so above **Up next**: `Judge only: no worker takes these experiments, so they wait for a run with workers.` Its **Start a run** link opens the campaign's **Start a run** panel with **Copy the untried experiments of** that run chosen, so a new run with agents starts from them ([Start a campaign from the dashboard](start-from-dashboard.md)).
 - The owner's sign-in on the dashboard. From the command line, the owner's token; over MCP, the owner's or an operator's token. See [Who may do what](steer-a-run.md#who-may-do-what).
 
 ## Open the Experiments tab
 
-Open **Campaigns** in the sidebar. For a running run, press the run's name on its card under **At work now**, shown as `<campaign> › <run>`, such as `sort-speed › sort-speed-1`. A paused run is on its campaign's page, under **Earlier runs**, which lists the paused and finished runs: press the campaign in the table, then the run. On the run's page, press the tab **Experiments**. The tab's label says how many experiments are up next, such as `3 up next`.
+Open **Campaigns** in the sidebar. For a running run, press the run's name on its card under **At work now**, shown as `<campaign> › <run>`, such as `sort-speed › sort-speed-1`. A paused run is on its campaign's page, under **Earlier runs**, which lists the paused, completed and finished runs: press the campaign in the table, then the run. On the run's page, press the tab **Experiments**. The tab's label says how many experiments are up next, such as `3 up next`.
 
 ## Add an experiment
 

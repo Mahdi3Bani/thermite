@@ -72,6 +72,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .side-row .right { margin-left: auto; font-size: 11px; color: var(--muted-foreground); white-space: nowrap; }
 .side-row .right.label.info { color: var(--info-foreground); } .side-row .right.label.warn { color: var(--warning-foreground); }
 .side-row .right.label.violet { color: var(--violet-foreground); } .side-row .right.label.bad { color: var(--error-foreground); }
+.side-row .right.label.ok { color: var(--success-foreground); }
 .side-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The campaigns in the left navigation, with their folders (goal 077) */
 .side-head { display: flex; align-items: center; margin: 16px 2px 4px 10px; }
@@ -697,8 +698,10 @@ pre.json { background: var(--muted); border: 1px solid var(--border); border-rad
 .kdot { display: inline-flex; align-items: center; gap: 5px; }
 .kdot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--input); }
 .kdot.run::before { background: var(--success); } .kdot.pause::before { background: var(--warning); } .kdot.done::before { background: #a1a1aa; }
+.kdot.ok::before { content: "✓"; width: auto; height: auto; border-radius: 0; background: none; color: var(--success-foreground); font-weight: 700; }
 .kst { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
 .kst.pause { background: var(--warning-surface); color: var(--warning-foreground); } .kst.done { background: var(--accent); color: var(--muted-foreground); }
+.kst.ok { background: var(--success-surface); color: var(--success-foreground); }
 .khead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; margin-bottom: 22px; }
 .kabout-big { font-size: 14px; margin-top: 3px; }
 .kgoals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
@@ -846,6 +849,7 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .lpin[hidden] { display: none; }
 .lnotice { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-top: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); background: var(--warning-surface); font-size: 13px; }
 .lnotice svg { color: var(--warning-foreground); flex: none; }
+.lnotice.qjudge { border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); border-radius: 8px; margin: 0 0 12px; }
 /* The experiment queue and the Planner tab (goal 064) */
 .qcols { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
 @media (max-width: 1100px) { .qcols { grid-template-columns: minmax(0, 1fr); } }

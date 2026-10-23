@@ -1,6 +1,6 @@
 import { directionList, directionParts, RESEARCH_TASK_KINDS } from "../../core/directions.ts";
 import type { AttemptView, DirectionView, ExperimentView, RigView, RunView } from "../views.ts";
-import { ago, esc, icon } from "./components.ts";
+import { ago, campaignHref, esc, icon, runKey } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
 import { outcome } from "./operator.ts";
 import { clip } from "./words.ts";
@@ -85,6 +85,17 @@ export function triedResult(
   };
 }
 
+/**
+ * A judge-only run's line over its queue (goal 099): no worker takes its experiments, and how to
+ * carry them to a run with workers. Empty for a run with workers, or with nothing waiting.
+ */
+export function judgeOnlyQueueLine(u: Pick<RigView, "id">, r: RunView): string {
+  if (r.has_agents !== false) return "";
+  if (!r.queue.some((x) => x.state === "queued" || x.state === "proposed")) return "";
+  const start = `${campaignHref(r.campaign || r.id)}?start=1&copy=${encodeURIComponent(runKey(u.id, r.id))}`;
+  return `<div class="lnotice qjudge">${icon.warn}<span><b>Judge only:</b> no worker takes these experiments, so they wait for a run with workers. To carry them over, <a href="${esc(start)}">Start a run</a> of the campaign with <b>Copy the untried experiments of</b> ${esc(r.id)} ticked.</span></div>`;
+}
+
 /** The Experiments tab. */
 export function experimentsTab(o: {
   u: RigView;
@@ -166,7 +177,7 @@ export function experimentsTab(o: {
   )}`;
   return `<div class="qcols"><div>
 <div class="head"><h2>Up next</h2><span class="n">${up.length}</span><span class="right">in order; the planner gives the top ones to free lanes, never the same one to two lanes</span></div>
-${add}
+${judgeOnlyQueueLine(u, r)}${add}
 <div class="qlist" id="qlist" data-part="qlist">${up.map(item).join("") || `<div class="card"><div class="empty">Nothing queued. The planner adds experiments as it plans; you can add one above.</div></div>`}</div>
 </div><div class="qside" data-part="qside">
 <div class="card qcard"><h3>In progress</h3>${working || `<div class="muted small">No lane is at work.</div>`}</div>

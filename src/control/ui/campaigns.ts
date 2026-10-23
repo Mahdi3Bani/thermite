@@ -1,5 +1,14 @@
-import type { CampaignView, RigView, RunView } from "../views.ts";
-import { ago, esc, icon, modeAvatar, modeName, runHref } from "./components.ts";
+import { type CampaignView, newestRun, type RigView, type RunView } from "../views.ts";
+import {
+  ago,
+  esc,
+  icon,
+  judgeOnlyMark,
+  modeAvatar,
+  modeName,
+  runCompleted,
+  runHref,
+} from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
 import { runProgress, waitingOn } from "./operator.ts";
 
@@ -16,11 +25,15 @@ export const campaignFilter = (q: string | undefined): CampaignFilter =>
     ? q
     : "default";
 
-/** A campaign's state for the list: at work, paused, finished, or a rig check. */
+/**
+ * A campaign's state for the list: at work, paused, finished, or a rig check. With no run at
+ * work, its newest run decides (goal 099), as in the navigation: a campaign whose newest run
+ * completed or finished counts as finished, even with an older run paused.
+ */
 export function campaignKind(k: CampaignView): "active" | "paused" | "finished" | "check" {
   if (isRigCheck(k.name)) return "check";
   if (k.runs.some((x) => x.run.status === "running")) return "active";
-  if (k.runs.some((x) => x.run.status === "paused")) return "paused";
+  if (newestRun(k)?.run.status === "paused") return "paused";
   return "finished";
 }
 
@@ -40,11 +53,12 @@ export function lastActivity(r: RunView): string {
   );
 }
 
-/** The runs of a campaign counted by state, as coloured dots. */
+/** The runs of a campaign counted by state, as coloured dots; completed runs apart (goal 099). */
 export function runCounts(k: CampaignView): string {
   const n = (s: string) => k.runs.filter((x) => x.run.status === s).length;
-  const closed = k.runs.length - n("running") - n("paused");
-  return `<span class="kdots">${n("running") ? `<span class="kdot run">${n("running")} at work</span>` : ""}${n("paused") ? `<span class="kdot pause">${n("paused")} paused</span>` : ""}${closed ? `<span class="kdot done">${closed} finished</span>` : ""}</span>`;
+  const completed = k.runs.filter((x) => runCompleted(x.run)).length;
+  const closed = k.runs.length - n("running") - n("paused") - completed;
+  return `<span class="kdots">${n("running") ? `<span class="kdot run">${n("running")} at work</span>` : ""}${n("paused") ? `<span class="kdot pause">${n("paused")} paused</span>` : ""}${completed ? `<span class="kdot ok">${completed} completed</span>` : ""}${closed ? `<span class="kdot done">${closed} finished</span>` : ""}</span>`;
 }
 
 export interface CampaignsListInput {
@@ -166,6 +180,8 @@ export function startDrawer(o: {
   from: string;
   /** Runs of the campaign with experiments not tried yet, to copy into the new run's queue. */
   copyFrom?: { key: string; label: string }[] | undefined;
+  /** The run to copy from, chosen first (`rig/run`): a judge-only run's link here (goal 099). */
+  copyPick?: string | undefined;
   /** "From past research" (goal 065): a search of the folders the campaign may read. */
   past?: string | undefined;
 }): string {
@@ -208,7 +224,7 @@ ${
 }
 ${
   o.copyFrom?.length
-    ? `<div class="sfd" data-agents-only>${infoLabel("Experiments to start with", "Each run has its own queue. Copy the experiments another run of this campaign had not tried yet, so the new run starts from them; who added each one and why come along. Leave it off for an empty queue the planner fills.")}<label class="sopt"><input type="checkbox" name="copy_queue" value="1" checked><span><b>Copy the untried experiments of</b> <select name="copy_from" aria-label="From which run" style="width:auto;height:28px;display:inline-block;margin-left:4px">${o.copyFrom.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join("")}</select><span class="sd">They join the new run's queue in the same order, up to 500. The tried ones stay with their run.</span></span><span></span></label></div>`
+    ? `<div class="sfd" data-agents-only>${infoLabel("Experiments to start with", "Each run has its own queue. Copy the experiments another run of this campaign had not tried yet, so the new run starts from them; who added each one and why come along. Leave it off for an empty queue the planner fills.")}<label class="sopt"><input type="checkbox" name="copy_queue" value="1" checked><span><b>Copy the untried experiments of</b> <select name="copy_from" aria-label="From which run" style="width:auto;height:28px;display:inline-block;margin-left:4px">${o.copyFrom.map((x) => `<option value="${esc(x.key)}"${x.key === o.copyPick ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select><span class="sd">They join the new run's queue in the same order, up to 500. The tried ones stay with their run.</span></span><span></span></label></div>`
     : ""
 }${o.past ?? ""}
 <details class="adv"><summary>More options</summary><div class="sgrid">
@@ -222,7 +238,7 @@ ${
 </form></aside></div>`;
 }
 
-/** A campaign's earlier runs (paused and finished), newest first, in one table. */
+/** A campaign's earlier runs (paused, completed and finished), newest first, in one table. */
 export function earlierRuns(
   /** `result`: more for the result cell (cross-verification); `action`: the row's button. */
   rows: { rig: RigView; run: RunView; result: string; action: string }[],
@@ -233,10 +249,14 @@ export function earlierRuns(
     const st =
       x.run.status === "paused"
         ? `<span class="kst pause">Paused</span>`
-        : `<span class="kst done">${esc(x.run.status === "closed" ? "Finished" : x.run.status)}</span>`;
+        : x.run.status === "closed"
+          ? runCompleted(x.run)
+            ? `<span class="kst ok">Completed</span>`
+            : `<span class="kst done">Finished</span>`
+          : `<span class="kst done">${esc(x.run.status)}</span>`;
     const last = lastActivity(x.run);
     const n = waitingOn(x.run, x.rig);
-    return `<tr><td>${st}</td><td><a href="${runHref(x.rig.id, x.run)}"><b>${esc(x.run.id)}</b></a>${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.rig.id)}</td><td>${runProgress(x.run)}${x.result}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
+    return `<tr><td>${st}</td><td><a href="${runHref(x.rig.id, x.run)}"><b>${esc(x.run.id)}</b></a>${judgeOnlyMark(x.run)}${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.rig.id)}</td><td>${runProgress(x.run)}${x.result}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
   };
   const head = `<thead><tr><th style="width:90px">State</th><th>Run</th><th>Rig</th><th>Result</th><th>Why it stopped</th><th>Last activity</th><th></th></tr></thead>`;
   const shown = rows.slice(0, 8).map(row).join("");

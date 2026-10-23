@@ -2,6 +2,7 @@ import type { Hardware } from "../../core/hardware.ts";
 import {
   type CampaignView,
   campaignViews,
+  newestRun,
   podStopped,
   type RigView,
   type RunView,
@@ -143,13 +144,32 @@ export function modeAvatar(mode: string | null): string {
 export const modeName = (mode: string | null) => MODE[mode ?? ""]?.[1] ?? mode ?? "";
 
 /**
+ * What a judge-only run (started with its agents off) says on its page (goal 099): the owner
+ * could not tell such a run from one whose workers had not started.
+ */
+export const JUDGE_ONLY_WORDS =
+  "No workers run. The judge checks the champion; the advisors' ideas wait in the queue for a run with workers.";
+
+/** A judge-only run's mark beside its name in lists and cards (goal 099). */
+export const judgeOnlyMark = (r: Pick<RunView, "has_agents">) =>
+  r.has_agents === false
+    ? ` <span class="chip" title="Started with its agents off: no workers run on it, and the judge works alone.">judge only</span>`
+    : "";
+
+/** A closed goal run whose newest goal report met its goals for good (goal 099). */
+export const runCompleted = (i: Pick<RunView, "status" | "mode" | "goals_complete">) =>
+  i.status === "closed" && i.mode === "goal" && i.goals_complete === true;
+
+/**
  * What a run needs, or is doing, as one coloured label (Magnesium's status words). A paused run
- * reads as paused whatever waits in it: its decisions show in Needs you.
+ * reads as paused whatever waits in it: its decisions show in Needs you. A closed run reads
+ * Completed when it met its goals (goal 099), else Finished.
  */
 export function runState(i: RunView): { text: string; cls: string; icon: string } {
   // A blocked result waits on the owner; an open audit is the auditor's to decide (goal 079).
   const blocked = i.audits.some((a) => a.decision === "block");
   const auditing = i.audits.some((a) => a.decision === null);
+  if (runCompleted(i)) return { text: "Completed", cls: "ok", icon: icon.check };
   if (i.status === "closed") return { text: "Finished", cls: "muted", icon: icon.check };
   if (i.status === "paused") return { text: "Paused", cls: "muted", icon: icon.pause };
   if (i.pending_promotions.length) return { text: "Approval", cls: "warn", icon: icon.warn };
@@ -162,26 +182,19 @@ export function runState(i: RunView): { text: string; cls: string; icon: string 
   return { text: "Running", cls: "info", icon: icon.live };
 }
 
-/** A campaign's state: its most urgent run's. */
+/**
+ * A campaign's state (goal 099): while a run of it is at work, or needs the owner, the most
+ * urgent of those runs' states; otherwise its newest run's (Completed, Finished or Paused), so an
+ * older paused run does not hide that the newest one completed.
+ */
 export function campaignState(k: CampaignView): { text: string; cls: string; icon: string } {
-  const order = [
-    "Approval",
-    "Decision",
-    "Review",
-    "Audit",
-    "Auditing",
-    "Running",
-    "Paused",
-    "Finished",
-  ];
-  const states = k.runs.map((x) => runState(x.run));
-  return (
-    states.sort((a, b) => order.indexOf(a.text) - order.indexOf(b.text))[0] ?? {
-      text: "Idle",
-      cls: "muted",
-      icon: "",
-    }
-  );
+  const order = ["Approval", "Decision", "Review", "Audit", "Auditing", "Running"];
+  const live = k.runs
+    .map((x) => runState(x.run))
+    .filter((s) => order.includes(s.text))
+    .sort((a, b) => order.indexOf(a.text) - order.indexOf(b.text))[0];
+  const newest = newestRun(k);
+  return live ?? (newest ? runState(newest.run) : { text: "Idle", cls: "muted", icon: "" });
 }
 
 export const campaignHref = (name: string) => `/ui/campaigns/${encodeURIComponent(name)}`;
