@@ -1,0 +1,52 @@
+---
+id: "100"
+title: "GPUs on demand for the judge and the workers"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["022", "023"]
+created: 2026-10-23
+updated: 2026-10-23
+---
+
+# 100 · GPUs on demand for the judge and the workers
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+A rig can run on a machine with no GPU and rent GPUs only while they work:
+
+- **The judge on demand.** The judge's measurement jobs (gate, screen, confirm, validation) run on a GPU pod started for a batch of jobs and stopped after it. The jobs keep their leases and fences, so a pod that stops early loses no verdict: its jobs go back to the queue. The pod runs the judge's sandbox and the kit's measurement code, as the judge does on a rig's own GPU; agents never reach it.
+- **The workers' checks on demand.** A worker's own runs of its change (build, correctness, a rough timing) run on another, cheaper GPU pod, started when checks wait and stopped when none do, batched across lanes.
+- **Configured per rig:** the cloud, the GPU type and count for each use, the image, how long a pod stays warm after its last job, and spend caps per batch and per day, which stop new pods when reached. The dashboard shows each pod, what it runs, how long it ran and what it cost.
+- **Start-up.** Each start pulls the image and prepares the pod, so the driver measures many jobs per start, keeps a pod warm for a short time, and uses the cloud's image cache or a volume where it can.
+
+## Why
+
+A rig on a rented GPU pays for the GPU by the hour while the agents read, think and plan, which is most of a campaign's time; the judge's measuring is minutes in each hour. On 2026-10-23 the owner looked at a public kernel challenge scored on an H200 at about 5 USD an hour, and declined to keep one running: "If we do this we need to have the on demand judge, and on demand for workers (H100's for workers to check stuff, H200 for judge to check)."
+
+Thermite's settled decisions already reach measurement targets through target drivers, and say that whether agents and the judge share a device or use dedicated ones is configuration ([decisions](../decisions.md)). This goal adds a target driver whose device exists only while it works.
+
+## Done when
+
+- [ ] Written when the goal is accepted into a version.
+
+## Decisions
+
+- 2026-10-23, owner: no always-on GPU for this kind of campaign; GPUs on demand for the judge and for the workers' checks, of different types (a cheaper one for the workers, the scored one for the judge).
+
+## Open questions
+
+- Which cloud first: RunPod, which Thermite launches on already, or a serverless provider that starts per request.
+- How the workers' checks reach their pod: through the broker, as the judge's jobs do, or as a dev run with its own queue.
+- Whether a pod's warm window and the batch size are set by the owner or tuned by the driver.
+
+## Progress
+
+- 2026-10-23: Goal written as a plan, from the owner's decision.
+
+---
+
+Run with `/goal Complete docs/plan/goals/100-on-demand-gpus.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
