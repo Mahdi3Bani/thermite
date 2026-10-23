@@ -73,6 +73,10 @@ Today a run closes only when its goals are met, when the owner accepts a "not po
   - Code: `src/harness/service.ts` (`CLOSED_RUN_REFUSALS`, `decidingRun`; the auditor's packages, answers and held audits), `src/control/views.ts` (a closed run's `pending_promotions`), `src/control/ui/operator.ts` (Needs you, `waitingOn`, **Run closed**, the change's page, `leftByClose`), `src/control/dashboard.ts` (the run's **Overview**).
   - Tests: `src/harness/close-run.test.ts` (approve, decline, a review and a proposal refused in words with nothing changed; the auditor's package, its late answer and a rig with no auditor), `src/control/close-run.test.ts` (a waiting change in Needs you and every count, then out of them once the run closed; its page with no buttons and why; REST's view and MCP's `list_rigs`; an approval from an older page refused by the rig in words).
   - Pages: Decide what waits for you, Steer a run, Signed commands, Verdicts and states, Why Thermite runs until the job is done, Supervision, the glossary, the MCP tools; the changelog.
+- 2026-10-23: A fix found on the deployment: a run closed four days earlier still had 9 judge jobs queued, so its rig's page said the judge was idle "with 9 queued". A close now cancels the run's queued jobs, and each change that waited for one ends as `not_judged` ("not judged: its run closed first"); the harness does the same at start for runs closed before. A job the judge already took finishes as before.
+  - Code: `src/harness/ledger.ts` (`endClosedRunJobs`, from `setRunStatus`), `src/harness/main.ts` (at start, after the lease reclaim), `src/control/ui/words.ts`, the settled sets in `src/harness/agents/scheduler.ts` and `src/harness/propagation.ts`.
+  - Tests: `src/harness/close-run.test.ts` (the close's job cancelled and its change not judged; at start, a run closed before gets its jobs cancelled, once, while a paused or running run's jobs and a taken job stay). The first test fails without the change.
+  - Pages: Verdicts and states, Steer a run; the changelog.
 
 ---
 
