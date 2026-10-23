@@ -80,7 +80,7 @@ In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** 
 
 On **1 Aim**:
 
-1. Keep **Hill climb** chosen. A **hill climb** improves one measured number, here the speed of the matrix multiply.
+1. Keep **Hill climb** chosen. A **hill climb** improves one measured number, here the speed of the matrix multiply. The other two cards are Thermite's other [campaign modes](../explanation/campaign-modes.md): **Reach a list of goals** works until checks you write all pass, and **Research a question** has agents read sources and report findings, with no code changes.
 2. **Campaign name**: `matmul-agents`
 3. **Title**: `Make the sample's matrix multiply faster`
 4. Press **Next**.
@@ -225,11 +225,12 @@ The rig keeps its model. [Your own project](your-own-project.md) uses it.
 
 ## What you did
 
-You gave a rig a free model and checked it, and started a campaign from the **New campaign** page: its project one folder of Thermite's repository, its kit uploaded as one file. Then you watched an agent propose changes while the judge measured each one. Only a change the judge confirmed could become the champion.
+You gave a rig a free model and checked it, and started a hill climb from the **New campaign** page: its project one folder of Thermite's repository, its kit uploaded as one file. Then you watched an agent propose changes while the judge measured each one. Only a change the judge confirmed could become the champion.
 
 ## Next
 
 - [Your first goal campaign](first-goal-campaign.md): a campaign that ends by itself when its goal is met. It needs no model.
+- [Choose a campaign mode](../how-to/campaigns/choose-a-mode.md): when to run a hill climb, a goal campaign or a research campaign.
 - [Agents, lanes and the planner](../explanation/agents-lanes-planner.md): how the planner and the workers share the work.
 - [Why agents never judge](../explanation/why-agents-never-judge.md): how the judge decides, step by step.
 - [Choose a model](../how-to/models/choose-a-model.md): other free and paid models, and models on your own machine.

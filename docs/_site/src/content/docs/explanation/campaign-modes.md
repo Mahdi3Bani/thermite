@@ -154,4 +154,4 @@ A rig whose supervisor has no review panel, or whose review panel is off (**Edit
 - You have a **list of conditions** that the work must meet, and you want to know if it can: a **goal** campaign.
 - You have a **question**, and a few hours or days to spend on it: a **research** campaign.
 
-The first step of the **New campaign** page, **Aim**, offers the three as **Hill climb**, **Reach a list of goals** and **Research a question**. [Your own project](../tutorials/your-own-project.md) starts a hill climb there.
+The first step of the **New campaign** page, **Aim**, offers the three as **Hill climb**, **Reach a list of goals** and **Research a question**. [Choose a campaign mode](../how-to/campaigns/choose-a-mode.md) says what each one needs before you start, and [Your own project](../tutorials/your-own-project.md) starts a hill climb there.

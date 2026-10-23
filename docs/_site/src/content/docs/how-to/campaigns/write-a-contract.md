@@ -12,7 +12,7 @@ A contract is frozen: to change anything, you write a new version. The [contract
 
 ## Before you start
 
-- Choose the mode: a **hill climb** improves one measured number, a **goal** campaign works until a list of checks passes, and a **research** campaign collects sourced findings. See [Campaign modes](../../explanation/campaign-modes.md).
+- Choose the mode: a **hill climb** improves one measured number, a **goal** campaign works until a list of checks passes, and a **research** campaign collects sourced findings. See [Choose a campaign mode](choose-a-mode.md).
 - For a hill climb or a goal campaign, have a [kit](../../reference/glossary.md) committed in its own repository. The contract names its cells (test cases), metrics and verifiers. See [Write a kit for your project](write-a-kit.md).
 
 ## 1. Fill in the fields every contract has

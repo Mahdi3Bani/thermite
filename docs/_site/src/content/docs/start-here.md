@@ -8,6 +8,18 @@ sidebar:
 
 Thermite lets AI agents work on a project for as long as it takes, while a judge they cannot touch decides which of their changes really count. This page helps you find where to begin.
 
+## Three kinds of campaign
+
+A **campaign** is one piece of research. Each one runs in one of three **modes**, which say what the agents make, what decides whether it counts, and when the campaign ends:
+
+| Mode | Use it to | What decides | It ends when | See it in |
+| --- | --- | --- | --- | --- |
+| **Hill climb** | Make a number better, such as speed, size or accuracy, without breaking anything else | The judge, which times each change against the best version so far | Never on its own: you pause it, or a budget you set does | [Hand the work to agents](tutorials/agents-with-a-free-model.md) |
+| **Goal** | Work until a list of checks pass: it builds, it loads the model, its answers match | Each goal's own test: the kit's check, a measured threshold, or a review panel of models | Every required goal is met, or the evidence shows that they cannot be | [Your first goal campaign](tutorials/first-goal-campaign.md) |
+| **Research** | Find out what is known about a question, with no code changes | Code that finds every quote, word for word, in a page the rig archived; a review panel of models decides when the questions are answered | Every question is answered, or its longest time is up. It then writes its final report | [Write a research campaign](how-to/campaigns/write-a-contract.md#4-write-a-research-campaign) |
+
+In every mode, code decides when a campaign is done, never an agent. [Choose a campaign mode](how-to/campaigns/choose-a-mode.md) helps you pick one, and [Campaign modes](explanation/campaign-modes.md) explains how each works.
+
 ## What you need
 
 - A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and several gigabytes of free disk. Thermite's three images take about 2.5 GB.
@@ -26,9 +38,9 @@ Before you give Thermite a model, read [Known limits](reference/known-limits.md)
 You want to see what Thermite does before you commit to anything. The four tutorials build on each other, in this order:
 
 1. [Your first run](tutorials/first-run.md): start Thermite and watch its judge check a rig. Needs only the computer above.
-2. [Hand the work to agents](tutorials/agents-with-a-free-model.md): connect a free model, start a campaign on the sample project in Thermite's repository, and watch agents propose changes. Needs tutorial 1 and an internet connection; no account or key.
-3. [Your first goal campaign](tutorials/first-goal-campaign.md): set a goal, submit a change yourself, and watch the campaign end when the goal is met. Needs tutorial 1; no model.
-4. [Your own project](tutorials/your-own-project.md): a campaign on a small project of yours, started from the **New campaign** page. Needs tutorials 1 and 2, and a public repository that your computer can push to and Thermite can fetch over `https`.
+2. [Hand the work to agents](tutorials/agents-with-a-free-model.md): connect a free model, start a hill climb on the sample project in Thermite's repository, and watch agents propose changes. Needs tutorial 1 and an internet connection; no account or key.
+3. [Your first goal campaign](tutorials/first-goal-campaign.md): a goal campaign. Set a goal, submit a change yourself, and watch the campaign end when the goal is met. Needs tutorial 1; no model.
+4. [Your own project](tutorials/your-own-project.md): a hill climb on a small project of yours, started from the **New campaign** page. Needs tutorials 1 and 2, and a public repository that your computer can push to and Thermite can fetch over `https`.
 
 [What Thermite is](explanation/what-thermite-is.md) gives the ideas behind it, in one minute.
 
@@ -47,12 +59,13 @@ Rigs that control sets up on machines and clusters, and rigs you join yourself, 
 
 ### Give it your own project
 
-You have a project with a number you want to improve, or goals you want met.
+You have a project with a number you want to improve or goals you want met, or a question you want researched.
 
 1. First do tutorials 1 and 2 under [Try it on one computer](#try-it-on-one-computer). Then [Your own project](tutorials/your-own-project.md): a first campaign from the **New campaign** page.
-2. [Write a kit for your project](how-to/campaigns/write-a-kit.md): how Thermite builds, runs and checks it.
-3. [Write a contract](how-to/campaigns/write-a-contract.md): what the campaign must achieve.
-4. [Why agents never judge](explanation/why-agents-never-judge.md): what makes a result count.
+2. [Choose a campaign mode](how-to/campaigns/choose-a-mode.md): a hill climb, a goal campaign or a research campaign.
+3. [Write a kit for your project](how-to/campaigns/write-a-kit.md): how Thermite builds, runs and checks it. A research campaign needs none.
+4. [Write a contract](how-to/campaigns/write-a-contract.md): what the campaign must achieve.
+5. [Why agents never judge](explanation/why-agents-never-judge.md): what makes a result count.
 
 ### Let an agent run Thermite
 
@@ -72,6 +85,7 @@ You want your own AI assistant to watch and steer campaigns for you.
 | **Control** | The one service that shows and steers every rig: a dashboard, a REST API and MCP. |
 | **Owner's token** | The secret you sign in to the dashboard with. Only the owner approves what matters. |
 | **Campaign** | One piece of research: what to improve or achieve, and how to judge it. |
+| **Mode** | The kind of campaign: a **hill climb**, a **goal** campaign or a **research** campaign. See [above](#three-kinds-of-campaign). |
 | **Contract** | The file that sets out a campaign: what to improve or which goals to meet, which files agents may change, and its limits. |
 | **Run** | A campaign running on one rig. |
 | **Kit** | The judge's recipe for a project: how to build it, run it, time it and check it. Agents never see it. |

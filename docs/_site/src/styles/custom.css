@@ -62,3 +62,19 @@
   border-radius: 0.75rem;
   box-shadow: var(--sl-shadow-lg);
 }
+.sl-markdown-content .home-shot .home-cap {
+  margin-top: 0.75rem;
+  text-align: center;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-3);
+}
+
+/* The home page's hero title is a sentence, not a name, so it is set smaller than Starlight's
+   default and its tagline keeps a reading width. */
+.hero h1 {
+  font-size: clamp(var(--sl-text-3xl), calc(0.25rem + 3.4vw), var(--sl-text-5xl));
+  line-height: 1.15;
+}
+.hero .tagline {
+  max-width: 40rem;
+}

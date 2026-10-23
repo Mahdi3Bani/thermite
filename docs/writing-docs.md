@@ -91,12 +91,12 @@ sidebar:
 - Link to other pages with relative paths to their files: `[the settings reference](../reference/settings.md#models)`. Those links work on GitHub, in the Markdown copies and on the site. Link to files outside the site (the repository's code, the plans) with their full GitHub address.
 - Code blocks name their language: `sh`, `json`, `yaml`, `text`. Give example files a title: ```` ```json title="contract.json" ````. Examples titled `contract.json`, `kit.json` or `advisors.json` are parsed with the real schema; add `(part)` to the title of a fragment, such as `title="kit.json (part)"`.
 - Notes, tips and warnings use Starlight's asides: `:::note`, `:::tip`, `:::caution`, `:::danger`.
-- Diagrams are Mermaid blocks (```` ```mermaid ````). They render on GitHub and on the site. One exception: the home page's **How it works** diagram is a component, `src/components/HowItWorks.astro`, so that its nested boxes wrap on a phone and follow the site's light and dark themes. Its numbers match the steps of a run listed under it on the page: change both together.
+- Diagrams are Mermaid blocks (```` ```mermaid ````). They render on GitHub and on the site. One exception: the diagram under the home page's **Under the hood** is a component, `src/components/HowItWorks.astro`, so that its nested boxes wrap on a phone and follow the site's light and dark themes. Its numbers match the steps of a run listed under it on the page: change both together.
 - Images go in `docs/_site/src/assets/` and are linked with relative paths.
 
 ## For agents
 
-The built site has `/llms.txt`, which lists every page with its description, and `/llms-full.txt`, which holds every page in one file. There are also `llms-small.txt` and one file for each section. Every page also has a Markdown copy at its address with `.md` added. These come from the pages themselves, so nothing needs updating by hand.
+The built site has `/llms.txt`, which lists every page with its description, and `/llms-full.txt`, which holds every page in one file. There are also `llms-small.txt` and one file for each section. Every page also has a Markdown copy at its address with `.md` added. These come from the pages themselves, so nothing needs updating by hand. A page with a hero, such as the home page, is headed there by its hero's title.
 
 ## The Credits page
 

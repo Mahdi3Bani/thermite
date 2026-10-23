@@ -6,7 +6,7 @@ sidebar:
   order: 3
 ---
 
-In this tutorial you run a **goal campaign**. A hill climb improves a number for as long as you let it; a goal campaign works until a list of goals is met, then ends by itself. You won't need an AI model: you propose the change yourself, and the judge decides whether it meets the goal.
+In this tutorial you run a **goal campaign**. A hill climb improves a number for as long as you let it; a goal campaign works until a list of goals is met, then ends by itself. The third [campaign mode](../explanation/campaign-modes.md), research, studies a question and writes a report from sources that code has checked. You won't need an AI model: you propose the change yourself, and the judge decides whether it meets the goal.
 
 At the end you'll have set a goal from a real measurement, seen it unmet, submitted a change, and watched the judge confirm the goal and close the campaign.
 
@@ -191,6 +191,7 @@ You measured where a project starts, set a goal the judge can check, and saw it 
 
 - [Your own project](your-own-project.md): give Thermite a project of your own from the dashboard, with agents, and take the result home.
 - [Campaign modes](../explanation/campaign-modes.md): hill climbs, goal campaigns and research, and when each fits.
+- [Choose a campaign mode](../how-to/campaigns/choose-a-mode.md): pick one for your own work, and see what each needs.
 - [Write a contract](../how-to/campaigns/write-a-contract.md): goals checked by your kit's own code, by a measured value, or by people.
 - [Test a kit with known candidates](../how-to/campaigns/test-a-kit.md): submit changes yourself to see that a kit judges them right.
 - [Decide what waits for you](../how-to/campaigns/decide-what-waits.md): approvals, audits, reviews and "not possible" endings.
