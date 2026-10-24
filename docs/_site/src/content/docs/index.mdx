@@ -90,7 +90,7 @@ Each campaign is one of three kinds, called **modes**:
 ## Why you can trust the results
 
 - **Agents never grade their own work.** They submit a change and what they expect it to do. Only the judge's measurement counts.
-- **The judge holds the clock.** It times each change and the champion in alternating blocks on the same device, decides with statistics, and times the champion against itself once a day to learn how noisy the machine is.
+- **The judge holds the clock.** In a hill climb it first measures where the run starts, and holds every later change against it. It times each change and the champion in alternating blocks on the same device, decides with statistics, and times the champion against itself once a day to learn how noisy the machine is.
 - **A surprising win gets a second look.** On a rig with an auditor, an unusually large gain is audited before it is kept. You can also ask to approve every new champion yourself.
 - **You can watch it catch cheats.** Thermite's own smoke check submits a dozen changes whose right verdicts are known: a real speed-up, a no-op, a timer edit, a fallback to the reference code, NaN output, memory and disk exhaustion, and an attempt to overwrite the champion. Each must get its expected verdict. [Your first run](tutorials/first-run.md) shows it on your computer.
 

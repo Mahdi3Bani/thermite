@@ -58,7 +58,8 @@ const lowAudit = {
 describe("directives", () => {
   test("the supervisor's set needs citations and replaces its last set; epochs record what steered them", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    // With its baseline (goal 115): the run's rounds wait for it.
+    await env.start();
     assert.throws(
       () =>
         env.service.addDirectives(

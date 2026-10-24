@@ -527,7 +527,7 @@ describe("the Codex CLI", () => {
 
   test("a route whose agents run in Codex plans in Codex, and a Pi route does not", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const asked: { model: string; prompt: string }[] = [];
     const scheduler = new Scheduler({
       service: env.service,
@@ -567,7 +567,7 @@ describe("the Codex CLI", () => {
     // The same sign-in with its agents in Pi: the planner is Pi's (here its model is unreachable,
     // so the fixed rules plan), never Codex.
     const pi = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await pi.service.applyCommand(pi.assign);
+    await pi.start();
     const other = new Scheduler({
       service: pi.service,
       runner: new LocalRunner(pi.paths.scratchDir),

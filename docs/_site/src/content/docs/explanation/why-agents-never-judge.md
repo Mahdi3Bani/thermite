@@ -20,7 +20,7 @@ So in Thermite, agents only propose. A **judge**, which is ordinary code that th
 
 | Agents can | Agents cannot |
 | --- | --- |
-| Read and edit the project in their own workspace, build it and test their changes | Read or change the judge, the project's [kit](kits.md) or its hidden test cases |
+| Read and edit the project in their own workspace, build it and test their changes | Read or change the judge, the project's [kit](kits.md), its hidden test cases or the files the kit's check keeps with a hill climb's baseline |
 | Use the measuring device for their own test runs while the judge is not using it, or a device of their own on a rig that has one | Run anything on the judge's device while it is timing |
 | Submit a change, with what they expect from it and any flaws they know of | Submit a number that counts |
 | See the verdict and the judge's reasons for their own lane's attempts, and the state, verdict and refusals of any attempt of their campaign | See hidden test results, other agents' workspaces or any credentials |
@@ -59,6 +59,16 @@ flowchart LR
 8. **Promoted.** The champion moves only if no other change replaced it in the meantime. If one did, the change is screened again against the new champion.
 
 The [verdicts reference](../reference/verdicts.md) lists every verdict and what it means.
+
+## Before the first change: the baseline
+
+In a hill climb, the judge measures the starting point before it judges any change. This **baseline** is the judge's first job for the run, and nothing else of the run waits less:
+
+1. **Built and timed alone.** The judge builds the starting point and times it on every test case, in three blocks, each running every case the contract's `acceptance.runs_per_cell` times. It records each case's median and spread for every metric the kit has. Hidden test cases are not part of it.
+2. **Its files kept.** While it runs, the kit's check may write files, such as reference outputs, to a folder that only the judge's own processes can reach. When the baseline ends, the folder is sealed: each file's size and SHA-256 go into the record, and later checks can read the files but not change them. The change's own processes never get the folder.
+3. **Held against.** The planner plans no round and no trial starts until the baseline exists. After it, every guard's total allowance holds against these values: a change whose guard has drifted further from the starting point than the contract allows is a `tradeoff`, even when each step on the way was within its own allowance.
+
+When the judge can't measure the starting point (it does not build, a case crashes, the check fails, a value is impossible), the run is in **setup**. The workers get the judge's reasons, and their work is to make the project build and run, within the editable paths. Each change they submit goes through the same baseline job. The judge, not an agent, decides whether it can be measured: the first that can becomes the starting point. The kit is never the workers' to change, so they cannot make the starting point measurable by making the measurement easier.
 
 ## The number that counts
 

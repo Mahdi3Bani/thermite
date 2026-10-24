@@ -183,7 +183,7 @@ The judge runs each stage as its own Unix user, so a candidate cannot change the
 | --- | --- | --- | --- |
 | Build | `builder` | The source tree: a fresh export of the candidate's commit, without `.git` | `PATH`, `LANG=C.UTF-8`, `USER`, and `HOME` and `TMPDIR` set to the working folder |
 | Run | `run`, whose group owns the device. On a rig with several judge cards, card *i* is timed by `run-<i>`, with that card's own group | The run's own folder, holding `params.txt`, `params.json` and `out/` | As for the build. With dedicated judge cards, `CUDA_VISIBLE_DEVICES` names the run's card. On a GPU rig, timed runs are pinned by default to the CPUs near their card (`THERMITE_RUN_CPUS`) |
-| Check | The harness's own user, `thermite` | The kit | `PATH` only |
+| Check | The harness's own user, `thermite` | The kit | `PATH`, and in a hill climb `THERMITE_BASELINE_DIR` ([The check's baseline folder](#the-checks-baseline-folder)) |
 
 A run cannot read the kit. The kit files a run needs go in `run.copy`. Before each run, the judge copies them into a folder outside the run's working folder. The copies are plain files owned by the judge: folders `0555`, files `0444`, or `0555` when executable. Neither the build nor the run can change them. A link among them, or a path missing from the kit, is an infrastructure error: `kit run.copy: not a regular file or directory: <path>` or `kit run.copy: <path> is not in the kit`.
 
@@ -224,6 +224,27 @@ A kit described on the **New campaign** page is different: control wraps its che
 
 When the last line is not JSON, the run fails with `check produced no result (exit <code>): <standard error>`, shortened as [the reasons below](#outcomes) are.
 
+## The check's baseline folder
+
+In a hill climb, the judge's first job measures the starting point alone: the run's [baseline](contract.md#the-baseline). During it, the check gets the environment variable `THERMITE_BASELINE_DIR`: an empty folder it may write to, such as reference outputs of the starting point to compare candidates' outputs with. In every later job of the run (screening, confirmation, the A/A calibration), the check gets the same folder again, read-only.
+
+```js title="check.mjs (part)"
+const dir = process.env.THERMITE_BASELINE_DIR;
+const ref = join(dir, `ref-${params.n}.bin`);
+if (!existsSync(ref)) writeFileSync(ref, output); // the baseline: keep the starting point's output
+const drift = compare(output, readFileSync(ref)); // every later job: compare with it
+```
+
+| Rule | Value |
+| --- | --- |
+| Where | `<state>/baselines/<run>/job-<id>`, the judge's own: the folder and those above it are mode `0700`. The build and the run never get it, and their users cannot reach it |
+| Writable | During the baseline job only. Then each file is made `0400` and each folder `0500` |
+| Contents | Plain files and folders. A link, a hard link or a special file fails the baseline |
+| Limits | 64 MiB and 1,000 files in all, at most 32 folders deep. More fails the baseline: `the kit's check wrote to the baseline's folder: it holds more than 64 MiB, the most it may keep` |
+| Record | Each file's `path`, `bytes` and `sha256`, in the `baseline` event's `files`, sorted by path, and the total in `bytes` |
+| A new starting point | A setup change that becomes the starting point gets a new, empty folder, from its own baseline job |
+| Without a baseline | A goal campaign's check, and a check in a run whose baseline has not run, gets no `THERMITE_BASELINE_DIR` |
+
 ## Outcomes
 
 The judge measures **arms**: the candidate and, in a hill climb, the champion (the run's current best) beside it. A failure counts against the candidate only when it is the candidate's. When the champion's build or run fails, something is wrong with the rig or the kit, so it is an **infrastructure error**: the verdict is `crash_infra`, it never counts against the candidate, and the judge tries the job once more. [Verdicts and states](verdicts.md) describes every verdict.
@@ -237,6 +258,8 @@ The judge measures **arms**: the candidate and, in a hill climb, the champion (t
 | A run's outputs are refused | `invalid` | Infrastructure error |
 | The check fails | `invalid` | Infrastructure error |
 | The driver refuses a metric's value | `invalid` | Infrastructure error |
+
+A hill climb's [baseline](contract.md#the-baseline) judges the starting point as the table judges a candidate: whatever gives a candidate `invalid` or `crash_candidate` means the starting point can't be measured yet, and the run is in setup. Each of its reasons begins with the cell it failed on, `cell <cell>: `.
 
 The reasons have these forms:
 
@@ -258,6 +281,7 @@ Each run's reason keeps at most 2,000 characters. A longer one keeps its first q
 | One failed cell in a goal report, for a verifier or a metric threshold | 2,000 |
 | A verdict's reasons, in the ledger and as control gets them; a goal's reasons in a goal check | 4,000 |
 | A verdict's reasons in a worker's brief, for each of the lane's last attempts | 1,200 |
+| Why the judge could not measure a hill climb's starting point, in a setup trial's brief | 3,000 |
 | Each goal's reasons in the goal report a worker's brief and the planner get | 600 |
 | A build's log in the verdict | the last 1,500 |
 

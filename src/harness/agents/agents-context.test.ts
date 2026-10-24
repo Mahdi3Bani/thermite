@@ -56,7 +56,7 @@ describe("a campaign's own context settings in a run (goal 070)", () => {
       lanes: { count: 1, trials_per_epoch: 1 },
       contract: { agents_context: { context_window: 32_768, compact_at: 60 } },
     });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const asked: ModelConfig[] = [];
     const scheduler = new Scheduler({
       service: env.service,
@@ -112,7 +112,7 @@ describe("a campaign's own context settings in a run (goal 070)", () => {
 
   test("a run of a campaign without them: the routes as they are, and nothing in its record", async () => {
     const env = makeJudgeEnv();
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const created = env.ledger.eventsAfter(0, 5000).events.find((e) => e.kind === "run_created");
     assert.ok(created);
     assert.equal("agents_context" in (created.body as object), false);

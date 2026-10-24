@@ -29,7 +29,7 @@ function scheduler0(env: ReturnType<typeof makeJudgeEnv>) {
 describe("agent scheduler", () => {
   test("an epoch: plan, one trial per lane, judged, lane best kept, next epoch planned", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     // One fake model plays planner and workers: lane-1 writes a faster kernel, lane-2 a wrong one.
     const fake = await startFakeModel(({ messages, tools }) => {
       if (tools.some((t) => t.function.name === "submit_plan")) {
@@ -128,7 +128,7 @@ describe("agent scheduler", () => {
 
   test("a lane best is a win measured against the current champion, and is dropped when it moves", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const scheduler = new Scheduler({
       service: env.service,
       runner: new LocalRunner(env.paths.scratchDir),
@@ -202,7 +202,7 @@ describe("agent scheduler", () => {
 
   test("a worker's token binds its submission to its trial, once, and only while the trial is open", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const scheduler = new Scheduler({
       service: env.service,
       runner: new LocalRunner(env.paths.scratchDir),
@@ -253,7 +253,7 @@ describe("agent scheduler", () => {
 
   test("reset_workers kills the running trials, clears lane bests and starts a fresh epoch", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 3 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     let aborted = 0;
     let started!: () => void;
     const running = new Promise<void>((r) => {
@@ -317,7 +317,7 @@ describe("agent scheduler", () => {
 
   test("a pause stops the run's planner call and running trials at once", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 3 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     // A model route that never answers: the planner call hangs until it is cancelled.
     let requests = 0;
     const hang = createServer(() => {
@@ -400,7 +400,7 @@ describe("agent scheduler", () => {
 
   test("a judge-only run plans no epoch and starts no trial", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 }, agents: false });
-    const r = await env.service.applyCommand(env.assign);
+    const r = await env.start();
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
     assert.equal(env.ledger.getRun("js-1")?.agents, false);
     let asked = 0;
@@ -441,7 +441,7 @@ describe("agent scheduler", () => {
 
   test("a dev run that waited past its trial's end never runs", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const { DevRuns } = await import("./devrun.ts");
     const runner = new LocalRunner(env.paths.scratchDir);
     const dev = new DevRuns({
@@ -479,7 +479,7 @@ describe("agent scheduler", () => {
 
   test("a dev run behind another lane's waits with no time limit, and gives up when its trial ends (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const { DevRuns } = await import("./devrun.ts");
     const dev = new DevRuns({
       runner: new LocalRunner(env.paths.scratchDir),
@@ -527,7 +527,7 @@ describe("agent scheduler", () => {
 
   test("no time cap on a round or a trial unless one is set (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const walls: (number | undefined)[] = [];
     let release: () => void = () => undefined;
     const scheduler = new Scheduler({
@@ -583,7 +583,7 @@ describe("agent scheduler", () => {
 
   test("with a dedicated development card, dev runs and the judge do not wait for each other", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     // A judge job that nothing drains here: the judge is busy throughout.
     env.ledger.enqueueJob({ kind: "calibrate", priority: 10, spec: { run: "js-1" }, actor: "t" });
     const { DevRuns } = await import("./devrun.ts");
@@ -639,7 +639,7 @@ describe("agent scheduler", () => {
 
   test("a dev run's time limit: none on a dedicated card, the shared default otherwise; a run stuck behind another lane's gives up", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const { DevRuns } = await import("./devrun.ts");
     const { SHARED_DEV_RUN_S } = await import("../../core/contract.ts");
     const inner = new LocalRunner(env.paths.scratchDir);
@@ -712,7 +712,7 @@ describe("agent scheduler", () => {
 
   test("development cards are a pool: any free card, a wait only when all are busy, one dev run per lane at a time", async () => {
     const env = makeJudgeEnv({ lanes: { count: 3, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const { DevRuns } = await import("./devrun.ts");
     const registry = scheduler0(env).registry;
     for (const lane of ["lane-1", "lane-2", "lane-3"]) {
@@ -785,7 +785,7 @@ describe("agent scheduler", () => {
       lanes: { count: 1, trials_per_epoch: 1 },
       contract: { budget: { wall_hours: 1, max_open_attempts: 4 } },
     });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const a = (
       await env.service.submitAttempt(
         {
@@ -838,7 +838,7 @@ describe("agent scheduler", () => {
 
   test("lanes back off after unproductive trials", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 5 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     let started = 0;
     const scheduler = new Scheduler({
       service: env.service,
@@ -913,7 +913,7 @@ describe("agent scheduler", () => {
 
   test("a trial that finds no credits stops the run's agents until a model check passes (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 10 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const run = (env.assign.envelope.payload as { run: string }).run;
     let checks = 0;
     let checkPasses = false;
@@ -973,7 +973,7 @@ describe("agent scheduler", () => {
 
   test("no trial starts while the workers' model check fails; a new route ends it (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const { started, round, events } = provider(env, () => ({
       stopped: "no_submission",
       turns: 1,
@@ -1003,7 +1003,7 @@ describe("agent scheduler", () => {
 
   test("a rate limit with a time makes the agents wait until then; a passing fault does not stop them (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     let error = "429 Rate limit reached. Please try again in 30s.";
     // The kind comes from the provider's call (Pi's worker, the model proxy), never the words.
     const { started, round, events } = provider(env, () => ({
@@ -1024,7 +1024,7 @@ describe("agent scheduler", () => {
     assert.equal(started.n, 1, "no trial before the provider's time");
     // A provider's 5xx ends no run and stops no agents: the lane's own backoff alone.
     const env2 = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
-    await env2.service.applyCommand(env2.assign);
+    await env2.start();
     error = "503 Service Unavailable";
     const two = provider(env2, () => ({
       stopped: "error",
@@ -1043,7 +1043,7 @@ describe("agent scheduler", () => {
 
   test("model calls that fail for 30 minutes with no call that worked stop the run's agents as no credits does (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const run = (env.assign.envelope.payload as { run: string }).run;
     let checks = 0;
     env.service.rigChecks.model = {
@@ -1114,7 +1114,7 @@ describe("agent scheduler", () => {
     });
     const almost = 30 * 60_000 - 300;
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const results = [wall(almost), wall(60_000)];
     const one = provider(env, () => results.shift() ?? wall(60_000));
     await one.round();
@@ -1127,7 +1127,7 @@ describe("agent scheduler", () => {
     assert.equal(stop[0]?.kind, "model");
     // A trial between them whose calls worked: the run's count starts again.
     const env2 = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
-    await env2.service.applyCommand(env2.assign);
+    await env2.start();
     const worked = {
       stopped: "no_submission" as const,
       turns: 4,
@@ -1147,7 +1147,7 @@ describe("agent scheduler", () => {
 
   test("a local failure in a provider's words neither stops the agents nor makes them wait; its experiment was tried (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const errors = [
       // The workspace could not be set up.
       "EACCES: permission denied, mkdir '/scratch/lanes/lane-1'",
@@ -1174,7 +1174,7 @@ describe("agent scheduler", () => {
 
   test("a draining rig starts no trial and no plan; shutdown stops trials and keeps their counters (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 3 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     let draining = true;
     let id = "";
     const scheduler = new Scheduler({
@@ -1222,7 +1222,7 @@ describe("agent scheduler", () => {
 
   test("a drain that begins while the planner works: the round is recorded, and no trial starts (goal 079)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 3 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     // Not draining when the step starts; draining from the planner's call on.
     let asked = 0;
     const { scheduler, started } = provider(
@@ -1239,7 +1239,7 @@ describe("agent scheduler", () => {
 
   test("after a restart, trials a dead controller left open are closed and their lanes go on", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const runner = new LocalRunner(env.paths.scratchDir);
     const model = {
       baseUrl: "http://127.0.0.1:9",
@@ -1301,7 +1301,7 @@ describe("agent scheduler", () => {
       goal: { opsPerSecond: 90e6 },
       contract: { lanes: { count: 1, trials_per_epoch: o.trialsPerEpoch ?? 1 } },
     });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const planned: string[] = [];
     const fake = await startFakeModel(({ messages, tools }) => {
       if (!tools.some((t) => t.function.name === "submit_plan")) return { text: "done" };
@@ -1464,7 +1464,7 @@ describe("agent scheduler", () => {
 
   test("a lane's next brief shows the start and the end of the judge's reason for its crash", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     // No plan from the model: the fixed plan gives the lane its experiments.
     const fake = await startFakeModel(() => ({ text: "no plan" }));
     const noisy = `import { writeSync } from "node:fs";

@@ -14,6 +14,21 @@ import { Reviews } from "../reviews.ts";
 import type { HarnessService } from "../service.ts";
 import { readThrottle, throttledFraction } from "../targets/cgroup.ts";
 import type { TargetDriver } from "../targets/driver.ts";
+import {
+  BASELINE_BLOCKS,
+  BASELINE_PRIORITY,
+  type Baseline,
+  type BaselineFailure,
+  baselineDir,
+  baselineDue,
+  baselineOf,
+  baselineState,
+  baselineValue,
+  prepareBaselineDir,
+  removeBaselineDir,
+  sealBaselineDir,
+  startingPoint,
+} from "./baseline.ts";
 import { BuildStore } from "./builds.ts";
 import {
   type Block,
@@ -23,6 +38,7 @@ import {
   decideThresholdGoal,
   type GoalStatus,
   goalDelta,
+  type StartValues,
 } from "./decide.ts";
 import { GOAL_VALUES_CELLS, type GoalCellValues, runValues, valuesText } from "./goal-values.ts";
 import {
@@ -49,6 +65,11 @@ import { clipReason, REASONS_CHARS } from "./reasons.ts";
  *            contract's looks.
  * confirm:   fresh blocks decided on their own data, plus held-out cells (pass or fail only,
  *            seen by promotion alone), then promotion by compare-and-swap if policy allows.
+ * baseline:  a hill climb's first job (goal 115): the starting point alone, in blocks on every
+ *            measured cell, its values recorded as the run's baseline. No other job of the run
+ *            is leased until it exists. When the starting point can't be measured the run is in
+ *            setup, and each setup change submitted is judged by a baseline job too: the first
+ *            that measures becomes the starting point.
  * calibrate: A/A blocks (champion against itself) to measure the rig's noise.
  * validate:  a goal campaign's champion on every goal; when every required goal is met, a second
  *            validation, which also runs the held-out cells of the goals met, before the run
@@ -80,6 +101,8 @@ export interface JudgeOptions {
   readyDelayMs?: number | undefined;
   calibrationBlocks?: number | undefined;
   calibrationEveryMs?: number | undefined;
+  /** A hill climb's baseline: its blocks (BASELINE_BLOCKS), at least two. */
+  baselineBlocks?: number | undefined;
   /** An agent's development run holds the device: the judge waits for it to end. */
   deviceGate?: { active: boolean } | undefined;
   /**
@@ -128,6 +151,20 @@ interface Finish {
   lifecycle?: string | undefined;
   /** Close a run (a goal campaign whose success rule holds). */
   close?: { run: string; reason: string } | undefined;
+  /**
+   * A setup change the baseline job measured (goal 115): it becomes the run's starting point by
+   * compare-and-swap on the champion the job read, and then, in the same transaction, its
+   * verdict and its `baseline` event (with the new champion's number) are recorded.
+   */
+  start?:
+    | {
+        run: string;
+        expectedSeq: number;
+        attempt: string;
+        commitSha: string;
+        baseline: Omit<Baseline, "champion_seq">;
+      }
+    | undefined;
   /** Hold the attempt for an audit (written in the same transaction). */
   audit?:
     | {
@@ -188,6 +225,7 @@ export class Judge {
       calibrationBlocks: 6,
       calibrationEveryMs: 24 * 3_600_000,
       deviceGate: undefined,
+      baselineBlocks: BASELINE_BLOCKS,
       card: undefined,
       buildLock: undefined,
       ...opts,
@@ -209,13 +247,15 @@ export class Judge {
   async tick(): Promise<boolean> {
     if (this.o.deviceGate?.active) return false;
     this.expireLeases();
-    this.maybeScheduleCalibration();
+    const waiting = this.maybeScheduleBaseline();
+    this.maybeScheduleCalibration(waiting);
     this.maybeScheduleValidation();
     const job = this.ledger.leaseJob(
       this.o.owner,
       this.o.leaseMs,
-      ["evaluate", "confirm", "calibrate", "validate"],
+      ["baseline", "evaluate", "confirm", "calibrate", "validate"],
       this.cards > 1 ? this.o.card?.uuid : undefined,
+      waiting,
     );
     if (!job) return false;
     const subject = job.attempt ?? this.jobRun(job) ?? "";
@@ -223,13 +263,15 @@ export class Judge {
     let fin: Finish;
     try {
       fin =
-        job.kind === "evaluate"
-          ? await this.evaluate(job)
-          : job.kind === "confirm"
-            ? await this.confirm(job)
-            : job.kind === "validate"
-              ? await this.validate(job)
-              : await this.calibrate(job);
+        job.kind === "baseline"
+          ? await this.baseline(job)
+          : job.kind === "evaluate"
+            ? await this.evaluate(job)
+            : job.kind === "confirm"
+              ? await this.confirm(job)
+              : job.kind === "validate"
+                ? await this.validate(job)
+                : await this.calibrate(job);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       log("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
@@ -307,6 +349,31 @@ export class Judge {
           result.lost_race_to_seq = r.currentSeq;
         }
       }
+      if (fin.start) {
+        const { baseline, ...start } = fin.start;
+        const r = this.ledger.setStartingPoint({ ...start, by: this.o.owner });
+        if (r.ok) {
+          this.ledger.recordVerdict({
+            attempt: start.attempt,
+            verdict: "starting_point",
+            dependsOnJobs: [job.id],
+            reasons: `the judge measured this setup change on every cell: it is the run's starting point, champion #${r.seq}, and its values are the run's baseline; ${baseline.summary}`,
+            judgedBy: this.o.owner,
+          });
+          this.ledger.appendEvent(this.o.owner, "baseline", start.run, {
+            ...baseline,
+            champion_seq: r.seq,
+          });
+          lifecycle = "promoted";
+          movedRun = start.run;
+          result.start = { seq: r.seq };
+        } else {
+          // The champion moved while it was measured: judged as a change against it instead.
+          lifecycle = "queued";
+          enqueue = { attempt: start.attempt, kind: "evaluate", actor: this.o.owner };
+          result.lost_race_to_seq = r.currentSeq;
+        }
+      }
       if (enqueue) this.ledger.enqueueJob(enqueue);
       if (fin.audit && job.attempt) {
         new Audits(this.ledger).request({
@@ -365,6 +432,8 @@ export class Judge {
           this.ledger.enqueueJob({
             attempt: job.attempt,
             kind: job.kind,
+            // A setup change's baseline job keeps its place ahead of the run's other jobs.
+            ...(job.kind === "baseline" ? { priority: job.priority } : {}),
             spec: { ...this.spec(job), retries: retries + 1 },
             actor: this.o.owner,
           });
@@ -429,7 +498,10 @@ export class Judge {
   ): Promise<Arm> {
     const b = await this.build(run, commit, k);
     if (!b.ok) {
-      if (name !== "candidate") throw new InfraError(`${name} build failed: ${b.reason}`);
+      // The starting point's baseline (goal 115) is judged as a candidate is: a build that fails
+      // means it can't be measured yet.
+      if (name !== "candidate" && name !== "baseline")
+        throw new InfraError(`${name} build failed: ${b.reason}`);
       // A build killed for time or memory is the candidate's crash (not cached: it may have been
       // load); a build that fails or produces refused outputs is invalid.
       throw new Stop(
@@ -440,7 +512,16 @@ export class Judge {
     return { name, dir: b.dir, manifest: b.manifest };
   }
 
-  private context(k: { kit: Kit; dir: string }, job: JobRow): MeasureContext {
+  /**
+   * A job's measuring context. A hill climb's check gets the run's baseline folder (goal 115):
+   * `baselineDir`, the folder a baseline job writes, or else the sealed folder of the run's
+   * baseline, read-only.
+   */
+  private context(
+    k: { kit: Kit; dir: string },
+    job: JobRow,
+    baselineDirNow?: string | undefined,
+  ): MeasureContext {
     const runsDir = join(this.o.service.paths.scratchDir, "runs", `job-${job.id}`);
     mkdirSync(runsDir, { recursive: true });
     // Reachable by exact (unguessable) path only: no role may list in-flight runs.
@@ -455,6 +536,13 @@ export class Judge {
     }
     const held = new Set(contract && "held_out_cells" in contract ? contract.held_out_cells : []);
     let heldRuns = 0;
+    const sealed = (() => {
+      if (baselineDirNow || !run || contract?.mode !== "hill_climb") return undefined;
+      const b = baselineOf(this.ledger, run);
+      const dir = b ? baselineDir(this.o.service.paths.stateDir, run, b.job) : undefined;
+      return dir && existsSync(dir) ? dir : undefined;
+    })();
+    const folder = baselineDirNow ?? sealed;
     return {
       runner: this.o.runner,
       store: this.store,
@@ -462,6 +550,7 @@ export class Judge {
       kitDir: k.dir,
       runsDir,
       modelsDir: join(this.o.service.paths.stateDir, "models"),
+      ...(folder ? { baselineDir: folder } : {}),
       runRole: runRole(this.o.card?.index ?? 0),
       note: (arm, cell, outcome) =>
         held.has(cell)
@@ -481,27 +570,33 @@ export class Judge {
     }
   }
 
-  /** A candidate's failed run stops the job with its verdict; any other arm's is infra. */
-  private judgeRun(arm: Arm, r: ArmRun): void {
+  /**
+   * A candidate's failed run stops the job with its verdict; any other arm's is infra. The
+   * baseline's (goal 115) stops it as a candidate's does: the starting point can't be measured.
+   */
+  private judgeRun(arm: Arm, r: ArmRun, cell?: string): void {
+    const judged = arm.name === "candidate" || arm.name === "baseline";
+    // The baseline's reasons name the cell: they tell the workers in setup what to fix.
+    const on = arm.name === "baseline" && cell ? `cell ${cell}: ` : "";
     if (r.kind === "ok") {
       const implausible = this.o.driver.plausibility(r.metrics);
       if (implausible.length === 0) return;
-      if (arm.name === "candidate")
-        throw new Stop("invalid", `implausible: ${implausible.join("; ")}`);
+      if (judged) throw new Stop("invalid", `${on}implausible: ${implausible.join("; ")}`);
       throw new InfraError(`${arm.name} implausible: ${implausible.join("; ")}`);
     }
-    if (arm.name !== "candidate") throw new InfraError(`${arm.name} run failed: ${r.reason}`);
-    throw new Stop(r.kind === "crash" ? "crash_candidate" : "invalid", r.reason);
+    if (!judged) throw new InfraError(`${arm.name} run failed: ${r.reason}`);
+    throw new Stop(r.kind === "crash" ? "crash_candidate" : "invalid", `${on}${r.reason}`);
   }
 
   /**
    * Runs `count` interleaved blocks over `cells` and records every value as a measurement.
-   * Each block re-checks the target's readiness and renews the lease.
+   * Each block re-checks the target's readiness and renews the lease. With one arm (a baseline),
+   * each block runs that arm alone: its values are the block's `candidate` side.
    */
   private async blocks(input: {
     job: JobRow;
     ctx: MeasureContext;
-    arms: [Arm, Arm];
+    arms: [Arm, Arm] | [Arm];
     cells: readonly string[];
     count: number;
     startAt?: number;
@@ -550,7 +645,7 @@ export class Judge {
     job: JobRow;
     ctx: MeasureContext;
     a: Arm;
-    b: Arm;
+    b: Arm | undefined;
     cells: readonly string[];
     n: number;
     attempt: number;
@@ -571,7 +666,7 @@ export class Judge {
     const raw: Record<string, Record<string, Record<string, number[]>>> = {};
     for (const cell of x.cells) {
       for (let k = 0; k < x.runsPerCell; k++) {
-        const pair = order() < 0.5 ? [a, b] : [b, a];
+        const pair = !b ? [a] : order() < 0.5 ? [a, b] : [b, a];
         for (const arm of pair) {
           const t0 = readThrottle();
           const r = await runArm(ctx, arm, cell);
@@ -591,7 +686,7 @@ export class Judge {
             swept: r.outcome.swept.length,
             ...(r.kind === "ok" ? { check: r.check.details } : { reason: r.reason }),
           });
-          this.judgeRun(arm, r);
+          this.judgeRun(arm, r, cell);
           if (r.kind !== "ok") continue;
           for (const [metric, value] of Object.entries(r.metrics)) {
             const byMetric = raw[arm.name] ?? {};
@@ -608,7 +703,7 @@ export class Judge {
       const m = Math.floor(v.length / 2);
       return v.length % 2 ? (v[m] as number) : ((v[m - 1] as number) + (v[m] as number)) / 2;
     };
-    for (const arm of [a, b]) {
+    for (const arm of b ? [a, b] : [a]) {
       const side = arm === a ? "candidate" : "reference";
       for (const [metric, byCell] of Object.entries(raw[arm.name] ?? {})) {
         for (const [cell, xs] of Object.entries(byCell)) {
@@ -638,7 +733,7 @@ export class Judge {
       target: x.target,
       readiness,
       env: await this.o.driver.envSnapshot(),
-      builds: { a: a.manifest.key, b: b.manifest.key },
+      builds: { a: a.manifest.key, ...(b ? { b: b.manifest.key } : {}) },
       runs,
     });
     if (!accepted) return undefined;
@@ -657,13 +752,18 @@ export class Judge {
       delta: toFraction(d.primary.estimate),
       ciLow: toFraction(d.primary.low),
       ciHigh: toFraction(d.primary.high),
-      guards: d.guards.map((g) => ({
-        metric: g.metric,
-        status: g.status,
-        estimate: g.interval.estimate,
-        low: g.interval.low,
-        high: g.interval.high,
-      })),
+      guards: d.guards.map((g) => {
+        // At confirmation, the guard against the run's baseline too (goal 115): a log ratio.
+        const s = d.vsStart?.find((x) => x.metric === g.metric);
+        return {
+          metric: g.metric,
+          status: g.status,
+          estimate: g.interval.estimate,
+          low: g.interval.low,
+          high: g.interval.high,
+          ...(s ? { vs_start: { estimate: s.estimate, noise: s.noise, spent: s.spent } } : {}),
+        };
+      }),
     };
   }
 
@@ -767,14 +867,17 @@ export class Judge {
 
   // ------------------------------------------------------------------ confirm and promote
 
-  /** Sum of guard effects (log ratios) of the promoted steps since the seed. */
+  /**
+   * Sum of guard effects (log ratios) of the promoted steps since the run's starting point: the
+   * seed, or the champion a setup change became (goal 115).
+   */
   private guardTotals(run: string): Record<string, number> {
     const totals: Record<string, number> = {};
     const rows = this.ledger.db
       .prepare(
-        "select attempt from champion where run = ? and reopened = 0 and attempt is not null",
+        "select attempt from champion where run = ? and reopened = 0 and attempt is not null and seq > ?",
       )
-      .all(run) as { attempt: string }[];
+      .all(run, startingPoint(this.ledger, run).seq) as { attempt: string }[];
     for (const r of rows) {
       const v = this.ledger.db
         .prepare(
@@ -821,7 +924,9 @@ export class Judge {
         runsPerCell: contract.acceptance.runs_per_cell,
       });
       const ho = await this.heldOutPass(job, () => this.heldOut(job, ctx, cand, champ, contract));
-      const d = decideConfirm(contract, blocks, this.guardTotals(run), this.noiseFloor(run));
+      // The guards' total allowance holds against the starting point's values too (goal 115).
+      const start: StartValues | undefined = baselineOf(this.ledger, run)?.cells;
+      const d = decideConfirm(contract, blocks, this.guardTotals(run), this.noiseFloor(run), start);
       let verdict: string = d.verdict ?? "not_confirmed";
       let reasons = d.reasons;
       // A held-out failure is named by its kind alone (goal 082): the reasons say that a held-out
@@ -1737,6 +1842,195 @@ export class Judge {
     }
   }
 
+  // ------------------------------------------------------------------ baseline (goal 115)
+
+  /**
+   * Queues the baseline of each running hill climb's starting point when it is due (baselineDue),
+   * and returns the runs that have no baseline yet, waiting or in setup: the judge leases none
+   * of their jobs but a baseline job until they have one.
+   */
+  private maybeScheduleBaseline(): string[] {
+    const waiting: string[] = [];
+    for (const inst of this.ledger.listRuns()) {
+      if (inst.status !== "running" || inst.mode !== "hill_climb") continue;
+      const s = baselineState(this.ledger, inst.id);
+      if (!s || s.state === "measured") continue;
+      waiting.push(inst.id);
+      const due = baselineDue(this.ledger, inst.id);
+      if (!due) continue;
+      this.ledger.enqueueJob({
+        kind: "baseline",
+        priority: BASELINE_PRIORITY,
+        spec: { run: inst.id, champion_seq: due.seq, commit: due.commit },
+        actor: this.o.owner,
+      });
+    }
+    return waiting;
+  }
+
+  /**
+   * The baseline job (goal 115). It builds the starting point, or a setup change, and runs it
+   * alone in blocks on every measured cell (never a held-out one), each block running each cell
+   * `runs_per_cell` times. The kit's check may write to the job's judge-only folder meanwhile;
+   * the folder is then sealed and each file hashed. Whatever would give a candidate `invalid` or
+   * `crash_candidate` means the build can't be measured: for the starting point, a
+   * `baseline_failed` event with the reasons (the run is in setup); for a setup change, its
+   * verdict. A setup change that measures becomes the starting point (finish), and its values
+   * the baseline.
+   */
+  private async baseline(job: JobRow): Promise<Finish> {
+    const spec = this.spec(job);
+    const run = String(spec.run);
+    const contract = this.hillClimb(run);
+    const s = baselineState(this.ledger, run);
+    if (!s) throw new InfraError(`${run} has no baseline to measure`);
+    const setup = job.attempt ?? undefined;
+    let commit: string;
+    if (setup) {
+      // The run is no longer in setup: the change is judged as any change is, against the
+      // champion.
+      if (s.state !== "setup")
+        return {
+          result: { setup_over: true },
+          enqueue: { attempt: setup, kind: "evaluate", actor: this.o.owner },
+          lifecycle: "queued",
+        };
+      const attempt = this.ledger.getAttempt(setup);
+      if (!attempt) throw new InfraError(`no attempt ${setup}`);
+      commit = String(attempt.commit_sha);
+    } else {
+      if (s.state === "measured" || Number(spec.champion_seq) !== s.start.seq)
+        return { result: { skipped: "the starting point has its baseline, or has changed" } };
+      commit = s.start.commit;
+    }
+    const step = (l: string) => {
+      this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+      if (setup) this.ledger.setAttemptLifecycle(setup, l, this.o.owner);
+    };
+    const expectedSeq = this.ledger.currentChampion(run).seq;
+    const dir = prepareBaselineDir(this.o.service.paths.stateDir, run, job.id);
+    try {
+      const k = await this.kitFor(contract);
+      step("building");
+      const arm = await this.armFor("baseline", run, commit, k);
+      const ctx = this.context(k, job, dir);
+      step("screening");
+      const count = Math.max(2, this.o.baselineBlocks ?? BASELINE_BLOCKS);
+      const blocks = await this.blocks({
+        job,
+        ctx,
+        arms: [arm],
+        cells: contract.cells,
+        count,
+        runsPerCell: contract.acceptance.runs_per_cell,
+      });
+      const sealed = sealBaselineDir(dir);
+      if (!sealed.ok) throw new Stop("invalid", sealed.reason);
+      const body = this.baselineBody({
+        job,
+        run,
+        contract,
+        kit: k.kit,
+        commit,
+        attempt: setup ?? null,
+        blocks,
+        files: sealed.files,
+        bytes: sealed.bytes,
+      });
+      if (setup)
+        return {
+          result: { baseline: true, summary: body.summary },
+          start: { run, expectedSeq, attempt: setup, commitSha: commit, baseline: body },
+        };
+      return {
+        result: { baseline: true, champion_seq: s.start.seq, summary: body.summary },
+        events: [{ kind: "baseline", subject: run, body: { ...body, champion_seq: s.start.seq } }],
+      };
+    } catch (err) {
+      removeBaselineDir(dir);
+      if (!(err instanceof Stop)) throw err;
+      if (setup)
+        return this.stopped(
+          job,
+          new Stop(
+            err.verdict,
+            `the judge could not measure this setup change, so the run is still in setup: ${err.reason}`,
+          ),
+        );
+      const reasons = clipReason(err.reason, REASONS_CHARS);
+      const failure: BaselineFailure = {
+        run,
+        job: job.id,
+        champion_seq: s.start.seq,
+        commit,
+        reasons,
+        summary: `the judge could not measure champion #${s.start.seq} (${commit.slice(0, 8)}): ${clipReason(reasons.split("\n")[0] ?? "", 300)}`,
+      };
+      return {
+        result: { baseline_failed: true, champion_seq: s.start.seq },
+        events: [{ kind: "baseline_failed", subject: run, body: failure }],
+      };
+    }
+  }
+
+  /** A baseline's record from its blocks: every kit metric on every cell, and the folder. */
+  private baselineBody(x: {
+    job: JobRow;
+    run: string;
+    contract: HillClimbContract;
+    kit: Kit;
+    commit: string;
+    attempt: string | null;
+    blocks: Block[];
+    files: Baseline["files"];
+    bytes: number;
+  }): Omit<Baseline, "champion_seq"> {
+    const { contract, kit } = x;
+    const cells: Baseline["cells"] = {};
+    for (const cell of contract.cells) {
+      const byMetric: Baseline["cells"][string] = {};
+      for (const metric of Object.keys(kit.metrics)) {
+        const xs = x.blocks
+          .map((b) => b.candidate[metric]?.[cell])
+          .filter((v): v is number => v !== undefined && Number.isFinite(v));
+        if (xs.length) byMetric[metric] = baselineValue(xs);
+      }
+      cells[cell] = byMetric;
+    }
+    const { metric, direction } = contract.objective.primary;
+    const fig = (v: number) =>
+      Math.abs(v) >= 1e5 ? v.toExponential(3) : String(Number(v.toPrecision(4)));
+    const summary = `${metric} ${contract.cells
+      .map((c) => {
+        const v = cells[c]?.[metric];
+        return v
+          ? `${c} ${fig(v.median)} ±${((100 * v.mad) / Math.abs(v.median || 1)).toFixed(2)}%`
+          : `${c} none`;
+      })
+      .join(
+        ", ",
+      )} (median of ${x.blocks.length} blocks${x.files.length ? `; the check kept ${x.files.length} file${x.files.length === 1 ? "" : "s"}` : ""})`;
+    return {
+      run: x.run,
+      job: x.job.id,
+      commit: x.commit,
+      attempt: x.attempt,
+      blocks: x.blocks.length,
+      runs_per_cell: contract.acceptance.runs_per_cell,
+      primary: { metric, direction },
+      guards: contract.guards.map((g) => ({
+        metric: g.metric,
+        direction: g.direction,
+        max_total_regression: g.max_total_regression,
+      })),
+      units: Object.fromEntries(Object.entries(kit.metrics).map(([n, m]) => [n, m.unit ?? ""])),
+      cells,
+      files: x.files,
+      bytes: x.bytes,
+      summary: clipReason(summary, 1000),
+    };
+  }
+
   // ------------------------------------------------------------------ A/A calibration
 
   /**
@@ -1757,12 +2051,17 @@ export class Judge {
     return Number.isFinite(sigma) && sigma > 0 ? sigma : 0;
   }
 
-  private maybeScheduleCalibration(): void {
+  /**
+   * A hill climb's calibration (the A/A) comes after its baseline (goal 115): a run that waits
+   * for its baseline gets none queued yet.
+   */
+  private maybeScheduleCalibration(waiting: readonly string[] = []): void {
     if (this.o.calibrationBlocks < 2) return;
     // Each judge card calibrates for itself; its executor schedules the job pinned to it.
     const mine = this.cards > 1 ? this.o.card?.uuid : undefined;
     for (const inst of this.ledger.listRuns()) {
       if (inst.status !== "running" || inst.mode !== "hill_climb") continue;
+      if (waiting.includes(inst.id)) continue;
       const last = this.ledger.db
         .prepare(
           `select created_at from job where kind = 'calibrate' and json_extract(spec, '$.run') = ?

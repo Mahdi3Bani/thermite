@@ -40,7 +40,34 @@ export interface Decision<V> {
   verdict: V | undefined;
   primary: Interval;
   guards: GuardResult[];
+  /** At confirmation, each guard against the run's baseline (goal 115), when it has one. */
+  vsStart?: StartGuard[] | undefined;
   reasons: string;
+}
+
+/**
+ * The starting point's value of one metric on one cell: the median of the baseline's blocks and
+ * their median absolute deviation (goal 115).
+ */
+export interface StartValue {
+  median: number;
+  mad: number;
+}
+
+/** A run's baseline as decisions read it: cell -> metric -> value. */
+export type StartValues = Readonly<Record<string, Readonly<Record<string, StartValue>>>>;
+
+/** One guard against the baseline: log ratios, positive meaning better than the start. */
+export interface StartGuard {
+  metric: string;
+  /** The change's values against the starting point's (geometric mean over the cells). */
+  estimate: number;
+  /** The guard's total allowance. */
+  allowed: number;
+  /** The starting point's own spread, which never counts against a change. */
+  noise: number;
+  /** The regression is beyond the allowance and the noise: the allowance is spent. */
+  spent: boolean;
 }
 
 type Policy = Pick<
@@ -99,6 +126,48 @@ function guardResults(policy: Policy, blocks: readonly Block[], alpha: number): 
   });
 }
 
+/**
+ * Each guard against the run's baseline (goal 115). On each cell, the median of the change's
+ * values in these blocks against the starting point's median, as a log ratio in the guard's
+ * direction; the guard's estimate is their mean over the cells (a geometric mean ratio, as for
+ * a block's effect). Its noise is the starting point's own spread on the same cells: the mean of
+ * log(1 + MAD / median). The allowance is spent when the estimate is below
+ * -(log(1 + max_total_regression) + noise): the change has fallen further from the start than
+ * the guard allows, by more than the start's own noise. A guard with no baseline value on one
+ * of the cells is not checked here.
+ */
+export function startGuards(
+  policy: Policy,
+  blocks: readonly Block[],
+  start: StartValues,
+): StartGuard[] {
+  const median = (xs: number[]) => {
+    const v = [...xs].sort((p, q) => p - q);
+    const m = Math.floor(v.length / 2);
+    return v.length % 2 ? (v[m] as number) : ((v[m - 1] as number) + (v[m] as number)) / 2;
+  };
+  const out: StartGuard[] = [];
+  for (const g of policy.guards) {
+    const effects: number[] = [];
+    const noises: number[] = [];
+    for (const cell of policy.cells) {
+      const s = start[cell]?.[g.metric];
+      const xs = blocks
+        .map((b) => b.candidate[g.metric]?.[cell])
+        .filter((x): x is number => x !== undefined && Number.isFinite(x));
+      if (!s || !(s.median > 0) || !xs.length) break;
+      effects.push(logImprovement(median(xs), s.median, g.direction));
+      noises.push(Math.log1p(Math.abs(s.mad) / s.median));
+    }
+    if (effects.length !== policy.cells.length) continue;
+    const estimate = effects.reduce((a, x) => a + x, 0) / effects.length;
+    const noise = noises.reduce((a, x) => a + x, 0) / noises.length;
+    const allowed = toLog(g.max_total_regression);
+    out.push({ metric: g.metric, estimate, allowed, noise, spent: estimate < -(allowed + noise) });
+  }
+  return out;
+}
+
 const pct = (logRatio: number) => `${(toFraction(logRatio) * 100).toFixed(2)}%`;
 const describe = (i: Interval) => `${pct(i.estimate)} [${pct(i.low)}, ${pct(i.high)}] n=${i.n}`;
 
@@ -153,9 +222,10 @@ export function decideScreen(
 }
 
 /**
- * Confirmation: fresh blocks, decided on confirmation data alone at alpha_confirm. Cumulative
- * guard totals (log ratios of earlier promoted steps against the campaign baseline) are checked
- * against each guard's total allowance.
+ * Confirmation: fresh blocks, decided on confirmation data alone at alpha_confirm. Each guard's
+ * total allowance is checked twice: against the sum of the step estimates of the promoted steps
+ * since the starting point (`priorGuardTotals`, log ratios) plus this step's, and, when the run
+ * has a baseline (goal 115), against the starting point's measured values (startGuards).
  */
 export function decideConfirm(
   policy: Policy,
@@ -163,6 +233,8 @@ export function decideConfirm(
   priorGuardTotals: Readonly<Record<string, number>> = {},
   /** The rig's calibrated A/A block spread for the primary metric (log ratio), if known. */
   noiseFloor = 0,
+  /** The run's baseline: the starting point's values on each cell (goal 115). */
+  start?: StartValues | undefined,
 ): Decision<ConfirmVerdict> {
   const alpha = policy.acceptance.alpha_confirm;
   const { metric, direction } = policy.objective.primary;
@@ -172,10 +244,12 @@ export function decideConfirm(
     noiseFloor,
   );
   const guards = guardResults(policy, blocks, alpha);
+  const vsStart = start ? startGuards(policy, blocks, start) : undefined;
   const result = (verdict: ConfirmVerdict, reasons: string) => ({
     verdict,
     primary,
     guards,
+    ...(vsStart ? { vsStart } : {}),
     reasons: `${reasons}; ${metric} ${describe(primary)}`,
   });
 
@@ -191,6 +265,18 @@ export function decideConfirm(
     .map((g) => g.metric);
   if (overTotal.length) {
     return result("tradeoff", `cumulative guard allowance spent: ${overTotal.join(", ")}`);
+  }
+  const spent = (vsStart ?? []).filter((g) => g.spent);
+  if (spent.length) {
+    return result(
+      "tradeoff",
+      `the guard's total allowance against the starting point is spent: ${spent
+        .map(
+          (g) =>
+            `${g.metric} ${pct(g.estimate)} against the starting point (allowed -${pct(g.allowed)}, and its noise ${pct(g.noise)})`,
+        )
+        .join("; ")}`,
+    );
   }
   if (primary.low <= 0) return result("not_confirmed", "gain not confirmed on fresh data");
   const unsure = guards.filter((g) => g.status === "unsure").map((g) => g.metric);

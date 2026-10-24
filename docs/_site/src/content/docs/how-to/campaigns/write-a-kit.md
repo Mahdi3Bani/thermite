@@ -142,6 +142,7 @@ console.log(JSON.stringify({ pass: reasons.length === 0, reasons }));
 - If the project keeps a slow reference implementation, prove the fast path ran. The smoke kits count calls to the reference and fail the run if it was called.
 - Put the cause first in each reason, and keep it short: agents see up to 600 characters of a verdict's reasons, and a goal check keeps 300 for each failed cell.
 - Report extra numbers as fields, such as `max_err` above. A `from: "check"` metric reads one.
+- In a hill climb, the check can compare a change's outputs with the starting point's instead of a reference kept in the kit. The judge's first job measures the starting point alone (the run's [baseline](../../reference/contract.md#the-baseline)), and during it the check gets `THERMITE_BASELINE_DIR`, a folder to write to: keep the starting point's outputs there. Every later check of the run gets the same folder read-only. Check `process.env.THERMITE_BASELINE_DIR` before you use it: a goal campaign's check never gets it. [The check's baseline folder](../../reference/kit-manifest.md#the-checks-baseline-folder) has its rules and its 64 MiB limit.
 
 The check's time limit is `check.timeout_s` (120 seconds).
 
@@ -194,7 +195,7 @@ There is no command that checks a `kit.json` on its own yet ([goal 040](https://
 
 ## 9. Test it, then use it
 
-Check that the kit gives known changes the verdicts you expect: see [Test a kit with known candidates](test-a-kit.md). Then start the campaign with **A kit in a repository** or **Upload a kit** on the [New campaign page](start-from-dashboard.md), or with [`thermite assign --kit`](start-from-command-line.md). When the rigs can't reach the kit's repository, give control the repository first, as the next section says.
+Check that the kit gives known changes the verdicts you expect: see [Test a kit with known candidates](test-a-kit.md). In a hill climb, the run's first job tells you whether the kit can measure your starting point at all: its page shows each case's values under **Where the run started**, or, when the judge could not measure it, its reasons, and the run is in setup until a change makes the project build and run. Then start the campaign with **A kit in a repository** or **Upload a kit** on the [New campaign page](start-from-dashboard.md), or with [`thermite assign --kit`](start-from-command-line.md). When the rigs can't reach the kit's repository, give control the repository first, as the next section says.
 
 ## Give control a kit you wrote elsewhere
 

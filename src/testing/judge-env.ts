@@ -164,6 +164,11 @@ export function makeJudgeEnv(
     assign?: Record<string, unknown> | undefined;
     /** The project is this folder of its repository, beside files that are not the project. */
     folder?: string | undefined;
+    /** The seed's kernel, instead of SEED_KERNEL (for example one that crashes: goal 115). */
+    seedKernel?: string | undefined;
+    /** The kit's run script (bench/run.mjs) and check (check.mjs), instead of the defaults. */
+    kitRun?: string | undefined;
+    kitCheck?: string | undefined;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "thermite-judge-"));
@@ -187,7 +192,7 @@ export function makeJudgeEnv(
   } else {
     const at = opts.folder ? `${opts.folder}/` : "";
     seed = repo(project, {
-      [`${at}src/kernel/work.mjs`]: SEED_KERNEL,
+      [`${at}src/kernel/work.mjs`]: opts.seedKernel ?? SEED_KERNEL,
       [`${at}README.md`]: "test\n",
       ...(opts.folder
         ? { "README.md": "the repository, not the project\n", "docs/other.md": "not the project\n" }
@@ -207,9 +212,9 @@ export function makeJudgeEnv(
         null,
         2,
       ),
-      "bench/run.mjs": RUN,
+      "bench/run.mjs": opts.kitRun ?? RUN,
       "bench/drive.mjs": DRIVE,
-      "check.mjs": CHECK,
+      "check.mjs": opts.kitCheck ?? CHECK,
     });
     git(kitRepo, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "k.bundle"), "--all");
   }
@@ -355,6 +360,21 @@ export function makeJudgeEnv(
     throw new Error("judge did not drain");
   };
 
+  /**
+   * Assigns the run and, for a hill climb, has the judge measure its starting point (goal 115):
+   * the run's rounds wait for that baseline, and its other judge jobs too.
+   */
+  const start = async () => {
+    const out = await service.applyCommand(assign);
+    if (!(out.status === "applied" && out.accepted)) throw new Error(JSON.stringify(out));
+    if (parsed.contract.mode !== "hill_climb") return out;
+    const run = String(opts.assign?.run ?? "js-1");
+    for (let i = 0; i < 5 && !ledger.latestEventBody("baseline", run); i++) await judge.tick();
+    if (!ledger.latestEventBody("baseline", run))
+      throw new Error("the judge did not measure the starting point");
+    return out;
+  };
+
   /** Signs any command for this rig with control's test key. */
   const sign = (kind: CommandKind, payload: unknown) =>
     signEnvelope(
@@ -399,6 +419,7 @@ export function makeJudgeEnv(
     sign,
     patch,
     drain,
+    start,
     seed,
     kitCommit,
     keys,

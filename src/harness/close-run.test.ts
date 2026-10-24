@@ -39,7 +39,8 @@ const count = (env: { ledger: { db: { prepare(s: string): { get(): unknown } } }
 describe("close_run (goal 087)", () => {
   test("the owner closes a running run: its trial stops, nothing new starts, its judge jobs never run, and it stays closed", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 3 } });
-    await env.service.applyCommand(env.assign);
+    // With its baseline (goal 115): the run's rounds wait for it.
+    await env.start();
     // A change waiting for the judge when the run closes.
     const sub = (await env.service.submitAttempt(
       {

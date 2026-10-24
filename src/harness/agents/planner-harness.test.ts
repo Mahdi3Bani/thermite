@@ -45,7 +45,7 @@ async function planWith(
   workers: ModelConfig,
 ): Promise<{ asked: string[]; source: string; models: string[] }> {
   const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-  await env.service.applyCommand(env.assign);
+  await env.start();
   const asked: string[] = [];
   const models: string[] = [];
   const ask = (name: string) => async (m: ModelConfig) => {
@@ -128,7 +128,7 @@ describe("the planner's own harness", () => {
 
   test("a planner call through Claude Code, Codex or OpenCode keeps its conversation before each of their own compactions in the run's research folder (goal 070)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const folder = new ResearchFolder({
       ledger: env.service.ledger,
       scratchRoot: join(env.paths.scratchDir, "research"),
@@ -195,7 +195,7 @@ describe("the planner's own harness", () => {
     // A call through Codex is told too.
     const viaCodex: (PlannerCallOptions | undefined)[] = [];
     const codexEnv = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await codexEnv.service.applyCommand(codexEnv.assign);
+    await codexEnv.start();
     codexEnv.service.compactions = env.service.compactions;
     const codex = new Scheduler({
       service: codexEnv.service,
@@ -222,7 +222,7 @@ describe("the planner's own harness", () => {
   test("each planner call's model usage is in the run's records, with its round, its harness and its provider", async () => {
     // Through another harness: what its output reported, handed back with the answer.
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const scheduler = new Scheduler({
       service: env.service,
       runner: new LocalRunner(env.paths.scratchDir),
@@ -256,7 +256,7 @@ describe("the planner's own harness", () => {
     }));
     try {
       const pi = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-      await pi.service.applyCommand(pi.assign);
+      await pi.start();
       const s = new Scheduler({
         service: pi.service,
         runner: new LocalRunner(pi.paths.scratchDir),

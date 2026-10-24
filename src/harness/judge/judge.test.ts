@@ -47,15 +47,17 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     assert.equal(champ.seq, 2);
     assert.equal(champ.attempt, id);
     assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "promoted");
-    // Measurements name their arm, and receipts exist for every block.
+    // Measurements name their arm (the starting point's baseline first), and receipts exist for
+    // every block.
     const arms = env.ledger.db
       .prepare("select distinct arm from measurement order by arm")
       .all()
       .map((r) => r.arm);
-    assert.deepEqual(arms, ["candidate", "champion"]);
+    assert.deepEqual(arms, ["baseline", "candidate", "champion"]);
     const receipts = env.ledger.db.prepare("select count(*) as n from receipt").get();
-    // At least the first screening look (3 blocks) plus 4 confirmation blocks.
-    assert.ok(Number(receipts?.n) >= 7, `receipts ${receipts?.n}`);
+    // The baseline's 3 blocks, at least the first screening look (3 blocks) and 4 confirmation
+    // blocks.
+    assert.ok(Number(receipts?.n) >= 10, `receipts ${receipts?.n}`);
   });
 
   test("two judge cards: each calibrates itself, and a win screened on one is confirmed on the other", async () => {
@@ -74,7 +76,10 @@ describe("judge pipeline (local runner, Node test kit)", () => {
         card: { index, uuid: `GPU-${"ab"[index]}`, count: 2 },
       });
     const [a, b] = [card(0), card(1)];
-    // Each card schedules and runs its own calibration.
+    // The run's baseline first, on either card; then each card schedules and runs its own
+    // calibration.
+    assert.equal(await a.tick(), true);
+    assert.equal(env.ledger.latestEventBody("baseline", "js-1")?.champion_seq, 1);
     assert.equal(await a.tick(), true);
     assert.equal(await b.tick(), true);
     const cals = env.ledger.db
@@ -300,9 +305,19 @@ export function work() {
   });
 
   test("a target that never becomes ready ends in crash_infra, retried once, then errored", async () => {
-    const env = await setup({ neverReady: true });
+    const env = await setup();
+    await env.drain(); // the baseline of the starting point, while the target is ready
+    const judge = new Judge({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      driver: new CpuDriver("test", { load: () => Number.POSITIVE_INFINITY }),
+      owner: "judge-test",
+      promotion: "auto",
+      readyRetries: 0,
+      calibrationBlocks: 0,
+    });
     const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
-    await env.drain();
+    for (let i = 0; i < 10 && (await judge.tick()); i++);
     const history = env.ledger.db
       .prepare("select verdict from verdict where attempt = ? order by id")
       .all(id)
@@ -311,10 +326,26 @@ export function work() {
     assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "errored");
   });
 
+  test("a target never ready for the baseline: the job fails in the judge, the run waits, and nothing is in setup", async () => {
+    const env = await setup({ neverReady: true });
+    const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
+    await env.drain();
+    const jobs = env.ledger.db
+      .prepare("select kind, state from job order by id")
+      .all()
+      .map((r) => `${r.kind}:${r.state}`);
+    // The baseline's try failed in the judge, and the change's job waits for a baseline.
+    assert.deepEqual(jobs, ["evaluate:queued", "baseline:failed"]);
+    assert.equal(env.ledger.latestEventBody("baseline_failed", "js-1"), undefined);
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "queued");
+    assert.equal(env.ledger.currentVerdict(id), undefined);
+  });
+
   test("a win screened against a champion that has since moved is screened again", async () => {
     const env = await setup();
     const a = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
     const b = await env.submit(`${FAST_KERNEL}// same idea, restated\n`, "the same, restated");
+    assert.ok(await env.judge.tick()); // the baseline of the starting point
     assert.ok(await env.judge.tick()); // screens a
     assert.equal(env.ledger.currentVerdict(a)?.verdict, "win_screened");
     // Meanwhile b becomes the champion by another path.

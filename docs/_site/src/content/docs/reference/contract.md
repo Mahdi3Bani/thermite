@@ -188,7 +188,7 @@ A **candidate** is a change an agent submits. These two fields are checked befor
 
 ## Hill climb
 
-`"mode": "hill_climb"`: improve one metric, step by step, while guards hold. Each candidate is first **screened** against the **champion** (the run's current best) in interleaved **blocks**: one or more timed runs of each **arm** (candidate and champion) on each **cell** (one measured input from the kit). A win is then **confirmed** on fresh blocks before it is promoted. [Verdicts and states](verdicts.md) lists the verdicts.
+`"mode": "hill_climb"`: improve one metric, step by step, while guards hold. The judge first measures the run's starting point alone, its **baseline** ([below](#the-baseline)). Each candidate is then **screened** against the **champion** (the run's current best) in interleaved **blocks**: one or more timed runs of each **arm** (candidate and champion) on each **cell** (one measured input from the kit). A win is then **confirmed** on fresh blocks before it is promoted. [Verdicts and states](verdicts.md) lists the verdicts.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -211,7 +211,7 @@ A guard:
 | `metric` | kit metric | The guarded metric |
 | `direction` | `max` or `min` | Which way is better for it |
 | `max_step_regression` | number ≥ 0 | How much worse, as a fraction, it may get in one promotion. A guard that is clearly worse makes the verdict `tradeoff`; one that is not yet clear keeps screening going |
-| `max_total_regression` | number ≥ 0 | How much worse it may get over all promotions since the run's starting commit. Spending it makes the confirmation a `tradeoff` ("cumulative guard allowance spent") |
+| `max_total_regression` | number ≥ 0 | How much worse it may get against the run's starting point, checked two ways at confirmation: the sum of the step estimates of the promotions since the starting point, with this step's (`cumulative guard allowance spent: <metric>`), and the candidate's measured values against the [baseline](#the-baseline)'s (`the guard's total allowance against the starting point is spent: <metric> <change> against the starting point (allowed -<allowance>, and its noise <noise>)`). Either one spent makes the confirmation a `tradeoff` |
 
 A hard constraint is one of:
 
@@ -230,11 +230,33 @@ A hard constraint is one of:
 | `acceptance.equivalence_band` | number > 0 | 0.005 | A difference whose whole interval is within ± this fraction is `neutral` ("equivalent") |
 | `acceptance.looks` | list of integers ≥ 1, at least one | `[3, 6, 9]` | Block counts at which screening may decide. The largest is the most blocks screening runs |
 | `acceptance.confirm_blocks` | integer ≥ 1 | 5 | Fresh blocks for confirmation |
-| `acceptance.runs_per_cell` | integer, 1–9 | 1 | Runs of each arm on each cell in one block. The block uses their median. For a kit described on the **New campaign** page, its **Runs per case** sets it, 3 unless changed |
+| `acceptance.runs_per_cell` | integer, 1–9 | 1 | Runs of each arm on each cell in one block. The block uses their median. The [baseline](#the-baseline)'s blocks use it too. For a kit described on the **New campaign** page, its **Runs per case** sets it, 3 unless changed |
 | `acceptance.audit.ratio_to_median` | number > 0 | 3 | A confirmed gain more than this many times the median of the run's earlier confirmed gains waits for an audit. It applies once there are three earlier gains |
 | `acceptance.audit.absolute` | number > 0 | 0.15 | A confirmed gain above this fraction goes to an audit first ([Audits](../how-to/campaigns/decide-what-waits.md#audits)) |
 
 [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) covers audits and approvals.
+
+### The baseline
+
+A hill climb's first judge job, `baseline`, measures the run's starting point: champion #1, the seed. It needs no field of its own.
+
+| What | How |
+| --- | --- |
+| When | Before anything else of the run. The judge leases no other job of the run (`evaluate`, `confirm`, `calibrate`) until the baseline exists, and the planner plans no round and no trial starts: **Live** says `round <n> waits for the judge's baseline of the starting point (champion #<n>)`. The A/A calibration comes after it. A run an older harness started gets its baseline as soon as this harness runs it: at once if it is running, when it is resumed if it is paused |
+| What runs | The starting point's build, alone, in 3 blocks over every cell in `cells` (never `held_out_cells`), each block running each cell `acceptance.runs_per_cell` times. Each block's value is the median of its runs, as for a candidate |
+| What is kept | For each cell and each kit metric (the primary metric, every guard and the rest), the median of the blocks' values, their median absolute deviation (`mad`) and their count, in the judge's `baseline` event: `{run, job, champion_seq, commit, attempt, blocks, runs_per_cell, primary, guards, units, cells, files, bytes, summary}`, where `cells` is cell → metric → `{median, mad, n}`. Each value is also a measurement of the arm `baseline` |
+| The kit's files | During the baseline, the kit's check gets `THERMITE_BASELINE_DIR`, a folder only the judge can reach, to write to; every later check of the run reads the same folder and cannot change it. At most 64 MiB and 1,000 files. Each file's path, size and SHA-256 are in `files` ([The check's baseline folder](kit-manifest.md#the-checks-baseline-folder)) |
+| The guards | Each guard's `max_total_regression` holds against these values at every confirmation (below) |
+| It fails | When the starting point does not build, a cell crashes or is stopped at a kit limit, the kit's check fails, a value is impossible, or the check's folder is over its limit: whatever would make a candidate `invalid` or `crash_candidate`. The judge records `baseline_failed`, `{run, job, champion_seq, commit, reasons, summary}`, and the run is in **setup** (below). A failure of the rig itself, such as a device that is never ready, is not the starting point's: the judge tries again 10 minutes later, and the run waits |
+
+**Setup.** While the starting point can't be measured, each round of the run is a setup round, planned without the planner: each lane gets one experiment in the direction `setup`, at the top of the queue, and one trial. Its brief gives the judge's reasons and asks for a change within the editable paths, never the kit, that makes the project build and run every cell. Each change submitted while the run is in setup, by a lane or a person, is judged by a `baseline` job of its own instead of being screened:
+
+- if the judge can measure it, it becomes the run's starting point: a new champion whose `champion_promoted` event has `setup: true`, its verdict `starting_point`, and its values the run's baseline (`attempt` names it). The gain over the starting point counts from it, and the guards' totals too;
+- if not, its verdict is `invalid` or `crash_candidate`, with reasons that begin `the judge could not measure this setup change, so the run is still in setup:`, and the lane goes on.
+
+A change still waiting when another setup change became the starting point is screened against the champion, as any change is. Setup experiments left in the queue then are dropped. Pausing and resuming a run in setup has the judge measure its starting point once more, for when the cause was the rig's.
+
+**A guard against the baseline.** At confirmation, for each guard, the judge takes on each cell the median of the candidate's values in the confirmation's blocks and compares it with the baseline's median, as a log ratio in the guard's direction, and averages over the cells, as a block's effect does. The starting point's own spread on the same cells, the mean of log(1 + `mad` / median), is its noise, which never counts against a change. The allowance is spent when the candidate is worse than the starting point by more than `max_total_regression` and that noise together. These values are compared across time, so a rig whose own speed changes during a run reads that change as the candidate's; the step guard (`max_step_regression`) is measured against the champion in the same blocks, so it is not affected. Each guard in the verdict's record has `vs_start`: `{estimate, noise, spent}`.
 
 ## Goal
 

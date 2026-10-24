@@ -698,6 +698,24 @@ function firstKitFile(kitsDir: string): string | undefined {
   return undefined;
 }
 
+/** A file a kit's check kept with a hill climb's baseline (goal 115), by its full path. */
+function firstBaselineFile(dir: string): string | undefined {
+  if (!existsSync(dir)) return undefined;
+  for (const run of readdirSync(dir)) {
+    for (const job of readdirSync(join(dir, run))) {
+      const stack = [join(dir, run, job)];
+      while (stack.length) {
+        const d = stack.pop() as string;
+        for (const e of readdirSync(d, { withFileTypes: true })) {
+          if (e.isFile()) return join(d, e.name);
+          if (e.isDirectory()) stack.push(join(d, e.name));
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 function firstBuildFile(buildsDir: string): string | undefined {
   if (!existsSync(buildsDir)) return undefined;
   for (const key of readdirSync(buildsDir)) {
@@ -812,6 +830,8 @@ export async function isolationSelftest(opts: {
     { name: "git-mirrors", op: "list", path: join(opts.stateDir, "git") },
     { name: "models-list", op: "list", path: join(opts.stateDir, "models") },
     { name: "builds-list", op: "list", path: join(opts.stateDir, "builds") },
+    // The folders a hill climb's kit check keeps with its baseline (goal 115): the judge's alone.
+    { name: "baselines-list", op: "list", path: join(opts.stateDir, "baselines") },
     { name: "broker-socket", op: "access", path: opts.socketPath },
     { name: "outbox-write", op: "access", path: opts.outboxDir },
     { name: "outbox-read", op: "list", path: opts.outboxDir },
@@ -852,6 +872,9 @@ export async function isolationSelftest(opts: {
   const build = firstBuildFile(join(opts.stateDir, "builds"));
   if (build) probes.push({ name: "build-overwrite", op: "write", path: build });
   else skipped.push("build-overwrite (no build yet)");
+  const kept = firstBaselineFile(join(opts.stateDir, "baselines"));
+  if (kept) probes.push({ name: "baseline-by-path", op: "read", path: kept });
+  else skipped.push("baseline-by-path (no baseline kept a file yet)");
   // A run's copy of the kit's run.copy paths, made as the judge makes it and owned by the
   // controller's user: the run user reads it, and no role may change or add to it.
   const runKit = join(opts.scratchDir, "thermite", "selftest-run-kit");

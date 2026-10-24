@@ -59,6 +59,7 @@ import {
 import { goalChecks } from "./goal-checks.ts";
 import { importBundle, importFile } from "./imports.ts";
 import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
+import { BASELINE_PRIORITY, baselineState } from "./judge/baseline.ts";
 import { heldOutWords } from "./judge/held-out.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
@@ -2481,10 +2482,15 @@ export class HarnessService {
       actor,
     );
     if (lifecycle === "queued") {
+      // A hill climb in setup (goal 115): its starting point can't be measured yet, so a change
+      // is judged by the baseline job, which makes the first one it can measure the starting
+      // point. Otherwise the change is screened against the champion.
+      const setup = baselineState(this.ledger, req.run)?.state === "setup";
       this.ledger.enqueueJob({
         attempt: id,
-        kind: "evaluate",
-        spec: { run: req.run },
+        kind: setup ? "baseline" : "evaluate",
+        ...(setup ? { priority: BASELINE_PRIORITY } : {}),
+        spec: { run: req.run, ...(setup ? { setup: true } : {}) },
         actor,
       });
     }

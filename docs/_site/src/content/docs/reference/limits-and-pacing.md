@@ -149,12 +149,16 @@ The dashboard calls an epoch a **round**.
 | The fallback's directions | Mandated first, then tried; then, in a goal campaign, a direction that names a goal the champion does not meet yet; then the least explored. A direction whose goals the champion already meets all of (its name or description names their ids) is skipped; with none left, each goal not met yet becomes a direction | Fixed |
 | The planner's answer | Every limit it is held to is in its tool's schema and in its prompt: see [The experiment queue](#the-experiment-queue) | |
 | Goal campaign: wait for the goal report | Up to 2 hours, or until 3 checks of the champion failed | Then the epoch is planned without it |
+| Hill climb: wait for the baseline | Until the judge has measured the starting point. No time limit: the run is the judge's to measure first | Live says `round <n> waits for the judge's baseline of the starting point (champion #<n>)` |
+| Hill climb in setup | Each round is a setup round: one setup experiment and one trial for each lane, planned without the planner, until the judge can measure a change | Not a fallback |
 
 ### The judge
 
 | What | Default | Notes |
 | --- | --- | --- |
-| Calibration (A/A) | 6 blocks (`THERMITE_CALIBRATION_BLOCKS`), at most once in 24 hours for each hill-climb run, at the lowest priority | Fewer than 2 blocks turns it off |
+| A hill climb's baseline | 3 blocks of the starting point alone, each running every cell `acceptance.runs_per_cell` times, as the run's first job (priority 10, before every other job) | Fixed. Until it exists, no other job of the run is leased and no round or trial starts. After a failure of the rig itself, tried again 10 minutes later; a starting point that can't be measured puts the run in setup ([The baseline](contract.md#the-baseline)) |
+| The baseline's folder | 64 MiB and 1,000 files, at most 32 folders deep | Fixed. More fails the baseline ([The check's baseline folder](kit-manifest.md#the-checks-baseline-folder)) |
+| Calibration (A/A) | 6 blocks (`THERMITE_CALIBRATION_BLOCKS`), at most once in 24 hours for each hill-climb run, at the lowest priority, and only once its baseline exists | Fewer than 2 blocks turns it off |
 | Goal checks of the champion | Once for each champion. After a failure, up to 3 times, 10 minutes apart | |
 | A job's lease | 15 minutes, renewed every block | A job whose lease ran out 3 times is `blocked` |
 | Readiness before each block | Up to 15 retries, 2 s apart | Then an infrastructure failure: `crash_infra`, one retry |

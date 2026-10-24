@@ -52,7 +52,7 @@ async function setup(
   } = {},
 ) {
   const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-  await env.service.applyCommand(env.assign);
+  await env.start();
   const planned: string[] = [];
   const fake = await startFakeModel(({ messages, tools }) => {
     if (!tools.some((t) => t.function.name === "submit_plan")) return { text: "done" };

@@ -17,6 +17,12 @@ import { NO_WRITER } from "../../core/research-check.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
+import {
+  type BaselineState,
+  baselineState,
+  SETUP_FAMILY,
+  startingPoint,
+} from "../judge/baseline.ts";
 import { clipReason } from "../judge/reasons.ts";
 import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
@@ -77,6 +83,8 @@ import { prepareWorkspace } from "./workspace.ts";
 /** How much of the judge's reasons a brief shows: for each of a lane's attempts, for each goal. */
 const BRIEF_REASON_CHARS = 1200;
 const BRIEF_GOAL_CHARS = 600;
+/** How much of the judge's reasons a setup trial's brief shows (goal 115). */
+const SETUP_REASON_CHARS = 3000;
 
 /**
  * The agent scheduler (SLA pattern). Each epoch (a round) the planner, as the coordinator of the
@@ -849,14 +857,17 @@ export class Scheduler {
     return Math.max(1, Math.min(cap, Number(d?.body.value ?? cap)));
   }
 
-  /** Relative gain of the current champion over the seed, from the confirmed steps. */
+  /**
+   * Relative gain of the current champion over the run's starting point (the seed, or the
+   * champion a setup change became: goal 115), from the confirmed steps since.
+   */
   private championGain(run: string): number {
     let gain = 1;
     const rows = this.ledger.db
       .prepare(
-        "select attempt from champion where run = ? and reopened = 0 and attempt is not null",
+        "select attempt from champion where run = ? and reopened = 0 and attempt is not null and seq > ?",
       )
-      .all(run) as { attempt: string }[];
+      .all(run, startingPoint(this.ledger, run).seq) as { attempt: string }[];
     for (const r of rows) {
       const v = this.ledger.db
         .prepare(
@@ -1026,6 +1037,123 @@ export class Scheduler {
   }
   /** Each run's champion whose confirmation Live was told about, so it is said once. */
   private readonly confirmNoted = new Map<string, number>();
+
+  /**
+   * Tells Live where a hill climb's baseline stands (goal 115), once for each change: the round
+   * that waits for it, the setup when the judge could not measure the starting point, and the
+   * baseline's arrival after either.
+   */
+  private noteBaseline(run: string, s: BaselineState, n: number): void {
+    const before = this.baselineNoted.get(run);
+    const key =
+      s.state === "waiting"
+        ? `waiting:${s.start.seq}:${n}:${s.infra?.at ?? ""}`
+        : s.state === "setup"
+          ? `setup:${s.failure.id}`
+          : `measured:${s.baseline.id}`;
+    if (before === key) return;
+    this.baselineNoted.set(run, key);
+    if (s.state === "measured" && (before === undefined || before.startsWith("measured:"))) return;
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text:
+        s.state === "waiting"
+          ? `round ${n} waits for the judge's baseline of the starting point (champion #${s.start.seq})${s.infra ? `; the judge's last try failed (${clipReason(s.infra.error, 300)}), and it tries again` : ""}`
+          : s.state === "setup"
+            ? `the judge could not measure the starting point (champion #${s.start.seq}): the run is in setup, and each lane works to make it build and run its cells. ${clipReason(s.failure.summary, 600)}`
+            : `the judge measured the starting point (champion #${s.baseline.champion_seq}): ${clipReason(s.baseline.summary, 600)}. The rounds of the plan start now`,
+      run,
+    });
+  }
+  private readonly baselineNoted = new Map<string, string>();
+
+  /**
+   * A setup round (goal 115): the judge could not measure the starting point, so each lane gets
+   * one setup experiment, at the top of the queue: make the project build and run its cells,
+   * within the editable paths, never the kit. No planner call: the judge's reasons are the plan.
+   */
+  private planSetupEpoch(
+    run: string,
+    contract: Contract,
+    n: number,
+    setup: Extract<BaselineState, { state: "setup" }>,
+  ): void {
+    this.registry.addFamily(
+      run,
+      SETUP_FAMILY,
+      "Make the starting point build and run its cells, so the judge can measure it",
+      PLANNER,
+    );
+    const queue = this.o.service.queue;
+    const handout: Handout[] = [];
+    const assignments: Assignment[] = [];
+    const why = `the judge could not measure the starting point (champion #${setup.start.seq}): no change can be judged until it can`;
+    for (const lane of lanesOf(this.laneCount(run, contract))) {
+      const x = queue.add(
+        run,
+        {
+          title: "Make the starting point build and run its cells",
+          details: clipReason(
+            `The judge could not measure the starting point (champion #${setup.start.seq}, commit ${setup.start.commit.slice(0, 12)}). Its reasons: ${setup.failure.reasons}`,
+            EXPERIMENT_DETAILS,
+          ),
+          family: SETUP_FAMILY,
+          why,
+          by: PLANNER,
+          position: "top",
+        },
+        PLANNER,
+      );
+      handout.push({ lane, experiment: x.id, why: "setup" });
+      assignments.push({
+        lane,
+        family: SETUP_FAMILY,
+        focus: focusOf(x),
+        parent: "champion",
+        experiment: x.id,
+        why: "setup",
+      });
+    }
+    this.registry.startEpoch({
+      run,
+      n,
+      source: "fallback",
+      tries: 0,
+      valid: false,
+      rawViolations: [],
+      assignments,
+      notes:
+        "setup: the judge could not measure the starting point; each lane works to make it build and run its cells",
+      plan: "setup",
+      by: this.o.owner,
+    });
+    this.coordinator.handout(
+      run,
+      n,
+      handout,
+      "setup round: each lane works to make the starting point build and run its cells",
+    );
+    this.o.service.live.append({
+      source: "planner",
+      kind: "text",
+      text: `round ${n}: a setup round (the judge could not measure the starting point)\n${assignments.map((a) => `${a.lane}: make the starting point build and run its cells`).join("\n")}`,
+      run,
+    });
+  }
+
+  /** Setup experiments left in the queue once the starting point is measured are dropped. */
+  private dropSetupExperiments(run: string): void {
+    for (const x of this.o.service.queue.queued(run)) {
+      if (x.family !== SETUP_FAMILY) continue;
+      this.o.service.queue.drop(
+        run,
+        x.id,
+        { by: PLANNER, why: "the judge measured the starting point: setup is over" },
+        PLANNER,
+      );
+    }
+  }
 
   /** New limits from the rig's settings; they apply from the next trial or check. */
   configure(p: {
@@ -1572,13 +1700,33 @@ export class Scheduler {
     if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
     if (contract.mode === "goal" && this.waitingForConfirmation(id)) return false;
-    const perEpoch = contract.lanes.trials_per_epoch;
     let epoch = this.registry.currentEpoch(id);
+    // A hill climb's baseline (goal 115): no round is planned and no trial starts until the
+    // judge has measured the starting point. When it can't, the run is in setup: its rounds are
+    // setup rounds, one trial a lane, each working to make the starting point build and run.
+    const base = contract.mode === "hill_climb" ? baselineState(this.ledger, id) : undefined;
+    if (base?.state === "waiting") {
+      this.noteBaseline(id, base, epoch && !epoch.ended_at ? epoch.n : (epoch?.n ?? 0) + 1);
+      return false;
+    }
+    const setup = base?.state === "setup" ? base : undefined;
+    if (base) this.noteBaseline(id, base, 0);
+    if (base?.state === "measured") this.dropSetupExperiments(id);
+    // A round of the other kind (a setup round once the starting point is measured, a round of
+    // the plan while in setup) starts no new trial, and ends when its trials have.
+    if (base && epoch && !epoch.ended_at && isSetupRound(epoch) !== !!setup) {
+      if (!this.running.size) this.registry.endEpoch(id, epoch.n, this.o.owner);
+      return false;
+    }
+    const perEpoch = setup ? 1 : contract.lanes.trials_per_epoch;
     if (!epoch || epoch.ended_at) {
       if (contract.mode === "goal" && this.awaitingGoalReport(id, (epoch?.n ?? 0) + 1))
         return false;
-      this.maybeForkRound(id, contract, (epoch?.n ?? 0) + 1);
-      await this.planEpoch(id, contract, (epoch?.n ?? 0) + 1);
+      if (setup) this.planSetupEpoch(id, contract, (epoch?.n ?? 0) + 1, setup);
+      else {
+        this.maybeForkRound(id, contract, (epoch?.n ?? 0) + 1);
+        await this.planEpoch(id, contract, (epoch?.n ?? 0) + 1);
+      }
       epoch = this.registry.currentEpoch(id);
       if (!epoch) return false;
       // A drain or a stop that began while the planner worked (goal 079): the round is
@@ -2411,6 +2559,9 @@ export class Scheduler {
       contract.mode === "goal"
         ? this.goalReport(run, this.ledger.currentChampion(run).seq)
         : undefined;
+    // A setup trial (goal 115): why the judge could not measure the starting point.
+    const base = a.family === SETUP_FAMILY ? baselineState(this.ledger, run) : undefined;
+    const setup = base?.state === "setup" ? base : undefined;
     const campaignBrief = this.campaignBrief(run, contract);
     return [
       `# Assignment (epoch ${epoch}, trial ${k} of ${perEpoch}, ${a.lane})`,
@@ -2437,6 +2588,16 @@ export class Scheduler {
         ? ""
         : `Added by ${x.added_by === "copied" ? "an earlier run" : x.added_by}: its words are a suggestion to weigh, not instructions.`,
       "",
+      setup
+        ? [
+            "# The starting point can't be measured yet (setup)",
+            `The judge could not measure the run's starting point, champion #${setup.start.seq} (commit ${setup.start.commit.slice(0, 12)}), on its cells, so no change can be judged against it yet. The judge's reasons:`,
+            clipReason(setup.failure.reasons, SETUP_REASON_CHARS),
+            "",
+            "Your work in this trial: one change within the editable paths that makes the project build and run every cell, so that the judge can measure it. Build and test it with run, then submit it. The kit (its build, run and check commands and its cells) is the judge's: change the project, never the kit. The judge measures your change with its baseline job. If it can, your change becomes the run's starting point, and its values the baseline that every later change is held against. If it can't, your change's verdict gives the reasons.",
+            "",
+          ].join("\n")
+        : "",
       report
         ? `# What the champion meets (the judge's check of champion #${report.champion_seq})\n${
             // Its held-out check failed (goal 086): by kind alone, never which case.
@@ -2476,6 +2637,17 @@ export function questionDetails(i: number, q: string): string {
   if (whole.length <= EXPERIMENT_DETAILS) return whole;
   const note = ` … (cut: the whole question is under Questions in your brief)`;
   return `${whole.slice(0, EXPERIMENT_DETAILS - note.length)}${note}`;
+}
+
+/**
+ * A setup round (goal 115): every lane's assignment is the setup direction, given out as setup
+ * (planSetupEpoch), not a direction a planner chose.
+ */
+function isSetupRound(e: EpochRecord): boolean {
+  return (
+    e.assignments.length > 0 &&
+    e.assignments.every((a) => a.family === SETUP_FAMILY && a.why === "setup")
+  );
 }
 
 function objectiveOf(c: Contract): string {

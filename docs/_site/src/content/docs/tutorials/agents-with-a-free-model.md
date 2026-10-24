@@ -161,7 +161,7 @@ Under the header is a row of filters, which choose whose lines you see:
 - **Judge** is the code that measures each change. It is not an agent, and takes no messages.
 - **Advisors** shows the rig's advisors, models that review the work, and **You** shows your own messages. You won't need them here.
 
-When the planner is done, a few minutes after the run starts, the planner's line says `round 1:` and how it planned, and the lane's first trial begins. A **lane-1** filter appears with its first line. Choose **lane-1**. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try, such as `optimization, Kernel micro-interleaving for flops_per_s (from the champion, seq 1)`. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
+First the judge measures the project as it is, on every case: the run's **baseline**, which every change is held against. Until it has, the planner's line says that round 1 waits for the judge's baseline of the starting point. When the planner is done, a few minutes after the run starts, the planner's line says `round 1:` and how it planned, and the lane's first trial begins. A **lane-1** filter appears with its first line. Choose **lane-1**. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try, such as `optimization, Kernel micro-interleaving for flops_per_s (from the champion, seq 1)`. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
 
 New lines come in by themselves, at the bottom: the newest line is the last. **↓ Follow**, on the right above the lines, keeps the newest line in view; press it to stop following, so you can read further up. The rest of this page, like every other page, needs **refresh**. After a **refresh**, a green dot on **lane-1** means it is working.
 
@@ -169,7 +169,7 @@ The box under the lines sends the agents a message, and its grey text says when 
 
 ## 10. Watch the judge decide
 
-The first change takes a while. The planner works for a few minutes, a trial often takes a quarter of an hour or more, and the judge then needs a minute or more to measure what it made. Expect the first verdict between 5 and 30 minutes after the run starts, depending on how fast the model works.
+The first change takes a while. The judge measures the starting point, the planner works for a few minutes, a trial often takes a quarter of an hour or more, and the judge then needs a minute or more to measure what it made. Expect the first verdict between 5 and 30 minutes after the run starts, depending on how fast the model works.
 
 When the agent submits its change, the judge takes over. Open **Overview** in the sidebar and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 

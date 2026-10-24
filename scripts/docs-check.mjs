@@ -333,6 +333,7 @@ const internalSettings = new Map([
     "the controller or the supervisor gives Thermite's OpenCode plugin the line naming the kept file",
   ],
   ["THERMITE_LANE_CACHE", "the controller gives each lane's commands its build cache"],
+  ["THERMITE_BASELINE_DIR", "the judge gives a hill climb's kit check its baseline folder"],
   ["THERMITE_PROBE_TOKEN", "control gives a RunPod test pod its report path"],
   ["THERMITE_PROBE_JS", "control gives a RunPod test pod its probe script"],
 ]);
