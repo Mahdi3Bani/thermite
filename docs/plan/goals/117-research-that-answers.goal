@@ -40,6 +40,32 @@ A research run today collects claims and never turns them into answers. This goa
 5. **The paper from the cards,** and the evidence checks.
 6. **The run's page,** the docs, and the acceptance runs below.
 
+### Build design
+
+The contract every part of the build follows. Names are the code's; questions are numbered from 0 in code and storage, and shown from 1 to people.
+
+**The contract** gains an optional `rubrics` list, one entry per question: what an answer must cover. Without it, a question's rubric is the question itself. It has no default, so contracts written before it keep their hash.
+
+**Ledger migration 21** (one migration, written first):
+
+- `hypothesis` gains `question integer` (null: about the whole run), `status text not null default 'pool'` (`author`, `pool`, `promoted`, `merged`, `retired`; existing rows with no lane become `author`), `merged_into text`, `updated_at text`. A worker's `revise_hypothesis` changes a pool hypothesis's text or question; `propose_hypothesis` refuses text whose folded form repeats a live hypothesis of the run, and names it.
+- `question_card` (`run`, `question`, `version`, `answer`, `certainty` in `high`, `moderate`, `low`, `insufficient`, `none`; `claims` JSON ids; `gaps` JSON `[{kind: "evidence" | "measurement", text}]`; `by`, `created_at`; primary key `run, question, version`; append-only). The newest version is the card.
+- `review_item` (`review`, `reviewer`, `kind` `question` | `hypothesis`, `key` (question index or hypothesis id), `card_version`, `verdict`, `certainty`, `reasons`, `claims` JSON, `problems` JSON): every reviewer's answer per item, as code checked it.
+- `item_decision` (`run`, `kind`, `key`, `review`, `card_version`, `decision`, `certainty`, `dissent` JSON, `decided_at`; append-only): the panel's majority per item. The newest row per item stands until a newer card version exists for a question item.
+- `experiment` gains `question integer` and `yield text` (JSON: verified claims, new domains, findings and card changes the task's trial added).
+
+**Cards.** The harness keeps one card per question. A card is written by the **synthesizer**, a supervisor advisor on the first teacher's model (as the final writer is): the harness lists the questions whose evidence changed since their card (`GET /v1/research/cards/pending`, each with the card, its new verified claims and the question's rubric), the synthesizer answers each with a new card, and the harness checks it (`POST /v1/research/cards/:run`): every cited claim verified and of the run, numbers by `statedNumbers` in the claims cited, gaps classified, certainty one of the words. A refused card keeps the old version and its problems go back with the next request. Workers read cards in their brief and the folder (`cards/q<N>.md`); they never write them.
+
+**Work.** Every research task names `question` and one gap. The model planner for research (goal 047) plans each round from the cards, their gaps, each question's share of recent tasks, yield and saturation, and the queue; code checks each task (a question that exists, a gap of kind `evidence`, no measurement), refuses the rest in words, and falls back to the gap-driven plan in code: each question's weight is its open evidence gaps and its certainty; floor one task per round for an open question with evidence gaps, ceiling half of a window of recent tasks while another open question has evidence gaps; a saturated or decided question gets none. **Saturation**: a question's last 4 tasks added no new verified claim from a new registrable domain and changed no card. Research teachers get their own prompt and schema (`question`, `gap`, `source_kind`, `title`, `details`); an idea or a teacher item that asks for a measurement goes to the run's next experiments, never the queue. Gaps of kind `measurement` never go to workers.
+
+**Reviews.** A research review is due at a digest when an item changed since its decision (a new card version) or has no decision, after the minimum time. The package holds each question's newest card with its cited claims and rubric, the required hypotheses (status `author` or `promoted`) with their claims, and the run's figures; reviewers read more with their tools; the prompt is `researchPrompt`. Each reviewer answers each item: a question as `answered` (certainty `high`, `moderate`, `low`), `insufficient` (best available; what is missing is out of scope, named as next experiments) or `open` (evidence gaps, named); a hypothesis as `supported`, `refuted` or `undecided`. Code checks each answer as today. The decision per item is the majority of the reviewers whose answer passed the check; a tie is `open` (or `undecided`); dissent is kept. Reviewers run in parallel.
+
+**The end.** Code closes a run when every question has a standing decision of `answered` or `insufficient` and every required hypothesis a verdict (hands-off unless the run asks the owner). The **progress rule**: when every question still open is saturated and no item decision or card certainty has improved for a quarter of the run's running time (and at least a quarter of its minimum), the run closes the same way, with its open items stated. Either way the final writer writes the paper from the cards and decisions: one section per question with only its card's claims, a table of hypothesis verdicts, dissent, next experiments (measurement gaps); every paragraph checked as today; the writer's prompt never cut without a word.
+
+**Evidence.** Corroboration counts registrable domains (a small table of public suffixes kept in code), and a card's certainty may count agreeing claims from different domains. A note that repeats one of the run's last 200 notes, word for word after folding, is refused. Every tool output cut says so and gives the offset to go on from.
+
+**The run's page and the Reviews tab** (goal 116) read the cards, the item decisions and the review items.
+
 ## Why
 
 The owner, 2026-10-24: "To me deep research is highly broken, doesn't work, and is failing its job. You need to do a systematic review of it, learnings from this job, and come back with a plan." And: "no v0.1.0 doesn't release without research mode, and we don't release until its solid."

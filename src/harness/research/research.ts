@@ -137,11 +137,12 @@ export function startingHypotheses(
   return ledger.tx(() =>
     texts.map((text) => {
       const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      const now = new Date().toISOString();
       ledger.db
         .prepare(
-          "insert into hypothesis (id, run, lane, text, supporting, created_at) values (?, ?, ?, ?, ?, ?)",
+          "insert into hypothesis (id, run, lane, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, 'author', ?, ?)",
         )
-        .run(id, run, null, text, canonicalJson([]), new Date().toISOString());
+        .run(id, run, null, text, canonicalJson([]), now, now);
       ledger.appendEvent(by, "hypothesis_added", run, {
         hypothesis: id,
         lane: null,
@@ -598,12 +599,13 @@ export class Research {
     );
     const ok = supporting.filter((c) => known.has(c));
     const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const now = new Date().toISOString();
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(
-          "insert into hypothesis (id, run, lane, text, supporting, created_at) values (?, ?, ?, ?, ?, ?)",
+          "insert into hypothesis (id, run, lane, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, 'pool', ?, ?)",
         )
-        .run(id, run, lane, text.slice(0, 2000), canonicalJson(ok), new Date().toISOString());
+        .run(id, run, lane, text.slice(0, 2000), canonicalJson(ok), now, now);
       // So the campaign's folder in the knowledge base holds the run's hypotheses too.
       this.ledger.appendEvent(lane ?? "research", "hypothesis_added", run, {
         hypothesis: id,
