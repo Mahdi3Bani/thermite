@@ -2,7 +2,7 @@
 id: "116"
 title: "A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.0"
 depends_on: ["112"]
 created: 2026-10-24
 updated: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 116 · A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [112](112-research-ends-when-answered.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal)
 
 ## What
 
@@ -52,6 +52,7 @@ On 2026-10-23 a research run's review panel did not pass two reviews and could n
 ## Progress
 
 - 2026-10-24: Goal written from the owner's words.
+- 2026-10-24: Moved into v0.1.0 by the owner, as part of goal 117's redesign of research mode.
 
 ---
 

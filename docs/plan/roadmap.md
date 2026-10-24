@@ -86,7 +86,9 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [062](goals/_completed/062-research-folder.goal) A research folder agents can search and write · `VERIFIED`
 - [076](goals/_completed/076-claim-sources-and-reasons.goal) A claim's source by its address, and a draft's reasons for the owner · `VERIFIED`
 - [112](goals/112-research-ends-when-answered.goal) A research run ends when the review panel finds its questions answered · `IN_PROGRESS`
-- [117](goals/117-research-that-answers.goal) Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach · `PROPOSED`
+- [117](goals/117-research-that-answers.goal) Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach · `READY`
+- [047](goals/047-research-planner.goal) A model planner for research mode · `PROPOSED`
+- [116](goals/116-reviews-tab.goal) A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome · `PROPOSED`
 
 ### Rigs on RunPod
 
@@ -120,7 +122,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [109](goals/109-exports-page-shows-what-matters.goal) The Exports page shows what matters, not every slice · `PROPOSED`
 - [110](goals/110-judge-only-runs-show-progress.goal) A judge-only run shows its progress · `PROPOSED`
 - [114](goals/114-hill-climb-contract-gaps.goal) Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields · `PROPOSED`
-- [116](goals/116-reviews-tab.goal) A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome · `PROPOSED`
 
 ## v0.2.0
 
@@ -174,7 +175,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 **Unattended for days.** Campaigns in all three modes run for days with no person watching. Research mode already searches the web, through an MCP server the campaign names (046, done ahead of this version). Proposed.
 
 - [046](goals/_completed/046-web-search.goal) Web search for research mode · `VERIFIED` (through MCP servers, 068)
-- [047](goals/047-research-planner.goal) A model planner for research mode · `PROPOSED`
 - [048](goals/048-validation-scenarios.goal) Six validation scenarios · `PROPOSED`
 - [049](goals/049-multi-day-test-fire.goal) The multi-day test fire · `PROPOSED`
 - [050](goals/050-docs-site-and-init.goal) A two-command start, and a generated settings reference · `PROPOSED`
