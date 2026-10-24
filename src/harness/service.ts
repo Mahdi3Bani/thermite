@@ -810,7 +810,7 @@ export class HarnessService {
           text: `Review ${id} decided ${decided.length} ${decided.length === 1 ? "item" : "items"} by the majority of ${checked.length} reviewers: ${decided
             .map(
               (d) =>
-                `${name(d)} ${decisionWords(d)}${d.why ? ` (${d.why === "tie" ? "a tie" : d.why})` : ` (${d.majority.length} of ${checked.length})`}${d.dissent.length ? `, ${d.dissent.length} dissenting` : ""}`,
+                `${name(d)} ${decisionWords(d)}${d.why ? ` (${d.why})` : ` (${d.majority.length} of ${checked.length})`}${d.dissent.length ? `, ${d.dissent.length} dissenting` : ""}`,
             )
             .join(
               "; ",

@@ -473,7 +473,7 @@ function reviewRow(
     .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
     .join("");
   const decisions = decided.length
-    ? `<div class="small"><b>What it decided</b> <span class="muted">· each item by a majority of the reviewers whose answer passed code's check; a tie leaves it open</span></div><table class="ktable rv-items"><thead><tr><th>Item</th><th>Decision</th><th>Dissent</th><th>Before</th></tr></thead><tbody>${decided
+    ? `<div class="small"><b>What it decided</b> <span class="muted">· each item by more than half of the reviewers whose answer passed code's check; without such a majority it stays open</span></div><table class="ktable rv-items"><thead><tr><th>Item</th><th>Decision</th><th>Dissent</th><th>Before</th></tr></thead><tbody>${decided
         .map((d) => {
           const b = before(r, d);
           return `<tr><td>${itemCell(r, d.kind, d.key)}${d.card_version !== null ? `<div class="muted xs">card version ${d.card_version}</div>` : ""}</td><td>${decisionChip(d)}</td><td class="small">${d.dissent.length ? d.dissent.map((x) => `<div><b>${esc(x.reviewer)}</b>: ${esc(decisionWords(d.kind, x.verdict, x.certainty))}${x.reasons ? ` <span class="muted">· ${moreText(x.reasons, 160)}</span>` : ""}</div>`).join("") : `<span class="muted">none</span>`}</td><td class="small">${b ? `${esc(decisionWords(b.kind, b.decision, b.certainty))} <span class="muted">(review ${b.review})</span>` : `<span class="muted">first decision</span>`}</td></tr>`;
@@ -569,7 +569,7 @@ function trailCard(r: RunView): string {
 
 /** The side of a Reviews tab: how reviews work, and where to write to the review panel. */
 function howCard(u: RigView, r: RunView): string {
-  return `<div class="card qcard"><h3>How the review panel decides</h3><div class="small">The review panel reviews each question's answer card and each hypothesis that needs a verdict, as items. Each reviewer answers each item; code checks each answer (every claim it cites is a verified claim of the run, every number is in them). An item's decision is the majority of the reviewers whose answer passed; a tie leaves it open, and dissent is kept. A question ends when it is decided answered, or the best that sources allow.</div><div class="small">To tell the review panel something, write to it from <a href="${runLiveHref(u.id, r.id, "&compose=1")}">Live</a> (To: the review panel). It reads your message with its next review, and its answer shows here.</div></div>`;
+  return `<div class="card qcard"><h3>How the review panel decides</h3><div class="small">The review panel reviews each question's answer card and each hypothesis that needs a verdict, as items. Each reviewer answers each item; code checks each answer (every claim it cites is a verified claim of the run, every number is in them). An item's decision is the verdict of more than half of the reviewers whose answer passed; without such a majority it stays open, and dissent is kept. A question ends when it is decided answered, or the best that sources allow.</div><div class="small">To tell the review panel something, write to it from <a href="${runLiveHref(u.id, r.id, "&compose=1")}">Live</a> (To: the review panel). It reads your message with its next review, and its answer shows here.</div></div>`;
 }
 
 /** A research run's Reviews tab (goal 116): every review, newest first, each opening to its detail. */
