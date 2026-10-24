@@ -182,6 +182,12 @@ describe("a research run's page (goals 116 and 117)", () => {
     );
     assert.match(r1, /<code>c-01<\/code> <code>c-02<\/code>/);
     assert.doesNotMatch(r1, /Your messages to the review panel/);
+    // The reviewers' field notes that came with it, on the Journal; none came with review 2.
+    assert.match(
+      r1,
+      /A field note of the reviewers came with it: on the run's <a href="\/ui\/campaigns\/survey\?run=rig-a%2Fs-1&view=journal">Journal<\/a>, under <b>Review panel<\/b>\./,
+    );
+    assert.doesNotMatch(r2, /field notes? of the reviewers/);
 
     // Each item across reviews.
     assert.match(

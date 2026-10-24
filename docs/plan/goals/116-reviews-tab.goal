@@ -1,7 +1,7 @@
 ---
 id: "116"
 title: "A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.0"
 depends_on: ["112"]
 created: 2026-10-24
@@ -10,11 +10,11 @@ updated: 2026-10-24
 
 # 116 · A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome
 
-**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal)
 
 ## What
 
-A plan only; nothing of it is built.
+The tabs are built (goal 117's part C2); the owner's approval of them, and a failed try's error kept with its review, are still to come (Progress).
 
 A research run's page and its campaign's page each get a **Reviews** tab. The run's tab lists every review the review panel made of the run's questions, newest first, and opens each one. The campaign's tab lists the reviews of all its runs, by run.
 
@@ -36,10 +36,10 @@ On 2026-10-23 a research run's review panel did not pass two reviews and could n
 ## Done when
 
 - [ ] A mockup of the two tabs, approved by the owner.
-- [ ] The tabs, with tests that each item above shows for a review that passed, one that did not, one with failed tries, and one the owner decided; and that nothing secret shows.
+- [x] The tabs, with tests that each item above shows for a review that passed, one that did not, one with failed tries, and one the owner decided; and that nothing secret shows.
 - [ ] A failed try's error reaches the harness and is kept with its review (today it is only in the supervisor's log and the run's Live view), so the tab and MCP can show it.
 - [ ] MCP's `get_run` gives the same details for each review, with its times.
-- [ ] The pages that describe a run's page, a campaign's page and the review panel.
+- [x] The pages that describe a run's page, a campaign's page and the review panel.
 
 ## Decisions
 
@@ -53,6 +53,8 @@ On 2026-10-23 a research run's review panel did not pass two reviews and could n
 
 - 2026-10-24: Goal written from the owner's words.
 - 2026-10-24: Moved into v0.1.0 by the owner, as part of goal 117's redesign of research mode.
+- 2026-10-24 09:18 UTC: the tabs are built (branch `feat/117-c2-dashboard`, goal 117's part C2), in the dashboard's existing style. A research run's page has **Reviews** (and **Hypotheses**); its campaign's page has **Overview** and **Reviews**, the latter by run. Each review, newest first, opens to when it was asked and on what (its verified claims, questions and hypotheses: the event that asks it carries no count of findings), when it was posted and by how many reviewers, its tries, its outcome with the owner's decision and note, its cost (the review panel's calls in rounds `review N`: calls, tokens, time in calls and dollars when priced), the decision on each item with its certainty, dissent and the decision before it, each reviewer's verdict, reasons, cited claims and the problems code found, how many field notes the reviewers wrote with it (a link to **Journal**), the owner's messages to the review panel with the answers, and the supervisor's lines for it in **Live**; beside the list, each item's decisions across reviews. Tests: `src/control/research-run-ui.test.ts` (a review not passed, one passed after three tries and accepted by the owner with a note, one waiting with a failed try; an older review; nothing secret; 300 hypotheses and 20 more reviews of five reviewers) and `src/control/research-view.test.ts` (`get_run`). Screenshots from the dashboard demo are for the owner's review: the mockup box stays open until the owner approves them.
+- Still to do, outside the dashboard: (1) a failed try's error kept with its review. Today it reaches only the run's **Live** view (the supervisor's unsigned `review N: …` lines, kept while Live keeps the rig's newest 20,000 lines), which the tab shows, but `get_run` cannot. The supervisor would post each failed try to the harness (for example `POST /v1/reviews/<id>/tries` with `{at, error, reviewers_answered}`), and the harness would keep it with the review and send an event such as `review_try_failed` `{review, try, at, error}`, or `review_panel`'s `tries` with `failures: [{at, error}]`; control would then show and give it with no change to its layout. (2) Each reviewer's pass or fail with its reasons as a whole, which only the ledger's review row keeps: `review_items` gives each reviewer's answer per item, and an older review gives only how many reviewers found each question answered. (3) Goal 117's part B2 sends `review_items`, `item_decided` and `review_panel`'s `decided` and `open`; control reads them in the shapes the build design gives.
 
 ---
 

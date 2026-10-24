@@ -422,6 +422,18 @@ export function researchRunEvents(): Ev[] {
       4.3,
     ),
     usage("review 1", 4.2),
+    // A reviewer's field note, written once review 1 was posted.
+    ev(
+      "journal_note",
+      {
+        id: 1,
+        by: "panel:reviewer-1",
+        kind: "observation",
+        text: "Question 2 rests on one site.",
+        about: { type: "run", id: "s-1" },
+      },
+      4.35,
+    ),
     // The owner's message to the review panel, read and answered with review 2.
     ev(
       "agent_message",

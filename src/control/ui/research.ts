@@ -500,6 +500,18 @@ function reviewRow(
   const gaps = rv.gaps?.length
     ? `<div class="small"><b>What the reviewers found missing</b> <span class="muted">· the next workers' briefs got the gaps in the evidence</span></div><ul class="flaws small">${rv.gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>`
     : "";
+  // The reviewers' field notes are the run's Journal's, under Review panel (goal 116): the
+  // supervisor writes them once the review is posted, before the next review is.
+  const posted = rv.posted_at;
+  const nextPosted = research.find((x) => x.posted_at && posted && x.posted_at > posted)?.posted_at;
+  const panelNotes = posted
+    ? r.journal.filter(
+        (n) => n.by.startsWith("panel") && n.at >= posted && (!nextPosted || n.at < nextPosted),
+      ).length
+    : 0;
+  const notes = panelNotes
+    ? `<div class="small">${panelNotes === 1 ? "A field note" : `${panelNotes} field notes`} of the reviewers came with it: on the run's <a href="${runHref(u.id, r, "journal")}">Journal</a>, under <b>Review panel</b>.</div>`
+    : "";
   const messages = msgs.length
     ? `<div class="small"><b>Your messages to the review panel</b></div>${msgs
         .map(
@@ -529,7 +541,7 @@ function reviewRow(
 <span class="dq-kind">${o.icon}Review ${rv.review}</span>
 <span class="dq-main"><span class="dq-head">${esc(headline)}</span><span class="dq-why">${why}</span><span class="dq-sub">${where ? `<span class="dq-where"><a href="${runHref(u.id, r, "reviews")}">${esc(r.id)}</a> · ${esc(u.id)}</span>` : ""}${chips}</span></span>
 <span class="dq-side"><span class="dq-age">${rv.posted_at ? `posted ${esc(ago(rv.posted_at, now))} ago` : `waiting ${esc(ago(rv.requested_at, now))}`}</span><span class="label ${o.tone}">${esc(o.word)}</span></span>
-</summary><div class="dq-body"><dl class="dc-facts">${facts}</dl>${decisions}${reviewers}${gaps}${messages}${live}</div></details>`;
+</summary><div class="dq-body"><dl class="dc-facts">${facts}</dl>${decisions}${reviewers}${gaps}${notes}${messages}${live}</div></details>`;
 }
 
 /** Each item's decisions across the reviews, oldest first: how each changed. */
