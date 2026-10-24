@@ -930,6 +930,64 @@ describe("goal runs use the queue", () => {
 });
 
 describe("research runs use the queue", () => {
+  test("the research plan's task goes to the least-covered question, whatever else waits in the queue", async () => {
+    const env = makeHarnessEnv("rig-r");
+    const parsed = parseContract({
+      ...researchFixture,
+      questions: ["First?", "Second?", "Third?"],
+      lanes: { count: 2, trials_per_epoch: 1 },
+    });
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    await env.service.applyCommand(
+      env.sign("assign_campaign", {
+        run: "r-1",
+        contract: parsed.contract,
+        contract_sha: parsed.sha,
+        imports: [],
+      }),
+    );
+    // A task of the owner's waits: before, it shifted the plan one question on, past question 0.
+    await env.service.applyCommand(
+      env.sign("queue_add", { run: "r-1", title: "Read the vendor's notes", family: "primary" }),
+    );
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.service.paths.scratchDir),
+      model: {
+        baseUrl: "http://127.0.0.1:9",
+        model: "m",
+        apiKey: "k",
+        contextWindow: 1,
+        maxTokens: 1,
+      },
+      owner: "research-test",
+      research: new Research(env.service.ledger, env.service.paths.stateDir, {
+        allowPrivate: true,
+      }),
+      maxConcurrent: 2,
+      runTrial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+      runResearchTrial: async () => ({
+        stopped: "finished",
+        turns: 1,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    });
+    assert.ok(await scheduler.tick());
+    await scheduler.idle();
+    const planned = env.service.queue.all("r-1").filter((x) => x.added_by === "planner");
+    assert.deepEqual(
+      planned.map((x) => x.title.split(":")[0]),
+      ["Question 0"],
+    );
+  });
   test("the research plan fills the queue with tasks; rounds take them in order", async () => {
     const env = makeHarnessEnv("rig-r");
     const parsed = parseContract({ ...researchFixture, lanes: { count: 2, trials_per_epoch: 1 } });

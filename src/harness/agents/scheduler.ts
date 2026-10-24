@@ -2034,13 +2034,29 @@ export class Scheduler {
           x.verified - y.verified ||
           x.i - y.i,
       );
-    // Tasks already waiting or under way shift the plan on, so a fill does not repeat them.
+    // The plan's own tasks already waiting or under way: each new task goes to the least-covered
+    // question with the fewest of them, so a fill does not repeat them, and other tasks in the
+    // queue (the teachers', the owner's) do not push the least-covered questions out of turn.
+    // Task kinds go on in turn after the plan's waiting tasks.
     const queue = this.o.service.queue;
-    const offset = queue.queued(run).length + queue.assigned(run).length;
+    const waiting = [...queue.queued(run), ...queue.assigned(run)].filter(
+      (x) => x.added_by === PLANNER,
+    );
+    const busy = new Map<number, number>();
+    for (const x of waiting) {
+      const m = /^Question (\d+):/.exec(x.title);
+      if (m) busy.set(Number(m[1]), (busy.get(Number(m[1])) ?? 0) + 1);
+    }
     const added: Experiment[] = [];
-    for (let k = offset; k < offset + count; k++) {
-      const q = coverage[k % coverage.length] as { i: number };
-      const task = tasks[k % tasks.length] as { id: string; description: string };
+    for (let k = 0; k < count; k++) {
+      const q = coverage.reduce((best, c) =>
+        (busy.get(c.i) ?? 0) < (busy.get(best.i) ?? 0) ? c : best,
+      ) as { i: number };
+      busy.set(q.i, (busy.get(q.i) ?? 0) + 1);
+      const task = tasks[(waiting.length + k) % tasks.length] as {
+        id: string;
+        description: string;
+      };
       added.push(
         queue.add(
           run,
