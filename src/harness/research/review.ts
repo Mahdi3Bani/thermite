@@ -34,6 +34,7 @@ export const RESEARCH_CRITERIA = [
   "When the claims do not answer a question, it is not answered: say what is missing, such as which facts and which kind of source could give them.",
   "A hypothesis is supported or refuted only by the claims a verdict cites. When the claims do not decide it, it is undecided: say why.",
   "A claim from fewer independent domains than the run asks for is weaker evidence. Say so when an answer rests on such claims alone.",
+  "A research run measures nothing. A question is answered when its claims give the best answer that sources allow. What only a measurement could settle, such as a test on the hardware the question is about or a benchmark, is named in the answer as a next experiment, never counted as missing.",
 ];
 
 export interface PackageClaim {
