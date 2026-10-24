@@ -14,7 +14,7 @@ import type { ContextApplies } from "./campaign-context.ts";
 export interface StartRunRequest {
   campaign: string;
   rig: string;
-  /** False: a try, with no agents (the judge measures the starting code on every case once). */
+  /** False: a try, with no agents (only the judge works, and it measures the starting point). */
   agents: boolean;
   /** A model to give the rig's agents first, as the panel's "The agents' model". */
   model?: { provider: string; model: string } | undefined;
@@ -59,7 +59,7 @@ export const startRunFields = {
     .boolean()
     .optional()
     .describe(
-      "false: a try, with no agents; the judge measures the starting code on every case once. Default: true",
+      "false: a try, with no agents; only the judge works, and it measures the starting point. Default: true",
     ),
   agents_model: z
     .strictObject({ provider: z.string().min(1), model: z.string().min(1) })

@@ -56,7 +56,7 @@ Next to it, **Ask me first about** chooses what else waits for you. All of it is
 | --- | --- | --- | --- |
 | **a gain above this %** | A confirmed change whose gain over the champion is above it, such as 15 | `gain:15` | `"above_gain": 0.15` |
 | **a change whose agent declared flaws** | A confirmed change whose agent wrote problems it knows the change has. Without it, the promotion accepts them, and the record says so | `flaws` | `"declared_flaws": true` |
-| **a review panel's pass of a goal** | A subjective goal the review panel passed, or a research run's questions it found answered: see [Reviews](#reviews) | `reviews` | `"reviews": true` |
+| **a review panel's pass of a goal or of a research run's questions** | A subjective goal the review panel passed, or a research run's questions it found answered: see [Reviews](#reviews) | `reviews` | `"reviews": true` |
 | **ending a goal campaign as not possible** | A "not possible" proposal: see [Not possible endings](#not-possible-endings) | `not-possible` | `"not_possible": true` |
 
 A run keeps the choices it started with. A run started with **ask me every time** keeps asking, and so does a run with no rule of its own on a rig whose **Edit rig** says **Ask me for each change**.

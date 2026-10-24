@@ -216,12 +216,13 @@ Attempt lists show one word for each attempt, in this order of precedence:
 | **Promoted** | Its state is `promoted`, but the run's list of champions does not name it |
 | **Judging** | It is `queued`, `building`, `screening`, `confirming` or `verifying`, or it has only a screening verdict |
 | **Duplicate** | The same change as an earlier attempt |
+| **Not judged** | `not_judged`: its run closed while it waited for the judge |
 | **Won** | `win_confirmed` or `goal_progress` |
 | **Broken** | `invalid` or `crash_candidate` |
 | **Unclear** | `crash_infra` or `inconclusive` |
 | **Lost** | Any other verdict: `neutral`, `regress`, `tradeoff`, `infeasible`, `not_confirmed`, `no_progress` |
 
-An attempt with no verdict at all also shows **Judging**. This includes an attempt in `rejected_v0` and one in `not_judged`, which never get a verdict: the row's state, under the change, says `rejected v0` or `not judged: its run closed first`.
+An attempt with no verdict at all also shows **Judging**. This includes an attempt in `rejected_v0`, which never gets a verdict: the row's state, under the change, says `rejected v0`.
 
 ## Run states
 
