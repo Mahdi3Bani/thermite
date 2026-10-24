@@ -88,7 +88,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [076](goals/_completed/076-claim-sources-and-reasons.goal) A claim's source by its address, and a draft's reasons for the owner · `VERIFIED`
 - [112](goals/112-research-ends-when-answered.goal) A research run ends when the review panel finds its questions answered · `IN_PROGRESS`
 - [117](goals/117-research-that-answers.goal) Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach · `READY`
-- [047](goals/047-research-planner.goal) A model planner for research mode · `PROPOSED`
+- [047](goals/047-research-planner.goal) A model planner for research mode · `IN_PROGRESS`
 - [116](goals/116-reviews-tab.goal) A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome · `PROPOSED`
 
 ### Rigs on RunPod

@@ -341,10 +341,10 @@ The owner's message to the run's agents. The judge is code and takes no messages
 
 | `to` | Who reads it |
 | --- | --- |
-| `all` | Everyone working: each lane at work, and the planner of a hill-climb or goal run whose planner is on. The lanes at work are the contract's `lanes.count`, or fewer when the newest `lane_count` rule in force says so |
+| `all` | Everyone working: each lane at work, and the planner while it is on, a research run's too. The lanes at work are the contract's `lanes.count`, or fewer when the newest `lane_count` rule in force says so |
 | `lane-1` to `lane-16` | That [lane](glossary.md) |
 | `trial:t-` and 8 to 32 hexadecimal characters | That trial. If it ends before it reads the message, its lane's next trial reads it, with a note that it was sent to an earlier trial |
-| `planner` | The planner. A research run has none |
+| `planner` | The planner, at its next plan that is used, a research run's too |
 | `advisors` | The teachers, the auditor and the review panel, each once, except those that a refusal below names |
 | `teachers` | The teachers |
 | `auditor` | The auditor |
@@ -371,7 +371,6 @@ Control checks every message before it signs it, wherever it comes from: a run's
 | --- | --- |
 | `Write a message first.` | `text` is empty, or only spaces |
 | `This run has no agents (the judge alone tries the kit), so nothing would read it.` | `all`, `planner`, a lane or a trial, in a run started without agents |
-| `A research run plans its rounds with a fixed method: it has no planner to message.` | `planner`, in a research run |
 | `The planner is off on this rig (Edit rig), so nothing would read it.` | `planner`, with the planner switched off on **Edit rig** |
 | `A research run has no attempts to audit.` | `auditor`, in a research run |
 | `The teachers are off on this rig (Edit rig), so nothing would read it.`, and `The auditor is off …` or `The review panel is off …` | `teachers`, `auditor` or `review_panel`, with that role switched off on **Edit rig** |
@@ -390,7 +389,6 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | --- | --- |
 | `run <run> is closed: nothing will read this message` | The run is closed |
 | `run <run> has no agents (the judge alone tries the kit): nothing would read this message` | `all`, `planner`, a lane or a trial, in a run started without agents |
-| `a research run plans its rounds with a fixed method; it has no planner to message` | `planner`, in a research run |
 | `the planner is off on this rig (Edit rig), so nothing would read this message` | `planner`, with the planner switched off on **Edit rig** |
 | `the teachers are off on this rig (Edit rig), so nothing would read this message` | `teachers`, with the teachers switched off |
 | `the auditor is off on this rig (Edit rig), so nothing would read this message` | `auditor`, with the auditor switched off |

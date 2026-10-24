@@ -218,13 +218,13 @@ export function campaignContextAnswer(
 export type AgentPlace = "workers" | AgentRole;
 
 /**
- * The places of a campaign's runs' agents, by mode: a research run has no planner, auditor or
- * review panel.
+ * The places of a campaign's runs' agents, by mode: a research run has no auditor or review
+ * panel here; its planner plans its rounds from the answer cards (goals 047 and 117).
  */
 export function agentsOfMode(mode: unknown): AgentPlace[] {
   const teachers: AgentPlace[] = ["teachers", "second_teacher", "merged_by"];
   return mode === "research"
-    ? ["workers", ...teachers]
+    ? ["workers", "planner", ...teachers]
     : ["workers", "planner", ...teachers, "auditor", "review_panel"];
 }
 

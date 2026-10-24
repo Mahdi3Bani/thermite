@@ -395,7 +395,7 @@ Control refuses, and saves nothing:
 | 400 | `Settings has no MCP server named <server>. Add it in Settings › MCP servers, or take it out of mcp_servers.` |
 | 400 | `<server> has no tool named <tool>. Its tools are <tools>.` |
 | 400 | `Control has not read the tools of <server> yet. Read them in Settings › MCP servers, or give the <kind> all its tools.` |
-| 400 | `A research run has no planner: its research plan is code. Give <server> to the workers or the advisors.` |
+| 400 | `A research run's planner takes no MCP server: it plans from the run's own records. Give <server> to the workers or the advisors.` |
 | 400 | `A context window is a whole number of tokens from 4,096 to 100,000,000.` or `The compaction point is a whole percent of the context window, from 50 to 95.`: `agents_context` out of range |
 | 409 | `There is a campaign named <name> already. Choose another name.`: a campaign control keeps, one a rig reported, a folder in the knowledge base, or a name in a grant |
 | 409 | `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors, for an assignment whose contract the contract check refuses; `The copy's own brief is not valid:` and the errors, for a copy whose own brief (for example a `links` entry that is not a web address) makes its contract invalid |
@@ -879,7 +879,7 @@ Each rig's harness has an API of its own on `THERMITE_LISTEN`, by default `0.0.0
 | `thermite_run_champion_seq` | gauge | `rig`, `run`, `campaign` | The current champion's number. 1 is the starting point |
 | `thermite_run_champion_gain` | gauge | `rig`, `run`, `campaign` | The champion's relative gain over the run's baseline |
 | `thermite_run_attempts` | gauge | `rig`, `run`, `campaign`, `verdict` | Attempts by verdict, or by lifecycle when not judged |
-| `thermite_planner_valid_ratio` | none given | `rig`, `run`, `campaign` | The planner's valid plans per epoch a planner could plan. Only for runs with such epochs: a research run's rounds are set by its research plan, and count in neither ratio |
+| `thermite_planner_valid_ratio` | none given | `rig`, `run`, `campaign` | The planner's valid plans per epoch a planner could plan. Only for runs with such epochs: a research run's rounds that its research plan set with the planner off count in neither ratio |
 | `thermite_planner_fallback_ratio` | none given | `rig`, `run`, `campaign` | Fallback plans per epoch a planner could plan: rounds in which the lanes took queued experiments by fixed rules, not from the planner's model. Only for runs with such epochs |
 | `thermite_duplicate_ratio` | none given | `rig`, `run`, `campaign` | Duplicate attempts per attempt. Only for runs with attempts |
 | `thermite_trials_total` | none given | `rig`, `run`, `campaign` | Agent trials |

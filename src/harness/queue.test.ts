@@ -536,7 +536,7 @@ describe("the owner's queue commands", () => {
     assert.equal(s.events("directive_converted").length, 1);
   });
 
-  test("a research run's directions are its task kinds: it has no planner to design a new one", async () => {
+  test("a research run's directions are its task kinds: its planner designs no new one", async () => {
     const env = makeHarnessEnv("rig-r");
     const parsed = parseContract(researchFixture);
     if (!parsed.ok) throw new Error(parsed.errors.join("; "));
@@ -566,7 +566,7 @@ describe("the owner's queue commands", () => {
     const bad = await rule("shared memory");
     assert.match(
       JSON.stringify(bad),
-      /A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. It has no planner to design a new direction/,
+      /A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. Its planner designs no new direction/,
     );
     const kind = await rule(":contradict:");
     assert.ok(kind.status === "applied" && kind.accepted, JSON.stringify(kind));

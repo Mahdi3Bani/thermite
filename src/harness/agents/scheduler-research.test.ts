@@ -383,3 +383,188 @@ describe("the gap-driven plan gives out a research run's work (goal 117)", () =>
     assert.ok(!s.given().some((x) => x.question === 3), "never the decided question");
   });
 });
+
+describe("the model plans a research run's rounds from its answer cards (goals 047 and 117)", () => {
+  test("a round planned by the model: tasks with question, gap and kind of source; queue changes; hypotheses promoted and retired; the owner's message read", async (t) => {
+    let answer: unknown;
+    const s = await researchScene(t, {
+      planner: () => answer,
+      hypotheses: ["Stateless workers make long runs safe."],
+    });
+    const a = s.research.proposeHypothesis(RUN, "lane-1", {
+      text: "Caches decide occupancy.",
+      question: 2,
+    });
+    const b = s.research.proposeHypothesis(RUN, "lane-2", {
+      text: "Occupancy hinges on caches.",
+      question: 2,
+    });
+    const sent = await s.env.service.applyCommand(
+      s.env.sign("message_agent", {
+        run: RUN,
+        to: "planner",
+        text: "Question 3 matters most to me.",
+      }),
+    );
+    assert.ok(sent.status === "applied" && sent.accepted, JSON.stringify(sent));
+    const teacher = s.q.queued(RUN).filter((x) => x.added_by === "teacher");
+    answer = {
+      assignments: [
+        { lane: "lane-1", task: "new-1", why: "question 3 has no card, and the owner asked" },
+        {
+          lane: "lane-2",
+          question: 5,
+          gap: "Q5 gap 2: the vendor's documentation of it",
+          source_kind: "the profiler's user guide",
+          title: "Stall reasons in the profiler guide",
+          kind: "primary",
+          why: "its card's second gap is open",
+        },
+      ],
+      add: [
+        {
+          ref: "new-1",
+          question: 2,
+          gap: "what limits occupancy, in the vendor's words",
+          source_kind: "the vendor's programming guide",
+          title: "Occupancy limits",
+          details: "Look for the register and shared memory limits.",
+          why: "no card yet",
+        },
+      ],
+      drop: [{ id: teacher[0]?.id, why: "it repeats a task tried before" }],
+      promote: [{ id: a.hypothesis, why: "central to question 3" }],
+      retire: [{ id: b.hypothesis, why: "it repeats the one promoted" }],
+      journal: [
+        {
+          kind: "decision",
+          text: "Question 3 first: it has no card yet.",
+          about: { type: "experiment", id: "new-1" },
+        },
+      ],
+      notes: "cards first",
+    };
+    await s.round();
+    const e = body(events(s.env, "epoch_started")[0]);
+    assert.deepEqual(
+      [e.source, e.planner_valid, e.notes, e.plan],
+      ["planner", true, "cards first", undefined],
+    );
+    const g = s.given();
+    assert.deepEqual(
+      g.map((x) => [x.by, x.question, x.family, x.title]),
+      [
+        ["planner", 2, "explore", "Question 3 (index 2): Occupancy limits"],
+        ["planner", 5, "primary", "Question 6 (index 5): Stall reasons in the profiler guide"],
+      ],
+    );
+    assert.equal(
+      g[0]?.details,
+      `${GAP_LINE}what limits occupancy, in the vendor's words\nWhat to read: the vendor's programming guide\nLook for the register and shared memory limits.\nQuestion 3 (index 2): What limits occupancy?`,
+    );
+    assert.deepEqual(
+      [s.q.get(String(teacher[0]?.id))?.state, s.q.get(String(teacher[0]?.id))?.dropped_by],
+      ["dropped", "planner"],
+    );
+    // The hypotheses, through the owner's command's function: the planner is who changed them.
+    const status = events(s.env, "hypothesis_status").map((x) => [
+      x.actor,
+      body(x).hypothesis,
+      body(x).status,
+      body(x).reason,
+    ]);
+    assert.deepEqual(status, [
+      ["planner", a.hypothesis, "promoted", "central to question 3"],
+      ["planner", b.hypothesis, "retired", "it repeats the one promoted"],
+    ]);
+    assert.match(
+      s.research.hypothesesBrief(RUN),
+      new RegExp(`${a.hypothesis} \\(promoted, which needs a verdict`),
+    );
+    // The owner's message went to the planner, which read it in round 1.
+    assert.deepEqual(
+      events(s.env, "agent_message_read").map((x) => [body(x).by, body(x).round]),
+      [["planner", 1]],
+    );
+    // What the planner read: the cards and their gaps, what research can't do, the message.
+    const prompt = s.prompts[0] ?? "";
+    for (const words of [
+      "You plan the next round of an automated research run",
+      "Q5 gap 1: the vendor's documentation of it",
+      "evidence_gaps",
+      "all_saturated",
+      "promote_left",
+      "Question 3 matters most to me.",
+      "nothing its workers run counts as evidence",
+    ])
+      assert.ok(prompt.includes(words), words);
+    // Its field note names the task's id, not its ref.
+    const note = s.env.service.journal.newest(RUN, 5).find((n) => n.by === "planner");
+    assert.deepEqual(note?.about, { type: "experiment", id: g[0]?.id });
+  });
+
+  test("a plan refused twice, in words, leaves the round to the gap-driven plan; the owner's message waits", async (t) => {
+    const s = await researchScene(t, {
+      planner: () => ({
+        assignments: [
+          {
+            lane: "lane-1",
+            question: 3,
+            gap: "Q3 gap 1: the vendor's documentation of it",
+            source_kind: "the vendor's errata",
+            title: "Errata",
+          },
+          {
+            lane: "lane-2",
+            question: 0,
+            gap: "Profile the kernel to find the stalls",
+            source_kind: "a profiler",
+            title: "Stalls",
+          },
+        ],
+      }),
+    });
+    await s.env.service.applyCommand(
+      s.env.sign("message_agent", { run: RUN, to: "planner", text: "Go deep." }),
+    );
+    await s.round();
+    const e = body(events(s.env, "epoch_started")[0]);
+    assert.deepEqual([e.source, e.planner_valid, e.plan], ["fallback", false, undefined]);
+    assert.match(
+      String(e.notes),
+      /^the gap-driven plan: Question 1 \(index 0\): certainty low, 3 evidence gaps; /,
+    );
+    assert.deepEqual(
+      (e.causes as { cause: string }[]).map((c) => c.cause),
+      ["invalid", "invalid"],
+    );
+    // The second try had the first one's errors, in words.
+    assert.equal(s.prompts.length, 2);
+    assert.match(
+      s.prompts[1] ?? "",
+      /Your previous plan was refused:\\n- lane-1: Question 4 \(index 3\) is decided \(answered at moderate, review 1\)/,
+    );
+    assert.match(
+      s.prompts[1] ?? "",
+      /lane-2: its gap asks for a measurement \(\\"Profile the\\"\)/,
+    );
+    // The gap-driven plan gave out the round: open questions only.
+    const g = s.given();
+    assert.equal(g.length, 2);
+    assert.ok(g.every((x) => x.question !== 3 && x.question !== 4));
+    assert.deepEqual(
+      events(s.env, "agent_message_read"),
+      [],
+      "the message waits for a plan that is used",
+    );
+    // Live says why.
+    const line = s.env.service.live
+      .since(0)
+      .entries.find((l) => l.source === "planner" && l.text.startsWith("round 1:"));
+    assert.match(
+      String(line?.text),
+      /^round 1: set by the gap-driven plan \(the model gave no usable plan\)/,
+    );
+    assert.match(String(line?.text), /no usable plan: try 1: the plan was refused/);
+  });
+});

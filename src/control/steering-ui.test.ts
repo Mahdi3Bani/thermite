@@ -483,7 +483,7 @@ describe("Live's message box", () => {
     assert.doesNotMatch(await s.get(LIVE), /class="lnotice"/);
   });
 
-  test("a research run offers no planner or auditor, and its review panel (goal 112); everyone working, kept in force, reaches each new trial", async () => {
+  test("a research run offers its planner (goals 047 and 117) and its review panel (goal 112), no auditor; everyone working, kept in force, reaches each new trial", async () => {
     const env = makeHarnessEnv("rig-a");
     const s = await stack(env.service, env.keys.privateKeyPem);
     const parsed = parseContract({ ...researchFixture, lanes: { count: 1, trials_per_epoch: 1 } });
@@ -500,14 +500,10 @@ describe("Live's message box", () => {
     const to = recipients(live);
     assert.deepEqual(
       to.filter((o) => o.greyed).map((o) => [o.to, o.greyed]),
-      [
-        [
-          "planner",
-          "A research run plans its rounds with a fixed method: it has no planner to message.",
-        ],
-        ["auditor", "A research run has no attempts to audit."],
-      ],
+      [["auditor", "A research run has no attempts to audit."]],
     );
+    // Its planner plans its rounds from the answer cards, and reads the owner's messages.
+    assert.equal(to.find((o) => o.to === "planner")?.greyed, undefined);
     // The review panel checks whether a research run's questions are answered (goal 112).
     assert.equal(to.find((o) => o.to === "panel")?.greyed, undefined);
     assert.equal(to.find((o) => o.to === "all")?.hint, "Each agent reads it when it can");
@@ -516,13 +512,7 @@ describe("Live's message box", () => {
       [...live.matchAll(/class="lchip[^"]*" data-w="([^"]+)"/g)].map((m) => m[1]),
       ["all", "advisors", "you"],
     );
-    for (const [who, why] of [
-      [
-        "planner",
-        "A research run plans its rounds with a fixed method: it has no planner to message.",
-      ],
-      ["auditor", "A research run has no attempts to audit."],
-    ] as const)
+    for (const [who, why] of [["auditor", "A research run has no attempts to audit."]] as const)
       assert.ok(
         (await s.submit(form(live, "Send"), { to: who, text: "Hello." })).endsWith(
           `&msgerror=${why}`,

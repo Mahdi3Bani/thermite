@@ -1,3 +1,4 @@
+import { EXPERIMENT_DETAILS } from "../../core/commands.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { questionLabel } from "../../core/research-check.ts";
 import type { Ledger } from "../ledger.ts";
@@ -371,4 +372,27 @@ export function stateWords(q: QuestionState): string {
     : "no card";
   const end = q.decided ? `, decided ${q.decision?.decision}` : q.saturated ? ", saturated" : "";
   return `${q.label}: ${card}${end}`;
+}
+
+/**
+ * A research task's details: its question. A question has no length limit (goal 078); an
+ * experiment's details hold at most EXPERIMENT_DETAILS characters (`max`), so a longer one is cut
+ * there and says where the whole question is: in the trial brief's Questions.
+ */
+export function questionDetails(i: number, q: string, max = EXPERIMENT_DETAILS): string {
+  const whole = `${questionLabel(i)}: ${q}`;
+  if (whole.length <= max) return whole;
+  const note = ` … (cut: the whole question is under Questions in your brief)`;
+  return `${whole.slice(0, max - note.length)}${note}`;
+}
+
+/**
+ * A research task's details (goal 117): the evidence gap it closes, on its first line
+ * (GAP_LINE), then its question, cut as questionDetails cuts it. `more`: what else the task says,
+ * such as the kind of source to read and the planner's details, between the two.
+ */
+export function taskDetails(i: number, q: string, gap: string, more: string[] = []): string {
+  const head = [`${GAP_LINE}${gap.replace(/\s+/g, " ").trim()}`, ...more].join("\n");
+  const room = EXPERIMENT_DETAILS - head.length - 1;
+  return room > 200 ? `${head}\n${questionDetails(i, q, room)}` : head.slice(0, EXPERIMENT_DETAILS);
 }

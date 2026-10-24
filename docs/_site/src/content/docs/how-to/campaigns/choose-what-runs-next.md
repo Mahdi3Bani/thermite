@@ -126,13 +126,13 @@ The run's directions are the directions of its experiments, the ones the planner
 
 A rule may name a direction the run doesn't have yet. It is new: its rule shows `A new direction. The planner designs it at its next round, then adds it to the run's directions.` At its next round, the planner's model must design it: say what it means, in its own words, and add experiments in it when the rule asks for them. The planner's answer is refused until it designs it. **What the planner did** then shows `Designed the direction :split-k: for rule 9 · split the reduction over k`, and **History** says `The planner designed the new direction :split-k: for rule 9: split the reduction over k.`
 
-The rules hold without the model too, by name. Without the model's plan, the lanes take work by the fixed rules: for a lane's later trials in a round, for every round when the planner is off on **Edit rig** or its model can't be reached or gives no usable plan, and for every research run. Then:
+The rules hold without the model too, by name. Without the model's plan, the lanes take work by the fixed rules: for a lane's later trials in a round, for every round when the planner is off on **Edit rig** or its model can't be reached or gives no usable plan. (A research run's fixed rules are its gap-driven plan: [How the work is planned](../../explanation/campaign-modes.md#research).) Then:
 
 - **Avoid** skips every waiting experiment in that direction.
 - **Always** puts an experiment, `Work on the "<direction>" direction`, at the top when nothing in that direction waits or is in progress. For a new direction, the fixed rules add it to the run's directions too, as `the "<direction>" direction (named by rule 9)`.
 - **Try** adds nothing: it puts the waiting experiments in that direction first. A new direction waits for the planner's model, or for an experiment in it.
 
-When the model plans, code still refuses an answer that gives a lane an **Avoid** direction, or gives no lane an **Always** direction. A research run has no planner to design a new direction: its directions are its task kinds, `:explore:`, `:primary:`, `:contradict:` and `:consolidate:`, and control refuses a rule for any other: `A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:. It has no planner to design a new direction, so a rule for :blog-posts: would do nothing. Name a task kind.` [When there is no planner answer](../../explanation/agents-lanes-planner.md#when-there-is-no-planner-answer) explains the fixed rules.
+When the model plans, code still refuses an answer that gives a lane an **Avoid** direction, or gives no lane an **Always** direction. A research run's planner designs no new direction: its directions are its task kinds, `:explore:`, `:primary:`, `:contradict:` and `:consolidate:`, and control refuses a rule for any other: `A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:. Its planner designs no new direction, so a rule for :blog-posts: would do nothing. Name a task kind.` [When there is no planner answer](../../explanation/agents-lanes-planner.md#when-there-is-no-planner-answer) explains the fixed rules.
 
 ### Old rules in words
 
@@ -163,7 +163,7 @@ With the planner switched off on **Edit rig**, **Tell the planner** has no form.
 
 If control refuses the message, a line under the box says `Not sent:` and the reason at once, such as `Not sent: Write a message first.` for a message of only spaces, and your text stays in the box. If the rig refuses it, within seconds the line says `rig-1 refused it:` and the rig's reason, and the card shows it after a **refresh**, as **Not sent.** `The rig refused your last message to the planner:` and the rig's reason. The notice goes once you send the planner a newer message. [Send the agents a message](steer-a-run.md#send-the-agents-a-message) covers messages to the other agents.
 
-A research run has no planner model, so its tab has no **Tell the planner**. Its card **The plan** says `A research run sets each round with a fixed method: it takes the experiments in queue order and keeps to the rules. There is no planner model to tell. Its rules name its task kinds: send one with redirect over MCP, the REST API or the command line.`
+A research run's tab has no **Tell the planner**: write to its planner from the run's **Live**, **To the planner**. Its card **The plan** says `A research run sets each round with a fixed method: it takes the experiments in queue order and keeps to the rules. There is no planner model to tell. Its rules name its task kinds: send one with redirect over MCP, the REST API or the command line.`
 
 ## See what the planner did
 

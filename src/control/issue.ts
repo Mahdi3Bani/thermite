@@ -41,12 +41,11 @@ export function nobodyReads(
     (to === "all" || to === "planner" || /^lane-\d+$/.test(to) || to.startsWith("trial:"))
   )
     return "This run has no agents (the judge alone tries the kit), so nothing would read it.";
+  // A research run's planner reads them too (goals 047 and 117).
   if (to === "planner")
-    return research
-      ? "A research run plans its rounds with a fixed method: it has no planner to message."
-      : u.settings?.planner === false
-        ? "The planner is off on this rig (Edit rig), so nothing would read it."
-        : "";
+    return u.settings?.planner === false
+      ? "The planner is off on this rig (Edit rig), so nothing would read it."
+      : "";
   const sup = u.supervisor as { advisors?: { roles?: Record<string, unknown> } | null } | null;
   // None set up: the supervisor reports no advisors. Unknown: it has not reported its roles.
   const roles =

@@ -138,7 +138,7 @@ describe("directions, written as plain words or :name: (goal 066)", () => {
     );
     assert.match(
       researchDirectionRefusal(["blogs"]),
-      /^A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. It has no planner to design a new direction, so a rule for :blogs: would do nothing\. Name a task kind\.$/,
+      /^A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. Its planner designs no new direction, so a rule for :blogs: would do nothing\. Name a task kind\.$/,
     );
   });
 

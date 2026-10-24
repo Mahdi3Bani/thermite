@@ -267,7 +267,7 @@ describe("the owner's messages", () => {
     assert.equal(events(env, "agent_message").length, 2);
   });
 
-  test("a research run has no planner to message and no audits, its review panel reads (goal 112); everyone working reaches its lanes", async () => {
+  test("a research run's planner reads (goals 047 and 117), it has no audits, its review panel reads (goal 112); everyone working reaches its lanes and its planner", async () => {
     const env = makeHarnessEnv("rig-r");
     const parsed = parseContract(researchFixture);
     if (!parsed.ok) throw new Error(parsed.errors.join("; "));
@@ -287,13 +287,10 @@ describe("the owner's messages", () => {
       return out as { accepted: boolean; result: Record<string, unknown> };
     };
     const planner = await msg("planner");
-    assert.equal(planner.accepted, false);
-    assert.equal(
-      (planner.result as { error: string }).error,
-      "a research run plans its rounds with a fixed method; it has no planner to message",
-    );
+    assert.equal(planner.accepted, true);
+    assert.deepEqual(planner.result.readers, ["planner"]);
     assert.match(String((await msg("auditor")).result.error), /a research run has no audits/);
-    assert.deepEqual((await msg("all")).result.readers, ["lane-1", "lane-2"]);
+    assert.deepEqual((await msg("all")).result.readers, ["lane-1", "lane-2", "planner"]);
     // The review panel checks whether a research run's questions are answered (goal 112).
     assert.deepEqual((await msg("panel")).result.readers, ["panel"]);
     assert.deepEqual((await msg("advisors")).result.readers, ["teachers", "panel"]);

@@ -194,8 +194,9 @@ export function mcpRefusal(db: DatabaseSync, uses: readonly McpUse[] | undefined
 }
 
 /**
- * The kinds of agent a research run has: its workers and its advisors (the teachers). It has
- * no planner: the research plan is code.
+ * The kinds of agent of a research run that MCP servers may go to: its workers and its advisors
+ * (the teachers). Its planner (goals 047 and 117) plans from the run's own records, and takes
+ * none.
  */
 export const RESEARCH_AGENT_KINDS: readonly AgentKind[] = ["workers", "advisors"];
 
@@ -222,7 +223,7 @@ export function researchMcpRefusal(db: DatabaseSync, uses: readonly McpUse[]): s
       return `Settings has no MCP server named ${u.name}. Add it in Settings › MCP servers, or take it out of mcp_servers.`;
     const kind = u.agents.find((k) => !RESEARCH_AGENT_KINDS.includes(k));
     if (kind)
-      return `A research run has no ${kind}: its research plan is code. Give ${u.name} to the workers or the advisors.`;
+      return `A research run's ${kind} takes no MCP server: it plans from the run's own records. Give ${u.name} to the workers or the advisors.`;
     const listed = servers.get(u.name);
     for (const k of AGENT_KINDS) {
       const named = u.tools?.[k];

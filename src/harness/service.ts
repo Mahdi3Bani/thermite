@@ -1039,7 +1039,7 @@ export class HarnessService {
         this.openRun(p.run);
         conflictCheck(p.directives);
         // A direction the run doesn't have yet is the planner's to design at its next round
-        // (goal 066). A research run has no planner: it takes only its task kinds.
+        // (goal 066). A research run's planner designs no direction: it takes only its task kinds.
         const known = this.queue.directions(p.run);
         const unknown = unknownIn(p.directives, known);
         if (unknown.length && this.contractFor(p.run).mode === "research")
@@ -2058,8 +2058,11 @@ export class HarnessService {
         .all(run) as Record<string, unknown>[]
     ).map((e) => ({
       n: Number(e.n),
-      // A research run's rounds are set by its research plan, never by the planner (goal 079).
-      source: contract.mode === "research" ? "research plan" : String(e.source),
+      // A research run's rounds: by its planner (goals 047 and 117), or by its research plan in code.
+      source:
+        contract.mode === "research" && String(e.source) !== "planner"
+          ? "research plan"
+          : String(e.source),
       planner_valid: Number(e.planner_valid) === 1,
       violations: (JSON.parse(String(e.raw_violations)) as unknown[]).length,
       directives: JSON.parse(String(e.directives ?? "[]")) as number[],

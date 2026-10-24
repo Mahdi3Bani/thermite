@@ -191,7 +191,7 @@ describe("the owner's messages in plans and briefs", () => {
 });
 
 describe("a research run's rounds", () => {
-  test("its epoch says it was planned by the research plan, and its trials read everyone-working messages", async () => {
+  test("with no model to reach, its round is the gap-driven plan's and the planner reads nothing; its trials read everyone-working messages", async () => {
     const env = makeHarnessEnv("rig-r");
     const parsed = parseContract({
       ...researchFixture,
@@ -242,9 +242,15 @@ describe("a research run's rounds", () => {
     const started = env.service.ledger
       .eventsAfter(0, 5000)
       .events.find((e) => e.kind === "epoch_started")?.body as Record<string, unknown>;
-    assert.equal(started.plan, "research");
-    assert.equal(started.notes, "research plan, gap-driven: Question 1 (index 0): no card");
+    // The planner is on: its model could not be reached, so the round fell back, and says why.
+    assert.equal(started.plan, undefined);
+    assert.equal(started.notes, "the gap-driven plan: Question 1 (index 0): no card");
     assert.equal(started.source, "fallback");
+    assert.equal(started.planner_tries, 2);
+    assert.deepEqual(
+      (started.causes as { cause: string }[]).map((c) => c.cause),
+      ["provider_error", "provider_error"],
+    );
     assert.match(
       String(briefs[0]),
       /# Messages from the campaign's owner\n- prefer primary sources$/,
