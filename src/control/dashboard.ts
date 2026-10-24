@@ -283,7 +283,7 @@ import {
   agentsTable,
 } from "./ui/edit-rig.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
-import { EXPORT_WHERE, exportMenu, exportsBody, exportsHref } from "./ui/exports.ts";
+import { EXPORT_WHERE, exportForm, exportMenu, exportsBody, exportsHref } from "./ui/exports.ts";
 import { FOLLOW_JS } from "./ui/follow-client.ts";
 import { type ChecksSource, howChecked, howCheckedDetails } from "./ui/goal-checks.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
@@ -8778,7 +8778,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       close_run: { run, reason: String(f.reason ?? "").trim() },
       reset_workers: { run },
       // Export (goal 103): what changed since the last export, or a full one, as the owner chose.
-      export_now: { full: f.full === "true" },
+      export_now: exportForm(f).payload,
       rig_check: { check: String(f.check ?? ""), ...(f.force === "true" ? { force: true } : {}) },
       approve_promotion: { run, attempt: String(f.attempt ?? "") },
       decline_promotion: { run, attempt: String(f.attempt ?? "") },
@@ -8883,7 +8883,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     // The page says the command went; the rig's answer shows where the command was given.
     const to = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`);
     const [path, hash] = to.split("#");
-    const sent = `${woke ? `${woke} ` : ""}Sent to ${String(f.rig)} at ${clockUtc(cmd?.issued_at ?? new Date(now).toISOString())}.${kind === "export_now" ? ` ${f.full === "true" ? "A full export was asked for." : "An export was asked for."} ${EXPORT_WHERE}` : ""}`;
+    const sent = `${woke ? `${woke} ` : ""}Sent to ${String(f.rig)} at ${clockUtc(cmd?.issued_at ?? new Date(now).toISOString())}.${kind === "export_now" ? ` ${exportForm(f).asked} ${EXPORT_WHERE}` : ""}`;
     return c.redirect(
       `${path}${path?.includes("?") ? "&" : "?"}sent=${encodeURIComponent(sent)}${hash ? `#${hash}` : ""}`,
       303,

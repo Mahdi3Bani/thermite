@@ -129,7 +129,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `close_run` | **⋯**, then **Close the run**, in the header of a run's page, while the run is running or paused | Yes | Yes | No | No | Yes |
 | `redirect` | None: on the dashboard, rules come from **Tell the planner**, a `message_agent` to the planner, which makes them | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
-| `export_now` | **Export** in the header of a rig's page or a run's page, with **What changed** (`full: false`) or **Full export** (`full: true`) | Yes | Yes | Yes | Yes | |
+| `export_now` | **Export** in the header of a rig's page or a run's page, with **What changed** (`full: false`) or **Full export** (`full: true`), or, on a run's page, **This run** (`run`) | Yes | Yes | Yes | Yes | |
 | `drain_rig` | **Update to these images**, **Try the update again** and **Give it control's new address** on the page of a rig at work set up on a cluster, and **Call the update off**; **Save changes** on **Edit rig** with a new number of GPUs, CPUs or memory for such a rig, and **Call the change off**; control issues it as the caller | Yes (`POST /v1/commands`): the rig drains, but its page shows no update waiting, and it stays drained until `drain: false` or a restart; `POST /v1/rigs/<rig>/cluster/resources` | `update_rig_images`, `set_cluster_rig_resources` | `update_rig_images`, `set_cluster_rig_resources` | No | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
@@ -546,6 +546,7 @@ The supervisor takes the patch from the [results repository](../how-to/operate/r
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `full` | boolean | `false` | `true` also writes the research archive, a snapshot of the ledger, and the research folder of every run that has one, finished or not ([Normal and full exports](exports.md#normal-and-full-exports)). A full reset and a RunPod pod's terminate ask for a full export, and so does **Full export** under **Export** on the dashboard |
+| `run` | run id, optional | | An export of that run alone, from its start ([A run's export](exports.md#a-runs-export)), as **This run** on a run's page asks for. It is outside the rig's chain of exports: the result's `export_id` is `0`, and the next export starts where the last of the chain ended |
 
 The harness writes an export to its outbox for the supervisor to push. Result: `{"export", "export_id", "through_event", "attempts", "events"}`.
 

@@ -469,14 +469,48 @@ describe("Export and the Exports page (goal 103)", () => {
       summary: {},
     });
     const cookie = await signIn(s.control);
-    // A run's page has Export too: it exports the rig that holds the run.
+    // A run's page has Export too: the run alone first, and chosen; then the rig's (goal 103).
     const run = await (
       await s.control.request(`/ui/campaigns/papers?run=${encodeURIComponent("rig-a/r-1")}`, {
         headers: { cookie },
       })
     ).text();
-    assert.match(run, /class="stack export-now"/);
-    assert.match(run, /<b>Export rig-a, the rig that holds r-1\.<\/b>/);
+    const runForm =
+      /<form method="post" action="\/ui\/commands" class="stack export-now">([\s\S]*?)<\/form>/.exec(
+        run,
+      )?.[1];
+    assert.ok(runForm, "Export's form is on the run's page");
+    assert.match(runForm, /<b>Export r-1, or rig-a, the rig that holds it\.<\/b>/);
+    assert.match(
+      runForm,
+      /<input type="radio" name="full" value="run" checked[^>]*><span><b>This run<\/b>/,
+    );
+    assert.match(
+      runForm,
+      /<input type="radio" name="full" value="false"(?! checked)[^>]*><span><b>What changed \(all of rig-a\)<\/b>/,
+    );
+    assert.match(runForm, /<input type="hidden" name="run" value="r-1">/);
+    const runHidden = Object.fromEntries(
+      [...runForm.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [
+        m[1],
+        m[2],
+      ]),
+    );
+    const ran = await s.control.request("/ui/commands", {
+      method: "POST",
+      body: new URLSearchParams({ ...runHidden, full: "run" }),
+      headers: {
+        cookie,
+        accept: "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+    });
+    const ranAnswer = (await ran.json()) as { said: string; follow: string };
+    const ranCmd = s.store.commandRow(
+      decodeURIComponent(ranAnswer.follow.replace(/^\/ui\/commands\//, "").replace(/\.json$/, "")),
+    );
+    assert.deepEqual([ranCmd?.kind, ranCmd?.payload], ["export_now", { full: false, run: "r-1" }]);
+    assert.match(ranAnswer.said, /An export of r-1 alone was asked for\./);
     const html = await (await s.control.request("/ui/rigs/rig-a", { headers: { cookie } })).text();
     const form =
       /<form method="post" action="\/ui\/commands" class="stack export-now">([\s\S]*?)<\/form>/.exec(

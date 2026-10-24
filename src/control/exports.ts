@@ -225,6 +225,8 @@ export function exportSummary(files: ExportFiles | undefined, e: RigExport) {
   return {
     name: e.name,
     full: e.full,
+    /** A run's export (goal 103): the run it holds; null for the rig's exports. */
+    run: typeof e.manifest.run === "string" ? e.manifest.run : null,
     from_event: e.from_event,
     through_event: e.through_event,
     files: Object.keys(e.files).length,

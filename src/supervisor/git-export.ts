@@ -91,6 +91,8 @@ const Manifest = z.object({
   from_event: z.number().int().min(0),
   through_event: z.number().int().min(0),
   full: z.boolean().optional(),
+  /** A run's export (goal 103): that run alone, with its research folder and fetched pages. */
+  run: z.string().min(1).optional(),
   files: z.record(
     z.string().regex(/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._()-]+)*$/),
     z.string().regex(/^[0-9a-f]{64}$/),
@@ -224,8 +226,9 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
         rel.startsWith("champions/") ||
         // A finished run's research folder (its report, claims, findings, notes and sources).
         /^research\/[^/]+\/folder\//.test(rel) ||
-        // A full export's research archive (kept before a full reset).
-        (manifest.full && rel.startsWith("research/"))
+        // A full export's research archive (kept before a full reset), and a run's export's
+        // research folder and fetched pages.
+        ((manifest.full || manifest.run) && rel.startsWith("research/"))
       )
         files[rel] = join(dir, rel);
     }

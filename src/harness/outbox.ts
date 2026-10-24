@@ -25,6 +25,12 @@ import { championFiles } from "./propagation.ts";
  * consistent ledger snapshot, each new run champion as a patch against its seed (what other rigs
  * need to judge it themselves), and the research folder of each run that finished. A full export
  * also holds the research archive and the research folder of every run, finished or not.
+ *
+ * A run's export (goal 103: Export on a run's page) holds that run alone, from its start: its
+ * events, attempts, field notes, research notes, briefing and part of its campaign's folder, its
+ * research folder as it stands and the pages it fetched. It holds no ledger snapshot (the ledger is
+ * every run's) and publishes no champion, and it stays outside the rig's chain of exports: the
+ * next export still starts where the last one of the chain ended, and a full reset never takes it.
  */
 
 export interface ExportResult {
@@ -51,9 +57,11 @@ export async function writeExport(input: {
    * every full export.
    */
   researchFolder?: ((run: string) => { root: string; files: string[] }) | undefined;
+  /** A run's export: that run alone, outside the chain (its result's id is 0). */
+  run?: string | undefined;
 }): Promise<ExportResult> {
-  const { ledger } = input;
-  const since = ledger.lastExport()?.through_event ?? 0;
+  const { ledger, run: only } = input;
+  const since = only ? 0 : (ledger.lastExport()?.through_event ?? 0);
   const through = ledger.latestEventId();
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "");
   const name = `${stamp}-${randomUUID().slice(0, 8)}`;
@@ -63,7 +71,10 @@ export async function writeExport(input: {
   try {
     const events = ledger
       .eventsAfter(since, Number.MAX_SAFE_INTEGER)
-      .events.filter((e) => e.id <= through);
+      .events.filter((e) => e.id <= through)
+      .filter(
+        (e) => !only || e.subject === only || (e.body as { run?: unknown } | null)?.run === only,
+      );
     writeFileSync(
       join(tmp, "events.jsonl"),
       events.map((e) => canonicalJson(e)).join("\n") + (events.length ? "\n" : ""),
@@ -74,7 +85,7 @@ export async function writeExport(input: {
     ];
     for (const id of attemptIds) {
       const a = ledger.getAttempt(id);
-      if (!a) continue;
+      if (!a || (only && String(a.run) !== only)) continue;
       const run = ledger.getRun(String(a.run));
       const mirror = input.mirrorFor(run?.seed_repo ?? "");
       const patch = await patchBytes(mirror, String(a.parent_commit), String(a.commit_sha));
@@ -86,20 +97,23 @@ export async function writeExport(input: {
     }
 
     const championRel: string[] = [];
-    const published = await championFiles({
-      ledger,
-      mirrorFor: input.mirrorFor,
-      write: (rel, data) => {
-        mkdirSync(dirname(join(tmp, rel)), { recursive: true });
-        writeFileSync(join(tmp, rel), data);
-        championRel.push(rel);
-      },
-    });
+    // A run's export publishes no champion: champion_published belongs to the chain's exports.
+    const published = only
+      ? []
+      : await championFiles({
+          ledger,
+          mirrorFor: input.mirrorFor,
+          write: (rel, data) => {
+            mkdirSync(dirname(join(tmp, rel)), { recursive: true });
+            writeFileSync(join(tmp, rel), data);
+            championRel.push(rel);
+          },
+        });
 
     // A full export keeps what a wipe would otherwise destroy: the archived research sources.
     const researchRel: string[] = [];
-    if (input.full && input.researchDir && existsSync(input.researchDir)) {
-      for (const run of readdirSync(input.researchDir)) {
+    if ((input.full || only) && input.researchDir && existsSync(input.researchDir)) {
+      for (const run of readdirSync(input.researchDir).filter((r) => !only || r === only)) {
         for (const f of readdirSync(join(input.researchDir, run))) {
           const rel = `research/${run}/${f}`;
           mkdirSync(join(tmp, "research", run), { recursive: true });
@@ -166,7 +180,9 @@ export async function writeExport(input: {
     // The runs' part of their campaigns' folders (knowledge.jsonl): each item that an event
     // since the last export added or changed, as it stands now, with its origin, read as
     // control reads it into the knowledge base.
-    const part = knowledgePart(ledger, input.rig, since, through);
+    const part = knowledgePart(ledger, input.rig, since, through).filter(
+      (i) => !only || i.run === only,
+    );
     if (part.length) {
       writeFileSync(join(tmp, "knowledge.jsonl"), jsonl(part));
       notesRel.push("knowledge.jsonl");
@@ -201,14 +217,17 @@ export async function writeExport(input: {
           )
           .map((e) => String(e.subject)),
       ]);
-      // Where each run's folder goes in the export: a run that finished, at research/<run>/folder/.
-      const at = new Map([...finished].map((run) => [run, `research/${run}/folder`]));
+      // Where each run's folder goes in the export: a run that finished, at research/<run>/folder/;
+      // a run's export, its run's folder as it stands, beside it under the export's name.
+      const at = only
+        ? new Map([[only, `research/${only}/folder-${name}`]])
+        : new Map([...finished].map((run) => [run, `research/${run}/folder`]));
       // A full export also takes the folder of every other run that has one (goal 103): a
       // research run's, and a hill-climb or goal run's that recorded research, so a run's whole
       // record can leave the rig even while it runs, is paused or is broken. It goes beside the
       // final one, under the export's name: a results repository never replaces a file it has,
       // so the folder the run's end exports must not be taken already.
-      if (input.full)
+      if (input.full && !only)
         for (const r of ledger.listRuns())
           if (!at.has(r.id) && (r.mode === "research" || recorded(r.id)))
             at.set(r.id, `research/${r.id}/folder-${name}`);
@@ -229,27 +248,30 @@ export async function writeExport(input: {
     }
 
     const snapshotPath = join(tmp, "ledger.sqlite");
-    ledger.db.exec(`vacuum into '${snapshotPath.replace(/'/g, "''")}'`);
+    if (!only) ledger.db.exec(`vacuum into '${snapshotPath.replace(/'/g, "''")}'`);
     // The held_out table, the judge's whole record of each held-out check, never goes into an
     // export. The owner's record of one does (goal 082): the held_out_checked event, with each
     // held-out cell's name, kind of failure and value against its threshold (at most 50 cells),
     // is in the events table and events.jsonl, as it reaches control. No agent reads events.
-    const snapshot = new DatabaseSync(snapshotPath);
-    snapshot.exec("drop table if exists held_out; vacuum;");
-    snapshot.close();
+    if (!only) {
+      const snapshot = new DatabaseSync(snapshotPath);
+      snapshot.exec("drop table if exists held_out; vacuum;");
+      snapshot.close();
+    }
 
     const files = [
       "events.jsonl",
       "journal.jsonl",
       ...notesRel,
-      "ledger.sqlite",
+      ...(only ? [] : ["ledger.sqlite"]),
       ...attemptIds.flatMap((id) => [`attempts/${id}.patch`, `attempts/${id}.json`]),
       ...championRel,
       ...researchRel,
     ];
     const manifest = {
       rig: input.rig,
-      ...(input.full ? { full: true } : {}),
+      ...(input.full && !only ? { full: true } : {}),
+      ...(only ? { run: only } : {}),
       from_event: since,
       through_event: through,
       created_at: new Date().toISOString(),
@@ -264,12 +286,9 @@ export async function writeExport(input: {
     };
     writeFileSync(join(tmp, "manifest.json"), `${canonicalJson(manifest)}\n`);
     renameSync(tmp, final);
-    const id = ledger.recordExport({
-      throughEvent: through,
-      path: name,
-      manifest,
-      actor: input.actor,
-    });
+    const id = only
+      ? 0
+      : ledger.recordExport({ throughEvent: through, path: name, manifest, actor: input.actor });
     // Announced after the export exists: control can then offer it for propagation, and the
     // receiving supervisor finds the patch in the results repository once this export is pushed.
     for (const c of published) {

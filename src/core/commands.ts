@@ -384,8 +384,11 @@ export const CommandPayloads = {
     source_seq: z.number().int().positive(),
     import: ImportSpec,
   }),
-  /** A full export (a full reset's) also carries the research archive and the ledger snapshot. */
-  export_now: z.object({ full: z.boolean().default(false) }),
+  /**
+   * A full export (a full reset's) also carries the research archive and the ledger snapshot.
+   * With `run`, an export of that run alone (goal 103), outside the rig's chain of exports.
+   */
+  export_now: z.object({ full: z.boolean().default(false), run: IdSchema.optional() }),
   /**
    * The rig drains before its images change (goal 079): no new trial, plan or judge job starts,
    * and those running end as they would. The rig's report says what still runs; control restarts

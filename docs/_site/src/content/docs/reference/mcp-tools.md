@@ -349,7 +349,7 @@ Returns items `{id, seq, campaign, rig, run, kind, ref, title, body, by, url, su
 
 **Exports on control.** Owner and operator.
 
-> The exports rigs without a results repository sent to control, newest first: each one's rig, name, whether it is full, its event range, files and size, and when it was made and completed (complete_at null: still arriving). The owner downloads a complete one as one .tar.gz on the dashboard's Exports page, or over REST at GET /v1/rigs/{rig}/exports/{name}/archive; there is no download over MCP.
+> The exports rigs without a results repository sent to control, newest first: each one's rig, name, whether it is full, the run of a run's export (run; null for the rig's), its event range, files and size, and when it was made and completed (complete_at null: still arriving). The owner downloads a complete one as one .tar.gz on the dashboard's Exports page, or over REST at GET /v1/rigs/{rig}/exports/{name}/archive; there is no download over MCP.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
