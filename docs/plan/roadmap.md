@@ -79,7 +79,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [103](goals/103-export-and-download.goal) Export, full or not, from the dashboard; an Exports page that downloads each export · `IN_PROGRESS`
 - [098](goals/_completed/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `VERIFIED`
 - [099](goals/_completed/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `VERIFIED`
-- [115](goals/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `IN_PROGRESS`
+- [115](goals/_completed/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `VERIFIED`
 
 ### Research mode
 
