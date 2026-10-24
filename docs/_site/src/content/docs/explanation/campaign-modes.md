@@ -141,7 +141,7 @@ Some things are not built yet:
 
 ### Answer cards
 
-Claims alone are not an answer. So the harness keeps one **answer card** for each question: the run's current answer in a few paragraphs, its certainty, the verified claims it cites, and its open gaps. Workers add claims; they never write or change a card. The supervisor's [synthesizer](supervision.md#the-synthesizer), an advisor with the model of the rig's first teacher, writes each card from the question's current card and the verified claims recorded for it since, and the harness checks it in code before it keeps it, as it checks a finding. A rig with no teacher, or with its teachers switched off on **Edit rig**, has no synthesizer, and its research runs' questions keep no card.
+Claims alone are not an answer. So the harness keeps one **answer card** for each question: the run's current answer in a few paragraphs, its certainty, the verified claims it cites, and its open gaps. Workers add claims; they never write or change a card. The supervisor's [synthesizer](supervision.md#the-synthesizer), an advisor with the model of the rig's first teacher, writes each card from the question's current card and the verified claims recorded for it since, and the harness checks it in code before it keeps it, as it checks a finding. A question with no card is asked as soon as it has a verified claim; after that, its card is written again once 5 new verified claims came, or once the card is 30 minutes old and any came, so the synthesizer is not called for every claim. A rig with no teacher, or with its teachers switched off on **Edit rig**, has no synthesizer, and its research runs' questions keep no card.
 
 ```mermaid
 flowchart LR
