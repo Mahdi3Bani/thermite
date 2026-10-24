@@ -27,8 +27,8 @@ Rigs on machines, on clusters and on RunPod pull images. Building from source ta
 
 - [ ] A tag publishes every image with its labels.
 - [ ] A fresh machine pulls them, and the CUDA harness passes the isolation self-test.
-- [ ] The images are public.
-- [ ] The release checks each published image, pulled by digest with no sign-in, before it gets the version's tag: every image reports the release's commit, carries no Claude Code, has no set-id file and sets no key in its environment; the harnesses and the rig image report their image ID and carry neither socat nor bubblewrap; the supervisor and the rig image name no STE checker.
+- [x] The images are public.
+- [x] The release checks each published image, pulled by digest with no sign-in, before it gets the version's tag: every image reports the release's commit, carries no Claude Code, has no set-id file and sets no key in its environment; the harnesses and the rig image report their image ID and carry neither socat nor bubblewrap; the supervisor and the rig image name no STE checker.
 - [x] A build published by hand passes the same checks, and the lab's control pins its rig image by digest in place of the images the lab built itself.
 
 ## Decisions
