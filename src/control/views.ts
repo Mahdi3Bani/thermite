@@ -13,7 +13,7 @@ import {
   type GoalCellValues as GoalValues,
   parseGoalValues as goalValuesOf,
 } from "../harness/judge/goal-values.ts";
-import { type MetricValues, metricValuesOf } from "./metric-values.ts";
+import { championValues, type MetricValues, metricValuesOf } from "./metric-values.ts";
 import {
   type HypothesisView,
   type ItemDecisionView,
@@ -1878,6 +1878,8 @@ export interface LeaderEntry {
   gain: number;
   /** Rigs whose own judge accepted this exact champion (propagation): cross-verified. */
   verified_by: string[];
+  /** The starting point's and the champion's main metric values, with the unit (goal 133). */
+  values: ReturnType<typeof championValues>;
 }
 
 /**
@@ -1889,10 +1891,7 @@ export function leaderboard(
   store: ControlStore,
   opts: { staleAfterMs: number },
 ): Record<string, LeaderEntry[]> {
-  const views = store
-    .rigs()
-    .map((u) => rigView(store, u.id, opts))
-    .filter((v): v is RigView => v !== undefined);
+  const views = store.rigs().flatMap((u) => rigView(store, u.id, opts) ?? []);
   // An acceptance counts only for the tree it accepted: the key includes the tree, which must be
   // the one the source rig itself published (signed) for that seq.
   const verified = new Map<string, Set<string>>();
@@ -1901,8 +1900,7 @@ export function leaderboard(
       for (const p of i.propagations) {
         if (p.result !== "accepted" || !p.tree) continue;
         const key = `${p.source_rig}/${p.source_run}/${p.source_seq}/${p.tree}`;
-        if (!verified.has(key)) verified.set(key, new Set());
-        verified.get(key)?.add(v.id);
+        verified.set(key, (verified.get(key) ?? new Set<string>()).add(v.id));
       }
     }
   }
@@ -1923,6 +1921,7 @@ export function leaderboard(
         champion_seq: seq,
         gain: (champ?.cumulative ?? 1) - 1,
         verified_by: tree ? [...(verified.get(`${v.id}/${i.id}/${seq}/${tree}`) ?? [])].sort() : [],
+        values: championValues(i),
       });
     }
   }

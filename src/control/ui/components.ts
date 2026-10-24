@@ -1,5 +1,6 @@
 import type { Hardware } from "../../core/hardware.ts";
 import { ANSWERED, RESEARCH_REVIEW } from "../../core/research-check.ts";
+import { championWords } from "../metric-values.ts";
 import {
   type CampaignView,
   campaignViews,
@@ -446,7 +447,7 @@ export function gainChart(v: RunView, w = 760, h = 200): string {
   return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="champion gain over time">${grid}
 <path class="area" d="${area}"/><path class="line" d="${d}"/>${pts}
 <text x="${padL}" y="${h - 6}">${esc(fmt(t0))}</text><text x="${w - padR}" y="${h - 6}" text-anchor="end">now</text>
-<text x="${(X(t1) - 4).toFixed(1)}" y="${(lastY - 8).toFixed(1)}" text-anchor="end" style="fill:var(--foreground);font-weight:600">${pct(ys.at(-1) as number)}</text></svg>`;
+<text x="${(X(t1) - 4).toFixed(1)}" y="${(lastY - 8).toFixed(1)}" text-anchor="end" style="fill:var(--foreground);font-weight:600">${pct(ys.at(-1) as number)}${championWords(v) ? ` · ${esc(championWords(v))}` : ""}</text></svg>`;
 }
 
 /** A small sparkline of the champion's gain, for tiles and lists. */

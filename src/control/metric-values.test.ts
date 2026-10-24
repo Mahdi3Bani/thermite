@@ -73,3 +73,36 @@ test("a gain shows its values beside it, and the starting point its own, from th
   assert.equal(startWords(run), "412 tok/s");
   assert.equal(startWords({ baseline: null } as unknown as Parameters<typeof startWords>[0]), "");
 });
+
+test("the champion's value against the starting point's: on the leaderboard and the campaign headline", async () => {
+  const { championValues, championWords } = await import("./metric-values.ts");
+  const { bestGainWords } = await import("./ui/gains.ts");
+  const run = {
+    baseline: {
+      primary: { metric: "tok_s", direction: "max" },
+      units: { tok_s: "tok/s" },
+      cells: [{ cell: "small", metrics: [{ metric: "tok_s", median: 412, mad: 3, n: 9 }] }],
+    },
+    champion: [
+      { seq: 1, attempt: null, cumulative: 1, reopened: false },
+      { seq: 2, attempt: "a-2", cumulative: 1.49, reopened: false },
+    ],
+    attempts: [
+      {
+        id: "a-2",
+        values: { metric: "tok_s", cells: [{ cell: "small", candidate: 614, reference: 412 }] },
+      },
+    ],
+  } as unknown as Parameters<typeof championValues>[0];
+  assert.deepEqual(championValues(run), { start: 412, champion: 614, unit: "tok/s" });
+  assert.equal(championWords(run), "412 → 614 tok/s");
+  assert.equal(bestGainWords(run), "best gain over its baseline: 412 → 614 tok/s");
+  // A champion judged by an older harness, with no values: the starting point alone.
+  const older = { ...run, attempts: [{ id: "a-2", values: null }] } as unknown as typeof run;
+  assert.deepEqual(championValues(older), { start: 412, champion: null, unit: "tok/s" });
+  assert.equal(championWords(older), "412 tok/s");
+  // Still the starting point: the champion is it.
+  const seed = { ...run, champion: [run.champion[0]] } as unknown as typeof run;
+  assert.equal(championWords(seed), "412 → 412 tok/s");
+  assert.equal(bestGainWords(undefined), "best gain over its baseline");
+});

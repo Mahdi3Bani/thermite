@@ -285,7 +285,7 @@ import {
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
 import { EXPORT_WHERE, exportForm, exportMenu, exportsBody, exportsHref } from "./ui/exports.ts";
 import { FOLLOW_JS } from "./ui/follow-client.ts";
-import { gainChip, startWords } from "./ui/gains.ts";
+import { bestGainWords, gainChip, startWords, valuesPairWords } from "./ui/gains.ts";
 import { type ChecksSource, howChecked, howCheckedDetails } from "./ui/goal-checks.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
@@ -1202,7 +1202,7 @@ ${body}
       const gain = (i: RunView) =>
         (i.champion.filter((s) => !s.reopened).at(-1)?.cumulative ?? 1) - 1;
       const best = [...runs].sort((a, b) => gain(b) - gain(a))[0];
-      return { value: best ? pct(gain(best), 1) : "·", sub: "best gain over its baseline", best };
+      return { value: best ? pct(gain(best), 1) : "·", sub: bestGainWords(best), best };
     }
     if (k.mode === "goal") {
       const met = (i: RunView) => i.goals.filter((g) => g.status === "met").length;
@@ -4008,7 +4008,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         return `<div class="block"><div class="head"><h2>${esc(campaign)}</h2><span class="n">${rows.length} rig${rows.length > 1 ? "s" : ""}</span></div><div class="card flat"><table><thead><tr><th style="width:40px">#</th><th>Rig / run</th><th>Champion</th><th style="width:40%">Gain over its baseline</th><th>Cross-verified</th></tr></thead><tbody>${rows
           .map(
             (r, n) =>
-              `<tr><td class="muted">${n + 1}</td><td>${avatar(r.rig)} <a href="${runHref(r.rig, { id: r.run, campaign })}"><b>${esc(r.rig)}</b> / ${esc(r.run)}</a></td><td class="muted">seq ${r.champion_seq}</td><td>${meter("", pct(r.gain, 2), r.gain / best, "primary")}</td>
+              `<tr><td class="muted">${n + 1}</td><td>${avatar(r.rig)} <a href="${runHref(r.rig, { id: r.run, campaign })}"><b>${esc(r.rig)}</b> / ${esc(r.run)}</a></td><td class="muted">seq ${r.champion_seq}</td><td>${meter("", pct(r.gain, 2), r.gain / best, "primary")}${r.values ? `<div class="muted small">${esc(valuesPairWords(r.values))}</div>` : ""}</td>
 <td>${r.verified_by.length ? `<span class="pill ok">${icon.check}by ${esc(r.verified_by.join(", "))}</span>` : `<span class="muted small">not yet</span>`}</td></tr>`,
           )
           .join("")}</tbody></table></div></div>`;
