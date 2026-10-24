@@ -19,10 +19,10 @@ When every other v0.1.0 goal is verified:
 
 1. Test the quick start on clean machines, from the release bundle and from source: Linux with Docker, macOS with Docker Desktop, and macOS with Podman.
 2. Run the full checks and the acceptance suites the release touches, once.
-3. Open a pull request into `main`. Merge it when CI passes.
-4. Write the changelog.
-5. Tag `v0.1.0`. The tag publishes the images.
-6. Publish the GitHub Release, with notes on what works, the known limits and how to report a bug.
+3. Write the changelog, on `main`.
+4. Tag `v0.1.0`. The tag publishes the images.
+5. Publish the GitHub Release, with notes on what works, the known limits and how to report a bug.
+6. Start the branch for the next version, `v0.1.1`.
 
 ## Why
 
@@ -30,20 +30,21 @@ This is the first release that people outside the project can install and test.
 
 ## Steps for the owner
 
-The owner merges into `main` and makes the tag (2026-10-20: "I will handle merging to main." and "We aren't ready for version tag imo."). When the owner says the project is ready:
+The owner commits the release's last changes on `main` and makes the tag (2026-10-20: "I will handle merging to main." and "We aren't ready for version tag imo."). When the owner says the project is ready:
 
-1. **Check what is left.** The release plan lists each goal's state; the goals left open say what each waits for. Run the full check (`npm run check`) and the acceptances the last changes need on the tip of `v1/build`.
-2. **Date the changelog.** In `CHANGELOG.md`, rename `[Unreleased]: v0.1.0, the first public release` to `[0.1.0] - <date>`, and commit it on `v1/build`.
-3. **Move `main`.** `main` follows `v1/build` as a fast-forward: `git fetch . v1/build:main`, then `git push origin v1/build main`. Cloudflare Pages rebuilds the docs site from `main`.
-4. **Tag.** On `main`: `git tag -a v0.1.0 -m "Thermite v0.1.0"` and `git push origin v0.1.0`. The release workflow builds and publishes the images (control, the CPU and CUDA harnesses, the supervisor and the rig image), writes the release bundle (`compose.yaml` pinned by digest, and its README as the notes) and attaches it to a draft release.
-5. **Check the packages.** Each image must pull without signing in: `docker pull` each `ghcr.io/…:0.1.0` from a machine that is signed out. A package that was never public before (control's, the supervisor's) may need its visibility set to public once, in the repository's packages.
-6. **Publish.** Read the draft release's notes (what is in the release, the known limits, how to report a problem, the images), change what needs it, and publish it.
-7. **Test from the release.** On a clean machine, follow [Your first run](../../_site/src/content/docs/tutorials/first-run.md) from the published bundle.
+1. **Check what is left.** The release plan lists each goal's state; the goals left open say what each waits for. Run the full check (`npm run check`) and the acceptances the last changes need on the tip of `main`.
+2. **Date the changelog.** In `CHANGELOG.md`, rename `[Unreleased]: v0.1.0, the first public release` to `[0.1.0] - <date>`, commit it on `main`, and push `main`. Cloudflare Pages rebuilds the docs site from it.
+3. **Tag.** On `main`: `git tag -a v0.1.0 -m "Thermite v0.1.0"` and `git push origin v0.1.0`. The release workflow builds and publishes the images (control, the CPU and CUDA harnesses, the supervisor and the rig image), writes the release bundle (`compose.yaml` pinned by digest, and its README as the notes) and attaches it to a draft release.
+4. **Check the packages.** Each image must pull without signing in: `docker pull` each `ghcr.io/…:0.1.0` from a machine that is signed out. A package that was never public before (control's, the supervisor's) may need its visibility set to public once, in the repository's packages.
+5. **Publish.** Read the draft release's notes (what is in the release, the known limits, how to report a problem, the images), change what needs it, and publish it.
+6. **Test from the release.** On a clean machine, follow [Your first run](../../_site/src/content/docs/tutorials/first-run.md) from the published bundle.
+7. **Start the next version's branch.** `git switch -c v0.1.1 main`, then `git push origin v0.1.1`. The work for v0.1.1 merges there, and `main`, with the docs site, stays at v0.1.0 until v0.1.1 ships. Then set Dependabot's `target-branch` to `v0.1.1` (`.github/dependabot.yml`), and say in CONTRIBUTING.md and on the site's Contributing page that pull requests go to `v0.1.1`. When v0.1.1 ships, it merges into `main`, and its branch is deleted before the tag `v0.1.1` is made, so that a branch and a tag never share a name.
 
 ## Done when
 
 - [ ] `main` holds the release, and the tag and the images exist.
 - [ ] The release notes are published.
+- [ ] The `v0.1.1` branch exists, and pull requests and Dependabot's updates go to it.
 
 ## Decisions
 
@@ -56,6 +57,7 @@ The owner merges into `main` and makes the tag (2026-10-20: "I will handle mergi
 - 2026-10-20, owner: The owner merges the code into `main` and makes the tag. The project is not ready for a version tag yet.
 - 2026-10-20, owner: The code moved to `main` early, at the development branch's state that day, so the docs site can build from `main` (goal 060). Work stays on the development branch, and `main` follows it. The release is still this goal's pull request and tag.
 - 2026-10-23, owner: the project is ready for v0.1.0 once goal 115 (a hill climb's first job measures its starting point) is in: "if we get this fix in for baseline then I think buddy we ready for v0.1.0 release."
+- 2026-10-24, owner: the development branch `v1/build` is dropped. The work, and this release, happen on `main`, so there is no pull request into `main`; this replaces the 2026-10-20 decisions on a pull request and on `main` following the development branch. After v0.1.0, each version is built on a branch of its own, named for it, such as `v0.1.1`, and `main` moves only when a version ships.
 
 ## Open questions
 

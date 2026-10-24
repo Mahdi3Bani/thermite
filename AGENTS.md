@@ -49,6 +49,7 @@ The full list, with dates, is in [docs/plan/decisions.md](docs/plan/decisions.md
 ## Git
 
 - Work on a branch and commit in reviewable steps with clear messages.
+- Until v0.1.0 ships, work merges into `main`. After it, each version is built on a branch named for it, such as `v0.1.1`, and `main` moves only when a version ships ([decisions](docs/plan/decisions.md#releases-and-planning)).
 - **Never push.** The people you work for push: the maintainers in this repository, or a contributor from their own fork.
 - Do not rewrite history that has been pushed.
 - `.agents/`, `.claude/` and `skills-lock.json` belong to the maintainers' tooling. Leave them alone unless asked.
