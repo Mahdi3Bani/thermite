@@ -564,7 +564,7 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | --- | --- | --- | --- |
 | `CAMPAIGN` | Yes | | The campaign, as on its page |
 | `--rig R` | Yes | | The rig the run starts on |
-| `--agents on\|off` | No | `on` | `off`: a try, with no agents. The judge measures the starting code on every case once |
+| `--agents on\|off` | No | `on` | `off`: a try, with no agents. The judge alone measures the starting point: a hill climb's [baseline](contract.md#the-baseline), or a goal campaign's check of every goal |
 | `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first, with the harness the model needs (the rig's own when control gave it this model already). When the rig does not run `M` yet, the run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model. When the rig runs `M` already, the run starts |
 | `--promotion auto\|owner` | No | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
 | `--ask WHAT` | No, repeatable | nothing | **Ask me first about**: `gain:PERCENT`, `flaws`, `reviews` or `not-possible`, as for `assign` |

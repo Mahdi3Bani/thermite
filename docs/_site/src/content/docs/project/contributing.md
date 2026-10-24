@@ -53,7 +53,7 @@ Run these from the repository root before each commit:
 | --- | --- |
 | `npm run typecheck` | The TypeScript types |
 | `npm run lint` | Style and common mistakes, with Biome. `npm run format` fixes what it can |
-| `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all, one file at a time |
+| `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all, one file at a time. Each file ends when its tests end, so a failed test that leaves a server open fails at once instead of hanging |
 | `npm run check:public` | That no tracked or staged file holds private names (see below). Stage new files first, or run `node scripts/check-public.mjs --untracked` |
 
 `npm run check` runs the typecheck, the lint, every test and the public check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `src/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit.
@@ -67,11 +67,16 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | Control, the dashboard, MCP or the relay | `COMPOSE="podman compose" node scripts/control-acceptance.mjs` |
 | The workers, the planner, the scheduler, or the OpenCode harness in a hill-climb or research trial | `COMPOSE="podman compose" node scripts/agents-acceptance.mjs` |
 | The New campaign page, the campaign builder, a campaign's **Start a run**, kits kept on control, Git access or the supervisor's staging | `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs` |
+| Machines over SSH, their checks or their install recipes | `COMPOSE="podman compose" node scripts/machine-acceptance.mjs` |
 | Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
+| Setting rigs up on machines (**Rigs › Add a rig**, the deploy and management scripts, the Quadlet units) or the rig images | `COMPOSE="podman compose" node scripts/rig-deploy-acceptance.mjs` |
+| The broker's device setup, the judge's executors, the isolation selftest or the harness image, on several GPUs | `COMPOSE="podman compose" node scripts/multigpu-acceptance.mjs` |
 | The one-container rig image, the broker's start of the supervisor, its wait for enrollment or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |
 | Rigs on RunPod: their launch, stop, start, restart and terminate, or the fake RunPod API | `COMPOSE="podman compose" node scripts/runpod-acceptance.mjs` |
 | The Claude Code harness, subscriptions in **Providers**, the agents' models on **Edit rig**, or the model routes | `COMPOSE="podman compose" node scripts/claude-acceptance.mjs` |
+| How the harness or the advisors start Claude Code (its environment, its token, its folders), or the images' packages for it | `COMPOSE="podman compose" node scripts/claude-real-acceptance.mjs` |
 | The Codex harness, the model proxy, the harness choice on **Edit rig** or in `set_rig_model`, or the model routes | `COMPOSE="podman compose" node scripts/codex-acceptance.mjs` |
+| The advisors, audits, propagation, reviews, the lifecycle drivers or a full reset | `COMPOSE="podman compose" node scripts/steering-acceptance.mjs` |
 | The quick start's pages, the images or compose, the release bundle, or the sample in `examples/` | `COMPOSE="podman compose" node scripts/quick-start-acceptance.mjs` |
 
 The quick-start test follows [Your first run](../tutorials/first-run.md) and [Hand the work to agents](../tutorials/agents-with-a-free-model.md) as a tester does. It builds the images from your copy and writes a release bundle for them with `scripts/release-bundle.ts`. Then it runs each shell block of the pages as they are written, in a new folder, and uses the values, buttons and words the pages give: `src/testing/quick-start.ts` reads them. It changes only what cannot work before a release is published: the release's files and the source come from servers on your computer, and the agents' model is the scripted model of the agents test. It runs the rig's checks and `thermite doctor`, then the sample campaign to the judge's first verdict. It takes about 7 minutes when the images' layers are already built, and about 20 when they are not. When you change one of those pages, run `node scripts/test.mjs src/testing/quick-start.test.ts`: it fails at once when a page no longer has what the test reads.

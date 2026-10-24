@@ -31,7 +31,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - A documentation site with tutorials, how-to guides, reference and explanation. Agents can read all of it through `llms.txt`.
 - A changelog, a known-limits page, a security policy and a contributor guide.
 
-**Later:** quick follow-ups such as an Info tab for campaigns and runs, stuck rigs in Needs you and the model's reasoning on Live (v0.1.1); one Logs page and full API and MCP coverage (v0.2.0); safer managed rigs and lane network rules (v0.3.0); kit tools and clearer evidence (v0.4.0); web search and multi-day runs (v0.5.0). 0.x versions make no upgrade promise.
+**Later:** quick follow-ups such as an Info tab for campaigns and runs, stuck rigs in Needs you and the model's reasoning on Live (v0.1.1); one Logs page and full API and MCP coverage (v0.2.0); safer managed rigs and lane network rules (v0.3.0); kit tools and clearer evidence (v0.4.0); multi-day runs (v0.5.0). Web search for research runs, planned for v0.5.0, is already built. 0.x versions make no upgrade promise.
 
 ## Goals
 

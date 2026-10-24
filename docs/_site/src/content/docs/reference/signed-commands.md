@@ -606,7 +606,7 @@ The owner's final word on a goal that the review panel passed, or on a research 
 | `accept` | boolean | `true` accepts, `false` rejects |
 | `note` | text up to 2000 characters | Optional |
 
-For a goal, the judge then checks the champion's goals again. For a research run's review, `true` ends the run: no new trial starts, the rig's final writer writes its research paper, and once the paper is in (or at once, on a rig with no final writer) and the trials running end, it writes its final report and closes with `every question is answered`; `false` lets it go on, and a new review needs new evidence. Either way the run's journal records the owner's word and `note`. A closed run is refused: `run <run> is closed: its goals are not checked again`. Result: `{"review", "decision": "accepted"}` or `"rejected"`.
+For a goal, the judge then checks the champion's goals again. For a research run's review, `true` ends the run: no new trial starts, the rig's final writer writes its research paper, and once the paper is in (or at once, on a rig with no final writer) and the trials running end, it writes its final report and closes with `every question is answered`; `false` lets it go on, and a new review needs new evidence. Either way the run's journal records the owner's word and `note`. A closed run is refused: `run <run> is closed: its goals are not checked again`. So are a review the run does not have (`no review <review> in <run>`), one the review panel has not passed (`review <review> has not passed the review panel`) and one already decided, by the owner or hands-off (`review <review> is already decided`). Result: `{"review", "decision": "accepted"}` or `"rejected"`.
 
 ### `conclude`
 

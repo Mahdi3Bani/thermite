@@ -68,7 +68,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `approve_promotion`, `decline_promotion` | Yes | No | No |
 | `close_run` | Yes | No | No |
 
-The six queue kinds change a run's [experiment queue](signed-commands.md#queue_add) and remove its rules; the harness takes them only from the owner, and the operator acts for the owner. No token issues `rig_settings`, `accept_review`, `conclude`, `propagate` or `wipe_state` with `issue_command`. A rig's settings change through [`set_rig_settings`](#set_rig_settings), with **Edit rig**'s checks, and a new GPU split also through the owner's [`start_run`](#start_run), as **Start a run** does: each sends a `rig_settings`. The owner accepts reviews and "not possible" endings on the dashboard. Only the owner's token closes a run for good with `close_run`: an operator acts for the owner, but its list has no `close_run`, and the dashboard's **Close run** is the owner's too. `propagate` goes through `propagate_champion`, and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
+The six queue kinds change a run's [experiment queue](signed-commands.md#queue_add) and remove its rules; the harness takes them only from the owner, and the operator acts for the owner. No token issues `rig_settings`, `accept_review`, `conclude`, `propagate`, `drain_rig` or `wipe_state` with `issue_command`. A rig's settings change through [`set_rig_settings`](#set_rig_settings), with **Edit rig**'s checks, and a new GPU split also through the owner's [`start_run`](#start_run), as **Start a run** does: each sends a `rig_settings`. The owner accepts reviews and "not possible" endings on the dashboard. Only the owner's token closes a run for good with `close_run`: an operator acts for the owner, but its list has no `close_run`, and the dashboard's **Close run** is the owner's too. `propagate` goes through `propagate_champion`, `drain_rig` through [`update_rig_images`](#update_rig_images), and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
 
 While the owner fully resets a rig, `issue_command` with the agent's token refuses that rig: `<rig> is being reset by the owner`.
 
@@ -113,7 +113,11 @@ A goal run's `goals` is the judge's newest check of its champion (`goals_seq`, a
 
 A hill climb also has its [baseline](contract.md#the-baseline). `baseline` is `{at, champion_seq, commit, attempt, blocks, runs_per_cell, primary, guards, units, cells, files, bytes, summary}`: the starting point (`attempt` names the setup change that became it, or is `null` for the seed), the contract's main metric and guards, and each measured case as `{cell, metrics}`, each metric `{metric, median, mad, n}`, never a held-out case; `files` is what the kit's check kept, each `{path, bytes, sha256}`. It is `null` until the judge has measured the starting point. `setup` is `{at, champion_seq, commit, reasons, summary}` while the judge could not measure it, else `null`. `baseline_waiting` is `true` while the judge measures it and the run starts no round. A champion that a setup change became has `setup: true`, and its `cumulative` gain starts again at 1.
 
+A research run's [answer checks](../explanation/campaign-modes.md#when-a-research-run-ends) are in `reviews`, with the goal `research`: each `{review, goal, commit, panel, owner, gaps, answers}`. Its `commit` is no commit but a marker of the evidence the review saw (`corpus:` with the counts of verified claims and supported findings and the newest claim's id): a run is never asked twice on the same evidence. `panel` is `review_passed` or `review_failed` once the review panel decided, and `owner` is `accepted` or `rejected`: the owner's answer where the run asks the owner, otherwise `accepted` at once after a pass, hands-off. `gaps` is what the reviewers found missing, each cut to 300 characters; `answers` is each question's first answer that passed the harness's check, `{question, answer}`, with the questions numbered from 0 and each answer cut to 500 characters. Both are `null` until the review panel decided, and for a goal's review. `paper` is the run's [research paper](../explanation/campaign-modes.md#the-research-paper), `{state, requested_at, refused, at, writer, ste_checked, experiments, text}`: `state` is `writing` from when the final writer is asked, with `refused` as `{at, problems}` for the newest draft that code refused (its first 5 problems); then `in`, with when code accepted it, the writer, whether the rig's STE checker checked it, how many next experiments went to the knowledge base, and the paper itself as `text`. `paper` is `null` until the paper is asked for, and in the other modes.
+
 Each run also has `agents_stopped`: `{kind, words, said, by, since}` while the model provider (no credits, a refused key or an unserved model; or, with `kind` `server` or `model`, no model call that worked for 30 minutes) or a failing model check of the workers' model has stopped its agents, with the provider's or the check's own words, the kind in plain words, what found it and since when; `null` while they can run.
+
+A research run also has `paper`, its [research paper](../explanation/campaign-modes.md#the-research-paper): `null` until the harness asks the final writer for it, then `{state, requested_at, refused, at, writer, ste_checked, experiments, text}`. `state` is `writing` while the final writer writes it, with `refused`, `{at, problems}`, the newest refused draft's time and its first 5 problems, or `null`; then `in`, with `at`, when the harness accepted it, `writer`, `ste_checked` (whether the rig's STE checker checked it), `experiments`, how many next experiments went to the knowledge base, and `text`, the whole paper with the references the harness appended.
 
 A goal run also has `goal_checks`: how each goal is checked, as its rig's kit runs it, reported when the run started; `null` for another mode, or a run an older harness started. It is `{kit, run_command, timeout_s, goals}`: `kit` is `{name, repo, commit}`, `run_command` the kit's `run.command`, `timeout_s` its `run.timeout_s`, and each goal is `{goal, description, required, how, verifier?, requires?, priority?, metric?, op?, value?, unit?, reps?, criteria?, cells, cells_total?, problems}`. `how` is `verifier`, `threshold` or `review`. Each cell is `{name, held_out, params?, args?, timeout_s?, missing?}`: `params` and `args` (the same parameters as `key=value` lines, in the kit's order) only for a measured cell, never a held-out one; `timeout_s`, the cell's time limit; `missing`, a cell the kit lacks. At most 100 cells a goal, and `cells_total` counts them when there are more. A verifier goal's `cells` is `null` when the kit has no such verifier, and its `problems` then says `the kit has no verifier <name>`.
 
@@ -320,6 +324,19 @@ No inputs. Returns `[{campaign, counts, journal, items, runs, updated_at, read_b
 
 Returns items `{id, seq, campaign, rig, run, kind, ref, title, body, by, url, sub, at, updated_at, result}`, newest change first. `result` is an experiment's result, such as `tried: attempt <id> (<result>), <verdict>` or `dropped: <why>`, and `null` for the other kinds. [Items](knowledge-base.md#items) gives each field and kind.
 
+### exports
+
+**Exports on control.** Owner and operator.
+
+> The exports rigs without a results repository sent to control, newest first: each one's rig, name, whether it is full, its event range, files and size, and when it was made and completed (complete_at null: still arriving). The owner downloads a complete one as one .tar.gz on the dashboard's Exports page, or over REST at GET /v1/rigs/{rig}/exports/{name}/archive; there is no download over MCP.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string, optional | every rig | One rig's exports only |
+| `limit` | whole number, 1 to 500 | 50 | How many exports |
+
+Returns `[{rig, name, full, from_event, through_event, files, files_kept, bytes, bytes_received, created_at, complete_at}]`, newest first, with `bytes_received` always `null`. [Exports](exports.md#download-an-export) says what each holds and how to download one.
+
 ### kb_grant
 
 **Let a campaign read another's folder.** Owner and operator.
@@ -342,20 +359,6 @@ An outside knowledge base is no longer a grant: a campaign's kit names an [MCP s
 > The campaign's agents no longer read the other campaign's folder. New runs start without it.
 
 The same inputs as `kb_grant`. Returns `{revoked: true, reads}`. Error: `<campaign> does not read <reads>`. Control writes it to its audit log as `kb_revoke`. Each running run of the campaign loses the folder from its `knowledge/` at its supervisor's next sync.
-
-### exports
-
-**Exports on control.** Owner and operator.
-
-> The exports rigs without a results repository sent to control, newest first: each one's rig, name, whether it is full, its event range, files and size, and when it was made and completed (complete_at null: still arriving). The owner downloads a complete one as one .tar.gz on the dashboard's Exports page, or over REST at GET /v1/rigs/{rig}/exports/{name}/archive; there is no download over MCP.
-
-| Input | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `rig` | string, optional | every rig | One rig's exports only |
-| `limit` | whole number, 1 to 500 | 50 | How many exports |
-
-Returns `[{rig, name, full, from_event, through_event, files, files_kept, bytes, bytes_received, created_at, complete_at}]`, newest first, with `bytes_received` always `null`. [Exports](exports.md#download-an-export) says what each holds and how to download one.
-
 
 ### rig_setup
 
@@ -440,69 +443,6 @@ No inputs. Returns:
 | `machines` | `{name, address, port, user, host_key_trusted, facts, checked_at, check_error}` |
 | `clusters` | `{name, context, placement, namespace_pattern, slots, facts, checked_at, check_error}` |
 | `gpu_clouds` | `{name, kind, facts, checked_at, check_error}`. A RunPod account's `facts` include `spend`: `{today, month, last30, days}` in US dollars, `days` being the last 7 days as `{day, usd}`, or `error` when the key may not read billing |
-
-### mcp_servers
-
-**MCP servers.** Owner, operator and reader.
-
-> The MCP servers in Settings › Providers: each one's address, how it signs in, its state, its last error, its tools (with whether each only reads) and the kits that name it. Never a key, a client secret or a sign-in: only a secret's last four characters.
-
-No inputs. Returns `{servers}`: each server as `GET /v1/mcp-servers` gives it ([The REST API](rest-api.md#mcp-servers)), with `named_by`, the kits that name it.
-
-### mcp_server_add
-
-**Add an MCP server.** Owner.
-
-> Adds an MCP server to Settings, for the kits that name it. auth: oauth (answers with sign_in_url: open it in a browser and allow Thermite; the server's page sends the browser back to control), key (header, default Authorization, and secret: the header's whole value, such as Bearer and the token), client (client_id and client_secret: control gets a token with them) or none (a public server). url: https, or http for localhost only. Control seals each secret, never shows it again, and reads the server's tools; it calls none of them. The owner's token only.
-
-| Input | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `name` | string, up to 64 characters | | How kits name it: lowercase letters, digits and dashes |
-| `url` | string, up to 500 characters | | Its MCP address |
-| `auth` | `oauth`, `key`, `client` or `none` | | How the server signs Thermite in |
-| `header` | string, optional | `Authorization` | `key`: the header |
-| `secret` | string, optional | | `key`: the header's whole value |
-| `client_id` | string, optional | | `client`, or `oauth` for a server that does not register clients by itself |
-| `client_secret` | string, optional | | `client`; `oauth` when the server gave Thermite a secret |
-| `scope` | string, optional | | The scopes to ask for, separated by spaces |
-
-Returns `{server, sign_in_url}` for OAuth, else `{server}` with `check_error` when its tools could not be read (the server is kept). For OAuth, a sign-in that can't start is an error, such as `The server does not register clients by itself. …`, but the server stays in Settings: fix it with `mcp_server_change`, then call `mcp_server_sign_in`. Errors: `There is a server named <name> already.`, and the REST route's refusals ([What a new server takes](rest-api.md#mcp-servers)). The audit log's `mcp:mcp_server_add` entry holds `secret` and `client_secret` only as `given (<hint>)`.
-
-### mcp_server_change
-
-**Change an MCP server.** Owner.
-
-> Changes a server's address, header, client ID, scopes or secrets. A secret left out is kept, except for another address or another way to sign in, which need it again. Then control reads its tools again. The owner's token only.
-
-The inputs of `mcp_server_add`, all but `name` optional; one left out keeps its value. Returns `{server}`, with `check_error` when its tools could not be read, or `{server, sign_in: "needed: call mcp_server_sign_in"}` for an OAuth server whose address or client changed. Error: `Settings has no server named <name>.`
-
-### mcp_server_check
-
-**Read an MCP server's tools again.** Owner.
-
-> Control reads the server's tools again with its sign-in, and keeps them with its state. It calls no tool. The owner's token only.
-
-| Input | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `name` | string | | The server |
-
-Returns `{server}`, with `check_error` when its tools could not be read.
-
-### mcp_server_sign_in
-
-**Sign in to an MCP server.** Owner.
-
-> For a server that signs in with OAuth: the address of its sign-in page. Open it in a browser within 15 minutes and allow Thermite; the page sends the browser back to control, which seals the sign-in and renews it. The owner's token only.
-
-The input `name`. Returns `{url}`. The page sends the browser to `/v1/mcp-oauth/callback` on `THERMITE_CONTROL_PUBLIC_URL`, or, when that is not set, on the address the MCP call came to.
-
-### mcp_server_delete
-
-**Delete an MCP server.** Owner.
-
-> Control forgets the server and its secrets. Nothing changes on the server. Refused while a kit names it: take it out of those kits first. The owner's token only.
-
-The input `name`. Returns `{deleted: true}`. Errors: `Settings has no server named <name>.`, and `<kits> name it. Take it out of those kits first.`
 
 ### add_cluster_rig
 
@@ -609,23 +549,6 @@ The supervisor never reports a key, a token, a key file, a base address or a com
 ```
 
 These are the models control gives the rig. [Give each agent its own model](../how-to/models/model-per-agent.md) says when the rig takes each one. Errors: `no rig <rig>`. Its REST twin is [`GET /v1/rigs/<rig>/model`](rest-api.md#the-agents-model).
-
-### set_model_price
-
-**Set a model's price.** Owner and operator.
-
-> Sets the price of a provider's model in Providers, for the cost model_usage gives, when the provider's model list gives none: input, cached_input (optional; null or left out: the input price) and output, each in US dollars per million tokens. clear: true removes it. Every call of the model is costed at it, the earlier ones too. Refused in words: a subscription's provider (its calls are on its plan), a model the provider does not have, and a model whose list gives a price (that one is used). The providers tool lists the prices in use.
-
-| Input | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `provider` | string | | The provider's name in **Settings › Providers** |
-| `model` | string | | The model's id, as the provider lists it or as it was added |
-| `input` | number, 0 to 1,000,000 | | US dollars per million input tokens not read from the cache |
-| `cached_input` | number, 0 to 1,000,000, or null, optional | null | US dollars per million input tokens read from the cache; null: the input price |
-| `output` | number, 0 to 1,000,000 | | US dollars per million output tokens, the reasoning included |
-| `clear` | `true`, optional | | Removes the owner's price: the model's calls have no price again |
-
-Returns `{provider, model, price, said}`, as [`POST /v1/model-prices`](rest-api.md#model-usage) does, with its refusals as errors.
 
 ### set_rig_model
 
@@ -760,6 +683,23 @@ Errors, in **Edit rig**'s words:
 
 Its REST twin is [`POST /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings). Each agent's model is [`set_rig_model`](#set_rig_model)'s.
 
+### set_model_price
+
+**Set a model's price.** Owner and operator.
+
+> Sets the price of a provider's model in Providers, for the cost model_usage gives, when the provider's model list gives none: input, cached_input (optional; null or left out: the input price) and output, each in US dollars per million tokens. clear: true removes it. Every call of the model is costed at it, the earlier ones too. Refused in words: a subscription's provider (its calls are on its plan), a model the provider does not have, and a model whose list gives a price (that one is used). The providers tool lists the prices in use.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `provider` | string | | The provider's name in **Settings › Providers** |
+| `model` | string | | The model's id, as the provider lists it or as it was added |
+| `input` | number, 0 to 1,000,000 | | US dollars per million input tokens not read from the cache |
+| `cached_input` | number, 0 to 1,000,000, or null, optional | null | US dollars per million input tokens read from the cache; null: the input price |
+| `output` | number, 0 to 1,000,000 | | US dollars per million output tokens, the reasoning included |
+| `clear` | `true`, optional | | Removes the owner's price: the model's calls have no price again |
+
+Returns `{provider, model, price, said}`, as [`POST /v1/model-prices`](rest-api.md#model-usage) does, with its refusals as errors.
+
 ### start_run
 
 **Start a run of a campaign.** Owner and operator.
@@ -772,7 +712,7 @@ The operator's description ends with one more sentence: `judge_gpus is the owner
 | --- | --- | --- | --- |
 | `campaign` | string | | The campaign, as on its page: one saved on control, or one assigned before over the API, MCP or the command line |
 | `rig` | string | | The rig the run starts on (**Where it runs**) |
-| `agents` | boolean, optional | `true` | `false`: a try, with no agents. The judge measures the starting code on every case once (**Agents** › **Off: a try**) |
+| `agents` | boolean, optional | `true` | `false`: a try, with no agents (**Agents** › **Off: a try**). The judge alone measures the starting point: a hill climb's [baseline](contract.md#the-baseline), or a goal campaign's check of every goal |
 | `agents_model` | `{provider, model}`, optional | none | For a rig with no model for its agents: a model from a provider in **Providers** (**The agents' model**). Control gives the rig the model, with the harness the model needs (the rig's own when control gave it this model already), and does not start the run yet |
 | `promotion` | `auto` or `owner_approval`, optional | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner (**When a change is confirmed better**) |
 | `ask_owner` | `{above_gain?, declared_flaws?, reviews?, not_possible?}`, optional | nothing | What else the run asks the owner about (**Ask me first about**). `above_gain`, a fraction: a confirmed gain above it waits for the owner (0.15 is 15%); `declared_flaws`, `true`: a win whose worker declared flaws waits; `reviews`, `true`: a review panel's pass waits for the owner's acceptance; `not_possible`, `true`: a "not possible" proposal waits. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md#choose-what-waits) |
@@ -785,7 +725,7 @@ The new run's queue holds at most 500 experiments: the copied ones first, then t
 It returns one of these:
 
 - The run started: `{started: true, campaign, rig, run, command, status: "pending", woke?, notes?, agents_context?}`. `run` is the new run's name, such as `gemv-speed-2`, or `gemv-speed-try-1` for a try. `command` is the `assign_campaign` command's id, for [`command_status`](#command_status). `woke` is there when control started the rig's stopped RunPod pod first, as for [`issue_command`](#issue_command). `notes` is there when there is more to know: `<run> is at work on <rig>, and pauses when this run starts (a rig runs one run at a time).`, `<run> on <rig> has no untried experiments: the new run's queue starts empty.`, or what applies to the agents' context, below.
-- `agents_context` is there when the campaign sets its own context window or compaction point ([`set_campaign_context`](#set_campaign_context)) and the run has agents: `{campaign, agents}`. `campaign` is the campaign's settings; `agents` has one key for each model the run's agents work with: `workers`, `planner`, `teachers`, `second_teacher` (only when control gives two teachers), `merged_by`, `auditor` and `review_panel` (a research run has no planner, auditor or review panel), each `{model, context_window, compact_at}`. `model` is the model control gives that agent, or `null` for the rig's own settings or its advisors file. `context_window` is the lower of the campaign's window and the agent's own (its provider's window, or the rig's cap on it); with no model from control, it is the campaign's, as the most the agent works with, or `null`. `compact_at` is the campaign's point, else the agent's own, else 80; `null` when control does not know it. One of the notes says the same in words: `This campaign sets a context window of 131,072 tokens, compaction at 70% of the window. The lower window wins on each agent. Workers: 131,072 tokens (wide-model), compacted at 70% of the window. …`, with `Teachers: …`, `Teachers (second model): …`, `Teachers (merged by): …`, `Auditor: …` and `Review panel: …` after it, and `(the rig's advisors file)` for an advisor with no model from control
+- `agents_context` is there when the campaign sets its own context window or compaction point ([`set_campaign_context`](#set_campaign_context)) and the run has agents: `{campaign, agents}`. `campaign` is the campaign's settings; `agents` has one key for each model the run's agents work with: `workers`, `planner`, `teachers`, `second_teacher` (only when control gives two teachers), `merged_by`, `auditor` and `review_panel` (for a research run, only `workers`, `teachers`, `second_teacher` and `merged_by`), each `{model, context_window, compact_at}`. `model` is the model control gives that agent, or `null` for the rig's own settings or its advisors file. `context_window` is the lower of the campaign's window and the agent's own (its provider's window, or the rig's cap on it); with no model from control, it is the campaign's, as the most the agent works with, or `null`. `compact_at` is the campaign's point, else the agent's own, else 80; `null` when control does not know it. One of the notes says the same in words: `This campaign sets a context window of 131,072 tokens, compaction at 70% of the window. The lower window wins on each agent. Workers: 131,072 tokens (wide-model), compacted at 70% of the window. …`, with `Teachers: …`, `Teachers (second model): …`, `Teachers (merged by): …`, `Auditor: …` and `Review panel: …` after it, and `(the rig's advisors file)` for an advisor with no model from control
 - The rig was given a model first: `{started: false, said}`, with `said` `<rig> takes <model> within a minute; Settings › Providers shows it taking the model until then. Then start the run again.` Call `start_run` again, without `agents_model`, once [`list_rigs`](#list_rigs) or **Settings › Providers** shows the rig runs the model.
 
 Errors, in the words of **Start a run**:
@@ -1062,6 +1002,69 @@ Besides `mcp:update_rig_images`, the audit log records `cluster_rig_drain` when 
 | `slots` | list of strings, at least one | | The namespaces, one rig each. The list replaces the old one |
 
 Returns `{cluster, slots}`. Errors: `no such cluster`, `<cluster> puts rigs in namespaces control creates, not in slots`, `"<namespace>" is not a namespace name`, `<namespaces> still holds a rig (<rigs>): keep it in the list`, or why control could not read the cluster again.
+
+### mcp_servers
+
+**MCP servers.** Owner, operator and reader.
+
+> The MCP servers in Settings › Providers: each one's address, how it signs in, its state, its last error, its tools (with whether each only reads) and the kits that name it. Never a key, a client secret or a sign-in: only a secret's last four characters.
+
+No inputs. Returns `{servers}`: each server as `GET /v1/mcp-servers` gives it ([The REST API](rest-api.md#mcp-servers)), with `named_by`, the kits that name it.
+
+### mcp_server_add
+
+**Add an MCP server.** Owner.
+
+> Adds an MCP server to Settings, for the kits that name it. auth: oauth (answers with sign_in_url: open it in a browser and allow Thermite; the server's page sends the browser back to control), key (header, default Authorization, and secret: the header's whole value, such as Bearer and the token), client (client_id and client_secret: control gets a token with them) or none (a public server). url: https, or http for localhost only. Control seals each secret, never shows it again, and reads the server's tools; it calls none of them. The owner's token only.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string, up to 64 characters | | How kits name it: lowercase letters, digits and dashes |
+| `url` | string, up to 500 characters | | Its MCP address |
+| `auth` | `oauth`, `key`, `client` or `none` | | How the server signs Thermite in |
+| `header` | string, optional | `Authorization` | `key`: the header |
+| `secret` | string, optional | | `key`: the header's whole value |
+| `client_id` | string, optional | | `client`, or `oauth` for a server that does not register clients by itself |
+| `client_secret` | string, optional | | `client`; `oauth` when the server gave Thermite a secret |
+| `scope` | string, optional | | The scopes to ask for, separated by spaces |
+
+Returns `{server, sign_in_url}` for OAuth, else `{server}` with `check_error` when its tools could not be read (the server is kept). For OAuth, a sign-in that can't start is an error, such as `The server does not register clients by itself. …`, but the server stays in Settings: fix it with `mcp_server_change`, then call `mcp_server_sign_in`. Errors: `There is a server named <name> already.`, and the REST route's refusals ([What a new server takes](rest-api.md#mcp-servers)). The audit log's `mcp:mcp_server_add` entry holds `secret` and `client_secret` only as `given (<hint>)`.
+
+### mcp_server_change
+
+**Change an MCP server.** Owner.
+
+> Changes a server's address, header, client ID, scopes or secrets. A secret left out is kept, except for another address or another way to sign in, which need it again. Then control reads its tools again. The owner's token only.
+
+The inputs of `mcp_server_add`, all but `name` optional; one left out keeps its value. Returns `{server}`, with `check_error` when its tools could not be read, or `{server, sign_in: "needed: call mcp_server_sign_in"}` for an OAuth server whose address or client changed. Error: `Settings has no server named <name>.`
+
+### mcp_server_check
+
+**Read an MCP server's tools again.** Owner.
+
+> Control reads the server's tools again with its sign-in, and keeps them with its state. It calls no tool. The owner's token only.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | | The server |
+
+Returns `{server}`, with `check_error` when its tools could not be read.
+
+### mcp_server_sign_in
+
+**Sign in to an MCP server.** Owner.
+
+> For a server that signs in with OAuth: the address of its sign-in page. Open it in a browser within 15 minutes and allow Thermite; the page sends the browser back to control, which seals the sign-in and renews it. The owner's token only.
+
+The input `name`. Returns `{url}`. The page sends the browser to `/v1/mcp-oauth/callback` on `THERMITE_CONTROL_PUBLIC_URL`, or, when that is not set, on the address the MCP call came to.
+
+### mcp_server_delete
+
+**Delete an MCP server.** Owner.
+
+> Control forgets the server and its secrets. Nothing changes on the server. Refused while a kit names it: take it out of those kits first. The owner's token only.
+
+The input `name`. Returns `{deleted: true}`. Errors: `Settings has no server named <name>.`, and `<kits> name it. Take it out of those kits first.`
 
 ### retire_rig
 

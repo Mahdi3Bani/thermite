@@ -35,7 +35,7 @@ Leave **GPUs for the judge** empty for half. The note under the fields says what
 
 On a machine, a GPU that another rig control set up there already uses shows "used by rig …" and can't be ticked.
 
-The local stack's rig is not added there: it gets every NVIDIA GPU of its machine from `compose.gpu.yaml`, which `thermite local init` writes. The judge gets 1 and the agents the rest, as long as the agents get 8 at most ([Use the machine's NVIDIA GPUs](one-machine.md#use-the-machines-nvidia-gpus)). Change the split as below.
+The local stack's rig is not added there: it gets every NVIDIA GPU of its machine, up to 16, from `compose.gpu.yaml`, which `thermite local init` writes. With 2 to 9 GPUs the judge gets 1 and the agents the rest; with 10 or more, the agents get 8 and the judge the rest ([Use the machine's NVIDIA GPUs](one-machine.md#use-the-machines-nvidia-gpus)). Change the split as below.
 
 ## Change the split later
 

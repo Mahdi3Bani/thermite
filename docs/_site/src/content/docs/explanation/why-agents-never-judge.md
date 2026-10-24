@@ -98,4 +98,4 @@ People and advisors can steer the search. The teachers, one of the advisors, poi
 
 The judge takes no messages at all. It is code, not an agent, so there is nothing in it to persuade, and no message can change a measurement.
 
-The [supervision](supervision.md) page explains the advisors: the teachers, the auditor and the review panel.
+The [supervision](supervision.md) page explains the advisors: the teachers, the auditor, the review panel and the final writer, whose research paper code checks before it is accepted.
