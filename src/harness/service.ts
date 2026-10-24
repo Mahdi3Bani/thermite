@@ -74,7 +74,7 @@ import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { type CardResult, type CardSubmission, Cards } from "./research/cards.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
 import { type PaperPackage, type PaperSubmission, Papers } from "./research/paper.ts";
-import { NOTE_REPEATS, startingHypotheses } from "./research/research.ts";
+import { NOTE_REPEATS, setHypothesisStatus, startingHypotheses } from "./research/research.ts";
 import {
   checkResearchPanel,
   RESEARCH_REVIEW,
@@ -144,6 +144,7 @@ const OWNER_ONLY = new Set([
   "queue_drop",
   "queue_accept",
   "drop_directive",
+  "hypothesis_status",
 ]);
 
 /** An advisor's additions and moves for a run's queue (the supervisor's /v1/queue). */
@@ -1104,6 +1105,25 @@ export class HarnessService {
         this.openRun(p.run);
         this.ledger.dropDirective(p.run, p.id, by);
         return { run: p.run, dropped: p.id };
+      }
+      // A research run's hypothesis promoted, returned to the pool or retired (goal 117): the
+      // planner's changes go through the same function.
+      case "hypothesis_status": {
+        const p = CommandPayloads.hypothesis_status.parse(payload);
+        this.openRun(p.run);
+        if (this.contractFor(p.run).mode !== "research")
+          throw new LedgerError(
+            "invalid",
+            `run ${p.run} is not a research run: only a research run has hypotheses to promote or retire`,
+          );
+        const r = setHypothesisStatus(
+          this.ledger,
+          p.run,
+          { id: p.id, status: p.status, reason: p.reason },
+          by,
+        );
+        if (r.changed) this.researchChanged?.(p.run);
+        return { run: p.run, ...r };
       }
       case "reset_workers": {
         // The scheduler acts on the event: it kills the run's running trials, clears the

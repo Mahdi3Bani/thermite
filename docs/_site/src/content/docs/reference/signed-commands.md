@@ -116,7 +116,7 @@ The harness checks every command in this order. A command that fails a check mar
 | It is not being applied right now | None: the harness answers `in_progress`, and the supervisor asks again later | Stays `pending` |
 | An owner-only kind was issued by the owner (`issued_by` is `owner` or starts with `owner:`) | `<kind> is the owner's to issue, not <issuer>'s` | `failed` |
 
-The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `close_run`, `wipe_state`, `message_agent`, `unkeep_message`, `rig_settings`, and the six kinds that change a run's experiment queue and its rules: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
+The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `close_run`, `wipe_state`, `message_agent`, `unkeep_message`, `rig_settings`, the six kinds that change a run's experiment queue and its rules: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`, and `hypothesis_status`, which changes a research run's hypothesis. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
 
 ## Who may issue each kind
 
@@ -139,6 +139,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `queue_drop` | **Drop**, then **Drop it**, on an experiment under **Up next**; **Drop** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `queue_accept` | **Queue it** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `drop_directive` | **Remove** on a rule on a run's **Planner** tab | Yes | Yes | Yes | No | Yes |
+| `hypothesis_status` | None yet | Yes | Yes | Yes | No | Yes |
 | `propagate` | **Send champion #&lt;n&gt;** on a run's **Planner** tab, under **Other rigs** | `POST /v1/propagate`, or `POST /v1/commands` | `propagate_champion` | `propagate_champion` | `propagate_champion` | |
 | `approve_promotion` | **Needs you**: **Make it the champion**, **Overrule the auditor** | Yes | Yes | No | No | Yes |
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
@@ -147,7 +148,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands`; `POST /v1/rigs/<rig>/cluster/resources` with a new number of GPUs | `set_rig_settings`; `start_run` with `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs | `set_rig_settings`, but not `promotion` or `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs, which sends the new default share only | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
-Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion` or `decline_promotion`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds, `hypothesis_status` and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion` or `decline_promotion`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
 
 On the dashboard, only an experiment up next has **Edit**: a lane's idea's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
 
@@ -505,6 +506,25 @@ Removes one [directive](#redirect), a rule for the plan, whoever set it: the own
 The harness refuses: `no run <run>`, a closed run (`run <run> is closed: its queue and rules no longer change`), and `no rule <id> in force in run <run>`. The directive stays in the record with the status `dropped`, and the ledger records `directive_dropped`, `{id}`. Result: `{"run", "dropped": <id>}`.
 
 **A removed rule does not come back from the advisors, the planner or an agent's token.** The teachers' next set of directives replaces their earlier set, the planner adds rules when an owner's message asks for one, and an agent token may send a `redirect`. Before the harness records such a set, it leaves out each rule that matches a rule removed from the run with `drop_directive`: the same kind, and the same `family` or `match` words, ignoring case and spaces at the ends. A rule that names neither matches every removed rule of its kind that names neither. The harness records the left-out rules in one event, `directives_left_out`, `{rules, why: "the owner removed these rules"}`, whose actor is `supervisor`, `planner` or `control:agent:mcp`, and records the rest of the set. Only a `redirect` issued by the owner, or by an operator for the owner, sets a removed rule again: its author is `control:owner:…`, such as `control:owner:api` for the owner's REST API or `control:owner:operator`.
+
+### `hypothesis_status`
+
+Changes the status of one of a research run's hypotheses. The author's hypotheses, from the campaign's brief, need a verdict from the review panel; the workers' go to the run's pool, and need none ([Hypotheses](../explanation/campaign-modes.md#research)). This command promotes one of the pool, so the review panel must give it a verdict too, returns a promoted one to the pool, or retires one. The run's [planner](../explanation/agents-lanes-planner.md#research-campaigns) promotes and retires hypotheses through the same step in the harness, within its own bounds.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `run` | lowercase id | The research run |
+| `id` | text, 1–200 characters | The hypothesis's id, `h-…` |
+| `status` | `"promoted"`, `"pool"` or `"retired"` | Its new status |
+| `reason` | text, 1–2,000 characters, not spaces alone | Why |
+
+```json
+{"run": "survey-1", "id": "h-3f2a9c41d0b7", "status": "promoted", "reason": "the second question turns on it"}
+```
+
+Control refuses a run its rig reports as not a research run, before it signs anything: `Run <run> is not a research run: only a research run has hypotheses to promote or retire.` The harness refuses: `no run <run>`, a closed run (`run <run> is closed: its queue and rules no longer change`), the same for a run that is not a research run (`run <run> is not a research run: only a research run has hypotheses to promote or retire`), `no hypothesis <id> in run <run>`, one of the author's (`hypothesis <id> is one of the author's: it needs a verdict already, and only the campaign's brief changes it`), a merged one (`hypothesis <id> was merged into <other>: change <other> instead`), and a retired one whose words now repeat a live hypothesis of the run (`hypothesis <id>'s words repeat <other> (in the pool): change <other> instead`).
+
+Result: `{"run", "hypothesis", "status", "from", "changed"}`, where `from` is the status it had. The same status again changes nothing: `changed` is `false`, with a `note` such as `hypothesis <id> is in the pool already: nothing changed`, and no event. Each change is the event `hypothesis_status`, `{hypothesis, status, from, by, reason, question, text}`, with `by` the issuer, such as `control:owner:api`; the run's research folder, its next workers' briefs, its next review package and the campaign's folder in the [knowledge base](knowledge-base.md) follow it.
 
 ### `propagate`
 

@@ -280,9 +280,26 @@ describe("control over MCP", () => {
       ["queue_drop", { run: "js-1", id, why: "slower twice" }],
       ["queue_accept", { run: "js-1", id }],
       ["drop_directive", { run: "js-1", id: 1 }],
+      ["hypothesis_status", { run: "js-1", id: "h-1", status: "promoted", reason: "central" }],
     ] as const)
       assert.equal(await issue(agent, kind, payload), undefined, `an agent may not ${kind}`);
     assert.equal(queued(), 1, "nothing the agent sent was signed");
+    // A research run's hypotheses (goal 117) are the owner's, and an operator's for the owner.
+    // js-1 is a hill climb: control refuses before it signs anything, as the rig would.
+    assert.equal(
+      text(
+        await operator.callTool({
+          name: "issue_command",
+          arguments: {
+            rig: "rig-a",
+            kind: "hypothesis_status",
+            payload: { run: "js-1", id: "h-1", status: "promoted", reason: "central" },
+          },
+        }),
+      ).error,
+      "Run js-1 is not a research run: only a research run has hypotheses to promote or retire.",
+    );
+    assert.equal(store.listCommands(100).filter((c) => c.kind === "hypothesis_status").length, 0);
     assert.ok(
       await issue(agent, "redirect", {
         run: "js-1",

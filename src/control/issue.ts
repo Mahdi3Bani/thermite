@@ -173,6 +173,23 @@ export function redirectRefusal(store: ControlStore, rig: string, payload: unkno
 }
 
 /**
+ * Why control refuses a hypothesis_status before signing it, or "" (goal 117): only a research run
+ * has hypotheses to promote, return or retire. From the rig's report; a run the report does not
+ * show yet is the rig's to check, and its harness refuses the same.
+ */
+export function hypothesisStatusRefusal(
+  store: ControlStore,
+  rig: string,
+  payload: unknown,
+): string {
+  const p = payload as { run?: unknown } | null;
+  if (typeof p?.run !== "string") return "";
+  const r = rigView(store, rig)?.runs.find((x) => x.id === p.run);
+  if (!r || r.mode === "research") return "";
+  return `Run ${p.run} is not a research run: only a research run has hypotheses to promote or retire.`;
+}
+
+/**
  * An assignment's MCP servers (goal 068): a research contract's own list (a research campaign
  * has no kit), filled in when the caller left it out. Refused, in words, when it differs from the
  * contract's, or when it names a server Settings lacks: such a campaign can't start.
@@ -325,7 +342,12 @@ export function prepareCommand(
     );
   }
   const payload = parsed.data;
-  const ruled = input.kind === "redirect" ? redirectRefusal(store, input.rig, payload) : "";
+  const ruled =
+    input.kind === "redirect"
+      ? redirectRefusal(store, input.rig, payload)
+      : input.kind === "hypothesis_status"
+        ? hypothesisStatusRefusal(store, input.rig, payload)
+        : "";
   if (ruled) throw new Error(ruled);
   const now = Date.now();
   const signed = signEnvelope(
