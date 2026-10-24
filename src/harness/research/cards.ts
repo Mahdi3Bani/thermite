@@ -1,8 +1,10 @@
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
-import { MEASURES_NOTHING } from "../../core/research-check.ts";
+import { MEASURES_NOTHING, questionLabel } from "../../core/research-check.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
+
+export { questionLabel };
 
 /**
  * Answer cards (goal 117): the harness keeps one card for each question of a research run, as
@@ -118,9 +120,6 @@ const cardOfRow = (r: Row): Card => ({
   by: String(r.by),
   created_at: String(r.created_at),
 });
-
-/** A question as an agent reads it: "Question 1 (index 0)". People read "Question 1". */
-export const questionLabel = (index: number) => `Question ${index + 1} (index ${index})`;
 
 /** A question's rubric: the contract's `rubrics` entry, else the question itself. */
 export function rubricOf(contract: Pick<ResearchContract, "questions" | "rubrics">, i: number) {

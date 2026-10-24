@@ -65,6 +65,8 @@ export interface IdeaInput {
   why?: string | undefined;
   family?: string | undefined;
   details?: string | undefined;
+  /** A research task's question, an index from 0 (goal 117). */
+  question?: number | undefined;
 }
 
 /**
@@ -81,6 +83,12 @@ export const IDEA_TOOL = {
     why: Type.Optional(Type.String({ description: "Why it is worth trying" })),
     family: Type.Optional(Type.String({ description: "Its direction (approach family)" })),
     details: Type.Optional(Type.String({ description: "How, if it needs saying" })),
+    question: Type.Optional(
+      Type.Number({
+        description:
+          "A research run only: the index of the campaign question the task is about (0-based)",
+      }),
+    ),
   }),
 };
 
@@ -101,6 +109,7 @@ export async function proposeIdea(
       why: str("why", 2000),
       family: str("family", 80),
       details: str("details", 4000),
+      ...(typeof p.question === "number" ? { question: p.question } : {}),
     });
     return text(
       `proposed ${out.experiment}: it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.`,

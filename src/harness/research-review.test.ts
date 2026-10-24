@@ -10,6 +10,7 @@ import { LocalRunner } from "./broker/runner.ts";
 import type { Research } from "./research/research.ts";
 import {
   ANSWERED,
+  briefGaps,
   type CheckedReviewer,
   RESEARCH_PACKAGE_MAX,
   RESEARCH_REVIEW,
@@ -380,7 +381,7 @@ describe("the research review's package (goal 112)", () => {
       {
         id: ids.hypothesis,
         text: "Stateless workers make long runs safe.",
-        supporting: [ids.claims.verified],
+        supporting: [],
       },
     ]);
     assert.ok(pkg.criteria.length > 0);
@@ -762,8 +763,13 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     assert.match(brief, new RegExp(`# What the review panel found missing \\(review ${id}\\)`));
     assert.match(
       brief,
-      /- Question 1: a second, independent site on what keeps campaigns honest/,
+      /- Question 2 \(index 1\): a second, independent site on what keeps campaigns honest/,
       "numbered as the brief numbers its questions",
+    );
+    // The digest's line, which workers read in REPORT.md, names both too (goal 117).
+    assert.match(
+      s.research.report(RUN, "digest").body,
+      /Answer check: not yet\. Review \d+ found gaps \(Question 2 \(index 1\): missing: a second, independent site/,
     );
     // The owner closes it before new evidence is checked: its final report says so.
     s.research.report(RUN, "final");
@@ -773,5 +779,66 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
         `## The review panel's answers\\nThe questions were not checked as answered: review ${id} found gaps\\.`,
       ),
     );
+  });
+
+  test("only evidence gaps reach the workers: measurements, failed answers and missing verdicts stay out (goal 117)", async (t) => {
+    const s = await setup(t);
+    const ids = s.ids as Ids;
+    s.ranFor(3);
+    const id = s.ask();
+    const good = goodReviewer("reviewer-1", ids).research;
+    type Answer = (typeof good.questions)[number];
+    const reviewer = (name: string, q0: Answer, q1: Answer) => ({
+      reviewer: name,
+      pass: false,
+      reasons: "gaps",
+      research: { questions: [q0, q1], hypotheses: [] },
+    });
+    s.env.service.recordReviewPanel(
+      id,
+      [
+        // An evidence gap, and one that only a measurement could close.
+        reviewer("reviewer-1", good.questions[0] as Answer, {
+          index: 1,
+          answered: false,
+          answer: "",
+          claims: [],
+          missing: "a second, independent site on what keeps campaigns honest",
+        }),
+        reviewer(
+          "reviewer-2",
+          {
+            index: 0,
+            answered: false,
+            answer: "",
+            claims: [],
+            missing: "Benchmark the archive on the target box to see how many pages it keeps",
+          },
+          // An answer that fails code's check: the reviewer's problem, not the workers'.
+          { index: 1, answered: true, answer: "It is 43.", claims: ["c-nope"], missing: "" },
+        ),
+      ],
+      "supervisor",
+    );
+    const gaps = briefGaps(s.ledger, RUN) ?? "";
+    assert.match(gaps, new RegExp(`# What the review panel found missing \\(review ${id}\\)`));
+    assert.match(
+      gaps,
+      /found gaps in the evidence\. The run goes on until they are filled: work on them first/,
+    );
+    assert.match(
+      gaps,
+      /- Question 2 \(index 1\): a second, independent site on what keeps campaigns honest/,
+    );
+    assert.doesNotMatch(
+      gaps,
+      /Benchmark|Question 1 \(index 0\)/,
+      "a measurement is not the workers' work",
+    );
+    assert.match(
+      gaps,
+      /\(One more gap asks for a measurement: a next experiment for the report, not work for this run\.\)/,
+    );
+    assert.doesNotMatch(gaps, /did not pass the check|c-nope|no verdict/);
   });
 });

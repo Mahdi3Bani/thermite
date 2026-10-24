@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { RESEARCH_TOOLS } from "./research-tools.ts";
+import { OUTPUT_MAX, RESEARCH_TOOLS } from "./research-tools.ts";
 import { parseArgs, researchRequest, trialCli } from "./trial-cli.ts";
 
 function repo(): string {
@@ -143,6 +143,15 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       { title: "list the loads first" },
       "a command word inside a longer title is fine",
     );
+    // A research task's question, by its index (goal 117).
+    await trialCli(["idea", "vendor", "docs", "--question", "1"], env, call);
+    assert.deepEqual(calls.at(-1)?.body, { title: "vendor docs", question: 1 });
+    const sent = calls.length;
+    assert.match(
+      await trialCli(["idea", "vendor", "docs", "--question", "two"], env, call),
+      /^error: --question takes the index of a campaign question, a whole number from 0/,
+    );
+    assert.equal(calls.length, sent, "nothing sent for a mistake");
   });
 
   test("note writes a field note: its words are the text, --kind and --about the rest", async () => {
@@ -206,7 +215,7 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       calls.push({ method, path, body });
       return path.endsWith("/stats") ? { sources: 2 } : "fetched text";
     };
-    // The same ten tools as Pi's research worker, each with its use for the prompt.
+    // The same eleven tools as Pi's research worker, each with its use for the prompt.
     assert.deepEqual(
       RESEARCH_TOOLS.map((t) => t.name),
       [
@@ -217,6 +226,7 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
         "add_claim",
         "add_note",
         "propose_hypothesis",
+        "revise_hypothesis",
         "add_finding",
         "update_section",
         "progress",
@@ -231,12 +241,22 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
     await trialCli(["research", "read_source", "s-1", "--offset", "6000"], env, call);
     await trialCli(["research", "search", "2-bit", "decoding"], env, call);
     await trialCli(["research", "search_corpus", "dequantize"], env, call);
+    await trialCli(["research", "search_corpus", "dequantize", "--skip", "18"], env, call);
     await trialCli(
       ["research", "add_note", "kernels", "differ", "--source", "s-1", "--source", "s-2"],
       env,
       call,
     );
-    await trialCli(["research", "propose_hypothesis", "faster", "--supporting", "c-1"], env, call);
+    await trialCli(
+      ["research", "propose_hypothesis", "faster", "--question", "1", "--supporting", "c-1"],
+      env,
+      call,
+    );
+    await trialCli(
+      ["research", "revise_hypothesis", "h-1", "--text", "much faster", "--question", "0"],
+      env,
+      call,
+    );
     assert.equal(await trialCli(["research", "progress"], env, call), '{"sources":2}');
     assert.deepEqual(calls, [
       { method: "POST", path: "/v1/research/fetch", body: { url: "https://example.com/a" } },
@@ -245,16 +265,48 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       { method: "POST", path: "/v1/research/search-corpus", body: { text: "dequantize" } },
       {
         method: "POST",
+        path: "/v1/research/search-corpus",
+        body: { text: "dequantize", skip: 18 },
+      },
+      {
+        method: "POST",
         path: "/v1/research/note",
         body: { text: "kernels differ", sources: ["s-1", "s-2"] },
       },
       {
         method: "POST",
         path: "/v1/research/hypothesis",
-        body: { text: "faster", supporting: ["c-1"] },
+        body: { text: "faster", question: 1, supporting: ["c-1"] },
+      },
+      {
+        method: "POST",
+        path: "/v1/research/revise-hypothesis",
+        body: { id: "h-1", text: "much faster", question: 0 },
       },
       { method: "POST", path: "/v1/research/stats", body: {} },
     ]);
+  });
+
+  test("research: an answer too long for the agent is cut with where to read on, never silently (goal 117)", async () => {
+    const env = { harnessUrl: "http://h", auth: "trial.t", workspace: "/w", editablePaths: [] };
+    const read = await trialCli(["research", "read_source", "s-1"], env, async () => ({
+      source: "s-1",
+      url: "https://example.com/a",
+      chars: 40_000,
+      offset: 0,
+      text: "word ".repeat(8000),
+    }));
+    assert.ok(read.length <= OUTPUT_MAX);
+    const o = JSON.parse(read) as { next_offset: number; cut: string };
+    assert.match(o.cut, new RegExp(`read_source s-1 with offset ${o.next_offset}`));
+    const listed = await trialCli(["research", "progress"], env, async () => ({
+      questions: Array.from({ length: 1500 }, (_, i) => `a long question ${i}`),
+    }));
+    assert.ok(listed.length <= OUTPUT_MAX);
+    assert.match(
+      listed,
+      /\[cut: this answer has \d+ characters, and only its first \d+ are shown\]$/,
+    );
   });
 
   test("research: a claim's exact quotes come as JSON on stdin, untouched; mistakes say what to do", async () => {

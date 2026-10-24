@@ -16,12 +16,27 @@ import { dirname, join } from "node:path";
 import { BRIEF_FILE, briefFile } from "../../core/brief.ts";
 import { COMPACTIONS_DIR } from "../../core/compaction.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
-import { PAPER_ACCEPTED } from "../../core/research-check.ts";
+import {
+  HYPOTHESES_RULE,
+  hypothesisStatusWords,
+  PAPER_ACCEPTED,
+  questionLabel,
+  REQUIRED_HYPOTHESES,
+} from "../../core/research-check.ts";
 import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
-import { cardFile, cardHistory, questionLabel } from "./cards.ts";
+import { cardFile, cardHistory } from "./cards.ts";
+
+/** The order hypotheses are listed in: those that need a verdict first (goal 117). */
+const HYPOTHESIS_ORDER = ["author", "promoted", "pool", "merged", "retired"];
+
+/** A text on one line, cut to n characters with an ellipsis. */
+const clipWords = (s: string, n: number) => {
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+};
 
 /** The research paper's file in a research run's folder (goal 112). */
 export const PAPER_FILE = "paper.md";
@@ -273,7 +288,9 @@ export class ResearchFolder {
           "",
           String(c.text),
           "",
-          ...(q !== undefined ? [`Question ${q}: ${questions[q] ?? "(no such question)"}`] : []),
+          ...(q !== undefined
+            ? [`${questionLabel(q)}: ${questions[q] ?? "(no such question)"}`]
+            : []),
           ...(c.confidence !== null ? [`Confidence: ${c.confidence}`] : []),
           `Recorded: ${c.created_at} by ${c.lane ?? "research"}`,
           "",
@@ -319,16 +336,34 @@ export class ResearchFolder {
         ].join("\n"),
       );
 
-    const hypotheses = this.all("select * from hypothesis where run = ? order by created_at", run);
+    // The author's first, then promoted ones, the pool, merged and retired (goal 117); each file
+    // follows its hypothesis's revisions.
+    const rank = (s: unknown) => {
+      const i = HYPOTHESIS_ORDER.indexOf(String(s));
+      return i < 0 ? HYPOTHESIS_ORDER.length : i;
+    };
+    const hypotheses = this.all(
+      "select * from hypothesis where run = ? order by created_at, rowid",
+      run,
+    ).sort((a, b) => rank(a.status) - rank(b.status));
+    const questionOf = (h: Row) =>
+      h.question === null || h.question === undefined
+        ? "the whole run"
+        : `${questionLabel(Number(h.question))}: ${clipWords(questions[Number(h.question)] ?? "(no such question)", 300)}`;
     for (const h of hypotheses)
-      this.once(run, join(root, "hypotheses", `${h.id}.md`), () =>
+      this.changed(
+        join(root, "hypotheses", `${h.id}.md`),
         [
-          `# Hypothesis ${h.id}`,
+          `# Hypothesis ${h.id}: ${hypothesisStatusWords(String(h.status), h.merged_into === null ? null : String(h.merged_into))}`,
           "",
           String(h.text),
           "",
+          `About: ${questionOf(h)}`,
           `Supporting verified claims: ${list(h.supporting).join(", ") || "none"}`,
-          `Recorded: ${h.created_at} by ${h.lane ?? "research"}`,
+          `Recorded: ${h.created_at} by ${h.lane ?? "the campaign's author"}`,
+          ...(h.updated_at && h.updated_at !== h.created_at ? [`Changed: ${h.updated_at}`] : []),
+          "",
+          HYPOTHESES_RULE,
           "",
         ].join("\n"),
       );
@@ -428,9 +463,11 @@ export class ResearchFolder {
         "",
         "## Questions",
         "",
+        "Numbered from 1; a claim's or a hypothesis's `question` field takes the index, from 0.",
+        "",
         ...questions.map(
           (q, i) =>
-            `${i}. ${q.replace(/\n/g, "\n   ")} (${claims.filter((c) => Number(c.verified) === 1 && Number(c.question) === i).length} verified claims)`,
+            `- ${questionLabel(i)}: ${q.replace(/\n/g, "\n  ")} (${claims.filter((c) => Number(c.verified) === 1 && Number(c.question) === i).length} verified claims)`,
         ),
         "",
         "## What is here",
@@ -441,7 +478,7 @@ export class ResearchFolder {
         `- sources/: ${sources.length} archived pages as text, one file each (claims quote these words)`,
         `- claims/: ${claims.length} claims, ${verified} verified and ${claims.length - verified} drafts (the first line says which)`,
         `- findings/: ${findings.length} findings (${findings.filter((f) => Number(f.supported) === 1).length} supported)`,
-        `- hypotheses/: ${hypotheses.length}`,
+        `- hypotheses/: ${hypotheses.length} (${hypotheses.filter((h) => REQUIRED_HYPOTHESES.some((s) => s === h.status)).length} that need a verdict, ${hypotheses.filter((h) => h.status === "pool").length} in the pool)`,
         `- notes/: ${notes.length}`,
         `- report/: ${sections.length} report sections`,
         `- cards/: one answer card for each question, whole with its earlier versions (cards/q0.md for question 1 (index 0), and so on); workers never edit them`,
@@ -470,8 +507,13 @@ export class ResearchFolder {
         "",
         "## Hypotheses",
         "",
+        HYPOTHESES_RULE,
+        "",
         ...(hypotheses.length
-          ? hypotheses.map((h) => `- ${h.id}: ${String(h.text).replace(/\s+/g, " ").slice(0, 300)}`)
+          ? hypotheses.map(
+              (h) =>
+                `- ${h.id} (${hypothesisStatusWords(String(h.status), h.merged_into === null ? null : String(h.merged_into))}; ${h.question === null ? "the whole run" : questionLabel(Number(h.question))}): ${clipWords(String(h.text), 300)}`,
+            )
           : ["None yet."]),
         "",
         "## Lanes' files",

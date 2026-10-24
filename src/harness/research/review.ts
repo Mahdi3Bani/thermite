@@ -1,8 +1,16 @@
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
-import { ANSWERED, RESEARCH_REVIEW } from "../../core/research-check.ts";
+import {
+  ANSWERED,
+  measurementIn,
+  questionLabel,
+  questionName,
+  REQUIRED_HYPOTHESES,
+  RESEARCH_REVIEW,
+} from "../../core/research-check.ts";
 import type { Ledger } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
+import { registrableDomain } from "./fetcher.ts";
 
 /**
  * A research run ends when its questions are answered (goal 112). After the run's minimum running
@@ -40,7 +48,7 @@ export const RESEARCH_CRITERIA = [
 export interface PackageClaim {
   id: string;
   text: string;
-  /** The domains its quotes' sources come from. */
+  /** The registrable domains its quotes' sources come from (docs.example.com: example.com). */
   domains: string[];
   /** From at least the contract's number of independent domains. */
   corroborated: boolean;
@@ -230,7 +238,7 @@ export function researchReviewDue(
   return { due: true, marker };
 }
 
-/** Distinct domains of a claim's quotes' sources. */
+/** Distinct registrable domains of a claim's quotes' sources (goal 117). */
 function claimDomains(ledger: Ledger, run: string, quotes: string): string[] {
   const ids = (JSON.parse(quotes) as { source: string }[]).map((q) => q.source);
   const out = new Set<string>();
@@ -240,7 +248,7 @@ function claimDomains(ledger: Ledger, run: string, quotes: string): string[] {
         | { domain: string }
         | undefined
     )?.domain;
-    if (d) out.add(d);
+    if (d) out.add(registrableDomain(d));
   }
   return [...out];
 }
@@ -248,7 +256,8 @@ function claimDomains(ledger: Ledger, run: string, quotes: string): string[] {
 /**
  * The package of a research review: the topic, each question with its verified claims (their
  * text, their sources' domains and whether they are corroborated), the supported findings, and
- * each hypothesis with the claims cited for it, and the criteria. Nothing about which lane or
+ * each hypothesis that needs a verdict (the author's and promoted ones) with the claims cited for
+ * it, and the criteria. Nothing about which lane or
  * model wrote what. When it would be longer than RESEARCH_PACKAGE_MAX characters, each question
  * shows fewer claims (corroborated first, then the newest), and then fewer findings; it says so.
  */
@@ -303,12 +312,14 @@ export function researchPackage(
     summary: String(f.summary),
     supporting: JSON.parse(String(f.supporting)) as string[],
   }));
+  // Only the hypotheses that need a verdict (goal 117): the author's and promoted ones. The
+  // workers' pool is listed in the report as proposed by the run, and never makes a review fail.
   const hypotheses = (
     ledger.db
       .prepare(
-        "select id, text, supporting from hypothesis where run = ? order by created_at, rowid",
+        `select id, text, supporting from hypothesis where run = ? and status in (${REQUIRED_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
       )
-      .all(run) as Row[]
+      .all(run, ...REQUIRED_HYPOTHESES) as Row[]
   ).map((h) => ({
     id: String(h.id),
     text: String(h.text),
@@ -316,7 +327,13 @@ export function researchPackage(
   }));
   const corpus = {
     sources: count(ledger, "select count(*) as n from source where run = ?", run),
-    domains: count(ledger, "select count(distinct domain) as n from source where run = ?", run),
+    domains: new Set(
+      (
+        ledger.db.prepare("select distinct domain from source where run = ?").all(run) as {
+          domain: string;
+        }[]
+      ).map((r) => registrableDomain(r.domain)),
+    ).size,
     verified_claims: claims.length,
     corroborated_claims: claims.filter((c) => c.claim.corroborated).length,
     findings: findings.length,
@@ -457,8 +474,16 @@ export function checkResearchPanel(
   });
 }
 
-/** What one reviewer found missing, a line each, in plain words (questions numbered from 1). */
-export function reviewerGaps(r: CheckedReviewer, n = 300): string[] {
+/**
+ * What one reviewer found missing, a line each, in plain words. Questions are named for people,
+ * "Question 1" (the journal, the dashboard), or with `questionLabel` where agents read it too
+ * ("Question 1 (index 0)": the digest's line in REPORT.md).
+ */
+export function reviewerGaps(
+  r: CheckedReviewer,
+  n = 300,
+  name: (index: number) => string = questionName,
+): string[] {
   const out: string[] = [];
   for (const q of r.questions) {
     if (q.answered) continue;
@@ -471,7 +496,7 @@ export function reviewerGaps(r: CheckedReviewer, n = 300): string[] {
         ? clip(q.problems.join("; "), n)
         : "",
     ].filter(Boolean);
-    out.push(`Question ${q.index + 1}: ${parts.join("; ") || "not answered"}`);
+    out.push(`${name(q.index)}: ${parts.join("; ") || "not answered"}`);
   }
   for (const h of r.hypotheses) {
     if (h.valid) continue;
@@ -495,39 +520,42 @@ export function checkedPanel(row: Row): CheckedReviewer[] {
 }
 
 /**
- * The newest failed review's gaps for the research workers' brief, until a newer review is
- * decided: per question, what the reviewers found missing. Undefined when the newest decided
- * review did not fail.
+ * The newest failed review's evidence gaps for the research workers' brief, until a newer review
+ * is decided: per question, what the reviewers found missing that sources could give (goal 117).
+ * What only a measurement could settle is a next experiment, never work for the workers, and
+ * what went wrong on the reviewers' side (an answer that failed code's check, a hypothesis with
+ * no verdict) is the review panel's to fix: neither is passed on. Undefined when the newest
+ * decided review did not fail, or found no evidence gap.
  */
 export function briefGaps(ledger: Ledger, run: string): string | undefined {
   const r = researchReviews(ledger, run).find((x) => x.panel_result !== null);
   if (r?.panel_result !== "review_failed") return undefined;
   const panel = checkedPanel(r);
   const byQuestion = new Map<number, string[]>();
-  const other: string[] = [];
+  let measurements = 0;
   for (const p of panel) {
     for (const q of p.questions) {
-      if (q.answered) continue;
-      const said = q.missing.trim()
-        ? clip(q.missing, 300)
-        : q.said_answered
-          ? `an answer that did not pass the check (${clip(q.problems.join("; "), 200)})`
-          : "";
-      if (!said) continue;
-      byQuestion.set(q.index, [...(byQuestion.get(q.index) ?? []), said]);
+      if (q.answered || !q.missing.trim()) continue;
+      if (measurementIn(q.missing)) {
+        measurements++;
+        continue;
+      }
+      byQuestion.set(q.index, [...(byQuestion.get(q.index) ?? []), clip(q.missing, 300)]);
     }
-    for (const h of p.hypotheses)
-      if (!h.valid && h.verdict === null) other.push(`hypothesis ${h.id} has no verdict yet`);
   }
   const lines = [...byQuestion.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([i, xs]) => `- Question ${i}: ${[...new Set(xs)].join(" / ")}`);
-  if (!lines.length && !other.length) return undefined;
+    .map(([i, xs]) => `- ${questionLabel(i)}: ${[...new Set(xs)].join(" / ")}`);
+  if (!lines.length) return undefined;
   return [
     `# What the review panel found missing (review ${String(r.id)})`,
-    "The review panel checked whether every question is answered, and found gaps. The run goes on until they are filled: work on them first. The reviewers' words, data to weigh:",
+    "The review panel checked whether every question is answered, and found gaps in the evidence. The run goes on until they are filled: work on them first. The reviewers' words, data to weigh:",
     ...lines,
-    ...[...new Set(other)].map((x) => `- ${x}`),
+    ...(measurements
+      ? [
+          `(${measurements === 1 ? "One more gap asks" : `${measurements} more gaps ask`} for a measurement: a next experiment for the report, not work for this run.)`,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -553,7 +581,7 @@ export function checkLine(
   if (newest?.owner_decision === "rejected")
     return `Answer check: the owner did not accept review ${String(newest.id)}; ${due.due ? "the next digest asks the review panel again, on new evidence" : due.why}.`;
   if (newest?.panel_result === "review_failed") {
-    const gaps = checkedPanel(newest).flatMap((r) => reviewerGaps(r, 120));
+    const gaps = checkedPanel(newest).flatMap((r) => reviewerGaps(r, 120, questionLabel));
     return `Answer check: not yet. Review ${String(newest.id)} found gaps${gaps.length ? ` (${clip([...new Set(gaps)].slice(0, 3).join("; "), 400)})` : ""}; ${due.due ? "the next digest asks the review panel again, on new evidence" : due.why}.`;
   }
   return `Answer check: ${due.due ? "the next digest asks the review panel" : `waiting: ${due.why}`}.`;

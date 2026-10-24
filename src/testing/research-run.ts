@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { parseContract } from "../core/contract.ts";
 import { LocalRunner } from "../harness/broker/runner.ts";
 import { ResearchFolder, SAVED_LANES_DIR } from "../harness/research/folder.ts";
-import { Research } from "../harness/research/research.ts";
+import { Research, startingHypotheses } from "../harness/research/research.ts";
 import { researchFixture } from "./fixtures.ts";
 import { makeHarnessEnv } from "./harness-env.ts";
 
 /**
  * A research run with some of everything its workers record (goal 098's tests): two sources from a
- * tiny local "web", claims verified and draft for two questions, a hypothesis, a supported and a
+ * tiny local "web", claims verified and draft for two questions, the author's hypothesis, a supported and a
  * draft finding, a research note, a report section, a digest, and a lane's files saved as the
  * research folder saves them when a trial ends.
  */
@@ -109,11 +109,12 @@ export async function fillResearch(r: Awaited<ReturnType<typeof makeResearchRun>
     ],
     question: 1,
   });
-  const hypothesis = research.proposeHypothesis(
+  // The author's hypothesis, as a brief's becomes the run's: the review panel judges it (goal 117).
+  const [hypothesis] = startingHypotheses(
+    r.env.service.ledger,
     run,
-    "lane-1",
-    "Stateless workers make long runs safe.",
-    [verified.claim],
+    ["Stateless workers make long runs safe."],
+    "control:owner",
   );
   const supported = research.addFinding(run, "lane-1", {
     text: "The harness kept its first run's pages.",
@@ -142,7 +143,7 @@ export async function fillResearch(r: Awaited<ReturnType<typeof makeResearchRun>
   return {
     sources: [a.source, b.source],
     claims: { verified: verified.claim, draft: draft.claim, clock: clock.claim },
-    hypothesis: hypothesis.hypothesis,
+    hypothesis: hypothesis as string,
     findings: { supported: supported.finding, draft: unsupported.finding },
     note: note.note,
   };

@@ -11,7 +11,7 @@ import { RESEARCH_TOOLS, researchOutput, researchTool } from "./research-tools.t
  *   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
  *   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
  *   thermite-trial status ATTEMPT
- *   thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
+ *   thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT] [--question N]
  *   thermite-trial note --kind KIND [--about TYPE:ID] TEXT
  *   thermite-trial research TOOL [WORDS...] [--FLAG VALUE]... [-]   (the research tools)
  */
@@ -23,7 +23,7 @@ const USAGE = `usage:
   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
   thermite-trial status ATTEMPT
-  thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
+  thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT] [--question N]
   ${NOTE_USAGE}
     KIND: observation, decision, surprise, question, lesson or note
     TYPE: run, experiment, attempt, source, claim, finding, round, trial or message
@@ -187,17 +187,24 @@ export async function trialCli(
     if (!title) return `error: idea needs a title: what to try, in a few words\n${USAGE}`;
     if (rest.length === 1 && COMMAND_WORDS.has(title.toLowerCase()))
       return `error: "${title}" is a command word, not an idea. idea proposes an experiment: give what to try, in a few words. thermite-trial does not list the run's ideas or queue.\n${USAGE}`;
-    const unknown = Object.keys(flags).filter((f) => !["why", "family", "details"].includes(f));
+    const unknown = Object.keys(flags).filter(
+      (f) => !["why", "family", "details", "question"].includes(f),
+    );
     if (unknown.length) return `error: idea has no --${unknown[0]}\n${USAGE}`;
     const opt = (f: string, n: number) => {
       const v = flags[f]?.at(-1)?.trim();
       return v ? { [f]: v.slice(0, n) } : {};
     };
+    // A research task's question, as an index from 0 (goal 117).
+    const q = flags.question?.at(-1)?.trim();
+    if (q !== undefined && !/^\d+$/.test(q))
+      return `error: --question takes the index of a campaign question, a whole number from 0\n${USAGE}`;
     const out = (await call("POST", "/v1/trial/idea", {
       title: title.slice(0, 200),
       ...opt("why", 2000),
       ...opt("family", 80),
       ...opt("details", 4000),
+      ...(q !== undefined ? { question: Number(q) } : {}),
     })) as { experiment: string };
     return `proposed ${out.experiment}: it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.`;
   }

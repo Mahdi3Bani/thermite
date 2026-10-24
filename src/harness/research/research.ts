@@ -7,11 +7,25 @@ import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
-import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
+import {
+  HYPOTHESES_RULE,
+  hypothesisStatusWords,
+  LIVE_HYPOTHESES,
+  questionLabel,
+} from "../../core/research-check.ts";
+import { CODE_RESEARCH_TOOLS, moreText, READ_MAX, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
+import type { TaskYield } from "../queue.ts";
 import { answersSection } from "./cards.ts";
-import { checkCited, claimNumbers, numbersIn, withoutNames } from "./checks.ts";
-import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
+import {
+  checkCited,
+  claimNumbers,
+  foldText,
+  normalizeQuote,
+  numbersIn,
+  withoutNames,
+} from "./checks.ts";
+import { Fetcher, FetchRefused, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
 import { acceptedReview, answerSections, checkLine } from "./review.ts";
 
@@ -20,6 +34,19 @@ const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+/** The start of a fetched page's text that fetch answers with (read_source reads the rest). */
+const VIEW_CHARS = 6000;
+/** The links a fetch answers with, in characters, beside the text, within OUTPUT_MAX. */
+const VIEW_LINKS_CHARS = 5000;
+/** One page of search_corpus: at most this many matches, and this many characters of them. */
+const SEARCH_PAGE = 30;
+const SEARCH_CHARS = 11_000;
+/** The run's newest notes a new note may not repeat (goal 117). */
+export const NOTE_REPEATS = 200;
+/** The hypotheses a worker's brief lists: those that need a verdict, and the pool's newest. */
+const BRIEF_REQUIRED = 30;
+const BRIEF_POOL = 10;
+
 /**
  * Research mode's integrity rules, enforced by code (the research form of "agents never judge"):
  *
@@ -27,7 +54,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
  *   the harness itself fetched, and every number in the claim appears in its quotes; anything
  *   else stays a draft;
  * - a verified claim is corroborated when its quotes come from at least the contract's number of
- *   independent domains;
+ *   independent domains: registrable domains, so docs.example.com and blog.example.com are one;
  * - a finding is a worker's conclusion with a summary and why it matters; it is reported as a
  *   finding only when every claim it cites is verified and every number in it appears in those
  *   claims; anything else stays a draft finding;
@@ -39,16 +66,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
 
 type Row = Record<string, unknown>;
 
-/** Whitespace folded, typographic quotes and dashes made plain: "verbatim" up to layout. */
-export function normalizeQuote(s: string): string {
-  return s
-    .replace(/[‘’‛′]/g, "'")
-    .replace(/[“”‟″]/g, '"')
-    .replace(/[‐-―−]/g, "-")
-    .replace(/ /g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+export { normalizeQuote };
 
 /** A label at a line's start that numbers a question or a claim: "Question 0:", "Claim c-005:". */
 const LABEL = /^[*_]*(?:question|claim)\s*#?\s*[\w.-]*\d[\w-]*\s*[:.)\]]/i;
@@ -99,12 +117,7 @@ interface ClaimQuote {
 const EVENT_PROBLEMS = 20;
 
 /** A claim's identity for deduplication: its words, case and punctuation folded. */
-function claimKey(s: string): string {
-  return normalizeQuote(s)
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N} ]/gu, "")
-    .trim();
-}
+const claimKey = foldText;
 
 export const ClaimInput = z.object({
   text: z.string().min(5).max(4000),
@@ -115,6 +128,32 @@ export const ClaimInput = z.object({
   question: z.number().int().min(0).optional(),
   confidence: z.number().min(0).max(1).optional(),
 });
+
+/** A hypothesis's longest text: a longer one is cut to it. */
+const HYPOTHESIS_MAX = 2000;
+
+const ClaimIds = z.array(z.string().max(500)).max(50);
+
+export const HypothesisInput = z.object({
+  text: z.string(),
+  question: z.number().int().nullable().optional(),
+  supporting: ClaimIds.default([]),
+});
+
+export const HypothesisRevision = z.object({
+  id: z.string().min(1).max(200),
+  text: z.string().optional(),
+  question: z.number().int().nullable().optional(),
+  supporting: ClaimIds.optional(),
+});
+
+/** Why a hypothesis is refused as a repeat of a live one: which, and what to do instead. */
+function repeatsWords(twin: Row): string {
+  const id = String(twin.id);
+  return String(twin.status) === "author"
+    ? `this hypothesis repeats ${id}, one of the author's: the review panel gives it a verdict already. Record claims for or against it instead of proposing it again`
+    : `this hypothesis repeats ${id}${twin.lane ? ` (proposed by ${String(twin.lane)})` : ""}: change that one with revise_hypothesis (id ${id}), its words, its question or its supporting claims, instead of proposing it again`;
+}
 
 export const FindingInput = z.object({
   text: z.string().min(5).max(4000),
@@ -150,6 +189,8 @@ export function startingHypotheses(
         text,
         supporting: [],
         from: "brief",
+        question: null,
+        status: "author",
       });
       return id;
     }),
@@ -322,51 +363,108 @@ export class Research {
     return this.view(row, undefined, f.links);
   }
 
+  /**
+   * A fetched page as its worker sees it: the start of its text, with where to read on when there
+   * is more, and the links found on it, as many as fit beside the text (goal 117: nothing is cut
+   * without a word; the links left out are said, and the frontier keeps them).
+   */
   private view(source: Row, note?: string, links: string[] = []) {
     const text = this.text(source);
+    const id = String(source.id);
+    const shown: string[] = [];
+    let size = 0;
+    for (const l of links.slice(0, 60)) {
+      if (size + l.length + 3 > VIEW_LINKS_CHARS) break;
+      shown.push(l);
+      size += l.length + 3;
+    }
+    const part = text.slice(0, VIEW_CHARS);
     return {
-      source: String(source.id),
+      source: id,
       url: String(source.url),
       title: source.title === null ? null : String(source.title),
       status: Number(source.http_status),
       ...(note ? { note } : {}),
       chars: text.length,
-      text: text.slice(0, 6000),
-      links: links.slice(0, 60),
+      offset: 0,
+      text: part,
+      ...moreText({ source: id }, part.length, text.length),
+      links: shown,
+      ...(links.length > shown.length
+        ? {
+            links_not_shown: links.length - shown.length,
+            links_note: `${links.length - shown.length} more of the page's links are not shown, to fit this answer`,
+          }
+        : {}),
     };
   }
 
-  read(run: string, source: string, offset = 0, length = 6000) {
+  /**
+   * Part of an archived source's text, from an offset: at most READ_MAX characters, so that the
+   * answer fits a tool's answer whole, with `next_offset` and where to read on when more is left.
+   */
+  read(run: string, source: string, offset = 0, length = VIEW_CHARS) {
     const s = this.get("select * from source where run = ? and id = ?", run, source);
-    if (!s) throw new Error(`no source ${source}`);
+    if (!s) throw new LedgerError("not_found", `no source ${source} in this run`);
     const text = this.text(s);
+    const from = Math.max(0, Math.min(text.length, Math.trunc(Number(offset) || 0)));
+    const asked = Math.trunc(Number(length) || VIEW_CHARS);
+    const part = text.slice(from, from + Math.max(1, Math.min(asked, READ_MAX)));
     return {
       source,
       url: String(s.url),
       chars: text.length,
-      offset,
-      text: text.slice(offset, offset + Math.min(length, 20_000)),
+      offset: from,
+      text: part,
+      ...moreText({ source }, from + part.length, text.length),
+      ...(asked > READ_MAX ? { note: `a read gives at most ${READ_MAX} characters` } : {}),
+      ...(from >= text.length && text.length > 0
+        ? { note: `offset ${from} is at the end: the text has ${text.length} characters` }
+        : {}),
     };
   }
 
-  /** Case-insensitive plain-text search over the archived texts (no regular expressions). */
-  searchCorpus(run: string, text: string) {
+  /**
+   * Case-insensitive plain-text search over the archived texts (no regular expressions), a page
+   * at a time: up to 30 matches, and fewer when their excerpts would not fit a tool's answer;
+   * `next_skip` gives the next page (goal 117: a page that stops says so).
+   */
+  searchCorpus(run: string, text: string, skip = 0) {
     const needle = text.trim().toLowerCase().slice(0, 200);
     if (needle.length < 2) return { matches: [] };
+    const from = Math.max(0, Math.trunc(Number(skip) || 0));
     const out: { source: string; url: string; excerpt: string }[] = [];
+    let seen = 0;
+    let size = 0;
+    let more = false;
     for (const s of this.all("select * from source where run = ? order by fetched_at", run)) {
       const body = this.text(s);
       const at = body.toLowerCase().indexOf(needle);
-      if (at >= 0) {
-        out.push({
-          source: String(s.id),
-          url: String(s.url),
-          excerpt: body.slice(Math.max(0, at - 200), at + 300),
-        });
-        if (out.length >= 30) break;
+      if (at < 0) continue;
+      if (seen++ < from) continue;
+      const m = {
+        source: String(s.id),
+        url: String(s.url),
+        excerpt: body.slice(Math.max(0, at - 200), at + 300),
+      };
+      const len = JSON.stringify(m).length;
+      if (out.length >= SEARCH_PAGE || (out.length > 0 && size + len > SEARCH_CHARS)) {
+        more = true;
+        break;
       }
+      out.push(m);
+      size += len;
     }
-    return { matches: out };
+    return {
+      matches: out,
+      ...(from ? { skip: from } : {}),
+      ...(more
+        ? {
+            next_skip: from + out.length,
+            more: `more sources match: search_corpus again with skip ${from + out.length} for the next page`,
+          }
+        : {}),
+    };
   }
 
   /** Web search: every query is checked against the contract's search policy and logged. */
@@ -561,6 +659,10 @@ export class Research {
    * A research note, with the sources it relies on. It is its own record (the research folder's
    * notes/ and the report read it) and one `research_note` event with its text, so the knowledge
    * base has it too. Field notes are another record (journal.ts).
+   *
+   * A note that repeats one of the run's last NOTE_REPEATS notes word for word, once folded
+   * (foldText), is refused in words (goal 117): one trial once wrote the same two words thousands
+   * of times.
    */
   addNote(
     run: string,
@@ -571,6 +673,17 @@ export class Research {
   ) {
     const body = text.trim().slice(0, 4000);
     if (!body) throw new LedgerError("invalid", "a note needs its text");
+    const key = foldText(body);
+    const same = this.all(
+      "select id, lane, created_at, text from note where run = ? order by id desc limit ?",
+      run,
+      NOTE_REPEATS,
+    ).find((n) => foldText(String(n.text)) === key);
+    if (same)
+      throw new LedgerError(
+        "invalid",
+        `this note repeats note ${String(same.id)} (by ${String(same.lane ?? "research")}, ${String(same.created_at)}) word for word: it is not recorded again. Record what is new, or go on with the work`,
+      );
     const cited = sources.slice(0, 20);
     const first = cited.length
       ? this.get("select url from source where run = ? and id = ?", run, cited[0] as string)
@@ -594,29 +707,193 @@ export class Research {
     return { note: id };
   }
 
-  proposeHypothesis(run: string, lane: string | null, text: string, supporting: string[] = []) {
+  /** A question's index as a hypothesis takes it: one of the contract's, or a refusal in words. */
+  private questionOf(run: string, q: number | null | undefined): number | null {
+    if (q === undefined || q === null) return null;
+    const n = this.contract(run).questions.length;
+    if (!Number.isInteger(q) || q < 0 || q >= n)
+      throw new LedgerError(
+        "invalid",
+        `no question ${q}: "question" is the index of one of the campaign's ${n} questions, from 0 to ${n - 1}`,
+      );
+    return q;
+  }
+
+  /** The run's live hypothesis (the author's, the pool's or promoted) whose words these repeat. */
+  private twinOf(run: string, text: string, except?: string | undefined): Row | undefined {
+    const key = foldText(text);
+    return this.all(
+      `select id, lane, status, text from hypothesis where run = ? and status in (${LIVE_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
+      run,
+      ...LIVE_HYPOTHESES,
+    ).find((h) => String(h.id) !== except && foldText(String(h.text)) === key);
+  }
+
+  /** The verified claims of the run among these ids, and the rest. */
+  private verifiedAmong(run: string, ids: string[]): { ok: string[]; ignored: string[] } {
     const known = new Set(
       this.all("select id from claim where run = ? and verified = 1", run).map((r) => String(r.id)),
     );
-    const ok = supporting.filter((c) => known.has(c));
+    const unique = [...new Set(ids)];
+    return { ok: unique.filter((c) => known.has(c)), ignored: unique.filter((c) => !known.has(c)) };
+  }
+
+  /**
+   * A worker's hypothesis for the run's pool (goal 117): its text, the question it is about (an
+   * index of the contract's questions, or none: the whole run) and the verified claims behind it
+   * (others are ignored, and said). Refused in words: an empty text, a question the run does not
+   * have, and words that repeat a live hypothesis of the run once folded (the author's, the
+   * pool's or a promoted one), naming it, so the worker revises it instead. Only the author's and
+   * promoted hypotheses need a verdict from the review panel; the report lists the pool's.
+   */
+  proposeHypothesis(run: string, lane: string | null, input: unknown) {
+    const p = HypothesisInput.safeParse(input);
+    if (!p.success)
+      throw new LedgerError(
+        "invalid",
+        `a hypothesis is {"text", "question"?: the index of a campaign question, from 0, "supporting"?: verified claim ids}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
+      );
+    const text = p.data.text.trim().slice(0, HYPOTHESIS_MAX);
+    if (!text) throw new LedgerError("invalid", "a hypothesis needs its text");
+    const question = this.questionOf(run, p.data.question);
+    const twin = this.twinOf(run, text);
+    if (twin) throw new LedgerError("invalid", repeatsWords(twin));
+    const { ok, ignored } = this.verifiedAmong(run, p.data.supporting);
     const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const now = new Date().toISOString();
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(
-          "insert into hypothesis (id, run, lane, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, 'pool', ?, ?)",
+          "insert into hypothesis (id, run, lane, question, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, 'pool', ?, ?)",
         )
-        .run(id, run, lane, text.slice(0, 2000), canonicalJson(ok), now, now);
+        .run(id, run, lane, question, text, canonicalJson(ok), now, now);
       // So the campaign's folder in the knowledge base holds the run's hypotheses too.
       this.ledger.appendEvent(lane ?? "research", "hypothesis_added", run, {
         hypothesis: id,
         lane: lane ?? null,
-        text: text.slice(0, 2000),
+        text,
         supporting: ok,
+        question,
+        status: "pool",
       });
     });
     this.changed(run);
-    return { hypothesis: id, supporting: ok, ignored: supporting.filter((c) => !known.has(c)) };
+    return {
+      hypothesis: id,
+      status: "pool",
+      question,
+      supporting: ok,
+      ignored,
+      note: "in the run's pool: only the author's hypotheses and promoted ones need a verdict from the review panel; change this one with revise_hypothesis",
+    };
+  }
+
+  /**
+   * A worker changes a pool hypothesis (goal 117): its text, its question (null: the whole run)
+   * or its supporting claims (verified claims of the run; the list replaces the old one). The
+   * author's hypotheses change only with the brief, and a merged or retired one not at all: each
+   * is refused in words. A revision whose words repeat another live hypothesis merges this one
+   * into it: status `merged`, `merged_into` the other, and the work goes on there.
+   */
+  reviseHypothesis(run: string, lane: string | null, input: unknown) {
+    const p = HypothesisRevision.safeParse(input);
+    if (!p.success)
+      throw new LedgerError(
+        "invalid",
+        `a revision is {"id", "text"?, "question"?: the index of a campaign question from 0, or null, "supporting"?: verified claim ids}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
+      );
+    const r = p.data;
+    const h = this.get("select * from hypothesis where run = ? and id = ?", run, r.id.trim());
+    if (!h) throw new LedgerError("not_found", `no hypothesis ${r.id} in this run`);
+    const id = String(h.id);
+    const status = String(h.status);
+    if (status === "author")
+      throw new LedgerError(
+        "invalid",
+        `hypothesis ${id} is one of the author's: only the campaign's brief changes it. Record claims for or against it, or propose a hypothesis of your own`,
+      );
+    if (status === "merged")
+      throw new LedgerError(
+        "invalid",
+        `hypothesis ${id} was merged into ${String(h.merged_into)}: revise ${String(h.merged_into)} instead`,
+      );
+    if (status === "retired") throw new LedgerError("invalid", `hypothesis ${id} is retired`);
+    if (r.text === undefined && r.question === undefined && r.supporting === undefined)
+      throw new LedgerError(
+        "invalid",
+        "a revision needs what changes: text, question or supporting (or more than one)",
+      );
+    const text = r.text === undefined ? String(h.text) : r.text.trim().slice(0, HYPOTHESIS_MAX);
+    if (!text) throw new LedgerError("invalid", "a hypothesis needs its text");
+    const question =
+      r.question === undefined
+        ? h.question === null
+          ? null
+          : Number(h.question)
+        : this.questionOf(run, r.question);
+    let supporting = JSON.parse(String(h.supporting)) as string[];
+    let ignored: string[] = [];
+    if (r.supporting !== undefined) {
+      const v = this.verifiedAmong(run, r.supporting);
+      if (r.supporting.length && !v.ok.length)
+        throw new LedgerError(
+          "invalid",
+          `none of ${v.ignored.join(", ")} is a verified claim of this run: the supporting claims stay as they were`,
+        );
+      supporting = v.ok;
+      ignored = v.ignored;
+    }
+    const twin = r.text === undefined ? undefined : this.twinOf(run, text, id);
+    const now = new Date().toISOString();
+    const by = lane ?? "research";
+    if (twin) {
+      const into = String(twin.id);
+      this.ledger.tx(() => {
+        this.ledger.db
+          .prepare(
+            "update hypothesis set text = ?, question = ?, supporting = ?, status = 'merged', merged_into = ?, updated_at = ? where id = ?",
+          )
+          .run(text, question, canonicalJson(supporting), into, now, id);
+        this.ledger.appendEvent(by, "hypothesis_merged", run, {
+          hypothesis: id,
+          into,
+          lane: lane ?? null,
+          text,
+          question,
+          supporting,
+        });
+      });
+      this.changed(run);
+      return {
+        hypothesis: id,
+        status: "merged",
+        merged_into: into,
+        note: `its new words repeat ${into}, so it is merged into ${into}: work on ${into} from now on`,
+      };
+    }
+    const same =
+      text === String(h.text) &&
+      question === (h.question === null ? null : Number(h.question)) &&
+      canonicalJson(supporting) === String(h.supporting);
+    if (same)
+      return { hypothesis: id, status, question, supporting, ignored, note: "nothing changed" };
+    this.ledger.tx(() => {
+      this.ledger.db
+        .prepare(
+          "update hypothesis set text = ?, question = ?, supporting = ?, updated_at = ? where id = ?",
+        )
+        .run(text, question, canonicalJson(supporting), now, id);
+      this.ledger.appendEvent(by, "hypothesis_revised", run, {
+        hypothesis: id,
+        lane: lane ?? null,
+        text,
+        question,
+        supporting,
+        status,
+      });
+    });
+    this.changed(run);
+    return { hypothesis: id, status, text, question, supporting, ignored };
   }
 
   /**
@@ -689,6 +966,147 @@ export class Research {
     });
     this.changed(run);
     return { finding: id, supported, problems };
+  }
+
+  /**
+   * The hypotheses as a research worker's brief shows them (goal 117): what needs a verdict and
+   * what does not, those that need one (the author's first, then promoted ones) each with its
+   * question, and the newest of the pool; the folder lists them all.
+   */
+  hypothesesBrief(run: string): string {
+    const rows = this.all(
+      "select id, status, question, text from hypothesis where run = ? order by created_at, rowid",
+      run,
+    );
+    const where = (h: Row) =>
+      h.question === null ? "the whole run" : questionLabel(Number(h.question));
+    const line = (h: Row, n: number) =>
+      `- ${String(h.id)} (${hypothesisStatusWords(String(h.status))}; ${where(h)}): ${clip(String(h.text).replace(/\s+/g, " ").trim(), n)}`;
+    const required = [
+      ...rows.filter((h) => h.status === "author"),
+      ...rows.filter((h) => h.status === "promoted"),
+    ];
+    const pool = rows.filter((h) => h.status === "pool");
+    return [
+      "# Hypotheses",
+      HYPOTHESES_RULE,
+      ...(required.length
+        ? [
+            "They need a verdict:",
+            ...required.slice(0, BRIEF_REQUIRED).map((h) => line(h, 400)),
+            ...(required.length > BRIEF_REQUIRED
+              ? [`… and ${required.length - BRIEF_REQUIRED} more in INDEX.md`]
+              : []),
+          ]
+        : ["None needs a verdict: the brief has no hypotheses, and none was promoted."]),
+      ...(pool.length
+        ? [
+            `The pool has ${pool.length}${pool.length > BRIEF_POOL ? `; the newest ${BRIEF_POOL}` : ""}:`,
+            ...pool.slice(-BRIEF_POOL).map((h) => line(h, 200)),
+          ]
+        : ["The pool is empty."]),
+      "Every hypothesis, with its status and question: INDEX.md and hypotheses/ in the research folder.",
+    ].join("\n");
+  }
+
+  /**
+   * What a research trial added (goal 117), from the records its lane wrote between the trial's
+   * start and now (a lane runs one trial at a time): its verified claims, by question, and how
+   * many brought a registrable domain its question's claims had not cited before; the registrable
+   * domains new to the run among the pages it fetched; its supported findings. Cards come later in
+   * goal 117: their changes are 0 for now. Undefined for a trial the ledger does not have.
+   */
+  trialYield(run: string, trial: string, until = new Date().toISOString()): TaskYield | undefined {
+    const t = this.get("select lane, started_at from trial where id = ? and run = ?", trial, run);
+    if (!t) return undefined;
+    const lane = String(t.lane);
+    const since = String(t.started_at);
+    const domainOf = new Map(
+      this.all("select id, domain from source where run = ?", run).map((s) => [
+        String(s.id),
+        registrableDomain(String(s.domain)),
+      ]),
+    );
+    const domainsOf = (quotes: unknown) =>
+      new Set(
+        (JSON.parse(String(quotes)) as { source: string }[]).flatMap((q) => {
+          const d = domainOf.get(q.source);
+          return d ? [d] : [];
+        }),
+      );
+    // What each question's verified claims cited before the trial started.
+    const seen = new Map<number, Set<string>>();
+    for (const c of this.all(
+      "select question, quotes from claim where run = ? and verified = 1 and question is not null and created_at < ?",
+      run,
+      since,
+    )) {
+      const q = Number(c.question);
+      seen.set(q, new Set([...(seen.get(q) ?? []), ...domainsOf(c.quotes)]));
+    }
+    const by = new Map<number, { verified_claims: number; new_domain_claims: number }>();
+    let total = 0;
+    let none = 0;
+    for (const c of this.all(
+      "select question, quotes from claim where run = ? and lane = ? and verified = 1 and created_at >= ? and created_at <= ? order by created_at, rowid",
+      run,
+      lane,
+      since,
+      until,
+    )) {
+      total++;
+      if (c.question === null) {
+        none++;
+        continue;
+      }
+      const q = Number(c.question);
+      const had = seen.get(q) ?? new Set<string>();
+      const ds = domainsOf(c.quotes);
+      const fresh = [...ds].some((d) => !had.has(d));
+      seen.set(q, new Set([...had, ...ds]));
+      const row = by.get(q) ?? { verified_claims: 0, new_domain_claims: 0 };
+      row.verified_claims++;
+      if (fresh) row.new_domain_claims++;
+      by.set(q, row);
+    }
+    const before = new Set(
+      this.all("select domain from source where run = ? and fetched_at < ?", run, since).map((s) =>
+        registrableDomain(String(s.domain)),
+      ),
+    );
+    const fresh = [
+      ...new Set(
+        this.all(
+          "select domain from source where run = ? and fetched_by = ? and fetched_at >= ? and fetched_at <= ? order by fetched_at",
+          run,
+          lane,
+          since,
+          until,
+        )
+          .map((s) => registrableDomain(String(s.domain)))
+          .filter((d) => !before.has(d)),
+      ),
+    ];
+    const findings = Number(
+      this.get(
+        "select count(*) as n from finding where run = ? and lane = ? and supported = 1 and created_at >= ? and created_at <= ?",
+        run,
+        lane,
+        since,
+        until,
+      )?.n ?? 0,
+    );
+    return {
+      verified_claims: total,
+      by_question: [...by.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([question, r]) => ({ question, ...r })),
+      no_question: none,
+      new_domains: fresh.length,
+      domains: fresh.slice(0, 20),
+      findings,
+      card_changes: 0,
+    };
   }
 
   updateSection(run: string, by: string | null, name: string, body: string) {
@@ -788,16 +1206,27 @@ export class Research {
     return merged;
   }
 
-  /** Distinct domains a verified claim's quotes come from. */
+  /**
+   * Distinct registrable domains a verified claim's quotes come from (goal 117): a source keeps
+   * the host it was fetched from, and docs.example.com and blog.example.com count as one.
+   */
   private claimDomains(run: string, quotesJson: string): number {
     const ids = (JSON.parse(quotesJson) as { source: string }[]).map((q) => q.source);
-    const domains = new Set(
-      ids.map(
-        (id) => this.get("select domain from source where run = ? and id = ?", run, id)?.domain,
-      ),
-    );
-    domains.delete(undefined);
+    const domains = new Set<string>();
+    for (const id of ids) {
+      const d = this.get("select domain from source where run = ? and id = ?", run, id)?.domain;
+      if (d !== undefined && d !== null) domains.add(registrableDomain(String(d)));
+    }
     return domains.size;
+  }
+
+  /** The run's distinct registrable domains (goal 117). */
+  private domains(run: string): number {
+    return new Set(
+      this.all("select distinct domain from source where run = ?", run).map((r) =>
+        registrableDomain(String(r.domain)),
+      ),
+    ).size;
   }
 
   stats(run: string) {
@@ -816,7 +1245,7 @@ export class Research {
       )?.t;
     return {
       sources: n("select count(*) as n from source where run = ?", run),
-      domains: n("select count(distinct domain) as n from source where run = ?", run),
+      domains: this.domains(run),
       verified: n("select count(*) as n from claim where run = ? and verified = 1", run),
       corroborated,
       drafts: n("select count(*) as n from claim where run = ? and verified = 0", run),
@@ -942,8 +1371,10 @@ export class Research {
       ...(kind === "final" ? answerSections(this.ledger, run, c, fence) : []),
       "## Questions",
       // A question may have several lines (goal 078): its further lines stay under it.
+      // Numbered from 1, with the index a claim's `question` takes: workers read REPORT.md too.
       ...stats.questions.map(
-        (q, i) => `${i + 1}. ${q.question.replace(/\n/g, "\n   ")} (${q.verified} verified claims)`,
+        (q, i) =>
+          `- ${questionLabel(i)}: ${q.question.replace(/\n/g, "\n  ")} (${q.verified} verified claims)`,
       ),
       "",
       "## Findings",
@@ -963,16 +1394,21 @@ export class Research {
             `- ${fence(String(f.text)).replace(/\n+/g, " ")} (${(JSON.parse(String(f.problems)) as string[]).join("; ")})`,
         ),
       "",
+      // Those that need a verdict first: the author's, then promoted ones; then the pool and the
+      // rest, each with its status and question (goal 117).
       "## Hypotheses",
-      ...this.all("select text, supporting from hypothesis where run = ?", run).map(
+      ...this.all(
+        "select id, text, supporting, status, question, merged_into from hypothesis where run = ? order by case status when 'author' then 0 when 'promoted' then 1 when 'pool' then 2 else 3 end, created_at, rowid",
+        run,
+      ).map(
         (h) =>
-          `- ${h.text} (supported by ${(JSON.parse(String(h.supporting)) as string[]).length} verified claims)`,
+          `- ${fence(String(h.text)).replace(/\n+/g, " ")} (${String(h.id)}, ${hypothesisStatusWords(String(h.status), h.merged_into === null ? null : String(h.merged_into))}; ${h.question === null ? "the whole run" : questionLabel(Number(h.question))}; supported by ${(JSON.parse(String(h.supporting)) as string[]).length} verified claims)`,
       ),
       "",
       "## Open questions",
-      ...stats.questions
-        .filter((q) => q.verified === 0)
-        .map((q) => `- ${q.question.replace(/\n/g, "\n  ")}`),
+      ...stats.questions.flatMap((q, i) =>
+        q.verified === 0 ? [`- ${questionLabel(i)}: ${q.question.replace(/\n/g, "\n  ")}`] : [],
+      ),
       "",
       "## Worker sections (not verified; only the findings and claims above are checked)",
       ...sections.flatMap((s) => [`### ${s.name}`, fence(String(s.body)), ""]),

@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { researchOutput, researchTool, SOURCE_PARAM } from "./research-tools.ts";
+import { READ_MAX, researchOutput, researchTool, SOURCE_PARAM } from "./research-tools.ts";
 
 /**
  * The research tools as Pi offers them: a research trial has all of them, a hill-climb or goal
@@ -13,11 +13,20 @@ const PARAMS: Record<string, TSchema> = {
   fetch: Type.Object({ url: Type.String() }),
   read_source: Type.Object({
     source: Type.String(),
-    offset: Type.Optional(Type.Number()),
-    length: Type.Optional(Type.Number()),
+    offset: Type.Optional(
+      Type.Number({ description: "Where to start, in characters: an answer's next_offset" }),
+    ),
+    length: Type.Optional(
+      Type.Number({ description: `How many characters, at most ${READ_MAX} (6000 by default)` }),
+    ),
   }),
   search: Type.Object({ query: Type.String() }),
-  search_corpus: Type.Object({ text: Type.String() }),
+  search_corpus: Type.Object({
+    text: Type.String(),
+    skip: Type.Optional(
+      Type.Number({ description: "Matches to skip: an answer's next_skip, for its next page" }),
+    ),
+  }),
   add_claim: Type.Object({
     text: Type.String({
       description:
@@ -42,8 +51,30 @@ const PARAMS: Record<string, TSchema> = {
     sources: Type.Optional(Type.Array(Type.String())),
   }),
   propose_hypothesis: Type.Object({
-    text: Type.String(),
-    supporting: Type.Optional(Type.Array(Type.String())),
+    text: Type.String({ description: "The hypothesis, new: not one the run has already" }),
+    question: Type.Optional(
+      Type.Number({
+        description:
+          "Index of the campaign question it is about (0-based). Left out: the whole run",
+      }),
+    ),
+    supporting: Type.Optional(
+      Type.Array(Type.String(), { description: "Verified claims of the run that support it" }),
+    ),
+  }),
+  revise_hypothesis: Type.Object({
+    id: Type.String({ description: "The pool hypothesis to change, h-…" }),
+    text: Type.Optional(Type.String({ description: "Its new words" })),
+    question: Type.Optional(
+      Type.Union([Type.Number(), Type.Null()], {
+        description: "Index of the question it is about (0-based); null: the whole run",
+      }),
+    ),
+    supporting: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "Verified claims of the run that support it: the list replaces the old one",
+      }),
+    ),
   }),
   add_finding: Type.Object({
     text: Type.String({ description: "The finding, in one sentence." }),

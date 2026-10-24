@@ -633,7 +633,10 @@ describe("the cards in the brief, the folder, the report and the teachers' brief
       body,
       /### Question 2: What keeps a long campaign honest\?\n\nNo answer card yet \(1 verified claims\)\./,
     );
-    assert.ok(!/Question 1 \(index 0\)/.test(body), "people read Question 1 alone");
+    // The Answers section is for people: "Question 1" alone. The questions list after it, which
+    // workers read too, names both numbers.
+    const answers = body.slice(at("## Answers"), at("## Questions"));
+    assert.ok(!/\(index \d+\)/.test(answers), "people read Question 1 alone");
   });
 
   test("the teachers' brief carries each card, and their file tool reads a card whole", async (t) => {

@@ -5,6 +5,7 @@ import { FILE_BYTES_MAX, READ_LINES_DEFAULT, READ_LINES_MAX } from "./evidence.t
 import { searchLimit, searchWords } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import { cardFile, cardHistory, cardsOf, questionLabel } from "./research/cards.ts";
+import { registrableDomain } from "./research/fetcher.ts";
 import { cardPath, readNoFollow, sectionPath } from "./research/folder.ts";
 
 /**
@@ -259,8 +260,12 @@ export class RunResearch {
             const problems = ids(c.problems);
             const verified = Number(c.verified) === 1;
             const q = c.question === null || c.question === undefined ? null : Number(c.question);
+            // Registrable domains (goal 117): docs.example.com and blog.example.com are one.
             const domains = new Set(
-              quotes.map((x) => sources.get(String(x.source))?.domain).filter(Boolean),
+              quotes.flatMap((x) => {
+                const d = sources.get(String(x.source))?.domain;
+                return d ? [registrableDomain(d)] : [];
+              }),
             );
             return {
               id: String(c.id),
@@ -304,6 +309,11 @@ export class RunResearch {
             id: String(h.id),
             text: clip(String(h.text), 2000),
             supporting: ids(h.supporting),
+            // Its status and question (goal 117): only the author's and promoted ones need a
+            // verdict; the question is an index, from 0.
+            status: String(h.status),
+            question: h.question === null || h.question === undefined ? null : Number(h.question),
+            ...(h.merged_into ? { merged_into: String(h.merged_into) } : {}),
             lane: nullable(h.lane),
             at: String(h.created_at),
           })),
@@ -770,7 +780,11 @@ export class RunResearch {
     return {
       note: noteFor(mode),
       sources,
-      domains: n("select count(distinct domain) as n from source where run = ?"),
+      domains: new Set(
+        this.all("select distinct domain from source where run = ?", run).map((r) =>
+          registrableDomain(String(r.domain)),
+        ),
+      ).size,
       claims: { verified, draft: drafts },
       hypotheses: n("select count(*) as n from hypothesis where run = ?"),
       findings: {

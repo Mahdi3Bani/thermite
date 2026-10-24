@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseContract } from "../../core/contract.ts";
 import { startFakeModel } from "../../testing/fake-model.ts";
 import { researchFixture } from "../../testing/fixtures.ts";
 import { makeHarnessEnv } from "../../testing/harness-env.ts";
 import { Registry } from "../agents/registry.ts";
+import { OUTPUT_MAX, READ_MAX, researchOutput } from "../agents/research-tools.ts";
 import { runResearchTrial } from "../agents/research-worker.ts";
 import { Scheduler } from "../agents/scheduler.ts";
 import { createHarnessApi } from "../api.ts";
 import { LocalRunner } from "../broker/runner.ts";
-import { blockedAddress, htmlToText } from "./fetcher.ts";
+import { blockedAddress, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Research } from "./research.ts";
 
 /** A tiny "web" for tests: two linked pages, a robots.txt and a disallowed path. */
@@ -61,6 +64,35 @@ async function researchEnv(over: Record<string, unknown> = {}, allowPrivate = tr
   assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
   const research = new Research(env.service.ledger, env.service.paths.stateDir, { allowPrivate });
   return { env, research };
+}
+
+/** A source archived as the fetcher would keep it, with no web: its row and its text file. */
+function archived(
+  env: ReturnType<typeof makeHarnessEnv>,
+  id: string,
+  url: string,
+  text: string,
+): void {
+  const dir = join(env.service.paths.stateDir, "test-archive");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${id}.txt`);
+  writeFileSync(path, text);
+  env.service.ledger.db
+    .prepare(
+      `insert into source (id, run, url, final_url, domain, fetched_at, http_status, content_type, bytes, sha256,
+         title, raw_path, text_path, fetched_by) values (?, 'r-1', ?, ?, ?, ?, 200, 'text/plain', ?, ?, null, ?, ?, 'lane-1')`,
+    )
+    .run(
+      id,
+      url,
+      url,
+      new URL(url).hostname,
+      new Date().toISOString(),
+      text.length,
+      id,
+      path,
+      path,
+    );
 }
 
 describe("research service", () => {
@@ -538,6 +570,102 @@ describe("research integrity", () => {
     assert.match(body, /single domain[\s\S]*Stateless workers/);
     assert.match(body, /Numbers without a source[\s\S]*77/);
     await w.close();
+  });
+
+  test("a registrable domain is what one owner registers: public suffixes of more than one label are kept in code", () => {
+    const cases: [string, string][] = [
+      ["docs.example.com", "example.com"],
+      ["blog.example.com", "example.com"],
+      ["Example.COM.", "example.com"],
+      ["example.com", "example.com"],
+      ["www.bbc.co.uk", "bbc.co.uk"],
+      ["research.ox.ac.uk", "ox.ac.uk"],
+      ["www.gov.uk", "www.gov.uk"],
+      ["gov.uk", "gov.uk"],
+      ["news.abc.net.au", "abc.net.au"],
+      ["www.example.co.jp", "example.co.jp"],
+      ["alice.github.io", "alice.github.io"],
+      ["bob.github.io", "bob.github.io"],
+      ["github.io", "github.io"],
+      ["docs.nvidia.com", "nvidia.com"],
+      ["my-bucket.s3.amazonaws.com", "my-bucket.s3.amazonaws.com"],
+      ["127.0.0.1", "127.0.0.1"],
+      ["[::1]", "::1"],
+      ["localhost", "localhost"],
+    ];
+    for (const [host, want] of cases) assert.equal(registrableDomain(host), want, host);
+  });
+
+  test("corroboration counts registrable domains: two hosts of one site are one domain", async () => {
+    const { env, research } = await researchEnv();
+    const quote = "Fresh workers that start from the ledger lose nothing that matters.";
+    const archive = (id: string, url: string) =>
+      archived(env, id, url, `A page that says: ${quote}`);
+    archive("s-000000000001", "https://docs.example.com/a");
+    archive("s-000000000002", "https://blog.example.com/b");
+    archive("s-000000000003", "https://www.example.org/c");
+    const same = research.addClaim("r-1", "lane-1", {
+      text: "Fresh workers lose nothing that matters.",
+      quotes: [
+        { source: "s-000000000001", quote },
+        { source: "s-000000000002", quote },
+      ],
+      question: 0,
+    });
+    assert.equal(same.verified, true);
+    let stats = research.stats("r-1");
+    assert.equal(
+      stats.domains,
+      2,
+      "docs.example.com and blog.example.com are one, example.org another",
+    );
+    assert.equal(stats.corroborated, 0, "two hosts of one site are one independent source");
+    const two = research.addClaim("r-1", "lane-1", {
+      text: "Workers that start fresh from the ledger lose nothing that matters.",
+      quotes: [
+        { source: "s-000000000001", quote },
+        { source: "s-000000000003", quote },
+      ],
+      question: 0,
+    });
+    assert.equal(two.verified, true);
+    stats = research.stats("r-1");
+    assert.equal(stats.corroborated, 1);
+  });
+
+  test("read_source and search_corpus fit a tool's answer, and say where to go on (goal 117)", async () => {
+    const { env, research } = await researchEnv();
+    const long = Array.from({ length: 2500 }, (_, i) => `Sentence ${i} of a long page.`).join(" ");
+    archived(env, "s-00000000000a", "https://example.com/long", long);
+    const first = research.read("r-1", "s-00000000000a");
+    assert.equal(first.text, long.slice(0, 6000));
+    assert.equal(first.next_offset, 6000);
+    assert.match(String(first.more), /read_source s-00000000000a with offset 6000/);
+    const big = research.read("r-1", "s-00000000000a", 6000, 50_000);
+    assert.equal(big.text.length, READ_MAX);
+    assert.match(String(big.note), new RegExp(`at most ${READ_MAX} characters`));
+    assert.ok(researchOutput(big).length <= OUTPUT_MAX, "the whole read fits");
+    assert.throws(() => research.read("r-1", "s-nope"), /no source s-nope in this run/);
+    // Forty pages match: a page of matches that fits, then the rest from next_skip.
+    for (let i = 0; i < 40; i++)
+      archived(
+        env,
+        `s-1${String(i).padStart(11, "0")}`,
+        `https://site${i}.example.org/p`,
+        `${"Before. ".repeat(40)}The dequantize step runs once per tile.${" After.".repeat(60)}`,
+      );
+    const page = research.searchCorpus("r-1", "dequantize step");
+    assert.ok(page.matches.length > 5 && page.matches.length < 40, `${page.matches.length}`);
+    assert.ok(researchOutput(page).length <= OUTPUT_MAX);
+    assert.equal(page.next_skip, page.matches.length);
+    assert.match(String(page.more), new RegExp(`skip ${page.matches.length}`));
+    const seen = [...page.matches];
+    for (let skip: number | undefined = page.next_skip; skip !== undefined; ) {
+      const next = research.searchCorpus("r-1", "dequantize step", skip);
+      seen.push(...next.matches);
+      skip = next.next_skip;
+    }
+    assert.equal(new Set(seen.map((m) => m.source)).size, 40, "every match once, page by page");
   });
 
   test("paused time does not count on the research clock", async () => {

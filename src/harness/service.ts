@@ -27,6 +27,7 @@ import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
+import { measurementIn, measurementRefusal } from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
@@ -73,7 +74,7 @@ import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { type CardResult, type CardSubmission, Cards } from "./research/cards.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
 import { type PaperPackage, type PaperSubmission, Papers } from "./research/paper.ts";
-import { startingHypotheses } from "./research/research.ts";
+import { NOTE_REPEATS, startingHypotheses } from "./research/research.ts";
 import {
   checkResearchPanel,
   RESEARCH_REVIEW,
@@ -158,6 +159,8 @@ export const AdvisorQueueRequest = z.strictObject({
         family: ExperimentText.family.optional(),
         why: z.string().trim().min(1).max(2000),
         position: QueuePosition.optional(),
+        /** A research run's task: the question it is about, an index from 0 (goal 117). */
+        question: z.number().int().min(0).optional(),
       }),
     )
     .max(20)
@@ -181,6 +184,8 @@ export const IdeaRequest = z.strictObject({
   details: ExperimentText.details.optional(),
   family: ExperimentText.family.optional(),
   why: ExperimentText.why.optional(),
+  /** In a research run, the question the task is about, an index from 0 (goal 117). */
+  question: z.number().int().min(0).optional(),
 });
 
 /** What a queue command did, as its result: the experiment, its state and its place. */
@@ -2349,6 +2354,9 @@ export class HarnessService {
       proposed: "a lane's idea",
       assigned: "in progress",
     };
+    // A research run measures nothing (goal 117): an item that asks for a measurement is a next
+    // experiment for the run's report, never a task for its queue.
+    const research = this.ledger.getRun(p.run)?.mode === "research";
     for (const a of p.add) {
       const same = p.role === "teacher" ? waiting.get(ideaWords(a.title)) : undefined;
       if (same) {
@@ -2357,7 +2365,22 @@ export class HarnessService {
         );
         continue;
       }
-      const x = this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor);
+      const measures = research
+        ? measurementIn([a.title, a.details ?? "", a.why].join("\n"))
+        : undefined;
+      if (measures) {
+        out.refused.push(`add "${a.title.slice(0, 120)}": ${measurementRefusal(measures)}`);
+        continue;
+      }
+      // A question the run does not have, or one in a run whose tasks name none: refused in words.
+      let x: Experiment;
+      try {
+        x = this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor);
+      } catch (err) {
+        if (!(err instanceof LedgerError)) throw err;
+        out.refused.push(`add "${a.title.slice(0, 120)}": ${err.message}`);
+        continue;
+      }
       waiting.set(ideaWords(x.title), x);
       out.added.push(x.id);
     }
@@ -2376,11 +2399,18 @@ export class HarnessService {
   /**
    * A worker's idea for its run's queue: proposed, by its lane, until the planner queues or drops
    * it (or the owner does first). The trial (found by its token) decides the run and the lane.
-   * No limit on how many: none is set by default (the rules for every goal).
+   * No limit on how many: none is set by default (the rules for every goal). In a research run,
+   * an idea that asks for a measurement is refused in words (goal 117): it is a next experiment.
    */
   proposeIdea(token: string, input: unknown): { experiment: string; state: "proposed" } {
     const t = new Registry(this.ledger).openTrial(token);
     const idea = IdeaRequest.parse(input);
+    if (this.ledger.getRun(t.run)?.mode === "research") {
+      const measures = measurementIn(
+        [idea.title, idea.details ?? "", idea.why ?? "", idea.family ?? ""].join("\n"),
+      );
+      if (measures) throw new LedgerError("invalid", measurementRefusal(measures));
+    }
     const x = this.queue.add(
       t.run,
       { ...idea, by: t.lane, state: "proposed", trial: t.id },
@@ -2399,9 +2429,19 @@ export class HarnessService {
   /**
    * A worker's field note (`thermite-trial note`, or Pi's note tool). The trial (found by its
    * token) decides the run, the lane, the trial and who wrote it (the lane); the note cannot.
+   * In a research run, a note that repeats one of the run's last NOTE_REPEATS field notes word
+   * for word, once folded, is refused in words (goal 117).
    */
   writeTrialNote(token: string, input: unknown): { note: number } {
     const t = new Registry(this.ledger).openTrial(token);
+    if (this.ledger.getRun(t.run)?.mode === "research") {
+      const same = this.journal.repeatOf(t.run, Journal.parse(input).text, NOTE_REPEATS);
+      if (same)
+        throw new LedgerError(
+          "invalid",
+          `this note repeats field note #${same.id} (by ${same.by}, ${same.at}) word for word: it is not recorded again. Note what is new, or go on with the work`,
+        );
+    }
     const n = this.journal.write(t.run, input, {
       by: t.lane,
       actor: `trial:${t.id}`,

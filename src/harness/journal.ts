@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NOTE_KINDS, type NoteAbout, NoteInput, type NoteKind } from "../core/journal.ts";
 import type { LiveLog } from "../core/live.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
+import { foldText } from "./research/checks.ts";
 
 /**
  * A run's field notes (goal 065): what its workers, its planner and its advisors write down as
@@ -198,6 +199,16 @@ export class Journal {
       | Row
       | undefined;
     return r ? toNote(r) : undefined;
+  }
+
+  /**
+   * The note among the run's newest `last` that a text repeats word for word, once folded
+   * (foldText: case, punctuation and spaces): a research worker's repeat is refused (goal 117).
+   */
+  repeatOf(run: string, text: string, last: number): JournalNote | undefined {
+    const key = foldText(text);
+    if (!key) return undefined;
+    return this.newest(run, last).find((n) => foldText(n.text) === key);
   }
 
   /** A run's newest notes, newest first: all of them, or those that match. */

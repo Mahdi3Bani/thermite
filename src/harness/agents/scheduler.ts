@@ -13,7 +13,7 @@ import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { queueTarget } from "../../core/queue-target.ts";
-import { NO_WRITER } from "../../core/research-check.ts";
+import { labelledQuestion, NO_WRITER, questionLabel } from "../../core/research-check.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -28,7 +28,7 @@ import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
 import { type McpCaller, NOT_HANDED } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
-import { type Experiment, inFamily } from "../queue.ts";
+import { type Experiment, inFamily, type TaskYield } from "../queue.ts";
 import { briefCards } from "../research/cards.ts";
 import { writeAtomic } from "../research/folder.ts";
 import type { Research } from "../research/research.ts";
@@ -2045,8 +2045,13 @@ export class Scheduler {
     );
     const busy = new Map<number, number>();
     for (const x of waiting) {
-      const m = /^Question (\d+):/.exec(x.title);
-      if (m) busy.set(Number(m[1]), (busy.get(Number(m[1])) ?? 0) + 1);
+      // Its question (goal 117); a task the plan queued before tasks kept one, by its title:
+      // "Question 1 (index 0): …", or before that, "Question 0: …".
+      const i =
+        x.question ??
+        labelledQuestion(x.title) ??
+        Number(/^Question (\d+):/.exec(x.title)?.[1] ?? Number.NaN);
+      if (Number.isInteger(i)) busy.set(i, (busy.get(i) ?? 0) + 1);
     }
     const added: Experiment[] = [];
     for (let k = 0; k < count; k++) {
@@ -2062,9 +2067,10 @@ export class Scheduler {
         queue.add(
           run,
           {
-            title: `Question ${q.i}: ${task.description}`,
+            title: `${questionLabel(q.i)}: ${task.description}`,
             details: questionDetails(q.i, contract.questions[q.i] ?? ""),
             family: task.id,
+            question: q.i,
             why: stalled
               ? "the research plan: novelty fell, so primary sources and contradictions first"
               : "the research plan: the least-covered questions first, task kinds in turn",
@@ -2101,10 +2107,12 @@ export class Scheduler {
       `# Research assignment (epoch ${epoch}, ${a.lane})`,
       `Campaign: ${contract.title}`,
       `Topic: ${contract.topic}`,
-      "Questions:",
+      // Numbered from 1 for reading, with the index from 0 that a claim's, a hypothesis's or a
+      // task's `question` field takes (goal 117).
+      "Questions (a claim's or a hypothesis's `question` is the index):",
       ...contract.questions.map(
         (q, i) =>
-          `${i}. ${q.replace(/\n/g, "\n   ")} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
+          `${questionLabel(i)}: ${q.replace(/\n/g, "\n   ")} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
       ),
       "",
       // Each question's answer card (goal 117): its answer, certainty and open evidence gaps.
@@ -2118,7 +2126,9 @@ export class Scheduler {
       `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts, ${stats.findings} findings.`,
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",
-      "Record claims only with exact quotes from archived sources, and say which question each answers.",
+      "Record claims only with exact quotes from archived sources, and give the question each answers by its index, in `question`.",
+      // The hypotheses: which need a verdict, and the pool (goal 117).
+      `\n${research.hypothesesBrief(run)}`,
       // What the newest failed review found missing (goal 112), until a newer review is decided.
       ...[briefGaps(this.ledger, run)].filter((s) => s !== undefined).map((s) => `\n${s}`),
       ...this.notesAndPast(run, a.lane, "research").map((s) => `\n${s}`),
@@ -2185,7 +2195,8 @@ export class Scheduler {
         r = this.withProgress(id, r);
         this.o.service.trialEnded(id, r.turns > 0 || r.tokensIn > 0);
         this.registry.finishTrial(id, r, this.o.owner);
-        this.finishExperiment(id, r);
+        // What the task's trial added, kept with the task (goal 117).
+        this.finishExperiment(id, r, undefined, this.taskYield(run, id));
         this.afterTrial(id, run, r);
         this.trialLine(
           id,
@@ -2346,6 +2357,16 @@ export class Scheduler {
     this.running.set(a.lane, work);
   }
 
+  /** What a research trial added (goal 117); undefined when it cannot be read (logged). */
+  private taskYield(run: string, trial: string): TaskYield | undefined {
+    try {
+      return (this.o.research as Research).trialYield(run, trial);
+    } catch (err) {
+      log("scheduler", "the research trial's yield was not read", { trial, error: String(err) });
+      return undefined;
+    }
+  }
+
   /**
    * A trial ended: its experiment is done, with how its trial ended in words, or goes back to the
    * top of the queue when the trial never really tried it (interrupted, or the provider's error:
@@ -2353,7 +2374,12 @@ export class Scheduler {
    * kind (`errorKind`) is set where the call was made, never read from a local failure's words. A
    * failure here is logged; the trial's own record stands.
    */
-  private finishExperiment(trial: string, r: TrialResult, attempt?: string | undefined): void {
+  private finishExperiment(
+    trial: string,
+    r: TrialResult,
+    attempt?: string | undefined,
+    taskYield?: TaskYield | undefined,
+  ): void {
     try {
       this.coordinator.finish(
         trial,
@@ -2364,6 +2390,7 @@ export class Scheduler {
           kind: r.errorKind,
           // Its calls failed until the run's agents stopped: it never really tried it either.
           agentsStopped: r.stopped === "error" && !!r.failing && failedTooLong(r.failing.since),
+          yield: taskYield,
         },
         this.o.owner,
       );
@@ -2653,7 +2680,7 @@ export class Scheduler {
  * and says where the whole question is: in the trial brief's Questions.
  */
 export function questionDetails(i: number, q: string): string {
-  const whole = `Question ${i}: ${q}`;
+  const whole = `${questionLabel(i)}: ${q}`;
   if (whole.length <= EXPERIMENT_DETAILS) return whole;
   const note = ` … (cut: the whole question is under Questions in your brief)`;
   return `${whole.slice(0, EXPERIMENT_DETAILS - note.length)}${note}`;

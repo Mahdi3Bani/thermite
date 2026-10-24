@@ -108,8 +108,9 @@ describe("the teachers read the run's own research (goal 098)", () => {
 
     const hypotheses = await page("/v1/research/hypotheses?run=r-1");
     assert.deepEqual(
-      hypotheses.items.map((x) => [x.id, x.supporting]),
-      [[s.ids.hypothesis, [s.ids.claims.verified]]],
+      hypotheses.items.map((x) => [x.id, x.supporting, x.status, x.question]),
+      [[s.ids.hypothesis, [], "author", null]],
+      "the author's hypothesis, with its status and question (goal 117)",
     );
 
     const findings = await page("/v1/research/findings?run=r-1");

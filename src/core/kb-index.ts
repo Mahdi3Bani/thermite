@@ -1,5 +1,5 @@
 import type { KbKind } from "./kb.ts";
-import { PAPER_ACCEPTED } from "./research-check.ts";
+import { hypothesisStatusWords, PAPER_ACCEPTED, questionLabel } from "./research-check.ts";
 
 /**
  * How a run's events become the items of its campaign's folder in Thermite's knowledge base
@@ -107,6 +107,8 @@ export const KB_EVENT_KINDS = [
   "source_fetched",
   "claim_added",
   "hypothesis_added",
+  "hypothesis_revised",
+  "hypothesis_merged",
   "finding_added",
   "research_final",
   "research_digest",
@@ -360,6 +362,8 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
             str(b.details),
             b.why ? `Why: ${str(b.why)}` : "",
             b.family ? `Direction: ${str(b.family)}` : "",
+            // A research task's question (goal 117).
+            typeof b.question === "number" ? `About: ${questionLabel(b.question)}` : "",
           ]),
           by: str(b.by) || e.actor,
           meta: { details: str(b.details), why: str(b.why), family: str(b.family) },
@@ -371,10 +375,15 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
     case "experiment_dropped": {
       const old = t.body(run, "experiment", ref(b.id));
       if (old === undefined) return;
+      // What a research task's trial added (goal 117), after its result.
+      const y = b.yield && typeof b.yield === "object" ? (b.yield as Row) : undefined;
+      const added = y
+        ? `; it added ${n(y.verified_claims)} verified claims, ${n(y.new_domains)} new domains and ${n(y.findings)} findings`
+        : "";
       const result =
         e.kind === "experiment_dropped"
           ? `Dropped: ${str(b.why)}`
-          : `Result: ${str(b.attempt) ? `attempt ${str(b.attempt)}` : "no attempt"}${str(b.result) ? ` (${str(b.result)})` : ""}`;
+          : `Result: ${str(b.attempt) ? `attempt ${str(b.attempt)}` : "no attempt"}${str(b.result) ? ` (${str(b.result)})` : ""}${added}`;
       t.put(
         run,
         "experiment",
@@ -453,7 +462,8 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
             str(b.text),
             str(b.quote) ? `“${str(b.quote)}”` : "",
             b.verified === true ? "Verified against its source." : "A draft: not verified yet.",
-            b.question !== undefined ? `Question ${str(b.question)}` : "",
+            // Numbered from 1 for reading, with the index the records keep (goal 117).
+            typeof b.question === "number" ? questionLabel(b.question) : "",
           ]),
           by: e.actor,
           sub: b.verified === true ? "verified" : "draft",
@@ -461,9 +471,14 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
         e.at,
       );
       return;
-    // A hypothesis: a research worker's proposed explanation, with the verified claims for it.
-    case "hypothesis_added": {
+    // A hypothesis: the author's or a research worker's proposed explanation, with the question
+    // it is about, its status (goal 117) and the verified claims for it. A revision or a merge
+    // gives its new state; who first wrote it stays its writer.
+    case "hypothesis_added":
+    case "hypothesis_revised":
+    case "hypothesis_merged": {
       const supporting = Array.isArray(b.supporting) ? b.supporting.map(String) : [];
+      const status = e.kind === "hypothesis_merged" ? "merged" : str(b.status);
       t.put(
         run,
         "hypothesis",
@@ -472,11 +487,14 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
           title: clip(str(b.text), 300) || `hypothesis ${str(b.hypothesis)}`,
           body: lines([
             str(b.text),
+            typeof b.question === "number" ? questionLabel(b.question) : "",
+            status ? `Status: ${hypothesisStatusWords(status, str(b.into) || null)}` : "",
             supporting.length
               ? `Supporting claims: ${supporting.join(", ")}`
               : "No verified claim supports it yet.",
+            e.kind === "hypothesis_added" ? "" : `Changed by ${str(b.lane) || e.actor}.`,
           ]),
-          by: str(b.lane) || e.actor,
+          ...(e.kind === "hypothesis_added" ? { by: str(b.lane) || e.actor } : {}),
         },
         e.at,
       );
