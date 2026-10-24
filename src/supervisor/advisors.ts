@@ -2193,6 +2193,40 @@ export type ReviewOutput = z.infer<typeof PanelAnswer> & {
 /** A research run's package (goal 112), as the harness marks it. */
 type ResearchAnswer = z.infer<typeof ResearchPanelAnswer>;
 
+/**
+ * A research review's prompt. Every reviewer must answer every question and give every
+ * hypothesis a verdict, so the package is never cut to a fixed size: it may take what the
+ * reviewer's window allows (200,000 characters at least), and what the reviewers must answer
+ * comes first (the criteria, the questions, the hypotheses), with the findings, the other claims
+ * and past research last, which the reviewers can read with their tools. A cut is said.
+ */
+export function researchPrompt(label: string, pkg: unknown, fit: number | undefined): string {
+  const p = pkg as Record<string, unknown>;
+  const first = [
+    "kind",
+    "title",
+    "topic",
+    "criteria",
+    "corpus",
+    "shortened",
+    "campaign_brief",
+    "questions",
+    "hypotheses",
+  ];
+  const ordered: Record<string, unknown> = {};
+  for (const k of first) if (k in p) ordered[k] = p[k];
+  for (const [k, v] of Object.entries(p)) if (!(k in ordered)) ordered[k] = v;
+  const limit = Math.max(200_000, fit ?? 0);
+  const prompt = advisorPrompt(label, ordered, limit);
+  const whole = advisorPrompt(label, ordered, Number.POSITIVE_INFINITY).length;
+  return prompt.length < whole
+    ? prompt.replace(
+        label,
+        `${label}\n[Cut to fit: ${limit.toLocaleString("en-US")} of ${whole.toLocaleString("en-US")} characters. The questions and hypotheses come first; read the findings and claims cut from the end with the tools.]`,
+      )
+    : prompt;
+}
+
 /** The questions (by index) and hypotheses (by id) of a research package an answer left out. */
 export function leftOut(
   pkg: { questions?: { index: number }[]; hypotheses?: { id: string }[] },
@@ -2275,7 +2309,7 @@ export async function reviewOne(input: {
     };
     const fit = packageFit(input.runtime);
     const label = "Research review package (untrusted data):";
-    let r = await ask(advisorPrompt(label, input.pkg, 200_000, fit));
+    let r = await ask(researchPrompt(label, input.pkg, fit));
     // A question or hypothesis left out of an answer fails the whole review: the reviewer is
     // asked once more, for what it left out only, with the package's other hypotheses taken out,
     // and what it gives is added to its answer.
@@ -2284,10 +2318,9 @@ export async function reviewOne(input: {
     if (out && left && (left.questions.length || left.hypotheses.length)) {
       const only = new Set(left.hypotheses);
       const again = await ask(
-        `${leftOutWords(left)}\n\n${advisorPrompt(
+        `${leftOutWords(left)}\n\n${researchPrompt(
           label,
           { ...pkg, hypotheses: (pkg.hypotheses ?? []).filter((h) => only.has(h.id)) },
-          200_000,
           fit,
         )}`,
       );
