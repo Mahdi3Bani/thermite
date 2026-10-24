@@ -439,6 +439,16 @@ export const CommandPayloads = {
     accept: z.boolean(),
     note: z.string().max(2000).optional(),
   }),
+  /**
+   * The owner moves a research run's hypothesis (goal 117): promoted (the review panel must give
+   * it a verdict), back to the pool (listed as proposed by the run), or retired; with why.
+   */
+  hypothesis_status: z.strictObject({
+    run: IdSchema,
+    id: z.string().trim().min(1).max(64),
+    status: z.enum(["promoted", "pool", "retired"]),
+    reason: z.string().trim().min(1).max(2000),
+  }),
 } as const;
 
 export type CommandKind = keyof typeof CommandPayloads;

@@ -25,6 +25,29 @@ import { KnowledgeBase } from "./kb.ts";
  */
 type Row = Record<string, SQLInputValue>;
 
+/** A model_call row as the usage sums read it (goal 075). */
+function usageRowOf(r: Row): UsageRow {
+  const num = (x: SQLInputValue | undefined) => (x === null || x === undefined ? null : Number(x));
+  return {
+    rig: String(r.rig),
+    run: String(r.run),
+    campaign: r.campaign === null ? null : String(r.campaign),
+    trial: r.trial === null || r.trial === undefined ? null : String(r.trial),
+    agent: String(r.agent),
+    harness: String(r.harness),
+    provider: r.provider === null ? null : String(r.provider),
+    model: String(r.model),
+    calls: num(r.calls),
+    at: String(r.at),
+    tokens_in: Number(r.tokens_in),
+    cached_in: num(r.cached_in),
+    tokens_out: Number(r.tokens_out),
+    reasoning: num(r.reasoning),
+    first_token_ms: num(r.first_token_ms),
+    call_ms: num(r.call_ms),
+  };
+}
+
 const SCHEMA = `
 create table if not exists rig (
   id text primary key,
@@ -1369,6 +1392,24 @@ export class ControlStore {
   }
 
   /**
+   * The supervisor's Live lines about a run's reviews (goal 116), oldest first: each line that
+   * starts "review N", such as each reviewer's answer, a failed try's error and the outcome. They
+   * are unsigned, and kept only while the rig's live log keeps them (its newest 20,000 lines).
+   */
+  reviewLines(rig: string, run: string): { review: number; at: string; text: string }[] {
+    const rows = this.db
+      .prepare(
+        `select at, text from rig_live where rig = ? and run = ? and source = 'supervisor'
+           and text like 'review %' order by id limit 5000`,
+      )
+      .all(rig, run) as Row[];
+    return rows.flatMap((r) => {
+      const m = /^review (\d+)\b/.exec(String(r.text));
+      return m ? [{ review: Number(m[1]), at: String(r.at), text: String(r.text) }] : [];
+    });
+  }
+
+  /**
    * The owner's messages to one run, from the rig's signed events on its current ledger: what
    * Live checks the message lines against (a worker's own line can claim anything).
    */
@@ -2339,26 +2380,29 @@ export class ControlStore {
          ${where.length ? `where ${where.join(" and ")}` : ""} order by at`,
       )
       .all(...args) as Row[];
-    const num = (x: SQLInputValue | undefined) =>
-      x === null || x === undefined ? null : Number(x);
-    return rows.map((r) => ({
-      rig: String(r.rig),
-      run: String(r.run),
-      campaign: r.campaign === null ? null : String(r.campaign),
-      trial: r.trial === null || r.trial === undefined ? null : String(r.trial),
-      agent: String(r.agent),
-      harness: String(r.harness),
-      provider: r.provider === null ? null : String(r.provider),
-      model: String(r.model),
-      calls: num(r.calls),
-      at: String(r.at),
-      tokens_in: Number(r.tokens_in),
-      cached_in: num(r.cached_in),
-      tokens_out: Number(r.tokens_out),
-      reasoning: num(r.reasoning),
-      first_token_ms: num(r.first_token_ms),
-      call_ms: num(r.call_ms),
-    }));
+    return rows.map(usageRowOf);
+  }
+
+  /**
+   * A run's model calls in its reviews (goal 116), by the review's number: the review panel's
+   * records, whose round the supervisor names "review N".
+   */
+  reviewUsageRows(rig: string, run: string): Map<number, UsageRow[]> {
+    const rows = this.db
+      .prepare(
+        `select rig, run, campaign, trial, round, agent, harness, provider, model, calls, at,
+           tokens_in, cached_in, tokens_out, reasoning, first_token_ms, call_ms from model_call
+         where rig = ? and run = ? and round like 'review %' order by at`,
+      )
+      .all(rig, run) as Row[];
+    const out = new Map<number, UsageRow[]>();
+    for (const r of rows) {
+      const m = /^review (\d+)$/.exec(String(r.round));
+      if (!m) continue;
+      const n = Number(m[1]);
+      out.set(n, [...(out.get(n) ?? []), usageRowOf(r)]);
+    }
+    return out;
   }
 
   /**

@@ -309,6 +309,17 @@ details.menu[open] > .menu-body { position: absolute; right: 0; top: 38px; z-ind
 .rq-head { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; }
 .rq-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .rq-v { color: var(--muted-foreground); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* A research run's questions on its Overview (goal 117): where the end stands, then each question */
+.rq-sum { display: grid; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.rq-sum:last-child { border-bottom: 0; }
+.rq-q .gl-main { gap: 5px; }
+.rq-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.rq-ans { font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rq-q ul.flaws { margin: 0; }
+.rq-q .bar { margin-top: 2px; }
+.rq-rule { display: grid; gap: 4px; }
+.rq-rule .lb { font-weight: 600; color: var(--foreground); vertical-align: -3px; }
+.rq-sum a, .dq-body a { color: var(--primary); }
 .bar.primary > i { background: var(--primary); } .bar.ok > i { background: var(--success); } .bar.warn > i { background: #ea580c; } .bar.bad > i { background: var(--error); }
 .stack-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--border); gap: 1px; }
 .stack-bar > i { display: block; height: 100%; }
@@ -365,6 +376,14 @@ a.tally:hover { text-decoration: none; border-color: color-mix(in srgb, var(--fo
 dl.dq-choices { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 14px; margin: 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }
 dl.dq-choices dt { font-weight: 600; font-size: 12px; padding-top: 1px; } dl.dq-choices dd { margin: 0; }
 .dq-foot { font-size: 12px; } .dq-foot a { color: var(--primary); }
+/* A research run's reviews (goal 116): each review is a decision's row, by its outcome's tone */
+.dq-ok .dq-kind { color: var(--success-foreground); } .dq-info .dq-kind { color: var(--info-foreground); }
+.dq-body > .small { margin-top: 2px; }
+table.rv-items { font-size: 12.5px; border: 1px solid var(--border); border-radius: 8px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+table.rv-items td { vertical-align: top; } table.rv-items ul.flaws { margin: 0; }
+details.rv-who > summary { cursor: pointer; padding: 4px 0; }
+details.rv-who > table { margin: 6px 0 4px; }
+.rv-lines { padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; margin: 0; }
 dl.dc-facts, dl.facts { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 13px; }
 dl.dc-facts dt, dl.facts dt { color: var(--muted-foreground); font-size: 12px; font-weight: 600; padding-top: 1px; }
 dl.dc-facts dd, dl.facts dd { margin: 0; min-width: 0; word-break: break-word; }
@@ -892,6 +911,12 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .qkind { font: 700 11px var(--font-mono); text-transform: uppercase; padding: 3px 7px; border-radius: 5px; text-align: center; background: var(--accent); color: var(--muted-foreground); }
 .qkind.avoid { background: var(--error-surface); color: var(--error-foreground); } .qkind.always { background: var(--success-surface); color: var(--success-foreground); } .qkind.try { background: var(--primary-surface); color: var(--info-foreground); }
 .qrule.legacy { border-style: dashed; }
+/* A research run's hypotheses (goal 117): their status as a rule's kind, the owner's moves */
+.qkind.author { background: var(--primary-surface); color: var(--info-foreground); } .qkind.promoted { background: var(--success-surface); color: var(--success-foreground); }
+.qkind.retired { background: var(--error-surface); color: var(--error-foreground); }
+.qrule.hy { grid-template-columns: 84px minmax(0, 1fr) auto; }
+.hy-move { display: inline-flex; align-items: center; gap: 2px; }
+.hy-move .ii { width: 13px; height: 13px; font-size: 9px; }
 .qrule .qb { margin-top: 0; }
 @media (max-width: 760px) { .qrule { grid-template-columns: 64px minmax(0, 1fr); } .qrule > :last-child { grid-column: 2; } }
 /* Directions, written :name: (goal 066); dashed while the planner has yet to design one */

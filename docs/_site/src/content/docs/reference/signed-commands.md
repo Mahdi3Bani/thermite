@@ -144,10 +144,11 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
 | `accept_review` | **Needs you**: **Accept**, **Reject** | Yes | No | No | No | Yes |
 | `conclude` | **Needs you**: **End it: not possible**, **Keep going** | Yes | No | No | No | Yes |
+| `hypothesis_status` | **Promote**, **Return to pool** or **Retire**, then its button, on a hypothesis on a research run's **Hypotheses** tab | Yes | Yes | No | No | |
 | `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands`; `POST /v1/rigs/<rig>/cluster/resources` with a new number of GPUs | `set_rig_settings`; `start_run` with `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs | `set_rig_settings`, but not `promotion` or `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs, which sends the new default share only | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
-Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion` or `decline_promotion`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion`, `decline_promotion` or `hypothesis_status`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
 
 On the dashboard, only an experiment up next has **Edit**: a lane's idea's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
 
@@ -620,6 +621,19 @@ The owner's answer to the harness's proposal that a goal campaign's goals cannot
 | `note` | text up to 2000 characters | Optional |
 
 A closed run is refused, whichever the answer: `run <run> is closed: it can't end as not possible or go on`.
+
+### `hypothesis_status`
+
+Which of a research run's hypotheses need a verdict from the review panel ([goal 117](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/117-research-that-answers.goal)): the author's always do; a worker's goes to the run's pool, and needs one only once it is promoted.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `run` | lowercase id | The research run |
+| `id` | text, 1 to 64 characters | The hypothesis, such as `h-3f2a9c41d0b7` |
+| `status` | `promoted`, `pool` or `retired` | `promoted`: the review panel must give it a verdict; `pool`: back in the pool, where no review waits on it; `retired`: no review waits on it and workers no longer work on it |
+| `reason` | text, 1 to 2000 characters | Why. The run keeps it with the change |
+
+The rig records the change as the event `hypothesis_status`, `{hypothesis, status, by, reason}`, which the run's **Hypotheses** tab and **History** show. On the dashboard, control refuses a change with no reason before it signs it: `write why you change the hypothesis first`.
 
 ## Imports
 
