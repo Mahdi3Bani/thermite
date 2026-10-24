@@ -13,7 +13,7 @@ import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { queueTarget } from "../../core/queue-target.ts";
-import { NO_WRITER } from "../../core/research-check.ts";
+import { labelledQuestion, NO_WRITER, questionLabel } from "../../core/research-check.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -2044,8 +2044,10 @@ export class Scheduler {
     );
     const busy = new Map<number, number>();
     for (const x of waiting) {
-      const m = /^Question (\d+):/.exec(x.title);
-      if (m) busy.set(Number(m[1]), (busy.get(Number(m[1])) ?? 0) + 1);
+      // "Question 1 (index 0): …"; a task the plan queued before that form, "Question 0: …".
+      const i =
+        labelledQuestion(x.title) ?? Number(/^Question (\d+):/.exec(x.title)?.[1] ?? Number.NaN);
+      if (Number.isInteger(i)) busy.set(i, (busy.get(i) ?? 0) + 1);
     }
     const added: Experiment[] = [];
     for (let k = 0; k < count; k++) {
@@ -2061,7 +2063,7 @@ export class Scheduler {
         queue.add(
           run,
           {
-            title: `Question ${q.i}: ${task.description}`,
+            title: `${questionLabel(q.i)}: ${task.description}`,
             details: questionDetails(q.i, contract.questions[q.i] ?? ""),
             family: task.id,
             why: stalled
@@ -2100,10 +2102,12 @@ export class Scheduler {
       `# Research assignment (epoch ${epoch}, ${a.lane})`,
       `Campaign: ${contract.title}`,
       `Topic: ${contract.topic}`,
-      "Questions:",
+      // Numbered from 1 for reading, with the index from 0 that a claim's, a hypothesis's or a
+      // task's `question` field takes (goal 117).
+      "Questions (a claim's or a hypothesis's `question` is the index):",
       ...contract.questions.map(
         (q, i) =>
-          `${i}. ${q.replace(/\n/g, "\n   ")} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
+          `${questionLabel(i)}: ${q.replace(/\n/g, "\n   ")} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
       ),
       "",
       // The campaign's brief from its author (goal 078): whole, or cut with where the rest is.
@@ -2114,7 +2118,7 @@ export class Scheduler {
       `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts, ${stats.findings} findings.`,
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",
-      "Record claims only with exact quotes from archived sources, and say which question each answers.",
+      "Record claims only with exact quotes from archived sources, and give the question each answers by its index, in `question`.",
       // What the newest failed review found missing (goal 112), until a newer review is decided.
       ...[briefGaps(this.ledger, run)].filter((s) => s !== undefined).map((s) => `\n${s}`),
       ...this.notesAndPast(run, a.lane, "research").map((s) => `\n${s}`),
@@ -2649,7 +2653,7 @@ export class Scheduler {
  * and says where the whole question is: in the trial brief's Questions.
  */
 export function questionDetails(i: number, q: string): string {
-  const whole = `Question ${i}: ${q}`;
+  const whole = `${questionLabel(i)}: ${q}`;
   if (whole.length <= EXPERIMENT_DETAILS) return whole;
   const note = ` … (cut: the whole question is under Questions in your brief)`;
   return `${whole.slice(0, EXPERIMENT_DETAILS - note.length)}${note}`;

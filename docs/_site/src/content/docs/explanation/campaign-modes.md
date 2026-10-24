@@ -119,6 +119,8 @@ compactions/      each agent conversation the harness kept whole before each com
 knowledge/        past research from the folders the campaign may read; its README.md says what is where
 ```
 
+**How questions are numbered.** Every field an agent writes, such as a claim's `question`, takes a question's index, from 0, and so do the records and the folder's file names. Text that people read counts from 1. Where agents read it too, it names both: a worker's brief, `INDEX.md`, `REPORT.md`, a claim's file and a research task's title say `Question 1 (index 0)`. The paper, the dashboard and the review panel's notes in the journal say `Question 1`.
+
 A lane's working area is kept for its next trial, so a worker builds on what the trials before it learned. When a trial ends, the harness saves the lane's files, records which trial wrote or removed each one and when, and shows them to the other lanes under `lanes/`. These files are working material, not results: only claims and findings recorded through the research tools are checked and reported.
 
 **What a worker has.** It depends on the rig's [worker harness](../reference/glossary.md), the program the agents run in:

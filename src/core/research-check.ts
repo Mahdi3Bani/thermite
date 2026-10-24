@@ -27,3 +27,20 @@ export const PAPER_ACCEPTED = "research_paper_accepted";
 
 /** Why an answered research run closes without a paper, when its rig has no final writer. */
 export const NO_WRITER = "no final writer on this rig";
+
+/**
+ * A research question's names (goal 117). Code, storage, file names and every field an agent
+ * writes (a claim's, a hypothesis's or a task's `question`) number questions from 0. What people
+ * read numbers them from 1: `questionName` ("Question 1"), for text only people read (the
+ * dashboard, the paper, the journal's gap notes). A line an agent reads, or that agents and people
+ * both read (a worker's brief, INDEX.md, REPORT.md, a task's title, the folder's files), names
+ * both: `questionLabel` ("Question 1 (index 0)").
+ */
+export const questionName = (index: number): string => `Question ${index + 1}`;
+export const questionLabel = (index: number): string => `Question ${index + 1} (index ${index})`;
+
+/** The index a "Question N (index K)" label names, in a title or a line; undefined without one. */
+export function labelledQuestion(text: string): number | undefined {
+  const m = /\bquestion\s+\d+\s*\(\s*index\s+(\d+)\s*\)/i.exec(text);
+  return m ? Number(m[1]) : undefined;
+}

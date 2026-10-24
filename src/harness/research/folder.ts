@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { BRIEF_FILE, briefFile } from "../../core/brief.ts";
 import { COMPACTIONS_DIR } from "../../core/compaction.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
-import { PAPER_ACCEPTED } from "../../core/research-check.ts";
+import { PAPER_ACCEPTED, questionLabel } from "../../core/research-check.ts";
 import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
@@ -267,7 +267,9 @@ export class ResearchFolder {
           "",
           String(c.text),
           "",
-          ...(q !== undefined ? [`Question ${q}: ${questions[q] ?? "(no such question)"}`] : []),
+          ...(q !== undefined
+            ? [`${questionLabel(q)}: ${questions[q] ?? "(no such question)"}`]
+            : []),
           ...(c.confidence !== null ? [`Confidence: ${c.confidence}`] : []),
           `Recorded: ${c.created_at} by ${c.lane ?? "research"}`,
           "",
@@ -407,9 +409,11 @@ export class ResearchFolder {
         "",
         "## Questions",
         "",
+        "Numbered from 1; a claim's or a hypothesis's `question` field takes the index, from 0.",
+        "",
         ...questions.map(
           (q, i) =>
-            `${i}. ${q.replace(/\n/g, "\n   ")} (${claims.filter((c) => Number(c.verified) === 1 && Number(c.question) === i).length} verified claims)`,
+            `- ${questionLabel(i)}: ${q.replace(/\n/g, "\n  ")} (${claims.filter((c) => Number(c.verified) === 1 && Number(c.question) === i).length} verified claims)`,
         ),
         "",
         "## What is here",

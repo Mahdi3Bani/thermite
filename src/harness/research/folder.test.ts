@@ -124,7 +124,10 @@ describe("the research folder", () => {
     assert.ok(read(root, "sources", `${a.source}.txt`).includes(quote));
     assert.match(read(root, "sources", `${a.source}.txt`), new RegExp(`URL: ${w.urls[0]}`));
     assert.match(read(root, "claims", `${good.claim}.md`), /^# Claim c-[0-9a-f]+: verified/);
-    assert.match(read(root, "claims", `${good.claim}.md`), /Question 0: What harness designs/);
+    assert.match(
+      read(root, "claims", `${good.claim}.md`),
+      /Question 1 \(index 0\): What harness designs/,
+    );
     assert.match(read(root, "claims", `${draft.claim}.md`), /: draft[\s\S]*Why it is a draft/);
     assert.ok(
       read(root, "claims", `${draft.claim}.md`).includes(
@@ -146,7 +149,7 @@ describe("the research folder", () => {
     const index = read(root, "INDEX.md");
     assert.match(
       index,
-      /0\. What harness designs keep agents productive for days\? \(1 verified claims\)/,
+      /- Question 1 \(index 0\): What harness designs keep agents productive for days\? \(1 verified claims\)/,
     );
     assert.match(index, /claims\/: 2 claims, 1 verified and 1 drafts/);
     assert.match(
@@ -157,6 +160,8 @@ describe("the research folder", () => {
 
     // The report: findings with their summary, why and support; drafts apart, with the reasons.
     const body = research.report("r-1", "digest").body;
+    // Its questions numbered for reading, with the index a claim's `question` takes (goal 117).
+    assert.match(body, /## Questions\n- Question 1 \(index 0\): What harness designs/);
     const findings = body.split("## Findings")[1]?.split("\n## ")[0] ?? "";
     assert.match(findings, /### The first run archived 42 pages\./);
     assert.match(findings, /Why it matters: It shows the archive works/);

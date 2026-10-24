@@ -985,7 +985,7 @@ describe("research runs use the queue", () => {
     const planned = env.service.queue.all("r-1").filter((x) => x.added_by === "planner");
     assert.deepEqual(
       planned.map((x) => x.title.split(":")[0]),
-      ["Question 0"],
+      ["Question 1 (index 0)"],
     );
   });
   test("the research plan fills the queue with tasks; rounds take them in order", async () => {
@@ -1055,7 +1055,7 @@ describe("research runs use the queue", () => {
     const planned = tasks.find((x) => x.added_by === "planner");
     assert.ok(planned);
     assert.ok(["explore", "primary", "contradict", "consolidate"].includes(planned.family));
-    assert.match(planned.details, /^Question \d+: /);
+    assert.match(planned.details, /^Question \d+ \(index \d+\): /);
     assert.deepEqual(
       events(env, "experiment_assigned").map((e) => body(e).lane),
       ["lane-1", "lane-2"],

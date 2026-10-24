@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
-import { ANSWERED, RESEARCH_REVIEW } from "../../core/research-check.ts";
+import { ANSWERED, questionLabel, RESEARCH_REVIEW } from "../../core/research-check.ts";
 import type { Ledger } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
 
@@ -521,7 +521,7 @@ export function briefGaps(ledger: Ledger, run: string): string | undefined {
   }
   const lines = [...byQuestion.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([i, xs]) => `- Question ${i}: ${[...new Set(xs)].join(" / ")}`);
+    .map(([i, xs]) => `- ${questionLabel(i)}: ${[...new Set(xs)].join(" / ")}`);
   if (!lines.length && !other.length) return undefined;
   return [
     `# What the review panel found missing (review ${String(r.id)})`,

@@ -7,6 +7,7 @@ import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
+import { questionLabel } from "../../core/research-check.ts";
 import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited, claimNumbers, numbersIn, withoutNames } from "./checks.ts";
@@ -938,8 +939,10 @@ export class Research {
       ...(kind === "final" ? answerSections(this.ledger, run, c, fence) : []),
       "## Questions",
       // A question may have several lines (goal 078): its further lines stay under it.
+      // Numbered from 1, with the index a claim's `question` takes: workers read REPORT.md too.
       ...stats.questions.map(
-        (q, i) => `${i + 1}. ${q.question.replace(/\n/g, "\n   ")} (${q.verified} verified claims)`,
+        (q, i) =>
+          `- ${questionLabel(i)}: ${q.question.replace(/\n/g, "\n  ")} (${q.verified} verified claims)`,
       ),
       "",
       "## Findings",
@@ -966,9 +969,9 @@ export class Research {
       ),
       "",
       "## Open questions",
-      ...stats.questions
-        .filter((q) => q.verified === 0)
-        .map((q) => `- ${q.question.replace(/\n/g, "\n  ")}`),
+      ...stats.questions.flatMap((q, i) =>
+        q.verified === 0 ? [`- ${questionLabel(i)}: ${q.question.replace(/\n/g, "\n  ")}`] : [],
+      ),
       "",
       "## Worker sections (not verified; only the findings and claims above are checked)",
       ...sections.flatMap((s) => [`### ${s.name}`, fence(String(s.body)), ""]),

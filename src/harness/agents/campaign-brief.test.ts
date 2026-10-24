@@ -300,7 +300,7 @@ describe("a campaign's brief (goal 078)", () => {
     // The question whole, its second line under it.
     assert.ok(
       b.includes(
-        "0. Which harness designs keep agents productive for days?\n   For each: who built it and what it reports.",
+        "Question 1 (index 0): Which harness designs keep agents productive for days?\n   For each: who built it and what it reports.",
       ),
       b.slice(0, 800),
     );
@@ -319,7 +319,7 @@ describe("a campaign's brief (goal 078)", () => {
 
   test("a question longer than an experiment's details: the research task is cut, and says where the whole question is", () => {
     const short = questionDetails(2, "What fails?");
-    assert.equal(short, "Question 2: What fails?");
+    assert.equal(short, "Question 3 (index 2): What fails?");
     const long = questionDetails(0, "q".repeat(5000));
     assert.equal(long.length, 4000);
     assert.match(long, / … \(cut: the whole question is under Questions in your brief\)$/);

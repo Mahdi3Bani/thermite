@@ -1,5 +1,5 @@
 import type { KbKind } from "./kb.ts";
-import { PAPER_ACCEPTED } from "./research-check.ts";
+import { PAPER_ACCEPTED, questionLabel } from "./research-check.ts";
 
 /**
  * How a run's events become the items of its campaign's folder in Thermite's knowledge base
@@ -453,7 +453,8 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
             str(b.text),
             str(b.quote) ? `“${str(b.quote)}”` : "",
             b.verified === true ? "Verified against its source." : "A draft: not verified yet.",
-            b.question !== undefined ? `Question ${str(b.question)}` : "",
+            // Numbered from 1 for reading, with the index the records keep (goal 117).
+            typeof b.question === "number" ? questionLabel(b.question) : "",
           ]),
           by: e.actor,
           sub: b.verified === true ? "verified" : "draft",

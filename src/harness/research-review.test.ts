@@ -762,7 +762,7 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     assert.match(brief, new RegExp(`# What the review panel found missing \\(review ${id}\\)`));
     assert.match(
       brief,
-      /- Question 1: a second, independent site on what keeps campaigns honest/,
+      /- Question 2 \(index 1\): a second, independent site on what keeps campaigns honest/,
       "numbered as the brief numbers its questions",
     );
     // The owner closes it before new evidence is checked: its final report says so.
