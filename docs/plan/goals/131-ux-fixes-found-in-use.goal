@@ -1,0 +1,52 @@
+---
+id: "131"
+title: "UX fixes found in use: the screens' small faults that the owner reports"
+status: PROPOSED
+version: "0.1.4"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 131 · UX fixes found in use: the screens' small faults that the owner reports
+
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014)
+
+## What
+
+A list of small faults in the dashboard's screens, found while the owner uses Thermite. Each item says what is wrong, what to do, and the pages that describe the screen. New reports are added here as they come. A fault that needs more than a small change gets a goal of its own.
+
+### 1. A campaign's Agents' context lists rigs that have nothing to do with the campaign
+
+- **What is wrong.** On a campaign's page, the block **Agents' context** has the table **What applies on each rig**, with one row for each rig that *can* run the campaign: each rig with the campaign's hardware. A campaign that runs on a CPU can run on every rig, so the table lists every rig, including rigs where no run of the campaign has ever been. The owner, 2026-10-24: "this shows up on a campaigns page even though its listing rigs that have nothing to do with this campaign".
+- **What to do.** The table shows the rigs that matter to this campaign: the rigs its runs are at work on, then the rigs its earlier runs used. The other rigs that could run it are folded under one line, such as "3 other rigs can run it", which opens to show them. A campaign with no run yet says where a run can start, in one line, with the rigs folded the same way.
+- **Pages:** [Start a campaign from the dashboard](../../_site/src/content/docs/how-to/campaigns/start-from-dashboard.md#set-the-agents-context) (step 3 of "Set the agents' context"), and the ⓘ of **What applies on each rig** (`src/control/ui/campaign-context.ts`).
+
+## Why
+
+The owner reports these from use, 2026-10-24: "ux fixes to add".
+
+## Constraints
+
+- **A mockup first** ([rules for every goal](../README.md#rules-for-every-goal)): a real change to a screen is mocked up and shown to the owner before it is built.
+- **Docs follow the code:** each fix updates the pages that describe its screen, and their screenshots, in the same commit.
+
+## Done when
+
+- [ ] Each item is fixed, after the owner approved its mockup, with its pages updated, or it moved to a goal of its own.
+
+## Decisions
+
+- 2026-10-24, owner: the UX fixes found in use go in v0.1.4, the UI clean-up and UX improvements.
+
+## Open questions
+
+- Item 1: whether the rigs where the campaign's runs ended long ago count as rigs that matter, or only the rigs of its runs at work and its latest run.
+
+## Progress
+
+- 2026-10-24: Goal written, with item 1 from the owner's report.
+
+---
+
+Run with `/goal Complete docs/plan/goals/131-ux-fixes-found-in-use.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
