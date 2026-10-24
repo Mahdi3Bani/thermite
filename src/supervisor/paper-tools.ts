@@ -26,7 +26,7 @@ type Name = (typeof PAPER_TOOL_NAMES)[number];
 
 export const PAPER_TOOLS: Record<Name, string> = {
   check_paper:
-    "Check a draft of the research paper with the harness's own checks: the same checks that decide if the paper is accepted. They check the parts and their order, a results section for each question with the review panel's certainty line and only that question's evidence, a row in the table of verdicts with the verdict the review panel gave for each hypothesis that needs one and no verdict for a hypothesis the run proposed, that each cited claim is a verified claim of the run, and that each number in a paragraph is in the claims it cites or in the figures. Give the whole paper in `markdown`. Returns ok, and each problem with its line. Nothing is recorded.",
+    "Check a draft of the research paper with the harness's own checks: the same checks that decide if the paper is accepted. They check the title, that the paper has no References part or appendix (code appends them), that each question with a verified claim is answered (the paper cites its evidence), that each cited claim is a verified claim of the run, that each number in a paragraph is in the claims it cites or in the figures, and that a verdict given to a hypothesis is the review panel's (and none to a hypothesis the run proposed). They do not check the parts. Give the whole paper in `markdown`. Returns ok, and each problem with its line. Nothing is recorded.",
   ste_check:
     "Check a text with the rig's Simplified Technical English checker, in descriptive mode. Returns its counts and its findings, each with its line, rule and message: fix each error before you answer. Give the whole paper, or a part, in `text`. When the rig has no STE checker, it says so.",
 };

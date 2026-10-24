@@ -624,28 +624,22 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
         [2, "open", null, true],
       ],
     );
-    assert.deepEqual(
-      pkg.questions.map((x) => x.certainty_line),
-      ["Certainty: high", "Certainty: open"],
-    );
     const v = claimId(0, 0);
     const c = claimId(1, 0);
     const paper = [
       "# How two kernel families use the memory hierarchy",
-      "## Summary",
+      "## Abstract",
       `Family A moves its weights through shared memory [${v}]. The evidence on family B stays open [${c}].`,
-      "## Questions",
-      `1. ${QUESTIONS[0]}\n2. ${QUESTIONS[1]}`,
+      "## Introduction",
+      "This run asked how two kernel families use the memory hierarchy.",
       "## Method",
       "The workers read archived sources, and the harness verified each claim against them.",
       "## Results",
-      `### Question 1\n\nCertainty: high\n\nFamily A moves its weights through shared memory [${v}].`,
-      `### Question 2\n\nCertainty: open\n\nThe question stays open. The sources show only part of the answer [${c}].`,
-      "## Hypotheses",
-      "The run has no hypothesis that needs a verdict.",
-      "## Limits of the evidence",
-      "Question 2 stays open: no source gave the cache policy.",
-      "## Next experiments",
+      `Family A moves its weights through shared memory [${v}]. The review panel found this answer with high certainty.`,
+      `The question on family B stays open. The sources show only part of the answer [${c}].`,
+      "## Limitations",
+      "The question on family B stays open: no source gave the cache policy.",
+      "## Future work",
       `Find a vendor guide on the cache policy [${c}].`,
     ].join("\n\n");
     const out = s.env.service.submitPaper(

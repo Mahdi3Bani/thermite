@@ -2688,7 +2688,8 @@ export const WriterAnswer = z.strictObject({
 export type WriterAnswer = z.infer<typeof WriterAnswer>;
 const WriterAnswerSchema = Type.Object({
   paper: Type.String({
-    description: "The whole paper in Markdown, from its # title to its ## Next experiments part",
+    description:
+      "The whole paper in Markdown, from its # title to its last part, with no References part or appendix",
   }),
   experiments: Type.Array(
     Type.Object({
@@ -2749,33 +2750,32 @@ Write from the run's verified claims only. Read them, and the run's findings and
 tools: ${RUN_RESEARCH_TOOLS.list}, ${RUN_RESEARCH_TOOLS.source}, ${RUN_RESEARCH_TOOLS.file} and
 ${RUN_RESEARCH_TOOLS.search}.
 
-Cite a claim as [c-ID] in each sentence that states a fact. Every number in a paragraph must be
-in the claims that paragraph cites, or be one of the package's figures. Do not write a References
-part or a Review panel part: code adds them (the claims that you cite, and the review panel's
-decisions with each dissent).
+Write it as a research paper that a person reads from start to end, such as a paper for arXiv:
+paragraphs that explain, in STE, not lists of records. Use a list or a table only where it helps
+the reader. Start with the title (# Title). Then the parts, each a level-2 heading (##). A usual
+paper has these parts, in this order:
+${PAPER_PARTS.map((p) => `- ${p.part}: ${p.what}.`).join("\n")}
+Choose the parts and their words that fit the topic.
 
-The paper has these parts, in this order: the title (# Title), then ${PAPER_PARTS.map((p) => `## ${p}`).join(", ")}.
-- Questions: each question of the run, as a numbered list.
-- Method: how the sources were found, archived and checked, with the figures.
-- Results: one "### Question N" section for each question, N from 1. Its first line is the
-  question's certainty_line from the package, such as "Certainty: moderate": the review panel's
-  decision. Then the answer from the card, with the claims that are its evidence. Cite only that
-  question's evidence: the claims of its card, or other verified claims of that question. When a
-  reviewer dissents, say so, with the reason.
-- Hypotheses: a table of verdicts, "| Hypothesis | Verdict | Evidence |", with one row for each
-  hypothesis in the package's hypotheses: its id in the first cell, and supported, refuted or
-  undecided (the verdict that the review panel gave) in the Verdict cell. Then "### Proposed by
-  the run": the hypotheses in proposed, as a list, with no verdict.
-- Limits of the evidence: claims from a single domain, open gaps, and draft findings that stay
-  unverified.
-- Next experiments: what only a measurement could settle (each question's next_experiments), then
-  what else to try, each with why.
+Answer every question of the run in the paper, from its card, with the claims that are its
+evidence: the claims of its card, or other verified claims of that question. Give each answer's
+certainty in words, as the review panel decided it (the question's certainty). When a reviewer
+dissents, say so, with the reason. Discuss each hypothesis that needs a verdict, with the verdict that the
+review panel gave (undecided when it gave none), and name it by its words. Give no verdict to a
+hypothesis in proposed: the review panel did not judge them.
+
+Cite a claim as [c-ID] in each sentence that states a fact. Every number in a paragraph must be
+in the claims that paragraph cites, or be one of the package's figures. Code changes each
+citation to a numbered reference, such as [1], for the sources of the claim. Do not write a
+References part or an appendix: code appends them. References lists the sources. Appendix A gives
+the review panel's decisions: each question's certainty, each hypothesis's verdict, each dissent,
+and the hypotheses that the run proposed. Appendix B lists the claims that you cite.
 
 Give the next experiments also as items in experiments: each with its title, why, details, its
 kind, its measure, and the ids of the supported findings or verified claims that it rests on. The
 kind is hill_climb for an improvement that a hill climb measures against its champion (its measure:
 the metric it should move, and which way), or goal for an outcome that a goal campaign proves (its
-measure: how a check would know the goal is reached). In the Next experiments part, put each one
+measure: how a check would know the goal is reached). In the part on future work, put each one
 under "### For a hill climb" or "### For a goal campaign", as its kind says. Code keeps each item,
 tagged with its kind, in the campaign's knowledge-base folder and in the run's research folder, for
 the next campaign to take up.

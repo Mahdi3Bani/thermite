@@ -92,25 +92,25 @@ export async function answeredResearchRun(run = "r-1") {
 }
 
 /**
- * A paper that holds against the harness's checks: every part in order, a section for each
- * question with the review panel's certainty, citing its own claim, the review panel's verdict in
- * the table of verdicts, and only numbers the claims or the figures give. `over` replaces a part by its key.
+ * A paper that holds against the harness's checks, in the parts of a usual paper: it answers each
+ * question with its own claim, gives the hypothesis the review panel's verdict, and states only
+ * numbers the claims or the figures give. `over` replaces a part by its key.
  */
 export function goodPaper(ids: ResearchIds, over: Partial<Record<string, string>> = {}): string {
   const v = ids.claims.verified;
   const c = ids.claims.clock;
   const parts = {
     title: "# What the first runs of the harness show",
-    summary: `## Summary\n\nThe first run archived 42 pages [${v}]. A clock that the workers cannot stop keeps a long campaign honest [${c}].`,
-    questions:
-      "## Questions\n\n1. How much did the first run archive?\n2. What keeps a long campaign honest?",
+    abstract: `## Abstract\n\nThis paper reports what the first runs of the harness show. The workers searched the web, and the harness archived each source and checked each claim against it. The first run archived 42 pages [${v}]. A long campaign stays honest when the workers cannot stop its clock [${c}]. The review panel found the first answer with moderate certainty and the second with high certainty.`,
+    introduction:
+      "## Introduction\n\nA long research campaign must keep the pages that it reads, and it must end at its time. This run asked how much the first run archived, and what keeps a long campaign honest. It also tested one hypothesis: stateless workers make long runs safe.",
     method:
-      "## Method\n\nThe workers found 2 sources on 1 site. The harness archived each source, and it verified 2 claims against the archived text.",
-    results: `## Results\n\n### Question 1: How much did the first run archive?\n\nCertainty: moderate\n\nThe first run archived 42 pages [${v}].\n\n### Question 2: What keeps a long campaign honest?\n\nCertainty: high\n\nA long campaign needs a clock that the workers cannot stop [${c}].`,
-    hypotheses: `## Hypotheses\n\n| Hypothesis | Verdict | Evidence |\n| --- | --- | --- |\n| ${ids.hypothesis}: stateless workers make long runs safe | supported | The archive kept every page that the workers read [${v}]. |\n\n### Proposed by the run\n\nThe run proposed no other hypotheses.`,
-    limits:
-      "## Limits of the evidence\n\nAll the claims come from 1 site. 1 claim stays a draft, and 1 finding stays a draft.",
-    next: `## Next experiments\n\n### For a hill climb\n\nFind a second site that gives the number of pages [${v}].`,
+      "## Method\n\nThe workers found 2 sources on 1 site. The harness archived each source, and it verified 2 claims against the archived text. The reviewers of the review panel then decided each question.",
+    results: `## Results\n\nThe first run archived 42 pages [${v}]. The review panel found this answer with moderate certainty.\n\nA long campaign needs a clock that the workers cannot stop [${c}]. The review panel found this answer with high certainty.`,
+    discussion: `## Discussion\n\nThe two answers agree. The archive kept every page that the workers read [${v}]. The review panel found the hypothesis that stateless workers make long runs safe supported.`,
+    limitations:
+      "## Limitations\n\nAll the claims come from 1 site. 1 claim stays a draft, and 1 finding stays a draft.",
+    next: `## Future work\n\n### For a hill climb\n\nFind a second site that gives the number of pages [${v}].`,
     ...over,
   };
   return `${Object.values(parts).join("\n\n")}\n`;

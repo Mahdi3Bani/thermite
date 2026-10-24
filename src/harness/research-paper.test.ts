@@ -141,11 +141,11 @@ describe("a research run whose questions are answered waits for its paper (goal 
       review: s.review,
       reviewers: 2,
     });
-    assert.ok((pkg.rules as string[]).some((r) => r.includes("## Results")));
+    assert.ok((pkg.rules as string[]).some((r) => r.startsWith("Answer every question")));
     assert.equal(pkg.last_refusal, undefined);
   });
 
-  test("the package is written from the cards: each question's card, its own claims and certainty line; the hypotheses proposed are listed and get no verdict", async (t) => {
+  test("the package is written from the cards: each question's card, its own claims and certainty; the hypotheses proposed are listed and get no verdict", async (t) => {
     const s = await answered(t);
     const pool = (id: string, question: number | null, text: string) =>
       s.ledger.db
@@ -161,7 +161,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
     )[0] as {
       questions: {
         number: number;
-        certainty_line: string;
+        certainty: string | null;
         card: { version: number; answer: string } | null;
         claims: { id: string; quotes: string[] }[];
         verified_claims: number;
@@ -173,16 +173,16 @@ describe("a research run whose questions are answered waits for its paper (goal 
     assert.deepEqual(
       pkg.questions.map((q) => [
         q.number,
-        q.certainty_line,
+        q.certainty,
         q.card?.answer,
         q.claims.map((c) => c.id),
         q.verified_claims,
       ]),
       [
-        [1, "Certainty: moderate", "The first run archived 42 pages.", [s.ids.claims.verified], 1],
+        [1, "moderate", "The first run archived 42 pages.", [s.ids.claims.verified], 1],
         [
           2,
-          "Certainty: high",
+          "high",
           "A long campaign needs a clock the workers cannot stop.",
           [s.ids.claims.clock],
           1,
@@ -202,18 +202,17 @@ describe("a research run whose questions are answered waits for its paper (goal 
     // number in its text is not refused.
     const check = async (paper: string) =>
       problemsOf((await s.call("POST", `/v1/research/papers/${RUN}/check`, { paper })).body);
-    const judged = goodPaper(s.ids).replace(
-      "\n\n### Proposed by the run",
-      "\n| h-pool0001 | supported | It held. |\n\n### Proposed by the run",
-    );
+    const judged = goodPaper(s.ids, {
+      discussion: `## Discussion\n\n| Hypothesis | Verdict | Evidence |\n| --- | --- | --- |\n| ${s.ids.hypothesis} | supported | The archive kept every page [${s.ids.claims.verified}]. |\n| h-pool0001 | supported | It held. |`,
+    });
     assert.deepEqual(
       (await check(judged)).map((p) => p.problem),
       [
-        'hypothesis h-pool0001 was proposed by the run, and the review panel did not judge it: list it under "### Proposed by the run" with no verdict',
+        "hypothesis h-pool0001 was proposed by the run, and the review panel did not judge it: give it no verdict",
       ],
     );
     const listed = goodPaper(s.ids, {
-      hypotheses: `## Hypotheses\n\n| Hypothesis | Verdict | Evidence |\n| --- | --- | --- |\n| ${s.ids.hypothesis} | supported | The archive kept every page [${s.ids.claims.verified}]. |\n\n### Proposed by the run\n\n- h-pool0001: a clock of 8 hours is enough (question 2).`,
+      discussion: `## Discussion\n\nThe archive kept every page [${s.ids.claims.verified}]. The run also proposed a hypothesis that it did not test: a clock of 8 hours is enough (question 2).`,
     });
     assert.deepEqual(await check(listed), []);
   });
@@ -302,7 +301,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
     );
   });
 
-  test("check_paper finds an unknown or draft claim, a number not in the cited claims, a missing question section and a missing verdict", async (t) => {
+  test("check_paper finds an unknown or draft claim, a number not in the cited claims, an unanswered question, a verdict the review panel did not give and a part that code appends", async (t) => {
     const s = await answered(t);
     await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: true }, "supervisor");
     await scheduler(s).tick();
@@ -310,17 +309,25 @@ describe("a research run whose questions are answered waits for its paper (goal 
       problemsOf((await s.call("POST", `/v1/research/papers/${RUN}/check`, { paper })).body);
     const lineOf = (paper: string, words: string) =>
       paper.split("\n").findIndex((l) => l.includes(words)) + 1;
-    // A paper that holds; the figures (2 sources, 1 site) and question numbers are not refused.
+    // A paper that holds; the figures (2 sources, 1 site) are not refused.
     assert.deepEqual(await check(goodPaper(s.ids)), []);
+    // The writer chooses the parts (owner, 2026-10-24): other words, another order, a part left out.
+    const free = goodPaper(s.ids, {
+      introduction: "## Background\n\nA long research campaign must keep the pages that it reads.",
+      method: "",
+      limitations: "## Limits of the evidence\n\nAll the claims come from 1 site.",
+      discussion: "",
+    });
+    assert.deepEqual(await check(free), []);
     // An unknown claim and a draft claim.
     const unknown = goodPaper(s.ids, {
-      next: "## Next experiments\n\nFind a second site [c-000000000000].",
+      next: "## Future work\n\nFind a second site [c-000000000000].",
     });
     assert.deepEqual(await check(unknown), [
       { line: lineOf(unknown, "c-000000000000"), problem: "no claim c-000000000000" },
     ]);
     const draft = goodPaper(s.ids, {
-      next: `## Next experiments\n\nCheck the larger count [${s.ids.claims.draft}].`,
+      next: `## Future work\n\nCheck the larger count [${s.ids.claims.draft}].`,
     });
     assert.deepEqual(await check(draft), [
       {
@@ -330,7 +337,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
     ]);
     // A number not in the claims its paragraph cites, and one with no claim cited.
     const number = goodPaper(s.ids, {
-      summary: `## Summary\n\nThe first run archived 43 pages [${s.ids.claims.verified}].\n\nIt took 7 days.`,
+      abstract: `## Abstract\n\nThe first run archived 43 pages [${s.ids.claims.verified}].\n\nIt took 7 days.`,
     });
     assert.deepEqual(await check(number), [
       {
@@ -343,106 +350,63 @@ describe("a research run whose questions are answered waits for its paper (goal 
           "the number 7 has no claim cited beside it: cite the claims it comes from in this paragraph, as [c-…]",
       },
     ]);
-    // A missing question section, and a hypothesis with no verdict.
+    // A question the paper does not answer: it cites none of its evidence.
     const noQ2 = goodPaper(s.ids, {
-      results: `## Results\n\n### Question 1\n\nCertainty: moderate\n\nThe first run archived 42 pages [${s.ids.claims.verified}].`,
+      abstract: "## Abstract\n\nThis paper reports what the first runs of the harness show.",
+      results: `## Results\n\nThe first run archived 42 pages [${s.ids.claims.verified}].`,
     });
-    assert.deepEqual(
-      (await check(noQ2)).map((p) => p.problem),
-      [`Results has no "### Question 2" section (What keeps a long campaign honest?)`],
-    );
-    const noVerdict = goodPaper(s.ids, {
-      hypotheses: `## Hypotheses\n\n### Hypothesis ${s.ids.hypothesis}\n\nThe archive kept every page [${s.ids.claims.verified}].`,
-    });
-    assert.deepEqual(await check(noVerdict), [
+    assert.deepEqual(await check(noQ2), [
       {
-        line: lineOf(noVerdict, `### Hypothesis ${s.ids.hypothesis}`),
-        problem: `hypothesis ${s.ids.hypothesis} has no verdict: write supported, refuted or undecided in its Verdict cell (or a line "Verdict: …" in its section)`,
+        line: null,
+        problem: `question 2 is not answered: the paper cites none of its evidence (What keeps a long campaign honest?). Answer it, and cite the claims of its card or other verified claims of question 2: ${s.ids.claims.clock}`,
       },
     ]);
-    // A section with a verdict line still holds (goal 112's form).
-    const section = goodPaper(s.ids, {
-      hypotheses: `## Hypotheses\n\n### Hypothesis ${s.ids.hypothesis}\n\nVerdict: supported\n\nThe archive kept every page [${s.ids.claims.verified}].`,
-    });
-    assert.deepEqual(await check(section), []);
-    // No row for the hypothesis; a row with no verdict.
-    const noRow = goodPaper(s.ids, {
-      hypotheses: "## Hypotheses\n\n| Hypothesis | Verdict |\n| --- | --- |",
-    });
+    // A verdict the review panel gave holds, in a table or a section; one it did not give is refused.
+    const table = (verdict: string) =>
+      goodPaper(s.ids, {
+        discussion: `## Discussion\n\n| Hypothesis | Verdict | Evidence |\n| --- | --- | --- |\n| ${s.ids.hypothesis} | ${verdict} | The archive kept every page [${s.ids.claims.verified}]. |`,
+      });
+    assert.deepEqual(await check(table("supported")), []);
+    assert.deepEqual(await check(table("refuted")), [
+      {
+        line: lineOf(table("refuted"), "| refuted |"),
+        problem: `the verdict "refuted" on hypothesis ${s.ids.hypothesis} is not one the review panel gave: it gave supported`,
+      },
+    ]);
+    const section = (verdict: string) =>
+      goodPaper(s.ids, {
+        discussion: `## Discussion\n\n### Hypothesis ${s.ids.hypothesis}\n\nVerdict: ${verdict}\n\nThe archive kept every page [${s.ids.claims.verified}].`,
+      });
+    assert.deepEqual(await check(section("supported")), []);
     assert.deepEqual(
-      (await check(noRow)).map((p) => p.problem),
+      (await check(section("undecided"))).map((p) => p.problem),
       [
-        `Hypotheses has no row for hypothesis ${s.ids.hypothesis} in its table of verdicts (Stateless workers make long runs safe.)`,
+        `the verdict "undecided" on hypothesis ${s.ids.hypothesis} is not one the review panel gave: it gave supported`,
       ],
     );
-    // A verdict the review panel did not give; a References part; a part out of order.
-    const refuted = goodPaper(s.ids).replace("| supported |", "| refuted |");
-    assert.deepEqual(
-      (await check(refuted)).map((p) => p.problem),
-      [
-        `the verdict "refuted" on hypothesis ${s.ids.hypothesis} is not one the review panel gave: it gave supported`,
-      ],
-    );
+    // The parts that code appends.
     const refs = `${goodPaper(s.ids)}\n## References\n\n- a list\n`;
     assert.deepEqual(
       (await check(refs)).map((p) => p.problem),
-      ["leave out the References part: code appends it from the claims the paper cites"],
-    );
-    const panel = `${goodPaper(s.ids)}\n## Review panel\n\n- a list\n`;
-    assert.deepEqual(
-      (await check(panel)).map((p) => p.problem),
       [
-        "leave out the Review panel part: code appends the review panel's decisions and each dissent",
+        'leave out the "## References" part: code appends the References and the appendices (the review panel\'s decisions, and the claims the paper cites)',
       ],
     );
-    // A certainty line missing, and one that is not the review panel's decision (goal 117).
-    const noCertainty = goodPaper(s.ids).replace("Certainty: moderate\n\n", "");
-    assert.deepEqual(await check(noCertainty), [
-      {
-        line: lineOf(noCertainty, "### Question 1"),
-        problem: `"### Question 1" has no certainty line: write "Certainty: moderate" under its heading (the review panel's decision)`,
-      },
-    ]);
-    const higher = goodPaper(s.ids).replace("Certainty: moderate", "Certainty: high");
-    assert.deepEqual(await check(higher), [
-      {
-        line: lineOf(higher, "Certainty: high"),
-        problem: `the certainty "high" of question 1 is not the review panel's decision: write "Certainty: moderate"`,
-      },
-    ]);
-    // A section that cites another question's evidence.
-    const borrowed = goodPaper(s.ids).replace(
-      "cannot stop [",
-      `cannot stop [${s.ids.claims.verified}, `,
-    );
-    assert.deepEqual(await check(borrowed), [
-      {
-        line: lineOf(borrowed, "cannot stop ["),
-        problem: `"### Question 2" cites ${s.ids.claims.verified}, which is not evidence for question 2: cite the claims of its card or other verified claims of question 2`,
-      },
-    ]);
-    // Method and Limits of the evidence swapped.
-    const order = goodPaper(s.ids, {
-      method: "## Limits of the evidence\n\nAll the claims come from 1 site.",
-      limits: "## Method\n\nThe harness archived 2 sources.",
-    });
-    const inOrder =
-      "the parts go in this order: Summary, Questions, Method, Results, Hypotheses, Limits of the evidence, Next experiments";
-    assert.deepEqual(await check(order), [
-      {
-        line: lineOf(order, "## Results"),
-        problem: `"## Results" comes after "## Limits of the evidence": ${inOrder}`,
-      },
-      {
-        line: lineOf(order, "## Method"),
-        problem: `"## Method" comes after "## Hypotheses": ${inOrder}`,
-      },
-    ]);
-    // A part missing.
+    const appendix = `${goodPaper(s.ids)}\n## Appendix A: The review panel\n\n- a list\n`;
     assert.deepEqual(
-      (await check(goodPaper(s.ids, { limits: "" }))).map((p) => p.problem),
-      ['the paper has no "## Limits of the evidence" part'],
+      (await check(appendix)).map((p) => p.problem),
+      [
+        'leave out the "## Appendix A: The review panel" part: code appends the References and the appendices (the review panel\'s decisions, and the claims the paper cites)',
+      ],
     );
+    // A second title.
+    const titles = goodPaper(s.ids, { introduction: "# Introduction\n\nA long campaign." });
+    assert.deepEqual(await check(titles), [
+      {
+        line: lineOf(titles, "# Introduction"),
+        problem: "only the title is a level-1 heading (#): use ## for a part, ### under it",
+      },
+    ]);
     // Nothing is recorded by a check.
     assert.equal(s.events("research_paper_refused").length, 0);
     // A run that does not wait for a paper is refused.
@@ -585,7 +549,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
       {
         line: null,
         problem:
-          'Next experiments has no "### For a goal campaign" section, and 2 of its next experiments are for a goal campaign',
+          'the paper has no "### For a goal campaign" section, and 2 of its next experiments are for a goal campaign: put them under that heading, in the part on future work',
       },
     ]);
     const good = await s.call("POST", `/v1/research/papers/${RUN}`, {
@@ -615,25 +579,53 @@ describe("a research run whose questions are answered waits for its paper (goal 
       [["hill_climb", "pages archived a minute, higher"]],
     );
     assert.equal(good.body.cited, 2);
-    // Its event keeps the paper whole, with the references code appended.
+    // Its event keeps the paper whole: each citation a numbered reference, then the References and
+    // the appendices that code appends (owner, 2026-10-24).
     const accepted = s.events("research_paper_accepted")[0] as Record<string, unknown>;
     assert.equal(accepted.writer, "teacher-1");
     assert.deepEqual(accepted.ste, { checked: false, why: "the rig has no STE checker" });
+    assert.deepEqual(accepted.citations, {
+      [s.ids.claims.verified]: [1],
+      [s.ids.claims.clock]: [2],
+    });
+    assert.equal(accepted.references, 2);
     const whole = String(accepted.paper);
-    assert.ok(whole.startsWith(paper.trimEnd()));
+    const numbered = paper
+      .trimEnd()
+      .replaceAll(`[${s.ids.claims.verified}]`, "[1]")
+      .replaceAll(`[${s.ids.claims.clock}]`, "[2]");
+    assert.ok(whole.startsWith(`${numbered}\n\n## References\n`));
+    assert.doesNotMatch(whole.slice(0, numbered.length), /\[c-/);
+    const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const day = "\\d{4}-\\d{2}-\\d{2}";
     assert.match(
       whole,
       new RegExp(
-        `## References\\n\\nThe harness added this list: each claim the paper cites, and the archived sources its quotes come from\\.\\n\\n- \\[${s.ids.claims.verified}\\] Harness notes \\(127\\.0\\.0\\.1\\), ${s.base.replace(/[.]/g, "\\.")}/a\\.html\\n- \\[${s.ids.claims.clock}\\] Long campaigns \\(127\\.0\\.0\\.1\\), `,
+        `## References\\n\\n\\[1\\] Harness notes\\. 127\\.0\\.0\\.1, archived ${day}\\. <${esc(s.base)}/a\\.html>\\n\\n\\[2\\] Long campaigns\\. 127\\.0\\.0\\.1, archived ${day}\\. <${esc(s.base)}/b\\.html>\\n`,
       ),
     );
-    // The review panel's decisions and dissent, appended by code before the references (goal 117).
-    assert.ok(whole.indexOf("## Review panel") > paper.trimEnd().length);
-    assert.ok(whole.indexOf("## Review panel") < whole.indexOf("## References"));
+    // Appendix A: the review panel's decisions and dissent (goal 117), after the references.
+    const at = (words: string) => whole.indexOf(words);
+    assert.ok(at("## Appendix A: The review panel's decisions") > at("## References"));
+    assert.ok(at("## Appendix B: The claims cited") > at("## Appendix A"));
+    assert.match(whole, /The run ended because every question is answered\./);
     assert.match(
       whole,
       new RegExp(
-        `\\| Question 1 \\| answered, certainty moderate \\(review ${s.review}\\) \\| 2 \\| none \\|\n\\| Question 2 \\| answered, certainty high \\(review ${s.review}\\) \\| 2 \\| none \\|\n\\| Hypothesis ${s.ids.hypothesis} \\| supported \\(review ${s.review}\\) \\| 2 \\| none \\|`,
+        `\\| 1\\. How much did the first run archive\\? \\| answered \\(review ${s.review}\\) \\| moderate \\| 2 \\| none \\|\n\\| 2\\. What keeps a long campaign honest\\? \\| answered \\(review ${s.review}\\) \\| high \\| 2 \\| none \\|`,
+      ),
+    );
+    assert.match(
+      whole,
+      new RegExp(
+        `\\| Stateless workers make long runs safe\\. \\(${s.ids.hypothesis}\\) \\| supported \\(review ${s.review}\\) \\| 2 \\| none \\|`,
+      ),
+    );
+    // Appendix B: each claim cited, with its references.
+    assert.match(
+      whole,
+      new RegExp(
+        `\\| ${s.ids.claims.verified} \\| The first run archived 42 pages\\. \\| \\[1\\] \\|`,
       ),
     );
     // paper.md in the run's research folder at once.
@@ -688,17 +680,20 @@ describe("a research run whose questions are answered waits for its paper (goal 
           .get() as { body: string }
       ).body,
     );
-    assert.ok(final.startsWith("# What the first runs of the harness show\n\n## Summary"));
-    const at = (words: string) => final.indexOf(words);
-    assert.ok(at("## References") > 0);
+    assert.ok(final.startsWith("# What the first runs of the harness show\n\n## Abstract"));
+    const inFinal = (words: string) => final.indexOf(words);
+    assert.ok(inFinal("## References") > 0);
+    assert.ok(inFinal("## Appendix B: The claims cited") > inFinal("## References"));
     assert.ok(
-      at("# Appendix: the review panel's decisions and the corpus of") > at("## References"),
+      inFinal("# Supplementary material: the review panel's decisions and the corpus of") >
+        inFinal("## Appendix B"),
     );
-    assert.ok(at("## Answers") > at("# Appendix"));
+    assert.ok(inFinal("## Answers") > inFinal("# Supplementary material"));
     // The answer cards first (goal 117), then the review panel's decisions.
-    assert.ok(at("## The review panel's decisions") > at("## Answers"));
+    assert.ok(inFinal("## The review panel's decisions") > inFinal("## Answers"));
     assert.ok(
-      at("## Verified claims from a single domain") > at("## The review panel's decisions"),
+      inFinal("## Verified claims from a single domain") >
+        inFinal("## The review panel's decisions"),
     );
     assert.equal(s.ledger.latestEventBody("research_final", RUN)?.paper, true);
     // The run's next export carries the folder with its paper (main.ts gives the export the folder).
