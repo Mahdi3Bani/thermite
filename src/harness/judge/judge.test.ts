@@ -326,7 +326,7 @@ export function work() {
     assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "errored");
   });
 
-  test("a target never ready for the baseline: the job fails in the judge, the run waits, and nothing is in setup", async () => {
+  test("a target never ready for the baseline: the job fails in the judge, is tried again at once, then the run waits, and nothing is in setup", async () => {
     const env = await setup({ neverReady: true });
     const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
     await env.drain();
@@ -334,8 +334,9 @@ export function work() {
       .prepare("select kind, state from job order by id")
       .all()
       .map((r) => `${r.kind}:${r.state}`);
-    // The baseline's try failed in the judge, and the change's job waits for a baseline.
-    assert.deepEqual(jobs, ["evaluate:queued", "baseline:failed"]);
+    // The baseline's try failed in the judge, its second try at once too, and the change's job
+    // waits for a baseline: the next try comes after BASELINE_RETRY_MS.
+    assert.deepEqual(jobs, ["evaluate:queued", "baseline:failed", "baseline:failed"]);
     assert.equal(env.ledger.latestEventBody("baseline_failed", "js-1"), undefined);
     assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "queued");
     assert.equal(env.ledger.currentVerdict(id), undefined);
