@@ -12,6 +12,31 @@ export function numbersIn(s: string): string[] {
   return [...s.matchAll(/\d[\d,.]*\d|\d/g)].map((m) => m[0]);
 }
 
+/**
+ * A text with what is not a stated number taken out: record ids (c-…, h-…, f-…), question
+ * references ("question 2", "questions 1 and 3", "Q2"), a list item's own number, and digits that
+ * are part of a name (sm_50, V100, M10). A number followed by its unit (4GB, 10x) stays.
+ */
+export function withoutReferences(text: string): string {
+  return withoutNames(
+    text
+      .replace(/\b[a-z]-(?=[0-9a-z]*\d)[0-9a-z]{6,}\b/g, " ")
+      .replace(/\bquestions?\s+\d+(?:\s*(?:,|and|or|to|–|-)\s*\d+)*/gi, " ")
+      .replace(/\bQ\d+\b/g, " ")
+      .replace(/^\s*(?:[-*+]\s+)?\d+[.)]\s+/gm, " "),
+  );
+}
+
+/** A text without the digits that are part of a name (sm_50, V100, M10): they state no number. */
+export function withoutNames(text: string): string {
+  return text.replace(/(?<=[A-Za-z_])\d[\d.]*/g, " ");
+}
+
+/** The numbers a text states, as checks read them: numbersIn after withoutReferences. */
+export function statedNumbers(text: string): string[] {
+  return numbersIn(withoutReferences(text));
+}
+
 /** Every number a verified claim states: in its text or in its quotes. */
 export function claimNumbers(claims: Row[]): Set<string> {
   return new Set(
@@ -47,7 +72,7 @@ export function checkCited(
   }
   const known = claimNumbers(claims);
   for (const n of also) known.add(n);
-  for (const num of new Set(texts.flatMap(numbersIn))) {
+  for (const num of new Set(texts.flatMap(statedNumbers))) {
     if (!known.has(num)) problems.push(`the number ${num} is not in the claims it cites`);
   }
   return { claims, problems };
