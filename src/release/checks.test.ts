@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { imageProblems, probeValues } from "./checks.ts";
 
@@ -42,22 +44,35 @@ test("the rig image is held to the lab's rules: no Claude Code, socat, bubblewra
     "it does not report THERMITE_IMAGE_ID, which the harness puts in each build's key",
     "it carries socat (/usr/bin/socat)",
     "it carries bubblewrap (/usr/bin/bwrap)",
-    "it has set-id files, which RunPod's root could run: /usr/bin/su /usr/bin/passwd",
+    "it has set-id files: /usr/bin/su /usr/bin/passwd",
     "it names an STE checker (THERMITE_STE_CHECKER): the checker is a deployment's own",
   ]);
 });
 
-test("set-id files, socat and the image ID are the rig's and the harnesses' rules, not control's", () => {
+test("set-id files are every image's rule; socat and the image ID are the harnesses' and the rig's", () => {
   const facts = {
     ...clean(),
     env: [`THERMITE_COMMIT=${COMMIT}`],
     probe: "claude=\nsocat=/usr/bin/socat\nbwrap=\nsetid=/usr/bin/su\n",
   };
-  assert.deepEqual(imageProblems("control", COMMIT, facts), []);
+  assert.deepEqual(imageProblems("control", COMMIT, facts), ["it has set-id files: /usr/bin/su"]);
   assert.deepEqual(imageProblems("harness", COMMIT, facts), [
     "it does not report THERMITE_IMAGE_ID, which the harness puts in each build's key",
     "it carries socat (/usr/bin/socat)",
+    "it has set-id files: /usr/bin/su",
   ]);
+});
+
+test("every image's Containerfile clears set-id bits last, and fails its build if one is left", () => {
+  for (const image of ["control", "harness", "supervisor", "rig"]) {
+    const text = readFileSync(
+      join(import.meta.dirname, "..", "..", "containers", image, "Containerfile"),
+      "utf8",
+    );
+    const final = text.slice(text.lastIndexOf("\nFROM "));
+    assert.match(final, /find \/ -xdev -type f -perm \/6000 -exec chmod ug-s \{\} \+/, image);
+    assert.match(final, /test -z "\$\(find \/ -xdev -type f -perm \/6000 -print -quit\)"/, image);
+  }
 });
 
 test("the probe's lines are read by name, each value trimmed", () => {

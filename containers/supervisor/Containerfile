@@ -91,6 +91,11 @@ RUN groupadd -g 10001 supervisor \
 RUN mkdir -p /var/lib/thermite-supervisor/home /results /outbox \
  && chown 10001:10001 /var/lib/thermite-supervisor /var/lib/thermite-supervisor/home /results \
  && chown 10010:10001 /outbox && chmod 2750 /outbox
+# No set-id file anywhere, as in every Thermite image: no process in the container can gain
+# privileges through a setuid or setgid program. Last, after every package; the build fails if one
+# is left.
+RUN find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+ && test -z "$(find / -xdev -type f -perm /6000 -print -quit)"
 ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
 # The source commit the image is built from (empty: not given). The supervisor sends it with
 # Thermite's version from package.json on its calls to control, which compares them with its own.
