@@ -41,12 +41,11 @@ export function nobodyReads(
     (to === "all" || to === "planner" || /^lane-\d+$/.test(to) || to.startsWith("trial:"))
   )
     return "This run has no agents (the judge alone tries the kit), so nothing would read it.";
+  // A research run's planner reads them too (goals 047 and 117).
   if (to === "planner")
-    return research
-      ? "A research run plans its rounds with a fixed method: it has no planner to message."
-      : u.settings?.planner === false
-        ? "The planner is off on this rig (Edit rig), so nothing would read it."
-        : "";
+    return u.settings?.planner === false
+      ? "The planner is off on this rig (Edit rig), so nothing would read it."
+      : "";
   const sup = u.supervisor as { advisors?: { roles?: Record<string, unknown> } | null } | null;
   // None set up: the supervisor reports no advisors. Unknown: it has not reported its roles.
   const roles =
@@ -170,6 +169,23 @@ export function redirectRefusal(store: ControlStore, rig: string, payload: unkno
     ),
   ];
   return unknown.length ? researchDirectionRefusal(unknown) : "";
+}
+
+/**
+ * Why control refuses a hypothesis_status before signing it, or "" (goal 117): only a research run
+ * has hypotheses to promote, return or retire. From the rig's report; a run the report does not
+ * show yet is the rig's to check, and its harness refuses the same.
+ */
+export function hypothesisStatusRefusal(
+  store: ControlStore,
+  rig: string,
+  payload: unknown,
+): string {
+  const p = payload as { run?: unknown } | null;
+  if (typeof p?.run !== "string") return "";
+  const r = rigView(store, rig)?.runs.find((x) => x.id === p.run);
+  if (!r || r.mode === "research") return "";
+  return `Run ${p.run} is not a research run: only a research run has hypotheses to promote or retire.`;
 }
 
 /**
@@ -325,7 +341,12 @@ export function prepareCommand(
     );
   }
   const payload = parsed.data;
-  const ruled = input.kind === "redirect" ? redirectRefusal(store, input.rig, payload) : "";
+  const ruled =
+    input.kind === "redirect"
+      ? redirectRefusal(store, input.rig, payload)
+      : input.kind === "hypothesis_status"
+        ? hypothesisStatusRefusal(store, input.rig, payload)
+        : "";
   if (ruled) throw new Error(ruled);
   const now = Date.now();
   const signed = signEnvelope(

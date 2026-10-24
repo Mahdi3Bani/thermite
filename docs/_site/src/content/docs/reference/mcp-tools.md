@@ -800,7 +800,7 @@ Errors:
 - `Settings has no MCP server named <server>. Add it in Settings › MCP servers, or take it out of mcp_servers.`
 - `<server> has no tool named <tool>. Its tools are <tools>.`
 - `Control has not read the tools of <server> yet. Read them in Settings › MCP servers, or give the <kind> all its tools.`
-- `A research run has no planner: its research plan is code. Give <server> to the workers or the advisors.`
+- `A research run's planner takes no MCP server: it plans from the run's own records. Give <server> to the workers or the advisors.`
 - `A context window is a whole number of tokens from 4,096 to 100,000,000.` and `The compaction point is a whole percent of the context window, from 50 to 95.`: `agents_context` out of range
 - `Ideas to try are for hill-climb and goal campaigns. A research campaign has questions and hypotheses.`: `ideas` for a research campaign
 

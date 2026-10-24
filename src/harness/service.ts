@@ -27,7 +27,12 @@ import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
-import { measurementIn, measurementRefusal, questionName } from "../core/research-check.ts";
+import {
+  labelledQuestion,
+  measurementIn,
+  measurementRefusal,
+  questionName,
+} from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
@@ -74,7 +79,7 @@ import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { type CardResult, type CardSubmission, Cards } from "./research/cards.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
 import { type PaperPackage, type PaperSubmission, Papers } from "./research/paper.ts";
-import { NOTE_REPEATS, startingHypotheses } from "./research/research.ts";
+import { NOTE_REPEATS, setHypothesisStatus, startingHypotheses } from "./research/research.ts";
 import {
   checkResearchPanel,
   decisionWords,
@@ -84,6 +89,7 @@ import {
   researchEnd,
   reviewerGaps,
 } from "./research/review.ts";
+import { researchState, stateBrief } from "./research/shares.ts";
 import {
   type ResearchReviewPackage,
   type ReviewKind,
@@ -146,6 +152,7 @@ const OWNER_ONLY = new Set([
   "queue_drop",
   "queue_accept",
   "drop_directive",
+  "hypothesis_status",
 ]);
 
 /** An advisor's additions and moves for a run's queue (the supervisor's /v1/queue). */
@@ -1080,7 +1087,7 @@ export class HarnessService {
         this.openRun(p.run);
         conflictCheck(p.directives);
         // A direction the run doesn't have yet is the planner's to design at its next round
-        // (goal 066). A research run has no planner: it takes only its task kinds.
+        // (goal 066). A research run's planner designs no direction: it takes only its task kinds.
         const known = this.queue.directions(p.run);
         const unknown = unknownIn(p.directives, known);
         if (unknown.length && this.contractFor(p.run).mode === "research")
@@ -1146,6 +1153,25 @@ export class HarnessService {
         this.openRun(p.run);
         this.ledger.dropDirective(p.run, p.id, by);
         return { run: p.run, dropped: p.id };
+      }
+      // A research run's hypothesis promoted, returned to the pool or retired (goal 117): the
+      // planner's changes go through the same function.
+      case "hypothesis_status": {
+        const p = CommandPayloads.hypothesis_status.parse(payload);
+        this.openRun(p.run);
+        if (this.contractFor(p.run).mode !== "research")
+          throw new LedgerError(
+            "invalid",
+            `run ${p.run} is not a research run: only a research run has hypotheses to promote or retire`,
+          );
+        const r = setHypothesisStatus(
+          this.ledger,
+          p.run,
+          { id: p.id, status: p.status, reason: p.reason },
+          by,
+        );
+        if (r.changed) this.researchChanged?.(p.run);
+        return { run: p.run, ...r };
       }
       case "reset_workers": {
         // The scheduler acts on the event: it kills the run's running trials, clears the
@@ -2080,8 +2106,11 @@ export class HarnessService {
         .all(run) as Record<string, unknown>[]
     ).map((e) => ({
       n: Number(e.n),
-      // A research run's rounds are set by its research plan, never by the planner (goal 079).
-      source: contract.mode === "research" ? "research plan" : String(e.source),
+      // A research run's rounds: by its planner (goals 047 and 117), or by its research plan in code.
+      source:
+        contract.mode === "research" && String(e.source) !== "planner"
+          ? "research plan"
+          : String(e.source),
       planner_valid: Number(e.planner_valid) === 1,
       violations: (JSON.parse(String(e.raw_violations)) as unknown[]).length,
       directives: JSON.parse(String(e.directives ?? "[]")) as number[],
@@ -2119,6 +2148,15 @@ export class HarnessService {
       // goal run's when its trials recorded some. Short, before the long parts a window may cut;
       // the teachers' research tools read the rest.
       ...(research ? { research } : {}),
+      // Where each question stands for the plan (goal 117): decided, saturated, the weight its card
+      // gives it and its share of the last tasks. The teachers propose for the open ones.
+      ...(contract.mode === "research"
+        ? {
+            question_state: stateBrief(
+              researchState(this.ledger, run, contract, { lanes: contract.lanes.count }),
+            ),
+          }
+        : {}),
       // The campaign's brief from its author, whole (goal 078): ahead of the long parts, so a
       // brief cut to the teacher's window loses the evidence first.
       ...(brief ? { campaign_brief: brief } : {}),
@@ -2412,6 +2450,14 @@ export class HarnessService {
         : undefined;
       if (measures) {
         out.refused.push(`add "${a.title.slice(0, 120)}": ${measurementRefusal(measures)}`);
+        continue;
+      }
+      // A research run's task serves one question (goal 117): an item that names none, in its
+      // question or a title labelled "Question N (index K)", is refused in words.
+      if (research && a.question === undefined && labelledQuestion(a.title) === undefined) {
+        out.refused.push(
+          `add "${a.title.slice(0, 120)}": a research run's task names the question it serves (question, an index from 0)`,
+        );
         continue;
       }
       // A question the run does not have, or one in a run whose tasks name none: refused in words.

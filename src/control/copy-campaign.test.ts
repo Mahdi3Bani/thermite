@@ -612,7 +612,7 @@ describe("A research copy's MCP servers (goals 069 and 068)", () => {
     await refused(
       "web-survey",
       [{ name: "web-search", agents: ["workers", "planner"] }],
-      "A research run has no planner: its research plan is code. Give web-search to the workers or the advisors.",
+      "A research run's planner takes no MCP server: it plans from the run's own records. Give web-search to the workers or the advisors.",
     );
     const kit =
       "This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.";

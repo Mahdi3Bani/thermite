@@ -75,7 +75,7 @@ A run uses the models of its rig, so you switch a running campaign to another mo
    - under **Advisors**: **To all advisors**, **To the teachers**, **To the auditor** or **To the review panel**.
 
    A recipient that would never read it is greyed out. Hover over it to read why:
-   - the planner and the auditor of a research run, such as `A research run plans its rounds with a fixed method: it has no planner to message.`;
+   - the auditor of a research run: `A research run has no attempts to audit.`;
    - everyone working, each lane and the planner of a run without agents, such as a try: `This run has no agents (the judge alone tries the kit), so nothing would read it.` On such a run the box starts on **To all advisors**;
    - the review panel of a run with no goal it reviews, a hill climb or a goal run with no goal checked by review: `This run has no goal the review panel reviews.` (A research run's review panel reads messages: it checks the run's questions.);
    - any role that is switched off on the rig's **Edit rig** page, such as `The auditor is off on this rig (Edit rig), so nothing would read it.`;
@@ -135,7 +135,7 @@ Control refuses a message with no words, or one that nothing would read, before 
 - `Write a message first.`, for a message with no words, or only spaces;
 - `This run has no agents (the judge alone tries the kit), so nothing would read it.`, for everyone working, a lane, the planner or one trial of a run without agents, such as a try: write to its advisors, or start a run with agents;
 - `The planner is off on this rig (Edit rig), so nothing would read it.`, and the same words for the auditor or the review panel when its switch is off, or `The teachers are off on this rig (Edit rig), so nothing would read it.`;
-- `A research run plans its rounds with a fixed method: it has no planner to message.` and `A research run has no attempts to audit.`;
+- `A research run has no attempts to audit.`;
 - `This rig's supervisor has no auditor set up, so nothing would read it.`, with the teachers or the review panel in its place, for an advisor the rig's supervisor hasn't set up, such as one with no model;
 - for **To all advisors**, `This rig's supervisor has no advisors set up, so nothing would read it.` when it has none, and `No advisor would read it.` with each advisor's reason when none of them would.
 

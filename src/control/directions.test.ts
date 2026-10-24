@@ -292,7 +292,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
     assert.equal(bad.status, 400);
     assert.match(
       ((await bad.json()) as { error: string }).error,
-      /^A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. It has no planner to design a new direction, so a rule for :blog-posts: would do nothing\./,
+      /^A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. Its planner designs no new direction, so a rule for :blog-posts: would do nothing\./,
     );
     assert.equal((await post(":contradict:")).status, 201);
   });

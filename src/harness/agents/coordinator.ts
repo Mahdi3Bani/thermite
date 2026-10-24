@@ -303,6 +303,7 @@ export class Coordinator {
           why: a.why,
           by: PLANNER,
           position: a.position,
+          ...(a.question !== undefined ? { question: a.question } : {}),
         },
         PLANNER,
       );

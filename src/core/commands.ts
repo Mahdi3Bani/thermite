@@ -363,6 +363,17 @@ export const CommandPayloads = {
   /** The owner removes a rule for the plan in force (a directive), whoever set it. */
   drop_directive: z.strictObject({ run: IdSchema, id: z.number().int().positive() }),
   /**
+   * A research run's hypothesis (goal 117), the owner's to change: promote one of the pool, so it
+   * needs a verdict from the review panel as the author's do; return a promoted one to the pool;
+   * or retire one; each with why. The author's hypotheses can't be changed this way.
+   */
+  hypothesis_status: z.strictObject({
+    run: IdSchema,
+    id: z.string().trim().min(1).max(64),
+    status: z.enum(["promoted", "pool", "retired"]),
+    reason: z.string().trim().min(1).max(2000),
+  }),
+  /**
    * Another rig's champion as a candidate here: this rig's judge screens and confirms it
    * against its own champion. The supervisor stages the file from the results repository.
    */
@@ -438,16 +449,6 @@ export const CommandPayloads = {
     proposal: z.number().int().positive(),
     accept: z.boolean(),
     note: z.string().max(2000).optional(),
-  }),
-  /**
-   * The owner moves a research run's hypothesis (goal 117): promoted (the review panel must give
-   * it a verdict), back to the pool (listed as proposed by the run), or retired; with why.
-   */
-  hypothesis_status: z.strictObject({
-    run: IdSchema,
-    id: z.string().trim().min(1).max(64),
-    status: z.enum(["promoted", "pool", "retired"]),
-    reason: z.string().trim().min(1).max(2000),
   }),
 } as const;
 

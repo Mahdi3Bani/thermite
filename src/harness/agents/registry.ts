@@ -224,7 +224,8 @@ export class Registry {
     directives?: number[] | undefined;
     notes?: string | undefined;
     /**
-     * "research": planned by the research plan's fixed method, not by a model (no refusal).
+     * "research": planned by the research plan in code on purpose (the planner is off), not a
+     * refused plan.
      * "setup": a hill climb's setup round (goal 115), from the judge's reasons, not by a model.
      */
     plan?: "research" | "setup" | undefined;

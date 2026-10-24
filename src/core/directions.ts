@@ -118,7 +118,7 @@ export function directionList(names: readonly string[], max = 30): string {
  * planner to design a new one.
  */
 export function researchDirectionRefusal(unknown: readonly string[]): string {
-  return `A research run's directions are its task kinds: ${directionList(RESEARCH_TASK_KINDS)}. It has no planner to design ${unknown.length === 1 ? "a new direction" : "new directions"}, so a rule for ${directionList(unknown)} would do nothing. Name a task kind.`;
+  return `A research run's directions are its task kinds: ${directionList(RESEARCH_TASK_KINDS)}. Its planner designs no ${unknown.length === 1 ? "new direction" : "new directions"}, so a rule for ${directionList(unknown)} would do nothing. Name a task kind.`;
 }
 
 /**

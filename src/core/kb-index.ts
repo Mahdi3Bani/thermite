@@ -109,6 +109,7 @@ export const KB_EVENT_KINDS = [
   "hypothesis_added",
   "hypothesis_revised",
   "hypothesis_merged",
+  "hypothesis_status",
   "finding_added",
   "research_final",
   "research_digest",
@@ -496,6 +497,33 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
           ]),
           ...(e.kind === "hypothesis_added" ? { by: str(b.lane) || e.actor } : {}),
         },
+        e.at,
+      );
+      return;
+    }
+    // A hypothesis promoted, returned to the pool or retired (goal 117), by the owner or the
+    // planner, with why: its item's status changes; one not in the reading yet is added.
+    case "hypothesis_status": {
+      const id = ref(b.hypothesis);
+      const status = `Status: ${hypothesisStatusWords(str(b.status))}`;
+      const why = `Status set by ${str(b.by) || e.actor}: ${str(b.reason)}`;
+      const old = t.body(run, "hypothesis", id);
+      t.put(
+        run,
+        "hypothesis",
+        id,
+        old === undefined
+          ? {
+              title: clip(str(b.text), 300) || `hypothesis ${str(b.hypothesis)}`,
+              body: lines([
+                str(b.text),
+                typeof b.question === "number" ? questionLabel(b.question) : "",
+                status,
+                why,
+              ]),
+              by: e.actor,
+            }
+          : { body: setLine(setLine(old, "Status", status), "Status set by", why) },
         e.at,
       );
       return;

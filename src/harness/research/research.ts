@@ -197,6 +197,107 @@ export function startingHypotheses(
   );
 }
 
+/** The statuses a hypothesis may be given by command (goal 117): promoted, back to the pool, retired. */
+export const HYPOTHESIS_STATUS_CHANGES = ["promoted", "pool", "retired"] as const;
+export type HypothesisStatusChange = (typeof HYPOTHESIS_STATUS_CHANGES)[number];
+
+/** A change of a hypothesis's status, as the owner's command and the planner give it. */
+export const HypothesisStatusInput = z.strictObject({
+  id: z.string().trim().min(1).max(64),
+  status: z.enum(HYPOTHESIS_STATUS_CHANGES),
+  reason: z.string().trim().min(1).max(2000),
+});
+export type HypothesisStatusInput = z.infer<typeof HypothesisStatusInput>;
+
+/** The event of a hypothesis whose status was changed by command or by the planner. */
+export const HYPOTHESIS_STATUS = "hypothesis_status";
+
+/**
+ * Changes a hypothesis's status (goal 117): the owner's `hypothesis_status` command and the
+ * planner's promotions and retirements both come here. A pool hypothesis may be promoted (it then
+ * needs a verdict from the review panel, as the author's do) or retired; a promoted one may go
+ * back to the pool or be retired; a retired one may go back to the pool or be promoted, unless
+ * its words now repeat a live hypothesis of the run. Refused in words: an unknown hypothesis, one
+ * of the author's (the campaign's brief sets those), and a merged one. The same status again
+ * changes nothing and records nothing. Each change is the event `hypothesis_status`, with who
+ * changed it and why. Who may do what beyond this (the planner's bounds) is the caller's.
+ */
+export function setHypothesisStatus(
+  ledger: Ledger,
+  run: string,
+  input: unknown,
+  by: string,
+): {
+  hypothesis: string;
+  status: HypothesisStatusChange;
+  from: string;
+  changed: boolean;
+  note?: string;
+} {
+  const p = HypothesisStatusInput.safeParse(input);
+  if (!p.success)
+    throw new LedgerError(
+      "invalid",
+      `a status change is {"id", "status": "promoted", "pool" or "retired", "reason"}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
+    );
+  const { id, status, reason } = p.data;
+  const h = ledger.db.prepare("select * from hypothesis where run = ? and id = ?").get(run, id) as
+    | Row
+    | undefined;
+  if (!h) throw new LedgerError("not_found", `no hypothesis ${id} in run ${run}`);
+  const from = String(h.status);
+  if (from === "author")
+    throw new LedgerError(
+      "invalid",
+      `hypothesis ${id} is one of the author's: it needs a verdict already, and only the campaign's brief changes it`,
+    );
+  if (from === "merged")
+    throw new LedgerError(
+      "invalid",
+      `hypothesis ${id} was merged into ${String(h.merged_into)}: change ${String(h.merged_into)} instead`,
+    );
+  if (from === status)
+    return {
+      hypothesis: id,
+      status,
+      from,
+      changed: false,
+      note: `hypothesis ${id} is ${hypothesisStatusWords(status)} already: nothing changed`,
+    };
+  // A retired hypothesis comes back only when no live one repeats it meanwhile.
+  if (from === "retired") {
+    const key = foldText(String(h.text));
+    const twin = (
+      ledger.db
+        .prepare(
+          `select id, status, text from hypothesis where run = ? and id != ? and status in (${LIVE_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
+        )
+        .all(run, id, ...LIVE_HYPOTHESES) as Row[]
+    ).find((t) => foldText(String(t.text)) === key);
+    if (twin)
+      throw new LedgerError(
+        "invalid",
+        `hypothesis ${id}'s words repeat ${String(twin.id)} (${hypothesisStatusWords(String(twin.status))}): change ${String(twin.id)} instead`,
+      );
+  }
+  const now = new Date().toISOString();
+  ledger.tx(() => {
+    ledger.db
+      .prepare("update hypothesis set status = ?, updated_at = ? where id = ?")
+      .run(status, now, id);
+    ledger.appendEvent(by, HYPOTHESIS_STATUS, run, {
+      hypothesis: id,
+      status,
+      from,
+      by,
+      reason,
+      question: h.question === null ? null : Number(h.question),
+      text: String(h.text),
+    });
+  });
+  return { hypothesis: id, status, from, changed: true };
+}
+
 export class Research {
   private readonly ledger: Ledger;
   private readonly stateDir: string;
@@ -894,6 +995,16 @@ export class Research {
     });
     this.changed(run);
     return { hypothesis: id, status, text, question, supporting, ignored };
+  }
+
+  /**
+   * Promotes, returns or retires a hypothesis (goal 117), as setHypothesisStatus does; the folder
+   * follows. The planner's promotions and retirements come here, as the owner's command does.
+   */
+  hypothesisStatus(run: string, input: unknown, by: string) {
+    const r = setHypothesisStatus(this.ledger, run, input, by);
+    if (r.changed) this.changed(run);
+    return r;
   }
 
   /**

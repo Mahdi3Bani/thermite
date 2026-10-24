@@ -503,7 +503,7 @@ describe("measurements stay out of a research run's queue (goal 117)", () => {
     );
   });
 
-  test("a teacher's item that asks for a measurement is refused, the others are added; a hill-climb run's teachers keep theirs", async () => {
+  test("a teacher's item that asks for a measurement, or names no question, is refused, the others are added; a hill-climb run's teachers keep theirs", async () => {
     const { env } = await researchEnv();
     const out = env.service.advisorQueue({
       run: "r-1",
@@ -519,13 +519,25 @@ describe("measurements stay out of a research run's queue (goal 117)", () => {
           title: "Primary sources on Maxwell's shared memory banks",
           details: "Find NVIDIA's own documentation and papers that describe the bank layout",
           why: "the second question has one source",
+          question: 0,
         },
+        // A task names its question (goal 117): in its field, or in a labelled title.
+        {
+          title: "Question 1 (index 0): vendor talks on the bank layout",
+          why: "a talk names it",
+        },
+        { title: "Any source on banks", why: "more is better" },
       ],
       move: [],
     });
-    assert.equal(out.added.length, 1);
+    assert.equal(out.added.length, 2);
+    assert.deepEqual(
+      out.added.map((id) => env.service.queue.get(id)?.question),
+      [0, 0],
+    );
     assert.deepEqual(out.refused, [
       `add "Shared-memory bank conflicts on Maxwell": this asks for a measurement ("Smallest discriminating experiment"), and a research run measures nothing: record it as a next experiment in a report section or a note (what it would settle, and how), and propose only work that sources can answer`,
+      `add "Any source on banks": a research run's task names the question it serves (question, an index from 0)`,
     ]);
     const hc = makeHarnessEnv();
     await hc.service.applyCommand(hc.sign("assign_campaign", hc.assignPayload({})));

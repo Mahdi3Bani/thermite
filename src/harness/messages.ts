@@ -7,8 +7,8 @@ import type { RigSettings } from "./rig-settings.ts";
  * The owner's messages to a run's agents (message_agent), with who read each one and when.
  *
  * Recipients and readers:
- * - `all` (everyone working): every lane reads it once, and so does the planner of a hill-climb
- *   or goal run (a research run has no planner);
+ * - `all` (everyone working): every lane reads it once, and so does the planner, while it is on
+ *   (a research run's too, goal 117);
  * - `lane-N`: that lane; `trial:ID`: that trial, or, if it ended before reading it, its lane's
  *   next trial, which is told so;
  * - `planner`: the planner, at its next plan;
@@ -141,12 +141,11 @@ export class OwnerMessages {
         "invalid",
         `run ${run} has no agents (the judge alone tries the kit): nothing would read this message`,
       );
+    // A research run's planner reads them too (goals 047 and 117), while it is on.
     const planner = (): string | undefined =>
-      contract.mode === "research"
-        ? "a research run plans its rounds with a fixed method; it has no planner to message"
-        : s.planner
-          ? undefined
-          : "the planner is off on this rig (Edit rig), so nothing would read this message";
+      s.planner
+        ? undefined
+        : "the planner is off on this rig (Edit rig), so nothing would read this message";
     const advisor = (role: AdvisorRole): string | undefined => {
       if (role === "teachers")
         return s.teachers

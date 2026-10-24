@@ -930,7 +930,7 @@ describe("goal runs use the queue", () => {
 });
 
 describe("research runs use the queue", () => {
-  test("the research plan's task goes to the least-covered question, whatever else waits in the queue", async () => {
+  test("the research plan's task goes to the question its gaps weigh for (with no cards, the first), whatever else waits in the queue", async () => {
     const env = makeHarnessEnv("rig-r");
     const parsed = parseContract({
       ...researchFixture,
@@ -1055,7 +1055,11 @@ describe("research runs use the queue", () => {
     const planned = tasks.find((x) => x.added_by === "planner");
     assert.ok(planned);
     assert.ok(["explore", "primary", "contradict", "consolidate"].includes(planned.family));
-    assert.match(planned.details, /^Question \d+ \(index \d+\): /);
+    // Its details name the gap it closes (goal 117), then its question.
+    assert.match(
+      planned.details,
+      /^Evidence gap to close: No answer card yet: [^\n]+\nQuestion 1 \(index 0\): /,
+    );
     // The plan's task keeps its question (goal 117), in its row and its event.
     assert.equal(planned.question, 0);
     assert.equal(

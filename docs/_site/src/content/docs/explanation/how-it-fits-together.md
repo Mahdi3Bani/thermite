@@ -63,7 +63,7 @@ The rig's agents form two groups. **The work**, the workers and the planner, run
 
 - **The ledger:** the rig's own database, and the authority on everything that happened: campaigns, runs, attempts, measurements, verdicts, champions, each run's experiment queue, the agents' field notes, each run's briefing from past research, and steering.
 - **The judge:** it builds each submitted change, measures it against the champion, gives the verdict and promotes winners.
-- **The scheduler and the planner:** they split each run into **lanes**, give each lane its next **experiment** from the run's queue, never the same one to two lanes, and start **trials**. A research run has no planner: a fixed method, the research plan, adds research tasks to the queue, and the record of each round says so (`plan: "research"`).
+- **The scheduler and the planner:** they split each run into **lanes**, give each lane its next **experiment** from the run's queue, never the same one to two lanes, and start **trials**. A research run's planner plans each round from the questions' answer cards and their gaps; with the planner off, or when its answer is refused, the gap-driven plan in code gives out the round's tasks ([Campaign modes](campaign-modes.md#research)).
 - **Workers:** one fresh agent session per trial. Each runs in the rig's **worker harness**, the program that gives the model its tools (Pi, OpenCode v2, Claude Code or Codex), and works in its own copy of the code.
 - **A small broker,** the only part that runs as root. It starts every other process as its own operating-system user, so no agent, build or measured run can read the judge's files.
 
@@ -150,7 +150,7 @@ Live's box offers all of them but a single trial, which only the REST API, MCP a
 
 **Refusals.** A message that nothing would read is refused, with why, and it is checked twice. Control checks first, the same way for every way in: Live, the **Planner** tab, MCP, the REST API and the command line. From what the rig reported, it refuses a message with no words ("Write a message first."), and one to:
 
-- the planner when it is off on **Edit rig**, or of a research run;
+- the planner when it is off on **Edit rig**;
 - an advisor role switched off on **Edit rig**, or one that the rig's supervisor reports it has not set up;
 - the auditor of a research run;
 - the lanes or the planner of a run without agents (a try, where the judge alone measures the kit).

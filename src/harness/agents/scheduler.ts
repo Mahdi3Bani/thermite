@@ -15,7 +15,6 @@ import type { LiveKind } from "../../core/live.ts";
 import { queueTarget } from "../../core/queue-target.ts";
 import {
   ANSWERED,
-  labelledQuestion,
   NO_WRITER,
   PROGRESS_STOPPED,
   questionLabel,
@@ -34,7 +33,7 @@ import {
 } from "../judge/baseline.ts";
 import { clipReason } from "../judge/reasons.ts";
 import { briefingText, pastResearchLine } from "../knowledge.ts";
-import type { Ledger } from "../ledger.ts";
+import { type Ledger, LedgerError } from "../ledger.ts";
 import { type McpCaller, NOT_HANDED } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
 import { type Experiment, inFamily, type TaskYield } from "../queue.ts";
@@ -51,6 +50,17 @@ import {
   researchReviewDue,
   waitingReview,
 } from "../research/review.ts";
+import {
+  gapOf,
+  nextGap,
+  nextQuestion,
+  type QuestionState,
+  type ResearchState,
+  researchState,
+  stateWords,
+  taskDetails,
+  took,
+} from "../research/shares.ts";
 import { Reviews } from "../reviews.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
@@ -58,6 +68,7 @@ import { violationsOf, violationsText } from "../v0.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import {
   Coordinator,
+  type Directive,
   focusOf,
   type Handout,
   PLANNER,
@@ -89,9 +100,17 @@ import {
   stopsAgents,
 } from "./provider-errors.ts";
 import { type Assignment, type EpochRecord, Registry } from "./registry.ts";
+import {
+  plannerHypotheses,
+  planResearch,
+  type ResearchPlannerInput,
+  type ResearchPlanResult,
+} from "./research-planner.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
+
+export { questionDetails } from "../research/shares.ts";
 
 /** How much of the judge's reasons a brief shows: for each of a lane's attempts, for each goal. */
 const BRIEF_REASON_CHARS = 1200;
@@ -1179,6 +1198,103 @@ export class Scheduler {
     Object.assign(this.o, p);
   }
 
+  /**
+   * How the planner is called this round (goals 068, 070, 073, 075): its model, the harness it
+   * runs in (`ask` when not Pi), the MCP servers the run's kit gives it, where its model calls are
+   * recorded, and the run's past research it may read. The hill climb's and goal campaign's plan
+   * and the research plan share it.
+   */
+  private async plannerRoute(
+    run: string,
+    contract: Contract,
+    n: number,
+  ): Promise<{
+    m: ModelConfig | undefined;
+    ask: Ask | undefined;
+    mcp: PlannerMcp | undefined;
+    usage: ((u: CallUsage) => void) | undefined;
+    past: PlannerPast | undefined;
+    pastLine: string | undefined;
+  }> {
+    // The planner's own model when control gave it one; else the workers'. A campaign's own
+    // context settings apply to it too: the lower window, and the campaign's point (goal 070).
+    const own = this.o.plannerModel?.();
+    const m = withAgentsContext(own ?? this.modelNow(), contract.agents_context);
+    // With a model of its own, the planner runs in the harness its route names (goal 073).
+    // Following the workers: OpenCode's own models are reached only through OpenCode, a route
+    // whose workers run in Codex plans in Codex too, and every other provider plans in Pi.
+    // A Claude subscription, only through Claude Code: without it the planner refuses the route.
+    // The MCP servers the run's kit gives the planner (goal 068), through the gateway: Pi's
+    // tools call it in this process; another harness gets a credential made for the call.
+    const caller: McpCaller = { run, kind: "planner", source: "planner" };
+    const mcpServers = this.o.service.mcp.given(run, "planner").map((g) => g.name);
+    const via = plannerHarness(m, own !== undefined);
+    // Each of the round's model calls, in the run's records (goal 075).
+    const usage = m
+      ? this.o.service.usage.recorder(
+          run,
+          { round: `epoch ${n}`, agent: "planner" },
+          routeOf(m, via),
+        )
+      : undefined;
+    // Each call through OpenCode, Claude Code or Codex keeps its conversation before each of its
+    // compactions in the run's research folder, as a Pi call does (goal 070).
+    const keeping = via !== "pi" ? this.cliPlannerCompaction(run, via) : undefined;
+    const withMcp = (o: Parameters<Ask>[2]): PlannerCallOptions => ({
+      ...(o?.read !== undefined ? { read: o.read } : {}),
+      ...(o?.mcp?.length
+        ? { mcp: { auth: this.o.service.mintMcpToken(caller), servers: o.mcp } }
+        : {}),
+      usage,
+      ...(keeping ? { compaction: keeping() } : {}),
+    });
+    const ask: Ask | undefined =
+      via === "opencode" && m && this.o.askOpencode
+        ? (prompt, sig, o) =>
+            (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(
+              m,
+              prompt,
+              sig,
+              withMcp(o),
+            )
+        : via === "claude-code" && m && this.o.askClaude
+          ? (prompt, sig, o) =>
+              (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(
+                m,
+                prompt,
+                sig,
+                withMcp(o),
+              )
+          : via === "codex" && m && this.o.askCodex
+            ? (prompt, sig, o) =>
+                (this.o.askCodex as NonNullable<SchedulerOptions["askCodex"]>)(
+                  m,
+                  prompt,
+                  sig,
+                  withMcp(o),
+                )
+            : undefined;
+    const mcp: PlannerMcp | undefined = mcpServers.length
+      ? {
+          servers: mcpServers,
+          tools: ask
+            ? []
+            : mcpAgentTools((await this.o.service.mcp.tools(caller)).tools, (s, t, a) =>
+                this.o.service.mcp.call(caller, s, t, a),
+              ),
+        }
+      : undefined;
+    // The run's past research, read only: Pi's planner searches it with its tool; through
+    // OpenCode, Claude Code or Codex, the planner reads the run's knowledge/ files with its own
+    // tools.
+    const knowledge = this.o.service.knowledge;
+    const pastLine = this.pastResearch(run, ask ? "files" : "tool");
+    const past: PlannerPast | undefined = pastLine
+      ? { search: (q, o) => knowledge.search(run, q, o), dir: knowledge.dir(run) }
+      : undefined;
+    return { m, ask, mcp, usage, past, pastLine };
+  }
+
   private async planEpoch(run: string, contract: Contract, n: number): Promise<void> {
     const laneCount = this.laneCount(run, contract);
     // The owner's messages to the planner and to everyone working, not read yet.
@@ -1222,82 +1338,8 @@ export class Scheduler {
     this.watch();
     let p: Awaited<ReturnType<typeof plan>>;
     try {
-      // The planner's own model when control gave it one; else the workers'. A campaign's own
-      // context settings apply to it too: the lower window, and the campaign's point (goal 070).
-      const own = this.o.plannerModel?.();
-      const m = withAgentsContext(own ?? this.modelNow(), contract.agents_context);
-      // With a model of its own, the planner runs in the harness its route names (goal 073).
-      // Following the workers: OpenCode's own models are reached only through OpenCode, a route
-      // whose workers run in Codex plans in Codex too, and every other provider plans in Pi.
-      // A Claude subscription, only through Claude Code: without it the planner refuses the route.
-      // The MCP servers the run's kit gives the planner (goal 068), through the gateway: Pi's
-      // tools call it in this process; another harness gets a credential made for the call.
-      const caller: McpCaller = { run, kind: "planner", source: "planner" };
-      const mcpServers = this.o.service.mcp.given(run, "planner").map((g) => g.name);
-      const via = plannerHarness(m, own !== undefined);
-      // Each of the round's model calls, in the run's records (goal 075).
-      const usage = m
-        ? this.o.service.usage.recorder(
-            run,
-            { round: `epoch ${n}`, agent: "planner" },
-            routeOf(m, via),
-          )
-        : undefined;
-      // Each call through OpenCode, Claude Code or Codex keeps its conversation before each of its
-      // compactions in the run's research folder, as a Pi call does (goal 070).
-      const keeping = via !== "pi" ? this.cliPlannerCompaction(run, via) : undefined;
-      const withMcp = (o: Parameters<Ask>[2]): PlannerCallOptions => ({
-        ...(o?.read !== undefined ? { read: o.read } : {}),
-        ...(o?.mcp?.length
-          ? { mcp: { auth: this.o.service.mintMcpToken(caller), servers: o.mcp } }
-          : {}),
-        usage,
-        ...(keeping ? { compaction: keeping() } : {}),
-      });
-      const ask: Ask | undefined =
-        via === "opencode" && m && this.o.askOpencode
-          ? (prompt, sig, o) =>
-              (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(
-                m,
-                prompt,
-                sig,
-                withMcp(o),
-              )
-          : via === "claude-code" && m && this.o.askClaude
-            ? (prompt, sig, o) =>
-                (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(
-                  m,
-                  prompt,
-                  sig,
-                  withMcp(o),
-                )
-            : via === "codex" && m && this.o.askCodex
-              ? (prompt, sig, o) =>
-                  (this.o.askCodex as NonNullable<SchedulerOptions["askCodex"]>)(
-                    m,
-                    prompt,
-                    sig,
-                    withMcp(o),
-                  )
-              : undefined;
-      const mcp: PlannerMcp | undefined = mcpServers.length
-        ? {
-            servers: mcpServers,
-            tools: ask
-              ? []
-              : mcpAgentTools((await this.o.service.mcp.tools(caller)).tools, (s, t, a) =>
-                  this.o.service.mcp.call(caller, s, t, a),
-                ),
-          }
-        : undefined;
-      // The run's past research, read only: Pi's planner searches it with its tool; through
-      // OpenCode, Claude Code or Codex, the planner reads the run's knowledge/ files with its own
-      // tools.
-      const knowledge = this.o.service.knowledge;
-      input.pastResearch = this.pastResearch(run, ask ? "files" : "tool");
-      const past: PlannerPast | undefined = input.pastResearch
-        ? { search: (q, o) => knowledge.search(run, q, o), dir: knowledge.dir(run) }
-        : undefined;
+      const r = await this.plannerRoute(run, contract, n);
+      input.pastResearch = r.pastLine;
       // The planner off on this rig: the fixed fallback plan, said so in the epoch's record.
       if (this.o.plannerOn && !this.o.plannerOn()) {
         const f = fallbackPlan(input);
@@ -1311,7 +1353,16 @@ export class Scheduler {
           newFamilies: f.newFamilies,
         };
       } else
-        p = await plan(input, m, ctrl.signal, ask, past, mcp, this.plannerCompaction(run), usage);
+        p = await plan(
+          input,
+          r.m,
+          ctrl.signal,
+          r.ask,
+          r.past,
+          r.mcp,
+          this.plannerCompaction(run),
+          r.usage,
+        );
     } finally {
       this.planning = undefined;
     }
@@ -1616,8 +1667,6 @@ export class Scheduler {
     o: {
       perEpoch: number;
       laneCount: number;
-      /** Research: the research plan fills the queue instead (its MANDATEs name task kinds). */
-      fill?: (() => Experiment | undefined) | undefined;
     },
   ): { x: Experiment; why: string } | undefined {
     const queue = this.o.service.queue;
@@ -1635,7 +1684,7 @@ export class Scheduler {
         .map((b) => b.experiment as string),
     );
     const directives = this.directives(run);
-    if (!o.fill) this.coordinator.ensureMandates(run, directives);
+    this.coordinator.ensureMandates(run, directives);
     let x = this.coordinator.pick(run, a.lane, {
       directives,
       window: o.laneCount,
@@ -1643,13 +1692,11 @@ export class Scheduler {
     });
     let why = x ? this.coordinator.whyPicked(run, a.lane, x, directives) : "";
     if (!x) {
-      x =
-        o.fill?.() ??
-        this.coordinator.fill(
-          run,
-          a,
-          `the queue had nothing for ${a.lane}: it goes on in its round's direction (${a.family})`,
-        );
+      x = this.coordinator.fill(
+        run,
+        a,
+        `the queue had nothing for ${a.lane}: it goes on in its round's direction (${a.family})`,
+      );
       why = "the queue had nothing for this lane, so it goes on in its round's direction";
     }
     if (!x) return undefined;
@@ -1836,9 +1883,11 @@ export class Scheduler {
     }
     let epoch = this.registry.currentEpoch(run);
     if (!epoch || epoch.ended_at) {
-      this.planResearchEpoch(run, contract, (epoch?.n ?? 0) + 1);
+      await this.planResearchEpoch(run, contract, (epoch?.n ?? 0) + 1);
       epoch = this.registry.currentEpoch(run);
-      if (!epoch) return false;
+      // Planning was cancelled (the run paused or closed meanwhile): no round started. A drain
+      // or a stop that began while the planner worked: the round is recorded, and no trial starts.
+      if (!epoch || epoch.ended_at || this.halted()) return false;
     }
     let started = false;
     let complete = true;
@@ -1851,11 +1900,7 @@ export class Scheduler {
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.laneWaitMs(run, a.lane, true) > 0) continue;
       if (this.halted()) return started;
-      const got = this.experimentFor(run, epoch, a, trials.length + 1, {
-        perEpoch: contract.lanes.trials_per_epoch,
-        laneCount: 1,
-        fill: () => this.fillResearch(run, contract, epoch.n, 1).added[0],
-      });
+      const got = this.researchTaskFor(run, contract, epoch, a, trials.length + 1);
       if (!got) continue;
       this.startResearchTrial(run, contract, epoch.n, a, clock, got);
       started = true;
@@ -2009,33 +2054,87 @@ export class Scheduler {
   ];
 
   /**
-   * A research round: research tasks are the run's experiments. The research plan (below) fills
-   * the queue when it has fewer tasks than lanes, then each lane takes the next task in order:
-   * the owner's and the advisors' as much as the plan's. One hand-out in the planner's log.
+   * A research round (goals 047 and 117): research tasks are the run's experiments, each about one
+   * question and one evidence gap. With the planner on, the model plans the round from the answer
+   * cards and their gaps (planResearch); code checks every task, and applies its queue changes and
+   * the hypotheses it promotes or retires (through the owner's command's function). A lane the
+   * model gives no task that can still be given out, and every lane when the planner is off or
+   * gave no usable plan, gets its task by the gap-driven rules (nextResearchTask). One hand-out in
+   * the planner's log.
    */
-  private planResearchEpoch(run: string, contract: ResearchContract, n: number): void {
+  private async planResearchEpoch(
+    run: string,
+    contract: ResearchContract,
+    n: number,
+  ): Promise<void> {
     for (const t of Scheduler.RESEARCH_TASKS)
       this.registry.addFamily(run, t.id, t.description, "research-plan");
     const directives = this.directives(run);
     const lanes = lanesOf(this.laneCount(run, contract));
-    // The research plan fills the queue when it has fewer tasks than lanes; then each lane takes
-    // the next task in order (AVOID task kinds skipped, MANDATE and TRY first).
-    const avoided = (x: Experiment) =>
-      directives.some(
-        (d) => d.body.kind === "avoid" && d.body.family && x.family === d.body.family,
-      );
-    const free = this.o.service.queue.queued(run).filter((x) => !avoided(x)).length;
-    const filled = this.fillResearch(run, contract, n, lanes.length - free);
+    const state = researchState(this.ledger, run, contract, { lanes: lanes.length, epoch: n });
+    const live = this.o.service.live;
+    const research = this.o.research as Research;
+    const plannerOn = !this.o.plannerOn || this.o.plannerOn();
+    // The owner's messages to the planner and to everyone working, not read yet.
+    const owner = plannerOn ? this.o.service.messages.waitingForPlanner(run) : [];
+    let p: ResearchPlanResult | undefined;
+    if (plannerOn) {
+      live.append({
+        source: "planner",
+        kind: "status",
+        text: `planning round ${n} (${lanes.length} lane${lanes.length === 1 ? "" : "s"}) from the answer cards`,
+        run,
+      });
+      const input: ResearchPlannerInput = {
+        run,
+        epoch: n,
+        laneCount: lanes.length,
+        title: contract.title,
+        topic: contract.topic,
+        state,
+        queue: this.o.service.queue.brief(run),
+        hypotheses: plannerHypotheses(this.ledger, run),
+        directives,
+        ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
+        campaignBrief: briefData(contract),
+        notes: notesData(this.o.service.journal.newest(run, 20)),
+        briefing: this.ledger.briefing(run),
+      };
+      const ctrl = new AbortController();
+      this.planning = { run, ctrl };
+      this.watch();
+      try {
+        const r = await this.plannerRoute(run, contract, n);
+        input.pastResearch = r.pastLine;
+        p = await planResearch(
+          input,
+          r.m,
+          ctrl.signal,
+          r.ask,
+          r.past,
+          r.mcp,
+          this.plannerCompaction(run),
+          r.usage,
+        );
+      } finally {
+        this.planning = undefined;
+      }
+      // Paused or closed while planning: no round starts, and the owner's messages wait. The notes
+      // the model already wrote are kept.
+      if (ctrl.signal.aborted) {
+        live.append({ source: "planner", kind: "status", text: "planning cancelled", run });
+        this.plannerNotes(run, p.journal);
+        return;
+      }
+    }
     const given = new Set<string>();
     const handout: Handout[] = [];
     const assignments: Assignment[] = [];
-    for (const lane of lanes) {
-      const x =
-        this.coordinator.pick(run, lane, { directives, window: 1, exclude: given }) ??
-        this.fillResearch(run, contract, n, 1).added[0];
-      if (!x) continue;
+    const skipped: string[] = [];
+    const changed: string[] = [];
+    let refs = new Map<string, string>();
+    const give = (lane: string, x: Experiment, why: string) => {
       given.add(x.id);
-      const why = this.coordinator.whyPicked(run, lane, x, directives);
       handout.push({ lane, experiment: x.id, why });
       assignments.push({
         lane,
@@ -2045,79 +2144,129 @@ export class Scheduler {
         experiment: x.id,
         why,
       });
+    };
+    const plan = p?.plan;
+    if (plan) {
+      const r = this.coordinator.apply(run, plan.queue);
+      skipped.push(...r.skipped);
+      refs = r.refs;
+      // The hypotheses it promoted or retired, through the function the owner's command uses: a
+      // change the records no longer allow (the owner changed it meanwhile) is skipped and said.
+      for (const [list, status] of [
+        [plan.promote, "promoted"],
+        [plan.retire, "retired"],
+      ] as const)
+        for (const x of list)
+          try {
+            const done = research.hypothesisStatus(
+              run,
+              { id: x.id, status, reason: x.why },
+              PLANNER,
+            );
+            if (done.changed) changed.push(`${status} ${x.id}`);
+          } catch (err) {
+            if (!(err instanceof LedgerError)) throw err;
+            skipped.push(`${status === "promoted" ? "promote" : "retire"} ${x.id}: ${err.message}`);
+          }
+      // Read only when the model's plan was used; the read names this round.
+      if (owner.length)
+        this.o.service.messages.read(
+          owner.map((m) => m.id),
+          "planner",
+          undefined,
+          n,
+        );
+      for (const h of r.handout) {
+        const x = this.o.service.queue.get(h.experiment);
+        if (!x) continue;
+        if (typeof x.question === "number") took(state, x.question);
+        give(h.lane, x, h.why);
+      }
     }
+    // Each lane with no task yet: the gap-driven rules.
+    let stalled = false;
+    for (const lane of lanes) {
+      if (handout.some((h) => h.lane === lane)) continue;
+      const got = this.nextResearchTask(run, contract, n, lane, state, given, directives);
+      if (!got) continue;
+      stalled ||= got.stalled;
+      give(lane, got.x, got.why);
+    }
+    const where = state.questions.map(stateWords).join("; ");
+    const deeper = stalled ? "; novelty fell, so primary sources and contradictions first" : "";
+    const notes = plan
+      ? (plan.notes ?? "the planner's research plan, from the answer cards")
+      : plannerOn
+        ? `the gap-driven plan${deeper}: ${where}`
+        : `research plan, gap-driven${deeper}: ${where}`;
+    const why = p?.causes?.length
+      ? p.causes
+          .map((c) => `try ${c.try}: ${causeWords[c.cause]} (${c.detail.slice(0, 200)})`)
+          .join("; ")
+      : "";
+    live.append({
+      source: "planner",
+      kind: "text",
+      text: [
+        `round ${n}: ${
+          plan
+            ? `planned by the model${(p?.tries ?? 1) > 1 ? ` (try ${p?.tries})` : ""}`
+            : plannerOn
+              ? "set by the gap-driven plan (the model gave no usable plan)"
+              : "set by the gap-driven plan (the planner is off on this rig (Edit rig))"
+        }`,
+        ...assignments.map((a) => {
+          const x = this.o.service.queue.get(a.experiment ?? "");
+          return `${a.lane}: ${a.family}, ${x?.title ?? a.focus}`;
+        }),
+        ...(changed.length ? [`hypotheses: ${changed.join("; ")}`] : []),
+        ...(why ? [`no usable plan: ${why}`] : []),
+        ...(skipped.length ? [`skipped: ${skipped.slice(0, 3).join("; ")}`] : []),
+      ].join("\n"),
+      run,
+    });
     this.registry.startEpoch({
       run,
       n,
-      source: "fallback",
-      tries: 0,
-      valid: false,
-      rawViolations: [],
+      source: plan ? "planner" : "fallback",
+      tries: p?.tries ?? 0,
+      valid: plan !== undefined,
+      rawViolations: p?.rawViolations ?? [],
+      causes: p?.causes,
       assignments: attribute(assignments, directives),
       directives: directives.map((d) => d.id),
-      notes: filled.stalled
-        ? "research plan (deterministic in v1); novelty fell, so primary sources and contradictions first"
-        : "research plan (deterministic in v1)",
-      plan: "research",
+      notes,
+      // The code plan by choice (the planner is off): a research round, not a fallback.
+      ...(plannerOn ? {} : { plan: "research" as const }),
       by: this.o.owner,
     });
     this.coordinator.handout(
       run,
       n,
       handout,
-      "research plan: lanes take the queued research tasks in order",
+      [
+        plan
+          ? (plan.notes ?? "the planner's research plan, from the answer cards")
+          : `${plannerOn ? "the model gave no usable plan: " : "research plan, "}gap-driven: each lane takes the owner's tasks first, else the question its gaps weigh for (its queued task, or a new one)`,
+        ...(changed.length ? [`hypotheses: ${changed.join("; ")}`] : []),
+        ...(skipped.length ? [`skipped: ${skipped.join("; ")}`] : []),
+      ].join(". "),
+    );
+    // The planner's field notes, also when the rest of its answer was refused; a note about a task
+    // it added names the task's id, not the ref it used.
+    this.plannerNotes(
+      run,
+      p?.journal?.map((j) =>
+        j.about?.type === "experiment" && refs.has(j.about.id)
+          ? { ...j, about: { type: "experiment", id: refs.get(j.about.id) as string } }
+          : j,
+      ),
     );
   }
 
-  /**
-   * The research plan's tasks for the queue: least-covered questions first, task kinds rotating
-   * by round. Directives steer it by structure only (redirects in research mode): MANDATE and TRY
-   * name task kinds to put first, AVOID removes a task kind, and a numeric TRY or MANDATE value
-   * puts that question first. Each task is an experiment: its family is the task kind and its
-   * details hold the question. Directive text never reaches a worker's brief.
-   */
-  private fillResearch(
-    run: string,
-    contract: ResearchContract,
-    n: number,
-    count: number,
-  ): { added: Experiment[]; stalled: boolean } {
-    const research = this.o.research as Research;
-    const directives = this.directives(run);
-    const avoid = new Set(
-      directives.filter((d) => d.body.kind === "avoid" && d.body.family).map((d) => d.body.family),
-    );
-    const rank = (id: string) =>
-      directives.some((d) => d.body.kind === "mandate" && d.body.family === id)
-        ? 0
-        : directives.some((d) => d.body.kind === "try" && d.body.family === id)
-          ? 1
-          : 2;
-    // When novelty falls (an hour with no new source and no newly verified claim), lanes go
-    // deeper instead of wider: primary sources and contradictions first. Otherwise task kinds
-    // rotate by epoch. Directives then reorder or remove task kinds.
-    const stats = research.stats(run);
-    const stalled =
-      research.clock(run).elapsed_ms > 3_600_000 &&
-      stats.last_hour.sources === 0 &&
-      stats.last_hour.verified === 0;
-    const deep = (id: string) => Number(!["primary", "contradict"].includes(id));
-    const rotated = stalled
-      ? [...Scheduler.RESEARCH_TASKS].sort((x, y) => deep(x.id) - deep(y.id))
-      : Scheduler.RESEARCH_TASKS.map(
-          (_, k) =>
-            Scheduler.RESEARCH_TASKS[(n + k - 1) % Scheduler.RESEARCH_TASKS.length] as {
-              id: string;
-              description: string;
-            },
-        );
-    const tasks = rotated
-      .filter((t) => !avoid.has(t.id))
-      .map((t, k) => ({ t, k }))
-      .sort((a, b) => rank(a.t.id) - rank(b.t.id) || a.k - b.k)
-      .map((x) => x.t);
-    if (!tasks.length) tasks.push(rotated[0] as { id: string; description: string });
-    const firstQuestions = directives
+  /** The questions a TRY or MANDATE rule with a question's index puts first. */
+  private firstQuestions(directives: Directive[], contract: ResearchContract): number[] {
+    return directives
       .filter(
         (d) =>
           (d.body.kind === "mandate" || d.body.kind === "try") &&
@@ -2127,60 +2276,195 @@ export class Scheduler {
           d.body.value < contract.questions.length,
       )
       .map((d) => Number(d.body.value));
-    const coverage = stats.questions
-      .map((q, i) => ({ i, verified: q.verified }))
-      .sort(
-        (x, y) =>
-          Number(!firstQuestions.includes(x.i)) - Number(!firstQuestions.includes(y.i)) ||
-          x.verified - y.verified ||
-          x.i - y.i,
-      );
-    // The plan's own tasks already waiting or under way: each new task goes to the least-covered
-    // question with the fewest of them, so a fill does not repeat them, and other tasks in the
-    // queue (the teachers', the owner's) do not push the least-covered questions out of turn.
-    // Task kinds go on in turn after the plan's waiting tasks.
-    const queue = this.o.service.queue;
-    const waiting = [...queue.queued(run), ...queue.assigned(run)].filter(
-      (x) => x.added_by === PLANNER,
-    );
-    const busy = new Map<number, number>();
-    for (const x of waiting) {
-      // Its question (goal 117); a task the plan queued before tasks kept one, by its title:
-      // "Question 1 (index 0): …", or before that, "Question 0: …".
-      const i =
-        x.question ??
-        labelledQuestion(x.title) ??
-        Number(/^Question (\d+):/.exec(x.title)?.[1] ?? Number.NaN);
-      if (Number.isInteger(i)) busy.set(i, (busy.get(i) ?? 0) + 1);
-    }
-    const added: Experiment[] = [];
-    for (let k = 0; k < count; k++) {
-      const q = coverage.reduce((best, c) =>
-        (busy.get(c.i) ?? 0) < (busy.get(best.i) ?? 0) ? c : best,
-      ) as { i: number };
-      busy.set(q.i, (busy.get(q.i) ?? 0) + 1);
-      const task = tasks[(waiting.length + k) % tasks.length] as {
-        id: string;
-        description: string;
+  }
+
+  /**
+   * A lane's next research task by the gap-driven rules (goal 117). First the owner's queued tasks,
+   * in queue order, as before (AVOID task kinds skipped, MANDATE and TRY kinds first), and any
+   * other that names no question. Then the question the gaps weigh for (nextQuestion: the floor,
+   * then the weighted shares under the ceiling; never a question decided or saturated, unless
+   * every open one is): the first task queued for it, whoever added it (a teacher's, a lane's idea
+   * once queued, the plan's), else a new task of the gap-driven plan for it. Each task given
+   * counts in `state`.
+   */
+  private nextResearchTask(
+    run: string,
+    contract: ResearchContract,
+    n: number,
+    lane: string,
+    state: ResearchState,
+    exclude: ReadonlySet<string>,
+    directives: Directive[],
+  ): { x: Experiment; why: string; stalled: boolean } | undefined {
+    const queued = this.o.service.queue.queued(run);
+    const only = (keep: (x: Experiment) => boolean) =>
+      this.coordinator.pick(run, lane, {
+        directives,
+        window: 1,
+        exclude: new Set([...exclude, ...queued.filter((x) => !keep(x)).map((x) => x.id)]),
+      });
+    const unbalanced = only((x) => x.added_by === "owner" || typeof x.question !== "number");
+    if (unbalanced) {
+      if (typeof unbalanced.question === "number") took(state, unbalanced.question);
+      return {
+        x: unbalanced,
+        why: this.coordinator.whyPicked(run, lane, unbalanced, directives),
+        stalled: false,
       };
-      added.push(
-        queue.add(
-          run,
-          {
-            title: `${questionLabel(q.i)}: ${task.description}`,
-            details: questionDetails(q.i, contract.questions[q.i] ?? ""),
-            family: task.id,
-            question: q.i,
-            why: stalled
-              ? "the research plan: novelty fell, so primary sources and contradictions first"
-              : "the research plan: the least-covered questions first, task kinds in turn",
-            by: PLANNER,
-          },
-          PLANNER,
-        ),
-      );
     }
-    return { added, stalled };
+    const next = nextQuestion(state, this.firstQuestions(directives, contract));
+    if (!next) return undefined;
+    const q = next.question.index;
+    const waiting = only((x) => x.question === q);
+    if (waiting) {
+      took(state, q);
+      return {
+        x: waiting,
+        why: `the gap-driven plan: ${next.why}; this task was queued for it`,
+        stalled: false,
+      };
+    }
+    const added = this.fillResearch(
+      run,
+      contract,
+      n,
+      next.question,
+      `the gap-driven plan: ${next.why}`,
+      directives,
+    );
+    took(state, q);
+    return { x: added.x, why: added.x.why, stalled: added.stalled };
+  }
+
+  /**
+   * The task a lane's research trial takes (goal 117): the round's own for its first trial, while
+   * it can still be given out; otherwise the next by the gap-driven rules (one hand-out of its
+   * own). Tasks other lanes were given this round, and have not started yet, are left to them.
+   */
+  private researchTaskFor(
+    run: string,
+    contract: ResearchContract,
+    epoch: EpochRecord,
+    a: Assignment,
+    k: number,
+  ): { x: Experiment; why: string } | undefined {
+    const queue = this.o.service.queue;
+    const mine = k === 1 && a.experiment ? queue.get(a.experiment) : undefined;
+    if (mine && mine.run === run && (mine.state === "queued" || mine.state === "proposed"))
+      return { x: mine, why: a.why ?? "the round's hand-out" };
+    const reserved = epoch.assignments
+      .filter(
+        (b) =>
+          b.lane !== a.lane &&
+          b.experiment &&
+          this.registry.trials(run, b.lane, epoch.n).length === 0,
+      )
+      .map((b) => b.experiment as string);
+    const state = researchState(this.ledger, run, contract, {
+      lanes: this.laneCount(run, contract),
+      epoch: epoch.n,
+      reserved,
+    });
+    const got = this.nextResearchTask(
+      run,
+      contract,
+      epoch.n,
+      a.lane,
+      state,
+      new Set(reserved),
+      this.directives(run),
+    );
+    if (!got) return undefined;
+    this.coordinator.handout(
+      run,
+      epoch.n,
+      [{ lane: a.lane, experiment: got.x.id, why: got.why }],
+      k === 1
+        ? `${a.lane}'s first trial of round ${epoch.n}: the task the round gave it can no longer be given out`
+        : `${a.lane}'s trial ${k} of ${contract.lanes.trials_per_epoch} in round ${epoch.n}`,
+    );
+    return { x: got.x, why: got.why };
+  }
+
+  /**
+   * Whether a research run's novelty fell: past its first hour, an hour with no new source and no
+   * newly verified claim. Then the plan's tasks go deeper instead of wider.
+   */
+  private noveltyFell(run: string): boolean {
+    const research = this.o.research as Research;
+    if (research.clock(run).elapsed_ms <= 3_600_000) return false;
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    const n = (sql: string) =>
+      Number((this.ledger.db.prepare(sql).get(run, hourAgo) as { n: number }).n);
+    return (
+      n("select count(*) as n from source where run = ? and fetched_at > ?") === 0 &&
+      n("select count(*) as n from claim where run = ? and verified = 1 and created_at > ?") === 0
+    );
+  }
+
+  /**
+   * A new task of the gap-driven plan for one question (goal 117): its title names the question,
+   * its details the gap it closes (nextGap: the first of its card's open evidence gaps that no
+   * task waiting for it names), and its task kind comes in turn. When novelty fell, primary
+   * sources and contradictions come first. Directives steer it by structure only: MANDATE and TRY
+   * name task kinds to put first, AVOID removes a task kind. Directive text never reaches a
+   * worker's brief.
+   */
+  private fillResearch(
+    run: string,
+    contract: ResearchContract,
+    n: number,
+    q: QuestionState,
+    why: string,
+    directives: Directive[] = this.directives(run),
+  ): { x: Experiment; stalled: boolean } {
+    const question = q.index;
+    const avoid = new Set(
+      directives.filter((d) => d.body.kind === "avoid" && d.body.family).map((d) => d.body.family),
+    );
+    const rank = (id: string) =>
+      directives.some((d) => d.body.kind === "mandate" && d.body.family === id)
+        ? 0
+        : directives.some((d) => d.body.kind === "try" && d.body.family === id)
+          ? 1
+          : 2;
+    const stalled = this.noveltyFell(run);
+    const deep = (id: string) => Number(!["primary", "contradict"].includes(id));
+    const all = Scheduler.RESEARCH_TASKS;
+    const rotated = stalled
+      ? [...all].sort((x, y) => deep(x.id) - deep(y.id))
+      : all.map((_, k) => all[(n + k - 1) % all.length] as { id: string; description: string });
+    const kinds = rotated
+      .filter((t) => !avoid.has(t.id))
+      .map((t, k) => ({ t, k }))
+      .sort((a, b) => rank(a.t.id) - rank(b.t.id) || a.k - b.k)
+      .map((x) => x.t);
+    if (!kinds.length) kinds.push(rotated[0] as { id: string; description: string });
+    const queue = this.o.service.queue;
+    const waiting = [...queue.queued(run), ...queue.assigned(run)];
+    // Task kinds go on in turn after the plan's own waiting tasks.
+    const own = waiting.filter((x) => x.added_by === PLANNER).length;
+    const kind = kinds[own % kinds.length] as { id: string; description: string };
+    const gap = nextGap(
+      q,
+      waiting.filter((x) => x.question === question).flatMap((x) => gapOf(x.details) ?? []),
+    );
+    const x = queue.add(
+      run,
+      {
+        title: `${questionLabel(question)}: ${kind.description}`,
+        details: taskDetails(question, contract.questions[question] ?? "", gap),
+        family: kind.id,
+        question,
+        why: (stalled
+          ? `${why}; novelty fell, so primary sources and contradictions first`
+          : why
+        ).slice(0, 2000),
+        by: PLANNER,
+      },
+      PLANNER,
+    );
+    return { x, stalled };
   }
 
   private startResearchTrial(
@@ -2772,18 +3056,6 @@ export class Scheduler {
       .filter((l) => l !== "")
       .join("\n");
   }
-}
-
-/**
- * A research task's details: its question. A question has no length limit (goal 078); an
- * experiment's details hold at most EXPERIMENT_DETAILS characters, so a longer one is cut there
- * and says where the whole question is: in the trial brief's Questions.
- */
-export function questionDetails(i: number, q: string): string {
-  const whole = `${questionLabel(i)}: ${q}`;
-  if (whole.length <= EXPERIMENT_DETAILS) return whole;
-  const note = ` … (cut: the whole question is under Questions in your brief)`;
-  return `${whole.slice(0, EXPERIMENT_DETAILS - note.length)}${note}`;
 }
 
 /**
