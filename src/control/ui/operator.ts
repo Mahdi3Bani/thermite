@@ -627,7 +627,7 @@ export function needs(
                     back,
                   }),
                   label: "Accept",
-                  does: "The run starts no new trial. Once its running trials end, it writes its final report, with the review panel's answers and verdicts, and closes as completed.",
+                  does: "The run starts no new trial, and the rig's final writer writes its research paper. Once the paper is in and its running trials end, it writes its final report, the paper first and then the review panel's answers and verdicts, and closes as completed.",
                 },
                 {
                   button: f.cmd({
@@ -1246,6 +1246,8 @@ export function outcome(r: RunView, a: AttemptView, u?: RigView): { word: string
   if (["queued", "building", "screening", "confirming", "verifying"].includes(a.lifecycle))
     return { word: "Judging", tone: "info" };
   if (a.lifecycle === "duplicate") return { word: "Duplicate", tone: "" };
+  // Its run closed before the judge got to it (goal 087).
+  if (a.lifecycle === "not_judged") return { word: "Not judged", tone: "" };
   const v = a.verdict ?? "";
   if (v === "win_confirmed" || v === "goal_progress") return { word: "Won", tone: "ok" };
   if (v === "win_screened" || v === "goal_screened") return { word: "Judging", tone: "info" };

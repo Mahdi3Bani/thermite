@@ -1,4 +1,5 @@
 import { asToken } from "../../core/directions.ts";
+import { RESEARCH_REVIEW } from "../../core/research-check.ts";
 import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../harness/judge/held-out.ts";
 import type { AttemptView, JudgeJob, RigView, RunView, StoredEvent } from "../views.ts";
 
@@ -576,15 +577,26 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       );
     }
     case "review_requested":
-      return s(`The review panel was asked to judge the goal "${String(b.goal)}".`, "", {
-        run: String(e.subject),
-      });
+      return s(
+        b.goal === RESEARCH_REVIEW
+          ? `The review panel was asked whether the research questions are answered (review ${String(b.review)}).`
+          : `The review panel was asked to judge the goal "${String(b.goal)}".`,
+        "",
+        { run: String(e.subject) },
+      );
     case "review_panel":
       return s(`The review panel ${String(b.result).replace(/_/g, " ")}.`, "", {
         run: String(e.subject),
       });
     case "review_decided":
-      return s(`You ${String(b.decision)} a review.`, "", { run: String(e.subject) });
+      // Hands-off (goal 079): the harness took the review panel's pass, not the owner.
+      return s(
+        String(e.actor).includes("hands-off")
+          ? `The review panel's pass was taken hands-off: this run does not ask you about reviews.`
+          : `You ${String(b.decision)} ${b.goal === RESEARCH_REVIEW ? "the review panel's answers to the research questions" : "a review"}.`,
+        "",
+        { run: String(e.subject) },
+      );
     // A research run's paper (goal 112).
     case "research_paper_requested":
       return s("The final writer was asked to write the research paper.", "", {
