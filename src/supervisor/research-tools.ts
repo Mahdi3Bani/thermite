@@ -7,7 +7,7 @@ import {
   RUN_RESEARCH_TOOLS,
   SOURCE_CHARS_MAX,
 } from "../harness/run-research.ts";
-import { toolNumber } from "./code-tools.ts";
+import { toolNumber, toolText } from "./code-tools.ts";
 
 /**
  * The teachers' read-only tools for a run's own research (goal 098): its sources, claims,
@@ -145,7 +145,7 @@ export function registerResearchTools(server: McpServer, research: AdvisorResear
         try {
           const out = await runResearchTool(research, name, a);
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(out).slice(0, 120_000) }],
+            content: [{ type: "text" as const, text: toolText(out) }],
           };
         } catch (err) {
           return {

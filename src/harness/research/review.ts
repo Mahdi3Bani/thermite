@@ -489,7 +489,7 @@ function sourceDomains(ledger: Ledger, run: string): Map<string, string> {
   );
 }
 
-interface ClaimRow {
+export interface ClaimRow {
   id: string;
   question: number | null;
   text: string;
@@ -499,7 +499,7 @@ interface ClaimRow {
 }
 
 /** A run's verified claims, by id, with their sources' registrable domains. */
-function verifiedClaims(ledger: Ledger, run: string, min: number): Map<string, ClaimRow> {
+export function verifiedClaims(ledger: Ledger, run: string, min: number): Map<string, ClaimRow> {
   const domains = sourceDomains(ledger, run);
   return new Map(
     (

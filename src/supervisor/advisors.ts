@@ -83,7 +83,13 @@ import {
   readOpencodeAnswer,
 } from "./advisor-cli.ts";
 import { serveAdvisorModel } from "./advisor-proxy.ts";
-import { type AdvisorCode, CODE_TOOL_NAMES, CODE_TOOLS, runCodeTool } from "./code-tools.ts";
+import {
+  type AdvisorCode,
+  CODE_TOOL_NAMES,
+  CODE_TOOLS,
+  runCodeTool,
+  toolText,
+} from "./code-tools.ts";
 import { type AdvisorPaper, PAPER_TOOL_NAMES, PAPER_TOOLS, runPaperTool } from "./paper-tools.ts";
 import { type AdvisorServers, type PastSearch, serveAdvisorTools } from "./past-mcp.ts";
 import {
@@ -834,7 +840,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     };
     for (const name of CODE_TOOL_NAMES)
       add(name, CODE_TOOLS[name], params[name], async (p) =>
-        JSON.stringify(await runCodeTool(code, name, p)).slice(0, 120_000),
+        toolText(await runCodeTool(code, name, p)),
       );
   }
   // The run's own research, read only (goal 098), returned whole: the harness cuts each answer.
@@ -876,7 +882,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     };
     for (const name of RESEARCH_TOOL_NAMES)
       add(name, RESEARCH_TOOLS[name], params[name], async (p) =>
-        JSON.stringify(await runResearchTool(research, name, p)).slice(0, 120_000),
+        toolText(await runResearchTool(research, name, p)),
       );
   }
   // The final writer's checks of its paper (goal 112): nothing they do is recorded.
@@ -890,7 +896,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     };
     for (const name of PAPER_TOOL_NAMES)
       add(name, PAPER_TOOLS[name], params[name], async (p) =>
-        JSON.stringify(await runPaperTool(paper, name, p)).slice(0, 120_000),
+        toolText(await runPaperTool(paper, name, p)),
       );
   }
   // The MCP tools the run's kit gives the advisors, each called by the supervisor (goal 068).
@@ -2200,8 +2206,9 @@ export function advisorPrompt(
   } else json = JSON.stringify(data) ?? "";
   const byWindow = fit !== undefined && fit < max;
   const limit = Math.max(byWindow ? fit : max, keep);
-  if (!byWindow || json.length <= limit) return `${head}\n${json.slice(0, limit)}`;
-  return `${head}\n[Cut to fit the window: ${limit.toLocaleString("en-US")} of ${json.length.toLocaleString("en-US")} characters.]\n${json.slice(0, limit)}`;
+  if (json.length <= limit) return `${head}\n${json}`;
+  // A cut is always said (goal 117): the end of a package lost without a word misled reviewers.
+  return `${head}\n[Cut to fit ${byWindow ? "the window" : "the prompt's limit"}: ${limit.toLocaleString("en-US")} of ${json.length.toLocaleString("en-US")} characters.]\n${json.slice(0, limit)}`;
 }
 
 export async function auditOne(input: {
@@ -2526,29 +2533,39 @@ decisions give every question an end, or research stopped adding and some questi
 (the package's end says which, and why). Write the run's research paper: one whole paper in
 Simplified Technical English (STE), descriptive mode, in Markdown.
 
-You do not judge. The package gives the review panel's decisions on each question and
-hypothesis, the answers behind them, which passed the harness's checks, and any dissent; it also
-gives the run's figures and the rules the paper is checked against. For a question that stayed
-open (stayed_open), write what the evidence shows so far and what is missing.
+You do not judge. Write the paper from the answer cards. For each question the package gives its
+card (the current answer, its certainty and its gaps), the claims the card cites with their
+quotes, the review panel's decision with the answers behind it that passed the harness's checks,
+any dissent, and what only a measurement could settle (next_experiments). It gives the hypotheses
+that need a verdict, with the review panel's verdicts; the hypotheses the run proposed, which the
+review panel did not judge (proposed); the run's figures; and the rules the paper is checked
+against. For a question that stayed open (stayed_open), write what the evidence shows so far and
+what is missing. When the package says it was shortened, read what it left out with the tools.
 Write from the run's verified claims only. Read them, and the run's findings and sources, with the
 tools: ${RUN_RESEARCH_TOOLS.list}, ${RUN_RESEARCH_TOOLS.source}, ${RUN_RESEARCH_TOOLS.file} and
 ${RUN_RESEARCH_TOOLS.search}.
 
 Cite a claim as [c-ID] in each sentence that states a fact. Every number in a paragraph must be
 in the claims that paragraph cites, or be one of the package's figures. Do not write a References
-part: code adds it from the claims that you cite.
+part or a Review panel part: code adds them (the claims that you cite, and the review panel's
+decisions with each dissent).
 
 The paper has these parts, in this order: the title (# Title), then ${PAPER_PARTS.map((p) => `## ${p}`).join(", ")}.
 - Questions: each question of the run, as a numbered list.
 - Method: how the sources were found, archived and checked, with the figures.
-- Results: one "### Question N" section for each question, N from 1, with its answer and the
-  claims that are its evidence.
-- Hypotheses: one "### Hypothesis <id>" section for each hypothesis, with a line
-  "Verdict: supported", "Verdict: refuted" or "Verdict: undecided" (a verdict that the review
-  panel gave), and its evidence.
+- Results: one "### Question N" section for each question, N from 1. Its first line is the
+  question's certainty_line from the package, such as "Certainty: moderate": the review panel's
+  decision. Then the answer from the card, with the claims that are its evidence. Cite only that
+  question's evidence: the claims of its card, or other verified claims of that question. When a
+  reviewer dissents, say so, with the reason.
+- Hypotheses: a table of verdicts, "| Hypothesis | Verdict | Evidence |", with one row for each
+  hypothesis in the package's hypotheses: its id in the first cell, and supported, refuted or
+  undecided (the verdict that the review panel gave) in the Verdict cell. Then "### Proposed by
+  the run": the hypotheses in proposed, as a list, with no verdict.
 - Limits of the evidence: claims from a single domain, open gaps, and draft findings that stay
   unverified.
-- Next experiments: what to try next, and why.
+- Next experiments: what only a measurement could settle (each question's next_experiments), then
+  what else to try, each with why.
 
 Give the next experiments also as items in experiments: each with its title, why, details, and
 the ids of the supported findings or verified claims that it rests on. Code keeps each item as an
