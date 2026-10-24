@@ -279,10 +279,17 @@ describe("held-out failures, named safely (goal 082)", () => {
     }
     const agentRun = JSON.parse(
       await env.mcp("get_run", { rig: "rig-a", run: "js-1" }, AGENT_TOKEN),
-    ) as {
-      attempts: { id: string; held_out: unknown }[];
-      timeline: { kind: string; body: unknown }[];
-    };
+    ) as { attempts: { id: string; held_out: unknown }[] };
+    // The whole timeline, one list (goal 128: get_run gives each list's newest entries).
+    const timeline = (
+      JSON.parse(
+        await env.mcp(
+          "get_run",
+          { rig: "rig-a", run: "js-1", list: "timeline", limit: 500 },
+          AGENT_TOKEN,
+        ),
+      ) as { entries: { kind: string; body: unknown }[] }
+    ).entries;
     assert.deepEqual(
       { ...(agentRun.attempts.find((a) => a.id === slow)?.held_out as object), at: "" },
       {
@@ -293,7 +300,7 @@ describe("held-out failures, named safely (goal 082)", () => {
       },
     );
     assert.deepEqual(
-      agentRun.timeline.filter((e) => e.kind === "held_out_checked").map((e) => e.body),
+      timeline.filter((e) => e.kind === "held_out_checked").map((e) => e.body),
       [
         { run: "js-1", pass: false, kinds: ["crashed"], words: "a held-out check crashed" },
         {

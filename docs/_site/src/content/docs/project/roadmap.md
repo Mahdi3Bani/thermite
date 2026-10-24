@@ -62,7 +62,6 @@ Still to come in v0.1.0:
 
 - the first published images and their release bundle, which the release's tag publishes, each image checked before it gets its version's tag ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal), [goal 011](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/011-release-bundle.goal));
 - the last checks of the exports and of the research run's end, above;
-- `get_run` answers of a size an agent can read for a run that worked for a day or more, with each long list cut to its newest entries and a count of the rest ([goal 128](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/128-get-run-bounded.goal));
 - a **Reviews** tab for a research run, with every review, each reviewer's answers and comments, and the outcome ([goal 116](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/116-reviews-tab.goal));
 - the release itself: the checks on a clean machine, the changelog, the tag and the GitHub Release ([goal 026](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/026-ship-v0.1.0.goal)).
 

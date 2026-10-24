@@ -9,6 +9,7 @@ import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
+import { runRoutes } from "./api/runs.ts";
 import {
   CampaignContextBody,
   campaignContextAnswer,
@@ -1525,35 +1526,15 @@ export function createControlApi(
     return v ? c.json(v) : c.json({ error: "not found" }, 404);
   });
 
-  // A past run's untried experiments as a new run's first queue (goal 067): what Start a run
-  // copies, at most 500, with the words and authors control's records hold, as MCP takes them
-  // for the new run's campaign (`campaign`; the past run's own when not given).
-  app.get("/v1/rigs/:rig/runs/:run/untried", admin, (c) => {
-    const rig = c.req.param("rig");
-    const run = c.req.param("run");
-    const v = rigView(store, rig, { staleAfterMs: opts.staleAfterMs });
-    if (!v) return c.json({ error: `no rig ${rig}` }, 404);
-    const r = v.runs.find((x) => x.id === run);
-    if (!r) return c.json({ error: `no run ${run} on ${rig}` }, 404);
-    const campaign = c.req.query("campaign") || r.campaign || "";
-    return c.json({
-      rig,
-      run,
-      campaign: r.campaign,
-      queue: copiedFromRecords(store, campaign, untriedOf(r).slice(0, 500)),
-    });
-  });
-
-  // A run's directions (goal 066), each with its counts and the rules naming it, and the rules in
-  // force: what a rule may name, and what a picker of directions lists.
-  app.get("/v1/rigs/:rig/runs/:run/directions", admin, (c) => {
-    const rig = c.req.param("rig");
-    const run = c.req.param("run");
-    const v = rigView(store, rig, { staleAfterMs: opts.staleAfterMs });
-    if (!v) return c.json({ error: `no rig ${rig}` }, 404);
-    const r = v.runs.find((x) => x.id === run);
-    if (!r) return c.json({ error: `no run ${run} on ${rig}` }, 404);
-    return c.json({ rig, run, mode: r.mode, directions: r.directions, rules: r.rules });
+  // One run: the run itself, of a size an agent can read, its untried experiments and its
+  // directions (src/control/api/runs.ts).
+  runRoutes(app, admin, {
+    find: (rig, run) => {
+      const v = rigView(store, rig, viewOpts);
+      const r = v?.runs.find((x) => x.id === run);
+      return r ? { run: r } : { error: v ? `no run ${run} on ${rig}` : `no rig ${rig}` };
+    },
+    untried: (r, campaign) => copiedFromRecords(store, campaign, untriedOf(r).slice(0, 500)),
   });
 
   // Test pods on a GPU cloud (the owner's token; MCP gives operators the same).
