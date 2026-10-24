@@ -1,0 +1,44 @@
+---
+id: "128"
+title: "get_run stays a size an agent can read, for a run of any length"
+status: VERIFIED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 128 · get_run stays a size an agent can read, for a run of any length
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+MCP's `get_run` gives some of a run's lists whole, and REST has no route for one run: `GET /v1/rigs/<rig>/view` gives every run of a rig whole. For a run that worked for a day or more, the answer is too large to read: on 2026-10-24, `get_run` of a 35-hour research run gave 3.2 million characters with `attempts: 1`. The journal was 1.5 million, the timeline 0.6 million, the queue 0.4 million and the hypotheses 0.2 million. An agent that operates Thermite through MCP cannot use the answer, and the owner's assistant could not read the run's questions from it.
+
+Each list in the answer gets a limit, as `attempts` has one: the newest entries first, with how many there are and how many it left out, in words, as every other cut in Thermite says (goal 117). The limits are arguments with defaults, so an agent can ask for more of one list, or for one list alone, and page through it. Nothing is cut without a word.
+
+## Why
+
+`get_run` is the first tool an agent calls about a run. A research run that works for 8 to 16 hours, the kind v0.1.0 ships, already makes it unusable.
+
+## Done when
+
+- [x] Each list of `get_run`'s answer has a limit and a count of what it left out: the journal, the timeline, the queue, the hypotheses, the handouts, the directions and the trials, and any other that grows with the run.
+- [x] Arguments ask for more of a list, or for one list from an offset; a new REST route for one run, `GET /v1/rigs/<rig>/runs/<run>`, takes the same.
+- [x] A test with a run of the size above: the default answer stays under 100,000 characters and says what it left out.
+- [x] The MCP and REST reference pages say each limit and argument.
+
+## Decisions
+
+- 2026-10-24, owner: write the gaps found while operating the lab as goals, slotted where they fit.
+
+## Progress
+
+- 2026-10-24: Goal written from the 3.2 MB answer for a long research run.
+
+- 2026-10-24: Built. `src/control/run-lists.ts`: every list of the run's view but `attempts` (which keeps its own limit) gives its newest `limit` entries, 10 by default, and the research report its first 4,000 characters; `cut` says, for each list cut, how many it gave of how many and how to read the rest. `list` with `offset` gives one list alone, paged back from its newest entries; `full_report: true` gives the report whole. MCP's `get_run` takes the arguments; a new REST route, `GET /v1/rigs/<rig>/runs/<run>`, takes them as its query, in `src/control/api/runs.ts`, with the run's untried experiments and directions routes moved there from `api.ts` (which shrank by 19 lines; `mcp.ts` by 4). On the long research run's saved answer, the default gives 84,521 characters instead of 3.2 million. Tests: `src/control/run-lists.test.ts` (a run of that size stays under 100,000 characters and says what it cut; one list paged; a wrong list refused; the report whole), the REST route in `directions.test.ts`, and the held-out test, which now reads the whole timeline with `list`. Pages: MCP tools (`get_run`), the REST API, the changelog.
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/128-get-run-bounded.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

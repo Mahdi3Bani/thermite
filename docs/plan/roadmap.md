@@ -82,7 +82,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [098](goals/_completed/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `VERIFIED`
 - [099](goals/_completed/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `VERIFIED`
 - [115](goals/_completed/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `VERIFIED`
-- [128](goals/128-get-run-bounded.goal) `get_run` stays a size an agent can read, for a run of any length · `PROPOSED`
+- [128](goals/_completed/128-get-run-bounded.goal) `get_run` stays a size an agent can read, for a run of any length · `VERIFIED`
 
 ### Research mode
 

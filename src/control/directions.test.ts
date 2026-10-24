@@ -154,6 +154,35 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
       ],
     );
     assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/nope/directions")).status, 404);
+    // The run itself over REST, as MCP's get_run gives it (goal 128): each list cut to its newest
+    // entries, with what was cut said; one list on its own, paged; a wrong argument refused.
+    const run = (await (await s.api("GET", "/v1/rigs/rig-a/runs/js-1?limit=1")).json()) as {
+      id: string;
+      rules: unknown[];
+      cut: string[];
+    };
+    assert.equal(run.id, "js-1");
+    assert.equal(run.rules.length, 1);
+    assert.ok(
+      run.cut.includes(
+        'rules: the newest 1 of 2 entries (list "rules" with offset reads older ones)',
+      ),
+    );
+    const page = (await (
+      await s.api("GET", "/v1/rigs/rig-a/runs/js-1?list=rules&limit=1&offset=1")
+    ).json()) as {
+      total: number;
+      from: number;
+      to: number;
+      entries: { body: { family?: string } }[];
+    };
+    assert.deepEqual(
+      [page.total, page.from, page.to, page.entries.map((r) => r.body.family)],
+      [2, 0, 1, ["shared-memory-tiling"]],
+    );
+    assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/js-1?limit=0")).status, 400);
+    assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/js-1?list=nope")).status, 400);
+    assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/nope")).status, 404);
   });
 
   test("MCP: issue_command takes :name: and refuses words; run_queue lists the run's directions", async () => {
