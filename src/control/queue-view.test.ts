@@ -437,7 +437,7 @@ test("an old rule in words says what its conversion waits for: the planner's rou
   );
   assert.equal(
     note({ r: { ...r, mode: "research" } }),
-    "An old rule in words, from before rules named directions. Code can't keep it, and a research run has no planner to convert it to a direction. Remove it. To steer the run, send a rule for a task kind.",
+    "An old rule in words, from before rules named directions. Code can't keep it, and a research run's planner converts no rule in words. Remove it. To steer the run, send a rule for a task kind, or tell the planner.",
   );
 });
 

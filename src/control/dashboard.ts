@@ -980,7 +980,13 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const a = i.agents;
     const diagnostics = `<div class="block"><div class="head"><h2>Agent figures</h2><span class="right">for diagnosing the agents, not the research</span></div><div class="kpis">${[
       i.mode === "research"
-        ? kpi("Rounds", String(a.epochs), "set by the research plan")
+        ? kpi(
+            "Rounds",
+            String(a.epochs),
+            a.epochs
+              ? `${a.planner_valid} by the model · ${a.fallbacks} by the gap-driven plan`
+              : "",
+          )
         : kpi(
             "Plans",
             String(a.epochs),
@@ -3605,7 +3611,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
           Boolean(work) && r.status === "running",
         );
       }),
-      ...(research ? [] : [chip("planner", "Planner")]),
+      chip("planner", "Planner"),
       ...(research ? [] : [chip("judge", "Judge")]),
       chip("advisors", "Advisors"),
       chip("you", "You", "your messages, and who read them"),
@@ -3633,9 +3639,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
           : "when its current run ends, or in its next trial";
     const hint = (to: string) =>
       to === "all"
-        ? research
-          ? `Each agent reads it ${harness === undefined ? "when it can" : pi ? "at its next step" : "when its current run ends"}`
-          : `Each agent reads it ${harness === undefined ? "when it can" : pi ? "at its next step" : "when its current run ends"}; the planner at its next plan`
+        ? `Each agent reads it ${harness === undefined ? "when it can" : pi ? "at its next step" : "when its current run ends"}; the planner at its next plan`
         : to.startsWith("lane-")
           ? `${to}${r.at_work[to] ? ` (on ${r.at_work[to]?.family})` : ""} reads it ${when}`
           : to === "planner"

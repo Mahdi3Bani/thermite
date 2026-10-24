@@ -12,7 +12,7 @@ import { AGENT_WORDS, serverRow } from "./new-campaign-mcp.ts";
  * 2026-10-21). Copy, beside Start a run, opens it: the copy's name, checked as you type with the
  * New campaign page's name rules, and for a research campaign the MCP servers its agents use, as
  * the source has them, in the New campaign page's rows (the workers and the advisors: a research
- * run has no planner). A hill-climb or goal campaign's servers are in its kit's kit.json, which a
+ * run's planner takes no servers). A hill-climb or goal campaign's servers are in its kit's kit.json, which a
  * copy does not change: the panel lists them, read only. Then the copy's Agents' context (goal
  * 070): its context window and compaction point, as the source has them. Its form posts without
  * the page's script (/ui/assets/copy.js, copy-campaign-client.ts), which checks the name and the
@@ -20,7 +20,7 @@ import { AGENT_WORDS, serverRow } from "./new-campaign-mcp.ts";
  * in step.
  */
 
-/** A research run's kinds of agent, as the rows offer them: its research plan is code. */
+/** A research run's kinds of agent that take servers, as the rows offer them: not its planner. */
 const RESEARCH_WORDS = AGENT_WORDS.filter(([k]) => k !== "planner");
 
 export interface CopyPanel {
@@ -153,7 +153,7 @@ function researchServers(p: CopyPanel): string {
     )
     .join("");
   const same = sameUses(picked, p.source);
-  return `<div class="sfd"><span class="lb">MCP servers for its agents<i class="ii" tabindex="0" data-tip="${esc("The tools from outside Thermite that the copy's agents can call. The list starts as the source has it. Change it to give the copy's agents other servers or tools. A research run has workers and advisors, and no planner. Open Advanced under a server to choose its tools for each kind of agent. Servers are added in Settings › MCP servers.")}">i</i></span><input type="hidden" name="mcp" value="1">${
+  return `<div class="sfd"><span class="lb">MCP servers for its agents<i class="ii" tabindex="0" data-tip="${esc("The tools from outside Thermite that the copy's agents can call. The list starts as the source has it. Change it to give the copy's agents other servers or tools. A research run's planner takes no servers: its workers and advisors do. Open Advanced under a server to choose its tools for each kind of agent. Servers are added in Settings › MCP servers.")}">i</i></span><input type="hidden" name="mcp" value="1">${
     rows
       ? `<div class="mcp-pick" data-c-mcp>${rows}</div>`
       : `<div class="card"><div class="empty">No MCP server in Settings yet. <a href="/ui/settings#add-mcp">Add one in Settings</a>: the copy's agents have only Thermite's own tools until then.</div></div>`
@@ -209,8 +209,8 @@ const values = (f: FormBody, key: string): string[] =>
 /**
  * A research copy's servers as the panel posted them: each ticked server, with the kinds of agent
  * ticked for it and, for a kind given fewer than all of the server's tools, the tools ticked.
- * What the panel cannot show stays as the source has it: the planner (a research run has none,
- * so the panel offers no tick for it) and the tools of a server whose tools Settings has not read.
+ * What the panel cannot show stays as the source has it: the planner (a research run's takes no
+ * servers, so the panel offers no tick for it) and the tools of a server whose tools Settings has not read.
  * `tools`: each server in Settings with its tools as control last read them (null: not read).
  * `problems`: what stops the copy, in the panel's words. With problems, `uses` is the panel's
  * state as sent, to draw it again: a server with no agent, a kind of agent with no tool.

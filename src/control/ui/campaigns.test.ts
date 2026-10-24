@@ -330,7 +330,7 @@ test("the Planner tab counts rounds, and says plainly when the planner is off", 
   assert.doesNotMatch(off, /Send to the planner/);
 });
 
-test("a research run's rounds read as set by the research plan, not as a refused plan", async () => {
+test("a research run's rounds with the planner off read as set by the gap-driven plan, not as a refused plan", async () => {
   const { sentence } = await import("./words.ts");
   const e = (body: Record<string, unknown>) =>
     ({
@@ -348,7 +348,7 @@ test("a research run's rounds read as set by the research plan, not as a refused
   );
   assert.match(
     String(research?.text ?? JSON.stringify(research)),
-    /The research plan set round 3: lane-1 on contradict\./,
+    /The gap-driven plan set round 3 \(the planner is off\): lane-1 on contradict\./,
   );
   const said = (body: Record<string, unknown>) => {
     const x = sentence(u, e({ n: 3, source: "fallback", assignments, ...body }));

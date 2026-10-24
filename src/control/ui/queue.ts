@@ -200,7 +200,7 @@ ${judgeOnlyQueueLine(u, r)}${add}
 <div class="qlist" id="qlist" data-part="qlist">${up.map(item).join("") || `<div class="card"><div class="empty">Nothing queued. The planner adds experiments as it plans; you can add one above.</div></div>`}</div>
 </div><div class="qside" data-part="qside">
 <div class="card qcard"><h3>In progress</h3>${working || `<div class="muted small">No lane is at work.</div>`}</div>
-<div class="card qcard"><h3>Ideas from the lanes <span class="muted small">wait for the planner or you</span></h3>${ideaRows || `<div class="muted small">None waiting. Lanes propose ideas while they work.</div>`}${ideaRows ? `<div class="muted xs">The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model. In a research run they wait for you.</div>` : ""}</div>
+<div class="card qcard"><h3>Ideas from the lanes <span class="muted small">wait for the planner or you</span></h3>${ideaRows || `<div class="muted small">None waiting. Lanes propose ideas while they work.</div>`}${ideaRows ? `<div class="muted xs">The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model, in a hill climb or a goal run.</div>` : ""}</div>
 </div></div>
 <div class="block" style="margin-top:26px" id="tried"><div class="head"><h2>Tried</h2><span class="n">${tried.length}</span><span class="right">every experiment that ended, with its result, newest first</span></div>
 ${
@@ -301,15 +301,15 @@ export function plannerTab(o: {
 }): string {
   const { u, r } = o;
   const research = r.mode === "research";
-  // Someone reads Tell the planner: a hill climb or goal run with its planner on.
-  const tell = !research && u.settings?.planner !== false;
+  // Someone reads Tell the planner: a run with its planner on (a research run's too, goal 117).
+  const tell = u.settings?.planner !== false;
   const dirs = byUse(r.directions);
   const dirOf = (name: string) => r.directions.find((d) => d.name === name);
   const nextRound = Math.max(r.agents.epochs, ...r.handouts.map((h) => h.round ?? 0)) + 1;
   // An old rule in words converts at the planner's next round with its model (goal 066): what
   // it waits for, in words.
   const converts = research
-    ? "Code can't keep it, and a research run has no planner to convert it to a direction. Remove it. To steer the run, send a rule for a task kind."
+    ? "Code can't keep it, and a research run's planner converts no rule in words. Remove it. To steer the run, send a rule for a task kind, or tell the planner."
     : !tell
       ? "Code can't keep it. It converts at the planner's next round, and the planner is off on this rig. Switch the planner on in Edit rig, or remove it."
       : o.noModel
@@ -479,11 +479,15 @@ export function plannerTab(o: {
     rules: d.rules.map((x) => kindOf(x.kind).chip),
     new: d.to_design,
   }));
-  const tellCard = research
-    ? ""
-    : !tell
-      ? // The rig's own settings (Edit rig): with the planner off, nothing would read a message.
-        `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3><div class="small">The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules. <a href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Switch it on in Edit rig</a> to tell it something.</div></div>`
+  const tellCard = !tell
+    ? // The rig's own settings (Edit rig): with the planner off, nothing would read a message.
+      `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3><div class="small">The planner is off on this rig, so it reads no messages. ${research ? "The gap-driven plan sets each round from the answer cards' gaps, and keeps to the rules." : "The lanes take the queue in order and keep to the rules."} <a href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Switch it on in Edit rig</a> to tell it something.</div></div>`
+    : research
+      ? // A research run's planner weighs a message in the tasks it gives out; it makes no rule of it.
+        `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message" class="qtell" data-act><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}">
+<label class="sfd">${infoLabel("Your message", "Say what you want, in plain words: a question to work on first, a gap to close, a kind of source to read. The planner reads your message when it next plans a round, and weighs it in the tasks it gives out. It makes no rule from it, and it gives no verdict: the review panel decides the questions.")}<textarea name="text" rows="3" required data-words maxlength="4000" spellcheck="false" placeholder="for example: work on question 2's gaps first, from the vendors' documentation" style="width:100%"></textarea></label>
+<div class="act"><button class="primary">Send to the planner</button><span class="muted small">It reads your message when it next plans a round: round ${nextRound}.</span></div></form>
+<div class="qthread">${turns}</div></div>`
       : `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message" class="qtell" data-act><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}">
 <label class="sfd">${infoLabel("Your message", "Say what you want, in plain words. To name a direction exactly, type : and pick it, or write :name:. Names may have spaces. The planner reads your message when it next gives out work. From it, it can add or drop experiments, reorder the queue and make rules. Each rule names a direction, so code keeps it. If no direction fits, the planner designs a new one and says what it means.")}<textarea name="text" rows="3" required data-words data-dpick data-dirs="${esc(JSON.stringify(pickData))}" maxlength="4000" spellcheck="false" placeholder="${esc(`for example: ${named.length >= 2 ? `stop :${named[1]}: and put :${named[0]}: first` : "stop :loop tiling: and put vector loads first"}`)}" style="width:100%"></textarea></label>
 <div class="ktools qex"><span class="muted small">Examples:</span>${examples.map((x) => `<button type="button" class="fchip" data-example="${esc(x)}">${esc(x)}</button>`).join("")}</div>
@@ -498,7 +502,7 @@ export function plannerTab(o: {
 <div class="qrules">${r.rules.map(ruleRow).join("") || `<div class="card"><div class="empty">No rules. The planner follows the queue and its own judgment.${tell ? " To make one, tell the planner below." : ""}</div></div>`}</div>
 ${tellCard}
 <div class="head" style="margin-top:26px"><h2>What the planner did</h2><span class="right">each hand-out, and each change it made to the queue or the rules, with why</span></div>
-<div class="card qhands">${handouts || `<div class="empty">${research ? "A research run sets its rounds with a fixed method; its hand-outs show here." : "No hand-out yet."}</div>`}</div>
+<div class="card qhands">${handouts || `<div class="empty">${research ? "No round yet. Each round shows here: planned by the model, or set by the gap-driven plan." : "No hand-out yet."}</div>`}</div>
 ${o.figures}
 </div><div class="qside">
 <div class="card qcard"><h3>The run's directions <span class="muted small">${dirs.length}</span></h3><div class="small muted">${
@@ -508,12 +512,12 @@ ${o.figures}
   }</div><div class="dlist">${dirs.map(dirRow).join("") || `<div class="muted small">None yet. Each experiment adds its own.</div>`}</div></div>
 ${
   research
-    ? `<div class="card qcard"><h3>The plan</h3><div class="small">A research run sets each round with a fixed method: it takes the experiments in queue order and keeps to the rules. There is no planner model to tell. Its rules name its task kinds: send one with <code>redirect</code> over MCP, the REST API or the command line.</div></div>`
+    ? `<div class="card qcard"><h3>The plan</h3><div class="small">A research run plans each round from its questions' answer cards and their gaps: by the planner's model when the planner is on, and otherwise by the gap-driven plan in code. Either keeps to the rules, which name its task kinds: send one with <code>redirect</code> over MCP, the REST API or the command line.</div></div>`
     : ""
 }
 <div class="card qcard"><h3>The planner</h3><div class="small">${esc(o.model)}</div><a class="small" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Change it on Edit rig</a>${
-    r.agents.epochs && !research
-      ? `<div class="muted small" style="border-top:1px solid var(--border);padding-top:8px">${r.agents.epochs} round${r.agents.epochs === 1 ? "" : "s"} so far: ${r.agents.planner_valid} planned by the model, ${r.agents.fallbacks} in queue order by the fixed rules (no model, the planner off, or no usable answer from the model). History says which for each round.</div>`
+    r.agents.epochs
+      ? `<div class="muted small" style="border-top:1px solid var(--border);padding-top:8px">${r.agents.epochs} round${r.agents.epochs === 1 ? "" : "s"} so far: ${r.agents.planner_valid} planned by the model, ${r.agents.fallbacks} ${research ? "set by the gap-driven plan" : "in queue order by the fixed rules"} (no model, the planner off, or no usable answer from the model). History says which for each round.</div>`
       : ""
   }</div>
 ${o.propagate ? `<div class="card qcard"><h3>Other rigs</h3>${o.propagate}</div>` : ""}

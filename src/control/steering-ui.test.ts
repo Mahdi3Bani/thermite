@@ -506,11 +506,14 @@ describe("Live's message box", () => {
     assert.equal(to.find((o) => o.to === "planner")?.greyed, undefined);
     // The review panel checks whether a research run's questions are answered (goal 112).
     assert.equal(to.find((o) => o.to === "panel")?.greyed, undefined);
-    assert.equal(to.find((o) => o.to === "all")?.hint, "Each agent reads it when it can");
-    // No planner and no judge to watch either.
+    assert.equal(
+      to.find((o) => o.to === "all")?.hint,
+      "Each agent reads it when it can; the planner at its next plan",
+    );
+    // Its planner to watch (goal 117), and no judge.
     assert.deepEqual(
       [...live.matchAll(/class="lchip[^"]*" data-w="([^"]+)"/g)].map((m) => m[1]),
-      ["all", "advisors", "you"],
+      ["all", "planner", "advisors", "you"],
     );
     for (const [who, why] of [["auditor", "A research run has no attempts to audit."]] as const)
       assert.ok(

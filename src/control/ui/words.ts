@@ -206,10 +206,10 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
           "warn",
           { run: String(e.subject) },
         );
-      // A research run plans its rounds with a fixed method on purpose: not a refused plan.
+      // A research run's code plan, with the planner off on purpose (goal 117): not a refused plan.
       if (b.plan === "research" || String(b.notes ?? "").startsWith("research plan"))
         return s(
-          `The research plan set ${round}: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
+          `The gap-driven plan set ${round} (the planner is off): ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
           "",
           { run: String(e.subject) },
         );

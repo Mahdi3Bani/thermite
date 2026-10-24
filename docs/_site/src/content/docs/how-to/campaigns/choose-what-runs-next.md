@@ -60,7 +60,7 @@ Your own experiments show `you`. When a lane gets an experiment that neither you
 
 While it works, a lane's worker may propose an **idea**: another experiment worth trying beyond its own. Workers do this by themselves, and you set nothing up for it; its trial goes on. A code trial's brief asks its worker to propose each distinct follow-up its work suggests before it submits or stops. Thermite sets no limit on how many ideas a lane proposes.
 
-Ideas wait under **Ideas from the lanes**, headed `wait for the planner or you`, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. Below them, the card says `The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model. In a research run they wait for you.` ([Keep ideas ready](#keep-ideas-ready) says how many that is.) The lane's worker is told the same: `it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` To decide:
+Ideas wait under **Ideas from the lanes**, headed `wait for the planner or you`, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. Below them, the card says `The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model, in a hill climb or a goal run.` ([Keep ideas ready](#keep-ideas-ready) says how many that is.) The lane's worker is told the same: `it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` To decide:
 
 - **Queue it** puts the idea at the end of **Up next**.
 - **Drop** drops it at once, with the reason `the owner dropped this idea`. It shows under **Tried** as `dropped by you: the owner dropped this idea`.
@@ -145,7 +145,7 @@ Until then it stays in force, marked `words` and drawn dashed, with **Remove** o
 | The planner can convert it | `It converts at the planner's next round: round 4. The planner names its direction, and code keeps the new rule. Until then, only the planner's model reads it.` |
 | The rig has no model for the planner | `Code can't keep it. It converts at the planner's next round with a model, and this rig has no model for the planner now. Give the planner a model in Edit rig, or remove it.` |
 | The planner is off on **Edit rig** | `Code can't keep it. It converts at the planner's next round, and the planner is off on this rig. Switch the planner on in Edit rig, or remove it.` |
-| A research run | `Code can't keep it, and a research run has no planner to convert it to a direction. Remove it. To steer the run, send a rule for a task kind.` |
+| A research run | `Code can't keep it, and a research run's planner converts no rule in words. Remove it. To steer the run, send a rule for a task kind, or tell the planner.` |
 
 At its next round with its model, the planner must convert every old rule in words in force, at most 5 a round, the oldest first. For each, it names the direction the words mean: one of the run's, or a new one it designs, as for a new direction in a message. An answer that leaves one unconverted is refused, and the planner tries again. A round planned without the model leaves the rule as it is, for a later round.
 
@@ -163,7 +163,7 @@ With the planner switched off on **Edit rig**, **Tell the planner** has no form.
 
 If control refuses the message, a line under the box says `Not sent:` and the reason at once, such as `Not sent: Write a message first.` for a message of only spaces, and your text stays in the box. If the rig refuses it, within seconds the line says `rig-1 refused it:` and the rig's reason, and the card shows it after a **refresh**, as **Not sent.** `The rig refused your last message to the planner:` and the rig's reason. The notice goes once you send the planner a newer message. [Send the agents a message](steer-a-run.md#send-the-agents-a-message) covers messages to the other agents.
 
-A research run's tab has no **Tell the planner**: write to its planner from the run's **Live**, **To the planner**. Its card **The plan** says `A research run sets each round with a fixed method: it takes the experiments in queue order and keeps to the rules. There is no planner model to tell. Its rules name its task kinds: send one with redirect over MCP, the REST API or the command line.`
+A research run's **Tell the planner** takes a message in plain words, with no directions to pick: `Say what you want, in plain words: a question to work on first, a gap to close, a kind of source to read. The planner reads your message when it next plans a round, and weighs it in the tasks it gives out. It makes no rule from it, and it gives no verdict: the review panel decides the questions.` With the planner off, the card says `The planner is off on this rig, so it reads no messages. The gap-driven plan sets each round from the answer cards' gaps, and keeps to the rules.` Its card **The plan** says `A research run plans each round from its questions' answer cards and their gaps: by the planner's model when the planner is on, and otherwise by the gap-driven plan in code. Either keeps to the rules, which name its task kinds: send one with redirect over MCP, the REST API or the command line.`
 
 ## See what the planner did
 
@@ -189,7 +189,7 @@ Between the hand-outs, in time order, are the messages it read, its own changes 
 
 The tab shows the newest 30 entries; before the first, it says `No hand-out yet.`
 
-The run's **History** tab tells each round in a sentence, such as `The planner planned round 4: lane-1 on loop-tiling; lane-2 on vectorize.` A round that the fixed rules planned says why, such as `(by the fixed rules: the planner is off on this rig (Edit rig))` or `(by the fixed rules: the model gave no usable plan, because …)`. After `because` comes the problem with the model's answer, or, when there were several, each in turn with its try: `try 1: …; try 2: …`. Each hand-out follows, such as `The planner gave out round 4: lane-1 on "vectorize the scale loads (half2)".` A research round reads `The research plan set round 4: …`.
+The run's **History** tab tells each round in a sentence, such as `The planner planned round 4: lane-1 on loop-tiling; lane-2 on vectorize.` A round that the fixed rules planned says why, such as `(by the fixed rules: the planner is off on this rig (Edit rig))` or `(by the fixed rules: the model gave no usable plan, because …)`. After `because` comes the problem with the model's answer, or, when there were several, each in turn with its try: `try 1: …; try 2: …`. Each hand-out follows, such as `The planner gave out round 4: lane-1 on "vectorize the scale loads (half2)".` A research round set by the gap-driven plan with the planner off reads `The gap-driven plan set round 4 (the planner is off): …`.
 
 ## Check the planner's model
 
