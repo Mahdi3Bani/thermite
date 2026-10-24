@@ -1129,10 +1129,10 @@ export class Research {
    * a stop: after it, a run ends when the review panel finds every question answered (goal 112),
    * at its maximum, or when the owner closes it.
    */
-  clock(run: string) {
+  /** The run's clock; with `now`, as it stood then (running time up to that moment). */
+  clock(run: string, now = Date.now()) {
     const c = this.contract(run);
     const created = String(this.get("select created_at from run where id = ?", run)?.created_at);
-    const now = Date.now();
     const running: [number, number][] = [];
     let since: number | null = Date.parse(created);
     for (const e of this.all(
@@ -1141,6 +1141,7 @@ export class Research {
     )) {
       const status = (JSON.parse(String(e.body)) as { status?: string }).status;
       const at = Date.parse(String(e.at));
+      if (at > now) break;
       if (status === "running") since ??= at;
       else if (since !== null) {
         running.push([since, at]);
