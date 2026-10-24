@@ -50,12 +50,12 @@ kubectl create role thermite-control -n thermite-slot-1 \
 kubectl create rolebinding thermite-control -n thermite-slot-1 \
   --role=thermite-control --serviceaccount=thermite-slot-1:thermite-control
 kubectl create role thermite-control-read -n thermite-slot-1 \
-  --verb=get,list --resource=networkpolicies.networking.k8s.io
+  --verb=get,list --resource=networkpolicies.networking.k8s.io,resourcequotas
 kubectl create rolebinding thermite-control-read -n thermite-slot-1 \
   --role=thermite-control-read --serviceaccount=thermite-slot-1:thermite-control
 ```
 
-For a user rather than a service account, give `--user=<the kubeconfig's user>` to the two `rolebinding` commands. With rights to read the slot's resource quota (add `resourcequotas` to the second role's `--resource`), control also fills in the rig's CPUs, memory and volume from it, and keeps the rig within it when it adds the rig and when it [changes its GPUs, CPUs and memory](#change-the-rigs-gpus-cpus-and-memory): its CPUs (`limits.cpu`, else `requests.cpu`), its memory (`limits.memory`, else `requests.memory`), its GPUs through the device plugin (`requests.nvidia.com/gpu`), and, with DRA, the devices of its class (`gpu.nvidia.com.deviceclass.resource.k8s.io/devices` for the class `gpu.nvidia.com`).
+For a user rather than a service account, give `--user=<the kubeconfig's user>` to the two `rolebinding` commands. With rights to read the slot's resource quota (`resourcequotas` in the second role), control also fills in the rig's CPUs, memory and volume from it, and keeps the rig within it when it adds the rig and when it [changes its GPUs, CPUs and memory](#change-the-rigs-gpus-cpus-and-memory): its CPUs (`limits.cpu`, else `requests.cpu`), its memory (`limits.memory`, else `requests.memory`), its GPUs through the device plugin (`requests.nvidia.com/gpu`), and, with DRA, the devices of its class (`gpu.nvidia.com.deviceclass.resource.k8s.io/devices` for the class `gpu.nvidia.com`).
 
 Control writes no network rules in a slot, but it reads them. It refuses a slot unless some network rule selects the rig's harness pods (label `app.kubernetes.io/component: harness`), and every such rule lets them reach only DNS (port 53) or addresses outside the private (RFC 1918) ranges. Thermite's cluster test uses this rule. Its egress part is the same as the rule control writes in a namespace it creates:
 

@@ -99,7 +99,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | [014 · The quick start, tested in CI](goals/_completed/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/_completed/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
 | [015 · Log paging](goals/_completed/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/_completed/016-small-fixes.goal) | `VERIFIED` | — |
-| [118 · Change a cluster rig's GPUs, CPUs and memory from control](goals/118-cluster-rig-resources.goal) | `IN_PROGRESS` | [035](goals/035-rig-upgrades.goal) |
+| [118 · Change a cluster rig's GPUs, CPUs and memory from control](goals/_completed/118-cluster-rig-resources.goal) | `VERIFIED` | [035](goals/035-rig-upgrades.goal) |
 | [017 · Remove the legacy model names](goals/_completed/017-legacy-names.goal) | `VERIFIED` | — |
 
 ### Research mode

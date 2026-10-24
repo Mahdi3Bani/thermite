@@ -54,7 +54,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [015](goals/_completed/015-log-paging.goal) Log paging · `VERIFIED`
 - [016](goals/_completed/016-small-fixes.goal) Small fixes before the release · `VERIFIED`
 - [017](goals/_completed/017-legacy-names.goal) Remove the legacy model names · `VERIFIED`
-- [118](goals/118-cluster-rig-resources.goal) Change a cluster rig's GPUs, CPUs and memory from control · `IN_PROGRESS`
+- [118](goals/_completed/118-cluster-rig-resources.goal) Change a cluster rig's GPUs, CPUs and memory from control · `VERIFIED`
 
 ### Running campaigns
 

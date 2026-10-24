@@ -638,7 +638,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       {
         title: "How a rig was set up",
         description:
-          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). Use it after add_cluster_rig, update_rig_images or runpod_rig. Holds no keys or tokens.",
+          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, new GPUs, CPUs or memory, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). On a cluster, also its GPUs, the judge's share, its CPUs and memory, and the change of size it drains for. Use it after add_cluster_rig, update_rig_images, set_cluster_rig_resources or runpod_rig. Holds no keys or tokens.",
         inputSchema: { rig: z.string().min(1) },
       },
       audited("rig_setup", (a: { rig: string }) => {
