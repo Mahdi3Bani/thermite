@@ -617,14 +617,25 @@ try {
   const evs = await events();
   const verdicts = latestVerdicts(evs);
   const life = lifecycles(evs);
+  // A candidate the kit lets end in more than one way (its `accept`) counts as its first, as the
+  // check judged it and as the page counts it: on a busy machine a change that tests the rig
+  // itself can come out inconclusive or regress, not neutral.
+  const candidates = Object.values(
+    JSON.parse(readFileSync("kits/smoke-cpu/candidates/candidates.json", "utf8")),
+  );
   const counted = {};
   for (const e of evs.filter(
     (x) => x.kind === "attempt_recorded" && x.body.run === smokeRun.subject,
   )) {
+    const verdict = verdicts[e.subject];
+    const accepts = candidates.find((c) => c.hypothesis === e.body.hypothesis)?.accept ?? [];
     const word =
       life[e.subject] === "rejected_v0"
         ? "rejected v0"
-        : String(verdicts[e.subject] ?? life[e.subject]).replace(/_/g, " ");
+        : String(accepts.includes(verdict) ? accepts[0] : (verdict ?? life[e.subject])).replace(
+            /_/g,
+            " ",
+          );
     counted[word] = (counted[word] ?? 0) + 1;
   }
   const same = (x, y) =>
