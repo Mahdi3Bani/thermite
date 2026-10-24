@@ -57,6 +57,7 @@ const GOALS = [
 
 async function setup(contract: Record<string, unknown> = {}) {
   const env = makeJudgeEnv({
+    realRuns: true,
     goal: { opsPerSecond: 1 },
     ...KIT,
     contract: { goals: GOALS, held_out_cells: [HIDDEN], ...contract },

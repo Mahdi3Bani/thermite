@@ -2,7 +2,7 @@ import { chmodSync, lstatSync, readdirSync, realpathSync, rmSync } from "node:fs
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { MAX_LANES } from "../../core/contract.ts";
-import { killScope, runSupervised, type SupervisedResult } from "./process.ts";
+import { killScope, runSupervised, type SupervisedResult, type SupervisedRun } from "./process.ts";
 
 /**
  * Roles and the runner interface. Inside the harness container the broker (root) runs each
@@ -154,6 +154,8 @@ export interface Runner {
    * runs), leaving its plain commands running.
    */
   killRole(role: Role, opts?: { gpu?: boolean }): Promise<number>;
+  /** Runs a kit's check, a process of the harness itself; runSupervised when absent (tests). */
+  check?: ((spec: SupervisedRun) => Promise<SupervisedResult>) | undefined;
 }
 
 /** Resolves `path` and checks it lies strictly inside `root` (symlinks resolved). */

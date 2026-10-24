@@ -1,11 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { type CommandKind, generateSigningKeys, signEnvelope } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
-import { LocalRunner } from "../harness/broker/runner.ts";
+import {
+  runSupervised,
+  type SupervisedResult,
+  type SupervisedRun,
+} from "../harness/broker/process.ts";
+import { LocalRunner, type RunOutcome, type RunRequest } from "../harness/broker/runner.ts";
 import { Judge, type PromotionPolicy } from "../harness/judge/judge.ts";
 import { Ledger } from "../harness/ledger.ts";
 import { HarnessService } from "../harness/service.ts";
@@ -67,8 +72,8 @@ const CHECK = `import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 const [params, out] = process.argv.slice(2);
 const p = JSON.parse(readFileSync(params, "utf8"));
-let expected = 0;
-for (let i = 0; i < p.n; i++) expected += i % 7;
+// The sum of i % 7 over [0, n): 21 for each whole 7, then 0 + 1 + ... + (n % 7 - 1).
+const expected = Math.floor(p.n / 7) * 21 + ((p.n % 7) * ((p.n % 7) - 1)) / 2;
 const f = join(out, "result.json");
 const got = existsSync(f) ? JSON.parse(readFileSync(f, "utf8")).value : null;
 const reasons = got === expected ? [] : ["wrong result " + got + ", expected " + expected];
@@ -115,6 +120,99 @@ const RUN_COPY_KIT = {
     command: ["node", "{kit:bench/drive.mjs}", "{build:out/work.mjs}", "{params_json}", "{out}"],
   },
 };
+
+/** A file's text, or undefined when it cannot be read. */
+const readText = (p: string) => {
+  try {
+    return readFileSync(p, "utf8");
+  } catch {
+    return undefined;
+  }
+};
+
+/** A finished process's result, with its wall time and 1% of noise. */
+const outcome = (exitCode: number, ms: number, stdout = ""): SupervisedResult => ({
+  exitCode,
+  signal: null,
+  killedFor: null,
+  wallMs: ms * (1 + (Math.random() - 0.5) * 0.02),
+  peakRssBytes: 40 * 1024 * 1024,
+  peakDiskBytes: 0,
+  peakEntries: 0,
+  leftovers: 0,
+  swept: [],
+  stdout,
+  stderr: "",
+});
+
+/** The sum of i % 7 over [0, n), as every correct kernel returns it. */
+const sum7 = (n: number) => Math.floor(n / 7) * 21 + ((n % 7) * ((n % 7) - 1)) / 2;
+
+/**
+ * Each stock kernel's result and wall time in milliseconds, as a model of the real run: Node
+ * starts in 30 ms, a loop takes 1 ns an element, and the seed idles n / 50,000 ms, as
+ * SEED_KERNEL does. Null exit code 3: the crash kernel.
+ */
+const KERNELS = new Map<string, (n: number) => { value: number | null; ms: number }>([
+  [SEED_KERNEL, (n) => ({ value: sum7(n), ms: 30 + n / 1e6 + n / 50_000 })],
+  [FAST_KERNEL, (n) => ({ value: sum7(n), ms: 30 + n / 1e6 })],
+  [WRONG_KERNEL, (n) => ({ value: n * 3, ms: 31 })],
+  [CRASH_KERNEL, () => ({ value: null, ms: 30 })],
+]);
+
+/**
+ * The judge's runner for tests that are not about the judge (the owner, 2026-10-24: faster
+ * iterations): they need judged attempts, not the judge's timing. A run of the stock kit's
+ * driver on a stock kernel is answered in this process: the result file the run would write, and
+ * a wall time from KERNELS with 1% of noise, so a judged attempt takes milliseconds, not seconds.
+ * Every other run (a build, another kernel, a kit's own run script) runs for real. The judge's
+ * statistics, verdicts and records are the real judge's.
+ */
+class StandInRunner extends LocalRunner {
+  override async run(req: RunRequest): Promise<RunOutcome> {
+    return this.answer(req) ?? super.run(req);
+  }
+
+  /**
+   * The judge's check of a run (Runner.check): the stock kit's check.mjs is answered here, as it
+   * would answer; any other check runs for real.
+   */
+  check = async (spec: SupervisedRun): Promise<SupervisedResult> => {
+    const [exe, script, params, out] = spec.argv;
+    if (exe !== "node" || !script || !params || !out || readText(script) !== CHECK)
+      return runSupervised(spec);
+    const p = JSON.parse(readText(params) ?? "null") as { n?: unknown } | null;
+    const result = readText(join(out, "result.json"));
+    if (typeof p?.n !== "number") return runSupervised(spec);
+    const got = result === undefined ? null : (JSON.parse(result) as { value?: unknown }).value;
+    const expected = sum7(p.n);
+    const reasons = got === expected ? [] : [`wrong result ${got}, expected ${expected}`];
+    return outcome(0, 40, `${JSON.stringify({ pass: !reasons.length, reasons, value: got })}\n`);
+  };
+
+  /** A stock run's outcome, or undefined for a run this runner does not know. */
+  private answer(req: RunRequest): RunOutcome | undefined {
+    const at = (p: string | undefined) => (p === undefined ? "" : resolve(req.cwd, p));
+    const read = readText;
+    const [exe, script, ...rest] = req.argv;
+    if (exe !== "node" || !script) return undefined;
+    let kernel: string;
+    let params: string;
+    let out: string;
+    if (basename(script) === "run.mjs" && read(at(script)) === RUN) {
+      kernel = join(at(script), "..", "work.mjs");
+      [params, out] = [at(rest[0]), at(rest[1])];
+    } else if (basename(script) === "drive.mjs" && read(at(script)) === DRIVE) {
+      [kernel, params, out] = [at(rest[0]), at(rest[1]), at(rest[2])];
+    } else return undefined;
+    const model = KERNELS.get(read(kernel) ?? "");
+    const p = JSON.parse(read(params) ?? "null") as { n?: unknown } | null;
+    if (!model || typeof p?.n !== "number") return undefined;
+    const { value, ms } = model(p.n);
+    if (value !== null) writeFileSync(join(out, "result.json"), JSON.stringify({ value }));
+    return outcome(value === null ? 3 : 0, ms);
+  }
+}
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync(
@@ -169,6 +267,11 @@ export function makeJudgeEnv(
     /** The kit's run script (bench/run.mjs) and check (check.mjs), instead of the defaults. */
     kitRun?: string | undefined;
     kitCheck?: string | undefined;
+    /**
+     * Real runs of the stock kernels, timed by the judge: for the judge's own tests. Without it,
+     * the stand-in runner answers them (StandInRunner).
+     */
+    realRuns?: boolean | undefined;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "thermite-judge-"));
@@ -328,9 +431,10 @@ export function makeJudgeEnv(
     keys.privateKeyPem,
   );
 
+  const standIn = opts.realRuns ? undefined : new StandInRunner(paths.scratchDir);
   const judge = new Judge({
     service,
-    runner: new LocalRunner(paths.scratchDir),
+    runner: standIn ?? new LocalRunner(paths.scratchDir),
     // Host load is not what these tests are about (the judge refuses a loaded CPU; see cpu.test).
     driver: opts.neverReady
       ? new CpuDriver("test", { load: () => Number.POSITIVE_INFINITY })

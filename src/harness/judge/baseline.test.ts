@@ -40,7 +40,7 @@ import { Judge } from "./judge.ts";
  */
 
 async function setup(opts: Parameters<typeof makeJudgeEnv>[0] = {}) {
-  const env = makeJudgeEnv(opts);
+  const env = makeJudgeEnv({ realRuns: true, ...opts });
   const out = await env.service.applyCommand(env.assign);
   assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
   // Every patch is made from the seed, so it is applied to the seed.
