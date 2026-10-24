@@ -120,7 +120,10 @@ export interface AdviseState {
   };
 }
 
-/** An audit or review is tried at most this often before it is left to the owner. */
+/**
+ * An audit is tried at most this often before it is left to the owner; a review's try from this
+ * one on posts it, each reviewer that gave no answer failing it.
+ */
 const MAX_TRIES = 5;
 
 export function emptyAdviseState(): AdviseState {
@@ -964,8 +967,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     const told = new Set<number>();
     for (const pkg of reviews) {
       const key = `review:${pkg.id}`;
-      if (!due(key)) continue;
+      // A review is tried again past MAX_TRIES: a try from then on posts it (below), so a run is
+      // never left waiting on a review that no one posts.
+      const t = next.tried[key];
+      if (t && now - Date.parse(t) < retryMs) continue;
       mark(key);
+      const last = (next.tries[key] ?? 0) >= MAX_TRIES;
       const owner = (pkg.owner_messages ?? []).filter((m) => !told.has(m.id));
       try {
         const results: {
@@ -982,8 +989,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         // With the campaign's own context settings, when it sets any (goal 070).
         const panel = (await configFor(pkg.run)).review_panel;
         const compactions: AdvisorCompaction[] = [];
-        // Why a reviewer gave no answer, for the error that says the review was not posted.
-        const unanswered: string[] = [];
+        // Each reviewer that gave no answer, and why.
+        const unanswered: { reviewer: string; why: string }[] = [];
         for (const runtime of panel) {
           const r = await reviewOne({
             runtime,
@@ -997,7 +1004,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           await usageOut(pkg.run, `review ${pkg.id}`, "panel", r.usage);
           compactions.push(...(r.compactions ?? []));
           if (!r.output) {
-            unanswered.push(`${runtime.name}: ${clip(r.error ?? "no answer", 300)}`);
+            unanswered.push({ reviewer: runtime.name, why: clip(r.error ?? "no answer", 300) });
             continue;
           }
           results.push({
@@ -1018,14 +1025,26 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           );
         }
         // Every reviewer must answer: a crashed dissenter must not lose its veto. The owner's
-        // messages count as read only with the posted review, so a retry gives them again.
+        // messages count as read only with the posted review, so a retry gives them again. From
+        // the MAX_TRIES-th try, the review is posted with each reviewer that gave no answer
+        // failing it, with why: the run goes on, and is reviewed again on new evidence.
         if (results.length < cfg.advisors.review_panel.length) {
-          fail(
-            `review ${pkg.id}`,
-            `${results.length} of ${cfg.advisors.review_panel.length} reviewers of the review panel answered${unanswered.length ? ` (${unanswered.join("; ")})` : ""}`,
+          const why = `${results.length} of ${cfg.advisors.review_panel.length} reviewers of the review panel answered${unanswered.length ? ` (${unanswered.map((u) => `${u.reviewer}: ${u.why}`).join("; ")})` : ""}`;
+          if (!last) {
+            fail(`review ${pkg.id}`, why, pkg.run);
+            continue;
+          }
+          for (const u of unanswered)
+            results.push({
+              reviewer: u.reviewer,
+              pass: false,
+              reasons: `This reviewer gave no answer in ${next.tries[key]} tries, so the review is not passed: ${u.why}`,
+            });
+          say(
             pkg.run,
+            "status",
+            `review ${pkg.id}: ${why} in try ${next.tries[key]}: posted as not passed`,
           );
-          continue;
         }
         const posted = (await api("POST", `/v1/reviews/${pkg.id}`, { results })) as {
           result?: string;
