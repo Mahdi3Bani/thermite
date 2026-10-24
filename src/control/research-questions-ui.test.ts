@@ -6,7 +6,8 @@ import { ControlStore } from "./store.ts";
 
 /**
  * A research run's Overview, from its rig's research digest: each question's words beside its
- * count of verified claims, what the bars measure, and the report's numbers with no source.
+ * count of verified claims, what the bars measure, and the report's numbers with no source. The
+ * rest of each question's row (goal 117) is in research-run-ui.test.ts.
  */
 
 const ADMIN = "admin-token-abcdef";
@@ -72,21 +73,21 @@ describe("a research run's questions on its Overview", () => {
     const run = await c.page(RUN);
     assert.match(
       run,
-      /Verified claims for each of the run's questions\. A bar is measured against the question with the most\./,
+      /A bar counts the question's verified claims, measured against the question with the most\./,
+    );
+    // Each question by its name for people, its words escaped, and its count of verified claims.
+    assert.match(
+      run,
+      /<span class="rq-text" title="Which &lt;b&gt;cards&lt;\/b&gt; support peer access\?"><b>Question 1<\/b> Which &lt;b&gt;cards&lt;\/b&gt; support peer access\?<\/span>[\s\S]*?<div class="gl-why">28 verified claims · no task given out yet<\/div><div class="bar ok"><i style="width:100\.0%"><\/i><\/div>/,
     );
     assert.match(
       run,
-      /<span class="rq-text" title="Which &lt;b&gt;cards&lt;\/b&gt; support peer access\?"><b>Q1<\/b> Which &lt;b&gt;cards&lt;\/b&gt; support peer access\?<\/span><span class="rq-v">28 verified claims<\/span>/,
+      /<b>Question 2<\/b> Is the driver's limit documented\?<\/span>[\s\S]*?<div class="gl-why">1 verified claim · no task given out yet<\/div>/,
     );
     assert.match(
       run,
-      /<b>Q2<\/b> Is the driver's limit documented\?<\/span><span class="rq-v">1 verified claim<\/span>/,
+      /<b>Question 3<\/b> \(no words\)<\/span>[\s\S]*?<div class="gl-why">0 verified claims · no task given out yet<\/div>/,
     );
-    assert.match(
-      run,
-      /<b>Q3<\/b> \(no words\)<\/span><span class="rq-v">0 verified claims<\/span>/,
-    );
-    assert.match(run, /<i style="width:100\.0%"><\/i>/);
     assert.match(
       run,
       /3 numbers in the latest report appear in no archived source and no verified claim\. The report flags each one\./,

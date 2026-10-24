@@ -13,6 +13,19 @@ import {
   type GoalCellValues as GoalValues,
   parseGoalValues as goalValuesOf,
 } from "../harness/judge/goal-values.ts";
+import {
+  type HypothesisView,
+  type ItemDecisionView,
+  newReviewFigures,
+  type ProgressView,
+  panelFigures,
+  type ReviewFigures,
+  researchEvent,
+  type StandingView,
+  standingOf,
+  type TaskYieldView,
+  taskFields,
+} from "./research-view.ts";
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
@@ -362,6 +375,20 @@ export interface RunView {
    * problems (the first 5, short): the synthesizer writes it again at its next round.
    */
   card_refusals: { question: number; at: string; by: string | null; problems: string[] }[];
+  /**
+   * A research run's hypotheses (goal 117), oldest first: the author's, the pool's, promoted,
+   * merged and retired ones, with their questions and the newest change of their status.
+   */
+  hypotheses: HypothesisView[];
+  /** The review panel's decision on each item in each review (goal 117), oldest first. */
+  decisions: ItemDecisionView[];
+  /**
+   * Each item's newest decision (goal 117), and whether it stands: a question's stands until its
+   * card has a newer version than the one decided on.
+   */
+  standing: StandingView[];
+  /** The progress rule's state at the newest digest (goal 117); null until a harness sends one. */
+  progress: ProgressView | null;
   goals: {
     goal: string;
     description: string | null;
@@ -419,9 +446,11 @@ export interface RunView {
    * Subjective-goal reviews: the panel's result, then the owner's. A research run's reviews (goal
    * 112) have the goal `research`; `gaps` holds what its reviewers found missing, short, and
    * `answers` each question's first answer that passed the harness's check, short (questions
-   * numbered from 0); both null until the review panel decided, and for a goal's review.
+   * numbered from 0); both null until the review panel decided, and for a goal's review. Each
+   * also has its times and figures (goal 116): when it was asked and posted, what it saw, each
+   * reviewer's answers per item and the panel's decision per item (goal 117).
    */
-  reviews: {
+  reviews: ({
     review: number;
     goal: string;
     commit: string;
@@ -429,7 +458,7 @@ export interface RunView {
     owner: string | null;
     gaps: string[] | null;
     answers: { question: number; answer: string }[] | null;
-  }[];
+  } & ReviewFigures)[];
   /**
    * A research run's paper (goal 112): asked of the supervisor's final writer once the review
    * panel's pass was accepted (`writing`), with the newest refusal of a draft while it is still
@@ -599,6 +628,10 @@ export interface ExperimentView {
   cause: string | null;
   /** How many times its trial ended without really trying it, and it came back (goal 079). */
   returns: number;
+  /** A research task's question, as an index from 0 (goal 117); null: none. */
+  question: number | null;
+  /** What a research task's trial added (goal 117); null until its trial ends with one. */
+  yield: TaskYieldView | null;
   at: string;
   updated_at: string;
 }
@@ -613,7 +646,8 @@ export interface MessageView {
   at: string;
   /** Each reader's first read; `round` is the planner's round that read it (goal 066). */
   reads: { by: string; trial: string | null; at: string; round: number | null }[];
-  answers: { role: string; text: string; at: string }[];
+  /** Each advisor's answer: its role, and the advisor by name when the supervisor says. */
+  answers: { role: string; text: string; at: string; advisor?: string | undefined }[];
   /**
    * The rules the planner made from it (goal 066): each directive whose `from_message` is this
    * message, in force or removed since, with its direction and why.
@@ -900,6 +934,10 @@ export function rigView(
         research: null,
         cards: [],
         card_refusals: [],
+        hypotheses: [],
+        decisions: [],
+        standing: [],
+        progress: null,
         goals: [],
         goals_at: null,
         goals_seq: null,
@@ -1362,6 +1400,7 @@ export function rigView(
           owner: null,
           gaps: null,
           answers: null,
+          ...newReviewFigures(e.at, b),
         });
         break;
       }
@@ -1370,6 +1409,7 @@ export function rigView(
         const r = inst(String(e.subject)).reviews.find((x) => x.review === Number(b.review));
         if (r && e.kind === "review_panel") {
           r.panel = String(b.result);
+          panelFigures(r, e.at, b);
           // A research review's gaps (goal 112): the reviewers' words, kept short.
           if (Array.isArray(b.gaps))
             r.gaps = b.gaps
@@ -1382,9 +1422,24 @@ export function rigView(
                 : [],
             );
         }
-        if (r && e.kind === "review_decided") r.owner = String(b.decision);
+        if (r && e.kind === "review_decided") {
+          r.owner = String(b.decision);
+          r.owner_at = e.at;
+          r.owner_note = typeof b.note === "string" && b.note ? b.note : null;
+        }
         break;
       }
+      // A research run's items (goals 116 and 117): its hypotheses, each reviewer's answers per
+      // item, the review panel's decision on each item, and the progress rule's state.
+      case "hypothesis_added":
+      case "hypothesis_revised":
+      case "hypothesis_merged":
+      case "hypothesis_status":
+      case "review_items":
+      case "item_decided":
+      case "research_progress":
+        researchEvent(inst(String(e.subject)), e);
+        break;
       // A research run's paper (goal 112): asked for, refused with problems, then in.
       case PAPER_REQUESTED: {
         inst(String(e.subject)).paper = {
@@ -1653,7 +1708,12 @@ export function rigView(
         if (!m) break;
         if (e.kind === "agent_message_unkept") m.unkept = true;
         else if (e.kind === "advisor_answer")
-          m.answers.push({ role: String(b.role ?? ""), text: String(b.text ?? ""), at: e.at });
+          m.answers.push({
+            role: String(b.role ?? ""),
+            text: String(b.text ?? ""),
+            at: e.at,
+            ...(typeof b.advisor === "string" && b.advisor ? { advisor: b.advisor } : {}),
+          });
         else
           m.reads.push({
             by: String(b.by ?? ""),
@@ -1748,6 +1808,7 @@ export function rigView(
     v.agents.attempts = v.attempts.length;
     v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
     v.directions = runDirections(v);
+    v.standing = standingOf(v);
     // A closed run waits for no one (goal 087; the owner, 2026-10-22): the rig refuses approvals
     // of its changes, so none is pending. Each attempt keeps its own lifecycle.
     if (v.status === "closed") v.pending_promotions = [];
@@ -1967,15 +2028,19 @@ function queueEvent(v: RunView, e: StoredEvent): void {
       from_run: str("from_run") ?? null,
       cause: null,
       returns: 0,
+      question: null,
+      yield: null,
       at: e.at,
       updated_at: e.at,
     };
+    taskFields(x, e);
     v.queue.push(x);
     if (x.state === "queued") place(x, b.position);
     return;
   }
   if (!x) return;
   x.updated_at = e.at;
+  taskFields(x, e);
   switch (e.kind) {
     case "experiment_accepted":
       x.state = "queued";

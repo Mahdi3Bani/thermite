@@ -615,7 +615,8 @@ export function needs(
                       .map((a) => `<li value="${a.question + 1}">${esc(clip(a.answer, 300))}</li>`)
                       .join("")}</ol>`
                   : "The final report holds them once the run ends."
-              } Review ${rv.review}; the final report gives every answer whole, with the claims it cites.</dd>`,
+              } Review ${rv.review}; the final report gives every answer whole, with the claims it cites.</dd>
+<dt>The review</dt><dd><a href="${runHref(u.id, r, "reviews")}">Review ${rv.review} on the run's Reviews tab</a>: each reviewer's answer on each question and hypothesis, the problems code found, and the decision on each item.</dd>`,
               choices: [
                 {
                   button: f.cmd({

@@ -1,8 +1,10 @@
 import { directionList, directionParts, RESEARCH_TASK_KINDS } from "../../core/directions.ts";
+import { labelledQuestion } from "../../core/research-check.ts";
 import type { AttemptView, DirectionView, ExperimentView, RigView, RunView } from "../views.ts";
 import { ago, campaignHref, esc, icon, runKey } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
 import { outcome } from "./operator.ts";
+import { questionChip, yieldWords } from "./research.ts";
 import { clip } from "./words.ts";
 
 /**
@@ -23,6 +25,10 @@ export type CmdForm = (f: {
   back?: string;
   extra?: string;
 }) => string;
+
+/** A research task whose title already names its question ("Question 2 (index 1): …"), or none. */
+const namesQuestion = (x: ExperimentView) =>
+  x.question === null || labelledQuestion(x.title) === x.question;
 
 /** Who added an experiment or set a rule, as a short label and a tone. */
 export function byLabel(by: string): { text: string; cls: string } {
@@ -45,7 +51,12 @@ const src = (by: string) => {
 export function triedResult(
   r: RunView,
   x: ExperimentView,
-): { cls: "win" | "wait" | "loss" | "broken" | "flat" | "done" | "none"; text: string } {
+): {
+  cls: "win" | "wait" | "loss" | "broken" | "flat" | "done" | "none";
+  text: string;
+  /** Drawn muted: a research trial that added nothing. */
+  quiet?: boolean;
+} {
   if (x.state === "dropped")
     return {
       cls: "none",
@@ -54,9 +65,17 @@ export function triedResult(
   const a: AttemptView | undefined = x.attempt
     ? r.attempts.find((y) => y.id === x.attempt)
     : undefined;
-  // A research trial ends without an attempt: its sources, claims and findings are its result.
+  // A research trial ends without an attempt: its sources, claims and findings are its result,
+  // and its yield says what it added (goal 117).
   if (!a && x.result === "finished")
-    return { cls: "done", text: "finished: its research is in the run's notes" };
+    return {
+      cls: "done",
+      text: x.yield
+        ? `finished: ${yieldWords(x.yield, x.question)}`
+        : "finished: its research is in the run's notes",
+      // A trial that added no verified claim is not shown as a gain.
+      ...(x.yield && !x.yield.verified_claims && !x.yield.findings ? { quiet: true } : {}),
+    };
   if (!a)
     return {
       cls: "none",
@@ -122,7 +141,7 @@ export function experimentsTab(o: {
     ...extra,
   });
   const item = (x: ExperimentView, i: number) =>
-    `<div class="qi" draggable="true" data-id="${esc(x.id)}" data-rig="${esc(u.id)}" data-run="${esc(r.id)}"><span class="qh" title="Drag to reorder">⋮⋮</span><span class="qn">${i + 1}</span><div class="qmain"><div class="qt">${esc(x.title)}</div>${x.why ? `<div class="qwhy">${esc(x.why)}</div>` : ""}${x.returns ? `<div class="muted xs">Came back ${x.returns === 1 ? "once" : `${x.returns} times`}: its trial never really tried it${x.cause ? ` (${esc(clip(x.cause, 200))})` : ""}.</div>` : ""}<div class="qmeta">${src(x.by)}${x.family ? `<span class="qdir">${esc(x.family)}</span>` : ""}${x.from_run ? `<span class="muted xs">from ${esc(x.from_run)}</span>` : ""}</div></div><div class="qacts">${i > 0 ? o.cmd({ rig: u.id, kind: "queue_move", fields: fields(x, { position: "top" }), label: "↑ Top", cls: "sm ghost", back: o.back }) : ""}<details class="menu"><summary class="btn sm ghost">Edit</summary><div class="menu-pop qedit">${o.cmd({ rig: u.id, kind: "queue_edit", fields: fields(x), label: "Save", cls: "sm", back: o.back, extra: editFields(x) })}</div></details><details class="menu"><summary class="btn sm ghost">Drop</summary><div class="menu-pop">${o.cmd({ rig: u.id, kind: "queue_drop", fields: fields(x), label: "Drop it", cls: "sm danger", back: o.back, extra: `<input name="why" required placeholder="why" aria-label="Why" style="width:100%;margin-bottom:6px">` })}</div></details></div></div>`;
+    `<div class="qi" draggable="true" data-id="${esc(x.id)}" data-rig="${esc(u.id)}" data-run="${esc(r.id)}"><span class="qh" title="Drag to reorder">⋮⋮</span><span class="qn">${i + 1}</span><div class="qmain"><div class="qt">${esc(x.title)}</div>${x.why ? `<div class="qwhy">${esc(x.why)}</div>` : ""}${x.returns ? `<div class="muted xs">Came back ${x.returns === 1 ? "once" : `${x.returns} times`}: its trial never really tried it${x.cause ? ` (${esc(clip(x.cause, 200))})` : ""}.</div>` : ""}<div class="qmeta">${src(x.by)}${questionChip(r, x.question)}${x.family ? `<span class="qdir">${esc(x.family)}</span>` : ""}${x.from_run ? `<span class="muted xs">from ${esc(x.from_run)}</span>` : ""}</div></div><div class="qacts">${i > 0 ? o.cmd({ rig: u.id, kind: "queue_move", fields: fields(x, { position: "top" }), label: "↑ Top", cls: "sm ghost", back: o.back }) : ""}<details class="menu"><summary class="btn sm ghost">Edit</summary><div class="menu-pop qedit">${o.cmd({ rig: u.id, kind: "queue_edit", fields: fields(x), label: "Save", cls: "sm", back: o.back, extra: editFields(x) })}</div></details><details class="menu"><summary class="btn sm ghost">Drop</summary><div class="menu-pop">${o.cmd({ rig: u.id, kind: "queue_drop", fields: fields(x), label: "Drop it", cls: "sm danger", back: o.back, extra: `<input name="why" required placeholder="why" aria-label="Why" style="width:100%;margin-bottom:6px">` })}</div></details></div></div>`;
   // An experiment's words, to change before a lane takes it.
   const editFields = (x: ExperimentView) =>
     `<label class="sfd">${infoLabel("What to try", "The experiment's title: what a lane works on.")}<input name="title" required maxlength="200" value="${esc(x.title)}"></label><label class="sfd">${infoLabel("Details", "More on how to try it, for the lane that takes it. Empty: none.")}<textarea name="details" rows="3" maxlength="4000">${esc(x.details ?? "")}</textarea></label><label class="sfd">${infoLabel("Direction", "The approach it belongs to. Rules apply by direction.")}<input name="family" maxlength="80" value="${esc(x.family)}"></label><label class="sfd">${infoLabel("Why", "Why it is worth trying. Empty: none.")}<input name="why" maxlength="2000" value="${esc(x.why ?? "")}"></label>`;
@@ -137,7 +156,7 @@ export function experimentsTab(o: {
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
     .map(([lane, w]) => {
       const x = doing.find((d) => d.trial === w.trial || d.lane === lane);
-      return `<div class="qlane"><div class="qlt"><span class="dot ok"></span><b>${esc(lane)}</b> · since ${esc(ago(w.since, o.now))} ago</div><div>${esc(x?.title ?? w.focus ?? w.family ?? "working")}</div>${x ? `<div class="muted xs">${src(x.by)}</div>` : ""}</div>`;
+      return `<div class="qlane"><div class="qlt"><span class="dot ok"></span><b>${esc(lane)}</b> · since ${esc(ago(w.since, o.now))} ago</div><div>${esc(x?.title ?? w.focus ?? w.family ?? "working")}</div>${x ? `<div class="muted xs">${src(x.by)}${questionChip(r, x.question)}</div>` : ""}</div>`;
     })
     .join("");
   const ideaRows = ideas
@@ -151,7 +170,7 @@ export function experimentsTab(o: {
     .map((x) => {
       const res = triedResult(r, x);
       counts[res.cls]++;
-      return `<tr data-r="${res.cls}" data-d="${esc(x.family)}" data-b="${esc(byLabel(x.by).text)}"><td><b>${esc(x.title)}</b>${x.why ? `<div class="muted xs">${esc(clip(x.why, 160))}</div>` : ""}${x.cause && x.state === "done" ? `<div class="muted xs">How its trial ended: ${esc(clip(x.cause, 200))}</div>` : ""}</td><td class="qdir">${esc(x.family)}</td><td>${src(x.by)}</td><td class="muted small">${esc([x.lane, x.trial ? `trial ${x.trial.slice(0, 10)}` : ""].filter(Boolean).join(" · ") || "·")}</td><td><span class="qres ${res.cls}">${esc(res.text)}</span></td><td class="muted small nowrap">${esc(ago(x.updated_at, o.now))} ago</td></tr>`;
+      return `<tr data-r="${res.cls}" data-d="${esc(x.family)}" data-b="${esc(byLabel(x.by).text)}"><td><b>${esc(x.title)}</b>${namesQuestion(x) ? "" : ` ${questionChip(r, x.question)}`}${x.why ? `<div class="muted xs">${esc(clip(x.why, 160))}</div>` : ""}${x.cause && x.state === "done" ? `<div class="muted xs">How its trial ended: ${esc(clip(x.cause, 200))}</div>` : ""}</td><td class="qdir">${esc(x.family)}</td><td>${src(x.by)}</td><td class="muted small">${esc([x.lane, x.trial ? `trial ${x.trial.slice(0, 10)}` : ""].filter(Boolean).join(" · ") || "·")}</td><td><span class="qres ${res.cls}${res.quiet ? " flat" : ""}">${esc(res.text)}</span></td><td class="muted small nowrap">${esc(ago(x.updated_at, o.now))} ago</td></tr>`;
     })
     .join("");
   const chip = (key: string, label: string, n: number) =>

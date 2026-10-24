@@ -18,7 +18,7 @@ import { FolderSchema, MAX_LANES, parseContract } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { queueTarget, queueTargetNote } from "../core/queue-target.ts";
 import { RESEARCH_REVIEW } from "../core/research-check.ts";
-import { isFree, knownTimeZone, type UsagePeriod } from "../core/usage.ts";
+import { isFree, knownTimeZone, sumUsage, type UsagePeriod } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, goalChecks } from "../harness/goal-checks.ts";
 import { KitSchema } from "../harness/kit.ts";
@@ -262,11 +262,9 @@ import {
   modeName,
   moreText,
   num,
-  paperHref,
   pct,
   type RunTab,
   reportingTag,
-  researchCheckWords,
   runCompleted,
   runHref,
   runKey,
@@ -325,6 +323,13 @@ import {
 import { PLANNER_JS } from "./ui/planner-client.ts";
 import { PROVIDERS_JS } from "./ui/providers-client.ts";
 import { experimentsTab, plannerTab } from "./ui/queue.ts";
+import {
+  campaignReviewsTab,
+  hypothesesTab,
+  type ReviewSources,
+  researchBlock,
+  reviewsTab,
+} from "./ui/research.ts";
 import { checkFollowUrl, checkRowHtml, modelCheckHtml } from "./ui/rig-checks.ts";
 import {
   type RigPlace,
@@ -363,7 +368,7 @@ import {
   runUsageTop,
 } from "./ui/usage.ts";
 import { auditReason, clip, jobText, listText, runStatusText, signed, span } from "./ui/words.ts";
-import { setModelPrice, usageData } from "./usage.ts";
+import { pricingOf, setModelPrice, usageData } from "./usage.ts";
 import {
   type CampaignView,
   campaignModes,
@@ -793,6 +798,34 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     };
   };
 
+  /**
+   * What a research run's Reviews tab reads beyond the run's events (goal 116): each review's
+   * model use, from the review panel's records (round "review N"), priced as Metrics prices them,
+   * and the supervisor's lines for it in the run's Live view.
+   */
+  const reviewSources = (u: RigView, i: RunView): ReviewSources => {
+    const rows = store.reviewUsageRows(u.id, i.id);
+    const price = pricingOf(store);
+    const lines = store.reviewLines(u.id, i.id);
+    return {
+      usage: (n) => {
+        const rs = rows.get(n);
+        if (!rs?.length) return undefined;
+        const s = sumUsage(
+          rs.map((r) => ({ ...r, pricing: price(r.provider, r.model, r.harness) })),
+        );
+        return {
+          calls: s.calls,
+          tokens_in: s.tokens_in,
+          tokens_out: s.tokens_out,
+          call_ms: s.call_ms,
+          usd: s.cost.usd,
+        };
+      },
+      lines: (n) => lines.filter((l) => l.review === n),
+    };
+  };
+
   /** A campaign's model use and cost over all its runs on every rig (goal 075), for its sidebar. */
   const campaignUsage = (k: CampaignView) =>
     campaignUsageBlock({
@@ -824,6 +857,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const t = csrf(c);
     const back = runHref(u.id, i, view);
     const others = vs.filter((x) => x.id !== u.id);
+    // A research run's page has its Reviews and Hypotheses tabs (goals 116 and 117).
+    const researchRun = i.mode === "research";
     const usage = runUsage(u, i, now);
     const decisions = needs(c, [u], now, back).filter((n) => n.run === i.id);
     // How each goal is really checked (goal 082): as this run's rig reported its kit, else as
@@ -852,39 +887,10 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             )
             .join("")}</div></div>`
         : "";
-    const research = i.research
-      ? (() => {
-          const r = i.research as Record<string, unknown>;
-          // The harness's digest names each question's words `question` (the run's contract order).
-          const qs = Array.isArray(r.questions)
-            ? (r.questions as { question?: unknown; verified?: unknown }[])
-            : [];
-          const most = Math.max(1, ...qs.map((q) => num(q.verified)));
-          const unsupported = num(r.unsupported_numbers);
-          // The research paper, once code accepted it (goal 112): a link to it as a file, and the
-          // paper itself beside the latest report.
-          const paper = i.paper?.state === "in" && i.paper.text ? i.paper : undefined;
-          const paperLine = paper
-            ? `<div class="small" style="margin-top:6px"><b>Research paper:</b> by the final writer${paper.writer ? ` ${esc(paper.writer)}` : ""}, ${paper.ste_checked ? "checked against the rig's STE checker" : "not checked for STE"}; ${paper.experiments} next ${paper.experiments === 1 ? "experiment" : "experiments"} kept in the knowledge base. <a href="${esc(paperHref(u.id, i.id))}">paper.md</a></div>`
-            : "";
-          const paperText = paper
-            ? `<details data-k="paper-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Research paper</summary><pre class="report" style="margin-top:8px">${esc(String(paper.text))}</pre></details>`
-            : "";
-          return `<div class="block"><div class="head"><h2>Research questions</h2><span class="right">${esc(String(r.kind ?? ""))} · ${esc(ago(String(r.at ?? ""), now))} ago</span></div><div class="card">${
-            qs.length
-              ? `<div class="muted small" style="margin-bottom:10px">Verified claims for each of the run's questions. A bar is measured against the question with the most.</div>`
-              : ""
-          }<div class="stack">${
-            qs
-              .map((q, n) => {
-                const words = String(q.question ?? "").trim();
-                const v = num(q.verified);
-                return `<div class="rq"><div class="rq-head"><span class="rq-text" title="${esc(words)}"><b>Q${n + 1}</b> ${esc(words || "(no words)")}</span><span class="rq-v">${v} verified ${v === 1 ? "claim" : "claims"}</span></div><div class="bar ok"><i style="width:${((v / most) * 100).toFixed(1)}%"></i></div></div>`;
-              })
-              .join("") || `<div class="muted small">No question coverage yet.</div>`
-          }</div><div class="small rcheck" style="margin-top:10px"><b>Answer check:</b> ${esc(researchCheckWords(i, u))}</div>${paperLine}${unsupported ? `<div class="note warn">${unsupported} ${unsupported === 1 ? "number" : "numbers"} in the latest report ${unsupported === 1 ? "appears" : "appear"} in no archived source and no verified claim. The report flags each one.</div>` : ""}${paperText}<details data-k="report-${esc(i.id)}" style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Latest report</summary><pre class="report" style="margin-top:8px">${esc(String(r.report ?? ""))}</pre></details></div></div>`;
-        })()
-      : "";
+    // A research run (goals 112, 116 and 117): each question with its answer card, its standing
+    // decision, its gaps, its share of the work and whether it is saturated; the answer check and
+    // the progress rule; the paper and the latest report.
+    const research = i.mode === "research" || i.research ? researchBlock(u, i, now) : "";
     // The changes that waited when the run closed (goal 087): they left Needs you.
     const left = leftByClose(i, u).length;
     const leftWords = left
@@ -1158,11 +1164,15 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                       ]),
                     ].filter(Boolean),
                   })
-                : view === "stats"
-                  ? usage
-                    ? runStatsTab(usage)
-                    : `<div class="card"><div class="empty">No model use: this run has no agents.</div></div>`
-                  : `<p class="run-said" data-part="run-said">${said}</p>
+                : view === "reviews" && researchRun
+                  ? reviewsTab({ u, r: i, now, ...reviewSources(u, i) })
+                  : view === "hypotheses" && researchRun
+                    ? hypothesesTab({ u, r: i, now, cmd: (f) => cmdForm(c, f), back })
+                    : view === "stats"
+                      ? usage
+                        ? runStatsTab(usage)
+                        : `<div class="card"><div class="empty">No model use: this run has no agents.</div></div>`
+                      : `<p class="run-said" data-part="run-said">${said}</p>
 <div data-part="run-needs">${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}</div>
 <div class="cols run-cols"><div>
 ${goals}${championHeldOutBlock(i, now)}${research}${baselineBlock(i, u, now)}${ladder}
@@ -1173,7 +1183,7 @@ ${goals}${championHeldOutBlock(i, now)}${research}${baselineBlock(i, u, now)}${l
 <div class="block" data-part="recent"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
     return `${usage ? runUsageTop(usage) : ""}<section class="block" id="${esc(runKey(u.id, i.id))}">
-<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}${usage ? sub("stats", "Stats") : ""}</nav>
+<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${researchRun ? `${sub("reviews", "Reviews", ` <span class="muted">${i.reviews.filter((r) => r.goal === RESEARCH_REVIEW).length}</span>`)}${sub("hypotheses", "Hypotheses", ` <span class="muted">${i.hypotheses.length}</span>`)}` : ""}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}${usage ? sub("stats", "Stats") : ""}</nav>
 ${body}
 </section>`;
   };
@@ -2564,7 +2574,9 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         qv === "history" ||
         qv === "experiments" ||
         qv === "journal" ||
-        qv === "stats"
+        qv === "stats" ||
+        qv === "reviews" ||
+        qv === "hypotheses"
           ? qv
           : qv === "planner" || qv === "steering"
             ? "planner"
@@ -2654,6 +2666,17 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         : "");
     const about = aboutOf(name);
     const rigs = rigList(k);
+    // A research campaign's page has a Reviews tab (goal 116): its runs' reviews, by run.
+    const reviewCount = k.runs.reduce(
+      (n, x) => n + x.run.reviews.filter((r) => r.goal === RESEARCH_REVIEW).length,
+      0,
+    );
+    const campaignView =
+      k.mode === "research" && c.req.query("view") === "reviews" ? "reviews" : "";
+    const campaignTabs =
+      k.mode === "research"
+        ? `<nav class="tabs"><a class="${campaignView ? "" : "on"}" href="${campaignHref(name)}">Overview</a><a class="${campaignView ? "on" : ""}" href="${campaignHref(name)}?view=reviews">Reviews <span class="muted">${reviewCount}</span></a></nav>`
+        : "";
     const verifiedBy = new Map(
       (leaderboard(store, { staleAfterMs: opts.staleAfterMs })[k.name] ?? []).map((r) => [
         runKey(r.rig, r.run),
@@ -2673,43 +2696,57 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         about || goals
           ? `<div class="card khead"><div>${about ? `<div class="small muted">What it is for</div>` : `<div class="small muted">Goals of its best run</div>`}${about ? `<div class="kabout-big">${esc(about)}</div>` : ""}${goals}</div><div class="small muted right">on ${esc(rigs.join(", "))}${bestRun ? `<br>best: ${esc(bestRun.id)}, ${esc(h.value)} ${esc(h.sub)}` : ""}</div></div>`
           : ""
-      }
-<div class="cols run-cols"><div>
-<div class="block" data-part="at-work"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
-        running.length
-          ? `<div class="kwork one">${running.map((x) => workCardFor(c, x.rig, x.run, now, waitingFor(x.rig, x.run), campaignHref(name))).join("")}</div>`
-          : `<div class="card"><div class="empty">No run is at work.${canStart ? ` <a href="${campaignHref(name)}?start=1" data-open="#start">Start one.</a>` : ""}</div></div>`
-      }</div>
-${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`).join("")}
-<div data-part="earlier">${
-        earlier.length
-          ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused, completed and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
-              earlier.map((x) => ({
-                ...x,
-                // A hill climb's champion that other rigs confirmed (cross-verified).
-                result: (() => {
-                  const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
-                  return v.length
-                    ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
-                    : "";
+      }${campaignTabs}${
+        campaignView === "reviews"
+          ? campaignReviewsTab({
+              runs: [...running, ...earlier].map((x) => ({
+                u: x.rig,
+                r: x.run,
+                state: (() => {
+                  const s = runState(x.run);
+                  return `<span class="label ${s.cls}">${s.icon}${esc(s.text)}</span>`;
                 })(),
-                action:
-                  x.run.status === "paused"
-                    ? cmdForm(c, {
-                        rig: x.rig.id,
-                        kind: "resume_run",
-                        fields: { run: x.run.id },
-                        label: "Resume",
-                        cls: "sm",
-                        back: campaignHref(name),
-                      })
-                    : "",
               })),
               now,
-            )}</div>`
-          : ""
-      }</div>${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}
-</div><div class="side">${campaignUsage(k)}</div></div>${drawer}`,
+              sources: reviewSources,
+            })
+          : `<div class="cols run-cols"><div>
+<div class="block" data-part="at-work"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
+              running.length
+                ? `<div class="kwork one">${running.map((x) => workCardFor(c, x.rig, x.run, now, waitingFor(x.rig, x.run), campaignHref(name))).join("")}</div>`
+                : `<div class="card"><div class="empty">No run is at work.${canStart ? ` <a href="${campaignHref(name)}?start=1" data-open="#start">Start one.</a>` : ""}</div></div>`
+            }</div>
+${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`).join("")}
+<div data-part="earlier">${
+              earlier.length
+                ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused, completed and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
+                    earlier.map((x) => ({
+                      ...x,
+                      // A hill climb's champion that other rigs confirmed (cross-verified).
+                      result: (() => {
+                        const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
+                        return v.length
+                          ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
+                          : "";
+                      })(),
+                      action:
+                        x.run.status === "paused"
+                          ? cmdForm(c, {
+                              rig: x.rig.id,
+                              kind: "resume_run",
+                              fields: { run: x.run.id },
+                              label: "Resume",
+                              cls: "sm",
+                              back: campaignHref(name),
+                            })
+                          : "",
+                    })),
+                    now,
+                  )}</div>`
+                : ""
+            }</div>${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}
+</div><div class="side">${campaignUsage(k)}</div></div>`
+      }${drawer}`,
       vs,
     );
   };
@@ -8743,6 +8780,13 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       decline_promotion: { run, attempt: String(f.attempt ?? "") },
       accept_review: { run, review: Number(f.review), accept: f.accept === "true" },
       conclude: { run, proposal: Number(f.proposal), accept: f.accept === "true" },
+      // A research run's hypothesis (goal 117): promoted, back to the pool or retired, with why.
+      hypothesis_status: {
+        run,
+        id: String(f.id ?? ""),
+        status: String(f.status ?? ""),
+        reason: String(f.reason ?? "").trim(),
+      },
       // The experiment queue (goal 064).
       queue_add: {
         run,
@@ -8788,13 +8832,17 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     }
     // Close run (goal 087) takes the owner's reason and the typed words, as its form asks.
     const closing =
-      kind !== "close_run"
-        ? ""
-        : !String(f.reason ?? "").trim()
-          ? "write why you close the run first"
-          : String(f.confirm ?? "").trim() !== `close ${run}`
-            ? `type close ${run} to confirm`
-            : "";
+      kind === "hypothesis_status"
+        ? String(f.reason ?? "").trim()
+          ? ""
+          : "write why you change the hypothesis first"
+        : kind !== "close_run"
+          ? ""
+          : !String(f.reason ?? "").trim()
+            ? "write why you close the run first"
+            : String(f.confirm ?? "").trim() !== `close ${run}`
+              ? `type close ${run} to confirm`
+              : "";
     if (closing) return json ? c.json(notSent(closing), 400) : c.text(`refused: ${closing}`, 400);
     let woke: string | null;
     let id: string;
