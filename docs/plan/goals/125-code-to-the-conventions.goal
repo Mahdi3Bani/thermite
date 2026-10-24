@@ -96,7 +96,8 @@ Known at the start, 2026-10-24:
 
   In `scripts/`, 2 files are over 800 lines.
 - **Names in place of folders.** 32 groups of files, 96 files in all, share a word at the start or the end of their names, such as the 16 `scripts/*-acceptance.mjs`, the 9 `src/control/ui/*-client.ts` and the 6 `src/control/runpod-*.ts`.
-- **Tests beside the code.** All 206 test files sit in `src/`, beside the code they test. `npm test` looks for `src/**/*.test.ts`.
+- **Tests beside the code.** All 206 test files sit in `src/`, beside the code they test. `scripts/test.mjs` lists them from `src/` (`readdirSync("src")`), and runs those that match `^src/harness/(judge|broker)/` alone, one at a time: both change when the tests move. New test helpers go in `src/testing/` until then.
+- **CI picks its heavy jobs by path.** The compose-smoke, rig-image, RunPod and quick-start jobs in `.github/workflows/ci.yml` run on a push or a pull request only when the change touches their paths, which name files in `src/`, such as `^src/(control|harness)/api\.ts$` and `^src/harness/broker(\.ts|/)`. Each move, split and rename updates these lists in the same commit, or a heavy check stops running when it should.
 - **Logging.** No log level can be changed while a program runs.
 
 ## Decisions
