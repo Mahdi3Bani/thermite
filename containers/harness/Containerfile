@@ -16,7 +16,7 @@ FROM ${NODE_IMAGE} AS node
 # (npm checks the package against the registry's hash), with the release's MIT LICENSE, which the
 # npm package leaves out (containers/harness/opencode/; update it with the version).
 FROM ${NODE_IMAGE} AS opencode
-ARG OPENCODE_VERSION=2.0.32
+ARG OPENCODE_VERSION=2.1.4
 ARG TARGETARCH
 COPY containers/harness/opencode/LICENSE /usr/local/share/doc/opencode/LICENSE
 RUN cd /tmp \

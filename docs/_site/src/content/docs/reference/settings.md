@@ -362,7 +362,7 @@ The images take these build arguments. [Harness image](harness-image.md) says wh
 | --- | --- | --- | --- |
 | `NODE_IMAGE` | control, harness, supervisor | Node.js 22 on Debian bookworm (slim), pinned by digest | The Node.js image each image is built from |
 | `BASE_IMAGE` | harness | `NODE_IMAGE` | The harness's base. For GPU rigs, a CUDA 12.x development image |
-| `OPENCODE_VERSION` | harness, supervisor | `2.0.32` | The OpenCode version installed: for the workers and the planner, and for advisors in OpenCode |
+| `OPENCODE_VERSION` | harness, supervisor | `2.1.4` | The OpenCode version installed: for the workers and the planner, and for advisors in OpenCode |
 | `CLAUDE_CODE_VERSION` | harness, supervisor | empty: Claude Code is not installed | The Claude Code version to download at build time, for agents or advisors on a Claude subscription |
 | `CODEX_VERSION` | harness, supervisor | `0.162.1` | The Codex CLI version installed: for the workers and the planner, and for advisors in Codex. Empty: the image has no Codex CLI |
 | `KUBECTL_VERSION` | control | `v1.37.1` | The kubectl version installed, checked against a pinned checksum |

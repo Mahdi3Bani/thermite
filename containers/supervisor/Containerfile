@@ -12,7 +12,7 @@ RUN npm run build && npm prune --omit=dev --no-fund --no-audit
 # OpenCode v2, a harness an advisor may run in (goal 073): the same pinned release as the harness
 # image's, with its MIT LICENSE (containers/harness/opencode/; update both with the version).
 FROM ${NODE_IMAGE} AS opencode
-ARG OPENCODE_VERSION=2.0.32
+ARG OPENCODE_VERSION=2.1.4
 ARG TARGETARCH
 COPY containers/harness/opencode/LICENSE /usr/local/share/doc/opencode/LICENSE
 RUN cd /tmp \

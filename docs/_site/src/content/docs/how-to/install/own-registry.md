@@ -62,7 +62,7 @@ The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda
 | --- | --- | --- | --- |
 | `BASE_IMAGE` | Harness | The Node.js image | The base of the final image: a CUDA image for GPU rigs |
 | `NODE_IMAGE` | All three | Node.js 22 on Debian bookworm, pinned by digest | Where Node.js comes from |
-| `OPENCODE_VERSION` | Harness, supervisor | `2.0.32` | The OpenCode release the image carries |
+| `OPENCODE_VERSION` | Harness, supervisor | `2.1.4` | The OpenCode release the image carries |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | Empty: no Claude Code | Downloads that Claude Code release into the image, for a [Claude subscription](../models/claude-subscription.md) |
 | `CODEX_VERSION` | Harness, supervisor | `0.162.1` | The Codex CLI release the image carries, for [agents in Codex](../models/chatgpt-subscription.md#run-the-agents-in-codex). Empty: no Codex CLI, and an image about 400 MB smaller |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl control uses for clusters. It is checked against a pinned hash, so a different version fails the build |
