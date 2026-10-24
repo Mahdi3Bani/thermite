@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { RESEARCH_TOOLS } from "./research-tools.ts";
+import { OUTPUT_MAX, RESEARCH_TOOLS } from "./research-tools.ts";
 import { parseArgs, researchRequest, trialCli } from "./trial-cli.ts";
 
 function repo(): string {
@@ -231,6 +231,7 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
     await trialCli(["research", "read_source", "s-1", "--offset", "6000"], env, call);
     await trialCli(["research", "search", "2-bit", "decoding"], env, call);
     await trialCli(["research", "search_corpus", "dequantize"], env, call);
+    await trialCli(["research", "search_corpus", "dequantize", "--skip", "18"], env, call);
     await trialCli(
       ["research", "add_note", "kernels", "differ", "--source", "s-1", "--source", "s-2"],
       env,
@@ -245,6 +246,11 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       { method: "POST", path: "/v1/research/search-corpus", body: { text: "dequantize" } },
       {
         method: "POST",
+        path: "/v1/research/search-corpus",
+        body: { text: "dequantize", skip: 18 },
+      },
+      {
+        method: "POST",
         path: "/v1/research/note",
         body: { text: "kernels differ", sources: ["s-1", "s-2"] },
       },
@@ -255,6 +261,28 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       },
       { method: "POST", path: "/v1/research/stats", body: {} },
     ]);
+  });
+
+  test("research: an answer too long for the agent is cut with where to read on, never silently (goal 117)", async () => {
+    const env = { harnessUrl: "http://h", auth: "trial.t", workspace: "/w", editablePaths: [] };
+    const read = await trialCli(["research", "read_source", "s-1"], env, async () => ({
+      source: "s-1",
+      url: "https://example.com/a",
+      chars: 40_000,
+      offset: 0,
+      text: "word ".repeat(8000),
+    }));
+    assert.ok(read.length <= OUTPUT_MAX);
+    const o = JSON.parse(read) as { next_offset: number; cut: string };
+    assert.match(o.cut, new RegExp(`read_source s-1 with offset ${o.next_offset}`));
+    const listed = await trialCli(["research", "progress"], env, async () => ({
+      questions: Array.from({ length: 1500 }, (_, i) => `a long question ${i}`),
+    }));
+    assert.ok(listed.length <= OUTPUT_MAX);
+    assert.match(
+      listed,
+      /\[cut: this answer has \d+ characters, and only its first \d+ are shown\]$/,
+    );
   });
 
   test("research: a claim's exact quotes come as JSON on stdin, untouched; mistakes say what to do", async () => {

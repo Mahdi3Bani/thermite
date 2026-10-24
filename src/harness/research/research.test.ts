@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import { startFakeModel } from "../../testing/fake-model.ts";
 import { researchFixture } from "../../testing/fixtures.ts";
 import { makeHarnessEnv } from "../../testing/harness-env.ts";
 import { Registry } from "../agents/registry.ts";
+import { OUTPUT_MAX, READ_MAX, researchOutput } from "../agents/research-tools.ts";
 import { runResearchTrial } from "../agents/research-worker.ts";
 import { Scheduler } from "../agents/scheduler.ts";
 import { createHarnessApi } from "../api.ts";
@@ -63,6 +64,35 @@ async function researchEnv(over: Record<string, unknown> = {}, allowPrivate = tr
   assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
   const research = new Research(env.service.ledger, env.service.paths.stateDir, { allowPrivate });
   return { env, research };
+}
+
+/** A source archived as the fetcher would keep it, with no web: its row and its text file. */
+function archived(
+  env: ReturnType<typeof makeHarnessEnv>,
+  id: string,
+  url: string,
+  text: string,
+): void {
+  const dir = join(env.service.paths.stateDir, "test-archive");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${id}.txt`);
+  writeFileSync(path, text);
+  env.service.ledger.db
+    .prepare(
+      `insert into source (id, run, url, final_url, domain, fetched_at, http_status, content_type, bytes, sha256,
+         title, raw_path, text_path, fetched_by) values (?, 'r-1', ?, ?, ?, ?, 200, 'text/plain', ?, ?, null, ?, ?, 'lane-1')`,
+    )
+    .run(
+      id,
+      url,
+      url,
+      new URL(url).hostname,
+      new Date().toISOString(),
+      text.length,
+      id,
+      path,
+      path,
+    );
 }
 
 describe("research service", () => {
@@ -568,18 +598,9 @@ describe("research integrity", () => {
 
   test("corroboration counts registrable domains: two hosts of one site are one domain", async () => {
     const { env, research } = await researchEnv();
-    const dir = mkdtempSync(join(env.service.paths.stateDir, "sites-"));
     const quote = "Fresh workers that start from the ledger lose nothing that matters.";
-    const archive = (id: string, url: string) => {
-      const text = join(dir, `${id}.txt`);
-      writeFileSync(text, `A page that says: ${quote}`);
-      env.service.ledger.db
-        .prepare(
-          `insert into source (id, run, url, final_url, domain, fetched_at, http_status, content_type, bytes, sha256,
-             title, raw_path, text_path, fetched_by) values (?, 'r-1', ?, ?, ?, ?, 200, 'text/plain', 1, ?, null, ?, ?, 'lane-1')`,
-        )
-        .run(id, url, url, new URL(url).hostname, new Date().toISOString(), id, text, text);
-    };
+    const archive = (id: string, url: string) =>
+      archived(env, id, url, `A page that says: ${quote}`);
     archive("s-000000000001", "https://docs.example.com/a");
     archive("s-000000000002", "https://blog.example.com/b");
     archive("s-000000000003", "https://www.example.org/c");
@@ -610,6 +631,41 @@ describe("research integrity", () => {
     assert.equal(two.verified, true);
     stats = research.stats("r-1");
     assert.equal(stats.corroborated, 1);
+  });
+
+  test("read_source and search_corpus fit a tool's answer, and say where to go on (goal 117)", async () => {
+    const { env, research } = await researchEnv();
+    const long = Array.from({ length: 2500 }, (_, i) => `Sentence ${i} of a long page.`).join(" ");
+    archived(env, "s-00000000000a", "https://example.com/long", long);
+    const first = research.read("r-1", "s-00000000000a");
+    assert.equal(first.text, long.slice(0, 6000));
+    assert.equal(first.next_offset, 6000);
+    assert.match(String(first.more), /read_source s-00000000000a with offset 6000/);
+    const big = research.read("r-1", "s-00000000000a", 6000, 50_000);
+    assert.equal(big.text.length, READ_MAX);
+    assert.match(String(big.note), new RegExp(`at most ${READ_MAX} characters`));
+    assert.ok(researchOutput(big).length <= OUTPUT_MAX, "the whole read fits");
+    assert.throws(() => research.read("r-1", "s-nope"), /no source s-nope in this run/);
+    // Forty pages match: a page of matches that fits, then the rest from next_skip.
+    for (let i = 0; i < 40; i++)
+      archived(
+        env,
+        `s-1${String(i).padStart(11, "0")}`,
+        `https://site${i}.example.org/p`,
+        `${"Before. ".repeat(40)}The dequantize step runs once per tile.${" After.".repeat(60)}`,
+      );
+    const page = research.searchCorpus("r-1", "dequantize step");
+    assert.ok(page.matches.length > 5 && page.matches.length < 40, `${page.matches.length}`);
+    assert.ok(researchOutput(page).length <= OUTPUT_MAX);
+    assert.equal(page.next_skip, page.matches.length);
+    assert.match(String(page.more), new RegExp(`skip ${page.matches.length}`));
+    const seen = [...page.matches];
+    for (let skip: number | undefined = page.next_skip; skip !== undefined; ) {
+      const next = research.searchCorpus("r-1", "dequantize step", skip);
+      seen.push(...next.matches);
+      skip = next.next_skip;
+    }
+    assert.equal(new Set(seen.map((m) => m.source)).size, 40, "every match once, page by page");
   });
 
   test("paused time does not count on the research clock", async () => {

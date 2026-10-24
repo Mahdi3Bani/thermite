@@ -892,7 +892,7 @@ export function createHarnessApi(
       case "search":
         return c.json(r.search(run, lane, s("query")));
       case "search-corpus":
-        return c.json(r.searchCorpus(run, s("text")));
+        return c.json(r.searchCorpus(run, s("text"), Number(body.skip ?? 0)));
       case "claim":
         return c.json(r.addClaim(run, lane, body));
       case "note":
@@ -903,8 +903,23 @@ export function createHarnessApi(
         return c.json(r.addFinding(run, lane, body));
       case "section":
         return c.json(r.updateSection(run, lane, s("name"), s("body")));
-      case "stats":
-        return c.json({ ...r.stats(run), clock: r.clock(run) });
+      case "stats": {
+        // Each question by its index, its words cut to fit a tool's answer (goal 117): a
+        // question has no length limit, and the brief and INDEX.md have each one whole.
+        const stats = r.stats(run);
+        return c.json({
+          ...stats,
+          questions: stats.questions.map((q, index) => ({
+            index,
+            question:
+              q.question.length > 300
+                ? `${q.question.slice(0, 299)}… (cut: the whole question is in your brief and INDEX.md)`
+                : q.question,
+            verified: q.verified,
+          })),
+          clock: r.clock(run),
+        });
+      }
       default:
         return c.json({ error: "unknown research operation" }, 404);
     }

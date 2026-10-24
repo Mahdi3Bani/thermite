@@ -12,6 +12,7 @@ import { type FailureCount, failingOf, ProviderWatch } from "./provider-errors.t
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import {
+  READ_MAX,
   RESEARCH_SYSTEM,
   RESEARCH_TOOLS,
   type ResearchFolderPaths,
@@ -283,29 +284,42 @@ function folderTools(folder: ResearchFolderPaths, result: TrialResult): AgentToo
   return [
     fileTool(
       "list_files",
-      "List a directory of the research folder (relative paths; '.' is its top).",
-      Type.Object({ path: Type.Optional(Type.String()) }),
-      (p) => listFiles(folder, str(p.path) ?? "."),
+      "List a directory of the research folder (relative paths; '.' is its top), a page at a time: next_skip, when there is one, gives the next page.",
+      Type.Object({
+        path: Type.Optional(Type.String()),
+        skip: Type.Optional(Type.Number({ description: "Entries to skip: an answer's next_skip" })),
+      }),
+      (p) => listFiles(folder, str(p.path) ?? ".", num(p.skip) ?? 0),
     ),
     fileTool(
       "read_file",
-      "Read a file of the research folder, from an offset in characters.",
+      `Read a file of the research folder, from an offset in characters: at most ${READ_MAX} characters a read; next_offset says where the next part starts.`,
       Type.Object({
         path: Type.String(),
-        offset: Type.Optional(Type.Number()),
-        length: Type.Optional(Type.Number()),
+        offset: Type.Optional(
+          Type.Number({ description: "Where to start, in characters: an answer's next_offset" }),
+        ),
+        length: Type.Optional(
+          Type.Number({ description: `How many characters, at most ${READ_MAX}` }),
+        ),
       }),
-      (p) => readFile(folder, String(p.path), num(p.offset) ?? 0, num(p.length) ?? 20_000),
+      (p) => readFile(folder, String(p.path), num(p.offset) ?? 0, num(p.length) ?? READ_MAX),
     ),
     fileTool(
       "search_files",
-      "Search every file under a path of the research folder for lines with this text (case-insensitive), or matching it as a regular expression with regex true.",
+      "Search every file under a path of the research folder for lines with this text (case-insensitive), or matching it as a regular expression with regex true. A page of lines at a time: next_skip, when there is one, gives the next page.",
       Type.Object({
         text: Type.String(),
         path: Type.Optional(Type.String()),
         regex: Type.Optional(Type.Boolean()),
+        skip: Type.Optional(Type.Number({ description: "Lines to skip: an answer's next_skip" })),
       }),
-      (p) => searchFiles(folder, String(p.text), { path: str(p.path), regex: p.regex === true }),
+      (p) =>
+        searchFiles(folder, String(p.text), {
+          path: str(p.path),
+          regex: p.regex === true,
+          skip: num(p.skip),
+        }),
     ),
     fileTool(
       "write_file",

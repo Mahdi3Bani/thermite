@@ -8,7 +8,7 @@ import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import { questionLabel } from "../../core/research-check.ts";
-import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
+import { CODE_RESEARCH_TOOLS, moreText, READ_MAX, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited, claimNumbers, numbersIn, withoutNames } from "./checks.ts";
 import { Fetcher, FetchRefused, htmlToText, registrableDomain } from "./fetcher.ts";
@@ -19,6 +19,14 @@ import { acceptedReview, answerSections, checkLine } from "./review.ts";
 const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n));
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+/** The start of a fetched page's text that fetch answers with (read_source reads the rest). */
+const VIEW_CHARS = 6000;
+/** The links a fetch answers with, in characters, beside the text, within OUTPUT_MAX. */
+const VIEW_LINKS_CHARS = 5000;
+/** One page of search_corpus: at most this many matches, and this many characters of them. */
+const SEARCH_PAGE = 30;
+const SEARCH_CHARS = 11_000;
 
 /**
  * Research mode's integrity rules, enforced by code (the research form of "agents never judge"):
@@ -322,51 +330,108 @@ export class Research {
     return this.view(row, undefined, f.links);
   }
 
+  /**
+   * A fetched page as its worker sees it: the start of its text, with where to read on when there
+   * is more, and the links found on it, as many as fit beside the text (goal 117: nothing is cut
+   * without a word; the links left out are said, and the frontier keeps them).
+   */
   private view(source: Row, note?: string, links: string[] = []) {
     const text = this.text(source);
+    const id = String(source.id);
+    const shown: string[] = [];
+    let size = 0;
+    for (const l of links.slice(0, 60)) {
+      if (size + l.length + 3 > VIEW_LINKS_CHARS) break;
+      shown.push(l);
+      size += l.length + 3;
+    }
+    const part = text.slice(0, VIEW_CHARS);
     return {
-      source: String(source.id),
+      source: id,
       url: String(source.url),
       title: source.title === null ? null : String(source.title),
       status: Number(source.http_status),
       ...(note ? { note } : {}),
       chars: text.length,
-      text: text.slice(0, 6000),
-      links: links.slice(0, 60),
+      offset: 0,
+      text: part,
+      ...moreText({ source: id }, part.length, text.length),
+      links: shown,
+      ...(links.length > shown.length
+        ? {
+            links_not_shown: links.length - shown.length,
+            links_note: `${links.length - shown.length} more of the page's links are not shown, to fit this answer`,
+          }
+        : {}),
     };
   }
 
-  read(run: string, source: string, offset = 0, length = 6000) {
+  /**
+   * Part of an archived source's text, from an offset: at most READ_MAX characters, so that the
+   * answer fits a tool's answer whole, with `next_offset` and where to read on when more is left.
+   */
+  read(run: string, source: string, offset = 0, length = VIEW_CHARS) {
     const s = this.get("select * from source where run = ? and id = ?", run, source);
-    if (!s) throw new Error(`no source ${source}`);
+    if (!s) throw new LedgerError("not_found", `no source ${source} in this run`);
     const text = this.text(s);
+    const from = Math.max(0, Math.min(text.length, Math.trunc(Number(offset) || 0)));
+    const asked = Math.trunc(Number(length) || VIEW_CHARS);
+    const part = text.slice(from, from + Math.max(1, Math.min(asked, READ_MAX)));
     return {
       source,
       url: String(s.url),
       chars: text.length,
-      offset,
-      text: text.slice(offset, offset + Math.min(length, 20_000)),
+      offset: from,
+      text: part,
+      ...moreText({ source }, from + part.length, text.length),
+      ...(asked > READ_MAX ? { note: `a read gives at most ${READ_MAX} characters` } : {}),
+      ...(from >= text.length && text.length > 0
+        ? { note: `offset ${from} is at the end: the text has ${text.length} characters` }
+        : {}),
     };
   }
 
-  /** Case-insensitive plain-text search over the archived texts (no regular expressions). */
-  searchCorpus(run: string, text: string) {
+  /**
+   * Case-insensitive plain-text search over the archived texts (no regular expressions), a page
+   * at a time: up to 30 matches, and fewer when their excerpts would not fit a tool's answer;
+   * `next_skip` gives the next page (goal 117: a page that stops says so).
+   */
+  searchCorpus(run: string, text: string, skip = 0) {
     const needle = text.trim().toLowerCase().slice(0, 200);
     if (needle.length < 2) return { matches: [] };
+    const from = Math.max(0, Math.trunc(Number(skip) || 0));
     const out: { source: string; url: string; excerpt: string }[] = [];
+    let seen = 0;
+    let size = 0;
+    let more = false;
     for (const s of this.all("select * from source where run = ? order by fetched_at", run)) {
       const body = this.text(s);
       const at = body.toLowerCase().indexOf(needle);
-      if (at >= 0) {
-        out.push({
-          source: String(s.id),
-          url: String(s.url),
-          excerpt: body.slice(Math.max(0, at - 200), at + 300),
-        });
-        if (out.length >= 30) break;
+      if (at < 0) continue;
+      if (seen++ < from) continue;
+      const m = {
+        source: String(s.id),
+        url: String(s.url),
+        excerpt: body.slice(Math.max(0, at - 200), at + 300),
+      };
+      const len = JSON.stringify(m).length;
+      if (out.length >= SEARCH_PAGE || (out.length > 0 && size + len > SEARCH_CHARS)) {
+        more = true;
+        break;
       }
+      out.push(m);
+      size += len;
     }
-    return { matches: out };
+    return {
+      matches: out,
+      ...(from ? { skip: from } : {}),
+      ...(more
+        ? {
+            next_skip: from + out.length,
+            more: `more sources match: search_corpus again with skip ${from + out.length} for the next page`,
+          }
+        : {}),
+    };
   }
 
   /** Web search: every query is checked against the contract's search policy and logged. */
