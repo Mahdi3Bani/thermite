@@ -1533,14 +1533,14 @@ export class Research {
           ]
         : []),
     ];
-    // The paper first, whole; then the rest as its appendix, under a heading of its own.
+    // The paper first, whole, with its appendices; then the rest as supplementary material.
     const body = paper
       ? [
           String(paper.paper).replace(/\s+$/, ""),
           "",
           "---",
           "",
-          `# Appendix: the review panel's decisions and the corpus of ${c.title}`,
+          `# Supplementary material: the review panel's decisions and the corpus of ${c.title}`,
           ...lines.slice(1),
         ].join("\n")
       : lines.join("\n");

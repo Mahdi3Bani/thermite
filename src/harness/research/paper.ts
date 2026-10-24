@@ -6,7 +6,15 @@ import { type Ledger, LedgerError } from "../ledger.ts";
 import { newExperimentId } from "../queue.ts";
 import { type CardGap, cardsOf, verifiedByQuestion } from "./cards.ts";
 import { checkCited, numbersIn, withoutReferences } from "./checks.ts";
-import { questionEnded, type StandingDecision, standingDecisions } from "./progress.ts";
+import {
+  claimsAppendix,
+  numberCitations,
+  type PaperItems,
+  panelAppendix,
+  referencesPart,
+} from "./paper/appended.ts";
+import { CITE, clip, FENCE, HEADING, LIST_ITEM, TABLE_ROW } from "./paper/markdown.ts";
+import { questionEnded, standingDecisions } from "./progress.ts";
 import {
   ANSWERED,
   type CheckedHypothesis,
@@ -15,7 +23,6 @@ import {
   type ClaimRow,
   checkedPanel,
   type Dissent,
-  decisionWords,
   PACKAGE_QUOTE_MAX,
   PACKAGE_QUOTES,
   type PackageClaim,
@@ -33,33 +40,64 @@ import {
  * Technical English. The writer works from the run's research (read only) and the review panel's
  * standing decisions, with the questions that stayed open.
  *
- * The paper is written from the answer cards (goal 117): each question's package entry carries
- * its card and only that card's claims, and its results section may cite only its own question's
- * evidence. Code checks the paper before it is accepted, here, in code the writer cannot change:
- * every cited claim is a verified claim of the run, every number in a paragraph is in the claims
- * that paragraph cites (or is one of the corpus figures the harness gave the writer), every
- * question has its results section with the review panel's certainty, every required hypothesis
- * has a row in the table of verdicts with the verdict the review panel gave, a hypothesis the
- * panel did not judge is given no verdict, and the STE checker the supervisor ran on the text
- * found no error, when the rig has one. A paper that fails is refused with its problems. An
- * accepted paper is kept whole in its event, with the review panel's decisions and dissent and
- * the references that code appends; it leads the run's final report and is `paper.md` in the
- * run's research folder. Its next experiments become experiments in the campaign's
+ * The paper is written from the answer cards (goal 117), as a normal research paper that a person
+ * reads from start to end (owner, 2026-10-24): an abstract, an introduction, the method, the
+ * results, a discussion, the limitations and the future work, with the parts the writer chooses.
+ * Code checks the paper before it is accepted, here, in code the writer cannot change: every
+ * question with a verified claim is answered somewhere (the paper cites its evidence), every cited
+ * claim is a verified claim of the run, every number in a paragraph is in the claims that
+ * paragraph cites (or is one of the corpus figures the harness gave the writer), a verdict the
+ * paper gives a hypothesis is the one the review panel gave, a hypothesis the panel did not judge
+ * is given no verdict, and the STE checker the supervisor ran on the text found no error, when the
+ * rig has one. A paper that fails is refused with its problems.
+ *
+ * An accepted paper gets what the writer does not write: each citation becomes the numbers of its
+ * claim's sources, such as [1], and code appends the References and two appendices, the review
+ * panel's decisions (each question's certainty, each hypothesis's verdict, each dissent) and the
+ * claims cited. It is kept whole in its event; it leads the run's final report and is `paper.md`
+ * in the run's research folder. Its next experiments become experiments in the campaign's
  * knowledge-base folder, for a goal or hill-climb run to take into its queue.
  */
 
 type Row = Record<string, unknown>;
 
-/** The paper's parts after its title, each a level-2 heading, in this order. */
+/**
+ * The parts of a usual research paper, each a level-2 heading, in this order: what the writer is
+ * asked for. The writer chooses its parts and their words; code checks none of them, only that
+ * every question is answered somewhere (owner, 2026-10-24).
+ */
 export const PAPER_PARTS = [
-  "Summary",
-  "Questions",
-  "Method",
-  "Results",
-  "Hypotheses",
-  "Limits of the evidence",
-  "Next experiments",
+  {
+    part: "Abstract",
+    what: "one paragraph: the topic, how the run worked, the main answers and how certain they are",
+  },
+  {
+    part: "Introduction",
+    what: "the topic, why it is important, and the run's questions and hypotheses, in sentences",
+  },
+  { part: "Related work", what: "earlier work that the sources describe, when they describe it" },
+  { part: "Method", what: "how the sources were found, archived and checked, with the figures" },
+  {
+    part: "Results",
+    what: "the answer to each question, from its card, with its evidence and the certainty that the review panel decided",
+  },
+  {
+    part: "Discussion",
+    what: "what the answers show together, the hypotheses with the review panel's verdicts, and where reviewers dissent",
+  },
+  {
+    part: "Limitations",
+    what: "claims from a single site, open gaps, questions that stayed open, and draft findings that stay unverified",
+  },
+  {
+    part: "Future work",
+    what: "what only a measurement could settle (each question's next_experiments), then what else to try, each with why",
+  },
+  { part: "Conclusion", what: "the main result, in a few sentences" },
 ] as const;
+
+/** The parts code appends to an accepted paper: the writer writes none of them. */
+const APPENDED = ["references", "bibliography", "appendix", "review panel"];
 
 /** The most characters of a paper as the writer writes it (code appends the references). */
 export const PAPER_MAX = 100_000;
@@ -76,13 +114,6 @@ export const PAPER_ANSWER_CHARS = 1500;
 export const PROPOSED_MAX = 100;
 
 /**
- * The words of a results section's certainty line (goal 117): the review panel's decision on its
- * question. Answered: its certainty; best available: insufficient; no end: open.
- */
-export const PAPER_CERTAINTIES = ["high", "moderate", "low", "insufficient", "open"] as const;
-const CERTAINTY_LINES = `"Certainty: high", "Certainty: moderate" or "Certainty: low" for a question the review panel found answered, "Certainty: insufficient" for one at the best available, and "Certainty: open" for one that stayed open`;
-
-/**
  * The kinds of next experiment (goal 119), by the run that takes one: an improvement a hill climb
  * measures against its champion, or an outcome a goal campaign proves.
  */
@@ -93,7 +124,7 @@ export const NEXT_KIND_WORDS: Record<NextKind, string> = {
   hill_climb: "an improvement a hill climb measures against its champion",
   goal: "an outcome a goal campaign proves",
 };
-/** Each kind's section heading in the paper's Next experiments part. */
+/** Each kind's section heading in the paper's part on future work. */
 export const NEXT_HEADINGS: Record<NextKind, string> = {
   hill_climb: "For a hill climb",
   goal: "For a goal campaign",
@@ -106,17 +137,17 @@ const MEASURE_WORDS: Record<NextKind, string> = {
 export const isNextKind = (k: string): k is NextKind =>
   (NEXT_KINDS as readonly string[]).includes(k);
 
-/** The rules a paper is checked against, in words: the writer's package carries them. */
+/** The rules a paper is written to and checked against, in words: the writer's package carries them. */
 export const PAPER_RULES = [
-  "The paper is Markdown in Simplified Technical English (descriptive text).",
+  "The paper is Markdown in Simplified Technical English (descriptive text). Write it as a research paper that a person reads from start to end, such as a paper for arXiv: paragraphs that explain, not lists of records. Use a list or a table only where it helps the reader.",
   "Its first line is its title, a level-1 heading (# Title). No other level-1 heading.",
-  `Then these parts, each a level-2 heading with these words, in this order: ${PAPER_PARTS.map((p) => `## ${p}`).join(", ")}. Put other headings at level 3 (###) under one of them. Do not write a References part or a Review panel part: code appends them (the claims the paper cites, and the review panel's decisions with each dissent).`,
-  "Cite a claim as [c-ID] in each sentence that states a fact, such as [c-0a1b2c3d4e5f]; several as [c-…, c-…]. Each cited id must be a verified claim of the run.",
-  "Every number in a paragraph, a list item or a table row must be in the claims it cites (their text or quotes), or be one of the figures in the package. Numbers in headings, record ids and question numbers (question 2) are not checked.",
-  `Results: one ### Question N section for each question, N from 1. Its first line is the review panel's decision on it: ${CERTAINTY_LINES}. Then the answer from the question's card, with its evidence. Cite only the question's own evidence: the claims of its card (questions[].claims) or other verified claims of that question. For a question that stayed open, write what the evidence shows and what is missing. When reviewers dissent (questions[].dissent), say so. Each section cites at least one claim, unless its question has no verified claim.`,
-  "Hypotheses: a table of verdicts, | Hypothesis | Verdict | Evidence |, with one row for each hypothesis in the package's hypotheses: its id (h-…) in the first cell, and supported, refuted or undecided in the Verdict cell. The verdict is the review panel's decision; when it has none, undecided. You may add a ### section for a hypothesis under the table. Then ### Proposed by the run: the hypotheses in the package's proposed, as a list, with no verdict: the review panel did not judge them.",
-  "Method: how the sources were found, archived and checked, with the figures. Limits of the evidence: claims from a single domain, open gaps, and draft findings that stay unverified. Next experiments: the measurement gaps of the cards and the next experiments the review panel named (questions[].next_experiments), then what else to try, each with why.",
-  `Next experiments has a ### section for each kind of next experiment it has: ${NEXT_KINDS.map((k) => `### ${NEXT_HEADINGS[k]} (${NEXT_KIND_WORDS[k]})`).join(", and ")}. Give each next experiment the same kind in experiments.`,
+  `Then its parts, each a level-2 heading (##). A usual paper has these parts, in this order: ${PAPER_PARTS.map((p) => `${p.part} (${p.what})`).join("; ")}. Choose the parts and their words that fit the topic, and put other headings at level 3 (###) under a part. Code does not check the parts.`,
+  "Do not write a References part or an appendix: code appends them. References lists the sources of the claims that the paper cites. Appendix A gives the review panel's decision and certainty on each question, its verdict on each hypothesis, each dissent, and the hypotheses that the run proposed. Appendix B lists each claim that the paper cites, with its sources.",
+  "Answer every question of the run, with the claims that are its evidence: the claims of its card (questions[].claims) or other verified claims of that question. Code checks that the paper cites evidence for each question that has a verified claim. Give each answer's certainty in words, as the review panel decided it (questions[].certainty). For a question that stayed open (questions[].stayed_open), write what the evidence shows and what is missing. When reviewers dissent (questions[].dissent), say so, with the reason.",
+  "Cite a claim as [c-ID] in each sentence that states a fact, such as [c-0a1b2c3d4e5f]; several as [c-…, c-…]. Each cited id must be a verified claim of the run. Code changes each citation to the numbers of its claims' sources in References, such as [1] or [1, 3].",
+  "Every number in a paragraph, a list item or a table row must be in the claims it cites (their text or quotes), or be one of the figures in the package. Numbers in headings, record ids, question numbers (question 2) and the numbers in the run's questions and hypotheses are not checked.",
+  "Discuss each hypothesis in the package's hypotheses, with the verdict that the review panel gave: supported, refuted or undecided (undecided when it gave none). Name a hypothesis by its words. The hypotheses in proposed were not judged: give them no verdict. A table row whose first cell names a hypothesis's id (h-…), or a line \"Verdict: …\" under a heading that names it, is checked: its verdict must be the review panel's.",
+  `Put the next experiments in the part on future work: the measurement gaps of the cards and the next experiments that the review panel named (questions[].next_experiments), then what else to try, each with why. Give it a ### section for each kind of next experiment it has: ${NEXT_KINDS.map((k) => `### ${NEXT_HEADINGS[k]} (${NEXT_KIND_WORDS[k]})`).join(", and ")}. Give each next experiment the same kind in experiments.`,
 ];
 
 /** The fields of one of the paper's next experiments (the supervisor reads a model's answer with them). */
@@ -235,11 +266,9 @@ export interface PaperPackage {
     /** The standing decision: answered, insufficient or open; null: none on its newest card. */
     decision: string | null;
     certainty: string | null;
-    /** The results section's certainty line, as the check wants it: "Certainty: moderate". */
-    certainty_line: string;
-    /** It has no end: its paper section says what is missing. */
+    /** It has no end: the paper says what is missing. */
     stayed_open: boolean;
-    /** The question's answer card (goal 117): what its section is written from. Null: none. */
+    /** The question's answer card (goal 117): what its answer is written from. Null: none. */
     card: {
       version: number;
       answer: string;
@@ -247,11 +276,11 @@ export interface PaperPackage {
       gaps: CardGap[];
       created_at: string;
     } | null;
-    /** The claims the card cites, with their quotes: the section's evidence. */
+    /** The claims the card cites, with their quotes: the answer's evidence. */
     claims: PackageClaim[];
     /** The card's claims left out here to keep the package short (read them with the tools). */
     claims_not_shown?: number | undefined;
-    /** All the question's verified claims: its section may cite any of them. */
+    /** All the question's verified claims: its answer may cite any of them. */
     verified_claims: number;
     /** What only a measurement could settle: the card's measurement gaps and the reviewers' next experiments. */
     next_experiments: string[];
@@ -286,20 +315,7 @@ export interface PaperPackage {
   last_refusal?: { at: string; problems: string[] } | undefined;
 }
 
-const clip = (s: string, n: number) => {
-  const t = s.replace(/\s+/g, " ").trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
-
-const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
-const FENCE = /^\s*(```|~~~)/;
-const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+/;
-const TABLE_ROW = /^\s*\|/;
-/** A citation: [c-…], or several in one pair of brackets, [c-…, c-…]. */
-const CITE = /\[\s*(c-[A-Za-z0-9_-]+(?:\s*[,;]\s*c-[A-Za-z0-9_-]+)*)\s*\]/g;
 const VERDICT = /^\s*(?:[-*+]\s*)?[*_]*verdict[*_]*\s*:\s*[*_]*(supported|refuted|undecided)\b/i;
-const CERTAINTY =
-  /^\s*(?:[-*+]\s*)?[*_]*certainty[*_]*\s*:\s*[*_]*(high|moderate|low|insufficient|best available|open)\b/i;
 const VERDICT_WORD = /^[*_\s]*(supported|refuted|undecided)[*_.\s]*$/i;
 
 /** A table row's cells, without the outer pipes; a separator row (|---|) has none. */
@@ -315,7 +331,7 @@ const names = (text: string, id: string) =>
     `(^|[^A-Za-z0-9_-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^A-Za-z0-9_-])`,
   ).test(text);
 
-/** Words of a heading, folded for matching: "## Limits of the evidence" -> "limits of the evidence". */
+/** Words of a heading, folded for matching: "## Appendix A: Data" -> "appendix a data". */
 const fold = (s: string) =>
   s
     .toLowerCase()
@@ -353,20 +369,15 @@ const spellings = (n: number) => [String(n), n.toLocaleString("en-US")];
 export interface PaperBasis {
   review: number;
   questions: string[];
-  /** Questions (indexes) with no verified claim: their results section need not cite one. */
+  /** Questions (indexes) with no verified claim: the paper need not cite evidence for them. */
   bare?: number[] | undefined;
   hypotheses: { id: string; text: string }[];
   /** Each hypothesis's standing verdict (goal 117). */
   verdicts: Map<string, Set<string>>;
   figures: PaperFigures;
   /**
-   * Each question's certainty line, by index (goal 117): the review panel's certainty for an
-   * answered question, insufficient, or open. Without it, no certainty line is checked.
-   */
-  certainties?: string[] | undefined;
-  /**
    * Each question's evidence, by index (goal 117): its card's claims and the verified claims of the
-   * question. A results section may cite only its own. Without it, any verified claim.
+   * question. The paper answers a question when it cites one of them. Without it, not checked.
    */
   evidence?: Set<string>[] | undefined;
   /** The hypotheses the run proposed that need no verdict, and get none (goal 117). */
@@ -384,14 +395,15 @@ interface Unit {
   line: number;
   text: string;
   heading: boolean;
-  part: string | undefined;
 }
 
 /**
- * Code's checks of a paper (goal 112), with each problem at its line: the paper's parts and their
- * order, every cited id a verified claim of the run, every number in a paragraph in the claims it
- * cites or among the figures, a results section that cites a claim for every question, and a
- * verdict the review panel gave for every hypothesis. No problem: the paper holds.
+ * Code's checks of a paper (goal 112), with each problem at its line: its title, no part that code
+ * appends, every question with a verified claim answered somewhere (the paper cites its evidence),
+ * every cited id a verified claim of the run, every number in a paragraph in the claims it cites or
+ * among the figures, and every verdict it gives a hypothesis one the review panel gave. The writer
+ * chooses the paper's parts (owner, 2026-10-24); code does not check them. No problem: the paper
+ * holds.
  */
 export function checkPaper(
   ledger: Ledger,
@@ -420,220 +432,61 @@ export function checkPaper(
       };
     });
 
-  // The title, then the parts in order.
+  // The title, and no part that code appends.
   const first = lines.find((l) => l.text.trim());
   if (first?.heading?.level !== 1)
     say(first?.n ?? 1, "the paper starts with its title, as a level-1 heading: # Title");
   for (const l of lines.filter((x) => x.heading?.level === 1 && x !== first))
     say(l.n, "only the title is a level-1 heading (#): use ## for a part, ### under it");
-  const parts: { part: string; line: number }[] = [];
-  const partAt = new Map<number, string>();
   for (const l of lines) {
     if (l.heading?.level !== 2) continue;
     const words = fold(l.heading.text);
-    if (words.startsWith("references")) {
-      say(l.n, "leave out the References part: code appends it from the claims the paper cites");
-      continue;
-    }
-    if (words.startsWith("review panel")) {
+    if (APPENDED.some((a) => words.startsWith(a)))
       say(
         l.n,
-        "leave out the Review panel part: code appends the review panel's decisions and each dissent",
+        `leave out the "## ${clip(l.heading.text, 80)}" part: code appends the References and the appendices (the review panel's decisions, and the claims the paper cites)`,
       );
-      continue;
-    }
-    const part = PAPER_PARTS.find((p) => words.startsWith(fold(p)));
-    if (!part) {
-      say(
-        l.n,
-        `"## ${clip(l.heading.text, 80)}" is not a part of the paper. The parts are, in order: ${PAPER_PARTS.join(", ")}. Put other headings at level 3 (###) under one of them`,
-      );
-      continue;
-    }
-    if (parts.some((p) => p.part === part)) {
-      say(l.n, `the paper has a second "## ${part}" part`);
-      continue;
-    }
-    const prev = parts.at(-1);
-    if (prev && PAPER_PARTS.indexOf(part) < PAPER_PARTS.indexOf(prev.part as never))
-      say(
-        l.n,
-        `"## ${part}" comes after "## ${prev.part}": the parts go in this order: ${PAPER_PARTS.join(", ")}`,
-      );
-    parts.push({ part, line: l.n });
-    partAt.set(l.n, part);
   }
-  for (const p of PAPER_PARTS)
-    if (!parts.some((x) => x.part === p)) say(null, `the paper has no "## ${p}" part`);
 
-  // Each line's part, and its paragraphs (a list item or a table row each its own).
+  // Its paragraphs (a list item or a table row each its own).
   const units: Unit[] = [];
-  let part: string | undefined;
   let cur: Unit | undefined;
   const flush = () => {
     if (cur) units.push(cur);
     cur = undefined;
   };
-  const lineParts = new Map<number, string | undefined>();
   for (const l of lines) {
     if (l.heading) {
       flush();
-      if (l.heading.level <= 2) part = partAt.get(l.n);
-      lineParts.set(l.n, part);
-      units.push({ line: l.n, text: l.text, heading: true, part });
+      units.push({ line: l.n, text: l.text, heading: true });
       continue;
     }
-    lineParts.set(l.n, part);
     if (!l.text.trim()) {
       flush();
       continue;
     }
     if (!l.fence && (LIST_ITEM.test(l.text) || TABLE_ROW.test(l.text))) flush();
     if (cur) cur.text += `\n${l.text}`;
-    else cur = { line: l.n, text: l.text, heading: false, part };
+    else cur = { line: l.n, text: l.text, heading: false };
   }
   flush();
 
-  // A level-3 section: its heading, and its lines up to the next heading of level 3 or above.
-  const sections = (inPart: string) =>
-    lines.flatMap((l, i) => {
-      if (l.heading?.level !== 3 || lineParts.get(l.n) !== inPart) return [];
-      const end = lines.findIndex(
-        (x, j) => j > i && x.heading !== undefined && x.heading.level <= 3,
-      );
-      return [
-        { line: l.n, text: l.heading.text, body: lines.slice(i + 1, end < 0 ? undefined : end) },
-      ];
-    });
-  const partLine = (p: string) => parts.find((x) => x.part === p)?.line ?? null;
-
-  // Results: a section for each question, each citing a claim.
-  const results = sections("Results");
-  basis.questions.forEach((text, i) => {
-    const n = i + 1;
-    const s = results.find((r) => new RegExp(`^question\\s+${n}\\b`, "i").test(r.text.trim()));
-    if (!s) {
-      say(partLine("Results"), `Results has no "### Question ${n}" section (${clip(text, 120)})`);
-      return;
-    }
-    if (!basis.bare?.includes(i) && !s.body.some((l) => citationsIn(l.text).length))
-      say(
-        s.line,
-        `"### Question ${n}" cites no claim: its answer needs the claims it rests on, as [c-…]`,
-      );
-    // Its certainty line: the review panel's decision, never the writer's (goal 117).
-    const want = basis.certainties?.[i];
-    if (want) {
-      const c = s.body.map((l) => ({ l, m: CERTAINTY.exec(l.text) })).find((x) => x.m);
-      if (!c?.m)
-        say(
-          s.line,
-          `"### Question ${n}" has no certainty line: write "Certainty: ${want}" under its heading (the review panel's decision)`,
-        );
-      else {
-        const said = (c.m[1] as string).toLowerCase().replace("best available", "insufficient");
-        if (said !== want)
-          say(
-            c.l.n,
-            `the certainty "${said}" of question ${n} is not the review panel's decision: write "Certainty: ${want}"`,
-          );
-      }
-    }
-    // Only its own question's evidence: its card's claims and the question's verified claims.
-    const own = basis.evidence?.[i];
-    if (own) {
-      const said = new Set<string>();
-      for (const l of s.body)
-        for (const id of citationsIn(l.text)) {
-          if (own.has(id) || said.has(id) || !verifiedClaim(ledger, run, id)) continue;
-          said.add(id);
-          say(
-            l.n,
-            `"### Question ${n}" cites ${id}, which is not evidence for question ${n}: cite the claims of its card or other verified claims of question ${n}`,
-          );
-        }
-    }
-  });
-  for (const r of results) {
-    const m = /^question\s+(\d+)\b/i.exec(r.text.trim());
-    if (m && (Number(m[1]) < 1 || Number(m[1]) > basis.questions.length))
-      say(r.line, `there is no question ${m[1]}: the run has ${basis.questions.length}`);
-  }
-
-  // Hypotheses: a row in the table of verdicts for each (goal 117), or a section with a verdict
-  // line (goal 112), with a verdict the review panel gave.
-  const hyps = sections("Hypotheses");
-  const rows = lines
-    .filter((l) => !l.fence && lineParts.get(l.n) === "Hypotheses" && TABLE_ROW.test(l.text))
-    .map((l) => ({ l, cells: cellsOf(l.text) }))
-    .filter((r) => r.cells.length > 0);
-  const verdictOf = (id: string): { line: number; said: string | null } | undefined => {
-    const row = rows.find((r) => names(r.cells[0] ?? "", id));
-    if (row) {
-      const cell = row.cells.slice(1).find((c) => VERDICT_WORD.test(c));
-      const m = cell ? VERDICT_WORD.exec(cell) : null;
-      return { line: row.l.n, said: m ? (m[1] as string).toLowerCase() : null };
-    }
-    const s = hyps.find((x) => names(x.text, id));
-    if (!s) return undefined;
-    const v = s.body.map((l) => ({ l, m: VERDICT.exec(l.text) })).find((x) => x.m);
-    return v?.m
-      ? { line: v.l.n, said: (v.m[1] as string).toLowerCase() }
-      : { line: s.line, said: null };
-  };
-  for (const h of basis.hypotheses) {
-    const v = verdictOf(h.id);
-    if (!v) {
-      say(
-        partLine("Hypotheses"),
-        `Hypotheses has no row for hypothesis ${h.id} in its table of verdicts (${clip(h.text, 120)})`,
-      );
-      continue;
-    }
-    if (v.said === null) {
-      say(
-        v.line,
-        `hypothesis ${h.id} has no verdict: write supported, refuted or undecided in its Verdict cell (or a line "Verdict: …" in its section)`,
-      );
-      continue;
-    }
-    const gave = basis.verdicts.get(h.id) ?? new Set<string>();
-    const allowed = gave.size ? gave : new Set(["undecided"]);
-    if (!allowed.has(v.said))
-      say(
-        v.line,
-        gave.size
-          ? `the verdict "${v.said}" on hypothesis ${h.id} is not one the review panel gave: it gave ${[...gave].join(" or ")}`
-          : `the review panel has no verdict on hypothesis ${h.id}: write "undecided"`,
-      );
-  }
-  // A hypothesis the run proposed has no verdict: the review panel did not judge it.
-  for (const h of basis.proposed ?? []) {
-    const v = verdictOf(h.id);
-    if (v?.said === "supported" || v?.said === "refuted")
-      say(
-        v.line,
-        `hypothesis ${h.id} was proposed by the run, and the review panel did not judge it: list it under "### Proposed by the run" with no verdict`,
-      );
-  }
-
-  // Citations and numbers, paragraph by paragraph.
+  // Citations and numbers, paragraph by paragraph. The numbers of the run's own questions and
+  // hypotheses may be written anywhere: they are its words, not facts the paper states.
   const figures = Object.values(basis.figures).flatMap(spellings);
-  const questionNumbers = basis.questions.flatMap(numbersIn);
-  const hypothesisNumbers = [...basis.hypotheses, ...(basis.proposed ?? [])].flatMap((h) =>
-    numbersIn(h.text),
-  );
+  const own = [
+    ...basis.questions.flatMap(numbersIn),
+    ...[...basis.hypotheses, ...(basis.proposed ?? [])].flatMap((h) => numbersIn(h.text)),
+  ];
   const cited: string[] = [];
   const idSaid = new Set<string>();
   for (const u of units) {
     const ids = citationsIn(u.text);
     for (const id of ids) if (!cited.includes(id)) cited.push(id);
-    const also = [
+    const r = checkCited(ledger, run, ids, u.heading ? [] : [forNumbers(u.text)], [
       ...figures,
-      ...(u.part === "Questions" ? questionNumbers : []),
-      ...(u.part === "Hypotheses" ? hypothesisNumbers : []),
-    ];
-    const r = checkCited(ledger, run, ids, u.heading ? [] : [forNumbers(u.text)], also);
+      ...own,
+    ]);
     for (const p of r.problems) {
       const num = /^the number (\S+) is not in the claims it cites$/.exec(p);
       if (!num) {
@@ -651,6 +504,64 @@ export function checkPaper(
     }
   }
   if (!cited.length) say(null, "the paper cites no claim");
+
+  // Every question answered somewhere: the paper cites some of its evidence (goal 117).
+  basis.questions.forEach((text, i) => {
+    const evidence = basis.evidence?.[i];
+    if (basis.bare?.includes(i) || !evidence?.size || cited.some((id) => evidence.has(id))) return;
+    const ids = [...evidence];
+    say(
+      null,
+      `question ${i + 1} is not answered: the paper cites none of its evidence (${clip(text, 120)}). Answer it, and cite the claims of its card or other verified claims of question ${i + 1}: ${ids.slice(0, 8).join(", ")}${ids.length > 8 ? `, and ${ids.length - 8} more` : ""}`,
+    );
+  });
+
+  // Hypotheses: a verdict the paper gives (a table row whose first cell names the hypothesis, or
+  // a "Verdict: …" line under a heading that names it) is one the review panel gave (goal 117).
+  const rows = lines
+    .filter((l) => !l.fence && TABLE_ROW.test(l.text))
+    .map((l) => ({ l, cells: cellsOf(l.text) }))
+    .filter((r) => r.cells.length > 0);
+  const verdictOf = (id: string): { line: number; said: string } | undefined => {
+    for (const row of rows.filter((r) => names(r.cells[0] ?? "", id))) {
+      const cell = row.cells.slice(1).find((c) => VERDICT_WORD.test(c));
+      const m = cell ? VERDICT_WORD.exec(cell) : null;
+      if (m) return { line: row.l.n, said: (m[1] as string).toLowerCase() };
+    }
+    for (const [i, l] of lines.entries()) {
+      if (!l.heading || l.heading.level < 3 || !names(l.heading.text, id)) continue;
+      const level = l.heading.level;
+      for (const x of lines.slice(i + 1)) {
+        if (x.heading && x.heading.level <= level) break;
+        const m = x.fence ? null : VERDICT.exec(x.text);
+        if (m) return { line: x.n, said: (m[1] as string).toLowerCase() };
+      }
+    }
+    return undefined;
+  };
+  for (const h of basis.hypotheses) {
+    const v = verdictOf(h.id);
+    if (!v) continue;
+    const gave = basis.verdicts.get(h.id) ?? new Set<string>();
+    const allowed = gave.size ? gave : new Set(["undecided"]);
+    if (!allowed.has(v.said))
+      say(
+        v.line,
+        gave.size
+          ? `the verdict "${v.said}" on hypothesis ${h.id} is not one the review panel gave: it gave ${[...gave].join(" or ")}`
+          : `the review panel has no verdict on hypothesis ${h.id}: write "undecided"`,
+      );
+  }
+  // A hypothesis the run proposed has no verdict: the review panel did not judge it.
+  for (const h of basis.proposed ?? []) {
+    const v = verdictOf(h.id);
+    if (v?.said === "supported" || v?.said === "refuted")
+      say(
+        v.line,
+        `hypothesis ${h.id} was proposed by the run, and the review panel did not judge it: give it no verdict`,
+      );
+  }
+
   problems.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
   return { problems, cited };
 }
@@ -686,99 +597,30 @@ export function checkExperiments(ledger: Ledger, run: string, xs: PaperExperimen
 }
 
 /**
- * The paper's Next experiments part has a ### section for each kind its experiments have (goal
- * 119), headed as NEXT_HEADINGS says. Problems in words, or none.
+ * The paper has a ### section for each kind its next experiments have (goal 119), headed as
+ * NEXT_HEADINGS says, in the part on future work or wherever the writer puts its next experiments.
+ * Problems in words, or none.
  */
 export function nextSectionProblems(markdown: string, xs: PaperExperiment[]): PaperProblem[] {
   const kinds = [...new Set(xs.map((x) => x.kind).filter(isNextKind))];
   if (!kinds.length) return [];
-  let part = "";
   const headings: string[] = [];
   let fence = false;
   for (const line of markdown.replace(/\r\n?/g, "\n").split("\n")) {
     if (FENCE.test(line)) fence = !fence;
     if (fence) continue;
     const h = HEADING.exec(line);
-    if (!h) continue;
-    const level = (h[1] as string).length;
-    if (level <= 2) part = fold(h[2] as string);
-    else if (level === 3 && part.startsWith(fold("Next experiments")))
-      headings.push(fold(h[2] as string));
+    if (h && (h[1] as string).length >= 3) headings.push(fold(h[2] as string));
   }
   return kinds
     .filter((k) => !headings.some((x) => x.startsWith(fold(NEXT_HEADINGS[k]))))
-    .map((k) => ({
-      line: null,
-      problem: `Next experiments has no "### ${NEXT_HEADINGS[k]}" section, and ${xs.filter((x) => x.kind === k).length} of its next experiments are for ${k === "goal" ? "a goal campaign" : "a hill climb"}`,
-    }));
-}
-
-/** A run's items as its paper reads them (goal 117): each with its standing decision and dissent. */
-interface PaperItems {
-  questions: {
-    index: number;
-    text: string;
-    decision: StandingDecision | undefined;
-    /** The answers behind the decision that passed the check. */
-    answers: CheckedQuestion[];
-    dissent: Dissent[];
-  }[];
-  hypotheses: (ReturnType<typeof requiredHypotheses>[number] & {
-    decision: StandingDecision | undefined;
-    given: CheckedHypothesis[];
-    dissent: Dissent[];
-  })[];
-}
-
-/**
- * A question's word in its results section's certainty line (goal 117): the review panel's
- * certainty for an answered question, insufficient for the best available, open for no end.
- * Undefined: an answered decision with no certainty, which nothing checks.
- */
-export function paperCertainty(
-  d: Pick<StandingDecision, "decision" | "certainty"> | undefined,
-): string | undefined {
-  if (d?.decision === "answered") return d.certainty ?? undefined;
-  return d?.decision === "insufficient" ? "insufficient" : "open";
-}
-
-/**
- * The Review panel part code appends (goal 117), before the references: the review panel's
- * standing decision on each question and on each hypothesis that needs a verdict, how many
- * reviewers gave it, and each reviewer who dissents with the reasons, as the owner asked: "the
- * dissent kept in the review and the paper".
- */
-function panelPart(items: PaperItems): string[] {
-  const cell = (s: string) => clip(s, 600).replace(/\|/g, "\\|");
-  const dissent = (ds: Dissent[]) =>
-    ds.length
-      ? cell(
-          ds
-            .map(
-              (d) =>
-                `${d.reviewer}: ${d.verdict}${d.certainty ? `, certainty ${d.certainty}` : ""}${d.reasons ? `. ${d.reasons}` : ""}`,
-            )
-            .join("; "),
-        )
-      : "none";
-  const decided = (d: StandingDecision | undefined) =>
-    d ? `${cell(decisionWords(d))} (review ${d.review})` : "no decision";
-  return [
-    "## Review panel",
-    "",
-    "The harness added this part: the review panel's decision on each question and on each hypothesis that needs a verdict, how many reviewers gave it, and each reviewer who dissents, with the reasons.",
-    "",
-    "| Item | Decision | Reviewers who gave it | Dissent |",
-    "| --- | --- | --- | --- |",
-    ...items.questions.map(
-      (q) =>
-        `| Question ${q.index + 1} | ${decided(q.decision)} | ${q.decision ? q.answers.length : "-"} | ${dissent(q.dissent)} |`,
-    ),
-    ...items.hypotheses.map(
-      (h) =>
-        `| Hypothesis ${h.id} | ${decided(h.decision)} | ${h.decision ? h.given.length : "-"} | ${dissent(h.dissent)} |`,
-    ),
-  ];
+    .map((k) => {
+      const n = xs.filter((x) => x.kind === k).length;
+      return {
+        line: null,
+        problem: `the paper has no "### ${NEXT_HEADINGS[k]}" section, and ${n} of its next experiments ${n === 1 ? "is" : "are"} for ${k === "goal" ? "a goal campaign" : "a hill climb"}: put ${n === 1 ? "it" : "them"} under that heading, in the part on future work`,
+      };
+    });
 }
 
 /** The SHA-256 of a paper's text, as the supervisor names the text its STE checker read. */
@@ -807,36 +649,6 @@ export function steProblems(ste: SteResult, paper: string): PaperProblem[] {
       ? [{ line: null, problem: `and ${errors.length - 20} more STE errors` }]
       : []),
   ];
-}
-
-/**
- * The References part code appends (goal 112): each claim the paper cites, in the order it is
- * first cited, with the sources its quotes come from: title (or address), site and address.
- */
-export function paperReferences(ledger: Ledger, run: string, cited: string[]): string[] {
-  const lines = [
-    "## References",
-    "",
-    "The harness added this list: each claim the paper cites, and the archived sources its quotes come from.",
-    "",
-  ];
-  for (const id of cited) {
-    const cl = ledger.db
-      .prepare("select quotes from claim where run = ? and id = ? and verified = 1")
-      .get(run, id) as { quotes: string } | undefined;
-    if (!cl) continue;
-    const ids = [...new Set((JSON.parse(cl.quotes) as { source: string }[]).map((q) => q.source))];
-    const sources = ids.flatMap((s) => {
-      const row = ledger.db
-        .prepare("select url, title, domain from source where run = ? and id = ?")
-        .get(run, s) as { url: string; title: string | null; domain: string } | undefined;
-      if (!row) return [];
-      const title = row.title?.trim() ? clip(row.title, 200) : "";
-      return [`${title || row.url} (${row.domain})${title ? `, ${row.url}` : ""}`];
-    });
-    lines.push(`- [${id}] ${sources.join("; ") || "no archived source"}`);
-  }
-  return lines;
 }
 
 /** The figures of a run's corpus now, for its paper's request. */
@@ -897,7 +709,7 @@ export class Papers {
     return c;
   }
 
-  /** The run's accepted paper, as its event keeps it: the paper whole, with its references. */
+  /** The run's accepted paper, as its event keeps it: the paper whole, with its references and appendices. */
   accepted(run: string): Row | undefined {
     return this.ledger.latestEventBody(PAPER_ACCEPTED, run);
   }
@@ -1040,9 +852,12 @@ export class Papers {
       hypotheses: items.hypotheses.map((h) => ({ id: h.id, text: h.text })),
       verdicts,
       figures: asked.figures,
-      certainties: items.questions.map((q) => paperCertainty(q.decision) ?? ""),
       evidence: questions.map(
-        (_, i) => new Set([...(cards.get(i)?.claims ?? []), ...(ofQuestion.get(i) ?? [])]),
+        (_, i) =>
+          new Set([
+            ...(cards.get(i)?.claims ?? []).filter((c) => verifiedClaim(this.ledger, run, c)),
+            ...(ofQuestion.get(i) ?? []),
+          ]),
       ),
       proposed: this.proposed(run).map((h) => ({ id: h.id, text: h.text })),
     };
@@ -1143,7 +958,6 @@ export class Papers {
           text: q.text,
           decision: q.decision?.decision ?? null,
           certainty: q.decision?.certainty ?? null,
-          certainty_line: `Certainty: ${paperCertainty(q.decision) ?? "high, moderate or low"}`,
           stayed_open: !questionEnded(q.decision),
           card: card
             ? {
@@ -1287,9 +1101,9 @@ export class Papers {
 
   /**
    * A paper the supervisor posts for a run that waits for one: checked by code, then accepted or
-   * refused with its problems. Accepted, it is kept whole with the review panel's decisions and the
-   * references that code appends, and each next experiment becomes an experiment of the campaign's
-   * knowledge-base folder.
+   * refused with its problems. Accepted, its citations become numbered references, and it is kept
+   * whole with the References and the appendices that code appends; each next experiment becomes
+   * an experiment of the campaign's knowledge-base folder.
    */
   submit(
     run: string,
@@ -1321,12 +1135,26 @@ export class Papers {
       });
       return { accepted: false, problems };
     }
-    const paper = [
+    // What readers get: numbered references, then the parts code writes (owner, 2026-10-24).
+    const numbered = numberCitations(
+      this.ledger,
+      run,
       input.paper.replace(/\s+$/, ""),
+      checked.cited,
+    );
+    const paper = [
+      numbered.text,
       "",
-      ...panelPart(this.items(run)),
+      ...referencesPart(numbered.references),
       "",
-      ...paperReferences(this.ledger, run, checked.cited),
+      ...panelAppendix(
+        this.items(run),
+        researchEnd(this.ledger, run)?.reason ?? ANSWERED,
+        this.proposed(run),
+        PROPOSED_MAX,
+      ),
+      "",
+      ...claimsAppendix(this.ledger, run, checked.cited, numbered.numbers),
       "",
     ].join("\n");
     const finding = (id: string) =>
@@ -1367,6 +1195,9 @@ export class Papers {
       writer: input.writer,
       ste,
       cited_claims: checked.cited.length,
+      // Each cited claim's reference numbers: what each [n] of the paper stands for.
+      citations: Object.fromEntries(numbered.numbers),
+      references: numbered.references.length,
       experiments,
       chars: paper.length,
       paper,

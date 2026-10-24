@@ -123,7 +123,15 @@ describe("the final writer writes the research paper (goal 112)", () => {
       if (!results.length)
         return {
           toolCalls: [
-            { name: "check_paper", args: { markdown: goodPaper(s.ids, { results: "" }) } },
+            {
+              name: "check_paper",
+              args: {
+                markdown: goodPaper(s.ids, {
+                  abstract: "## Abstract\n\nA short abstract.",
+                  results: "",
+                }),
+              },
+            },
             { name: "ste_check", args: { text: "We utilize the archive." } },
           ],
         };
@@ -138,6 +146,8 @@ describe("the final writer writes the research paper (goal 112)", () => {
                 {
                   title: "Measure the archive on a second site",
                   why: "Every claim comes from one site.",
+                  kind: "hill_climb",
+                  measure: "pages archived a minute, higher",
                   findings: [s.ids.findings.supported],
                 },
               ],
@@ -162,7 +172,7 @@ describe("the final writer writes the research paper (goal 112)", () => {
     };
     assert.equal(checked.ok, false);
     assert.ok(
-      checked.problems.some((p) => p.problem === 'the paper has no "## Results" part'),
+      checked.problems.some((p) => p.problem.startsWith("question 2 is not answered: ")),
       JSON.stringify(checked),
     );
     // ste_check: the stand-in checker's findings.
@@ -199,7 +209,7 @@ describe("the final writer writes the research paper (goal 112)", () => {
       const paper = results.length
         ? goodPaper(s.ids)
         : goodPaper(s.ids, {
-            next: `## Next experiments\n\nWe utilize a second site for 9 more pages [${s.ids.claims.verified}].`,
+            next: `## Future work\n\nWe utilize a second site for 9 more pages [${s.ids.claims.verified}].`,
           });
       return { toolCalls: [{ name: "answer", args: { paper, experiments: [] } }] };
     });
@@ -223,7 +233,7 @@ describe("the final writer writes the research paper (goal 112)", () => {
     const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
     const script = join(dir, "writer.mjs");
     const paper = goodPaper(s.ids, {
-      next: `## Next experiments\n\nWe utilize a second site [${s.ids.claims.verified}].`,
+      next: `## Future work\n\nWe utilize a second site [${s.ids.claims.verified}].`,
     });
     writeFileSync(
       script,
