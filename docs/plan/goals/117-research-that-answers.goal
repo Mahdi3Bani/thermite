@@ -1,0 +1,84 @@
+---
+id: "117"
+title: "Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach"
+status: PROPOSED
+version: "0.1.0"
+depends_on: ["112"]
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 117 · Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal)
+
+## What
+
+A redesign of research mode. A plan only, waiting for the owner's decisions below; nothing of it is built.
+
+A research run today collects claims and never turns them into answers. This goal makes the answer to each question the run's main state, makes the gaps in those answers decide the work, bounds everything a run must judge, and gives the run an end it can reach on its own.
+
+### The design
+
+1. **A locked research contract.** At the run's start the contract holds the questions, a short rubric for each (what an answer must cover), the author's hypotheses, and the scope: evidence is what sources say, and what only a measurement could settle is a next experiment for a goal or hill-climb run. Reviewers judge against this, and only this.
+2. **One answer card per question.** Each question has a card: the current answer in a few paragraphs, its certainty (high, moderate, low, or "best available, insufficient"), the claims it cites, and its open gaps, each marked as a gap in the evidence or a measurement. A synthesis step rewrites a card from newly verified claims; code checks it as it checks a finding (every cited claim verified, every number in the claims it cites). Workers add claims; they never edit a card. The cards are what the reviewers, the report and the paper read.
+3. **Work driven by gaps.** Every task names one question and one evidence gap. The plan gives each question a share by the size of its gaps, with a floor and a ceiling, and stops giving tasks to a question that is answered or saturated. Saturation is measured per question: the new distinct claims and new independent sources of its last tasks. Each task records what it added. Teachers in a research run use a research prompt and schema (question, gap, the kind of source to find), with no gain, control or measured experiment; an idea that needs a measurement goes to the run's next experiments, never to the queue.
+4. **Bounded hypotheses.** The author's hypotheses are the run's obligations. Hypotheses the workers propose go to a pool: tied to a question, merged when they repeat, ranked, and editable. Only the author's hypotheses, and those the owner or the plan promotes, need a verdict; the rest are listed in the paper as proposed by the run.
+5. **Reviews that keep their decisions.** The review panel reviews each question's card and each required hypothesis, as items. An item's decision stands until new evidence changes its card. Each item is decided by a majority of the reviewers, with any dissent recorded. Verdicts are on the certainty scale, and "best available, insufficient" is a valid end for a question whose missing evidence is out of scope. Reviewers run in parallel and get each card with its strongest evidence, and read the rest with their tools. Nothing they are given is cut without a word.
+6. **An end the run can reach.** Code closes the run when every question has an end state and every required hypothesis a verdict: the final writer writes the paper from the cards. A run whose open questions are all saturated, and whose reviews have not improved an item for several rounds, also closes, with a paper that says what stays open and why. This is a progress rule, not a time cap: it applies only when research has stopped adding.
+7. **A paper written from the cards.** Each section gets only its own question's evidence; hypotheses are a table of verdicts; each statement is checked against the claims it cites; the writer's package is never cut without a word.
+8. **Stronger evidence.** Numbers match as whole tokens; corroboration counts registrable domains, and agreeing claims from different sources count together; a contradiction task looks for sources that disagree with each card's main points.
+9. **Honest tools.** Every cut of a tool's output is said, with where to go on; identifiers with digits (`sm_50`) are not refused as numbers; question numbers are the same everywhere; a note or hypothesis that repeats one already written is refused.
+10. **A run you can see.** The run's page shows each question's card, certainty, share of the work and saturation; the planner's state; and each review's decisions (with goal 116's Reviews tab).
+
+### How it is built, in order
+
+1. **Fixes that stand alone:** the plan's balancing (an offset that skipped the least-covered questions, teacher items taking every lane), the review's number check reading digits in ids, the writer's package cut without a word, worker tool outputs cut without a word, mixed question numbering, repeated notes and hypotheses, ideas and gaps that ask for measurements.
+2. **Answer cards and the synthesis step,** with their checks and their place in the brief, the report and the folder.
+3. **The gap-driven plan,** per-question shares and saturation, and the research teacher.
+4. **Item reviews with memory,** majority and certainty, and the end rules.
+5. **The paper from the cards,** and the evidence checks.
+6. **The run's page,** the docs, and the acceptance runs below.
+
+## Why
+
+The owner, 2026-10-24: "To me deep research is highly broken, doesn't work, and is failing its job. You need to do a systematic review of it, learnings from this job, and come back with a plan." And: "no v0.1.0 doesn't release without research mode, and we don't release until its solid."
+
+A research run of 35 hours, on six questions about GPU engineering, did not end:
+
+- It verified 1,076 claims from 390 sources, but 42% were on one question and 2.4% on another, and only 2.5% were corroborated by a second domain.
+- The fixed plan never ran as designed: the queue was filled by the teachers, whose tasks were written as hill-climb experiments; 61 of the 79 tasks tried asked for measurements a research run cannot make. The task that merges findings never ran.
+- The workers proposed over 200 hypotheses, many of them repeats, and each became a verdict every reviewer had to give. Four reviews failed: the first two on measurements, the last two only on hypotheses with no verdict, because the package outgrew the reviewers' prompt and its end was cut without a word.
+- The report listed questions with their claim counts and then findings, with no answer to any question, and one finding contradicted the review panel's answer.
+
+The published state of the art solves these with a locked brief, a living answer per question, gap-driven work with saturation, judges that rate certainty against a rubric, and bounded hypothesis pools (STORM, WebWeaver, TTD-DR, IterResearch, PaperQA2, AI co-scientist, MAST, GRADE; each is in CREDITS.md).
+
+## Done when
+
+- [ ] The owner's decisions below are recorded.
+- [ ] Each part of the design is built, with tests at the scale of a long run: hundreds of hypotheses proposed, a thousand claims, five reviewers.
+- [ ] Three acceptance runs on the deployment, with at least 8 hours each: a rerun of the 35-hour run's brief, a small brief whose answers are known, and a third topic. Each closes on its own with its paper; each question ends with an answer card and a certainty; no task asks for a measurement; no question has more than half of the run's work while another has an open gap; and the owner reads each paper and accepts it.
+- [ ] The pages that describe research mode match the code.
+
+## Decisions
+
+- 2026-10-24, owner: v0.1.0 does not ship without research mode, and it does not ship until research mode is solid.
+
+## Open questions
+
+The owner decides; the recommendation comes first.
+
+1. **Whose hypotheses need a verdict?** Recommended: the author's, and those the owner or the plan promotes. The workers' go to a ranked pool.
+2. **A certainty scale with "best available, insufficient" as a valid end?** Recommended: yes, for a question whose missing evidence is out of scope.
+3. **The progress rule:** close a run whose open questions are all saturated and whose reviews have stopped improving? Recommended: yes. It is not a time cap.
+4. **Majority per item, or every reviewer?** Recommended: a majority, with the dissent kept in the review and the paper.
+5. **A model planner for research now (goal 047), or the gap-driven plan in code with the research teacher?** Recommended: the plan in code first; the model planner later.
+6. **Goal 116's Reviews tab in v0.1.0?** Recommended: the per-question view on the run's page in v0.1.0; the full tab stays in 0.1.1.
+
+## Progress
+
+- 2026-10-24: Goal written from a review of the 35-hour run, a read of research mode's code, the knowledge base and the published state of the art.
+
+---
+
+Run with `/goal Complete docs/plan/goals/117-research-that-answers.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

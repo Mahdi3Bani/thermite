@@ -60,6 +60,21 @@ These showed that an agent graded by something it can reach will find a way to g
 | [nvbench](https://github.com/NVIDIA/nvbench), [CUTLASS](https://github.com/NVIDIA/cutlass)'s profiler, [Triton](https://github.com/triton-lang/triton)'s autotuner, [Kernel Tuner](https://github.com/KernelTuner/kernel_tuner) | NVIDIA; the Triton project; the Kernel Tuner project | Apache-2.0; BSD-3-Clause; MIT; Apache-2.0 | How kernels are timed and tuned |
 | [TVM](https://github.com/apache/tvm) and its papers: [TVM](https://arxiv.org/abs/1802.04799) (OSDI 2018), [Learning to Optimize Tensor Programs](https://arxiv.org/abs/1805.08166) (AutoTVM), [Ansor](https://arxiv.org/abs/2006.06762), and [Tensor Program Optimization with Probabilistic Programs](https://arxiv.org/abs/2205.13603) (MetaSchedule) | The Apache Software Foundation; Chen et al.; Zheng et al.; Shao et al. | Apache-2.0; the papers arXiv non-exclusive licence | Search over program variants, measured on the device |
 
+### Deep research and evidence
+
+Read for the redesign of research mode (goal 117); each is studied, none is used as code.
+
+| Work | Authors | Licence | What Thermite takes from it |
+| --- | --- | --- | --- |
+| [Assisting in Writing Wikipedia-like Articles From Scratch with Large Language Models](https://arxiv.org/abs/2402.14207) (STORM, 2024) | Shao, Jiang, Kanell et al. | arXiv non-exclusive licence | Read: questions asked from several perspectives, and an outline drawn from the evidence before writing |
+| [WebWeaver: Structuring Web-Scale Evidence with Dynamic Outlines for Open-Ended Deep Research](https://arxiv.org/abs/2509.13312) (2025) | Li, Guan, Zhang et al. | CC0 1.0 | Read: an outline revised as evidence arrives, each section citing evidence ids, and each section written with only its own evidence |
+| [Deep Researcher with Test-Time Diffusion](https://arxiv.org/abs/2507.16075) (TTD-DR, 2025) | Han, Chen, CuiZhu et al. | CC BY 4.0 | Read: a draft answer kept and revised at each step, which chooses the next search |
+| [IterResearch: Rethinking Long-Horizon Agents with Interaction Scaling](https://arxiv.org/abs/2511.07327) (2025) | Chen, Qiao, Chen et al. | CC BY 4.0 | Read: an evolving report as the agent's memory, rebuilt each round, for very long runs |
+| [Language agents achieve superhuman synthesis of scientific knowledge](https://arxiv.org/abs/2409.13740) (PaperQA2, 2024) | Skarlinski, Cox, Laurent et al. | CC BY-SA 4.0 | Read: evidence summaries scored for relevance, "insufficient information" counted apart from a wrong answer, and a search for contradicting papers |
+| [Accelerating scientific discovery with Co-Scientist](https://arxiv.org/abs/2502.18864) (2025) | Gottweis, Weng, Daryin et al. | CC BY 4.0 | Read: hypotheses ranked by tournament, repeats merged by proximity, and a supervisor that weights work by the state of the queue |
+| [Why Do Multi-Agent LLM Systems Fail?](https://arxiv.org/abs/2503.13657) (MAST, 2025) | Cemri, Pan, Yang et al. | CC BY-NC-ND 4.0 | Read: not knowing when to stop and repeating steps as leading failures of multi-agent systems |
+| [GRADE: an emerging consensus on rating quality of evidence and strength of recommendations](https://www.bmj.com/content/336/7650/924) (BMJ, 2008) | Guyatt, Oxman, Vist et al. | © BMJ Publishing Group | Read: certainty rated on a scale (high, moderate, low, very low) instead of a conclusion withheld |
+
 ### Agent harness practice
 
 | Work | By | Licence | What Thermite takes from it |
