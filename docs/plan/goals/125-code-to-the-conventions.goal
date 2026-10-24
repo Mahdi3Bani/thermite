@@ -1,0 +1,65 @@
+---
+id: "125"
+title: "The code to the conventions: an audit against the engineering rules, and the fixes"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 125 · The code to the conventions: an audit against the engineering rules, and the fixes
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is done.
+
+On 2026-10-24, [CONVENTIONS.md](../../../CONVENTIONS.md) got Thermite's engineering rules: code design, files and their size, limits on mechanical parts, logging, security, tests, and writing and reporting. The code was written before them. This goal brings the code to them, so that later changes are easier to make and to review:
+
+- **An audit,** one area at a time (control and its dashboard, the harness and its judge, the supervisor, the command line, the scripts), against each rule. Each gap is recorded in this goal, as goal [061](061-gaps-found-by-the-docs.goal) records the gaps the docs found, with the file it is in and what the rule asks.
+- **Security findings stay out of this goal.** They are handled as [SECURITY.md](../../../SECURITY.md) says, never written in a public file.
+- **The fixes,** in small, safe steps. Each step keeps the system working and its tests passing. Behaviour changes only where the fix is the point, such as a new setting for log levels, and then the pages that describe it change in the same commit.
+- **Code organization:** the files split by goal [124](124-file-sizes.goal) go into folders named for them, and modules that share knowledge of one design decision are merged or given a cleaner boundary.
+
+Known at the start, 2026-10-24:
+
+- The file sizes (goal [124](124-file-sizes.goal)).
+- No log level can be changed while a program runs.
+
+## Why
+
+The owner, 2026-10-24: "What becomes v0.1.1? Code clean up and adherance to our Good Engineering and new Conventions and organization of code etc to make easier modifications and clean up bits."
+
+## Constraints
+
+- **Behaviour stays the same,** except where a fix is meant to change it.
+- **Small steps,** each one reviewable on its own.
+- **Other work goes on.** Change a file when no other branch is changing it, to avoid long merges.
+- The design invariants and the [rules for every goal](../README.md#rules-for-every-goal) win over a general rule, as CONVENTIONS.md says. In particular, the rule on limits applies to mechanical parts, never to a run's turns, trials, time or spending (**No default caps**).
+
+## Done when
+
+- [ ] The audit is recorded here, area by area.
+- [ ] Each gap is fixed, or has a recorded reason to stay.
+- [ ] `npm run check` passes, and so does each compose acceptance check that the changed parts need ([AGENTS.md](../../../AGENTS.md#checks)).
+- [ ] The pages that describe changed behaviour, such as logging and its settings, match the code.
+
+## Decisions
+
+- 2026-10-24, owner: v0.1.1 is the code clean-up, to the engineering rules and the new conventions.
+
+## Open questions
+
+- The order of the areas.
+- Whether log levels are a setting for each part (control, harness, supervisor), and where the owner changes them.
+- Whether each area's fixes become a goal of their own.
+
+## Progress
+
+- 2026-10-24: Goal written from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/125-code-to-the-conventions.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

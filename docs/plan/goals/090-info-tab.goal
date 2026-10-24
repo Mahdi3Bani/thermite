@@ -2,7 +2,7 @@
 id: "090"
 title: "An Info tab for campaigns and runs: everything they were started with"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.4"
 depends_on: ["078"]
 created: 2026-10-22
 updated: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 090 · An Info tab for campaigns and runs: everything they were started with
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [078](_completed/078-campaign-brief.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014) · **Depends on:** [078](_completed/078-campaign-brief.goal)
 
 ## What
 
@@ -37,6 +37,7 @@ The owner again, 2026-10-24: "details page on campaign and on run page that show
 
 - 2026-10-22, owner: in v0.1.1; a tab called Info, not on the front of the page.
 - 2026-10-24, owner: asked for again, for v0.1.1, with the models named.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.4, the UI clean-up and UX improvements.
 
 ## Open questions
 

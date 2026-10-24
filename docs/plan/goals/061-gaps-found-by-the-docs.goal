@@ -254,7 +254,7 @@ The docs describe only what exists. Each gap here is a place where a tester expe
 
 - 2026-10-20: Goal 024 (exports sent to control) partly fixed the item on rigs without a results repository; it stays open for propagation.
 
-- 2026-10-24: The first four items under "Budgets and run time" are taken up by goal [123](123-budgets-made-simple.goal) (v0.1.1), which makes budgets one amount in dollars that control counts on every rig.
+- 2026-10-24: The first four items under "Budgets and run time" are taken up by goal [123](123-budgets-made-simple.goal) (v0.1.2), which makes budgets one amount in dollars that control counts on every rig.
 
 ---
 

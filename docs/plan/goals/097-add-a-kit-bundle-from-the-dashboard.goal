@@ -2,15 +2,15 @@
 id: "097"
 title: "Give control a kit bundle from the dashboard"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.3"
 depends_on: ["096"]
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-24
 ---
 
 # 097 · Give control a kit bundle from the dashboard
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.3](../roadmap.md#v013)
 
 ## What
 
@@ -31,7 +31,7 @@ On 2026-10-22 the owner gave control the kit of a campaign written elsewhere. Th
 
 ## Decisions
 
-None yet.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.3.
 
 ## Open questions
 

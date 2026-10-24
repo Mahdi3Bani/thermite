@@ -2,7 +2,7 @@
 id: "124"
 title: "Files of a size you can review: a check that stops large files growing, and the large files split"
 status: PROPOSED
-version: "0.2.0"
+version: "0.1.1"
 depends_on: []
 created: 2026-10-24
 updated: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 124 · Files of a size you can review: a check that stops large files growing, and the large files split
 
-**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
 
 ## What
 
@@ -53,6 +53,7 @@ The owner, 2026-10-24, on the file-size rule: "we need to get a better handle on
 
 - 2026-10-24, owner: the file-size rule goes in CONVENTIONS.md, and its large files need a better handle.
 - 2026-10-24: placed in v0.2.0. The owner did not name a version.
+- 2026-10-24, owner: in v0.1.1, the code clean-up.
 
 ## Open questions
 

@@ -2,15 +2,15 @@
 id: "095"
 title: "Providers shows what Thermite spent on a GPU cloud, not only its test pods"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.2"
 depends_on: []
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-24
 ---
 
 # 095 · Providers shows what Thermite spent on a GPU cloud, not only its test pods
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.2](../roadmap.md#v012)
 
 ## What
 
@@ -29,6 +29,7 @@ The owner, 2026-10-22: "provider page for runpod shouldn't show test costs, it s
 ## Decisions
 
 - 2026-10-22, owner: a bug fix for v0.1.1.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.2, with GPUs on demand.
 
 ## Open questions
 

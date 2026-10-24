@@ -2,15 +2,15 @@
 id: "089"
 title: "Faster dashboard pages"
 status: PROPOSED
-version: "0.2.0"
+version: "0.1.4"
 depends_on: []
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-24
 ---
 
 # 089 · Faster dashboard pages
 
-**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014)
 
 ## What
 
@@ -28,7 +28,7 @@ The owner, 2026-10-22: "page loads are somewhat slow on campaigns etc, review ap
 
 ## Decisions
 
-None yet.
+- 2026-10-24, owner: moves from v0.2.0 to v0.1.4, the UI clean-up and UX improvements.
 
 ## Open questions
 

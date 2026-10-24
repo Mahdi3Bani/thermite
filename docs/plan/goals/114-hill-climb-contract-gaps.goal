@@ -2,15 +2,15 @@
 id: "114"
 title: "Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.2"
 depends_on: []
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # 114 · Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.2](../roadmap.md#v012)
 
 ## What
 
@@ -33,7 +33,7 @@ On 2026-10-23, drafting a hill climb that makes a quantized model's decode faste
 
 ## Decisions
 
-None yet.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.2, with GPUs on demand.
 
 ## Open questions
 

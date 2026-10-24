@@ -2,15 +2,15 @@
 id: "088"
 title: "New campaign's buttons show they were pressed"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.4"
 depends_on: ["080"]
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-24
 ---
 
 # 088 · New campaign's buttons show they were pressed
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [080](_completed/080-buttons-show-progress.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014) · **Depends on:** [080](_completed/080-buttons-show-progress.goal)
 
 ## What
 
@@ -29,6 +29,7 @@ The owner, 2026-10-22: "clicking start campaign doesn't give immediate feedback 
 ## Decisions
 
 - 2026-10-22, owner: in v0.1.1, a quick follow after the first release.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.4, the UI clean-up and UX improvements.
 
 ## Open questions
 
