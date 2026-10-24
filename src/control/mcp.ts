@@ -34,6 +34,11 @@ import {
   unarchiveCampaign,
 } from "./campaign-folders.ts";
 import {
+  type ClusterResourcesBody,
+  clusterResourcesFields,
+  clusterResourcesRequest,
+} from "./cluster-resources.ts";
+import {
   type CopyCampaignRequest,
   copyCampaignAnswer,
   copyCampaignFields,
@@ -633,7 +638,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       {
         title: "How a rig was set up",
         description:
-          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). Use it after add_cluster_rig, update_rig_images or runpod_rig. Holds no keys or tokens.",
+          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, new GPUs, CPUs or memory, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). On a cluster, also its GPUs, the judge's share, its CPUs and memory, and the change of size it drains for. Use it after add_cluster_rig, update_rig_images, set_cluster_rig_resources or runpod_rig. Holds no keys or tokens.",
         inputSchema: { rig: z.string().min(1) },
       },
       audited("rig_setup", (a: { rig: string }) => {
@@ -660,6 +665,19 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
                 placement: cluster.placement,
                 status: cluster.status,
                 images: cluster.spec.images,
+                gpus: cluster.spec.gpus,
+                judge_gpus: cluster.spec.judgeGpus ?? null,
+                cpus: cluster.spec.resources?.cpus ?? null,
+                memory_gib: cluster.spec.resources?.memoryGi ?? null,
+                // A change to its GPUs, CPUs or memory that waits for its drain.
+                pending: cluster.pending
+                  ? {
+                      gpus: cluster.pending.gpus,
+                      judge_gpus: cluster.pending.judgeGpus ?? null,
+                      cpus: cluster.pending.resources?.cpus ?? null,
+                      memory_gib: cluster.pending.resources?.memoryGi ?? null,
+                    }
+                  : null,
               }
             : {}),
           ...(machine ? { on: "machine", machine: machine.machine, status: machine.status } : {}),
@@ -1248,6 +1266,29 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           const r = await update(a.rig, actor, { wait: a.wait });
           if ("error" in r) throw new Error(r.error);
           return { rig: a.rig, said: r.ok };
+        }),
+      );
+    }
+    // A cluster rig's GPUs, CPUs and memory (goal 118): the owner's and an operator's, within what
+    // the slot and the cluster allow; the judge's share stays the owner's, as on Edit rig.
+    if (canCommand && actions?.setClusterRigResources) {
+      const resize = actions.setClusterRigResources;
+      const owner = role === "owner";
+      server.registerTool(
+        "set_cluster_rig_resources",
+        {
+          title: "Change a cluster rig's GPUs, CPUs and memory",
+          description: `For a rig control set up on a cluster: changes how many GPUs its harness pod asks for, and its CPUs and memory, as Edit rig does, keeping its volume, tokens, runs and results. Give only what changes. Checked as Add a rig checks them: 1 to 16 GPUs through the rig's own way (NVIDIA's device plugin, against its nodes as control last read them, or its DRA device class); at least 1.5 CPUs and 6 GiB, both or neither (null for both: the namespace's defaults); and, in a slot, the slot's quota (CPUs, memory, requests.nvidia.com/gpu, or the device class's devices), which control reads again first. A rig on the CPU can't take GPUs, nor a GPU rig move to none: add a new rig for that. With a new number of GPUs, judge_gpus sets the judge's share (1 to min(8, gpus - 1), the agents at most 8); left out, the judge gets half, rounded up, as when a rig is added, and a share the rig kept from Edit rig follows. Its pods restart with the new size on the images it runs, as update_rig_images moves them: by default it drains first (rig_setup shows it draining, and the change it waits for in pending); wait false restarts them now, also during its drain (a call with no other field then makes the change the drain waits for). Follow it with rig_setup and list_rigs. Returns {rig, said}. Refused in words: no such rig, one still being set up, updating, starting or draining for an image update, a value out of range or above the slot's quota, and judge_gpus without a new number of GPUs.${owner ? "" : " judge_gpus is the owner's alone: a call with it is refused, and nothing changes."}`,
+          inputSchema: { rig: z.string().min(1), ...clusterResourcesFields },
+        },
+        audited("set_cluster_rig_resources", async (a: ClusterResourcesBody & { rig: string }) => {
+          const { rig, ...body } = a;
+          const r = await resize(rig, clusterResourcesRequest(body), actor, {
+            wait: body.wait,
+            owner,
+          });
+          if ("error" in r) throw new Error(r.error);
+          return { rig, said: r.ok };
         }),
       );
     }

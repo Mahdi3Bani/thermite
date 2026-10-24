@@ -68,7 +68,7 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | The workers, the planner, the scheduler, or the OpenCode harness in a hill-climb or research trial | `COMPOSE="podman compose" node scripts/agents-acceptance.mjs` |
 | The New campaign page, the campaign builder, a campaign's **Start a run**, kits kept on control, Git access or the supervisor's staging | `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs` |
 | Machines over SSH, their checks or their install recipes | `COMPOSE="podman compose" node scripts/machine-acceptance.mjs` |
-| Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
+| Rigs on Kubernetes, including moving a rig onto new images or new CPUs and memory, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
 | Setting rigs up on machines (**Rigs › Add a rig**, the deploy and management scripts, the Quadlet units) or the rig images | `COMPOSE="podman compose" node scripts/rig-deploy-acceptance.mjs` |
 | The broker's device setup, the judge's executors, the isolation selftest or the harness image, on several GPUs | `COMPOSE="podman compose" node scripts/multigpu-acceptance.mjs` |
 | The one-container rig image, the broker's start of the supervisor, its wait for enrollment or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |

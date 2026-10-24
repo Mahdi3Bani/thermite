@@ -13,6 +13,7 @@ What you can do to a [rig](../../reference/glossary.md), and where, depends on h
 | Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods**, or MCP's `cluster_rig` | Commands on its page, which you run there | **Stop the pod**, **Start the pod**, `thermite runpod stop`, `start`, or MCP's `runpod_rig` |
 | Restart | Your compose tool | **Restart them** | **Restart them**, or MCP's `cluster_rig` | A command on its page | **Restart the pod**, `thermite runpod restart`, or MCP's `runpod_rig` |
 | Move to new images | Your compose tool | **Update to** control's version | **Update to** control's version, or **Update to these images** | Not yet | Not yet: launch a new rig |
+| Change its GPUs, CPUs and memory | Your compose tool | Not yet: add a new rig | **GPUs**, **CPUs** and **Memory (GiB)** on **Edit rig**, or MCP's `set_cluster_rig_resources` ([how](../install/rig-on-a-cluster.md#change-the-rigs-gpus-cpus-and-memory)) | Not yet: add a new rig | Not yet: launch a new rig |
 | Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** | **Terminate**, or `thermite runpod terminate`, which also retires it |
 | Retire, bring back | Yes | Yes | Yes | Yes | Yes |
 | Full reset | Yes | Yes | Yes | Yes | Yes, with the pod running; the pod and its GPU stay |

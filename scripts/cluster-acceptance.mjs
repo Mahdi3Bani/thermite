@@ -8,7 +8,9 @@ import { execFileSync } from "node:child_process";
 //            cluster's operators would give it; control deploys into that slot and nothing else.
 // Each rig is a CPU rig and must report to control; then it is stopped, started and removed. The
 // slot's rig is also moved onto new images (control restarted with other image tags): it must
-// report again from them, with its volume and secret unchanged.
+// report again from them, with its volume and secret unchanged. Then the slot gets a quota, and
+// the rig moves from the namespace's defaults onto more CPUs and memory within it (goal 118): it
+// must report again, with the new limits and its volume and secret unchanged.
 // Usage: COMPOSE="podman compose" node scripts/cluster-acceptance.mjs (Podman and kind needed).
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -254,7 +256,7 @@ try {
     "--role=thermite-control",
     "--serviceaccount=thermite-slot-1:thermite-control",
   );
-  // Control reads the slot's network rules, and writes none.
+  // Control reads the slot's network rules and its quota, and writes neither.
   kc(
     "create",
     "role",
@@ -262,7 +264,7 @@ try {
     "-n",
     "thermite-slot-1",
     "--verb=get,list",
-    "--resource=networkpolicies.networking.k8s.io",
+    "--resource=networkpolicies.networking.k8s.io,resourcequotas",
   );
   kc(
     "create",
@@ -404,6 +406,66 @@ try {
     { again, running },
   );
   check("its volume claim and secret stay as they were", kept() === before && before !== "", {
+    before,
+    after: kept(),
+  });
+
+  // ---------------------------------------------------------------- more CPUs and memory
+  // The slot's operators give it a quota; the rig, on the namespace's defaults so far, moves onto
+  // it (goal 118). Over REST, the owner's token; Edit rig's form is the unit tests'.
+  kc(
+    "create",
+    "quota",
+    "thermite-slot",
+    "-n",
+    "thermite-slot-1",
+    "--hard=limits.cpu=3,limits.memory=8Gi",
+  );
+  const resize = async (body) => {
+    const r = await fetch(`${control}/v1/rigs/slot-rig-1/cluster/resources`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${admin}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: r.status, body: await r.json() };
+  };
+  const tooBig = await resize({ cpus: 4, memory_gib: 6 });
+  check(
+    "a size above the slot's quota, read again, is refused in words",
+    tooBig.status === 400 && tooBig.body.error === "The slot thermite-slot-1 allows 3 CPUs.",
+    tooBig,
+  );
+  const sized = await resize({ cpus: 2, memory_gib: 6 });
+  const resized =
+    sized.status === 200 &&
+    sized.body.said === "slot-rig-1's pods restart with 2 CPUs and 6 GiB of memory."
+      ? await rigStep("slot-rig-1", "A report reached control after the change")
+      : `not taken: ${JSON.stringify(sized)}`;
+  const limits = (name) =>
+    kc(
+      "get",
+      "deploy",
+      `thermite-slot-rig-1-${name}`,
+      "-n",
+      "thermite-slot-1",
+      "-o",
+      "jsonpath={.spec.template.spec.containers[0].resources.limits.cpu} {.spec.template.spec.containers[0].resources.limits.memory}",
+    ).trim();
+  check(
+    "new CPUs and memory: its new pods run with them and report again",
+    // Kubernetes may write 4096Mi as 4Gi.
+    resized === "reported" &&
+      /^1500m (4Gi|4096Mi)$/.test(limits("harness")) &&
+      /^500m (2Gi|2048Mi)$/.test(limits("supervisor")),
+    { resized, harness: limits("harness"), supervisor: limits("supervisor") },
+  );
+  check(
+    "its page names the change and its new CPUs and memory",
+    /Its deployments applied with new GPUs, CPUs or memory[\s\S]*CPUs and memory: namespace defaults → 2 CPUs, 6 GiB/.test(
+      await get("/ui/rigs/slot-rig-1"),
+    ) && /<dt>CPUs and memory<\/dt><dd>2 CPUs, 6 GiB/.test(await get("/ui/rigs/slot-rig-1")),
+  );
+  check("after the change, its volume claim and secret stay as they were", kept() === before, {
     before,
     after: kept(),
   });

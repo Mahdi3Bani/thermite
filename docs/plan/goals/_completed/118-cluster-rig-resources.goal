@@ -1,0 +1,54 @@
+---
+id: "118"
+title: "Change a cluster rig's GPUs, CPUs and memory from control"
+status: VERIFIED
+version: "0.1.0"
+depends_on: ["035"]
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 118 · Change a cluster rig's GPUs, CPUs and memory from control
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Depends on:** [035](../035-rig-upgrades.goal)
+
+## What
+
+A rig control set up on a Kubernetes cluster changes how many GPUs its harness pod asks for, and its CPUs and memory, keeping its volume, tokens, runs and results:
+
+- **Where:** Edit rig's **GPUs**, **CPUs** and **Memory (GiB)** for such a rig, `POST /v1/rigs/<rig>/cluster/resources`, and MCP's `set_cluster_rig_resources`.
+- **The checks are Add a rig's:** 1 to 16 GPUs through the rig's own way (the device plugin's nodes, or its DRA device class), at least 1.5 CPUs and 6 GiB, and the slot's quota, which control reads again first: CPUs, memory, `requests.nvidia.com/gpu`, and the devices of a DRA class.
+- **The move is an image update's:** the rig's two deployments are applied again on the images it runs (and for DRA, its resource claim template is made again), a rig at work drains first, and control waits for the new pods and a report from them, with the steps on the rig's page and in `rig_setup`.
+- **The judge's share:** a new number of GPUs gives the judge half of them, rounded up, unless the owner gives the share. A share the rig kept from Edit rig follows, through a `rig_settings` command.
+
+## Why
+
+A slot rig's namespace gained a fourth GPU and a larger quota. The rig had to move from 3 GPUs to 4, and from the namespace's defaults to the quota's CPUs and memory, without losing its volume, tokens, runs or results. Control could change a cluster rig's images, but not its size: removing the rig and adding a new one would have lost its ledger.
+
+## Done when
+
+- [x] Edit rig, REST and MCP change a cluster rig's GPUs, CPUs and memory with Add a rig's checks and the slot's quota read again; refusals are in words.
+- [x] A rig at work drains first; **Change now, without waiting** and **Call the change off** work as for images; a stopped rig stays stopped.
+- [x] The unit tests cover the checks, the operator's limit, the stored size, the drain, and the deployments' resources and GPU count (device plugin and DRA).
+- [x] The cluster acceptance moves a slot rig onto more CPUs and memory on kind, and the rig reports again with its volume and tokens kept.
+- [x] The docs pages say how: the cluster how-to, Give a rig several GPUs, the MCP and REST references.
+
+## Decisions
+
+- 2026-10-24, owner: GPUs, CPUs and memory may be changed by an operator's token as well as the owner's, within the slot's quota and devices. Only the judge's share (`judge_gpus`) stays the owner's, as on Edit rig and `set_rig_settings`. A new number of GPUs without a share gives the judge the default: half, rounded up, as when a rig is added.
+- 2026-10-24, in the build: a rig never moves between none and some GPUs. Its harness image (CPU or CUDA) and its target would change, and its runs' timings would no longer compare: such a move is refused in words, and a new rig is the way.
+- 2026-10-24, in the build: a change of size keeps the images the rig runs; moving onto control's newer images stays `update_rig_images`'s. While a rig drains for one of the two, the other is refused.
+- 2026-10-24, in the build: an operator's call that gives `judge_gpus` is refused whole, with nothing changed, rather than applying its other fields.
+
+## Open questions
+
+- Whether the volume's size should change too: a claim grows only when its storage class allows expansion, and never shrinks.
+
+## Progress
+
+- 2026-10-24: Built on branch `feat/cluster-rig-resources`: the check (`src/control/cluster-resources.ts`), the move beside the image update in the dashboard, the REST route and the MCP tool, the slot quota's GPUs and DRA devices (also checked by Add a rig), and the Edit rig fields with their info icons and the sentences of **What changes when you save**. Unit tests in `cluster-resources.test.ts` and `clusters-ui.test.ts`. Next: the cluster acceptance.
+- 2026-10-24: Edit rig's script checked in headless Chrome against a control over a fake cluster: the sentences of **What changes when you save**, GPUs for the judge following a new number of GPUs (hidden for one), and Save. The cluster acceptance on kind, extended: the slot's read role may read its quota, the slot gets a quota of 3 CPUs and 8 GiB, a size above it is refused in words (`The slot thermite-slot-1 allows 3 CPUs.`), and the slot rig moves from the namespace's defaults to 2 CPUs and 6 GiB over REST. Its new pods run with the new limits (harness 1500m and 4Gi, supervisor 500m and 2Gi) and report again; its volume claim and secret are unchanged. All 19 checks passed. A new number of GPUs, the device plugin and DRA are covered by the unit tests only: kind has no GPUs. Verified.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/118-cluster-rig-resources.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

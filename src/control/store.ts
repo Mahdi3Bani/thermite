@@ -351,7 +351,9 @@ create table if not exists cluster_rig (
   spec text not null,
   status text not null,
   created_at text not null,
-  created_by text not null
+  created_by text not null,
+  -- A change to its GPUs, CPUs or memory that waits for its drain (JSON); null: none.
+  pending text
 );
 -- Rigs control set up on a machine: where, on which GPUs, with which images, and how it stands.
 create table if not exists machine_rig (
@@ -974,6 +976,22 @@ export interface ClusterRig {
   status: string;
   created_at: string;
   created_by: string;
+  /** A change to its GPUs, CPUs or memory that waits while the rig drains; only while draining. */
+  pending?: ClusterRigResize | undefined;
+}
+
+/** A cluster rig's GPUs, the judge's share of them and its CPUs and memory, as control deploys them. */
+export interface ClusterRigSize {
+  gpus: number;
+  /** With two or more GPUs, how many are the judge's. */
+  judgeGpus?: number | undefined;
+  /** None: the namespace's defaults. */
+  resources?: { cpus: number; memoryGi: number } | undefined;
+}
+
+/** A new size that waits for the rig's drain, and who asked for it. */
+export interface ClusterRigResize extends ClusterRigSize {
+  by: string;
 }
 
 const clusterOf = (r: Row): Cluster => ({
@@ -997,6 +1015,7 @@ const clusterRigOf = (r: Row): ClusterRig => ({
   status: String(r.status),
   created_at: String(r.created_at),
   created_by: String(r.created_by),
+  ...(r.pending ? { pending: JSON.parse(String(r.pending)) as ClusterRigResize } : {}),
 });
 
 /** A rig control set up on a machine. */
@@ -1155,6 +1174,11 @@ export class ControlStore {
     );
     if (!machineRigCols.includes("judge_gpus"))
       this.db.exec("alter table machine_rig add column judge_gpus integer");
+    const clusterRigCols = (this.db.prepare("pragma table_info(cluster_rig)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (!clusterRigCols.includes("pending"))
+      this.db.exec("alter table cluster_rig add column pending text");
     const refusalCols = (this.db.prepare("pragma table_info(rig_refusal)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -3428,8 +3452,34 @@ export class ControlStore {
     return rows.map(clusterRigOf);
   }
 
+  /** A rig's status there. A change waiting for its drain ends with the drain: kept only while draining. */
   setClusterRigStatus(rig: string, status: string): void {
-    this.db.prepare("update cluster_rig set status = ? where rig = ?").run(status, rig);
+    this.db
+      .prepare(
+        "update cluster_rig set status = ?, pending = case when ? = 'draining' then pending else null end where rig = ?",
+      )
+      .run(status, status, rig);
+  }
+
+  /** The change to a rig's GPUs, CPUs or memory that waits for its drain; null: none. */
+  setClusterRigPending(rig: string, pending: ClusterRigResize | null): void {
+    this.db
+      .prepare("update cluster_rig set pending = ? where rig = ?")
+      .run(pending ? JSON.stringify(pending) : null, rig);
+  }
+
+  /** The GPUs, judge's share and CPUs and memory a rig on a cluster now runs with, after a change. */
+  setClusterRigSize(rig: string, size: ClusterRigSize, controlUrl?: string | undefined): void {
+    const r = this.clusterRig(rig);
+    if (!r) return;
+    const spec: ClusterRig["spec"] = {
+      ...r.spec,
+      gpus: size.gpus,
+      judgeGpus: size.judgeGpus,
+      resources: size.resources,
+      ...(controlUrl ? { controlUrl } : {}),
+    };
+    this.db.prepare("update cluster_rig set spec = ? where rig = ?").run(JSON.stringify(spec), rig);
   }
 
   /** The images a rig on a cluster now runs, after an image update. */

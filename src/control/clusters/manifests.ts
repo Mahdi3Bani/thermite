@@ -378,10 +378,25 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
  * volume claim, service and network rules stay as they are. A stopped rig stays stopped.
  */
 export function clusterRigDeployments(p: ClusterRigPlan, stopped = false): Obj[] {
+  return clusterRigParts(p, ["Deployment"], stopped);
+}
+
+/**
+ * The objects a change to a rig's GPUs, CPUs or memory applies: its two deployments and, for DRA,
+ * its resource claim template, which holds the number of GPUs the harness pod asks for. Its secret
+ * (so its tokens), volume claim, service and network rules stay. A stopped rig stays stopped.
+ */
+export function clusterRigResized(p: ClusterRigPlan, stopped = false): Obj[] {
+  return clusterRigParts(p, ["ResourceClaimTemplate", "Deployment"], stopped);
+}
+
+function clusterRigParts(p: ClusterRigPlan, kinds: string[], stopped: boolean): Obj[] {
   // The secret is built with empty tokens and left out: nothing here reads or replaces it.
   return clusterRigObjects(p, { controlToken: "", harnessSupervisorToken: "" })
-    .filter((o) => o.kind === "Deployment")
-    .map((o) => (stopped ? { ...o, spec: { ...(o.spec as Obj), replicas: 0 } } : o));
+    .filter((o) => kinds.includes(String(o.kind)))
+    .map((o) =>
+      stopped && o.kind === "Deployment" ? { ...o, spec: { ...(o.spec as Obj), replicas: 0 } } : o,
+    );
 }
 
 /** The objects as one document `kubectl apply -f -` reads (JSON is YAML). */

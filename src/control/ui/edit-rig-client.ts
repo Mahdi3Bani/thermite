@@ -8,8 +8,10 @@
  * line, says in the two fields' info icons what the line's harness does at the compaction point,
  * and counts the agents on each subscription. Save is off while a line is refused. A line with no
  * model shows, and its sentences say, what its agent uses then: the words the page gives each
- * line (data-fb-ctx, data-fb-say, data-fb-off; goal 074). Without the script the form still posts,
- * and control checks the same.
+ * line (data-fb-ctx, data-fb-say, data-fb-off; goal 074). For a rig control set up on a cluster
+ * (goal 118), its GPUs, CPUs and memory are said with the restart of its pods (data-moves,
+ * data-moves-say), and GPUs for the judge follows a new number of GPUs. Without the script the
+ * form still posts, and control checks the same.
  */
 export const EDIT_RIG_JS = `
 (() => {
@@ -30,8 +32,29 @@ export const EDIT_RIG_JS = `
     const lb = el.closest(".fd") && el.closest(".fd").querySelector(".lb");
     return lb ? lb.firstChild.textContent.trim().toLowerCase() : el.name;
   };
+  // A rig control set up on a cluster (goal 118): its GPUs, CPUs and memory. A new number of GPUs
+  // takes GPUs for the judge as the judge's share of them: the field then fits the new number,
+  // and hides for one GPU. Its pods restart with the change, said once.
+  const gpusEl = $('[name="k_gpus"]');
+  const judgeEl = $('[name="judge_gpus"]');
+  const gpusMoved = () => !!gpusEl && gpusEl.value !== start.get(gpusEl);
+  const fitJudge = () => {
+    if (!gpusEl || !judgeEl) return;
+    const n = Number(gpusEl.value), moved = gpusMoved();
+    const field = judgeEl.closest("[data-judge-field]"), now = $("[data-judge-now]");
+    if (!moved) { judgeEl.max = String(Math.min(8, Number(start.get(gpusEl)) - 1)); if (field) field.hidden = false; if (now) now.hidden = false; return; }
+    if (!Number.isInteger(n) || n < 1) return;
+    const top = Math.min(8, n - 1);
+    judgeEl.max = String(Math.max(1, top));
+    if (field) field.hidden = n < 2;
+    if (now) now.hidden = true;
+    const j = Number(judgeEl.value);
+    if (n >= 2 && (!Number.isInteger(j) || j < 1 || j > top || n - j > 8)) judgeEl.value = String(Math.min(top, Math.max(n - 8, Math.ceil(n / 2))));
+  };
+  if (gpusEl) { gpusEl.addEventListener("input", fitJudge, true); gpusEl.addEventListener("change", fitJudge, true); }
   const general = (later) => {
     const out = [];
+    let moves = false;
     for (const [el, was] of start) {
       if (after(el) !== later) continue;
       if (el.type === "checkbox" && el.dataset.part !== undefined) {
@@ -41,9 +64,21 @@ export const EDIT_RIG_JS = `
       } else if (el.type === "radio") {
         if (el.checked && !was) out.push("You change when a change becomes the champion: " + el.closest("label").querySelector("b").textContent.toLowerCase() + ".");
       } else if (el.tagName === "SELECT" || el.type === "number") {
-        if (el.value !== was) out.push("You change " + label(el) + " to " + (el.value === "" ? "no limit" : el.options ? el.options[el.selectedIndex].textContent : el.value) + ".");
+        // With a new number of GPUs, the judge's share is said with them.
+        if (el === judgeEl && gpusMoved()) continue;
+        if (el.value !== was) out.push("You change " + label(el) + " to " + (el.value === "" ? el.dataset.empty || "no limit" : el.options ? el.options[el.selectedIndex].textContent : el.value + (el.dataset.unit || "")) + ".");
         if (el.value !== was && el.dataset.restarts !== undefined) out.push("The rig's harness restarts to regroup its GPUs: running trials and judge jobs start again.");
+        if (el.value !== was && el.dataset.moves !== undefined) moves = true;
       }
+    }
+    if (moves) {
+      const n = gpusEl ? Number(gpusEl.value) : 0;
+      if (gpusMoved() && n >= 2) {
+        const j = judgeEl ? Number(judgeEl.value) : Math.ceil(n / 2);
+        out.push("The judge gets " + j + " of the " + n + " GPUs, the agents " + (n - j) + (judgeEl ? "." : ": half each, rounded up for the judge."));
+      }
+      const say = $("[data-moves-say]");
+      if (say) out.push(say.dataset.movesSay);
     }
     return out;
   };
@@ -341,7 +376,8 @@ export const EDIT_RIG_JS = `
       said.push(...subSentences(S));
       for (const id of ["auditor", "review_panel"]) said.push(...sentences(S[id], S));
       said.push(...general(true));
-      if (said.length) said[said.length - 1] += " The rig takes it within a minute.";
+      const movesSay = ($("[data-moves-say]") || { dataset: {} }).dataset.movesSay;
+      if (said.length && said[said.length - 1] !== movesSay) said[said.length - 1] += " The rig takes it within a minute.";
     }
     ul.replaceChildren();
     for (const [cls, t] of errs.length ? errs.map((t) => ["bad", t]) : said.length ? said.map((t) => ["", t]) : [["", "Nothing changes."]]) {

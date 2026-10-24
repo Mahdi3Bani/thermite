@@ -37,6 +37,7 @@ None.
 
 - 2026-10-19: Goal written from the roadmap.
 - 2026-10-19: First part built: a rig control set up on a cluster moves onto control's images, from its page or over MCP. Control waits for the new pods (each deployment's status, read with `get`; no watch right needed) and for a report from them, as setup events. A stopped rig stays stopped. Tests: the clusters UI tests, and the cluster acceptance on kind, where a slot rig moves to re-tagged images and reports again with its volume claim and secret unchanged. Not yet: the rig's version on its page, machines (SSH and joined rigs), the isolation and smoke checks after an upgrade, and rollback. After a newer harness has upgraded a ledger, an older image refuses it; a rollback then needs the ledger from before the upgrade.
+- 2026-10-24: A cluster rig's GPUs, CPUs and memory now change the same way as its images, with the same drain and wait: [goal 118](_completed/118-cluster-rig-resources.goal).
 - 2026-10-24: Gap found while rolling a rig with a trial in progress: `update_rig_images` armed the drain, and nothing could hold it while an operator took a copy of the rig's store after the trial; the pods restart about a minute after the last trial ends. Added to Done when.
 
 ---

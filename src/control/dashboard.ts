@@ -43,12 +43,25 @@ import {
 } from "./campaign-folders.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
+  asksNothing,
+  type ClusterResourcesRequest,
+  planClusterResize,
+  quotaRefusal,
+  type ResizeRefusal,
+  resourcesWords,
+  sizeChangeWords,
+  sizeOf,
+  sizeWords,
+} from "./cluster-resources.ts";
+import {
   type ClusterFacts,
   type ClusterSlot,
   checkCluster,
   clusterLine,
   HARNESS_LABELS,
+  type SlotQuota,
   slotNetwork,
+  slotQuota,
 } from "./clusters/facts.ts";
 import {
   type ClusterKubectl,
@@ -62,6 +75,7 @@ import {
   clusterNames,
   clusterRigDeployments,
   clusterRigObjects,
+  clusterRigResized,
   rigResources,
 } from "./clusters/manifests.ts";
 import {
@@ -197,6 +211,8 @@ import {
   type AgentRole,
   type Cluster,
   type ClusterRig,
+  type ClusterRigResize,
+  type ClusterRigSize,
   type ControlStore,
   codexTakes,
   cursorOf,
@@ -357,6 +373,7 @@ import {
   podStopped,
   type RigView,
   type RunView,
+  rigSettingsOf,
   rigView,
 } from "./views.ts";
 
@@ -5226,6 +5243,9 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     report_after_images: "A report reached control from the new images",
     pods_running: "Its pods run again",
     report_after_start: "A report reached control after the start",
+    resources: "Its deployments applied with new GPUs, CPUs or memory",
+    resources_running: "Its pods run with the new GPUs, CPUs or memory",
+    report_after_resources: "A report reached control after the change",
     model_started: "Model download started",
     model_done: "Model downloaded, its SHA-256 checked",
     model_refused: "Model refused: its SHA-256 did not match, and the file was deleted",
@@ -5330,10 +5350,13 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     // New images; or the same ones after a failed update (a retry); or a new address for control.
     // Draining for an update (goal 079): what it waits for, and the two ways out.
     const work = rigWork(r.rig);
+    const waits = `${work ? `It waits for ${esc(workWords(work))} to finish, and starts nothing new.` : "It waits for its next report."} Its pods restart as soon as nothing runs.`;
     const draining =
-      r.status === "draining" && typeof want !== "string"
-        ? `<div class="small" style="margin-top:12px">Draining before its pods restart on control's images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">${work ? `It waits for ${esc(workWords(work))} to finish, and starts nothing new.` : "It waits for its next report."} Its pods restart as soon as nothing runs.</div>${act("images-now", "Update now, without waiting")}${act("drain-cancel", "Call the update off")}`
-        : "";
+      r.status === "draining" && r.pending
+        ? `<div class="small" style="margin-top:12px">Draining before its pods restart with ${esc(sizeWords(r.pending))}.</div><div class="small muted" style="margin:4px 0 6px">${waits} Its volume, tokens, runs and results stay.</div>${act("resources-now", "Change now, without waiting")}${act("drain-cancel", "Call the change off")}`
+        : r.status === "draining" && typeof want !== "string"
+          ? `<div class="small" style="margin-top:12px">Draining before its pods restart on control's images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">${waits}</div>${act("images-now", "Update now, without waiting")}${act("drain-cancel", "Call the update off")}`
+          : "";
     const update = draining
       ? draining
       : !manage || typeof want === "string"
@@ -5345,8 +5368,63 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
             : s.controlUrl && controlAddress() && s.controlUrl !== controlAddress()
               ? `<div class="small" style="margin-top:12px">Control's address for rigs changed: the rig reports to <span class="mono">${esc(s.controlUrl)}</span>, control is now at <span class="mono">${esc(controlAddress() ?? "")}</span>.</div><div class="small muted" style="margin:4px 0 6px">Its pods restart with the new address, on the same images. ${keeps}</div>${act("images", "Give it control's new address")}`
               : "";
-    return `<div class="block" ${placeAttrs(r.rig, r.status)}><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
+    return `<div class="block" ${placeAttrs(r.rig, r.status)}><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>CPUs and memory</dt><dd>${s.resources ? esc(resourcesWords(s.resources)) : "the namespace's defaults"}${manage ? ` · <a href="/ui/rigs/${rName}/edit">change on Edit rig</a>` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}${update}</div></div>`;
+  };
+  /** What the place of a rig control set up on a cluster allows it, as control last read it. */
+  const clusterLimits = (r: ClusterRig): string => {
+    const f = store.cluster(r.cluster)?.facts as ClusterFacts | null | undefined;
+    const s = r.spec;
+    const n = (x: number) => String(Math.round(x * 1000) / 1000);
+    if (r.placement === "slot") {
+      const q = f?.slots.find((x) => x.namespace === r.namespace)?.quota;
+      const devices = s.deviceClass ? q?.devices?.[s.deviceClass] : undefined;
+      const allows = [
+        q?.cpus !== undefined ? `${n(q.cpus)} CPUs` : "",
+        q?.memoryGi !== undefined ? `${n(q.memoryGi)} GiB of memory` : "",
+        s.gpus === 0
+          ? ""
+          : s.gpuMode === "dra"
+            ? devices !== undefined
+              ? `${devices} device${devices === 1 ? "" : "s"} of the class ${s.deviceClass}`
+              : ""
+            : q?.gpus !== undefined
+              ? `${q.gpus} GPU${q.gpus === 1 ? "" : "s"}`
+              : "",
+      ].filter(Boolean);
+      return allows.length
+        ? `The slot's quota allows ${listText(allows)}, as control last read it. Save reads it again first.`
+        : "Control read no limit for this in the slot's quota: the cluster's own rules decide.";
+    }
+    if (s.gpus > 0 && s.gpuMode !== "dra" && f?.nodes.length) {
+      const nodes = f.nodes.filter((x) => !s.node || x.name === s.node);
+      const most = Math.max(0, ...nodes.map((x) => x.gpus));
+      return `${s.node ? `The node ${s.node}` : "Its largest node"} offers ${most} GPU${most === 1 ? "" : "s"} through the device plugin, as control last read the cluster.`;
+    }
+    return "";
+  };
+  /**
+   * Edit rig's fields for a rig control set up on a cluster (goal 118): its GPUs (a GPU rig only:
+   * none and some don't mix), its CPUs and its memory, with what its place allows. Save changes
+   * them as set_cluster_rig_resources does.
+   */
+  const clusterSizeFields = (r: ClusterRig): string => {
+    if (r.status === "removed" || r.status === "deploying") return "";
+    const s = r.spec;
+    const way =
+      s.gpuMode === "dra"
+        ? `DRA, the device class ${s.deviceClass ?? ""}`
+        : "NVIDIA's device plugin";
+    const gpus = s.gpus
+      ? `<label class="fd">${infoLabel("GPUs", `How many GPUs the rig's harness pod asks for, through ${way}: 1 to ${MAX_RIG_GPUS}. With two or more, some are the judge's and the rest the agents': half each, rounded up for the judge, unless you set GPUs for the judge below. A rig on GPUs can't move to none: add a rig on the CPU for that.`)}<input name="k_gpus" type="number" min="1" max="${MAX_RIG_GPUS}" step="1" value="${s.gpus}" data-label="its GPUs" data-moves></label>`
+      : "";
+    const limits = clusterLimits(r);
+    const moves =
+      "Its pods restart with the new GPUs, CPUs and memory, on the images it runs. A rig at work drains first: running trials and the judge's job finish, and it starts nothing new meanwhile. Its volume, tokens, runs and results stay.";
+    return `<div class="g3" style="margin-top:10px" data-moves-say="${esc(moves)}">${gpus}
+<label class="fd">${infoLabel("CPUs", "The rig's CPUs: the supervisor gets half a CPU, the harness the rest. At least 1.5. Empty, with Memory empty too: the namespace's defaults apply.")}<input name="k_cpus" type="number" min="1.5" step="any" value="${s.resources?.cpus ?? ""}" placeholder="the namespace's defaults" data-label="its CPUs" data-empty="the namespace's defaults" data-moves></label>
+<label class="fd">${infoLabel("Memory (GiB)", "The rig's memory: the supervisor gets 2 GiB, the harness the rest. At least 6 GiB. Empty, with CPUs empty too: the namespace's defaults apply.")}<input name="k_mem" type="number" min="6" step="any" value="${s.resources?.memoryGi ?? ""}" placeholder="the namespace's defaults" data-label="its memory" data-unit=" GiB" data-empty="the namespace's defaults" data-moves></label>
+</div><div class="muted small" style="margin-top:6px">${s.gpus ? "" : "It measures on the CPU: a rig on the CPU can't take GPUs, so add a rig with GPUs for that. "}${limits ? `${esc(limits)} ` : ""}A change here restarts its pods; a rig at work drains first.</div>`;
   };
   /** A rig in pull mode: its pod, its enrollment, control's last connection and the refusals. */
   const pullBlock = (r: TunnelRig, now: number) => {
@@ -5806,6 +5884,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     }
     if (slotQuota?.storageGi !== undefined && storageGi > slotQuota.storageGi + 1e-9)
       return fail(`The slot ${namespace} allows ${slotQuota.storageGi} GB of storage.`);
+    // GPUs: what the slot's quota allows through the device plugin, or of the DRA device class.
+    const devices = quotaRefusal(namespace, slotQuota, { gpus, deviceClass });
+    if (devices) return fail(devices);
     if (gpus && !opts.rigImages.harnessCuda)
       return fail(
         "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).",
@@ -5874,17 +5955,19 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   const awaitNewPods = async (
     r: ClusterRig,
     k: Cluster & { kubeconfig_sealed: string },
-    why: "images" | "start" = "images",
+    why: "images" | "start" | "resources" = "images",
   ) => {
     const n = clusterNames(r.rig);
     const set = (st: string) => store.setClusterRigStatus(r.rig, st);
     // The status this wait is for: a stop or a removal meanwhile ends it.
-    const waiting = why === "images" ? "updating" : "starting";
+    const waiting = why === "start" ? "starting" : "updating";
     const still = () => store.clusterRig(r.rig)?.status === waiting;
     const [pods, report] =
       why === "images"
         ? ["images_running", "report_after_images"]
-        : ["pods_running", "report_after_start"];
+        : why === "resources"
+          ? ["resources_running", "report_after_resources"]
+          : ["pods_running", "report_after_start"];
     const deadline = Date.now() + 15 * 60_000;
     for (;;) {
       if (!still()) return;
@@ -5934,6 +6017,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const old = r.spec.images;
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
+    // A drain for a change to its GPUs, CPUs or memory (goal 118) is that change's.
+    if (r.status === "draining" && r.pending)
+      return {
+        error: `${rig} is draining for a change to its GPUs, CPUs or memory: wait until its page shows it running, or call the change off first.`,
+      };
     // A drain under way (goal 079): asked again, it goes on waiting; asked not to wait, the
     // update goes ahead now.
     if (r.status === "draining" && o.wait !== false)
@@ -5991,7 +6079,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       issueCommand(store, opts.privateKeyPem, {
         rig,
         kind: "drain_rig",
-        payload: { drain: true, reason: "its images are about to change" },
+        payload: { drain: true, reason: IMAGES_REASON },
         issuedBy: by,
       });
       store.setClusterRigStatus(rig, "draining");
@@ -6048,6 +6136,230 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     };
   };
   if (opts.actions) opts.actions.updateRigImages = updateClusterRigImages;
+  const IMAGES_REASON = "its images are about to change";
+  const RESIZE_REASON = "its GPUs, CPUs or memory are about to change";
+  /** What a slot's quota allows now, read again; the last check's when control can't read it. */
+  const slotQuotaNow = async (
+    r: ClusterRig,
+    k: Cluster & { kubeconfig_sealed: string },
+  ): Promise<SlotQuota | undefined> => {
+    if (r.placement !== "slot") return undefined;
+    const out = await kube.kubectl(
+      clusterTarget(k),
+      ["get", "resourcequota", "-n", r.namespace, "-o", "json"],
+      undefined,
+      30_000,
+    );
+    if (out.code === 0) return slotQuota(out.stdout);
+    return (k.facts as ClusterFacts | null)?.slots.find((x) => x.namespace === r.namespace)?.quota;
+  };
+  type Resize = { ok: string } | ResizeRefusal;
+  /**
+   * Checks a change to the GPUs, CPUs or memory of a rig control set up on a cluster (goal 118),
+   * with the slot's quota read again, and says what it would do: a refusal in words, words with
+   * nothing to do, or `go`, which drains the rig first while it works, else applies the change.
+   * Edit rig checks everything before it saves anything, so the check and the change are apart.
+   */
+  const prepareResize = async (
+    rig: string,
+    want: ClusterResourcesRequest,
+    by: string,
+    o: { wait?: boolean | undefined; owner: boolean },
+  ): Promise<Resize | { go: () => Promise<Resize> }> => {
+    const r = store.clusterRig(rig);
+    if (!r || r.status === "removed")
+      return { error: `Control didn't set ${rig} up on a cluster.`, status: 404 };
+    if (r.status === "deploying") return { error: `${rig} is still being set up.`, status: 409 };
+    // The supervisor's CONTROL_URL comes from here, as in an image update.
+    if (!opts.publicUrl)
+      return {
+        error:
+          "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.",
+        status: 409,
+      };
+    const k = store.cluster(r.cluster);
+    if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.`, status: 409 };
+    if (r.status === "updating" || r.status === "starting")
+      return {
+        error: `${rig} is ${r.status === "updating" ? "being updated" : "starting"}: wait until its page shows it running, or failed.`,
+        status: 409,
+      };
+    if (r.status === "draining" && !r.pending)
+      return {
+        error: `${rig} is draining for an image update: wait until its page shows it running, or call the update off first.`,
+        status: 409,
+      };
+    const pending = r.status === "draining" ? r.pending : undefined;
+    // During its own drain, a call that names nothing goes on with the change it waits for.
+    if (pending && asksNothing(want))
+      return o.wait === false
+        ? { go: () => applyResize(rig, pending, by) }
+        : {
+            ok: `${rig} is draining: its pods restart with ${sizeWords(pending)} once its trials and the judge's job end. Change now skips the wait.`,
+          };
+    const plan = planClusterResize(r, want, {
+      owner: o.owner,
+      facts: k.facts as ClusterFacts | null,
+      quota: await slotQuotaNow(r, k),
+    });
+    if ("error" in plan) return plan;
+    if ("same" in plan)
+      return { ok: `Nothing changed: ${rig} has these GPUs, CPUs and memory already.` };
+    const next: ClusterRigResize = { ...plan.size, by };
+    return {
+      go: async () => {
+        const now = store.clusterRig(rig);
+        if (!now || now.status === "removed")
+          return { error: `Control didn't set ${rig} up on a cluster.`, status: 404 };
+        const work = rigWork(rig);
+        if (
+          o.wait === false ||
+          now.status === "stopped" ||
+          (now.status !== "draining" && !(work && (work.trials > 0 || work.judge_jobs > 0)))
+        )
+          return applyResize(rig, next, by);
+        // Drain first (goal 079): the rig starts nothing new, and the watcher below applies the
+        // change once nothing runs. A drain under way takes the new size instead.
+        store.setClusterRigPending(rig, next);
+        if (now.status === "draining" || !work) {
+          store.rigSetupEvent(rig, "drain", true, `now for ${sizeChangeWords(sizeOf(now), next)}`);
+          return {
+            ok: `${rig} is draining: its pods restart with ${sizeWords(next)} once its trials and the judge's job end. Change now skips the wait.`,
+          };
+        }
+        issueCommand(store, opts.privateKeyPem, {
+          rig,
+          kind: "drain_rig",
+          payload: { drain: true, reason: RESIZE_REASON },
+          issuedBy: by,
+        });
+        store.setClusterRigStatus(rig, "draining");
+        store.rigSetupEvent(rig, "drain", true, `waiting for ${workWords(work)} to finish`);
+        store.audit(by, "cluster_rig_drain", { rig, to: sizeChangeWords(sizeOf(now), next) });
+        return {
+          ok: `${rig} drains first: it starts nothing new, and its pods restart with ${sizeWords(next)} once ${workWords(work)} ${work.trials + work.judge_jobs === 1 ? "finishes" : "finish"}. Change now, on its page or with set_cluster_rig_resources and wait false, skips the wait.`,
+        };
+      },
+    };
+  };
+  /**
+   * Applies a new size to a rig control set up on a cluster: its two deployments again, on the
+   * images it runs (for DRA, with a new claim template: a template can't change, so the old one is
+   * deleted first). Its secret (so its tokens), volume claim, service and network rules stay. A
+   * stopped rig stays stopped. Then, in the background, waits for its new pods and a report.
+   */
+  const applyResize = async (rig: string, size: ClusterRigResize, by: string): Promise<Resize> => {
+    const r = store.clusterRig(rig);
+    if (!r || r.status === "removed")
+      return { error: `Control didn't set ${rig} up on a cluster.`, status: 404 };
+    const k = store.cluster(r.cluster);
+    if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.`, status: 409 };
+    const from = sizeOf(r);
+    const to: ClusterRigSize = {
+      gpus: size.gpus,
+      judgeGpus: size.judgeGpus,
+      resources: size.resources,
+    };
+    const stopped = r.status === "stopped";
+    const draining = r.status === "draining";
+    const target = clusterTarget(k);
+    const failed = (why: string): ResizeRefusal => {
+      store.rigSetupEvent(rig, "resources", false, why);
+      // A rig that drained for it goes back to work: the change did not happen.
+      if (draining) {
+        undrain(rig, by);
+        store.setClusterRigStatus(rig, "failed");
+      }
+      return { error: why, status: 409 };
+    };
+    const newClaim = r.spec.gpuMode === "dra" && to.gpus > 0 && to.gpus !== from.gpus;
+    let objects: string;
+    try {
+      objects = asList(
+        clusterRigResized(clusterPlan({ ...r, spec: { ...r.spec, ...to } }), stopped),
+      );
+    } catch (err) {
+      return failed(err instanceof Error ? err.message : String(err));
+    }
+    if (newClaim) {
+      const del = await kube.kubectl(
+        target,
+        [
+          "delete",
+          "resourceclaimtemplate",
+          clusterNames(rig).gpus,
+          "-n",
+          r.namespace,
+          "--ignore-not-found",
+        ],
+        undefined,
+        60_000,
+      );
+      if (del.code !== 0) return failed(kubeError(del));
+    }
+    const out = await kube.kubectl(target, ["apply", "-f", "-"], objects, 120_000);
+    if (out.code !== 0) {
+      // The old claim template back, so that its pods start as before.
+      if (newClaim) {
+        const back = await kube.kubectl(
+          target,
+          ["apply", "-f", "-"],
+          asList(
+            clusterRigResized(clusterPlan(r), stopped).filter(
+              (x) => x.kind === "ResourceClaimTemplate",
+            ),
+          ),
+          60_000,
+        );
+        if (back.code !== 0)
+          return failed(
+            `${kubeError(out)}; its old claim template could not be put back either: ${kubeError(back)}`,
+          );
+      }
+      return failed(kubeError(out));
+    }
+    store.setClusterRigSize(rig, to, controlAddress());
+    let words = sizeChangeWords(from, to);
+    // The judge's share a rig keeps from Edit rig comes before its deployment's, so it follows the
+    // new size. Its harness takes it only from an owner: issuer: the one who asked.
+    const kept = rigSettingsOf(store, rig)?.settings?.judge_gpus;
+    if (
+      to.gpus >= 2 &&
+      to.gpus !== from.gpus &&
+      to.judgeGpus !== undefined &&
+      typeof kept === "number" &&
+      kept !== to.judgeGpus
+    ) {
+      try {
+        issueCommand(store, opts.privateKeyPem, {
+          rig,
+          kind: "rig_settings",
+          payload: { judge_gpus: to.judgeGpus },
+          issuedBy: size.by,
+        });
+        words += `; the judge's share it kept, ${kept}, → ${to.judgeGpus}`;
+      } catch (err) {
+        words += `; the judge's share it keeps, ${kept}, did not change: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+    store.rigSetupEvent(rig, "resources", true, stopped ? `${words}; at its next start` : words);
+    store.audit(by, "cluster_rig_resources", { rig, from, to });
+    if (stopped) return { ok: `${rig} has ${sizeWords(to)} when it starts again.` };
+    store.setClusterRigStatus(rig, "updating");
+    void awaitNewPods(r, k, "resources").catch(() => {});
+    return { ok: `${rig}'s pods restart with ${sizeWords(to)}.` };
+  };
+  /** Checks and makes a change to a cluster rig's GPUs, CPUs or memory (REST and MCP). */
+  const resizeClusterRig = async (
+    rig: string,
+    want: ClusterResourcesRequest,
+    by: string,
+    o: { wait?: boolean | undefined; owner: boolean },
+  ): Promise<Resize> => {
+    const p = await prepareResize(rig, want, by, o);
+    return "go" in p ? p.go() : p;
+  };
+  if (opts.actions) opts.actions.setClusterRigResources = resizeClusterRig;
   /** What a rig still runs, as its last report says (goal 079); none from an older harness. */
   const rigWork = (
     rig: string,
@@ -6094,7 +6406,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     issueCommand(store, opts.privateKeyPem, {
       rig,
       kind: "drain_rig",
-      payload: { drain: true, reason: "its images are about to change" },
+      payload: {
+        drain: true,
+        reason: store.clusterRig(rig)?.pending ? RESIZE_REASON : IMAGES_REASON,
+      },
       issuedBy: "control:drain",
     });
     store.rigSetupEvent(
@@ -6110,18 +6425,38 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (r?.status !== "draining") return { error: `${rig} is not draining.` };
     undrain(rig, by);
     store.setClusterRigStatus(rig, "running");
+    if (r.pending) {
+      store.rigSetupEvent(
+        rig,
+        "drain",
+        true,
+        "called off: the rig goes back to work with its GPUs, CPUs and memory as they were",
+      );
+      return { ok: `${rig} goes back to work with its GPUs, CPUs and memory as they were.` };
+    }
     store.rigSetupEvent(rig, "drain", true, "called off: the rig goes back to work on its images");
     return { ok: `${rig} goes back to work on its images.` };
   };
-  // A draining rig's pods restart once its report says nothing runs any more (goal 079).
+  // A draining rig's pods restart once its report says nothing runs any more (goal 079), on new
+  // images or with the new size it waits for (goal 118). A rig whose change is still being
+  // applied is not applied again.
+  const moving = new Set<string>();
   const drainWatch = setInterval(() => {
     for (const r of store.clusterRigs().filter((x) => x.status === "draining")) {
+      if (moving.has(r.rig)) continue;
       const w = rigWork(r.rig);
       if (w && w.draining === null) redrain(r.rig);
       else undrained.delete(r.rig);
       if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
       store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
-      void updateClusterRigImages(r.rig, "control:drain", { wait: false }).catch(() => {});
+      moving.add(r.rig);
+      void (
+        r.pending
+          ? applyResize(r.rig, r.pending, "control:drain")
+          : updateClusterRigImages(r.rig, "control:drain", { wait: false })
+      )
+        .catch(() => {})
+        .finally(() => moving.delete(r.rig));
     }
   }, opts.drainWatchMs ?? 10_000);
   drainWatch.unref?.();
@@ -6521,6 +6856,13 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     }
     if (action === "drain-cancel") {
       const done = cancelDrain(r.rig, "owner:ui");
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    // A change to its GPUs, CPUs or memory that waits for its drain, made now (goal 118).
+    if (action === "resources-now") {
+      if (r.status !== "draining" || !r.pending)
+        return back("error", `${r.rig} has no change to its GPUs, CPUs or memory waiting.`);
+      const done = await resizeClusterRig(r.rig, {}, "owner:ui", { wait: false, owner: true });
       return "error" in done ? back("error", done.error) : back("ok", done.ok);
     }
     if (!["stop", "start", "restart", "remove"].includes(action))
@@ -8102,6 +8444,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         ? `The machine ${esc(placed.machine)}, set up by control. Stop, start or remove it from the rig's page.`
         : `The cluster ${esc(placed.cluster)}, namespace ${esc(placed.namespace)}, set up by control.`
       : "Set up outside control (for example by your own infrastructure tooling). Its GPUs and version change with a roll.";
+    const sized = placed && !("machine" in placed) ? clusterSizeFields(placed) : "";
     return page(
       c,
       {
@@ -8127,9 +8470,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion with no step of yours. When the campaign calls for an audit and this rig has an auditor, the auditor's clear comes first; its block stops the change. A run can still ask you about some changes (Ask me first, when you start it).</span></span></label>
 <label class="ch${s?.promotion === "owner_approval" ? " on" : ""}"><input type="radio" name="promotion" value="owner_approval"${s?.promotion === "owner_approval" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Ask me for each change</b><br><span class="muted small">Each confirmed change waits for you in Needs you.</span></span></label>
 </div><div class="muted small" style="margin-top:6px">A campaign can set its own rule when it starts; that rule comes first for its runs.</div></div>
-<div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl>${
+<div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl>${sized}${
         u.gpu_split && u.gpu_split.set >= 2
-          ? `<label class="fd" style="max-width:260px;margin-top:10px">${infoLabel("GPUs for the judge", `How many of the rig's ${u.gpu_split.set} GPUs the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. A campaign started on this rig can set it too.`)}<input name="judge_gpus" type="number" min="1" max="${Math.min(8, u.gpu_split.set - 1)}" value="${u.gpu_split.judge}" data-restarts></label><div class="muted small">Now: ${u.gpu_split.judge} for the judge, ${u.gpu_split.set - u.gpu_split.judge} for the agents. ${SPLIT_RESTARTS}</div>`
+          ? `<label class="fd" style="max-width:260px;margin-top:10px" data-judge-field>${infoLabel("GPUs for the judge", `How many of the rig's ${u.gpu_split.set} GPUs the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. A campaign started on this rig can set it too.${sized ? " With a new number of GPUs above, it is the judge's share of the new ones." : ""}`)}<input name="judge_gpus" type="number" min="1" max="${Math.min(8, u.gpu_split.set - 1)}" value="${u.gpu_split.judge}" data-restarts></label><div class="muted small" data-judge-now>Now: ${u.gpu_split.judge} for the judge, ${u.gpu_split.set - u.gpu_split.judge} for the agents. ${SPLIT_RESTARTS}</div>`
           : ""
       }</div></div>
 <div class="card hl" style="margin-top:16px"><b>What changes when you save</b><ul class="chg" id="chg"><li>Nothing changes.</li></ul><div class="act"><button class="primary big" id="save">Save changes</button><a class="btn" href="/ui/rigs/${rName}">Cancel</a></div></div>
@@ -8273,6 +8616,43 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       if (why) return refuse("workers", why);
     }
 
+    // A rig control set up on a cluster: its GPUs, CPUs and memory (goal 118), checked here with
+    // the rest, against the slot's quota read again, and changed last. With a new number of GPUs,
+    // GPUs for the judge is the judge's share of them, not a split of the old ones.
+    const onCluster = store.clusterRig(rig);
+    let resize: Awaited<ReturnType<typeof prepareResize>> | undefined;
+    let gpusMoved = false;
+    if (onCluster && ("k_gpus" in f || "k_cpus" in f || "k_mem" in f)) {
+      const field = (k: string) => {
+        if (!(k in f)) return undefined;
+        const v = String(f[k] ?? "").trim();
+        return v === "" ? null : Number(v);
+      };
+      const cur = onCluster.spec;
+      const want: ClusterResourcesRequest = {};
+      const gpus = field("k_gpus");
+      if (typeof gpus === "number" && gpus !== cur.gpus) {
+        want.gpus = gpus;
+        gpusMoved = true;
+        const judge = u.gpu_split ? field("judge_gpus") : undefined;
+        if (typeof judge === "number") want.judgeGpus = judge;
+      }
+      const cpus = field("k_cpus");
+      const memoryGi = field("k_mem");
+      if (
+        cpus !== undefined &&
+        memoryGi !== undefined &&
+        (cpus !== (cur.resources?.cpus ?? null) || memoryGi !== (cur.resources?.memoryGi ?? null))
+      ) {
+        want.cpus = cpus;
+        want.memoryGi = memoryGi;
+      }
+      if (!asksNothing(want)) {
+        resize = await prepareResize(rig, want, "owner:ui", { owner: true });
+        if ("error" in resize) return back("error", `Not saved: ${resize.error}`);
+      }
+    }
+
     // The harness's settings: only what changed, checked here (as REST's and MCP's twins check
     // them: rig-settings.ts) and sent below as one signed command. An empty Workers at a time
     // keeps what the rig has; an empty One trial lasts or Turns per trial is no limit.
@@ -8290,8 +8670,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         trial_minutes: num("trial_minutes"),
         max_turns: num("max_turns"),
         promotion: String(f.promotion ?? s.promotion),
-        // The field shows only on a rig with a GPU set.
-        judge_gpus: u.gpu_split ? (num("judge_gpus") ?? undefined) : undefined,
+        // The field shows only on a rig with a GPU set. With a new number of GPUs, it goes with
+        // the change to them.
+        judge_gpus: u.gpu_split && !gpusMoved ? (num("judge_gpus") ?? undefined) : undefined,
       });
       if ("error" in out) return back("error", out.error);
       settings = out.change;
@@ -8324,10 +8705,21 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       }).id;
       said.push(settingsCount(Object.keys(settings).length));
     }
-    if (!said.length) return back("ok", "Nothing changed.");
+    // Last, its GPUs, CPUs and memory: its pods restart (or it drains first).
+    let resized = "";
+    if (resize && !("error" in resize)) {
+      const done = "go" in resize ? await resize.go() : resize;
+      if ("error" in done)
+        return back(
+          "error",
+          `${said.length ? `Control sent ${said.join(" and ")} to ${rig}, but its` : "Its"} GPUs, CPUs and memory did not change: ${done.error}`,
+        );
+      resized = done.ok;
+    }
+    if (!said.length) return back("ok", resized || "Nothing changed.");
     // The rig's page follows the settings' command, and the rig as it takes a model (goal 080).
     return c.redirect(
-      `/ui/rigs/${encodeURIComponent(rig)}?ok=${encodeURIComponent(`Control sent ${said.join(" and ")} to ${rig}. The rig takes the change in less than one minute.`)}${sent ? `&cmd=${encodeURIComponent(sent)}` : ""}`,
+      `/ui/rigs/${encodeURIComponent(rig)}?ok=${encodeURIComponent(`Control sent ${said.join(" and ")} to ${rig}. The rig takes the change in less than one minute.${resized ? ` ${resized}` : ""}`)}${sent ? `&cmd=${encodeURIComponent(sent)}` : ""}`,
       303,
     );
   });
