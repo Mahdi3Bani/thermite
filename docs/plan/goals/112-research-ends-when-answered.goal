@@ -5,7 +5,7 @@ status: IN_PROGRESS
 version: "0.1.0"
 depends_on: ["062", "065", "076", "079", "098"]
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # 112 · A research run ends when the review panel finds its questions answered
@@ -96,6 +96,7 @@ None yet.
 - 2026-10-23: Goal written from the owner's words; build started.
 - 2026-10-23T17:42Z: Built on branch `goal-112-research-ends`: the check and its request at a digest (`src/harness/research/review.ts`), research reviews in the review store and its route (`kinds`), the supervisor's research prompt and answer, the close with the final report's answers and verdicts, gaps in the journal and the workers' briefs, the owner's floor `min_verified_claims` on New campaign, and the dashboard's **Answer check** line, **Completed** and the Needs you card. Tests added and checked to fail without their change; pages and changelog updated. Next: the deployment check, the last Done-when item.
 - 2026-10-23T18:55Z: Step two built on branch `goal-112-paper`: the harness waits for the paper, lists the runs that wait, checks drafts and posted papers in code (`src/harness/research/paper.ts`), keeps the accepted paper as `paper.md` and the start of the final report, and the next experiments in the knowledge base; the supervisor's final writer with `check_paper`, `ste_check` and the deployment's STE checker (`THERMITE_STE_CHECKER`); control's Answer check line, brief row, `paper.md` link and History words. Tests added and checked to fail without their change; pages, Credits and changelog updated. Next: the deployment check, with and without an STE checker.
+- 2026-10-24T01:05Z: A reviewer in Pi can no longer hold a review open: an answer refused for the same problems three turns running (Pi's check of the tool's schema, or the role's own) ends the call with those problems as its error, and the review is tried again as for a reviewer with no answer. Changing problems are asked again with no limit. Before, a reviewer that kept sending the same wrong answer was asked again without end. Test in `advisors.test.ts`.
 
 ---
 

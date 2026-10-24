@@ -427,6 +427,13 @@ export interface AdvisorKeeper {
 const callId = () => new Date().toISOString().replace(/[:.]/g, "-");
 
 /**
+ * A Pi advisor whose answer is refused for the same problems this many times running is stuck:
+ * its call ends with those problems as its error, and fails as a call with no answer does. An
+ * answer that changes what is wrong with it is asked again with no limit.
+ */
+const SAME_REFUSALS = 3;
+
+/**
  * The compactions an advisor's own program made in its call (goal 070), from what its PreCompact
  * hook, plugin or rollout left in the call's folder: each conversation kept with the supervisor's
  * records, and each compaction said in the run's live view.
@@ -611,7 +618,8 @@ export function lastJsonObject(out: string): unknown {
 
 /**
  * Runs one advisor call: a role prompt, the tools, and an output schema. The model answers by
- * calling `answer` with an object that must match the schema (one retry with the errors).
+ * calling `answer` with an object that must match the schema. In Pi a refused answer is asked
+ * again with its problems, until the same problems come back SAME_REFUSALS times running.
  */
 export async function runAdvisor<S extends z.ZodType>(input: {
   runtime: AdvisorRuntime;
@@ -989,6 +997,9 @@ export async function runAdvisor<S extends z.ZodType>(input: {
           agent.abort();
         }, timeout * 1000)
       : undefined;
+  // The problems of the answer's last refusal, and how many turns running they came back.
+  let refusal = "";
+  let same = 0;
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       turns++;
@@ -996,6 +1007,24 @@ export async function runAdvisor<S extends z.ZodType>(input: {
       result.tokensIn += usage?.input ?? 0;
       result.tokensOut += usage?.output ?? 0;
       if (rt.max_turns !== undefined && turns >= rt.max_turns && !result.output) agent.abort();
+      // A refused answer: Pi's own check of the tool's schema (its words, without the arguments
+      // it quotes back), or ours above (problems). The same problems SAME_REFUSALS turns running
+      // end the call.
+      const answers = event.toolResults.filter((m) => m.toolName === "answer");
+      if (!answers.length || result.output) return;
+      for (const m of answers.filter((a) => a.isError))
+        problems = (
+          m.content
+            .map((c) => (c.type === "text" ? c.text : ""))
+            .join("")
+            .split("\n\nReceived arguments")[0] ?? ""
+        ).trim();
+      same = problems === refusal ? same + 1 : 1;
+      refusal = problems;
+      if (same >= SAME_REFUSALS) {
+        result.error = `the answer was refused ${same} times running for the same problems: ${problems}`;
+        agent.abort();
+      }
     }
   });
   try {
