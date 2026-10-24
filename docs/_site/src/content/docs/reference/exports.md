@@ -68,7 +68,7 @@ Control never deletes an export. They take room in control's state volume until 
 
 ## Download an export
 
-The dashboard's **Exports** page, in the sidebar, lists every export control keeps, for every rig, newest first. To see one rig's, press the rig's name above the table, follow **its exports on control** on the rig's **Results** row or the **Exports page** link under **Export**, or add `?rig=<rig>`. Only the owner reads it: the dashboard signs in with the owner's token.
+The dashboard's **Exports** page, in the sidebar, lists the exports control keeps, for every rig, newest first: the newest 1,000. To see one rig's, press the rig's name above the table (each name says how many exports it has; **All rigs** shows them all again), follow **its exports on control** on the rig's **Results** row or the **Exports page** link under **Export**, or add `?rig=<rig>`. Only the owner reads it: the dashboard signs in with the owner's token.
 
 | Column | Meaning |
 | --- | --- |
@@ -77,14 +77,16 @@ The dashboard's **Exports** page, in the sidebar, lists every export control kee
 | **Kind** | `full`, or `what changed` for a normal export |
 | **Made** | When control received its start |
 | **Complete** | When its last file reached control and passed its check, or `still arriving` |
-| **Events** | The rig's ledger events it holds, such as `181–245`, or `none new` |
+| **Events** | The rig's ledger events it holds, such as `181–245`, or `none new (through 245)` |
 | **Files** | How many files it holds, or `k of n` while they arrive |
 | **Size** | The size of all its files |
-| **Download** | One `.tar.gz` of the export, for a complete one only |
+| **Download** | One `.tar.gz` of the export, for a complete one only. One that is not says `still arriving`; on a control with no folder for exports, a complete one says `not kept` |
+
+With no export yet, the page says `No export on control yet.` (`No export from rig-1 on control.` for one rig). A control started without its folder for exports says `Control keeps no exports: it has no folder for them, so rigs send none here.` above the table.
 
 The download is `<rig>-<export>.tar.gz`. It holds one folder, `<rig>-<export>/`, with the export's `manifest.json` and every file at its path in the export, each as control checked it against the manifest's SHA-256. Control builds the archive from what it keeps as it sends it, so it never holds a second copy. A tar archive in the POSIX format, compressed with gzip, which `tar -xzf` unpacks on Linux and macOS. Each download is in the audit log as `export_downloaded`.
 
-Over REST, `GET /v1/rigs/<rig>/exports/<name>/archive` gives the same file with the owner's token ([REST API](rest-api.md)). It answers 404 with `{"error": …}` for an export control does not have (`no such export`), one still arriving (`the export is still arriving: not every file reached control`), a control with no exports folder, and a file gone from control's folder. Over MCP, the tool [`exports`](mcp-tools.md) lists them, for the owner's and an operator's token; it downloads nothing.
+Over REST, `GET /v1/rigs/<rig>/exports/<name>/archive` gives the same file with the owner's token ([REST API](rest-api.md)). It answers 404 with `{"error": …}` for an export control does not have (`no such export`), one still arriving (`the export is still arriving: not every file reached control`), a control with no exports folder, and a file gone from control's folder or not of the size the rig gave for it. Over MCP, the tool [`exports`](mcp-tools.md) lists them, for the owner's and an operator's token; it downloads nothing.
 
 ## The supervisor's export figures
 

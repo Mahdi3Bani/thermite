@@ -108,7 +108,7 @@ The supervisor syncs every 180 seconds, or as its setting `THERMITE_KB_SYNC_SECO
 
 What the new run gets:
 
-- **Ticked experiments join its [experiment queue](choose-what-runs-next.md)**, after any untried experiments it copies under **Experiments to start with**, at most 500 in all. Each keeps its direction, its reason and who first added it. Its details end with where it came from and what it gave, such as `In sort-speed-1 (sort-speed) it was tried: attempt a-0123456789abcdef (submitted), regress (-3.10%).` In **Up next** it shows `from sort-speed-1`, and the run's **History** says `"…" was copied into the queue from run sort-speed-1.`
+- **Ticked experiments join its [experiment queue](choose-what-runs-next.md)**, after any untried experiments it copies under **Experiments to start with**, at most 500 in all. Each keeps its direction, its reason and who first added it. Its details end with where it came from and what it gave, such as `In sort-speed-1 (sort-speed) it was tried: attempt a-0123456789abcdef (submitted), regress (-3.10%).` In **Up next** it shows `from sort-speed-1`, and the run's **History** says `"…" was copied into the queue from run sort-speed-1.` A research run's paper gives its next experiments as experiments of the campaign's folder too, written by `writer:<name>`, the final writer ([The research paper](../../explanation/campaign-modes.md#the-research-paper)). Such an experiment was never tried: its details end with what it rests on, `It rests on, from the research paper of run <run>:` and each finding or claim in words, then `From <run> (<campaign>).`
 - **Ticked findings, claims, notes and reports become its briefing.** A worker's brief shows them under their own heading, each with where it came from:
 
   ```text

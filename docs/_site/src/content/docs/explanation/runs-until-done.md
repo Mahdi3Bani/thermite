@@ -52,6 +52,7 @@ Thermite uses three kinds of limits that never end a campaign:
 | A lane's last change is still with the judge | Back-pressure | The lane waits for the verdict |
 | Too many changes wait for the judge | Back-pressure | New trials wait until fewer are open |
 | A build, a timed run or a lane's command uses too much memory or disk, or a judge's step runs past the kit's time limit | Per-process | That one process ends |
+| A model call's stream sends no data for 10 minutes: the connection is open, and nothing comes | Per-process | That one call is broken off as the provider's passing fault, and the trial goes on in the same conversation. A call that keeps sending data is never cut, however long it lasts ([`THERMITE_MODEL_STALL_SECONDS`](../reference/settings.md#the-rigs-own-model)) |
 
 A trial has no time limit, no turn limit and no limit on failures in a row unless someone sets one: those are caps, listed with the others. A trial "achieves nothing" when it ends in an error, without a change, with a change refused before it is built, or with a change identical to an earlier one. The [limits and pacing reference](../reference/limits-and-pacing.md) lists every value and where it is set.
 

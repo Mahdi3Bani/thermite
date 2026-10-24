@@ -138,7 +138,7 @@ The campaign's page opens and says `Starting local-1/matmul-agents-1.`, then `Se
 
 Open **Campaigns** in the sidebar. Under **At work now**, a card shows `matmul-agents › matmul-agents-1`, on `local-1`: the campaign, then its run. Under **All campaigns**, the row `matmul-agents` shows your title, `Make the sample's matrix multiply faster`, and `1 at work` under **Runs**.
 
-For the first few minutes the **planner**, an agent that decides what each lane tries, plans the first round. Meanwhile the card's `lanes` line says `waiting for the first round`. `lane-1` takes its place once the planner has given the lane its work.
+For the first few minutes the judge measures the project as it is (step 9 says more), and then the **planner**, an agent that decides what each lane tries, plans the first round. Meanwhile the card's `lanes` line says `waiting for the first round`. `lane-1` takes its place once the planner has given the lane its work.
 
 :::tip[If the run does not appear]
 Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, and its outcome says why:
@@ -157,11 +157,11 @@ Under the header is a row of filters, which choose whose lines you see:
 
 - **Everyone** is chosen at first, and shows every line.
 - **lane-1** is the agent itself. Its filter appears only when the planner has given the lane its work, a few minutes in. The agent gets a fresh copy of the project, works on the one thing the planner gave it to try, and ends by submitting its change. This is one **trial**. It has no time limit unless someone sets one: it ends when the agent submits, or when it stops and has nothing more to do.
-- **Planner** works first. Before each round of work, it reads what has happened so far and gives each lane an **experiment**: one thing to try. It takes experiments from the run's **queue**, the list of what to try next, and adds new ones of its own.
-- **Judge** is the code that measures each change. It is not an agent, and takes no messages.
+- **Planner** works before the lanes. Before each round of work, it reads what has happened so far and gives each lane an **experiment**: one thing to try. It takes experiments from the run's **queue**, the list of what to try next, and adds new ones of its own.
+- **Judge** is the code that measures the project and each change. It is not an agent, and takes no messages.
 - **Advisors** shows the rig's advisors, models that review the work, and **You** shows your own messages. You won't need them here.
 
-First the judge measures the project as it is, on every case: the run's **baseline**, which every change is held against. Until it has, the planner's line says that round 1 waits for the judge's baseline of the starting point. When the planner is done, a few minutes after the run starts, the planner's line says `round 1:` and how it planned, and the lane's first trial begins. A **lane-1** filter appears with its first line. Choose **lane-1**. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try, such as `optimization, Kernel micro-interleaving for flops_per_s (from the champion, seq 1)`. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
+First the judge measures the project as it is, on every case: the run's **baseline**, which every change is held against. Until it has, the planner's line says `round 1 waits for the judge's baseline of the starting point (champion #1)`. Then it says `the judge measured the starting point (champion #1):`, with the speed of each case, and that the rounds of the plan start now. When the planner is done, a few minutes after the run starts, the planner's line says `round 1:` and how it planned, and the lane's first trial begins. A **lane-1** filter appears with its first line. Choose **lane-1**. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try, such as `optimization, Kernel micro-interleaving for flops_per_s (from the champion, seq 1)`. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
 
 New lines come in by themselves, at the bottom: the newest line is the last. **↓ Follow**, on the right above the lines, keeps the newest line in view; press it to stop following, so you can read further up. The rest of this page, like every other page, needs **refresh**. After a **refresh**, a green dot on **lane-1** means it is working.
 
@@ -173,7 +173,7 @@ The first change takes a while. The judge measures the starting point, the plann
 
 When the agent submits its change, the judge takes over. Open **Overview** in the sidebar and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 
-Then open **Campaigns**, and on the card under **At work now**, choose `matmul-agents › matmul-agents-1`. The run's page opens. Its title, `matmul-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header, a line counts the run's trials and rounds and gives its time. Once the agents have made a model call, two cards under it show its cost and its tokens; the cost says no price, because OpenCode's model list gives no prices, even for its free models. Below them are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History**, **Planner** and **Stats**.
+Then open **Campaigns**, and on the card under **At work now**, choose `matmul-agents › matmul-agents-1`. The run's page opens. Its title, `matmul-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause**, **Export** and **⋯**. Below the header, a line counts the run's trials and rounds and gives its time. Once the agents have made a model call, two cards under it show its cost and its tokens; the cost says no price, because OpenCode's model list gives no prices, even for its free models. Below them are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History**, **Planner** and **Stats**.
 
 Choose **Experiments**. It shows the run's queue of experiments. Three of its parts matter here:
 
@@ -198,7 +198,7 @@ Choose **Attempts**. Each change the agent submitted is an **attempt**, with one
 | **Declined** | You rejected it |
 | **Champion #2** | It was confirmed faster on fresh runs and became the new best version |
 
-[Outcome words on the dashboard](../reference/verdicts.md#outcome-words-on-the-dashboard) lists every word. Open an attempt to read the judge's reasons. Not every experiment works, and that is normal: the agent's next trial reads the judge's reasons for its last attempts and tries again. When a change is confirmed faster and nothing holds it, it becomes **champion #2**, every later trial starts from it, and the **Champions** chart on the run's **Overview** tab shows the gain.
+[Outcome words on the dashboard](../reference/verdicts.md#outcome-words-on-the-dashboard) lists every word. Open an attempt to read the judge's reasons. Not every experiment works, and that is normal: the agent's next trial reads the judge's reasons for its last attempts and tries again. When a change is confirmed faster and nothing holds it, it becomes **champion #2**, every later trial starts from it, and the **Champions** chart on the run's **Overview** tab shows the gain. Above that chart, **Where the run started** shows the baseline: the `flops_per_s` the judge measured on each case before any change.
 
 :::tip[Nothing yet after half an hour?]
 - On **Live**, choose **lane-1**. If it has its green dot and new lines keep coming, the agent is still on its experiment: wait.

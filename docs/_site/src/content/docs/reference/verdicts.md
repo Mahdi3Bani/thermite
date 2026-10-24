@@ -66,6 +66,8 @@ A hill climb is in **setup** while the judge could not measure its starting poin
 | `starting_point` | The judge measured the change alone on every case: it becomes the run's starting point, a new champion, and its values the run's baseline. Its reasons begin `the judge measured this setup change on every cell: it is the run's starting point, champion #<n>` | "measured: it became the run's starting point" |
 | `invalid` or `crash_candidate` | The judge could not measure it, as for any candidate. Its reasons begin `the judge could not measure this setup change, so the run is still in setup: `, then the cell and the failure, such as `cell small: exit 3: …` | as below |
 
+While the judge measures such a change, the run's page says the judge is `measuring setup change <attempt> to see whether it can be the starting point`. When one becomes the starting point, **History** says `<attempt> became champion #<n>, the run's new starting point: the judge could measure it. The gain counts from here.` and `The judge measured the starting point, champion #<n> (setup change <attempt>), on every case: …`. Its outcome word is **Champion #N**, and the run's **Champions** list counts its gain from 0 again.
+
 A change submitted in setup that is still waiting when another one became the starting point is screened against the champion, as usual.
 
 ### Goal campaigns
@@ -219,7 +221,7 @@ Attempt lists show one word for each attempt, in this order of precedence:
 | **Unclear** | `crash_infra` or `inconclusive` |
 | **Lost** | Any other verdict: `neutral`, `regress`, `tradeoff`, `infeasible`, `not_confirmed`, `no_progress` |
 
-An attempt with no verdict at all also shows **Judging**. This includes an attempt in `rejected_v0`, which never gets a verdict.
+An attempt with no verdict at all also shows **Judging**. This includes an attempt in `rejected_v0` and one in `not_judged`, which never get a verdict: the row's state, under the change, says `rejected v0` or `not judged: its run closed first`.
 
 ## Run states
 
@@ -239,7 +241,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | `closed` | A goal campaign meets its goals, and a second, independent check agrees, with the held-out cases of the goals met ([The goal report](#the-goal-report)) | `every required goal is met` |
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
 | | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
-| | A research run's review panel found every question answered, and the pass was accepted (hands-off, or by the owner where the run asks), once its running trials ended ([When a research run ends](../explanation/campaign-modes.md#when-a-research-run-ends)) | `every question is answered` |
+| | A research run's review panel found every question answered, and the pass was accepted (hands-off, or by the owner where the run asks), once code accepted its research paper and its running trials ended, or, on a rig with no final writer, once the trials ended ([When a research run ends](../explanation/campaign-modes.md#when-a-research-run-ends)) | `every question is answered` |
 | | A research campaign's time is over | `the research window is over` |
 | | The owner closes it by hand (`close_run`, **Close run** under **⋯** on the run's page), running or paused | the reason given: what you typed in **Why**, or the payload's `reason` |
 | | A smoke check finishes its own run | `the smoke check is done` |
@@ -249,7 +251,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 - **Nothing waits in a closed run.** What waited for the owner or the auditor when it closed stays as it was, out of **Needs you**, and the owner's decisions on it are refused, such as `run <run> is closed: none of its changes can become the champion` ([`close_run`](signed-commands.md#close_run)).
 - **A hill climb never closes on its own.** It runs until someone pauses or closes it, or a budget the contract sets pauses it. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) says why.
 - **Budgets pause; they do not close.** They apply only to runs with agents and a model. When one is spent, no new trial starts, and the run is paused once the running trial ends. `wall_hours` counts from the run's creation, paused time included, so a resumed run is paused again. [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) and [Limits and pacing](limits-and-pacing.md) say more.
-- **Judging waits with the run.** The judge works only on running runs. A paused run's queued judge jobs stay queued until it resumes; a closed run's never run.
+- **Judging waits with the run.** The judge works only on running runs. A paused run's queued judge jobs stay queued until it resumes. A closed run's are cancelled when it closes, and each change that waited for one becomes `not_judged`; a harness that starts does the same for runs closed before. A job the judge was already measuring finishes.
 
 ### Run labels on the dashboard
 
@@ -340,12 +342,12 @@ Beside the chips, two lists narrow the rows further: **Every direction** (the **
 | Thing | States | Meaning |
 | --- | --- | --- |
 | Trial ending | `submitted`, `no_submission`, `finished`, `interrupted`, `turns`, `wall`, `context`, `error` | Why a trial ended: it submitted; it stopped without submitting; a research trial ended on its own; a pause, reset or restart ended it; the turn cap; its time ran out; the model's context was full; an error |
-| Judge job | `queued`, `leased`, `done`, `failed`, `blocked` | A job is `blocked` after three lease expiries or harness restarts. The ledger also allows `cancelled`, which nothing sets |
+| Judge job | `queued`, `leased`, `done`, `failed`, `blocked`, `cancelled` | A job is `blocked` after three lease expiries or harness restarts. A queued job is `cancelled` when its run closes, or when the harness starts and finds its run closed: it never runs |
 | Judge job kind | `baseline`, `validate`, `confirm`, `evaluate`, `calibrate` | Taken lowest priority number first: `baseline` 10, `validate` 40 (or 60 for a new champion), `confirm` 50, `evaluate` 100, `calibrate` 200. A hill climb's `baseline` measures its starting point, or a change in setup; until the run has its baseline, the judge takes no other job of it |
 | Goal check | `met`, `unmet`, `inconclusive`, `not_runnable` | One check of one goal. A threshold goal is `met` only when every case's interval is on the passing side |
 | Goal (on the champion) | `untouched`, `verified`, `unmet`, `attempted`, `not_runnable` | The champion's goals: not checked yet, met, unmet, unclear, cannot be checked. The dashboard shows each goal's latest check: "met", "unmet", "inconclusive", "not runnable" or "waiting on another goal" |
 | Audit decision | `clear`, `block`, `needs_owner`, `skipped` | The auditor's answer, or `skipped` when the rig has no auditor. The dashboard shows "waiting for the auditor", "waiting for you (no auditor configured)", "blocked by the auditor", "cleared by the auditor", "passed to you" or "skipped" with why, such as "this rig has no auditor"; the change's page says `This rig has no auditor: the audit was skipped` |
-| Review | review panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by the review panel counts as met when the review panel passes it, or, where the run asks the owner about reviews, when the owner accepts it |
+| Review | review panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by the review panel counts as met when the review panel passes it, or, where the run asks the owner about reviews, when the owner accepts it. A research run's review (its goal is `research`) passes when every reviewer found every question answered and code checked each answer; once accepted, the run ends ([When a research run ends](../explanation/campaign-modes.md#when-a-research-run-ends)). A review that a reviewer still gave no answer to at its fifth try is posted as `review_failed` |
 | "Not possible" proposal | `accepted`, `rejected` | Accepting closes the run. Rejecting reopens the approach families it used |
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A quote names its source by its id, or by the address or file name of exactly one archived source ([`add_claim`](command-line.md#thermite-trial)). A draft lists its problems. Workers in every mode may record claims. Each claim is a `claim_added` event, `{claim, verified, question, text, quote, sources, problems, more_problems?}`: `text` and `quote` (its first quote) cut to 500 characters; `sources`, each quote's source id, or what was cited when it names no archived source; `problems`, a draft's problems, `[]` for a verified claim, at most 20, each cut to 300 characters, and `more_problems` counts the rest. The run's **History** says `lane-1 recorded a verified claim: "…".` or `lane-1's claim stays a draft: "…". Why: …`, with its first three problems |

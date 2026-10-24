@@ -90,7 +90,7 @@ GPU rigs need the same image built on a CUDA 12.x development image, with `--bui
 
 An agent's own commands under OpenCode, Claude Code or Codex get a fixed `PATH`, not the image's: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, with `/usr/local/cuda/bin` first where the image has it, so `nvcc` is found by name on a CUDA image. Pi's commands, and the judge's builds and timed runs, get the image's own `PATH`.
 
-The CPU image has no `nvcc`, so it cannot build GPU kits. Control finds the CUDA image through `THERMITE_RIG_HARNESS_CUDA_IMAGE` (rigs it sets up, and the image it moves a cluster rig with GPUs onto) and `THERMITE_RUNPOD_TEST_IMAGE` (test pods). Compose runs CPU rigs only.
+The CPU image has no `nvcc`, so it cannot build GPU kits. Control finds the CUDA image through `THERMITE_RIG_HARNESS_CUDA_IMAGE` (rigs it sets up, and the image it moves a cluster rig with GPUs onto) and `THERMITE_RUNPOD_TEST_IMAGE` (test pods). Under compose, the local stack's rig runs on the CPU image unless Thermite starts with `compose.gpu.yaml`, which `thermite local init` writes on a machine with NVIDIA GPUs. That file gives the harness the release's CUDA image, or the one `.env` names in `THERMITE_RIG_HARNESS_CUDA_IMAGE`; next to a checkout's `compose.yaml`, it builds the harness on the CUDA base instead, as `thermite-harness:local-cuda` ([Use the machine's NVIDIA GPUs](../how-to/install/one-machine.md#use-the-machines-nvidia-gpus)).
 
 ### Users and groups
 

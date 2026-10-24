@@ -1,6 +1,6 @@
 ---
 title: "Troubleshoot"
-description: "Check the machine with thermite doctor, then find out why a check failed, a port clashes, a build is slow, a rig is quiet, a trial makes no progress, a message goes unread, a queue change doesn't take, past research or an MCP server doesn't work, or a sign-in bounces back, and where the logs are."
+description: "Check the machine with thermite doctor, then find out why a check failed, a port clashes, a build is slow, a rig is quiet, a trial makes no progress, a message goes unread, a queue change doesn't take, a research run doesn't end, past research or an MCP server doesn't work, or a sign-in bounces back, and where the logs are."
 type: how-to
 sidebar:
   order: 9
@@ -77,6 +77,12 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 - **You see:** the harness's log has `timed out waiting for /keys/control-signing.pub`, and it starts again.
 - **Why:** control writes its public key when it first starts, and the harness waits only two minutes for it.
 - **Do:** nothing. The harness starts again by itself and finds the key.
+
+### The harness doesn't start with `compose.gpu.yaml`
+
+- **You see:** `up -d` with `-f compose.gpu.yaml` does not start the harness. Podman says `unresolvable CDI devices nvidia.com/gpu=all`; Docker gives an error about the `nvidia` device driver.
+- **Why:** the engine can't give containers the GPUs: NVIDIA's container toolkit is missing, Podman has no CDI spec, or Docker has no NVIDIA runtime. The release's `init` writes `compose.gpu.yaml` from the GPUs that NVIDIA's driver lists, but from its container it can't check the toolkit.
+- **Do:** in your `thermite-source` folder, run `npx thermite doctor`, and do what the `Fix:` line of its **GPU container toolkit** check says. Then start again with both files. To keep the rig on the CPU meanwhile, start without `-f compose.gpu.yaml`. See [Use the machine's NVIDIA GPUs](../install/one-machine.md#use-the-machines-nvidia-gpus).
 
 ### The first build is slow
 
@@ -309,7 +315,7 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 
 ### A trial makes no progress for a long time
 
-- **You see:** a lane's trial in **Live** has no new line for many minutes, while the rig reports it at work. Then, after 10 minutes with nothing from the model, `the model's stream went silent for 600 s: retried at 16:40:35 UTC, in the same conversation.` In OpenCode or Codex: `the model's stream went silent for 600 s: retried. The harness broke the call off; the trial goes on in the same session.` The harness's log has `the model's stream went silent for 600 s: the call is broken off and retried`.
+- **You see:** a lane's trial in **Live** has no new line for many minutes, while the rig reports it at work. Then, after 10 minutes with nothing from the model, `the model's stream went silent for 600 s: retried at 16:40:35 UTC, in the same conversation.` In OpenCode or Codex: `the model's stream went silent for 600 s: retried. The harness broke the call off; the trial goes on in the same session.` The harness's log has `a model call's stream went silent: retried`, with the trial, the run and `seconds`. For a call through the model proxy (OpenCode, Codex), or a planner's call or a model check, it has `the model's stream went silent for 600 s: the call is broken off and retried`; for an advisor's call, the supervisor's log has that line.
 - **Why:** the model provider kept the call open and sent nothing more: no token, no error and no end. A gateway in front of the model may even keep the connection alive with comment lines (`: OPENROUTER PROCESSING`) while the model behind it sends nothing, so no client timeout ever fires. After 600 s with no data, the harness breaks the call off and counts it as the provider's passing fault: the trial waits a few seconds and goes on where it was ([Limits and pacing](../../reference/limits-and-pacing.md#the-model-provider)). A call that keeps sending data is never cut, however long it takes. Claude Code on a subscription reaches Anthropic directly and is not watched this way.
 - **Do:** nothing for one silent call. If it keeps happening, the provider or the way to it is at fault: once no model call has worked for 30 minutes, the run's agents stop and the run shows in **Needs you** ([The agents stopped](#the-agents-stopped-the-provider-refuses)). Check the provider's status, or give the rig another model on **Edit rig**. A model that thinks for longer than 10 minutes without sending anything needs a longer wait: set [`THERMITE_MODEL_STALL_SECONDS`](../../reference/settings.md#the-rigs-own-model) on the harness and the supervisor.
 
@@ -326,7 +332,7 @@ The dashboard refuses to start a research run with agents in the last case. A ru
   - when the rig refused it, the line says `rig-1 refused it:` and the rig's reason, within seconds and with no refresh, and a strip above the box says **Not sent.** `The rig refused your last message:` and the reason. On **Commands**, the message's **message agent** row is **failed**, with the rig's reason in **Outcome**.
 
   The rig's refusal stays until a later message to the run goes through, and shows also for a message sent over MCP, the REST API or the command line. A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box.
-- **Why:** a message that nothing would read is refused. Control refuses, before signing it, a message with no words (`Write a message first.`), and one to a recipient that **Live** greys out, with the same words: everyone working, a lane or the planner of a run without agents, such as a try; a part that is off on **Edit rig**, such as `The planner is off on this rig (Edit rig), so nothing would read it.`; an advisor the rig's supervisor hasn't set up, such as `This rig's supervisor has no auditor set up, so nothing would read it.`; or the planner, auditor or review panel of a research run. The rig refuses what control can't check, such as a lane the run doesn't have. [Steer a run](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive) lists control's reasons, and [`message_agent`](../../reference/signed-commands.md#message_agent) the rig's.
+- **Why:** a message that nothing would read is refused. Control refuses, before signing it, a message with no words (`Write a message first.`), and one to a recipient that **Live** greys out, with the same words: everyone working, a lane or the planner of a run without agents, such as a try; a part that is off on **Edit rig**, such as `The planner is off on this rig (Edit rig), so nothing would read it.`; an advisor the rig's supervisor hasn't set up, such as `This rig's supervisor has no auditor set up, so nothing would read it.`; the planner or the auditor of a research run; or the review panel of a run with no goal it reviews, such as a hill climb (a research run's review panel reads messages). The rig refuses what control can't check, such as a lane the run doesn't have. [Steer a run](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive) lists control's reasons, and [`message_agent`](../../reference/signed-commands.md#message_agent) the rig's.
 - **Do:** write to a recipient that the **To** list in **Live** doesn't grey out, switch the part on, on **Edit rig**, or give the advisor a model. Control's refusals are in the **Audit log**, as `refused` entries, from the dashboard, MCP and the REST API alike.
 
 ### A message shows, but nobody reads it
@@ -371,6 +377,19 @@ A reason about one experiment names its state, then the rule: `only queued exper
   The planner's line in **Live** says the same, such as `round 3: taken from the queue by the fixed rules (no model)`.
 - **Why:** the lanes took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. Every rule names a direction, so the fixed rules keep them all; only an old rule in words, marked `words`, needs the planner's model, which converts it at its next round ([Old rules in words](../campaigns/choose-what-runs-next.md#old-rules-in-words)). A new direction that a **Try** rule names waits for the model to design it. See [Directions](../campaigns/choose-what-runs-next.md#directions).
 - **Do:** nothing is lost: the run goes on. If it happens every round, open the run's **Planner** tab. The **The planner** card names the planner's model, or says `No model: the lanes take the queue in order and keep to the rules.`, and counts the rounds, such as `12 rounds so far: 10 planned by the model, 2 in queue order by the fixed rules …`. Give the planner a model on **Edit rig**, or switch it on there ([Give each agent its own model](../models/model-per-agent.md)).
+
+### A research run doesn't end
+
+- **You see:** a research run goes on long after its **Run for at least** time. On its **Overview**, under **Research questions**, the **Answer check** line says what it waits for.
+- **Why:** after its minimum duration, a research run ends only when the rig's review panel finds every question answered, or when its `max_duration` is over, if the contract sets one ([When a research run ends](../../explanation/campaign-modes.md#when-a-research-run-ends)). **Answer check** says, for example:
+  - `Waiting for a verified claim on question 2.`, or `Waiting for verified claims: 12 of the 40 the campaign asks for.`: the review panel is asked only once every question has a verified claim and the run has the campaign's floor of verified claims;
+  - `The check waits for a review panel: this rig's supervisor has no review panel set up. The run keeps researching.`, or `… the review panel is off on this rig (Edit rig). …`;
+  - `Not yet: review 3 found gaps: …`: a reviewer found a question not answered, or an answer did not pass code's check of its claims and numbers. What each reviewer found missing is in the run's **Journal**, by `panel:` and the reviewer's name, and in the workers' next briefs. The review panel is asked again only on new evidence;
+  - `The review panel found every question answered (review 3). It waits for your acceptance in Needs you.`: the run asks you about reviews;
+  - `Answered: … The final writer is writing the paper …`: the questions are answered, and the run ends once its research paper is in and its running trials end.
+
+  When a reviewer gives no answer, **Live** says, for example, `review 3: 1 of 2 reviewers of the review panel answered (reviewer-2: …)`. The review is tried again every 30 minutes, and its fifth try posts it as not passed.
+- **Do:** give the rig a review panel, or switch it on, on **Edit rig** ([Configure advisors](advisors.md)); accept the review under **Needs you** ([Reviews](../campaigns/decide-what-waits.md#reviews)); or end the run now with **Close run**, which writes its final report ([Close a run](../campaigns/steer-a-run.md#close-a-run)). For an end time in later runs, the contract's `max_duration` ends a run at the latest, answered or not ([Contract](../../reference/contract.md#research)).
 
 ## Past research and MCP servers
 

@@ -374,6 +374,7 @@ Each export of a rig's harness holds, besides its events and attempts, the field
 | `briefing.jsonl` | `briefing/<export>.jsonl` | The briefing of each run created since then: `{run, seq, text, from}`. Only when there is one |
 | `knowledge.jsonl` | `knowledge/<export>.jsonl` | The runs' part of their campaigns' folders: each item that an event since the last export added or changed, as it stands at the export, one per line, `{campaign, rig, run, kind, ref, title, body, by, url, sub, at, updated_at}`. The harness reads its own events the way control reads them into the knowledge base, so these are the items control files from the same events. The campaign is the one the run's contract names. Only when there are some |
 | `research/<run>/folder/…` | The same path | A finished run's research folder: a research run's once its final report is written, and a hill-climb or goal run's when it is closed, if it recorded any source, claim or note. Without the lanes' working areas and without `knowledge/` |
+| `research/<run>/folder-<export>/…` | The same path | Only in a [full export](exports.md#normal-and-full-exports): the research folder of every other research run, and of every other hill-climb or goal run that recorded a source, claim or note, as it stands then, finished or not. Without the lanes' working areas and without `knowledge/` |
 
 ## Other knowledge bases, over MCP
 

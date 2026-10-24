@@ -202,7 +202,7 @@ A rig on RunPod has **History** in place of **Recent**, with filters: **All**, *
 
 Loading the page never reads RunPod: a read holds RunPod's stream open for up to 10 seconds, and the page's script loads the page again every few seconds while it follows a button. Control keeps each rig's last read in memory until it restarts, and a read over REST or MCP shows here too. Before the rig's first report, when control has no read of the log yet, the page's script presses **Read the log** once the page has opened; after the first report, the block waits for you to press it. After the first report, **Pod log** is in the left column, below **The judge's last jobs**.
 
-Before control shows a line, it takes out what looks like a credential: a URL's user and password, a bearer token, and keys with a known prefix, such as `hf_`, `ghp_` or `rpa_`, which become `hf_***`. It also takes out a terminal's colour codes. A pod that is terminated has no **Pod log**: RunPod no longer has it.
+Before control shows a line, it takes out what looks like a credential: a URL's user and password, a bearer token, keys with a known prefix, such as `hf_`, `ghp_` or `rpa_`, which become `hf_***`, and the value of a `THERMITE_` or `RUNPOD_` variable whose name ends in `KEY`, `CODE`, `TOKEN`, `SECRET` or `PREFIX`, such as `THERMITE_STATE_SNAPSHOT_KEY=***`. It also takes out a terminal's colour codes, and cuts a line at 2,000 characters. A pod that is terminated has no **Pod log**: RunPod no longer has it.
 
 ### Before its first report, and after its end
 

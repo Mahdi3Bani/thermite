@@ -8,7 +8,7 @@ sidebar:
 
 A rig does its research with AI agents, but no agent is in charge of the search, and no agent remembers it. This page explains how Thermite shares the work out among **lanes**, **trials** and a **planner**, how one **experiment queue** for each run holds what to try next, and why every agent starts with a fresh context.
 
-The workers and the planner are **the work**: the agents in the rig's harness. The other group, **the advisors** (the teachers, the auditor and the review panel), runs in the rig's supervisor: [Supervision](supervision.md) explains it.
+The workers and the planner are **the work**: the agents in the rig's harness. The other group, **the advisors** (the teachers, the auditor, the review panel and, for a research run's paper, the final writer), runs in the rig's supervisor: [Supervision](supervision.md) explains it.
 
 The words here are in the [glossary](../reference/glossary.md). [Why agents never judge](why-agents-never-judge.md) covers what happens to a change after an agent submits it.
 
@@ -44,7 +44,7 @@ flowchart LR
 
 The contract says how many lanes a run has (two by default). On the **New campaign** page, this is **Agents working at once**. How many trials a rig runs at the same moment is a setting of the rig: **Workers at a time** on its **Edit rig** page, one by default. When a run has more lanes than that, the lanes take turns. Both stop at 16, because a rig's harness image has a Unix user for each of lanes 1 to 16 and no more ([Isolation inside a rig](isolation.md) says why each lane has its own).
 
-A lane's next trial starts only after the judge has settled the change from its previous trial, so each trial can learn from the verdict before it. In a goal campaign, no new trial starts while the judge checks a second time that a champion meets every required goal: if it does, the run closes, and a trial started then would be lost. That second check also runs the hidden test cases of the goals met; if one fails, the goal report says which goal was not confirmed and how its hidden check failed, never which case, and the lanes go on. Rules like this make work wait; they never end it ([Why Thermite runs until the job is done](runs-until-done.md)). The [limits and pacing reference](../reference/limits-and-pacing.md#back-pressure) gives every value.
+A lane's next trial starts only after the judge has settled the change from its previous trial, so each trial can learn from the verdict before it. In a hill climb, no round starts until the judge has measured the starting point, the run's baseline: a change can only be judged against values the judge measured. While the judge can't measure it, each round is a setup round, planned without the planner: every lane gets the judge's reasons and works to make the project build and run ([Campaign modes](campaign-modes.md#hill-climb)). In a goal campaign, no new trial starts while the judge checks a second time that a champion meets every required goal: if it does, the run closes, and a trial started then would be lost. That second check also runs the hidden test cases of the goals met; if one fails, the goal report says which goal was not confirmed and how its hidden check failed, never which case, and the lanes go on. Rules like this make work wait; they never end it ([Why Thermite runs until the job is done](runs-until-done.md)). The [limits and pacing reference](../reference/limits-and-pacing.md#back-pressure) gives every value.
 
 ## The experiment queue
 

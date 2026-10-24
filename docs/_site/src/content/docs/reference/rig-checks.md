@@ -223,7 +223,7 @@ The smoke check runs a small campaign with no agents on the rig's own target. Th
 7. It compares each result with the expected one. A candidate expected to be `rejected_v0` is compared by its attempt state; the others by their verdict.
 8. It passes when every result is the expected one, or when the only wrong result is the `noop` candidate's `inconclusive` in place of `neutral`. It fails on any other wrong result, alone or beside that one.
 
-Every candidate is judged against the seed, the project as it is.
+Every candidate is judged against the seed, the project as it is. The run is a hill climb, so the judge's first job measures the seed alone on every cell, the run's [baseline](contract.md#the-baseline), and the candidates wait for it.
 
 ### The CPU candidates
 
@@ -262,7 +262,7 @@ Both kits multiply two square matrices of floats, many times over (`reps`), so t
 | Build limits | 120 s, 1024 MiB memory, 256 MiB disk | 300 s, 2048 MiB memory, 512 MiB disk |
 | Run limits | 60 s, 256 MiB memory, 32 MiB disk | 120 s, 2048 MiB memory, 64 MiB disk |
 | Check time limit | 60 s | 300 s |
-| Compiler | `cc` | `nvcc`, with native code for `sm_60`, `sm_70`, `sm_75`, `sm_80`, `sm_86`, `sm_89` and `sm_90`, and PTX for newer GPUs. `CUDA_ARCH`, such as `sm_86`, builds for that architecture only |
+| Compiler | `cc` | `nvcc`, with native code for `sm_60`, `sm_70`, `sm_75`, `sm_80`, `sm_86`, `sm_89` and `sm_90`, and PTX for newer GPUs, so a run on one of those generations does not compile the kernel at start. Its build script, run by hand with `CUDA_ARCH` set, such as `sm_86`, builds for that architecture only; the judge's builds don't set it |
 
 The contract measures `small` and `large`, keeps `held` for confirmation, and lets changes touch only `src/kernel/**`. It sets `min_effect` 0.1, `equivalence_band` 0.05 and `runs_per_cell` 3, because timing on a shared CPU is noisy. Its audit triggers are set to 1000, so no smoke candidate is audited. It forbids added lines that match `clock_gettime`, `gettimeofday`, `\brdtsc`, `\btimes\s*\(`, `__real_`, `__wrap_` and `thermite_ref_calls`.
 

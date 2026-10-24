@@ -73,7 +73,7 @@ What happens on the rig:
    A recipient that would never read it is greyed out. Hover over it to read why:
    - the planner and the auditor of a research run, such as `A research run plans its rounds with a fixed method: it has no planner to message.`;
    - everyone working, each lane and the planner of a run without agents, such as a try: `This run has no agents (the judge alone tries the kit), so nothing would read it.` On such a run the box starts on **To all advisors**;
-   - the review panel of a run with no goal it reviews: `This run has no goal the review panel reviews.`;
+   - the review panel of a run with no goal it reviews, a hill climb or a goal run with no goal checked by review: `This run has no goal the review panel reviews.` (A research run's review panel reads messages: it checks the run's questions.);
    - any role that is switched off on the rig's **Edit rig** page, such as `The auditor is off on this rig (Edit rig), so nothing would read it.`;
    - an advisor that the rig's supervisor has not set up, such as one switched on with no model: `This rig's supervisor has no teachers set up, so nothing would read it.` **To all advisors** is greyed out when the supervisor has none set up, or when no advisor would read it, which starts `No advisor would read it.`
 
@@ -100,7 +100,7 @@ A receipt means the agent has the text. For a message in a new trial's brief, th
 | A worker that has submitted, or a lane with no trial running | In the brief of the lane's next trial, once its agent is at work |
 | The planner | At its next plan that uses its model's answer. When its model can't be reached, or code refuses the model's plan on both tries, the fixed rules plan the round and the message waits for the next plan: **History** then says `(by the fixed rules: the model gave no usable plan, because …)`, and no receipt comes yet |
 | The teachers | While the run is running, in a review round of the teachers' own (not the planner's round) that starts at once, after any review round already under way. For a paused run, the message waits until it runs again. If someone set the advisors a daily spending limit and it is reached, the message waits for the first review round after midnight UTC, and **Live** says so once |
-| The auditor, the review panel | With their next audit or review, once it is posted: if it fails, the next try reads the message again. An audit or review comes only when the judge holds a change for audit, or a goal waits for review |
+| The auditor, the review panel | With their next audit or review, once it is posted: if it fails, the next try reads the message again. An audit or review comes only when the judge holds a change for audit, a goal waits for review, or a research run's questions are checked, after its minimum duration |
 
 [Supervision](../../explanation/supervision.md#the-owners-messages) says how the advisors read and answer your messages.
 
