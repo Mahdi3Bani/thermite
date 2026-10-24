@@ -230,7 +230,7 @@ export class Reviews {
    * written once. Each reviewer's checked answer to each item it was asked to decide is a
    * `review_item` row, and each item's decision (research/review.ts decideItems) an
    * `item_decision` row. The review passes when, after it, every question has an end (a standing
-   * decision of answered or insufficient) and every required hypothesis a standing decision.
+   * decision of answered or insufficient) and every required hypothesis an end (hypothesis-evidence.ts).
    * Events: `review_items` for each reviewer, `item_decided` for each item, and `review_panel`
    * with how many reviewers gave each question an end, the open questions' gaps, how many items
    * it decided and the questions still open.

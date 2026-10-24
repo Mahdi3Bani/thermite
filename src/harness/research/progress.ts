@@ -105,11 +105,6 @@ export function questionEnded(d: StandingDecision | undefined): boolean {
   return d !== undefined && (d.decision === "answered" || d.decision === "insufficient");
 }
 
-/** Whether a hypothesis has a verdict that stands: supported or refuted, or undecided by the panel. */
-export function hypothesisDecided(d: StandingDecision | undefined): boolean {
-  return d !== undefined;
-}
-
 /**
  * Whether a question is saturated: its last SATURATION_TASKS finished tasks added no verified
  * claim from a new registrable domain, and its card did not change while they ran. Fewer tasks

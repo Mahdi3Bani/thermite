@@ -477,10 +477,12 @@ describe("the review panel answers a research run's package (goal 112)", () => {
                 answer: index === 0 ? "The first run archived 42 pages." : "A clock keeps it.",
                 claims: [index === 0 ? s.ids.claims.verified : s.ids.claims.clock],
               })),
+              // Undecided with the claims it weighed: an end (goal 117; one citing none is not).
               hypotheses: pkg.decide.hypotheses.map((id) => ({
                 id,
                 verdict: "undecided",
                 why: "The claims do not decide it.",
+                claims: [s.ids.claims.verified],
               })),
             },
           },

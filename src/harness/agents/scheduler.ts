@@ -39,6 +39,7 @@ import { messageText, type OwnerMessage } from "../messages.ts";
 import { type Experiment, inFamily, type TaskYield } from "../queue.ts";
 import { briefCards } from "../research/cards.ts";
 import { writeAtomic } from "../research/folder.ts";
+import { hypothesisTask } from "../research/hypothesis-evidence.ts";
 import { lastImprovement, progressStopped, questionSaturated } from "../research/progress.ts";
 import type { Research } from "../research/research.ts";
 import {
@@ -2280,12 +2281,12 @@ export class Scheduler {
 
   /**
    * A lane's next research task by the gap-driven rules (goal 117). First the owner's queued tasks,
-   * in queue order, as before (AVOID task kinds skipped, MANDATE and TRY kinds first), and any
-   * other that names no question. Then the question the gaps weigh for (nextQuestion: the floor,
-   * then the weighted shares under the ceiling; never a question decided or saturated, unless
-   * every open one is): the first task queued for it, whoever added it (a teacher's, a lane's idea
-   * once queued, the plan's), else a new task of the gap-driven plan for it. Each task given
-   * counts in `state`.
+   * in queue order, as before (AVOID task kinds skipped, MANDATE and TRY kinds first), any other
+   * that names no question, else one for a hypothesis with no evidence (hypothesisTask). Then the
+   * question the gaps weigh for (nextQuestion: the floor, then the weighted shares under the
+   * ceiling; never a question decided or saturated, unless every open one is): the first task
+   * queued for it, whoever added it (a teacher's, a lane's idea once queued, the plan's), else a
+   * new task of the gap-driven plan for it. Each task given counts in `state`.
    */
   private nextResearchTask(
     run: string,
@@ -2304,13 +2305,12 @@ export class Scheduler {
         exclude: new Set([...exclude, ...queued.filter((x) => !keep(x)).map((x) => x.id)]),
       });
     const unbalanced = only((x) => x.added_by === "owner" || typeof x.question !== "number");
-    if (unbalanced) {
-      if (typeof unbalanced.question === "number") took(state, unbalanced.question);
-      return {
-        x: unbalanced,
-        why: this.coordinator.whyPicked(run, lane, unbalanced, directives),
-        stalled: false,
-      };
+    const queue = this.o.service.queue;
+    const lead = unbalanced ?? hypothesisTask(this.ledger, queue, run, contract.questions, PLANNER);
+    if (lead) {
+      if (typeof lead.question === "number") took(state, lead.question);
+      const why = unbalanced ? this.coordinator.whyPicked(run, lane, lead, directives) : lead.why;
+      return { x: lead, why, stalled: false };
     }
     const next = nextQuestion(state, this.firstQuestions(directives, contract));
     if (!next) return undefined;

@@ -16,12 +16,12 @@ import type { Ledger } from "../ledger.ts";
 import { type CardGap, cardsOf, rubricOf } from "./cards.ts";
 import { checkCited } from "./checks.ts";
 import { registrableDomain } from "./fetcher.ts";
+import { hypothesisEnded, hypothesisEvidence, hypothesisTasksDone } from "./hypothesis-evidence.ts";
 import {
   ANSWER_CERTAINTIES,
   type AnswerCertainty,
   HYPOTHESIS_DECISIONS,
   type HypothesisDecision,
-  hypothesisDecided,
   QUESTION_DECISIONS,
   type QuestionDecision,
   questionEnded,
@@ -47,8 +47,8 @@ import {
  * question's certainty: the median of theirs); no such majority, or no answer that passed, is
  * `open` (a hypothesis: `undecided`). The others' verdicts are kept as the decision's dissent. A decision
  * stands until the question's card has a newer version (progress.ts). The review passes when,
- * after it, every question has an end (answered or insufficient) and every required hypothesis a
- * standing decision.
+ * after it, every question has an end (answered or insufficient) and every required hypothesis
+ * one (an undecided with no claim for or against it is none: hypothesis-evidence.ts).
  *
  * A research review is a row of the review table with the reserved goal name `research` (a
  * research contract has no goals) and, in place of a commit, a marker of the items it saw (each
@@ -333,9 +333,9 @@ export function requiredHypotheses(
 }
 
 /**
- * Where a run's items stand: the panel's standing decisions; the questions with no end (no
- * standing decision of answered or insufficient) and the required hypotheses with no standing
- * decision; and the items to decide, those with no standing decision at all.
+ * Where a run's items stand: the panel's standing decisions; the items with no end (a question
+ * with no answered or insufficient, a hypothesis by hypothesisEnded); and the items to decide:
+ * the questions with no standing decision, and the required hypotheses with no end.
  */
 export function itemsState(
   ledger: Ledger,
@@ -349,8 +349,9 @@ export function itemsState(
   const standing = standingDecisions(ledger, run);
   const all = Array.from({ length: questions }, (_, i) => i);
   const hypotheses = requiredHypotheses(ledger, run).map((h) => h.id);
+  const evidence = hypothesisEvidence(ledger, run);
   const undecidedHypotheses = hypotheses.filter(
-    (id) => !hypothesisDecided(standing.get(`hypothesis:${id}`)),
+    (id) => !hypothesisEnded(standing.get(`hypothesis:${id}`), evidence.get(id) ?? 0),
   );
   return {
     standing,
@@ -366,19 +367,18 @@ export function itemsState(
 }
 
 /**
- * The items a review sees, as a marker: each question's newest card version and the required
- * hypotheses. A review is never asked twice with the same marker.
+ * The items a review sees, as a marker: each question's newest card version, the required
+ * hypotheses and their tasks done. A review is never asked twice with the same marker.
  */
 export function itemsMarker(ledger: Ledger, run: string, questions: number): string {
   const versions = new Map(cardsOf(ledger, run).map((c) => [c.question, c.version]));
-  const cards = Array.from({ length: questions }, (_, i) => `${i}v${versions.get(i) ?? 0}`).join(
-    ".",
-  );
+  const cards = Array.from({ length: questions }, (_, i) => `${i}v${versions.get(i) ?? 0}`);
   const ids = requiredHypotheses(ledger, run)
     .map((h) => h.id)
     .sort();
   const hash = createHash("sha256").update(ids.join(",")).digest("hex").slice(0, 12);
-  return `items:${cards}:h${ids.length}-${hash}`;
+  const tasks = hypothesisTasksDone(ledger, run);
+  return `items:${cards.join(".")}:h${ids.length}-${hash}${tasks ? `:t${tasks}` : ""}`;
 }
 
 /** How a research run ended, when it did: answered (an accepted review) or stopped by the progress rule. */

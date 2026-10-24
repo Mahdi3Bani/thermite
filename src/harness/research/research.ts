@@ -155,6 +155,10 @@ function repeatsWords(twin: Row): string {
     : `this hypothesis repeats ${id}${twin.lane ? ` (proposed by ${String(twin.lane)})` : ""}: change that one with revise_hypothesis (id ${id}), its words, its question or its supporting claims, instead of proposing it again`;
 }
 
+/** What a worker is told of a finding kept as a draft: how to fix it (goal 117). */
+const DRAFT_FINDING =
+  "recorded as a draft finding: fix these problems and send it again with the same words, which records it as supported";
+
 export const FindingInput = z.object({
   text: z.string().min(5).max(4000),
   summary: z.string().min(5).max(8000),
@@ -1019,33 +1023,27 @@ export class Research {
     // The check a review panel's answer shares (checks.ts).
     const { problems } = checkCited(this.ledger, run, cited, [f.text, f.summary, f.why_it_matters]);
     const supported = problems.length === 0;
-    // The same statement again: a supported one is kept once, and a draft refused for the same
-    // reasons is answered again, not recorded again, so a worker that resends it in a loop learns
-    // what to change and fills no records.
-    const key = claimKey(f.text);
-    const reasons = canonicalJson(problems);
+    // The same statement again (goal 117): a supported one is kept once; a draft is refused in
+    // words, whatever its problems, with the finding it repeats, so a worker that resends it in
+    // a loop learns what to change and fills no records. Only a supported one is recorded again.
     const before = this.all(
-      "select id, text, supported, problems from finding where run = ? order by created_at",
+      "select id, text, supported from finding where run = ? order by created_at",
       run,
-    ).find(
-      (r) =>
-        claimKey(String(r.text)) === key &&
-        (Number(r.supported) === 1 || (!supported && String(r.problems) === reasons)),
-    );
-    if (before)
-      return Number(before.supported) === 1
-        ? {
-            finding: String(before.id),
-            supported: true,
-            problems: [],
-            note: "this finding is already recorded, supported: record a finding only for a new conclusion",
-          }
-        : {
-            finding: String(before.id),
-            supported: false,
-            problems,
-            note: "this same finding was refused before for the same reasons: cite only verified claims, use only numbers those claims contain, or record what you learned as a note (add_note) instead",
-          };
+    ).filter((r) => claimKey(String(r.text)) === claimKey(f.text));
+    const kept = before.find((r) => Number(r.supported) === 1);
+    if (kept)
+      return {
+        finding: String(kept.id),
+        supported: true,
+        problems: [],
+        note: "this finding is already recorded, supported: record a finding only for a new conclusion",
+      };
+    const draft = before[0];
+    if (draft && !supported)
+      throw new LedgerError(
+        "invalid",
+        `this finding repeats draft finding ${String(draft.id)} and is not recorded again. It is still a draft: ${problems.join("; ")}. Cite only verified claims and use only numbers they contain, then send it again; or record what you learned as a note (add_note)`,
+      );
     const id = `f-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     this.ledger.tx(() => {
       this.ledger.db
@@ -1076,7 +1074,8 @@ export class Research {
       });
     });
     this.changed(run);
-    return { finding: id, supported, problems };
+    const note = supported ? undefined : DRAFT_FINDING;
+    return note ? { finding: id, supported, problems, note } : { finding: id, supported, problems };
   }
 
   /**

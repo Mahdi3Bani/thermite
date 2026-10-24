@@ -342,8 +342,8 @@ describe("research integrity", () => {
       quotes: [{ source: a.source, quote: "workers keep all of their state in memory" }],
     });
     assert.equal(claims(), before + 1);
-    // Findings: a supported one is kept once; a draft refused for the same reasons is answered
-    // again, not recorded again; a draft with other problems is a new attempt.
+    // Findings: a supported one is kept once; a draft sent again with the same words is refused in
+    // words, whatever its problems (goal 117), and recorded only once it is supported.
     const findings = () =>
       Number(env.service.ledger.db.prepare("select count(*) as n from finding").get()?.n);
     const kept = research.addFinding("r-1", "lane-1", {
@@ -362,23 +362,35 @@ describe("research integrity", () => {
     assert.equal(keptAgain.finding, kept.finding);
     assert.match(keptAgain.note ?? "", /already recorded/);
     const draft = {
-      text: "Workers keep their state in 3 places.",
+      text: "Workers keep no state of their own.",
       summary: "One summary.",
       why_it_matters: "It matters.",
       supporting: [refused.claim],
     };
-    const d1 = research.addFinding("r-1", "lane-1", draft);
+    const d1 = research.addFinding("r-1", "lane-1", draft) as typeof kept & { note?: string };
     assert.equal(d1.supported, false);
+    assert.match(d1.note ?? "", /send it again with the same words/);
     const count = findings();
-    const d2 = research.addFinding("r-1", "lane-1", {
-      ...draft,
-      summary: "A reworded summary.",
-    }) as typeof d1 & { note?: string };
-    assert.equal(d2.finding, d1.finding);
-    assert.deepEqual(d2.problems, d1.problems);
-    assert.match(d2.note ?? "", /refused before/);
+    // Reworded around it, or citing other claims: the same statement, still a draft, refused.
+    for (const again of [
+      { ...draft, summary: "A reworded summary." },
+      {
+        ...draft,
+        text: "workers keep NO state of their own",
+        supporting: [refused.claim, "c-none"],
+      },
+    ])
+      assert.throws(
+        () => research.addFinding("r-1", "lane-2", again),
+        (e: Error) =>
+          new RegExp(`repeats draft finding ${d1.finding} and is not recorded again`).test(
+            e.message,
+          ) && /still a draft: .*not verified/.test(e.message),
+      );
     assert.equal(findings(), count, "no second draft");
-    research.addFinding("r-1", "lane-1", { ...draft, supporting: [refused.claim, "c-none"] });
+    // Fixed, citing a verified claim, the same words are recorded, supported.
+    const fixed = research.addFinding("r-1", "lane-1", { ...draft, supporting: [first.claim] });
+    assert.equal(fixed.supported, true, JSON.stringify(fixed));
     assert.equal(findings(), count + 1);
     await w.close();
   });
