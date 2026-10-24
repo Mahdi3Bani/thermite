@@ -21,9 +21,11 @@ import {
 import { LocalRunner } from "../broker/runner.ts";
 import { CpuDriver } from "../targets/cpu.ts";
 import {
+  BASELINE_RETRY_MS,
   type Baseline,
   type BaselineFailure,
   baselineDir,
+  baselineDue,
   baselineState,
   sealBaselineDir,
   startingPoint,
@@ -146,6 +148,25 @@ describe("a hill climb's baseline (goal 115)", () => {
     assert.ok(cal && base && cal.id > base.id);
   });
 
+  test("a baseline that failed in the judge itself is tried again at once; after a second failure, 10 minutes later", async () => {
+    const env = await setup();
+    const fail = () => {
+      const id = env.ledger.enqueueJob({
+        kind: "baseline",
+        spec: { run: "js-1", champion_seq: 1, commit: env.seed },
+        actor: "test",
+      });
+      env.ledger.db
+        .prepare("update job set state = 'failed', updated_at = ? where id = ?")
+        .run(new Date().toISOString(), id);
+    };
+    fail();
+    assert.equal((baselineDue(env.ledger, "js-1") || undefined)?.seq, 1, "the first: at once");
+    fail();
+    assert.equal(baselineDue(env.ledger, "js-1"), false, "the second: it waits");
+    const later = Date.now() + BASELINE_RETRY_MS + 1000;
+    assert.equal((baselineDue(env.ledger, "js-1", later) || undefined)?.seq, 1);
+  });
   test("a run from before, with no baseline, gets its baseline when it is resumed", async () => {
     const env = await setup();
     const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");

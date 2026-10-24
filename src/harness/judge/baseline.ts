@@ -33,7 +33,10 @@ export const BASELINE_PRIORITY = 10;
 /** What the kit's check may keep in the baseline's folder: bytes in all, and files. */
 export const BASELINE_DIR_BYTES = 64 * 1024 * 1024;
 export const BASELINE_DIR_FILES = 1000;
-/** After a baseline job failed in the judge (not the starting point's fault), the next try waits. */
+/**
+ * After a baseline job failed in the judge (not the starting point's fault), it is tried again at
+ * once, as a candidate's `crash_infra` is; after a second such failure, each next try waits.
+ */
 export const BASELINE_RETRY_MS = 10 * 60_000;
 /** The direction of a setup round's experiments. */
 export const SETUP_FAMILY = "setup";
@@ -179,6 +182,21 @@ export function baselineState(ledger: Ledger, run: string): BaselineState | unde
   };
 }
 
+/** How many baseline jobs of a run's starting point failed in the judge itself. */
+function failedStartJobs(ledger: Ledger, run: string, seq: number): number {
+  return Number(
+    (
+      ledger.db
+        .prepare(
+          `select count(*) as n from job
+             where kind = 'baseline' and attempt is null and state = 'failed'
+               and json_extract(spec, '$.run') = ? and json_extract(spec, '$.champion_seq') = ?`,
+        )
+        .get(run, seq) as { n: number }
+    ).n,
+  );
+}
+
 /** The newest baseline job of a run's starting point (not a setup change's). */
 function lastStartJob(
   ledger: Ledger,
@@ -199,8 +217,8 @@ function lastStartJob(
 /**
  * Whether the judge should queue a baseline job for the run's starting point now: it has no
  * baseline and none is queued or running; not when it failed (the run is in setup) unless the run
- * was resumed since, which tries it again; and not within BASELINE_RETRY_MS of a try that failed
- * in the judge itself.
+ * was resumed since, which tries it again; and, after two tries that failed in the judge itself,
+ * not within BASELINE_RETRY_MS of the newest (the first such failure is tried again at once).
  */
 export function baselineDue(ledger: Ledger, run: string, now = Date.now()): StartingPoint | false {
   const s = baselineState(ledger, run);
@@ -219,7 +237,11 @@ export function baselineDue(ledger: Ledger, run: string, now = Date.now()): Star
       .get(run, s.failure.id)
   )
     return false;
-  if (last?.state === "failed" && now - Date.parse(last.updated_at) < BASELINE_RETRY_MS)
+  if (
+    last?.state === "failed" &&
+    failedStartJobs(ledger, run, s.start.seq) > 1 &&
+    now - Date.parse(last.updated_at) < BASELINE_RETRY_MS
+  )
     return false;
   return s.start;
 }
