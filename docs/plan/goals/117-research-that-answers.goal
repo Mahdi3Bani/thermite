@@ -1,7 +1,7 @@
 ---
 id: "117"
 title: "Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 depends_on: ["112", "047", "116"]
 created: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 117 · Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal), [047](047-research-planner.goal), [116](116-reviews-tab.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal), [047](047-research-planner.goal), [116](116-reviews-tab.goal)
 
 ## What
 
