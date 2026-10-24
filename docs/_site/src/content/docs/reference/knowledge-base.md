@@ -192,7 +192,7 @@ Each run has a research folder in its rig's harness, which every worker of the r
         └── reports/…
 ```
 
-A research run's folder also holds its findings, hypotheses, report and the lanes' files. Each item file starts with a front block: `campaign`, `rig`, `run`, `kind`, `ref`, `sub` (when it has one), `by`, `at`, `updated_at` and `url`, each as a JSON value. Then come `# <title>` and the item's text, as in the example at the top of this page.
+A research run's folder also holds its findings, hypotheses, report, each question's answer card (`cards/q<index>.md`) and the lanes' files. Each item file starts with a front block: `campaign`, `rig`, `run`, `kind`, `ref`, `sub` (when it has one), `by`, `at`, `updated_at` and `url`, each as a JSON value. Then come `# <title>` and the item's text, as in the example at the top of this page.
 
 `knowledge/README.md` starts with the heading `# Past research`, then:
 

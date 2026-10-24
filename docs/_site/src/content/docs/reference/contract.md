@@ -123,7 +123,7 @@ What each agent gets, and whether it gets the whole text:
 | --- | --- | --- |
 | The planner | `campaign_brief` in its context: `additional_information`, `starting_links`, `ideas_to_try` and `hypotheses` | Whole |
 | Each worker of a hill climb or goal | The section "The campaign's brief" in its trial brief | Whole up to 32,000 characters. A longer brief is cut there, with a line that says so and where the whole text is: `BRIEF.md` in the run's folder |
-| Each research worker | The same section in its research brief, after the questions | As for a worker |
+| Each research worker | The same section in its research brief, after the questions and their answer cards | As for a worker |
 | The teachers, the auditor and the review panel | `campaign_brief` in their brief or package, before the evidence and the diff | Whole. Only the package's own cut can reach it: a package is cut at its end, to fit the advisor's window and to at most 120,000 characters for the teachers' brief or 200,000 for a package ([Compaction](limits-and-pacing.md#compaction)), so the cut takes the evidence and the diff before the brief |
 | A research run's final writer | `campaign_brief` at the end of its paper package, after the questions, verdicts, figures and rules | Whole, unless the package is cut to fit the writer's window or 200,000 characters: the cut is at the package's end, so it takes the brief first |
 | The run's folder | `BRIEF.md`, for every mode | Whole |

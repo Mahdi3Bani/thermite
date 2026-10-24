@@ -29,6 +29,7 @@ import type { Ledger } from "../ledger.ts";
 import { type McpCaller, NOT_HANDED } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
 import { type Experiment, inFamily } from "../queue.ts";
+import { briefCards } from "../research/cards.ts";
 import { writeAtomic } from "../research/folder.ts";
 import type { Research } from "../research/research.ts";
 import {
@@ -2105,6 +2106,9 @@ export class Scheduler {
         (q, i) =>
           `${i}. ${q.replace(/\n/g, "\n   ")} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
       ),
+      "",
+      // Each question's answer card (goal 117): its answer, certainty and open evidence gaps.
+      briefCards(this.ledger, run, contract),
       "",
       // The campaign's brief from its author (goal 078): whole, or cut with where the rest is.
       this.campaignBrief(run, contract),

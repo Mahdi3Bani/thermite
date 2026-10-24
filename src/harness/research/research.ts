@@ -9,6 +9,7 @@ import { parseDuration } from "../../core/duration.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
+import { answersSection } from "./cards.ts";
 import { checkCited, claimNumbers, numbersIn, withoutNames } from "./checks.ts";
 import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
@@ -851,9 +852,10 @@ export class Research {
   }
 
   /**
-   * A report version from the ledger: sections, the verified claims with their sources, the
-   * hypotheses with their support, the open questions, and numbers in the sections that appear
-   * in no archived source and no verified claim (flagged, not hidden).
+   * A report version from the ledger: each question's answer card first (goal 117), then
+   * sections, the verified claims with their sources, the hypotheses with their support, the
+   * open questions, and numbers in the sections that appear in no archived source and no verified
+   * claim (flagged, not hidden).
    *
    * A final report of a run whose questions are answered (goal 112) starts with its research
    * paper, when code accepted one; the review panel's answers and verdicts and the corpus follow
@@ -934,6 +936,8 @@ export class Research {
       "",
       // Why an answered run has no research paper (goal 112).
       ...(noPaper ? [`Research paper: none, ${noPaper}.`, ""] : []),
+      // Each question's answer card first (goal 117), for people: "Question 1".
+      ...answersSection(this.ledger, run, c, fence),
       // The review panel's answers and verdicts (goal 112): one block, after the paper.
       ...(kind === "final" ? answerSections(this.ledger, run, c, fence) : []),
       "## Questions",

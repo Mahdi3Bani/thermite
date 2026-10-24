@@ -416,7 +416,9 @@ describe("a research run whose questions are answered waits for its paper (goal 
     assert.ok(at("## References") > 0);
     assert.ok(at("# Appendix: the review panel's answers and the corpus of") > at("## References"));
     assert.ok(at("## Answers") > at("# Appendix"));
-    assert.ok(at("## Verified claims from a single domain") > at("## Answers"));
+    // The answer cards first (goal 117), then the review panel's answers.
+    assert.ok(at("## The review panel's answers") > at("## Answers"));
+    assert.ok(at("## Verified claims from a single domain") > at("## The review panel's answers"));
     assert.equal(s.ledger.latestEventBody("research_final", RUN)?.paper, true);
     // The run's next export carries the folder with its paper (main.ts gives the export the folder).
     s.env.service.researchFolder = (run) => s.folder.exportFiles(run);

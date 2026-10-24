@@ -70,6 +70,7 @@ import type { ProviderErrorAnswer } from "./model-forward.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
+import { type CardResult, type CardSubmission, Cards } from "./research/cards.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
 import { type PaperPackage, type PaperSubmission, Papers } from "./research/paper.ts";
 import { startingHypotheses } from "./research/research.ts";
@@ -617,6 +618,54 @@ export class HarnessService {
 
   /** A research run's folder follows a change the research service did not make (main.ts sets it). */
   researchChanged?: ((run: string) => void) | undefined;
+
+  /** Research runs' answer cards (goal 117): one per question, written by the synthesizer. */
+  get cards(): Cards {
+    return new Cards(this.ledger, (run) => this.contractFor(run));
+  }
+
+  /** For each running research run whose evidence changed since a card, its request (goal 117). */
+  cardPackages(): ReturnType<Cards["pending"]> {
+    return this.cards.pending();
+  }
+
+  /**
+   * The synthesizer's cards for a research run, as the supervisor posts them (goal 117): each
+   * checked by code, then kept as its question's next version or refused with its problems, which
+   * go back with the question's next request. The run's research folder follows what was kept.
+   */
+  submitCards(run: string, input: CardSubmission, by: string): { results: CardResult[] } {
+    const out = this.cards.submit(run, input, by);
+    const q = (i: number) => `question ${i + 1}`;
+    const kept: string[] = [];
+    const refused: string[] = [];
+    for (const r of out.results)
+      if (r.accepted) kept.push(`${q(r.question)} (version ${r.version})`);
+      else refused.push(`${q(r.question)} (${r.problems[0] ?? "no problem said"})`);
+    this.live.append({
+      source: "planner",
+      kind: "status",
+      text: [
+        kept.length
+          ? `the synthesizer ${input.synthesizer} wrote the answer ${kept.length === 1 ? "card" : "cards"} of ${kept.join(", ")}`
+          : "",
+        refused.length
+          ? `the harness refused the ${refused.length === 1 ? "card" : "cards"} of ${refused.join("; ")}: the old ${refused.length === 1 ? "card stands" : "cards stand"}, and the problems go back with the next request`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(". ")
+        .slice(0, 600),
+      run,
+    });
+    if (kept.length)
+      try {
+        this.researchChanged?.(run);
+      } catch (err) {
+        log("harness", "research folder not updated", { run, error: String(err) });
+      }
+    return out;
+  }
 
   /** Research runs' final papers (goal 112). */
   get papers(): Papers {

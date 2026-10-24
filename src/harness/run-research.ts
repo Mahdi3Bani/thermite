@@ -4,7 +4,8 @@ import { clip } from "../core/kb-index.ts";
 import { FILE_BYTES_MAX, READ_LINES_DEFAULT, READ_LINES_MAX } from "./evidence.ts";
 import { searchLimit, searchWords } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
-import { readNoFollow, sectionPath } from "./research/folder.ts";
+import { cardFile, cardHistory, cardsOf, questionLabel } from "./research/cards.ts";
+import { cardPath, readNoFollow, sectionPath } from "./research/folder.ts";
 
 /**
  * What the teachers may read of a run's own research (goal 098), read only, through the harness:
@@ -63,6 +64,8 @@ export const SOURCE_CHARS_MAX = 20_000;
 export const FILE_CHARS = 60_000;
 /** The most characters of the newest report a brief's summary carries. */
 export const DIGEST_CHARS = 4000;
+/** The most characters of a card's answer a brief's summary carries (the card's file is whole). */
+export const SUMMARY_ANSWER_CHARS = 2000;
 
 type Row = Record<string, unknown>;
 type Mode = "research" | "hill_climb" | "goal";
@@ -486,7 +489,32 @@ export class RunResearch {
     let body: string;
     let meta: { by: string; at: string; size: number; trial?: string };
     const lane = /^lanes\/(lane-\d+)\/(.+)$/.exec(p);
-    if (p === "REPORT.md") {
+    const card = /^cards\/q(\d+)\.md$/.exec(p);
+    if (card && mode === "research") {
+      // A question's answer card (goal 117), as the research folder writes it.
+      const i = Number(card[1]);
+      const inst = this.ledger.getRun(run);
+      const c = inst ? this.ledger.getContract(inst.campaign, inst.version) : undefined;
+      if (c?.mode !== "research" || i >= c.questions.length)
+        throw new LedgerError("not_found", `run ${run} has no question with index ${i}`);
+      const history = cardHistory(this.ledger, run, i);
+      const text = (id: string) =>
+        this.get("select text from claim where run = ? and id = ?", run, id)?.text as
+          | string
+          | undefined;
+      const verified = this.count(
+        "select count(*) as n from claim where run = ? and question = ? and verified = 1",
+        run,
+        i,
+      );
+      body = cardFile(c, i, history, verified, text);
+      const newest = history.at(-1);
+      meta = {
+        by: newest?.by ?? "harness",
+        at: newest?.created_at ?? new Date().toISOString(),
+        size: Buffer.byteLength(body),
+      };
+    } else if (p === "REPORT.md") {
       const r = this.report(run);
       if (!r)
         throw new LedgerError(
@@ -529,7 +557,7 @@ export class RunResearch {
     } else
       throw new LedgerError(
         "not_found",
-        `no file ${p}: the files are REPORT.md, report/<section>.md and lanes/<lane>/<path>, and the list of files names them`,
+        `no file ${p}: the files are REPORT.md, report/<section>.md and lanes/<lane>/<path>, which the list of files names, and in a research run each question's answer card, cards/q<index>.md`,
       );
     const lines = body.split("\n");
     if (lines.at(-1) === "") lines.pop();
@@ -688,11 +716,36 @@ export class RunResearch {
     });
   }
 
+  /** Each question's answer card, for a brief (goal 117): null where a question has none yet. */
+  private cards(run: string) {
+    const cards = new Map(cardsOf(this.ledger, run).map((c) => [c.question, c]));
+    return this.questions(run).map((_, i) => {
+      const c = cards.get(i);
+      return {
+        question: i,
+        label: questionLabel(i),
+        file: cardPath(i),
+        card: c
+          ? {
+              version: c.version,
+              certainty: c.certainty,
+              answer: clip(c.answer, SUMMARY_ANSWER_CHARS),
+              answer_chars: c.answer.length,
+              claims: c.claims,
+              gaps: c.gaps,
+              by: c.by,
+              at: c.created_at,
+            }
+          : null,
+      };
+    });
+  }
+
   /**
    * What a brief says of the run's research, short (goal 098): the counts, each question's
-   * coverage and the newest report (a digest, cut to DIGEST_CHARS), with the tools that read the
-   * rest. A research run always has it; a hill-climb or goal run only when its trials recorded a
-   * source, a claim or a note.
+   * coverage and answer card (goal 117) and the newest report (a digest, cut to DIGEST_CHARS),
+   * with the tools that read the rest. A research run always has it; a hill-climb or goal run
+   * only when its trials recorded a source, a claim or a note.
    */
   summary(run: string) {
     const mode = this.runOf(run);
@@ -735,6 +788,9 @@ export class RunResearch {
             })),
           }
         : {}),
+      // Each question's answer card (goal 117): its answer (cut to SUMMARY_ANSWER_CHARS, and the
+      // whole card in cards/q<index>.md, which the file tool reads), its certainty and its gaps.
+      ...(mode === "research" ? { cards: this.cards(run) } : {}),
       ...(report
         ? {
             newest_report: {
@@ -745,7 +801,7 @@ export class RunResearch {
             },
           }
         : {}),
-      read: `Read the rest before you propose, read only, when you have the tools: ${t.list} lists the sources, claims (verified, or draft with the harness's reasons), hypotheses, findings, notes and files, a page at a time; ${t.source} reads a source's archived text; ${t.file} reads REPORT.md, a report section or a lane's file; ${t.search} searches all of it by words.`,
+      read: `Read the rest before you propose, read only, when you have the tools: ${t.list} lists the sources, claims (verified, or draft with the harness's reasons), hypotheses, findings, notes and files, a page at a time; ${t.source} reads a source's archived text; ${t.file} reads REPORT.md, a report section, a lane's file or a question's answer card (cards/q<index>.md, in a research run); ${t.search} searches all of it by words.`,
     };
   }
 }

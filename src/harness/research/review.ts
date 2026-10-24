@@ -584,7 +584,11 @@ export function answerSections(
         : newest.owner_decision === "rejected"
           ? `the owner did not accept review ${String(newest.id)}`
           : `review ${String(newest.id)} found gaps`;
-    return ["## Answers", `The questions were not checked as answered: ${why}.`, ""];
+    return [
+      "## The review panel's answers",
+      `The questions were not checked as answered: ${why}.`,
+      "",
+    ];
   }
   const panel = checkedPanel(passed);
   const n = panel.length;
@@ -592,7 +596,7 @@ export function answerSections(
     passed.owner_decision === "accepted"
       ? `The review panel found every question answered (review ${String(passed.id)}, ${n} reviewers)${String(passed.owner_note ?? "").startsWith("hands-off") ? "" : ", and the owner accepted it"}. Each answer is the first that passed the harness's check: its cited claims are verified claims of this run, and its numbers are in them.`
       : `The review panel found every question answered (review ${String(passed.id)}, ${n} reviewers), but the owner had not accepted it when the run ended. Each answer is the first that passed the harness's check.`;
-  const lines = ["## Answers", head, ""];
+  const lines = ["## The review panel's answers", head, ""];
   contract.questions.forEach((text, i) => {
     const answers = panel
       .map((r) => r.questions.find((q) => q.index === i))

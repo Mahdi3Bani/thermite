@@ -635,7 +635,7 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     );
     assert.match(
       final,
-      /## Answers\nThe review panel found every question answered \(review \d+, 2 reviewers\)\./,
+      /## The review panel's answers\nThe review panel found every question answered \(review \d+, 2 reviewers\)\./,
     );
     assert.match(
       final,
@@ -770,7 +770,7 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     assert.match(
       lastFinal(s),
       new RegExp(
-        `## Answers\\nThe questions were not checked as answered: review ${id} found gaps\\.`,
+        `## The review panel's answers\\nThe questions were not checked as answered: review ${id} found gaps\\.`,
       ),
     );
   });
