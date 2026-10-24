@@ -49,11 +49,10 @@ export function probeValues(probe: string): Record<string, string> {
 /**
  * What is wrong with a published image, one line each in words; empty when it holds. Every image:
  * it pulls with no sign-in, reports the release's commit, carries no Claude Code (decided
- * 2026-10-18) and sets no key, token or password in its environment (a setting that names a
- * file, such as THERMITE_SUPERVISOR_TOKEN_FILE, is a path, not a secret). The harnesses and the rig
- * image also report their image ID and carry neither socat nor bubblewrap. The rig image, which
- * RunPod starts as root, has no set-id file. The supervisor and the rig image name no STE
- * checker: a deployment adds its own.
+ * 2026-10-18), has no set-id file, and sets no key, token or password in its environment (a
+ * setting that names a file, such as THERMITE_SUPERVISOR_TOKEN_FILE, is a path, not a secret).
+ * The harnesses and the rig image also report their image ID and carry neither socat nor
+ * bubblewrap. The supervisor and the rig image name no STE checker: a deployment adds its own.
  */
 export function imageProblems(key: ImageKey, commit: string, facts: ImageFacts): string[] {
   if (!facts.anonymous)
@@ -88,8 +87,7 @@ export function imageProblems(key: ImageKey, commit: string, facts: ImageFacts):
     if (said.socat) problems.push(`it carries socat (${said.socat})`);
     if (said.bwrap) problems.push(`it carries bubblewrap (${said.bwrap})`);
   }
-  if (key === "rig-cuda" && said.setid)
-    problems.push(`it has set-id files, which RunPod's root could run: ${said.setid}`);
+  if (said.setid) problems.push(`it has set-id files: ${said.setid}`);
   if ((key === "supervisor" || key === "rig-cuda") && envValue(facts.env, "THERMITE_STE_CHECKER"))
     problems.push(
       "it names an STE checker (THERMITE_STE_CHECKER): the checker is a deployment's own",
