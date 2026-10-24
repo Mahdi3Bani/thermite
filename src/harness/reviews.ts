@@ -350,7 +350,7 @@ export class Reviews {
           decided.flatMap((d) => {
             if (d.kind === "hypothesis")
               return d.decision === "undecided" && d.why
-                ? [`Hypothesis ${d.key}: undecided (${d.why === "tie" ? "a tie" : d.why})`]
+                ? [`Hypothesis ${d.key}: undecided (${d.why})`]
                 : [];
             if (d.decision !== "open") return [];
             const name = questionName(Number(d.key));
@@ -360,7 +360,7 @@ export class Reviews {
             });
             return said.length
               ? said.map((g) => `${name}: ${g}`)
-              : [`${name}: open (${d.why === "tie" ? "a tie" : (d.why ?? "open")})`];
+              : [`${name}: open (${d.why ?? "open"})`];
           }),
         ),
       ];

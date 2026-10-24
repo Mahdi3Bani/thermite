@@ -43,9 +43,9 @@ import {
  * low), `insufficient` (the best answer sources allow; what is missing only a measurement could
  * settle, named as next experiments) or `open` (evidence gaps, named); a hypothesis `supported`,
  * `refuted` or `undecided`. Code checks each answer as it checks a finding. Each item's decision is
- * the verdict that more of the reviewers whose answer passed the check gave than any other (a
- * question's certainty: the median of theirs); a tie, or no answer that passed, is `open` (a
- * hypothesis: `undecided`). The others' verdicts are kept as the decision's dissent. A decision
+ * the verdict that more than half of the reviewers whose answer passed the check gave (a
+ * question's certainty: the median of theirs); no such majority, or no answer that passed, is
+ * `open` (a hypothesis: `undecided`). The others' verdicts are kept as the decision's dissent. A decision
  * stands until the question's card has a newer version (progress.ts). The review passes when,
  * after it, every question has an end (answered or insufficient) and every required hypothesis a
  * standing decision.
@@ -81,7 +81,7 @@ export const RESEARCH_CRITERIA = [
   "A hypothesis is supported or refuted only by the claims a verdict cites. When the claims do not decide it, it is undecided: say why.",
   "A claim from fewer independent domains than the run asks for is weaker evidence. Say so when an answer rests on such claims alone.",
   `${MEASURES_NOTHING} So what only a measurement could settle, such as a test on the hardware the question is about or a benchmark, is a next experiment, never an evidence gap: a question whose only gaps are measurements is insufficient, not open.`,
-  "Each item is decided by the verdict most of the reviewers give whose answer passes the harness's check; a tie is open (a hypothesis: undecided), and the other reviewers' verdicts are kept as dissent. A decision stands until the question's answer card changes.",
+  "Each item is decided by the verdict that more than half of the reviewers give whose answer passes the harness's check; without such a majority it is open (a hypothesis: undecided), and the other reviewers' verdicts are kept as dissent. A decision stands until the question's answer card changes.",
 ];
 
 export interface PackageClaim {
@@ -260,14 +260,14 @@ export interface ItemDecision {
   decision: QuestionDecision | HypothesisDecision;
   certainty: AnswerCertainty | null;
   /**
-   * The reviewers who gave the decision's verdict with an answer that passed the check (on a tie
-   * decided as open or undecided, those who said so, if any).
+   * The reviewers who gave the decision's verdict with an answer that passed the check (with no
+   * majority, decided as open or undecided, those who said so, if any).
    */
   majority: string[];
   /** How many reviewers' answers passed the check. */
   counted: number;
-  /** Why it is open or undecided when no verdict won: a tie, or no answer that passed. */
-  why?: "tie" | "no answer passed the check";
+  /** Why it is open or undecided when no verdict won: no majority, or no answer that passed. */
+  why?: "no majority" | "no answer passed the check";
   dissent: Dissent[];
 }
 
@@ -850,21 +850,19 @@ export function medianCertainty(xs: AnswerCertainty[]): AnswerCertainty | null {
   return sorted[Math.floor((sorted.length - 1) / 2)] ?? null;
 }
 
-/** The verdict more voters gave than any other; undefined on a tie or with no voter. */
+/** The verdict more than half of the voters gave; undefined with no such majority or no voter. */
 function winner(verdicts: string[]): string | undefined {
   const tally = new Map<string, number>();
   for (const v of verdicts) tally.set(v, (tally.get(v) ?? 0) + 1);
-  const ranked = [...tally.entries()].sort((a, b) => b[1] - a[1]);
-  const [first, second] = ranked;
-  if (!first) return undefined;
-  return second && second[1] === first[1] ? undefined : first[0];
+  for (const [v, n] of tally) if (n * 2 > verdicts.length) return v;
+  return undefined;
 }
 
 /**
  * The panel's decision on each item it was asked to decide, from the reviewers' checked answers:
- * the verdict that more of the reviewers whose answer passed the check gave than any other; for
- * an answered question, the median of their certainties. A tie, or no answer that passed, is open
- * (a hypothesis: undecided). Every reviewer whose answer passed with another verdict than the
+ * the verdict that more than half of the reviewers whose answer passed the check gave (the owner's
+ * "a majority"); for an answered question, the median of their certainties. No such majority, or
+ * no answer that passed, is open (a hypothesis: undecided). Every reviewer whose answer passed with another verdict than the
  * decision is a dissent, with its verdict, certainty and short reasons.
  */
 export function decideItems(
@@ -898,7 +896,9 @@ export function decideItems(
       counted: votes.length,
       ...(won
         ? {}
-        : { why: votes.length ? ("tie" as const) : ("no answer passed the check" as const) }),
+        : {
+            why: votes.length ? ("no majority" as const) : ("no answer passed the check" as const),
+          }),
       dissent: votes
         .filter((v) => v.q.verdict !== decision)
         .map((v) => ({
@@ -926,7 +926,9 @@ export function decideItems(
       counted: votes.length,
       ...(won
         ? {}
-        : { why: votes.length ? ("tie" as const) : ("no answer passed the check" as const) }),
+        : {
+            why: votes.length ? ("no majority" as const) : ("no answer passed the check" as const),
+          }),
       dissent: votes
         .filter((v) => v.h.verdict !== decision)
         .map((v) => ({
