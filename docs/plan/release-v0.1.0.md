@@ -18,6 +18,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-20:** The docs site is served at usethermite.com by Cloudflare Pages, built from `main`. So the code moved to `main` early, at the development branch's state that day. Work stays on the development branch, and `main` follows it.
 - **2026-10-23:** The local rig uses what its machine has: every CPU and all the memory, and on Linux every NVIDIA GPU through NVIDIA's container toolkit. AMD GPUs and a Mac's Apple GPU are found and explained, not used yet (goal 037, moved from v0.3.0).
 - **2026-10-24:** A rig control set up on a Kubernetes cluster changes its GPUs, CPUs and memory from control, keeping its state (goal 118). The owner needs it for a slot that gained a GPU and a larger quota; an operator's token may make the change, and only the judge's share stays the owner's.
+- **2026-10-24:** The development branch `v1/build` is retired: the work, and this release, happen on `main`. After v0.1.0, each version is built on a branch named for it, such as `v0.1.1`, and `main` moves only when a version ships.
 
 ## What a tester gets
 
@@ -141,8 +142,8 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 
 1. Goal 002 first, so CI runs on every push from now on.
 2. The parts go on at the same time; in Running campaigns, 064 follows 063 and 065 follows 064. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
-3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the pull request into `main`, the changelog, the tag and the GitHub Release.
-4. Fixes from tester reports, and the follow-ups the roadmap puts in v0.1.1 to v0.1.4, ship as 0.1.1, 0.1.2 and so on. Other new features go into v0.2.0.
+3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the changelog, the tag and the GitHub Release, on `main`.
+4. Fixes from tester reports, and the follow-ups the roadmap puts in v0.1.1 to v0.1.4, ship as 0.1.1, 0.1.2 and so on, each built on a branch named for it. Other new features go into v0.2.0.
 
 ## Decisions made from the open questions
 

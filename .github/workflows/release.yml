@@ -4,10 +4,10 @@
 # release bundle, a compose file that pins those images by digest and a short readme
 # (scripts/release-bundle.ts), and attaches both to a draft GitHub Release.
 #
-# Run by hand (Actions › release › Run workflow), or on a push to the development branch that
+# Run by hand (Actions › release › Run workflow), or on a push to main or to a version's branch that
 # changes the images or this release path, it builds the same images and the same bundle, but
 # pushes nothing out and makes no release: the bundle is kept as the run's artifact. (A run by hand
-# needs this file on the default branch; the push to the development branch does not.)
+# needs this file on the default branch; a push does not.)
 #
 # The images never carry Claude Code: no build here sets CLAUDE_CODE_VERSION. The harness images
 # carry OpenCode and the Codex CLI, both open source, at their Containerfile's pinned versions.
@@ -17,7 +17,7 @@ on:
   push:
     tags: ["v*"]
     # A dry run. Paths are not checked for tags, so every v* tag still releases.
-    branches: [v1/build]
+    branches: [main, "v[0-9]*"]
     paths:
       - .github/workflows/release.yml
       - containers/**

@@ -4,7 +4,7 @@ Thermite runs code that AI models write, so its design keeps that code away from
 
 ## Supported versions
 
-Thermite is at version 0.x. Only the latest release gets security fixes: a fix ships in a new release, and older releases get none. Before the first release, fixes go to the development branch.
+Thermite is at version 0.x. Only the latest release gets security fixes: a fix ships in a new release, and older releases get none. Before the first release, fixes go to `main`.
 
 | Version | Security fixes |
 | --- | --- |

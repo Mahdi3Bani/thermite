@@ -89,7 +89,7 @@ One test is run by hand only, with the owner's OK, because it spends money: `scr
 
 ## What CI runs
 
-Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, on every push to `main` and to the development branch, `v1/build`, and on every version tag (`v…`); it can also be run by hand from the **Actions** tab. Its jobs run at once, none waiting for another. The heavy jobs, **compose-smoke**, **rig image**, **runpod** and **quick-start**, run on a pull request or a push only when the change touches what they test, so a small change gets its answer in minutes. On a version tag, and when run by hand, every job runs:
+Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, on every push to `main` and to a version's branch (such as `v0.1.1`), and on every version tag (`v…`); it can also be run by hand from the **Actions** tab. Its jobs run at once, none waiting for another. The heavy jobs, **compose-smoke**, **rig image**, **runpod** and **quick-start**, run on a pull request or a push only when the change touches what they test, so a small change gets its answer in minutes. On a version tag, and when run by hand, every job runs:
 
 | Job | What it runs |
 | --- | --- |
@@ -103,11 +103,11 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 | **heavy checks, needed?** | Decides which heavy jobs run, and says why in its log: every one on a version tag or a run by hand; on a pull request or a push, each one whose paths the change touches. Changing the workflow runs them all |
 | **quick-start** | The quick-start test with Docker (`scripts/quick-start-acceptance.mjs`), when the change touches the containers, a compose file, the release bundle, the quick start's pages, `examples/`, the smoke kit or the test itself. It stops after 60 minutes. Its report, with each check and how long each step took, is the run's artifact `quick-start-report` |
 
-A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
+A new commit on a pull request cancels the run for the commit before it. Every push to `main` or to a version's branch gets a whole run of its own.
 
 A second workflow, `.github/workflows/release.yml`, runs on a tag that starts with `v`. It builds the control, harness (CPU and CUDA) and supervisor images, and the one-container rig image for RunPod on the CUDA harness, pushes them to `ghcr.io`, and attaches the release bundle (`compose.yaml` and `README.md`, made by `scripts/release-bundle.ts`) to a draft GitHub Release. Run by hand from the **Actions** tab, it builds the same images and bundle but pushes nothing. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#releases) describes each step.
 
-`.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x. `@types/node` gets no major update: its major is the Node.js version Thermite supports, 22, and a newer one's types would let code use what Node.js 22 does not have. The pull requests go to the development branch, `v1/build`, where work happens; `main` follows it.
+`.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x. `@types/node` gets no major update: its major is the Node.js version Thermite supports, 22, and a newer one's types would let code use what Node.js 22 does not have. The pull requests go to `main`, where the work happens until v0.1.0 ships.
 
 ### The secret scan
 

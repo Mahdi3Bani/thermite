@@ -1,4 +1,4 @@
-# On every pull request and every push to main and to the development branch (v1/build): the fast
+# On every pull request and every push to main and to a version's branch (such as v0.1.1): the fast
 # checks, the judge's tests on machines of their own, the documentation site's build and checks
 # and a secret scan of the history. The heavy jobs run only when the change touches what they test
 # (the owner, 2026-10-24: "the heavy stuff should run before a version tag and release, not a
@@ -11,15 +11,15 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main, v1/build]
+    branches: [main, "v[0-9]*"]
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A new commit on a pull request cancels the run before it. Every push to main or v1/build gets a
-# whole run of its own.
+# A new commit on a pull request cancels the run before it. Every push to main or to a version's
+# branch gets a whole run of its own.
 concurrency:
   group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
