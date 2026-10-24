@@ -1,4 +1,11 @@
-import { figure, type MetricValues, valuesByCase, valuesWords } from "../metric-values.ts";
+import {
+  championWords,
+  figure,
+  type MetricValues,
+  pairWords,
+  valuesByCase,
+  valuesWords,
+} from "../metric-values.ts";
 import type { RunView } from "../views.ts";
 import { esc } from "./components.ts";
 import { signed } from "./words.ts";
@@ -55,4 +62,15 @@ export function startWords(r: Run): string {
   const mean = Math.exp(xs.reduce((n, x) => n + Math.log(x), 0) / xs.length);
   const unit = metricUnit(r);
   return `${figure(mean)}${unit ? ` ${unit}` : ""}${xs.length > 1 ? `, the mean of ${xs.length} cases` : ""}`;
+}
+
+/** A leaderboard row's values: the starting point's and the champion's (`412 → 614 tok/s`). */
+export const valuesPairWords = pairWords;
+
+/** The campaign headline's line under its best gain, with that run's values when it has them. */
+export function bestGainWords(
+  best: Pick<RunView, "baseline" | "champion" | "attempts"> | undefined,
+) {
+  const w = best ? championWords(best) : "";
+  return w ? `best gain over its baseline: ${w}` : "best gain over its baseline";
 }
