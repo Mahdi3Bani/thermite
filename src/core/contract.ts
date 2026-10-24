@@ -341,6 +341,12 @@ export const ResearchContract = z.strictObject({
   topic: z.string().min(1),
   questions: z.array(z.string().min(1)).min(1),
   /**
+   * What an answer to each question must cover (goal 117), one entry per question, in order: the
+   * reviewers judge a question's answer card against it. Optional and without a default, so
+   * contracts written before it keep their hash; left out, a question's rubric is the question.
+   */
+  rubrics: z.array(z.string().min(1)).optional(),
+  /**
    * Starting links: the harness fetches and archives them when the run starts (goal 078), and
    * every research worker's brief lists them. Without a search provider, research follows links
    * from these.
@@ -405,6 +411,12 @@ export const ContractSchema = z
     }
     if (c.mode === "research" && !c.min_duration) {
       ctx.addIssue({ code: "custom", message: "research campaigns need min_duration" });
+    }
+    if (c.mode === "research" && c.rubrics && c.rubrics.length !== c.questions.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: `rubrics has ${c.rubrics.length} entries for ${c.questions.length} questions: give one for each question, in order`,
+      });
     }
     if (c.mode === "hill_climb" && !c.target) {
       ctx.addIssue({ code: "custom", message: "hill_climb campaigns need a target" });

@@ -811,4 +811,65 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   create trigger held_out_no_update before update on held_out begin select raise(abort, 'held_out is append-only'); end;
   create trigger held_out_no_delete before delete on held_out begin select raise(abort, 'held_out is append-only'); end;
   `,
+  // 21: research that answers its questions (goal 117). A hypothesis has a question, a status
+  // (the author's, the workers' pool, promoted by the owner or the plan, merged into another, or
+  // retired) and can be revised; the brief's hypotheses, those with no lane, are the author's.
+  // Each question has an answer card, kept as versions (the newest is the card). Each reviewer's
+  // answer per item of a review, and the panel's decision per item, are kept; a decision stands
+  // until a newer card. A research task names its question and records what its trial added.
+  `
+  alter table hypothesis add column question integer;
+  alter table hypothesis add column status text not null default 'pool'
+    check (status in ('author', 'pool', 'promoted', 'merged', 'retired'));
+  alter table hypothesis add column merged_into text;
+  alter table hypothesis add column updated_at text;
+  update hypothesis set status = 'author' where lane is null;
+  update hypothesis set updated_at = created_at;
+  create table question_card (
+    run text not null,
+    question integer not null,
+    version integer not null,
+    answer text not null,
+    certainty text not null check (certainty in ('high', 'moderate', 'low', 'insufficient', 'none')),
+    claims text not null default '[]',
+    gaps text not null default '[]',
+    by text not null,
+    created_at text not null,
+    primary key (run, question, version)
+  );
+  create trigger question_card_no_update before update on question_card begin select raise(abort, 'question_card is append-only'); end;
+  create trigger question_card_no_delete before delete on question_card begin select raise(abort, 'question_card is append-only'); end;
+  create table review_item (
+    id integer primary key autoincrement,
+    review integer not null references review (id),
+    reviewer text not null,
+    kind text not null check (kind in ('question', 'hypothesis')),
+    key text not null,
+    card_version integer,
+    verdict text not null,
+    certainty text,
+    reasons text not null default '',
+    claims text not null default '[]',
+    problems text not null default '[]',
+    created_at text not null
+  );
+  create index review_item_review on review_item (review, kind, key);
+  create table item_decision (
+    id integer primary key autoincrement,
+    run text not null,
+    kind text not null check (kind in ('question', 'hypothesis')),
+    key text not null,
+    review integer not null references review (id),
+    card_version integer,
+    decision text not null,
+    certainty text,
+    dissent text not null default '[]',
+    decided_at text not null
+  );
+  create index item_decision_run on item_decision (run, kind, key, id);
+  create trigger item_decision_no_update before update on item_decision begin select raise(abort, 'item_decision is append-only'); end;
+  create trigger item_decision_no_delete before delete on item_decision begin select raise(abort, 'item_decision is append-only'); end;
+  alter table experiment add column question integer;
+  alter table experiment add column yield text;
+  `,
 ];
