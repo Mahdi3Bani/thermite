@@ -380,7 +380,7 @@ describe("the research review's package (goal 112)", () => {
       {
         id: ids.hypothesis,
         text: "Stateless workers make long runs safe.",
-        supporting: [ids.claims.verified],
+        supporting: [],
       },
     ]);
     assert.ok(pkg.criteria.length > 0);

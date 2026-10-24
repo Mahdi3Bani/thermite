@@ -898,7 +898,9 @@ export function createHarnessApi(
       case "note":
         return c.json(r.addNote(run, lane, s("text"), Strings.parse(body.sources), trial.id));
       case "hypothesis":
-        return c.json(r.proposeHypothesis(run, lane, s("text"), Strings.parse(body.supporting)));
+        return c.json(r.proposeHypothesis(run, lane, body));
+      case "revise-hypothesis":
+        return c.json(r.reviseHypothesis(run, lane, body));
       case "finding":
         return c.json(r.addFinding(run, lane, body));
       case "section":

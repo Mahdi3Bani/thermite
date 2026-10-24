@@ -70,7 +70,10 @@ describe("research in every mode", () => {
       text: (bodies(env, "source_fetched").at(-1) as { text: string }).text,
     });
     // A hypothesis is an event too, with the verified claims it rests on.
-    research.proposeHypothesis("r-1", "lane-1", "Reads dominate.", ["c-none"]);
+    research.proposeHypothesis("r-1", "lane-1", {
+      text: "Reads dominate.",
+      supporting: ["c-none"],
+    });
     const h = bodies(env, "hypothesis_added").at(-1) as Record<string, unknown>;
     assert.equal(h.lane, "lane-1");
     assert.equal(h.text, "Reads dominate.");

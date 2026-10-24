@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
-import { ANSWERED, questionLabel, RESEARCH_REVIEW } from "../../core/research-check.ts";
+import {
+  ANSWERED,
+  questionLabel,
+  REQUIRED_HYPOTHESES,
+  RESEARCH_REVIEW,
+} from "../../core/research-check.ts";
 import type { Ledger } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
 import { registrableDomain } from "./fetcher.ts";
@@ -249,7 +254,8 @@ function claimDomains(ledger: Ledger, run: string, quotes: string): string[] {
 /**
  * The package of a research review: the topic, each question with its verified claims (their
  * text, their sources' domains and whether they are corroborated), the supported findings, and
- * each hypothesis with the claims cited for it, and the criteria. Nothing about which lane or
+ * each hypothesis that needs a verdict (the author's and promoted ones) with the claims cited for
+ * it, and the criteria. Nothing about which lane or
  * model wrote what. When it would be longer than RESEARCH_PACKAGE_MAX characters, each question
  * shows fewer claims (corroborated first, then the newest), and then fewer findings; it says so.
  */
@@ -304,12 +310,14 @@ export function researchPackage(
     summary: String(f.summary),
     supporting: JSON.parse(String(f.supporting)) as string[],
   }));
+  // Only the hypotheses that need a verdict (goal 117): the author's and promoted ones. The
+  // workers' pool is listed in the report as proposed by the run, and never makes a review fail.
   const hypotheses = (
     ledger.db
       .prepare(
-        "select id, text, supporting from hypothesis where run = ? order by created_at, rowid",
+        `select id, text, supporting from hypothesis where run = ? and status in (${REQUIRED_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
       )
-      .all(run) as Row[]
+      .all(run, ...REQUIRED_HYPOTHESES) as Row[]
   ).map((h) => ({
     id: String(h.id),
     text: String(h.text),

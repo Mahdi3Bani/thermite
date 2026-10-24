@@ -306,6 +306,11 @@ export class RunResearch {
             id: String(h.id),
             text: clip(String(h.text), 2000),
             supporting: ids(h.supporting),
+            // Its status and question (goal 117): only the author's and promoted ones need a
+            // verdict; the question is an index, from 0.
+            status: String(h.status),
+            question: h.question === null || h.question === undefined ? null : Number(h.question),
+            ...(h.merged_into ? { merged_into: String(h.merged_into) } : {}),
             lane: nullable(h.lane),
             at: String(h.created_at),
           })),

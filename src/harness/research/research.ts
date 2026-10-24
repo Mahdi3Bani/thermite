@@ -7,7 +7,12 @@ import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
-import { questionLabel } from "../../core/research-check.ts";
+import {
+  HYPOTHESES_RULE,
+  hypothesisStatusWords,
+  LIVE_HYPOTHESES,
+  questionLabel,
+} from "../../core/research-check.ts";
 import { CODE_RESEARCH_TOOLS, moreText, READ_MAX, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import {
@@ -36,6 +41,9 @@ const SEARCH_PAGE = 30;
 const SEARCH_CHARS = 11_000;
 /** The run's newest notes a new note may not repeat (goal 117). */
 export const NOTE_REPEATS = 200;
+/** The hypotheses a worker's brief lists: those that need a verdict, and the pool's newest. */
+const BRIEF_REQUIRED = 30;
+const BRIEF_POOL = 10;
 
 /**
  * Research mode's integrity rules, enforced by code (the research form of "agents never judge"):
@@ -119,6 +127,32 @@ export const ClaimInput = z.object({
   confidence: z.number().min(0).max(1).optional(),
 });
 
+/** A hypothesis's longest text: a longer one is cut to it. */
+const HYPOTHESIS_MAX = 2000;
+
+const ClaimIds = z.array(z.string().max(500)).max(50);
+
+export const HypothesisInput = z.object({
+  text: z.string(),
+  question: z.number().int().nullable().optional(),
+  supporting: ClaimIds.default([]),
+});
+
+export const HypothesisRevision = z.object({
+  id: z.string().min(1).max(200),
+  text: z.string().optional(),
+  question: z.number().int().nullable().optional(),
+  supporting: ClaimIds.optional(),
+});
+
+/** Why a hypothesis is refused as a repeat of a live one: which, and what to do instead. */
+function repeatsWords(twin: Row): string {
+  const id = String(twin.id);
+  return String(twin.status) === "author"
+    ? `this hypothesis repeats ${id}, one of the author's: the review panel gives it a verdict already. Record claims for or against it instead of proposing it again`
+    : `this hypothesis repeats ${id}${twin.lane ? ` (proposed by ${String(twin.lane)})` : ""}: change that one with revise_hypothesis (id ${id}), its words, its question or its supporting claims, instead of proposing it again`;
+}
+
 export const FindingInput = z.object({
   text: z.string().min(5).max(4000),
   summary: z.string().min(5).max(8000),
@@ -153,6 +187,8 @@ export function startingHypotheses(
         text,
         supporting: [],
         from: "brief",
+        question: null,
+        status: "author",
       });
       return id;
     }),
@@ -669,29 +705,193 @@ export class Research {
     return { note: id };
   }
 
-  proposeHypothesis(run: string, lane: string | null, text: string, supporting: string[] = []) {
+  /** A question's index as a hypothesis takes it: one of the contract's, or a refusal in words. */
+  private questionOf(run: string, q: number | null | undefined): number | null {
+    if (q === undefined || q === null) return null;
+    const n = this.contract(run).questions.length;
+    if (!Number.isInteger(q) || q < 0 || q >= n)
+      throw new LedgerError(
+        "invalid",
+        `no question ${q}: "question" is the index of one of the campaign's ${n} questions, from 0 to ${n - 1}`,
+      );
+    return q;
+  }
+
+  /** The run's live hypothesis (the author's, the pool's or promoted) whose words these repeat. */
+  private twinOf(run: string, text: string, except?: string | undefined): Row | undefined {
+    const key = foldText(text);
+    return this.all(
+      `select id, lane, status, text from hypothesis where run = ? and status in (${LIVE_HYPOTHESES.map(() => "?").join(", ")}) order by created_at, rowid`,
+      run,
+      ...LIVE_HYPOTHESES,
+    ).find((h) => String(h.id) !== except && foldText(String(h.text)) === key);
+  }
+
+  /** The verified claims of the run among these ids, and the rest. */
+  private verifiedAmong(run: string, ids: string[]): { ok: string[]; ignored: string[] } {
     const known = new Set(
       this.all("select id from claim where run = ? and verified = 1", run).map((r) => String(r.id)),
     );
-    const ok = supporting.filter((c) => known.has(c));
+    const unique = [...new Set(ids)];
+    return { ok: unique.filter((c) => known.has(c)), ignored: unique.filter((c) => !known.has(c)) };
+  }
+
+  /**
+   * A worker's hypothesis for the run's pool (goal 117): its text, the question it is about (an
+   * index of the contract's questions, or none: the whole run) and the verified claims behind it
+   * (others are ignored, and said). Refused in words: an empty text, a question the run does not
+   * have, and words that repeat a live hypothesis of the run once folded (the author's, the
+   * pool's or a promoted one), naming it, so the worker revises it instead. Only the author's and
+   * promoted hypotheses need a verdict from the review panel; the report lists the pool's.
+   */
+  proposeHypothesis(run: string, lane: string | null, input: unknown) {
+    const p = HypothesisInput.safeParse(input);
+    if (!p.success)
+      throw new LedgerError(
+        "invalid",
+        `a hypothesis is {"text", "question"?: the index of a campaign question, from 0, "supporting"?: verified claim ids}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
+      );
+    const text = p.data.text.trim().slice(0, HYPOTHESIS_MAX);
+    if (!text) throw new LedgerError("invalid", "a hypothesis needs its text");
+    const question = this.questionOf(run, p.data.question);
+    const twin = this.twinOf(run, text);
+    if (twin) throw new LedgerError("invalid", repeatsWords(twin));
+    const { ok, ignored } = this.verifiedAmong(run, p.data.supporting);
     const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const now = new Date().toISOString();
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(
-          "insert into hypothesis (id, run, lane, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, 'pool', ?, ?)",
+          "insert into hypothesis (id, run, lane, question, text, supporting, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, 'pool', ?, ?)",
         )
-        .run(id, run, lane, text.slice(0, 2000), canonicalJson(ok), now, now);
+        .run(id, run, lane, question, text, canonicalJson(ok), now, now);
       // So the campaign's folder in the knowledge base holds the run's hypotheses too.
       this.ledger.appendEvent(lane ?? "research", "hypothesis_added", run, {
         hypothesis: id,
         lane: lane ?? null,
-        text: text.slice(0, 2000),
+        text,
         supporting: ok,
+        question,
+        status: "pool",
       });
     });
     this.changed(run);
-    return { hypothesis: id, supporting: ok, ignored: supporting.filter((c) => !known.has(c)) };
+    return {
+      hypothesis: id,
+      status: "pool",
+      question,
+      supporting: ok,
+      ignored,
+      note: "in the run's pool: only the author's hypotheses and promoted ones need a verdict from the review panel; change this one with revise_hypothesis",
+    };
+  }
+
+  /**
+   * A worker changes a pool hypothesis (goal 117): its text, its question (null: the whole run)
+   * or its supporting claims (verified claims of the run; the list replaces the old one). The
+   * author's hypotheses change only with the brief, and a merged or retired one not at all: each
+   * is refused in words. A revision whose words repeat another live hypothesis merges this one
+   * into it: status `merged`, `merged_into` the other, and the work goes on there.
+   */
+  reviseHypothesis(run: string, lane: string | null, input: unknown) {
+    const p = HypothesisRevision.safeParse(input);
+    if (!p.success)
+      throw new LedgerError(
+        "invalid",
+        `a revision is {"id", "text"?, "question"?: the index of a campaign question from 0, or null, "supporting"?: verified claim ids}: ${p.error.issues[0]?.path.join(".") || "it"} ${p.error.issues[0]?.message ?? "is not valid"}`,
+      );
+    const r = p.data;
+    const h = this.get("select * from hypothesis where run = ? and id = ?", run, r.id.trim());
+    if (!h) throw new LedgerError("not_found", `no hypothesis ${r.id} in this run`);
+    const id = String(h.id);
+    const status = String(h.status);
+    if (status === "author")
+      throw new LedgerError(
+        "invalid",
+        `hypothesis ${id} is one of the author's: only the campaign's brief changes it. Record claims for or against it, or propose a hypothesis of your own`,
+      );
+    if (status === "merged")
+      throw new LedgerError(
+        "invalid",
+        `hypothesis ${id} was merged into ${String(h.merged_into)}: revise ${String(h.merged_into)} instead`,
+      );
+    if (status === "retired") throw new LedgerError("invalid", `hypothesis ${id} is retired`);
+    if (r.text === undefined && r.question === undefined && r.supporting === undefined)
+      throw new LedgerError(
+        "invalid",
+        "a revision needs what changes: text, question or supporting (or more than one)",
+      );
+    const text = r.text === undefined ? String(h.text) : r.text.trim().slice(0, HYPOTHESIS_MAX);
+    if (!text) throw new LedgerError("invalid", "a hypothesis needs its text");
+    const question =
+      r.question === undefined
+        ? h.question === null
+          ? null
+          : Number(h.question)
+        : this.questionOf(run, r.question);
+    let supporting = JSON.parse(String(h.supporting)) as string[];
+    let ignored: string[] = [];
+    if (r.supporting !== undefined) {
+      const v = this.verifiedAmong(run, r.supporting);
+      if (r.supporting.length && !v.ok.length)
+        throw new LedgerError(
+          "invalid",
+          `none of ${v.ignored.join(", ")} is a verified claim of this run: the supporting claims stay as they were`,
+        );
+      supporting = v.ok;
+      ignored = v.ignored;
+    }
+    const twin = r.text === undefined ? undefined : this.twinOf(run, text, id);
+    const now = new Date().toISOString();
+    const by = lane ?? "research";
+    if (twin) {
+      const into = String(twin.id);
+      this.ledger.tx(() => {
+        this.ledger.db
+          .prepare(
+            "update hypothesis set text = ?, question = ?, supporting = ?, status = 'merged', merged_into = ?, updated_at = ? where id = ?",
+          )
+          .run(text, question, canonicalJson(supporting), into, now, id);
+        this.ledger.appendEvent(by, "hypothesis_merged", run, {
+          hypothesis: id,
+          into,
+          lane: lane ?? null,
+          text,
+          question,
+          supporting,
+        });
+      });
+      this.changed(run);
+      return {
+        hypothesis: id,
+        status: "merged",
+        merged_into: into,
+        note: `its new words repeat ${into}, so it is merged into ${into}: work on ${into} from now on`,
+      };
+    }
+    const same =
+      text === String(h.text) &&
+      question === (h.question === null ? null : Number(h.question)) &&
+      canonicalJson(supporting) === String(h.supporting);
+    if (same)
+      return { hypothesis: id, status, question, supporting, ignored, note: "nothing changed" };
+    this.ledger.tx(() => {
+      this.ledger.db
+        .prepare(
+          "update hypothesis set text = ?, question = ?, supporting = ?, updated_at = ? where id = ?",
+        )
+        .run(text, question, canonicalJson(supporting), now, id);
+      this.ledger.appendEvent(by, "hypothesis_revised", run, {
+        hypothesis: id,
+        lane: lane ?? null,
+        text,
+        question,
+        supporting,
+        status,
+      });
+    });
+    this.changed(run);
+    return { hypothesis: id, status, text, question, supporting, ignored };
   }
 
   /**
@@ -764,6 +964,47 @@ export class Research {
     });
     this.changed(run);
     return { finding: id, supported, problems };
+  }
+
+  /**
+   * The hypotheses as a research worker's brief shows them (goal 117): what needs a verdict and
+   * what does not, those that need one (the author's first, then promoted ones) each with its
+   * question, and the newest of the pool; the folder lists them all.
+   */
+  hypothesesBrief(run: string): string {
+    const rows = this.all(
+      "select id, status, question, text from hypothesis where run = ? order by created_at, rowid",
+      run,
+    );
+    const where = (h: Row) =>
+      h.question === null ? "the whole run" : questionLabel(Number(h.question));
+    const line = (h: Row, n: number) =>
+      `- ${String(h.id)} (${hypothesisStatusWords(String(h.status))}; ${where(h)}): ${clip(String(h.text).replace(/\s+/g, " ").trim(), n)}`;
+    const required = [
+      ...rows.filter((h) => h.status === "author"),
+      ...rows.filter((h) => h.status === "promoted"),
+    ];
+    const pool = rows.filter((h) => h.status === "pool");
+    return [
+      "# Hypotheses",
+      HYPOTHESES_RULE,
+      ...(required.length
+        ? [
+            "They need a verdict:",
+            ...required.slice(0, BRIEF_REQUIRED).map((h) => line(h, 400)),
+            ...(required.length > BRIEF_REQUIRED
+              ? [`… and ${required.length - BRIEF_REQUIRED} more in INDEX.md`]
+              : []),
+          ]
+        : ["None needs a verdict: the brief has no hypotheses, and none was promoted."]),
+      ...(pool.length
+        ? [
+            `The pool has ${pool.length}${pool.length > BRIEF_POOL ? `; the newest ${BRIEF_POOL}` : ""}:`,
+            ...pool.slice(-BRIEF_POOL).map((h) => line(h, 200)),
+          ]
+        : ["The pool is empty."]),
+      "Every hypothesis, with its status and question: INDEX.md and hypotheses/ in the research folder.",
+    ].join("\n");
   }
 
   updateSection(run: string, by: string | null, name: string, body: string) {
@@ -1048,10 +1289,15 @@ export class Research {
             `- ${fence(String(f.text)).replace(/\n+/g, " ")} (${(JSON.parse(String(f.problems)) as string[]).join("; ")})`,
         ),
       "",
+      // Those that need a verdict first: the author's, then promoted ones; then the pool and the
+      // rest, each with its status and question (goal 117).
       "## Hypotheses",
-      ...this.all("select text, supporting from hypothesis where run = ?", run).map(
+      ...this.all(
+        "select id, text, supporting, status, question, merged_into from hypothesis where run = ? order by case status when 'author' then 0 when 'promoted' then 1 when 'pool' then 2 else 3 end, created_at, rowid",
+        run,
+      ).map(
         (h) =>
-          `- ${h.text} (supported by ${(JSON.parse(String(h.supporting)) as string[]).length} verified claims)`,
+          `- ${fence(String(h.text)).replace(/\n+/g, " ")} (${String(h.id)}, ${hypothesisStatusWords(String(h.status), h.merged_into === null ? null : String(h.merged_into))}; ${h.question === null ? "the whole run" : questionLabel(Number(h.question))}; supported by ${(JSON.parse(String(h.supporting)) as string[]).length} verified claims)`,
       ),
       "",
       "## Open questions",

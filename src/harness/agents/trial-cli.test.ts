@@ -206,7 +206,7 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       calls.push({ method, path, body });
       return path.endsWith("/stats") ? { sources: 2 } : "fetched text";
     };
-    // The same ten tools as Pi's research worker, each with its use for the prompt.
+    // The same eleven tools as Pi's research worker, each with its use for the prompt.
     assert.deepEqual(
       RESEARCH_TOOLS.map((t) => t.name),
       [
@@ -217,6 +217,7 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
         "add_claim",
         "add_note",
         "propose_hypothesis",
+        "revise_hypothesis",
         "add_finding",
         "update_section",
         "progress",
@@ -237,7 +238,16 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       env,
       call,
     );
-    await trialCli(["research", "propose_hypothesis", "faster", "--supporting", "c-1"], env, call);
+    await trialCli(
+      ["research", "propose_hypothesis", "faster", "--question", "1", "--supporting", "c-1"],
+      env,
+      call,
+    );
+    await trialCli(
+      ["research", "revise_hypothesis", "h-1", "--text", "much faster", "--question", "0"],
+      env,
+      call,
+    );
     assert.equal(await trialCli(["research", "progress"], env, call), '{"sources":2}');
     assert.deepEqual(calls, [
       { method: "POST", path: "/v1/research/fetch", body: { url: "https://example.com/a" } },
@@ -257,7 +267,12 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       {
         method: "POST",
         path: "/v1/research/hypothesis",
-        body: { text: "faster", supporting: ["c-1"] },
+        body: { text: "faster", question: 1, supporting: ["c-1"] },
+      },
+      {
+        method: "POST",
+        path: "/v1/research/revise-hypothesis",
+        body: { id: "h-1", text: "much faster", question: 0 },
       },
       { method: "POST", path: "/v1/research/stats", body: {} },
     ]);

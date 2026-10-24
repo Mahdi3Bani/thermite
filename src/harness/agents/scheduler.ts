@@ -2119,6 +2119,8 @@ export class Scheduler {
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",
       "Record claims only with exact quotes from archived sources, and give the question each answers by its index, in `question`.",
+      // The hypotheses: which need a verdict, and the pool (goal 117).
+      `\n${research.hypothesesBrief(run)}`,
       // What the newest failed review found missing (goal 112), until a newer review is decided.
       ...[briefGaps(this.ledger, run)].filter((s) => s !== undefined).map((s) => `\n${s}`),
       ...this.notesAndPast(run, a.lane, "research").map((s) => `\n${s}`),

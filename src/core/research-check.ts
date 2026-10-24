@@ -44,3 +44,34 @@ export function labelledQuestion(text: string): number | undefined {
   const m = /\bquestion\s+\d+\s*\(\s*index\s+(\d+)\s*\)/i.exec(text);
   return m ? Number(m[1]) : undefined;
 }
+
+/**
+ * A research run's hypotheses (goal 117): the author's (the brief's), the workers' pool, those the
+ * owner or the plan promoted, those merged into another and those retired. Live ones may not be
+ * repeated; only the author's and promoted ones need a verdict from the review panel, and the
+ * pool's are listed in the report as proposed by the run.
+ */
+export const LIVE_HYPOTHESES = ["author", "pool", "promoted"] as const;
+export const REQUIRED_HYPOTHESES = ["author", "promoted"] as const;
+
+/** A hypothesis's status in words, for briefs, files and reports. */
+export function hypothesisStatusWords(status: string, mergedInto?: string | null): string {
+  switch (status) {
+    case "author":
+      return "the author's, which needs a verdict";
+    case "promoted":
+      return "promoted, which needs a verdict";
+    case "pool":
+      return "in the pool";
+    case "merged":
+      return `merged into ${mergedInto ?? "another"}`;
+    case "retired":
+      return "retired";
+    default:
+      return status;
+  }
+}
+
+/** Where the hypotheses go, in words, for a worker's brief and the research folder. */
+export const HYPOTHESES_RULE =
+  "Only the author's hypotheses and promoted ones need a verdict from the review panel. The others are the run's pool, which the report lists as proposed by the run and no review waits on. Propose a hypothesis only when it is new; to change one of the pool's words, question or supporting claims, revise it (revise_hypothesis) instead of proposing it again.";

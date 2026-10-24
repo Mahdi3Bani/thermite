@@ -96,7 +96,11 @@ describe("the research folder", () => {
     });
     assert.equal(draft.verified, false);
     research.addNote("r-1", "lane-1", "Look for a third site.", [a.source]);
-    research.proposeHypothesis("r-1", "lane-1", "Archiving early helps.", [good.claim]);
+    research.proposeHypothesis("r-1", "lane-1", {
+      text: "Archiving early helps.",
+      supporting: [good.claim],
+      question: 0,
+    });
 
     // Code checks findings: only verified claims, and only their numbers.
     const finding = research.addFinding("r-1", "lane-1", {

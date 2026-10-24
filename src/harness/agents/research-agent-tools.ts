@@ -51,8 +51,30 @@ const PARAMS: Record<string, TSchema> = {
     sources: Type.Optional(Type.Array(Type.String())),
   }),
   propose_hypothesis: Type.Object({
-    text: Type.String(),
-    supporting: Type.Optional(Type.Array(Type.String())),
+    text: Type.String({ description: "The hypothesis, new: not one the run has already" }),
+    question: Type.Optional(
+      Type.Number({
+        description:
+          "Index of the campaign question it is about (0-based). Left out: the whole run",
+      }),
+    ),
+    supporting: Type.Optional(
+      Type.Array(Type.String(), { description: "Verified claims of the run that support it" }),
+    ),
+  }),
+  revise_hypothesis: Type.Object({
+    id: Type.String({ description: "The pool hypothesis to change, h-…" }),
+    text: Type.Optional(Type.String({ description: "Its new words" })),
+    question: Type.Optional(
+      Type.Union([Type.Number(), Type.Null()], {
+        description: "Index of the question it is about (0-based); null: the whole run",
+      }),
+    ),
+    supporting: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "Verified claims of the run that support it: the list replaces the old one",
+      }),
+    ),
   }),
   add_finding: Type.Object({
     text: Type.String({ description: "The finding, in one sentence." }),
