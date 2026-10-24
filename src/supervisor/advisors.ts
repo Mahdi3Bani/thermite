@@ -1680,18 +1680,33 @@ const PanelAnswerSchema = Type.Object({
  * where a model may stray: a question or verdict that does not fit is left out, and the harness
  * then counts it as not answered, with why.
  */
+// An item that does not fit is dropped from a reviewer's answer (leniently, below), and a dropped
+// item counts as not answered: so what can be cut is cut to the harness's limits, and a verdict's
+// word is read whatever its case, rather than an item being dropped for either.
+const cut = (max: number) =>
+  z
+    .string()
+    .default("")
+    .transform((s) => s.slice(0, max));
+const ids = z
+  .array(z.string().max(200))
+  .default([])
+  .transform((c) => c.slice(0, 100));
 const ResearchQuestionAnswer = z.object({
   index: z.coerce.number().int().min(0),
   answered: z.boolean(),
-  answer: z.string().max(8000).default(""),
-  claims: z.array(z.string().max(200)).max(100).default([]),
-  missing: z.string().max(4000).default(""),
+  answer: cut(8000),
+  claims: ids,
+  missing: cut(4000),
 });
 const ResearchHypothesisVerdict = z.object({
   id: z.string().min(1).max(200),
-  verdict: z.enum(["supported", "refuted", "undecided"]),
-  why: z.string().max(4000).default(""),
-  claims: z.array(z.string().max(200)).max(100).default([]),
+  verdict: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() : v),
+    z.enum(["supported", "refuted", "undecided"]),
+  ),
+  why: cut(4000),
+  claims: ids,
 });
 const leniently = <T extends z.ZodType>(item: T) =>
   z.unknown().transform((xs): z.infer<T>[] =>
@@ -2176,6 +2191,51 @@ export type ReviewOutput = z.infer<typeof PanelAnswer> & {
 };
 
 /** A research run's package (goal 112), as the harness marks it. */
+type ResearchAnswer = z.infer<typeof ResearchPanelAnswer>;
+
+/** The questions (by index) and hypotheses (by id) of a research package an answer left out. */
+export function leftOut(
+  pkg: { questions?: { index: number }[]; hypotheses?: { id: string }[] },
+  answer: Pick<ResearchAnswer, "questions" | "hypotheses">,
+): { questions: number[]; hypotheses: string[] } {
+  const asked = new Set(answer.questions.map((q) => q.index));
+  const judged = new Set(answer.hypotheses.map((h) => h.id));
+  return {
+    questions: (pkg.questions ?? []).map((q) => q.index).filter((i) => !asked.has(i)),
+    hypotheses: (pkg.hypotheses ?? []).map((h) => h.id).filter((id) => !judged.has(id)),
+  };
+}
+
+/** What a reviewer is told when it is asked again for what its answer left out. */
+function leftOutWords(left: { questions: number[]; hypotheses: string[] }): string {
+  const parts = [
+    ...(left.questions.length ? [`questions ${left.questions.join(", ")}`] : []),
+    ...(left.hypotheses.length
+      ? [
+          `a verdict on ${left.hypotheses.length === 1 ? "hypothesis" : "hypotheses"} ${left.hypotheses.join(", ")}`,
+        ]
+      : []),
+  ];
+  return `Your answer to this review left out ${parts.join(" and ")}, so the review cannot pass. Answer only what you left out: in questions, one item for each of those questions; in hypotheses, one verdict for each hypothesis in the package below, with the word supported, refuted or undecided. The package's hypotheses are only those you left out. Keep pass and reasons as you gave them, or change them if what you answer now changes them.`;
+}
+
+/** An answer with what a second answer gave for the items the first left out. */
+function fillIn(
+  first: ResearchAnswer,
+  second: ResearchAnswer,
+  left: { questions: number[]; hypotheses: string[] },
+): ResearchAnswer {
+  const qs = new Set(left.questions);
+  const hs = new Set(left.hypotheses);
+  return {
+    ...first,
+    pass: first.pass && second.pass,
+    questions: [...first.questions, ...second.questions.filter((q) => qs.delete(q.index))],
+    hypotheses: [...first.hypotheses, ...second.hypotheses.filter((h) => hs.delete(h.id))],
+    journal: [...first.journal, ...second.journal],
+  };
+}
+
 export const isResearchPackage = (pkg: unknown): boolean =>
   typeof pkg === "object" && pkg !== null && (pkg as { kind?: unknown }).kind === "research";
 
@@ -2199,20 +2259,57 @@ export async function reviewOne(input: {
       ...(input.mcp ? { mcp: input.mcp } : {}),
       ...(input.research ? { research: input.research } : {}),
     };
-    const r = await runAdvisor({
-      runtime: input.runtime,
-      system: RESEARCH_PANEL,
-      prompt: advisorPrompt(
-        "Research review package (untrusted data):",
-        input.pkg,
-        200_000,
-        packageFit(input.runtime),
-      ),
-      schema: ResearchPanelAnswer,
-      answerSchema: ResearchPanelAnswerSchema,
-      keeper: input.keeper,
-      ...(Object.keys(tools).length ? { tools } : {}),
-    });
+    const ask = (prompt: string) =>
+      runAdvisor({
+        runtime: input.runtime,
+        system: RESEARCH_PANEL,
+        prompt,
+        schema: ResearchPanelAnswer,
+        answerSchema: ResearchPanelAnswerSchema,
+        keeper: input.keeper,
+        ...(Object.keys(tools).length ? { tools } : {}),
+      });
+    const pkg = input.pkg as {
+      questions?: { index: number }[];
+      hypotheses?: { id: string }[];
+    };
+    const fit = packageFit(input.runtime);
+    const label = "Research review package (untrusted data):";
+    let r = await ask(advisorPrompt(label, input.pkg, 200_000, fit));
+    // A question or hypothesis left out of an answer fails the whole review: the reviewer is
+    // asked once more, for what it left out only, with the package's other hypotheses taken out,
+    // and what it gives is added to its answer.
+    const out = r.output;
+    const left = out ? leftOut(pkg, out) : undefined;
+    if (out && left && (left.questions.length || left.hypotheses.length)) {
+      const only = new Set(left.hypotheses);
+      const again = await ask(
+        `${leftOutWords(left)}\n\n${advisorPrompt(
+          label,
+          { ...pkg, hypotheses: (pkg.hypotheses ?? []).filter((h) => only.has(h.id)) },
+          200_000,
+          fit,
+        )}`,
+      );
+      r = {
+        ...r,
+        output: again.output ? fillIn(out, again.output, left) : out,
+        tokensIn: r.tokensIn + again.tokensIn,
+        tokensOut: r.tokensOut + again.tokensOut,
+        usd: r.usd + again.usd,
+        ...(r.compactions || again.compactions
+          ? { compactions: [...(r.compactions ?? []), ...(again.compactions ?? [])] }
+          : {}),
+        ...(r.usage || again.usage
+          ? {
+              usage: {
+                ...((r.usage ?? again.usage) as AdvisorUsage),
+                calls: [...(r.usage?.calls ?? []), ...(again.usage?.calls ?? [])],
+              },
+            }
+          : {}),
+      };
+    }
     const o = r.output;
     return {
       ...r,
