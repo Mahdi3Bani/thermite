@@ -86,6 +86,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [062](goals/_completed/062-research-folder.goal) A research folder agents can search and write · `VERIFIED`
 - [076](goals/_completed/076-claim-sources-and-reasons.goal) A claim's source by its address, and a draft's reasons for the owner · `VERIFIED`
 - [112](goals/112-research-ends-when-answered.goal) A research run ends when the review panel finds its questions answered · `IN_PROGRESS`
+- [117](goals/117-research-that-answers.goal) Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach · `PROPOSED`
 
 ### Rigs on RunPod
 
