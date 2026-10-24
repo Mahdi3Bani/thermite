@@ -55,7 +55,27 @@ When the workers' or the planner's model changes, the rig runs its model check a
 - **Planner**: the planner's lines. Each round starts with a line that says whether the model planned it, such as "round 4: planned by the model", or the lanes took their experiments without it, such as "round 4: taken from the queue by the fixed rules (no model)". The words in brackets say why: "(no model)", "(the planner is off on this rig (Edit rig))" or "(the model gave no usable plan)". When the model's tries gave no usable plan, a line says why for each try, such as "no usable plan: try 1: it answered in text without a plan (…); try 2: the plan was refused (…)". A research run plans its rounds with a fixed method and no planner model, so it has no such filter.
 - **Advisors**: the advisors' lines. Each error is a line of its own with its text, and an "advisor round done" line counts what a round did, errors included.
 
-A run's **Planner** tab also shows the planner's model, in the card **The planner**: for example "my-model, its own model (from my-litellm)", or "my-model, the agents' model (Edit rig can give the planner its own)". Under **What the planner did**, it shows each hand-out: which experiment went to which lane, and why. See [Check the planner's model](../campaigns/choose-what-runs-next.md#check-the-planners-model).
+A run's **Planner** tab also shows the planner's model, in the card **The planner**: for example "my-model, its own model (from my-litellm)", or "my-model, the agents' model (Edit rig can give the planner its own)".
+
+## Change the model during a run
+
+A campaign has no model of its own: its run uses the models of the rig it runs on, and a rig works on one run at a time. So to switch a running campaign to another model mid-run, change the model on its rig. The run goes on: nothing pauses or restarts, and its queue, champion, research and journal stay.
+
+1. On the run's page, choose the rig's name after **on**, under the run's title, such as **on** `rig-1` **· hill climb · Running**.
+2. On the rig's page, press **Edit rig**, and in section **2 · The agents** choose the new **Model** for each agent you want to change, as in [Set the models](#set-the-models).
+3. Press **Save changes**.
+
+When each agent takes its new model:
+
+| Agent | Takes the new model |
+| --- | --- |
+| **Workers** | At each new trial, within a minute of the save. A trial already running ends on the model it started with. The rig checks the new model at once |
+| **Planner** | At its next round's plan |
+| **Teachers**, **Auditor**, **Review panel** | At their next round. A call already under way, such as a review, ends on the model it started with |
+
+To see that the run took it, open **Live** and choose the filter **Planner** or **Advisors**; the run's **Planner** tab names the planner's model; and the run's **Stats** tab lists its calls **By agent and model** ([Model use and cost](../../reference/model-use.md#the-stats-tab)). If the new model fails the rig's check, the run's agents stop with an **Agents stopped** card in **Needs you**, and the run keeps everything it has: give the rig another model, or see [The agents stopped](../operate/troubleshoot.md#the-agents-stopped-the-provider-refuses).
+
+The model you choose for **The agents' model** in the **Start a run** panel, or on the **New campaign** page, is given to the rig the same way, when the run starts. Over MCP or REST, `set_rig_model` makes the same change: see [Over MCP or REST](#over-mcp-or-rest). Under **What the planner did**, it shows each hand-out: which experiment went to which lane, and why. See [Check the planner's model](../campaigns/choose-what-runs-next.md#check-the-planners-model).
 
 ## Two teachers
 

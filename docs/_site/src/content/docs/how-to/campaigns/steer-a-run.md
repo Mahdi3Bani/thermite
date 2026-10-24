@@ -1,6 +1,6 @@
 ---
 title: "Steer a run"
-description: "Pause, resume or close a run, restart its lanes, and send its agents messages."
+description: "Pause, resume or close a run, restart its lanes, change its agents' model, and send its agents messages."
 type: how-to
 sidebar:
   order: 8
@@ -58,6 +58,10 @@ What happens on the rig:
 - Nothing in it waits for you any more. A decision that waited in it, such as a change waiting for approval, an audit, a review or a "not possible" proposal, leaves **Needs you** and every count of it once the rig has reported the close. A win the judge confirms after the close, from a job it was already measuring, is held the same way. Such a change shows **Run closed** in the run's attempts, and its own page says `The run closed while this change waited for a decision. It does not become the champion, and the rig refuses a decision on it.`, with no buttons. The run's **Overview** adds how many there were, such as `When it closed, 1 change waited for a decision.`
 - The rig refuses a decision on it in words, such as one sent from a page opened before the close: `run sort-speed-1 is closed: none of its changes can become the champion`. [Signed commands](../../reference/signed-commands.md#close_run) lists each refusal. The rig's auditor gets none of its audits.
 - **Resume** and **Pause** no longer work on it: the rig refuses them with `run sort-speed-1 is closed`. Closing it again is refused too: `run sort-speed-1 is already closed (another run finished the work): there is nothing to close`.
+
+## Change the agents' model
+
+A run uses the models of its rig, so you switch a running campaign to another model on the rig's **Edit rig** page. The run goes on, with nothing paused or lost: the workers use the new model from their next trial, the planner from its next round, and the advisors from their next round. See [Change the model during a run](../models/model-per-agent.md#change-the-model-during-a-run).
 
 ## Send the agents a message
 
