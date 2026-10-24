@@ -22,6 +22,12 @@ A list of small faults in the dashboard's screens, found while the owner uses Th
 - **What to do.** The table shows the rigs that matter to this campaign: the rigs its runs are at work on, then the rigs its earlier runs used. The other rigs that could run it are folded under one line, such as "3 other rigs can run it", which opens to show them. A campaign with no run yet says where a run can start, in one line, with the rigs folded the same way.
 - **Pages:** [Start a campaign from the dashboard](../../_site/src/content/docs/how-to/campaigns/start-from-dashboard.md#set-the-agents-context) (step 3 of "Set the agents' context"), and the ⓘ of **What applies on each rig** (`src/control/ui/campaign-context.ts`).
 
+### 2. Export shows its status and progress once it is clicked
+
+- **What is wrong.** **Export** on a rig's or a run's page sends the rig an export command, and the button says that the command was sent. A full export takes minutes: the rig writes it, then sends it to control, and only then does it show on the **Exports** page. Until then, nothing on the page says where it is. The owner, 2026-10-24: "a feature enhancement to show export status/progress once clicked".
+- **What to do.** Once clicked, the page follows the export to its end, as a rig check's button does (goal 080): sent, written by the rig with its size, sent to control, then a link to download it on the **Exports** page, or the error in words. MCP's and REST's answers for the export give the same states.
+- **Pages:** [Get a rig's results from control](../../_site/src/content/docs/how-to/operate/exports-on-control.md), and the export reference (`reference/exports.md`).
+
 ## Why
 
 The owner reports these from use, 2026-10-24: "ux fixes to add".
@@ -46,6 +52,7 @@ The owner reports these from use, 2026-10-24: "ux fixes to add".
 ## Progress
 
 - 2026-10-24: Goal written, with item 1 from the owner's report.
+- 2026-10-24: Item 2, export status and progress, from the owner's report.
 
 ---
 

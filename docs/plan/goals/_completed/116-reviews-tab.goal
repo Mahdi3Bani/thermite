@@ -1,7 +1,7 @@
 ---
 id: "116"
 title: "A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 depends_on: ["112"]
 created: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 116 · A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Depends on:** [112](../112-research-ends-when-answered.goal)
 
 ## What
 
@@ -35,7 +35,7 @@ On 2026-10-23 a research run's review panel did not pass two reviews and could n
 
 ## Done when
 
-- [ ] A mockup of the two tabs, approved by the owner.
+- [x] A mockup of the two tabs, approved by the owner.
 - [x] The tabs, with tests that each item above shows for a review that passed, one that did not, one with failed tries, and one the owner decided; and that nothing secret shows.
 - [x] A failed try's error reaches the harness and is kept with its review (today it is only in the supervisor's log and the run's Live view), so the tab and MCP can show it.
 - [x] MCP's `get_run` gives the same details for each review, with its times.
@@ -57,6 +57,7 @@ On 2026-10-23 a research run's review panel did not pass two reviews and could n
 - Still to do, outside the dashboard: (1) a failed try's error kept with its review. Today it reaches only the run's **Live** view (the supervisor's unsigned `review N: …` lines, kept while Live keeps the rig's newest 20,000 lines), which the tab shows, but `get_run` cannot. The supervisor would post each failed try to the harness (for example `POST /v1/reviews/<id>/tries` with `{at, error, reviewers_answered}`), and the harness would keep it with the review and send an event such as `review_try_failed` `{review, try, at, error}`, or `review_panel`'s `tries` with `failures: [{at, error}]`; control would then show and give it with no change to its layout. (2) Each reviewer's pass or fail with its reasons as a whole, which only the ledger's review row keeps: `review_items` gives each reviewer's answer per item, and an older review gives only how many reviewers found each question answered. (3) Goal 117's part B2 sends `review_items`, `item_decided` and `review_panel`'s `decided` and `open`; control reads them in the shapes the build design gives.
 - 2026-10-24 09:35 UTC: (1) is built. The supervisor posts each try it could not post to `POST /v1/reviews/<id>/tries` (`{try, error}`, the supervisor's token only); the harness checks the review exists and sends `review_try_failed` `{review, try, error}`. Control keeps the newest 20 with the review (`failed_tries`, each with `at`, `try` and `error`): the Reviews tab lists them under **Tries**, `get_run` gives them, and History says each one. An older rig's review still falls back to its lines in **Live**. (3) is done (B2 merged). (2) stays: a reviewer's pass or fail as a whole is in the ledger only. Tests: `src/harness/review-tries.test.ts`, `src/control/research-view.test.ts`, `src/control/research-run-ui.test.ts`.
 
+- 2026-10-24: The owner approved the two tabs as built, on the lab's short known-answers research test: "hypothesis and review pages look good". Every item of Done when is met.
 ---
 
-Run with `/goal Complete docs/plan/goals/116-reviews-tab.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/_completed/116-reviews-tab.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

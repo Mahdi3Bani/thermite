@@ -112,9 +112,9 @@ Research workers build on what earlier trials learned, and a research campaign g
 | [062 · A research folder agents can search and write](goals/_completed/062-research-folder.goal) | `VERIFIED` | — |
 | [076 · A claim's source by its address, and a draft's reasons for the owner](goals/_completed/076-claim-sources-and-reasons.goal) | `VERIFIED` | [062](goals/_completed/062-research-folder.goal), [065](goals/_completed/065-journals-and-corpus.goal) |
 | [112 · A research run ends when the review panel finds its questions answered](goals/112-research-ends-when-answered.goal) | `IN_PROGRESS` | [062](goals/_completed/062-research-folder.goal), [065](goals/_completed/065-journals-and-corpus.goal), [079](goals/_completed/079-thermite-overhead.goal), [098](goals/_completed/098-research-teachers-read-the-research.goal) |
-| [117 · Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach](goals/117-research-that-answers.goal) | `IN_PROGRESS` | [112](goals/112-research-ends-when-answered.goal), [047](goals/047-research-planner.goal), [116](goals/116-reviews-tab.goal) |
+| [117 · Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach](goals/117-research-that-answers.goal) | `IN_PROGRESS` | [112](goals/112-research-ends-when-answered.goal), [047](goals/047-research-planner.goal), [116](goals/_completed/116-reviews-tab.goal) |
 | [047 · A model planner for research mode](goals/047-research-planner.goal) | `IN_PROGRESS` | [046](goals/_completed/046-web-search.goal) |
-| [116 · A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome](goals/116-reviews-tab.goal) | `IN_PROGRESS` | [112](goals/112-research-ends-when-answered.goal) |
+| [116 · A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome](goals/_completed/116-reviews-tab.goal) | `VERIFIED` | [112](goals/112-research-ends-when-answered.goal) |
 | [119 · A research run's next experiments, tagged by the run that takes them: improvements for a hill climb, goals for a goal campaign](goals/_completed/119-next-experiments-by-run-kind.goal) | `VERIFIED` | [117](goals/117-research-that-answers.goal) |
 
 ### Rigs on RunPod
