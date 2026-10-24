@@ -114,7 +114,9 @@ describe("a run's teachers read what the run found (goal 098)", () => {
       seen.system,
       /When you have the tools, read what the run found before you propose/,
     );
-    assert.match(seen.system, /the run's\\nsource, claim or finding ids/);
+    // A research run's teachers get the research prompt (goal 117): tasks cite what they rest on.
+    assert.match(seen.system, /You review an automated research run that reads sources/);
+    assert.match(seen.system, /the run's source, claim, finding or card ids/);
     // The brief's summary, ahead of the long parts.
     const brief = JSON.parse(seen.prompt.slice(seen.prompt.indexOf("\n") + 1)) as Record<
       string,

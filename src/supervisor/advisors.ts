@@ -1983,9 +1983,9 @@ gap in that question's evidence that it closes, best one of its card's open evid
 card's words; source_kind, the kind of source to read (for example the vendor's specification,
 peer-reviewed papers, the project's code and issue tracker, a standard); title; details, where to
 start and what to look for; why, why a lane should take it now and why it is new since the
-teachers' last round; citations, what it rests on (the run's source, claim or card ids or files,
-URLs or paper ids), when it rests on something; and kind, its kind of task (explore, primary,
-contradict or consolidate), when one fits. Propose for the questions still open: none for a
+teachers' last round; citations, what it rests on (the run's source, claim, finding or card ids
+or files, URLs or paper ids), when it rests on something; and kind, its kind of task (explore,
+primary, contradict or consolidate), when one fits. Propose for the questions still open: none for a
 question the review panel decided or one that is saturated, unless every open question is. Give
 more to questions with more open evidence gaps and lower certainty. Leave out a task that repeats
 one queued, proposed, in progress or tried. Never propose a measurement, a benchmark or a test on
