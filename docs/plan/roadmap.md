@@ -55,6 +55,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [016](goals/_completed/016-small-fixes.goal) Small fixes before the release · `VERIFIED`
 - [017](goals/_completed/017-legacy-names.goal) Remove the legacy model names · `VERIFIED`
 - [118](goals/_completed/118-cluster-rig-resources.goal) Change a cluster rig's GPUs, CPUs and memory from control · `VERIFIED`
+- [132](goals/132-cuda-images-per-gpu.goal) Rig images for each GPU generation: CUDA 12 for Pascal and Volta, CUDA 13 on amd64 and arm64 for Blackwell and DGX Spark · `PROPOSED`
 
 ### Running campaigns
 
@@ -90,7 +91,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [112](goals/112-research-ends-when-answered.goal) A research run ends when the review panel finds its questions answered · `IN_PROGRESS`
 - [117](goals/117-research-that-answers.goal) Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach · `IN_PROGRESS`
 - [047](goals/047-research-planner.goal) A model planner for research mode · `IN_PROGRESS`
-- [116](goals/116-reviews-tab.goal) A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome · `IN_PROGRESS`
+- [116](goals/_completed/116-reviews-tab.goal) A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome · `VERIFIED`
 - [119](goals/_completed/119-next-experiments-by-run-kind.goal) A research run's next experiments, tagged by the run that takes them: improvements for a hill climb, goals for a goal campaign · `VERIFIED`
 
 ### Rigs on RunPod
