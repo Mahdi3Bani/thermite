@@ -13,7 +13,16 @@ import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { queueTarget } from "../../core/queue-target.ts";
-import { labelledQuestion, NO_WRITER, questionLabel } from "../../core/research-check.ts";
+import {
+  ANSWERED,
+  labelledQuestion,
+  NO_WRITER,
+  PROGRESS_STOPPED,
+  questionLabel,
+  questionName,
+  RESEARCH_PROGRESS,
+  RESEARCH_STOPPED,
+} from "../../core/research-check.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -31,13 +40,16 @@ import { messageText, type OwnerMessage } from "../messages.ts";
 import { type Experiment, inFamily, type TaskYield } from "../queue.ts";
 import { briefCards } from "../research/cards.ts";
 import { writeAtomic } from "../research/folder.ts";
+import { lastImprovement, progressStopped, questionSaturated } from "../research/progress.ts";
 import type { Research } from "../research/research.ts";
 import {
-  ANSWERED,
-  acceptedReview,
   briefGaps,
+  itemsState,
+  type ResearchEnd,
+  researchEnd,
   researchPackage,
   researchReviewDue,
+  waitingReview,
 } from "../research/review.ts";
 import { Reviews } from "../reviews.ts";
 import type { HarnessService } from "../service.ts";
@@ -384,21 +396,22 @@ export class Scheduler {
   }
 
   /**
-   * A running research run whose review the review panel passed, and that was accepted (goal
-   * 112): no new trial starts in it (researchTick). It waits for its research paper: the harness
-   * asks the supervisor's final writer for it once, and the run ends when code accepted the paper
-   * and its running trials have ended (closeAnswered). A rig whose supervisor says it has no final
-   * writer ends the run without one, once its trials have ended; until the supervisor says, the
-   * run waits. Checked on every step, with or without a model.
+   * A running research run that ended (goals 112 and 117): its review's pass was accepted, or the
+   * progress rule stopped it. No new trial starts in it (researchTick). It waits for its research
+   * paper: the harness asks the supervisor's final writer for it once, and the run ends when code
+   * accepted the paper and its running trials have ended (closeEnded). A rig whose supervisor says
+   * it has no final writer ends the run without one, once its trials have ended; until the
+   * supervisor says, the run waits. Checked on every step, with or without a model.
    */
-  private finishAnsweredResearch(): void {
+  private finishEndedResearch(): void {
     if (!this.o.research) return;
     const running = this.ledger.db
       .prepare("select id from run where mode = 'research' and status = 'running'")
       .all() as { id: string }[];
     const papers = this.o.service.papers;
     for (const { id } of running) {
-      if (!acceptedReview(this.ledger, id)) continue;
+      const end = researchEnd(this.ledger, id);
+      if (!end) continue;
       let noPaper: string | undefined;
       if (!papers.accepted(id)) {
         const advisors = this.o.service.advisors;
@@ -426,10 +439,10 @@ export class Scheduler {
       // Its running trials end first; a close that failed is not tried again by this process.
       if ([...this.laneRun.values()].includes(id) || this.finalFailed.has(id)) continue;
       try {
-        this.closeAnswered(id, noPaper);
+        this.closeEnded(id, end, noPaper);
       } catch (err) {
         this.finalFailed.add(id);
-        log("scheduler", "an answered research run could not close", {
+        log("scheduler", "an ended research run could not close", {
           run: id,
           error: String(err),
         });
@@ -438,21 +451,22 @@ export class Scheduler {
   }
 
   /**
-   * The end of a research run whose questions are answered (goal 112): its final report, which
-   * starts with its research paper, then holds the review panel's answers and verdicts, and the
-   * close, with the reason `every question is answered`. The one place a run ends this way, once
-   * its paper is in (or its rig has no final writer, `noPaper`) and its running trials have ended.
+   * The end of a research run that ended (goals 112 and 117): its final report, which starts
+   * with its research paper, then holds the review panel's decisions, and the close, with the
+   * end's reason: `every question is answered`, or the progress rule's. The one place a run ends
+   * this way, once its paper is in (or its rig has no final writer, `noPaper`) and its running
+   * trials have ended.
    */
-  private closeAnswered(run: string, noPaper?: string | undefined): void {
+  private closeEnded(run: string, end: ResearchEnd, noPaper?: string | undefined): void {
     (this.o.research as Research).report(run, "final", { noPaper });
     if (noPaper)
       this.o.service.live.append({
         source: "planner",
         kind: "status",
-        text: `every question is answered; the run ends with no research paper: ${noPaper}`,
+        text: `${end.reason === ANSWERED ? "every question is answered" : "research stopped adding"}; the run ends with no research paper: ${noPaper}`,
         run,
       });
-    this.ledger.setRunStatus(run, "closed", ANSWERED, this.o.owner);
+    this.ledger.setRunStatus(run, "closed", end.reason, this.o.owner);
   }
 
   /** Checks every second while trials or a planner call are in flight (the tick may be waiting). */
@@ -1671,7 +1685,7 @@ export class Scheduler {
     // Stopping or draining: no new plan or trial; those running end as they would.
     if (this.halted()) return false;
     this.finishClosedResearch();
-    this.finishAnsweredResearch();
+    this.finishEndedResearch();
     const inst = this.run();
     if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
@@ -1779,8 +1793,9 @@ export class Scheduler {
 
   /**
    * Research: the harness owns the clock. Lanes run trial after trial (no judge to wait for)
-   * until the review panel finds every question answered (goal 112) or max_duration; a digest
-   * every report_cadence.digest_minutes and a final report come from the ledger.
+   * until the run ends (goals 112 and 117: the review panel's decisions give every item an end,
+   * or the progress rule stops it) or max_duration; a digest every report_cadence.digest_minutes
+   * and a final report come from the ledger.
    */
   private async researchTick(run: string, contract: ResearchContract): Promise<boolean> {
     const research = this.o.research as Research;
@@ -1791,18 +1806,26 @@ export class Scheduler {
       this.ledger.setRunStatus(run, "closed", "the research window is over", this.o.owner);
       return false;
     }
-    // Every question is answered: no new trial starts; the run ends once those running end
-    // (finishAnsweredResearch).
-    if (acceptedReview(this.ledger, run)) return false;
+    // The run ended: no new trial starts; it closes once those running end (finishEndedResearch).
+    if (researchEnd(this.ledger, run)) return false;
     const last = research.lastReportAt(run);
     if (!last || Date.now() - Date.parse(last) >= contract.report_cadence.digest_minutes * 60_000) {
-      // At a digest, after the minimum: the review panel is asked whether every question is
-      // answered, when code finds the evidence ready and new (research/review.ts). A failure to
-      // ask is logged; the digest and the research go on, and the next digest asks again.
+      // At a digest, after the minimum: the review panel is asked about the items with no
+      // standing decision, when code finds them ready (research/review.ts); then the progress
+      // rule is checked. A failure of either is logged; the digest and the research go on, and
+      // the next digest tries again.
       try {
         this.askResearchReview(run, contract, clock);
       } catch (err) {
         log("scheduler", "the review panel was not asked", { run, error: String(err) });
+      }
+      try {
+        if (this.checkProgress(run, contract)) {
+          research.report(run, "digest");
+          return false;
+        }
+      } catch (err) {
+        log("scheduler", "the progress rule was not checked", { run, error: String(err) });
       }
       research.report(run, "digest");
     }
@@ -1842,9 +1865,79 @@ export class Scheduler {
   }
 
   /**
-   * Asks the review panel whether a research run's questions are answered (goal 112), when code
-   * finds it due: after the minimum running time, every question with a verified claim, the
-   * campaign's floor of verified claims met, no review waiting, and evidence no review saw.
+   * The progress rule (goal 117), at a digest after the minimum: where it stands is the event
+   * `research_progress`; when it holds (every open question saturated, no improvement for a
+   * quarter of the running time), no review waits, and some item is still open, the run ends with
+   * its open items stated (`research_stopped`): no new trial starts, the final writer writes its
+   * paper, and it closes with PROGRESS_STOPPED. True when it ended the run. No time cap: the rule
+   * holds only once research stopped adding.
+   */
+  private checkProgress(run: string, contract: ResearchContract): boolean {
+    const research = this.o.research as Research;
+    const clock = research.clock(run);
+    if (clock.elapsed_ms < clock.min_ms) return false;
+    const n = contract.questions.length;
+    const p = progressStopped(this.ledger, run, n, (at) => research.clock(run, at));
+    const saturated = p.open.filter((q) => questionSaturated(this.ledger, run, q));
+    const last = lastImprovement(this.ledger, run);
+    const { open } = itemsState(this.ledger, run, n);
+    // A review that waits may still improve an item; a run with every item at an end waits for
+    // the review panel's pass, or the owner's word on it, never for this rule.
+    const waiting = waitingReview(this.ledger, run);
+    const ends = p.stopped && !waiting && (open.questions.length > 0 || open.hypotheses.length > 0);
+    const figures = {
+      open: p.open,
+      saturated,
+      last_improvement: last,
+      since_ms: p.since_ms,
+      needed_ms: p.needed_ms,
+    };
+    this.ledger.appendEvent(this.o.owner, RESEARCH_PROGRESS, run, { ...figures, stopped: ends });
+    if (!ends) return false;
+    const h = (ms: number) => `${(ms / 3_600_000).toFixed(1)} h`;
+    const why = `every open question is saturated, and no item improved for ${h(p.since_ms)} (the rule needs ${h(p.needed_ms)}, a quarter of the running time)`;
+    this.ledger.appendEvent(this.o.owner, RESEARCH_STOPPED, run, {
+      reason: PROGRESS_STOPPED,
+      ...figures,
+      open: { questions: open.questions, hypotheses: open.hypotheses },
+    });
+    const items = [
+      ...open.questions.map(questionName),
+      ...(open.hypotheses.length
+        ? [
+            `${open.hypotheses.length} required ${open.hypotheses.length === 1 ? "hypothesis" : "hypotheses"} with no verdict`,
+          ]
+        : []),
+    ];
+    this.o.service.journal.writeAll(
+      run,
+      [
+        {
+          kind: "decision",
+          text: `Research stopped adding: ${why}. The run ends with these items open: ${items.join(", ")}. It writes its paper and final report, and closes once its running trials end.`.slice(
+            0,
+            2000,
+          ),
+        },
+      ],
+      { by: "harness", actor: this.o.owner, source: "planner" },
+    );
+    this.o.service.live.append({
+      source: "planner",
+      kind: "status",
+      text: `research stopped adding (the progress rule): ${why}; open: ${items.join(", ")}`.slice(
+        0,
+        600,
+      ),
+      run,
+    });
+    return true;
+  }
+
+  /**
+   * Asks the review panel about a research run's items (goals 112 and 117), when code finds it
+   * due: after the minimum running time, every question with an answer card, the campaign's floor
+   * of verified claims met, no review waiting, and some item with no standing decision.
    */
   private askResearchReview(
     run: string,
@@ -1862,7 +1955,14 @@ export class Scheduler {
     this.o.service.live.append({
       source: "planner",
       kind: "status",
-      text: `review ${id}: the review panel is asked whether every question is answered`,
+      text: `review ${id}: the review panel is asked to decide ${[
+        due.questions.length ? questionsList(due.questions) : "",
+        due.hypotheses.length
+          ? `${due.hypotheses.length} required ${due.hypotheses.length === 1 ? "hypothesis" : "hypotheses"}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" and ")}`,
       run,
     });
   }
@@ -2695,6 +2795,11 @@ function isSetupRound(e: EpochRecord): boolean {
     e.assignments.length > 0 &&
     e.assignments.every((a) => a.family === SETUP_FAMILY && a.why === "setup")
   );
+}
+
+/** Question indexes in words for people: "question 2", "questions 2, 5". */
+function questionsList(xs: number[]): string {
+  return `${xs.length === 1 ? "question" : "questions"} ${xs.map((i) => i + 1).join(", ")}`;
 }
 
 function objectiveOf(c: Contract): string {

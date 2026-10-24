@@ -27,7 +27,7 @@ flowchart LR
   R((Running)) -- you pause it, a budget you set is spent,<br/>or another run starts on the rig --> P((Paused))
   P -- you resume it --> R
   R -- goal campaign: every required goal met,<br/>or the evidence shows it is not possible --> C((Closed))
-  R -- research campaign: the review panel found every question answered,<br/>or its maximum duration is over --> C
+  R -- research campaign: every question has an end, research stopped adding,<br/>or its maximum duration is over --> C
   R -- you close it --> C
   P -- you close it --> C
 ```
@@ -66,7 +66,7 @@ No agent can end a campaign. What ends one is written in code, the same for ever
 | --- | --- | --- |
 | **Hill climb** | Never on its own | It runs until you pause it, a budget you set pauses it, or another run starts on its rig |
 | **Goal** | Every required goal is met (or, if the contract says so, enough of them), confirmed by two independent checks of the champion. Or a "not possible" proposal is taken: at once, or when you accept it if the run asks you | It has no time limit of its own |
-| **Research** | After its minimum duration, the review panel finds every question answered and every hypothesis that needs a verdict (the author's and promoted ones) decided, from the run's verified claims, and code checks each answer. The pass is taken at once, or when you accept it if the run asks you about reviews. Then the run's final writer writes its research paper, which code checks, and the run ends with the paper leading its final report; a rig with no final writer ends it with the review panel's answers. Or its running time reaches the contract's maximum duration. Only time the agents could work counts | Without a pass, it runs to its maximum; without a maximum either, until you close it. The minimum is a floor, never a stop. A paper the checks refuse is written again, with no limit on tries |
+| **Research** | After its minimum duration, the review panel's decisions give every question an end (answered, or the best that sources allow) and every hypothesis that needs a verdict (the author's and promoted ones) a verdict, each item decided by the majority of the reviewers' answers that pass code's check. The pass is taken at once, or when you accept it if the run asks you about reviews. Or its open questions all stop adding and nothing improves for a quarter of its running time: the progress rule. Either way the run's final writer writes its research paper, which code checks, and the run ends with the paper leading its final report; a rig with no final writer ends it with the review panel's decisions. Or its running time reaches the contract's maximum duration. Only time the agents could work counts | Without such an end, it runs to its maximum; without a maximum either, until you close it. The minimum is a floor, never a stop. A paper the checks refuse is written again, with no limit on tries |
 
 You can also end a run of any mode yourself, for good, with **Close run** on its page: for example a paused run whose work another run finished ([Steer a run](../how-to/campaigns/steer-a-run.md#close-a-run)). That is your decision, never code's or an agent's.
 

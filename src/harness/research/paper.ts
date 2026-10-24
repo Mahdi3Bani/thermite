@@ -5,19 +5,24 @@ import { PAPER_ACCEPTED, PAPER_REFUSED, PAPER_REQUESTED } from "../../core/resea
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { newExperimentId } from "../queue.ts";
 import { checkCited, numbersIn, withoutReferences } from "./checks.ts";
+import { standingDecisions } from "./progress.ts";
 import {
-  acceptedReview,
+  ANSWERED,
   type CheckedReviewer,
   checkedPanel,
-  type ResearchPackage,
+  type Dissent,
+  type ResearchEnd,
+  requiredHypotheses,
+  researchEnd,
   researchPackage,
 } from "./review.ts";
 
 /**
- * A research run's final paper (goal 112). Once the review panel's pass of a research run is
- * accepted, the run does not close at once: the harness asks the supervisor's final writer for
- * the run's research paper, one whole paper in Simplified Technical English. The writer works
- * from the run's research (read only) and the review panel's checked answers and verdicts.
+ * A research run's final paper (goal 112). Once a research run ends (goal 117: the review panel's
+ * pass is accepted, or the progress rule stops it), the run does not close at once: the harness
+ * asks the supervisor's final writer for the run's research paper, one whole paper in Simplified
+ * Technical English. The writer works from the run's research (read only) and the review panel's
+ * standing decisions, with the questions that stayed open.
  *
  * Code checks the paper before it is accepted, here, in code the writer cannot change: every
  * cited claim is a verified claim of the run, every number in a paragraph is in the claims that
@@ -53,8 +58,8 @@ export const PAPER_RULES = [
   `Then these parts, each a level-2 heading with these words, in this order: ${PAPER_PARTS.map((p) => `## ${p}`).join(", ")}. Put other headings at level 3 (###) under one of them. Do not write a References part: code appends it from the claims the paper cites.`,
   "Cite a claim as [c-ID] in each sentence that states a fact, such as [c-0a1b2c3d4e5f]; several as [c-…, c-…]. Each cited id must be a verified claim of the run.",
   "Every number in a paragraph, a list item or a table row must be in the claims it cites (their text or quotes), or be one of the figures in the package. Numbers in headings, record ids and question numbers (question 2) are not checked.",
-  "Results: one ### Question N section for each question, N from 1, with the answer and its evidence. Each cites at least one claim.",
-  "Hypotheses: one ### section for each hypothesis, with its id in the heading (### Hypothesis h-…), and a line Verdict: supported, Verdict: refuted or Verdict: undecided. The verdict is one the review panel gave; when it gave none that passed the check, undecided.",
+  "Results: one ### Question N section for each question, N from 1, with the answer and its evidence, or, for a question that stayed open, what is missing. Each cites at least one claim, unless its question has no verified claim.",
+  "Hypotheses: one ### section for each hypothesis, with its id in the heading (### Hypothesis h-…), and a line Verdict: supported, Verdict: refuted or Verdict: undecided. The verdict is the review panel's decision; when it has none, undecided.",
   "Method: how the sources were found, archived and checked, with the figures. Limits of the evidence: claims from a single domain, open gaps, and draft findings that stay unverified. Next experiments: what to try next, and why.",
 ];
 
@@ -136,26 +141,40 @@ export interface PaperFigures {
   reviewers: number;
 }
 
-/** The final writer's package: the review panel's checked work and the run's brief and figures. */
+/** The final writer's package: the review panel's decisions and the run's brief and figures. */
 export interface PaperPackage {
   kind: "paper";
   run: string;
+  /** The accepted review, or for a run the progress rule stopped, its newest decided review (0: none). */
   review: number;
   requested_at: string;
   title: string;
   topic: string;
+  /**
+   * How the run ended (goal 117): `every question is answered`, or the progress rule's reason;
+   * `open` the questions (numbered from 1) that stayed open, and the required hypotheses with no
+   * verdict.
+   */
+  end: { reason: string; open: number[]; open_hypotheses: string[] };
   questions: {
     number: number;
     text: string;
-    /** How many reviewers found it answered, and each answer that passed the check. */
+    /** The standing decision: answered, insufficient or open; null: none on its newest card. */
+    decision: string | null;
+    certainty: string | null;
+    /** It has no end: its paper section says what is missing. */
+    stayed_open: boolean;
+    /** How many reviewers gave the decision with an answer that passed the check, and those answers. */
     answered_by: number;
-    answers: { answer: string; claims: string[] }[];
+    answers: { answer: string; claims: string[]; gaps: string; next_experiments: string }[];
+    dissent: Dissent[];
   }[];
   hypotheses: {
     id: string;
     text: string;
-    /** Each verdict that passed the check, with how many reviewers gave it. */
+    /** The standing verdict, with how many reviewers gave it (empty: no verdict yet). */
     verdicts: { verdict: string; reviewers: number; why: string; claims: string[] }[];
+    dissent: Dissent[];
   }[];
   reviewers: number;
   figures: PaperFigures;
@@ -205,12 +224,14 @@ function forNumbers(text: string): string {
 /** A number as it may be written: 1200 and 1,200. */
 const spellings = (n: number) => [String(n), n.toLocaleString("en-US")];
 
-/** What a paper is checked against: the accepted review's questions, hypotheses and verdicts. */
+/** What a paper is checked against: the run's questions, required hypotheses and standing verdicts. */
 export interface PaperBasis {
   review: number;
   questions: string[];
+  /** Questions (indexes) with no verified claim: their results section need not cite one. */
+  bare?: number[] | undefined;
   hypotheses: { id: string; text: string }[];
-  /** Each hypothesis's verdicts that passed the check (by any reviewer). */
+  /** Each hypothesis's standing verdict (goal 117). */
   verdicts: Map<string, Set<string>>;
   figures: PaperFigures;
 }
@@ -351,7 +372,7 @@ export function checkPaper(
       say(partLine("Results"), `Results has no "### Question ${n}" section (${clip(text, 120)})`);
       return;
     }
-    if (!s.body.some((l) => citationsIn(l.text).length))
+    if (!basis.bare?.includes(i) && !s.body.some((l) => citationsIn(l.text).length))
       say(
         s.line,
         `"### Question ${n}" cites no claim: its answer needs the claims it rests on, as [c-…]`,
@@ -390,7 +411,7 @@ export function checkPaper(
         v.l.n,
         gave.size
           ? `the verdict "${said}" on hypothesis ${h.id} is not one the review panel gave: it gave ${[...gave].join(" or ")}`
-          : `the review panel gave hypothesis ${h.id} no verdict that passed the check: write "Verdict: undecided"`,
+          : `the review panel has no verdict on hypothesis ${h.id}: write "Verdict: undecided"`,
       );
   }
 
@@ -515,7 +536,7 @@ function figuresNow(
   ledger: Ledger,
   run: string,
   contract: ResearchContract,
-  review: Row,
+  review: Row | undefined,
 ): PaperFigures {
   const n = (sql: string) =>
     Number((ledger.db.prepare(sql).get(run) as { n: number } | undefined)?.n ?? 0);
@@ -531,10 +552,23 @@ function figuresNow(
     questions: contract.questions.length,
     hypotheses: n("select count(*) as n from hypothesis where run = ?"),
     min_independent_domains: corpus.min_independent_domains,
-    review: Number(review.id),
-    reviewers: checkedPanel(review).length,
+    review: review ? Number(review.id) : 0,
+    reviewers: review ? checkedPanel(review).length : 0,
   };
 }
+
+/** The event body of a paper's request, as the harness keeps it. */
+interface PaperRequest {
+  review: number;
+  figures: PaperFigures;
+  /** How the run ended; a request from before goal 117 has none: answered. */
+  end?: string;
+}
+
+/** Whether a request is for the run's end: the same end, and for an answered run the same review. */
+const forEnd = (b: PaperRequest, end: ResearchEnd) =>
+  (b.end ?? ANSWERED) === end.reason &&
+  (end.reason !== ANSWERED || Number(b.review) === Number(end.review?.id));
 
 /**
  * A run's research papers: asked for once its review's pass is accepted, listed for the final
@@ -560,27 +594,32 @@ export class Papers {
     return this.ledger.latestEventBody(PAPER_ACCEPTED, run);
   }
 
-  /** The request for the paper of the run's accepted review, when the harness made it. */
+  /** The request for the paper of the run's end, when the harness made it. */
   requested(run: string): { review: number; figures: PaperFigures; at: string } | undefined {
-    const review = acceptedReview(this.ledger, run);
-    if (!review) return undefined;
+    const end = researchEnd(this.ledger, run);
+    if (!end) return undefined;
     const row = this.ledger.db
       .prepare("select at, body from event where kind = ? and subject = ? order by id desc limit 1")
       .get(PAPER_REQUESTED, run) as { at: string; body: string } | undefined;
     if (!row) return undefined;
-    const b = JSON.parse(row.body) as { review: number; figures: PaperFigures };
-    return Number(b.review) === Number(review.id) ? { ...b, at: row.at } : undefined;
+    const b = JSON.parse(row.body) as PaperRequest;
+    return forEnd(b, end) ? { review: b.review, figures: b.figures, at: row.at } : undefined;
   }
 
   /**
-   * Asks the final writer for the paper of a run whose review's pass was accepted, once: the
-   * figures of its corpus are frozen in the request. False when there is nothing to ask.
+   * Asks the final writer for the paper of a run that ended (its review's pass accepted, or the
+   * progress rule's stop), once: the figures of its corpus are frozen in the request. False when
+   * there is nothing to ask.
    */
   request(run: string, by: string): boolean {
-    const review = acceptedReview(this.ledger, run);
-    if (!review || this.requested(run) || this.accepted(run)) return false;
-    const figures = figuresNow(this.ledger, run, this.contract(run), review);
-    this.ledger.appendEvent(by, PAPER_REQUESTED, run, { review: Number(review.id), figures });
+    const end = researchEnd(this.ledger, run);
+    if (!end || this.requested(run) || this.accepted(run)) return false;
+    const figures = figuresNow(this.ledger, run, this.contract(run), end.review);
+    this.ledger.appendEvent(by, PAPER_REQUESTED, run, {
+      review: figures.review,
+      figures,
+      end: end.reason,
+    });
     return true;
   }
 
@@ -592,19 +631,29 @@ export class Papers {
     if (this.accepted(run))
       throw new LedgerError("conflict", `run ${run} already has its research paper`);
     const asked = this.requested(run);
-    const review = acceptedReview(this.ledger, run);
-    if (!asked || !review)
-      throw new LedgerError("invalid", `run ${run} does not wait for a research paper`);
-    const pkg = JSON.parse(String(review.package)) as Pick<ResearchPackage, "hypotheses">;
+    if (!asked) throw new LedgerError("invalid", `run ${run} does not wait for a research paper`);
+    const questions = this.contract(run).questions;
+    const standing = standingDecisions(this.ledger, run);
     const verdicts = new Map<string, Set<string>>();
-    for (const r of checkedPanel(review))
-      for (const h of r.hypotheses)
-        if (h.valid && h.verdict)
-          verdicts.set(h.id, new Set([...(verdicts.get(h.id) ?? []), h.verdict]));
+    const hypotheses = requiredHypotheses(this.ledger, run);
+    for (const h of hypotheses) {
+      const d = standing.get(`hypothesis:${h.id}`);
+      if (d) verdicts.set(h.id, new Set([d.decision]));
+    }
+    const counts = new Map(
+      (
+        this.ledger.db
+          .prepare(
+            "select question, count(*) as n from claim where run = ? and verified = 1 and question is not null group by question",
+          )
+          .all(run) as { question: number; n: number }[]
+      ).map((r) => [Number(r.question), Number(r.n)]),
+    );
     return {
-      review: Number(review.id),
-      questions: this.contract(run).questions,
-      hypotheses: pkg.hypotheses.map((h) => ({ id: h.id, text: h.text })),
+      review: asked.review,
+      questions,
+      bare: questions.map((_, i) => i).filter((i) => !counts.get(i)),
+      hypotheses: hypotheses.map((h) => ({ id: h.id, text: h.text })),
       verdicts,
       figures: asked.figures,
     };
@@ -623,54 +672,99 @@ export class Papers {
       .all() as { id: string }[];
     return runs.flatMap(({ id }) => {
       const asked = this.requested(id);
-      const review = acceptedReview(this.ledger, id);
-      if (!asked || !review || this.accepted(id)) return [];
+      const end = researchEnd(this.ledger, id);
+      if (!asked || !end || this.accepted(id)) return [];
       const contract = this.contract(id);
-      const panel: CheckedReviewer[] = checkedPanel(review);
-      const pkg = JSON.parse(String(review.package)) as Pick<ResearchPackage, "hypotheses">;
+      const standing = standingDecisions(this.ledger, id);
+      const panels = new Map<number, CheckedReviewer[]>();
+      const panelOf = (review: number) => {
+        if (!panels.has(review)) {
+          const row = this.ledger.db.prepare("select * from review where id = ?").get(review) as
+            | Row
+            | undefined;
+          panels.set(review, row ? checkedPanel(row) : []);
+        }
+        return panels.get(review) ?? [];
+      };
+      const dissentOf = (kind: string, key: string, review: number) => {
+        const row = this.ledger.db
+          .prepare(
+            "select dissent from item_decision where run = ? and kind = ? and key = ? and review = ? order by id desc limit 1",
+          )
+          .get(id, kind, key, review) as { dissent: string } | undefined;
+        try {
+          return row ? (JSON.parse(row.dissent) as Dissent[]) : [];
+        } catch {
+          return [];
+        }
+      };
       const refused = this.ledger.db
         .prepare(
           "select at, body from event where kind = ? and subject = ? and id > (select max(id) from event where kind = ? and subject = ?) order by id desc limit 1",
         )
         .get(PAPER_REFUSED, id, PAPER_REQUESTED, id) as { at: string; body: string } | undefined;
+      const questions = contract.questions.map((text, i) => {
+        const d = standing.get(`question:${i}`);
+        const answers = d
+          ? panelOf(d.review)
+              .map((r) => r.questions.find((q) => q.index === i))
+              .filter((q) => q?.valid === true && q.verdict === d.decision)
+              .map((q) => ({
+                answer: q?.answer ?? "",
+                claims: q?.claims ?? [],
+                gaps: q?.gaps ?? "",
+                next_experiments: q?.next_experiments ?? "",
+              }))
+          : [];
+        return {
+          number: i + 1,
+          text,
+          decision: d?.decision ?? null,
+          certainty: d?.certainty ?? null,
+          stayed_open: d?.decision !== "answered" && d?.decision !== "insufficient",
+          answered_by: answers.length,
+          answers,
+          dissent: d ? dissentOf("question", String(i), d.review) : [],
+        };
+      });
       return [
         {
           kind: "paper" as const,
           run: id,
-          review: Number(review.id),
+          review: asked.review,
           requested_at: asked.at,
           title: contract.title,
           topic: contract.topic,
-          questions: contract.questions.map((text, i) => {
-            const answers = panel
-              .map((r) => r.questions.find((q) => q.index === i && q.answered))
-              .filter((q) => q !== undefined);
-            return {
-              number: i + 1,
-              text,
-              answered_by: answers.length,
-              answers: answers.map((q) => ({ answer: q.answer, claims: q.claims })),
-            };
-          }),
-          hypotheses: pkg.hypotheses.map((h) => {
-            const given = panel
-              .map((r) => r.hypotheses.find((x) => x.id === h.id && x.valid && x.verdict))
-              .filter((x) => x !== undefined);
-            const by = new Map<string, typeof given>();
-            for (const v of given)
-              by.set(String(v.verdict), [...(by.get(String(v.verdict)) ?? []), v]);
+          end: {
+            reason: end.reason,
+            open: questions.filter((q) => q.stayed_open).map((q) => q.number),
+            open_hypotheses: end.open.hypotheses,
+          },
+          questions,
+          hypotheses: requiredHypotheses(this.ledger, id).map((h) => {
+            const d = standing.get(`hypothesis:${h.id}`);
+            const given = d
+              ? panelOf(d.review)
+                  .map((r) => r.hypotheses.find((x) => x.id === h.id))
+                  .filter((x) => x?.valid === true && x.verdict === d.decision)
+              : [];
             return {
               id: h.id,
               text: h.text,
-              verdicts: [...by.entries()].map(([verdict, vs]) => ({
-                verdict,
-                reviewers: vs.length,
-                why: vs[0]?.why ?? "",
-                claims: vs[0]?.claims ?? [],
-              })),
+              verdicts: d
+                ? [
+                    {
+                      verdict: d.decision,
+                      reviewers: given.length,
+                      why: given[0]?.why ?? "",
+                      claims: given[0]?.claims ?? [],
+                    },
+                  ]
+                : [],
+              dissent: d ? dissentOf("hypothesis", h.id, d.review) : [],
             };
           }),
-          reviewers: panel.length,
+          reviewers: asked.figures.reviewers,
           figures: asked.figures,
           rules: PAPER_RULES,
           ...(refused

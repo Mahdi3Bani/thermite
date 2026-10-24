@@ -27,7 +27,7 @@ import {
 } from "./checks.ts";
 import { Fetcher, FetchRefused, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
-import { acceptedReview, answerSections, checkLine } from "./review.ts";
+import { answerSections, checkLine, researchEnd } from "./review.ts";
 
 /** The research service's operations a hill-climb or goal run takes (its code trials' tools). */
 const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n));
@@ -1287,16 +1287,17 @@ export class Research {
    * open questions, and numbers in the sections that appear in no archived source and no verified
    * claim (flagged, not hidden).
    *
-   * A final report of a run whose questions are answered (goal 112) starts with its research
-   * paper, when code accepted one; the review panel's answers and verdicts and the corpus follow
-   * it, as an appendix. Without a paper it says why: `noPaper`, or what the records show.
+   * A final report of a run that ended (goals 112 and 117: its questions answered, or stopped by
+   * the progress rule) starts with its research paper, when code accepted one; the review panel's
+   * decisions and the corpus follow it, as an appendix. Without a paper it says why: `noPaper`,
+   * or what the records show.
    */
   report(run: string, kind: "digest" | "final", opts: { noPaper?: string | undefined } = {}) {
     const c = this.contract(run);
     const papers = new Papers(this.ledger, () => c);
     const paper = kind === "final" ? papers.accepted(run) : undefined;
     const noPaper =
-      kind === "final" && !paper && acceptedReview(this.ledger, run)
+      kind === "final" && !paper && researchEnd(this.ledger, run)
         ? (opts.noPaper ??
           (papers.requested(run)
             ? "the run ended before the final writer's paper passed the harness's checks"
@@ -1428,7 +1429,7 @@ export class Research {
           "",
           "---",
           "",
-          `# Appendix: the review panel's answers and the corpus of ${c.title}`,
+          `# Appendix: the review panel's decisions and the corpus of ${c.title}`,
           ...lines.slice(1),
         ].join("\n")
       : lines.join("\n");

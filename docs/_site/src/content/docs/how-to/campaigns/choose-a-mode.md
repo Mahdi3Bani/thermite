@@ -12,7 +12,7 @@ Every campaign runs in one of three **modes**: **hill climb**, **goal** or **res
 | --- | --- | --- | --- |
 | Choose it when | You have a number to make better, such as speed, size or accuracy | You can say what the result must do, as checks: it builds, it loads the model, its answers match | You have a question, and hours or days to spend on it |
 | The agents make | Changes to your code | Changes to your code | Claims, with quotes from the pages they read, and findings. No code changes |
-| What decides | The judge, which times each change against the champion | Each goal's own test: the kit's check, a measured threshold, or the review panel | Code, which finds every quote word for word in a page the rig archived; the review panel decides when the questions are answered |
+| What decides | The judge, which times each change against the champion | Each goal's own test: the kit's check, a measured threshold, or the review panel | Code, which finds every quote word for word in a page the rig archived; the review panel decides each question, by a majority |
 | What you get | The champion: the best confirmed version | The champion: the version that meets the most goals | A report whose findings rest on verified claims |
 | It ends when | Never on its own: you pause it or close it | Every required goal is met, or the evidence shows that they cannot be, where the contract allows it | After its shortest time, the review panel finds every question answered; or its longest time is up |
 | What you need | Your project, and a kit that measures the number | Your project, and a kit that checks the goals | A model for the agents, and a review panel on the rig. No project and no kit |

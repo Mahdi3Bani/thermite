@@ -1,12 +1,23 @@
 import { canonicalJson } from "../core/canonical.ts";
 import type { GoalContract } from "../core/contract.ts";
+import { ITEM_DECIDED, questionName, REVIEW_ITEMS } from "../core/research-check.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import {
   type CheckedReviewer,
+  decideItems,
+  ITEM_REASONS_EVENT,
+  ITEM_REASONS_MAX,
+  type ItemDecision,
+  itemsState,
+  questionReasons,
   RESEARCH_REVIEW,
   type ResearchPackage,
-  reviewerGaps,
 } from "./research/review.ts";
+
+const clip = (s: string, n: number) => {
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+};
 
 /**
  * Subjective goals (verify type `review`). The champion's artifact goes to the supervisor's
@@ -215,54 +226,175 @@ export class Reviews {
   }
 
   /**
-   * A research review's results (goal 112), as code checked them (research/review.ts), written
-   * once: review_passed only if every reviewer, at least MIN_PANEL, passes it with every answer
-   * and verdict holding. Its event says how many reviewers found each question answered, and the
-   * gaps, short.
+   * A research review's results (goals 112 and 117), as code checked them (research/review.ts),
+   * written once. Each reviewer's checked answer to each item it was asked to decide is a
+   * `review_item` row, and each item's decision (research/review.ts decideItems) an
+   * `item_decision` row. The review passes when, after it, every question has an end (a standing
+   * decision of answered or insufficient) and every required hypothesis a standing decision.
+   * Events: `review_items` for each reviewer, `item_decided` for each item, and `review_panel`
+   * with how many reviewers gave each question an end, the open questions' gaps, how many items
+   * it decided and the questions still open.
    */
   recordResearchPanel(
     id: number,
     checked: CheckedReviewer[],
     by: string,
-  ): "review_passed" | "review_failed" {
+  ): {
+    result: "review_passed" | "review_failed";
+    decided: ItemDecision[];
+    open: { questions: number[]; hypotheses: string[] };
+  } {
     Reviews.panelSize(checked.map((r) => r.reviewer));
-    const outcome = checked.every((r) => r.pass) ? "review_passed" : "review_failed";
-    this.ledger.tx(() => {
+    return this.ledger.tx(() => {
       const row = this.undecided(id);
       if (row.goal !== RESEARCH_REVIEW)
         throw new LedgerError("invalid", `review ${id} is not a research review`);
+      const run = String(row.run);
+      const pkg = JSON.parse(String(row.package)) as ResearchPackage;
+      const decided = decideItems(pkg, checked);
+      const now = new Date().toISOString();
+      const insertItem = this.ledger.db.prepare(
+        "insert into review_item (review, reviewer, kind, key, card_version, verdict, certainty, reasons, claims, problems, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      for (const r of checked) {
+        const items = [
+          ...r.questions.map((q) => ({
+            kind: "question" as const,
+            key: String(q.index),
+            card_version: q.card_version,
+            verdict: q.verdict ?? "none",
+            certainty: q.certainty,
+            reasons: questionReasons(q),
+            claims: q.claims,
+            problems: q.problems,
+          })),
+          ...r.hypotheses.map((h) => ({
+            kind: "hypothesis" as const,
+            key: h.id,
+            card_version: null,
+            verdict: h.verdict ?? "none",
+            certainty: null,
+            reasons: h.why,
+            claims: h.claims,
+            problems: h.problems,
+          })),
+        ];
+        for (const it of items)
+          insertItem.run(
+            id,
+            r.reviewer,
+            it.kind,
+            it.key,
+            it.card_version,
+            it.verdict,
+            it.certainty,
+            it.reasons.slice(0, ITEM_REASONS_MAX),
+            JSON.stringify(it.claims),
+            JSON.stringify(it.problems),
+            now,
+          );
+        this.ledger.appendEvent(by, REVIEW_ITEMS, run, {
+          review: id,
+          reviewer: r.reviewer,
+          items: items.map((it) => ({
+            ...it,
+            reasons: clip(it.reasons, ITEM_REASONS_EVENT),
+          })),
+        });
+      }
+      const insertDecision = this.ledger.db.prepare(
+        "insert into item_decision (run, kind, key, review, card_version, decision, certainty, dissent, decided_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      for (const d of decided) {
+        insertDecision.run(
+          run,
+          d.kind,
+          d.key,
+          id,
+          d.card_version,
+          d.decision,
+          d.certainty,
+          JSON.stringify(d.dissent),
+          now,
+        );
+        this.ledger.appendEvent(by, ITEM_DECIDED, run, {
+          review: id,
+          kind: d.kind,
+          key: d.key,
+          card_version: d.card_version,
+          decision: d.decision,
+          certainty: d.certainty,
+          dissent: d.dissent,
+        });
+      }
+      const { open } = itemsState(this.ledger, run, pkg.questions.length);
+      const outcome =
+        open.questions.length === 0 && open.hypotheses.length === 0
+          ? "review_passed"
+          : "review_failed";
       this.ledger.db
         .prepare("update review set panel = ?, panel_result = ?, panel_at = ? where id = ?")
-        .run(canonicalJson(checked), outcome, new Date().toISOString(), id);
-      const indexes = [...new Set(checked.flatMap((r) => r.questions.map((q) => q.index)))].sort(
-        (a, b) => a - b,
-      );
-      const gaps = [...new Set(checked.flatMap((r) => reviewerGaps(r, 200)))];
-      // Each question's first answer that passed the check, short: what the owner reads before
-      // accepting, and what the knowledge base keeps.
-      const first = (i: number) =>
-        checked.map((r) => r.questions.find((q) => q.index === i && q.answered)).find(Boolean);
-      this.ledger.appendEvent(by, "review_panel", String(row.run), {
+        .run(canonicalJson(checked), outcome, now, id);
+      // Each question decided here: how many reviewers gave it an end, and the first answer of
+      // its majority, short: what the owner reads before accepting, and what the knowledge base
+      // keeps. The gaps: what the reviewers who said open named, for each question decided open.
+      const questions = decided.filter((d) => d.kind === "question");
+      const answerOf = (d: ItemDecision) =>
+        d.decision === "open"
+          ? undefined
+          : checked
+              .map((r) => r.questions.find((q) => String(q.index) === d.key))
+              .find((q) => q?.valid && q.verdict === d.decision);
+      const gaps = [
+        ...new Set(
+          decided.flatMap((d) => {
+            if (d.kind === "hypothesis")
+              return d.decision === "undecided" && d.why
+                ? [`Hypothesis ${d.key}: undecided (${d.why === "tie" ? "a tie" : d.why})`]
+                : [];
+            if (d.decision !== "open") return [];
+            const name = questionName(Number(d.key));
+            const said = checked.flatMap((r) => {
+              const q = r.questions.find((x) => String(x.index) === d.key);
+              return q?.valid && q.verdict === "open" && q.gaps.trim() ? [clip(q.gaps, 200)] : [];
+            });
+            return said.length
+              ? said.map((g) => `${name}: ${g}`)
+              : [`${name}: open (${d.why === "tie" ? "a tie" : (d.why ?? "open")})`];
+          }),
+        ),
+      ];
+      this.ledger.appendEvent(by, "review_panel", run, {
         review: id,
         goal: row.goal,
         result: outcome,
         reviewers: checked.length,
-        questions: indexes.map((i) => ({
-          question: i,
-          answered_by: checked.filter((r) => r.questions.some((q) => q.index === i && q.answered))
-            .length,
-          ...(first(i)
-            ? {
-                answer: (first(i)?.answer ?? "").slice(0, 500),
-                claims: (first(i)?.claims ?? []).slice(0, 10),
-              }
-            : {}),
-        })),
+        questions: questions.map((d) => {
+          const first = answerOf(d);
+          return {
+            question: Number(d.key),
+            answered_by: checked.filter((r) =>
+              r.questions.some(
+                (q) =>
+                  String(q.index) === d.key &&
+                  q.valid &&
+                  (q.verdict === "answered" || q.verdict === "insufficient"),
+              ),
+            ).length,
+            decision: d.decision,
+            certainty: d.certainty,
+            ...(first
+              ? { answer: first.answer.slice(0, 500), claims: first.claims.slice(0, 10) }
+              : {}),
+          };
+        }),
         gaps: gaps.slice(0, 20),
         ...(gaps.length > 20 ? { more_gaps: gaps.length - 20 } : {}),
+        decided: decided.length,
+        open: open.questions,
       });
+      return { result: outcome, decided, open };
     });
-    return outcome;
   }
 
   /** The panel's results, written once: review_passed only if every reviewer passes it. */

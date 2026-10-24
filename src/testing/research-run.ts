@@ -148,3 +148,46 @@ export async function fillResearch(r: Awaited<ReturnType<typeof makeResearchRun>
     note: note.note,
   };
 }
+
+/**
+ * The synthesizer's answer cards for the fixture's two questions (goal 117), kept by the harness's
+ * check: question 1's from the verified claim of 42 pages, question 2's from the claim about the
+ * clock, with an evidence gap. A research review is due only once every question has a card.
+ */
+export function writeCards(
+  r: Awaited<ReturnType<typeof makeResearchRun>>,
+  ids: Awaited<ReturnType<typeof fillResearch>>,
+  synthesizer = "synthesizer",
+): number[] {
+  const out = r.env.service.submitCards(
+    r.run,
+    {
+      synthesizer,
+      cards: [
+        {
+          question: 0,
+          answer: "The first run archived 42 pages.",
+          certainty: "moderate",
+          claims: [ids.claims.verified],
+          borrowed: [],
+          gaps: [],
+          through: null,
+        },
+        {
+          question: 1,
+          answer: "A long campaign needs a clock the workers cannot stop.",
+          certainty: "moderate",
+          claims: [ids.claims.clock],
+          borrowed: [],
+          gaps: [{ kind: "evidence", text: "a second, independent site" }],
+          through: null,
+        },
+      ],
+    },
+    "supervisor",
+  );
+  return out.results.map((x) => {
+    if (!x.accepted) throw new Error(`card refused: ${x.problems.join("; ")}`);
+    return x.version;
+  });
+}
