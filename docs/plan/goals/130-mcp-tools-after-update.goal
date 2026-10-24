@@ -1,0 +1,41 @@
+---
+id: "130"
+title: "An MCP client sees control's new tools after control is updated"
+status: PROPOSED
+version: "0.1.3"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 130 · An MCP client sees control's new tools after control is updated
+
+**Status:** `PROPOSED` · **Version:** [v0.1.3](../roadmap.md#v013)
+
+## What
+
+An MCP client reads control's list of tools when it connects. When control is updated to a build with new tools, a client that stays connected keeps the old list: on 2026-10-24, after control moved to 366c680, the owner's assistant could not call `set_cluster_rig_resources` (goal 118) until the owner reconnected the server by hand.
+
+Control tells its clients when its tools change: the MCP notification that the tool list changed, sent to each session after a restart into a new build, or an answer that names the new build so the client knows to read the list again. Which one works with the clients in use (Claude Code, Codex, OpenCode) is part of the goal.
+
+## Why
+
+Thermite runs itself through control. A new tool that the operator's assistant cannot see until someone reconnects by hand slows every roll.
+
+## Done when
+
+- [ ] A design, tried with Claude Code's MCP client: what control sends, and when.
+- [ ] After control restarts into a build with a new tool, a connected client lists it without a reconnect by hand, or each answer says that the client must read the list again.
+- [ ] A test with control's MCP server, and the MCP page.
+
+## Decisions
+
+- 2026-10-24, owner: write the gaps found while operating the lab as goals, slotted where they fit.
+
+## Progress
+
+- 2026-10-24: Goal written after the 366c680 roll, when the resize tool stayed out of sight until a reconnect.
+
+---
+
+Run with `/goal Complete docs/plan/goals/130-mcp-tools-after-update.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

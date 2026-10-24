@@ -1,13 +1,19 @@
 # Releases. On a tag v*, it builds the control, harness (CPU and CUDA) and supervisor images from
 # their Containerfiles, and the one-container rig image for RunPod on the CUDA harness, and pushes
-# them to GitHub's container registry, tagged with the version and the commit. Then it writes the
-# release bundle, a compose file that pins those images by digest and a short readme
-# (scripts/release-bundle.ts), and attaches both to a draft GitHub Release.
+# them to GitHub's container registry, tagged with the commit. Then it checks each published image
+# (scripts/check-images.ts): pulled by digest with no sign-in, it reports the commit, carries no
+# Claude Code, no key and, for the rig image, no set-id file (goal 010). Only images that hold get
+# the version's tag. Then it writes the release bundle, a compose file that pins those images by
+# digest and a short readme (scripts/release-bundle.ts), and attaches both to a draft GitHub
+# Release.
 #
-# Run by hand (Actions › release › Run workflow), or on a push to main or to a version's branch that
-# changes the images or this release path, it builds the same images and the same bundle, but
-# pushes nothing out and makes no release: the bundle is kept as the run's artifact. (A run by hand
-# needs this file on the default branch; a push does not.)
+# Run by hand (Actions › release › Run workflow) with "publish" ticked, it pushes and checks the
+# same images for the commit it runs on, tagged with the commit only: no version tag and no
+# release, so a lab can pin a build between releases by its digest (the check's step summary lists
+# them). Run by hand without it, or on a push to main or to a version's branch that changes the
+# images or this release path, it builds the same images and the same bundle, but pushes nothing
+# out and makes no release: the bundle is kept as the run's artifact. (A run by hand needs this
+# file on the default branch; a push does not.)
 #
 # The images never carry Claude Code: no build here sets CLAUDE_CODE_VERSION. The harness images
 # carry OpenCode and the Codex CLI, both open source, at their Containerfile's pinned versions.
@@ -24,6 +30,11 @@ on:
       - scripts/release-bundle.ts
       - src/release/**
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the images to GHCR, tagged with the commit only (no version tag, no release), and check them"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,8 +44,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Only a pushed tag publishes. A run by hand builds and checks without pushing anything out.
-  PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+  # A pushed tag publishes and releases; a run by hand with "publish" publishes only. Any other run
+  # builds and checks without pushing anything out.
+  PUBLISH: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+  RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
   # The CUDA harness's base: CUDA 12 (CUDA 13 dropped older GPU architectures), a development
   # image (the GPU smoke kit compiles with nvcc) on Ubuntu, pinned by its digest.
   CUDA_BASE_IMAGE: docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04@sha256:d49bb8a4ff97fb5fe477947a3f02aa8c0a53eae77e11f00ec28618a0bcaa2ad1
@@ -52,6 +65,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       registry: ${{ steps.version.outputs.registry }}
       commit: ${{ steps.version.outputs.commit }}
+      # For the jobs' conditions, which can't read the workflow's env.
+      publish: ${{ env.PUBLISH }}
+      release: ${{ env.RELEASE }}
     steps:
       - uses: actions/checkout@v4
       - id: version
@@ -75,7 +91,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "registry=ghcr.io/$owner" >> "$GITHUB_OUTPUT"
           echo "commit=$(printf '%s' "$GITHUB_SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
-          echo "Version $version, images under ghcr.io/$owner, push: $PUSH"
+          echo "Version $version, images under ghcr.io/$owner, publish: $PUBLISH, release: $RELEASE"
 
   images:
     name: image ${{ matrix.key }}
@@ -86,10 +102,10 @@ jobs:
       contents: read
       packages: write
     # A registry on the runner, for the CUDA harness's dry run only: an empty image starts no
-    # service. (The expression is PUSH's, negated: a service can't read env.)
+    # service. (A service can't read env: the version job's output says whether the run publishes.)
     services:
       registry:
-        image: ${{ matrix.cuda && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && 'docker.io/library/registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e' || '' }}
+        image: ${{ matrix.cuda && needs.version.outputs.publish != 'true' && 'docker.io/library/registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e' || '' }}
         ports: ["5000:5000"]
     strategy:
       fail-fast: true
@@ -149,14 +165,15 @@ jobs:
           # On the host's network, the CUDA job's builder reaches the job's own registry.
           driver-opts: ${{ matrix.cuda && 'network=host' || '' }}
       - uses: docker/login-action@v3
-        if: env.PUSH == 'true'
+        if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Tags: the version (0.1.0) and the commit's first 12 characters, each with the CUDA suffix
-      # for the CUDA harness. Labels and annotations: the source repository, which links each
-      # package to this repository, and the version and commit.
+      # Tags: the commit's first 12 characters, with the CUDA suffix for the CUDA harness. The
+      # version's tag (0.1.0) comes later, once the image passed its checks (the tag job). Labels
+      # and annotations: the source repository, which links each package to this repository, and
+      # the version and commit.
       - id: meta
         uses: docker/metadata-action@v5
         env:
@@ -169,7 +186,6 @@ jobs:
             latest=false
             suffix=${{ matrix.suffix }}
           tags: |
-            type=semver,pattern={{version}}
             type=sha,prefix=,format=short
           labels: |
             org.opencontainers.image.title=${{ matrix.repository }}
@@ -199,17 +215,17 @@ jobs:
             THERMITE_COMMIT=${{ github.sha }}
             THERMITE_IMAGE_ID=${{ needs.version.outputs.version }}${{ matrix.suffix }}+${{ needs.version.outputs.commit }}
             ${{ matrix.cuda && format('BASE_IMAGE={0}', env.CUDA_BASE_IMAGE) || '' }}
-          # A tag pushes every image to GHCR. A dry run pushes none out: each stays in the builder,
-          # but for the CUDA harness, which goes to the job's own registry under a name of that
-          # registry alone, for the rig image below.
-          tags: ${{ (matrix.cuda && env.PUSH != 'true') && format('{0}/{1}:dry-run-cuda', env.DRY_RUN_REGISTRY, matrix.repository) || steps.meta.outputs.tags }}
+          # A run that publishes pushes every image to GHCR. A dry run pushes none out: each stays in
+          # the builder, but for the CUDA harness, which goes to the job's own registry under a name
+          # of that registry alone, for the rig image below.
+          tags: ${{ (matrix.cuda && env.PUBLISH != 'true') && format('{0}/{1}:dry-run-cuda', env.DRY_RUN_REGISTRY, matrix.repository) || steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           # An image either way, so the build reports its digest.
-          outputs: type=image,push=${{ env.PUSH == 'true' || matrix.cuda }}
+          outputs: type=image,push=${{ env.PUBLISH == 'true' || matrix.cuda }}
           # A release builds every layer again, so each image has its base's newest system
-          # packages; a dry run reads the cache.
-          no-cache: ${{ env.PUSH == 'true' }}
+          # packages; any other run reads the cache.
+          no-cache: ${{ env.RELEASE == 'true' }}
           cache-from: type=gha,scope=${{ matrix.key }}
           # The CUDA layers would crowd everything else out of the cache.
           cache-to: ${{ !matrix.cuda && format('type=gha,mode=max,scope={0}', matrix.key) || '' }}
@@ -225,8 +241,8 @@ jobs:
           printf '%s\n' "$DIGEST" > "digests/${{ matrix.key }}"
           echo "${{ matrix.key }}: $DIGEST"
       # The one-container rig image, which RunPod pods run (containers/rig/Containerfile): the CUDA
-      # harness just built, named by its digest (on GHCR for a tag, in the job's own registry for
-      # a dry run), with the supervisor's parts added. It keeps the harness's THERMITE_COMMIT and
+      # harness just built, named by its digest (on GHCR for a run that publishes, in the job's own
+      # registry for a dry run), with the supervisor's parts added. It keeps the harness's THERMITE_COMMIT and
       # THERMITE_IMAGE_ID. Tags, labels and annotations as for the other images, under thermite-rig.
       - id: rig-meta
         if: matrix.cuda
@@ -240,7 +256,6 @@ jobs:
             latest=false
             suffix=-cuda
           tags: |
-            type=semver,pattern={{version}}
             type=sha,prefix=,format=short
           labels: |
             org.opencontainers.image.title=thermite-rig
@@ -264,12 +279,12 @@ jobs:
           file: containers/rig/Containerfile
           platforms: linux/amd64
           build-args: |
-            HARNESS_IMAGE=${{ env.PUSH == 'true' && needs.version.outputs.registry || env.DRY_RUN_REGISTRY }}/${{ matrix.repository }}@${{ steps.build.outputs.digest }}
+            HARNESS_IMAGE=${{ env.PUBLISH == 'true' && needs.version.outputs.registry || env.DRY_RUN_REGISTRY }}/${{ matrix.repository }}@${{ steps.build.outputs.digest }}
           tags: ${{ steps.rig-meta.outputs.tags }}
           labels: ${{ steps.rig-meta.outputs.labels }}
           annotations: ${{ steps.rig-meta.outputs.annotations }}
-          # An image either way, so the build reports its digest; pushed only for a tag.
-          outputs: type=image,push=${{ env.PUSH }}
+          # An image either way, so the build reports its digest; pushed only by a run that publishes.
+          outputs: type=image,push=${{ env.PUBLISH }}
       - name: Keep the rig image's digest for the bundle
         if: matrix.cuda
         env:
@@ -289,9 +304,80 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Each published image, pulled by digest with no sign-in from a runner that never signed in, and
+  # held to src/release/checks.ts. The step summary lists every image with its digest.
+  checks:
+    name: image checks
+    needs: [version, images]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # The CUDA images are several gigabytes each: make room on the runner's disk first.
+      - name: Make room for the CUDA images
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - name: Check each published image
+        run: |
+          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/check-images.ts \
+            --registry '${{ needs.version.outputs.registry }}' \
+            --commit "$GITHUB_SHA" --digests digests --summary "$GITHUB_STEP_SUMMARY"
+
+  # A release's version tags, on the images that passed their checks: each tag is a copy of the
+  # checked manifest (or index), so the version's tag and the commit's name the same digest.
+  tag:
+    name: version tags
+    needs: [version, checks]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - name: Tag each checked image with the version
+        env:
+          REGISTRY: ${{ needs.version.outputs.registry }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -eu
+          tag() {
+            docker buildx imagetools create --prefer-index=false \
+              -t "$REGISTRY/$2:$VERSION$3" "$REGISTRY/$2@$(cat "digests/$1")"
+            echo "$REGISTRY/$2:$VERSION$3 -> $(cat "digests/$1")"
+          }
+          tag control thermite-control ""
+          tag harness thermite-harness ""
+          tag harness-cuda thermite-harness -cuda
+          tag supervisor thermite-supervisor ""
+          tag rig-cuda thermite-rig -cuda
+
   bundle:
     name: release bundle
-    needs: [version, images]
+    needs: [version, images, tag]
+    # A dry run and a publish by hand have no tag job; a release's bundle waits for its tags.
+    if: ${{ !cancelled() && needs.images.result == 'success' && (needs.version.outputs.release != 'true' || needs.tag.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -322,7 +408,7 @@ jobs:
       # A draft: a maintainer reads it, then publishes it. A run again for the same tag replaces
       # the files of the release it made before.
       - name: Attach the bundle to a draft release
-        if: env.PUSH == 'true'
+        if: env.RELEASE == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}

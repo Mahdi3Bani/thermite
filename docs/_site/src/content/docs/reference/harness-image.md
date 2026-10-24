@@ -35,6 +35,10 @@ For each release, the release workflow (`.github/workflows/release.yml`) builds 
 | Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The version and the commit | amd64, arm64 |
 | One-container rig, CUDA | `ghcr.io/iammrduncan/thermite-rig` | The version and the commit, each with `-cuda` added: `0.1.0-cuda` | amd64 |
 
+Each image is pushed first with its commit's tag only. Then the workflow pulls each one by its digest, on a runner that never signed in, and checks it: it pulls without signing in, it reports the release's commit, it carries no Claude Code, and it sets no key, token or password in its environment. The harness images and the rig image also report their image ID and carry neither socat nor bubblewrap; the rig image has no set-id file; the supervisor and the rig image name no STE checker, which is a deployment's own. Only an image that passes gets the version's tag, which names the same digest as the commit's. The run's step summary lists every image with its digest.
+
+Between releases, a maintainer can publish a build by hand: the same images and checks, with the commit's tag only and no release. A lab pins such a build by its digest, for example as control's RunPod rig image.
+
 The workflow builds the one-container rig image on the CUDA harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. The harness images and the supervisor image carry OpenCode and the Codex CLI, both open source, at their default versions. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
 
 | Label | Value |

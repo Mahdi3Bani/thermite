@@ -54,6 +54,9 @@ services:
       THERMITE_RIG_SUPERVISOR_IMAGE: "${THERMITE_RIG_SUPERVISOR_IMAGE:-@@SUPERVISOR_IMAGE@@}"
       # The one-container rig image control launches rigs on RunPod from: this release's.
       THERMITE_RUNPOD_RIG_IMAGE: "${THERMITE_RUNPOD_RIG_IMAGE:-@@RIG_CUDA_IMAGE@@}"
+      # The image a RunPod test pod runs: this release's rig image, whose test also checks the
+      # supervisor's places.
+      THERMITE_RUNPOD_TEST_IMAGE: "${THERMITE_RUNPOD_TEST_IMAGE:-@@RIG_CUDA_IMAGE@@}"
       # "1": the owner accepts each rig's first report key on the dashboard.
       THERMITE_CONTROL_REQUIRE_KEY_ACCEPT: "${THERMITE_CONTROL_REQUIRE_KEY_ACCEPT:-}"
       THERMITE_CONTROL_SESSION_DAYS: "${THERMITE_CONTROL_SESSION_DAYS:-}"

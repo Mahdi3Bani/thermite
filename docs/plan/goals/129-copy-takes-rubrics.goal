@@ -1,0 +1,41 @@
+---
+id: "129"
+title: "A research campaign's copy can take its own rubrics"
+status: PROPOSED
+version: "0.1.3"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 129 · A research campaign's copy can take its own rubrics
+
+**Status:** `PROPOSED` · **Version:** [v0.1.3](../roadmap.md#v013)
+
+## What
+
+A copy of a campaign (goal 069: `copy_campaign`, the campaign page's **Copy**) keeps the source's contract and lets the owner change its brief: notes, links, ideas, hypotheses and MCP servers. It cannot give a research campaign rubrics, one for each question, which the synthesizer judges each answer card against (goal 117). A campaign made before rubrics existed can only be copied without them.
+
+A copy of a research campaign takes `rubrics`, one for each of its questions, checked as the New campaign page checks them; left out, the source's. Copy on the dashboard shows the questions with a rubric box under each.
+
+## Why
+
+On 2026-10-24, a research campaign made before rubrics existed was copied to try goal 117's research mode on the same brief. The source had no rubrics, so its copy has none, while the two other acceptance runs, assigned from contract files, have them.
+
+## Done when
+
+- [ ] `copy_campaign` and the REST route take `rubrics` for a research campaign, refused in words when their count is not the questions' count, and for a campaign of another mode.
+- [ ] The dashboard's Copy shows a rubric box under each question.
+- [ ] Tests, and the pages for copying a campaign and for MCP.
+
+## Decisions
+
+- 2026-10-24, owner: write the gaps found while operating the lab as goals, slotted where they fit.
+
+## Progress
+
+- 2026-10-24: Goal written when an acceptance run's campaign was copied without rubrics.
+
+---
+
+Run with `/goal Complete docs/plan/goals/129-copy-takes-rubrics.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,43 @@
+---
+id: "128"
+title: "get_run stays a size an agent can read, for a run of any length"
+status: PROPOSED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 128 · get_run stays a size an agent can read, for a run of any length
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+MCP's `get_run` (and `GET /v1/rigs/<rig>/runs/<run>`, which it reads) gives some of a run's lists whole. For a run that worked for a day or more, the answer is too large to read: on 2026-10-24, `get_run` of a 35-hour research run gave 3.2 million characters with `attempts: 1`. The journal was 1.5 million, the timeline 0.6 million, the queue 0.4 million and the hypotheses 0.2 million. An agent that operates Thermite through MCP cannot use the answer, and the owner's assistant could not read the run's questions from it.
+
+Each list in the answer gets a limit, as `attempts` has one: the newest entries first, with how many there are and how many it left out, in words, as every other cut in Thermite says (goal 117). The limits are arguments with defaults, so an agent can ask for more of one list, or for one list alone, and page through it. Nothing is cut without a word.
+
+## Why
+
+`get_run` is the first tool an agent calls about a run. A research run that works for 8 to 16 hours, the kind v0.1.0 ships, already makes it unusable.
+
+## Done when
+
+- [ ] Each list of `get_run`'s answer has a limit and a count of what it left out: the journal, the timeline, the queue, the hypotheses, the handouts, the directions and the trials, and any other that grows with the run.
+- [ ] Arguments ask for more of a list, or for one list from an offset; the REST route takes the same.
+- [ ] A test with a run of the size above: the default answer stays under 100,000 characters and says what it left out.
+- [ ] The MCP and REST reference pages say each limit and argument.
+
+## Decisions
+
+- 2026-10-24, owner: write the gaps found while operating the lab as goals, slotted where they fit.
+
+## Progress
+
+- 2026-10-24: Goal written from the 3.2 MB answer for a long research run.
+
+---
+
+Run with `/goal Complete docs/plan/goals/128-get-run-bounded.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

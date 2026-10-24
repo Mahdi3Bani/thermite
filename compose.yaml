@@ -26,6 +26,8 @@ services:
       # The one-container rig image control launches rigs on RunPod from (empty: each launch
       # names its image).
       THERMITE_RUNPOD_RIG_IMAGE: "${THERMITE_RUNPOD_RIG_IMAGE:-}"
+      # The image a RunPod test pod runs (empty: each test names its image).
+      THERMITE_RUNPOD_TEST_IMAGE: "${THERMITE_RUNPOD_TEST_IMAGE:-}"
       # "1": the owner accepts each rig's first report key on the dashboard.
       THERMITE_CONTROL_REQUIRE_KEY_ACCEPT: "${THERMITE_CONTROL_REQUIRE_KEY_ACCEPT:-}"
       THERMITE_CONTROL_SESSION_DAYS: "${THERMITE_CONTROL_SESSION_DAYS:-}"
