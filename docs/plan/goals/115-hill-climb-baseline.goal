@@ -31,17 +31,26 @@ What Thermite did before this goal: a hill climb's first job was a daily A/A cal
 
 ## Done when
 
-- [ ] The baseline job: first for every hill-climb run, its values per cell and metric recorded, the run's rounds wait for it. Tests.
-- [ ] Setup: a starting point that can't be measured gives the workers its reasons; a setup change the judge can measure becomes the starting point and its values the baseline. Tests.
-- [ ] `max_total_regression` holds against the baseline's values. Tests.
-- [ ] The kit's check keeps files in the baseline's judge-only folder during the baseline job, and later checks read them; agents can't reach it. Tests.
-- [ ] The run's page, get_run and the history show the baseline. Tests.
-- [ ] The pages match the code: campaign modes, the contract and kit manifest references, write a kit, why agents never judge, verdicts and states, limits; the changelog; CREDITS.md for pi-autoresearch's part.
+- [x] The baseline job: first for every hill-climb run, its values per cell and metric recorded, the run's rounds wait for it. Tests: `src/harness/judge/baseline.test.ts`, `src/harness/agents/scheduler-baseline.test.ts`, `src/harness/judge/judge.test.ts`.
+- [x] Setup: a starting point that can't be measured gives the workers its reasons; a setup change the judge can measure becomes the starting point and its values the baseline. Tests: the same two files.
+- [x] `max_total_regression` holds against the baseline's values. Tests: `src/harness/judge/decide.test.ts`, `src/harness/judge/baseline.test.ts`.
+- [x] The kit's check keeps files in the baseline's judge-only folder during the baseline job, and later checks read them; agents can't reach it. Tests: `src/harness/judge/baseline.test.ts`; on a real rig, the isolation check's `baselines-list` and `baseline-by-path` probes.
+- [x] The run's page, get_run and the history show the baseline. Tests: `src/control/baseline-ui.test.ts`.
+- [x] The pages match the code: campaign modes, the contract and kit manifest references, write a kit, why agents never judge, verdicts and states, limits; the changelog; CREDITS.md for pi-autoresearch's part.
 - [ ] On the deployment: Campaign 3's hill climb starts with its baseline and no separate record run.
 
 ## Decisions
 
 - 2026-10-23, owner: in v0.1.0, now (the words above). This goal first held a plan for record runs that keep their outputs; the owner's design replaces it.
+- 2026-10-23, build: the baseline runs 3 blocks of the starting point alone, each running every measured cell `acceptance.runs_per_cell` times, as a candidate's blocks do; each value is the median of the blocks, with their median absolute deviation and count. No contract field: the existing one sets the runs, and contracts keep their hashes.
+- 2026-10-23, build: no ledger migration. The record is events (`baseline`, `baseline_failed`), the job's spec, and the champion row of a setup change, whose `promoted_by` ends in `:setup` (and whose `champion_promoted` event has `setup: true`). A ledger from before gets its baseline when its run is next resumed.
+- 2026-10-23, build: the judge judges the starting point as it judges a candidate. Whatever gives a candidate `invalid` or `crash_candidate` (a build, a crash, a check, an impossible value, a folder over its limit) is `baseline_failed`, and the run is in setup. A failure of the rig itself (a device never ready, a kit for another target) is not the starting point's: the job fails, the run waits, and the judge tries again 10 minutes later. In setup, a resume of the run measures the starting point once more, for when the cause was the rig's.
+- 2026-10-23, build: the gate is in two places. The judge leases no job of a run without a baseline but a `baseline` job (`Ledger.leaseJob`), and queues its calibration only after it; the scheduler plans no round and starts no trial (`round <n> waits for the judge's baseline of the starting point (champion #<n>)` in Live).
+- 2026-10-23, build: setup rounds are planned without the planner: each lane gets one experiment in the direction `setup`, at the top of the queue, and one trial, whose brief has the judge's reasons (3,000 characters at most). The judge's reasons are the plan, so a model adds nothing here. A round of the plan open when the run enters setup, or a setup round open when it leaves it, starts no new trial and ends when its trials have. Setup experiments left in the queue are dropped when setup ends.
+- 2026-10-23, build: a change submitted in setup is queued as a `baseline` job (the service decides at submission, from the ledger). One the judge measures gets the new verdict `starting_point`: no verdict word fit a change that became the starting point without beating a champion. It becomes the champion through `Ledger.setStartingPoint`, a compare-and-swap like a promotion's that needs no promotable verdict. One it can't measure reuses `invalid` or `crash_candidate`. A setup change still queued when setup ended is screened as any change is.
+- 2026-10-23, build: a guard against the baseline, at confirmation only, as the total check was: on each cell, the median of the candidate's values in the confirmation's blocks against the baseline's median, as a log ratio, averaged over the cells. The baseline's spread counts for the change: the allowance is spent only beyond `max_total_regression` plus the mean of log(1 + MAD / median), so the starting point's own noise never refuses a change. The sum-of-steps check stays beside it (the What says "not only"), counted from the starting point. The comparison is across time, so a rig whose speed drifts reads the drift as the change's; the step guard, paired in the same blocks, does not. Both are on the contract reference.
+- 2026-10-23, build: the check's folder is `<state>/baselines/<run>/job-<id>`, the judge's, with mode `0700` on it and the folders above it; sealed after the baseline (files `0400`, folders `0500`), so later checks, which run as the judge's own process, read it and cannot change it. At most 64 MiB, 1,000 files and 32 folders deep, plain files and folders only, so every file can be named in the `baseline` event with its size and SHA-256.
+- 2026-10-23, build: "the run's status line" is the sentence at the top of the run's Overview (`run-said`). The header line under the run's name is unchanged: the pages quote it (`on local-1 · hill climb · Running`) and the steps follow it.
 
 ## Open questions
 
@@ -50,6 +59,7 @@ None yet.
 ## Progress
 
 - 2026-10-23: Plan from the owner's words, after research into pi-autoresearch and into Thermite's hill climb. Build started.
+- 2026-10-23 23:47 UTC: built on the branch `goal-115-baseline`, commit b99d8db: the `baseline` job and its lease gate (judge, ledger), the scheduler's wait and setup rounds, setup changes judged by the baseline job, the guards against the baseline (decide), the check's judge-only folder (measure, baseline), the isolation check's probes of it, and control's view (RunView, get_run, the run's Overview, History). Each new test was checked to fail with its change undone (14 mutations, each caught). Pages, changelog and credits in the same commits. Next: the compose acceptances that run hill climbs (judge, agents, steering, quick start), then Campaign 3 on the deployment, the last Done when.
 
 ---
 
