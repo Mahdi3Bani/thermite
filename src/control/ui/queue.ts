@@ -115,7 +115,7 @@ export function judgeOnlyQueueLine(u: Pick<RigView, "id">, r: RunView): string {
   return `<div class="lnotice qjudge">${icon.warn}<span><b>Judge only:</b> no worker takes these experiments, so they wait for a run with workers. To carry them over, <a href="${esc(start)}">Start a run</a> of the campaign with <b>Copy the untried experiments of</b> ${esc(r.id)} ticked.</span></div>`;
 }
 
-/** The Experiments tab. */
+/** The Experiments tab, called Tasks on a research run's page. */
 export function experimentsTab(o: {
   u: RigView;
   r: RunView;
@@ -127,6 +127,11 @@ export function experimentsTab(o: {
   families: string[];
 }): string {
   const { u, r } = o;
+  // A research run's queue holds research tasks, each a question, a gap and a kind of task: "task"
+  // there, and "experiment" for a hill climb's or goal run's.
+  const research = r.mode === "research";
+  const thing = research ? "task" : "experiment";
+  const kindWord = research ? "Kind of task" : "Direction";
   const up = r.queue
     .filter((x) => x.state === "queued")
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
@@ -144,13 +149,13 @@ export function experimentsTab(o: {
     `<div class="qi" draggable="true" data-id="${esc(x.id)}" data-rig="${esc(u.id)}" data-run="${esc(r.id)}"><span class="qh" title="Drag to reorder">⋮⋮</span><span class="qn">${i + 1}</span><div class="qmain"><div class="qt">${esc(x.title)}</div>${x.why ? `<div class="qwhy">${esc(x.why)}</div>` : ""}${x.returns ? `<div class="muted xs">Came back ${x.returns === 1 ? "once" : `${x.returns} times`}: its trial never really tried it${x.cause ? ` (${esc(clip(x.cause, 200))})` : ""}.</div>` : ""}<div class="qmeta">${src(x.by)}${questionChip(r, x.question)}${x.family ? `<span class="qdir">${esc(x.family)}</span>` : ""}${x.from_run ? `<span class="muted xs">from ${esc(x.from_run)}</span>` : ""}</div></div><div class="qacts">${i > 0 ? o.cmd({ rig: u.id, kind: "queue_move", fields: fields(x, { position: "top" }), label: "↑ Top", cls: "sm ghost", back: o.back }) : ""}<details class="menu"><summary class="btn sm ghost">Edit</summary><div class="menu-pop qedit">${o.cmd({ rig: u.id, kind: "queue_edit", fields: fields(x), label: "Save", cls: "sm", back: o.back, extra: editFields(x) })}</div></details><details class="menu"><summary class="btn sm ghost">Drop</summary><div class="menu-pop">${o.cmd({ rig: u.id, kind: "queue_drop", fields: fields(x), label: "Drop it", cls: "sm danger", back: o.back, extra: `<input name="why" required placeholder="why" aria-label="Why" style="width:100%;margin-bottom:6px">` })}</div></details></div></div>`;
   // An experiment's words, to change before a lane takes it.
   const editFields = (x: ExperimentView) =>
-    `<label class="sfd">${infoLabel("What to try", "The experiment's title: what a lane works on.")}<input name="title" required maxlength="200" value="${esc(x.title)}"></label><label class="sfd">${infoLabel("Details", "More on how to try it, for the lane that takes it. Empty: none.")}<textarea name="details" rows="3" maxlength="4000">${esc(x.details ?? "")}</textarea></label><label class="sfd">${infoLabel("Direction", "The approach it belongs to. Rules apply by direction.")}<input name="family" maxlength="80" value="${esc(x.family)}"></label><label class="sfd">${infoLabel("Why", "Why it is worth trying. Empty: none.")}<input name="why" maxlength="2000" value="${esc(x.why ?? "")}"></label>`;
+    `<label class="sfd">${infoLabel(research ? "Task" : "What to try", `The ${thing}'s title: what a lane works on.`)}<input name="title" required maxlength="200" value="${esc(x.title)}"></label><label class="sfd">${infoLabel("Details", "More on how to try it, for the lane that takes it. Empty: none.")}<textarea name="details" rows="3" maxlength="4000">${esc(x.details ?? "")}</textarea></label><label class="sfd">${infoLabel(kindWord, research ? "Explore, primary, contradict or consolidate. Rules apply by kind of task." : "The approach it belongs to. Rules apply by direction.")}<input name="family" maxlength="80" value="${esc(x.family)}"></label><label class="sfd">${infoLabel("Why", "Why it is worth trying. Empty: none.")}<input name="why" maxlength="2000" value="${esc(x.why ?? "")}"></label>`;
   const add = `<form class="qadd" method="post" action="/ui/commands"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="kind" value="queue_add"><input type="hidden" name="back" value="${esc(o.back)}">
-<label class="sfd">${infoLabel("Add an experiment", "Something for a lane to try. It joins the queue where you put it; the planner gives it to a free lane when it reaches the top, and keeps two lanes off the same thing.")}<input name="title" required maxlength="200" placeholder="for example: unroll the dequantize loop by 4"></label>
-<label class="sfd">${infoLabel("Direction", "The approach it belongs to, in your words or one this run has used. The planner keeps similar work on the same lane, and rules apply by direction.")}<input name="family" maxlength="80" list="qfams" placeholder="optional"><datalist id="qfams">${o.families.map((f) => `<option value="${esc(f)}">`).join("")}</datalist></label>
+<label class="sfd">${infoLabel(research ? "Add a task" : "Add an experiment", `Something for a lane to ${research ? "research" : "try"}. It joins the queue where you put it; the planner gives it to a free lane when it reaches the top, and keeps two lanes off the same thing.`)}<input name="title" required maxlength="200" placeholder="${research ? "for example: Question 2 (index 1): find the vendor's documentation of the warp scheduler" : "for example: unroll the dequantize loop by 4"}"></label>
+<label class="sfd">${infoLabel(kindWord, research ? "Explore, primary, contradict or consolidate. Rules apply by kind of task." : "The approach it belongs to, in your words or one this run has used. The planner keeps similar work on the same lane, and rules apply by direction.")}<input name="family" maxlength="80" list="qfams" placeholder="optional"><datalist id="qfams">${o.families.map((f) => `<option value="${esc(f)}">`).join("")}</datalist></label>
 <label class="sfd">${infoLabel("Where", "Its place in the queue. You can drag it later.")}<select name="position"><option value="top">at the top</option><option value="end">at the end</option></select></label>
 <button class="primary">Add</button>
-<label class="sfd qwhy-f">${infoLabel("Why", "Shown with the experiment to the planner and to the lane that gets it.")}<input name="why" maxlength="2000" placeholder="optional"></label>
+<label class="sfd qwhy-f">${infoLabel("Why", `Shown with the ${thing} to the planner and to the lane that gets it.`)}<input name="why" maxlength="2000" placeholder="optional"></label>
 <label class="sfd qwhy-f">${infoLabel("Details", "More on how to try it, for the lane that takes it.")}<textarea name="details" rows="2" maxlength="4000" placeholder="optional"></textarea></label></form>`;
   const working = Object.entries(r.at_work)
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
@@ -185,8 +190,8 @@ export function experimentsTab(o: {
       .join("")}</select>`;
   const picks = `${pick(
     "data-qd",
-    "Direction",
-    "Every direction",
+    kindWord,
+    research ? "Every kind of task" : "Every direction",
     tried.map((x) => x.family),
   )}${pick(
     "data-qb",
@@ -197,16 +202,16 @@ export function experimentsTab(o: {
   return `<div class="qcols"><div>
 <div class="head"><h2>Up next</h2><span class="n">${up.length}</span><span class="right">in order; the planner gives the top ones to free lanes, never the same one to two lanes</span></div>
 ${judgeOnlyQueueLine(u, r)}${add}
-<div class="qlist" id="qlist" data-part="qlist">${up.map(item).join("") || `<div class="card"><div class="empty">Nothing queued. The planner adds experiments as it plans; you can add one above.</div></div>`}</div>
+<div class="qlist" id="qlist" data-part="qlist">${up.map(item).join("") || `<div class="card"><div class="empty">Nothing queued. The planner adds ${thing}s as it plans; you can add one above.</div></div>`}</div>
 </div><div class="qside" data-part="qside">
 <div class="card qcard"><h3>In progress</h3>${working || `<div class="muted small">No lane is at work.</div>`}</div>
 <div class="card qcard"><h3>Ideas from the lanes <span class="muted small">wait for the planner or you</span></h3>${ideaRows || `<div class="muted small">None waiting. Lanes propose ideas while they work.</div>`}${ideaRows ? `<div class="muted xs">The planner's model queues or drops these at its next hand-out, and you can decide first. When up next holds fewer than the campaign's Ideas kept ready, the planner queues the distinct ones, oldest first, even without its model, in a hill climb or a goal run.</div>` : ""}</div>
 </div></div>
-<div class="block" style="margin-top:26px" id="tried"><div class="head"><h2>Tried</h2><span class="n">${tried.length}</span><span class="right">every experiment that ended, with its result, newest first</span></div>
+<div class="block" style="margin-top:26px" id="tried"><div class="head"><h2>Tried</h2><span class="n">${tried.length}</span><span class="right">every ${thing} that ended, with its result, newest first</span></div>
 ${
   tried.length
     ? `<div class="ktools" id="qf">${chip("all", "All", tried.length)}${chip("win wait", "Wins", counts.win + counts.wait)}${chip("loss", "Not better", counts.loss)}${chip("broken", "Broken or blocked", counts.broken)}${chip("flat", "Other results", counts.flat)}${counts.done ? chip("done", "Research finished", counts.done) : ""}${chip("none", "No attempt or dropped", counts.none)}${picks}</div>
-<div class="card flat"><table class="ktable"><thead><tr><th>Experiment</th><th>Direction</th><th>Added by</th><th>Where</th><th>Result</th><th>When</th></tr></thead><tbody id="qtried">${triedRows}</tbody></table></div>`
+<div class="card flat"><table class="ktable"><thead><tr><th>${research ? "Task" : "Experiment"}</th><th>${kindWord}</th><th>Added by</th><th>Where</th><th>Result</th><th>When</th></tr></thead><tbody id="qtried">${triedRows}</tbody></table></div>`
     : `<div class="card"><div class="empty">Nothing tried yet.</div></div>`
 }</div>`;
 }

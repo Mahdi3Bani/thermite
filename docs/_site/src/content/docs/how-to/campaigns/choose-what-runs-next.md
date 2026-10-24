@@ -19,7 +19,7 @@ Each run keeps an **experiment queue**: a list, in order, of what its [lanes](..
 
 ## Open the Experiments tab
 
-Open **Campaigns** in the sidebar. For a running run, press the run's name on its card under **At work now**, shown as `<campaign> › <run>`, such as `sort-speed › sort-speed-1`. A paused run is on its campaign's page, under **Earlier runs**, which lists the paused, completed and finished runs: press the campaign in the table, then the run. On the run's page, press the tab **Experiments**. The tab's label says how many experiments are up next, such as `3 up next`.
+Open **Campaigns** in the sidebar. For a running run, press the run's name on its card under **At work now**, shown as `<campaign> › <run>`, such as `sort-speed › sort-speed-1`. A paused run is on its campaign's page, under **Earlier runs**, which lists the paused, completed and finished runs: press the campaign in the table, then the run. On the run's page, press the tab **Experiments**, called **Tasks** on a research run's page, where each item is a research task and **Kind of task** takes the place of **Direction**. The tab's label says how many experiments are up next, such as `3 up next`.
 
 ## Add an experiment
 
