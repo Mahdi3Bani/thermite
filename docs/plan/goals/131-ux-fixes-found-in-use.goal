@@ -34,6 +34,12 @@ A list of small faults in the dashboard's screens, found while the owner uses Th
 - **What to do.** Where a run's lanes show (its Overview and Live, and the campaign's **Where it runs**), a line says when the rig's **Workers at a time** is below the run's lanes, such as "3 lanes, 1 worker at a time on this rig: the lanes take turns", with a link to **Edit rig**. `get_run` gives both numbers. Starting a run on a rig with fewer workers than lanes says the same before it starts.
 - **Pages:** [Agents, lanes and the planner](../../_site/src/content/docs/explanation/agents-lanes-planner.md) (how many lanes run at once), [Start a campaign from the dashboard](../../_site/src/content/docs/how-to/campaigns/start-from-dashboard.md#5-where-it-runs), and the run's page.
 
+### 4. Archive a campaign from the left navigation
+
+- **What is wrong.** To archive a campaign, the owner opens its page, presses **⋯** and then **Archive**. Clearing out finished campaigns takes a page load each. The owner, 2026-10-24: "right click campaigns on sidebar to archive".
+- **What to do.** A right-click on a campaign in the left navigation opens a small menu with **Archive**. The keyboard's menu key (or Shift+F10) on a focused campaign opens it too. Archive does what **Archive** under **⋯** does, with the same refusal in words while a run is at work or waits to start (`Not archived. Pause or close its runs first. …`). The line under the list says `Archived sort-speed.`, with **Undo**, which unarchives it. The browser's own menu stays everywhere else.
+- **Pages:** [Archive campaigns and sort them into folders](../../_site/src/content/docs/how-to/campaigns/archive-and-folders.md#archive-a-campaign).
+
 ## Why
 
 The owner reports these from use, 2026-10-24: "ux fixes to add".
@@ -54,12 +60,14 @@ The owner reports these from use, 2026-10-24: "ux fixes to add".
 ## Open questions
 
 - Item 1: whether the rigs where the campaign's runs ended long ago count as rigs that matter, or only the rigs of its runs at work and its latest run.
+- Item 4: whether the menu also holds **Move to folder** and **Open**, or **Archive** alone.
 
 ## Progress
 
 - 2026-10-24: Goal written, with item 1 from the owner's report.
 - 2026-10-24: Item 2, export status and progress, from the owner's report.
 - 2026-10-24: Item 3, a run's lanes that take turns on a rig with fewer workers at a time, from the owner's report. The rig had 1 worker at a time; raised to 3 over `set_rig_settings`.
+- 2026-10-24: Item 4, archive a campaign from the left navigation's right-click menu, from the owner's report.
 
 ---
 
