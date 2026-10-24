@@ -1,16 +1,16 @@
 ---
 id: "115"
 title: "A hill climb's first job measures its starting point, and its guards hold against it"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 depends_on: []
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # 115 · A hill climb's first job measures its starting point, and its guards hold against it
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010)
 
 ## What
 
@@ -37,7 +37,7 @@ What Thermite did before this goal: a hill climb's first job was a daily A/A cal
 - [x] The kit's check keeps files in the baseline's judge-only folder during the baseline job, and later checks read them; agents can't reach it. Tests: `src/harness/judge/baseline.test.ts`; on a real rig, the isolation check's `baselines-list` and `baseline-by-path` probes.
 - [x] The run's page, get_run and the history show the baseline. Tests: `src/control/baseline-ui.test.ts`.
 - [x] The pages match the code: campaign modes, the contract and kit manifest references, write a kit, why agents never judge, verdicts and states, limits; the changelog; CREDITS.md for pi-autoresearch's part.
-- [ ] On the deployment: Campaign 3's hill climb starts with its baseline and no separate record run.
+- [x] On the deployment: Campaign 3's hill climb starts with its baseline and no separate record run. (2026-10-24: its first job was the baseline, queued and leased at the run's start, 02:23 UTC; posted at 02:50 UTC, with each cell's median, MAD and count over 3 blocks for the main metric, the guard and the other metrics; the run waited with no round until then, and round 1 started at 02:51 UTC with two lanes. The isolation check on the rig's new images found the baselines folder closed to the agents.)
 
 ## Decisions
 
@@ -60,7 +60,8 @@ None yet.
 
 - 2026-10-23: Plan from the owner's words, after research into pi-autoresearch and into Thermite's hill climb. Build started.
 - 2026-10-23 23:47 UTC: built on the branch `goal-115-baseline`, commit b99d8db: the `baseline` job and its lease gate (judge, ledger), the scheduler's wait and setup rounds, setup changes judged by the baseline job, the guards against the baseline (decide), the check's judge-only folder (measure, baseline), the isolation check's probes of it, and control's view (RunView, get_run, the run's Overview, History). Each new test was checked to fail with its change undone (14 mutations, each caught). Pages, changelog and credits in the same commits. Next: the compose acceptances that run hill climbs (judge, agents, steering, quick start), then Campaign 3 on the deployment, the last Done when.
+- 2026-10-24: Verified on the deployment (the last box). Goal done.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/115-hill-climb-baseline.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/_completed/115-hill-climb-baseline.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).
