@@ -10,7 +10,14 @@ import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import { questionLabel } from "../../core/research-check.ts";
 import { CODE_RESEARCH_TOOLS, moreText, READ_MAX, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
-import { checkCited, claimNumbers, numbersIn, withoutNames } from "./checks.ts";
+import {
+  checkCited,
+  claimNumbers,
+  foldText,
+  normalizeQuote,
+  numbersIn,
+  withoutNames,
+} from "./checks.ts";
 import { Fetcher, FetchRefused, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
 import { acceptedReview, answerSections, checkLine } from "./review.ts";
@@ -27,6 +34,8 @@ const VIEW_LINKS_CHARS = 5000;
 /** One page of search_corpus: at most this many matches, and this many characters of them. */
 const SEARCH_PAGE = 30;
 const SEARCH_CHARS = 11_000;
+/** The run's newest notes a new note may not repeat (goal 117). */
+export const NOTE_REPEATS = 200;
 
 /**
  * Research mode's integrity rules, enforced by code (the research form of "agents never judge"):
@@ -47,16 +56,7 @@ const SEARCH_CHARS = 11_000;
 
 type Row = Record<string, unknown>;
 
-/** Whitespace folded, typographic quotes and dashes made plain: "verbatim" up to layout. */
-export function normalizeQuote(s: string): string {
-  return s
-    .replace(/[‘’‛′]/g, "'")
-    .replace(/[“”‟″]/g, '"')
-    .replace(/[‐-―−]/g, "-")
-    .replace(/ /g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+export { normalizeQuote };
 
 /** A label at a line's start that numbers a question or a claim: "Question 0:", "Claim c-005:". */
 const LABEL = /^[*_]*(?:question|claim)\s*#?\s*[\w.-]*\d[\w-]*\s*[:.)\]]/i;
@@ -107,12 +107,7 @@ interface ClaimQuote {
 const EVENT_PROBLEMS = 20;
 
 /** A claim's identity for deduplication: its words, case and punctuation folded. */
-function claimKey(s: string): string {
-  return normalizeQuote(s)
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N} ]/gu, "")
-    .trim();
-}
+const claimKey = foldText;
 
 export const ClaimInput = z.object({
   text: z.string().min(5).max(4000),
@@ -626,6 +621,10 @@ export class Research {
    * A research note, with the sources it relies on. It is its own record (the research folder's
    * notes/ and the report read it) and one `research_note` event with its text, so the knowledge
    * base has it too. Field notes are another record (journal.ts).
+   *
+   * A note that repeats one of the run's last NOTE_REPEATS notes word for word, once folded
+   * (foldText), is refused in words (goal 117): one trial once wrote the same two words thousands
+   * of times.
    */
   addNote(
     run: string,
@@ -636,6 +635,17 @@ export class Research {
   ) {
     const body = text.trim().slice(0, 4000);
     if (!body) throw new LedgerError("invalid", "a note needs its text");
+    const key = foldText(body);
+    const same = this.all(
+      "select id, lane, created_at, text from note where run = ? order by id desc limit ?",
+      run,
+      NOTE_REPEATS,
+    ).find((n) => foldText(String(n.text)) === key);
+    if (same)
+      throw new LedgerError(
+        "invalid",
+        `this note repeats note ${String(same.id)} (by ${String(same.lane ?? "research")}, ${String(same.created_at)}) word for word: it is not recorded again. Record what is new, or go on with the work`,
+      );
     const cited = sources.slice(0, 20);
     const first = cited.length
       ? this.get("select url from source where run = ? and id = ?", run, cited[0] as string)

@@ -72,7 +72,7 @@ import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "./research/folder.ts";
 import { type PaperPackage, type PaperSubmission, Papers } from "./research/paper.ts";
-import { startingHypotheses } from "./research/research.ts";
+import { NOTE_REPEATS, startingHypotheses } from "./research/research.ts";
 import {
   checkResearchPanel,
   RESEARCH_REVIEW,
@@ -2350,9 +2350,19 @@ export class HarnessService {
   /**
    * A worker's field note (`thermite-trial note`, or Pi's note tool). The trial (found by its
    * token) decides the run, the lane, the trial and who wrote it (the lane); the note cannot.
+   * In a research run, a note that repeats one of the run's last NOTE_REPEATS field notes word
+   * for word, once folded, is refused in words (goal 117).
    */
   writeTrialNote(token: string, input: unknown): { note: number } {
     const t = new Registry(this.ledger).openTrial(token);
+    if (this.ledger.getRun(t.run)?.mode === "research") {
+      const same = this.journal.repeatOf(t.run, Journal.parse(input).text, NOTE_REPEATS);
+      if (same)
+        throw new LedgerError(
+          "invalid",
+          `this note repeats field note #${same.id} (by ${same.by}, ${same.at}) word for word: it is not recorded again. Note what is new, or go on with the work`,
+        );
+    }
     const n = this.journal.write(t.run, input, {
       by: t.lane,
       actor: `trial:${t.id}`,

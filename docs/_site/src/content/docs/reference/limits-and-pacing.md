@@ -304,10 +304,10 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 
 | What | Limit |
 | --- | --- |
-| A field note | 1 to 2,000 characters. What it is about: an id of 1 to 200 characters |
+| A field note | 1 to 2,000 characters. What it is about: an id of 1 to 200 characters. In a research run, a worker's note that repeats one of the run's last 200 field notes word for word, case, punctuation and spaces aside, is refused |
 | A worker's note (`thermite-trial note`, Pi's `note`) | One request of at most 64 KiB |
 | An advisor's notes, posted to the harness | One request of at most 2 MiB for each advisor |
-| A research note (`add_note`) | Cut to 4,000 characters, with at most 20 sources |
+| A research note (`add_note`) | Cut to 4,000 characters, with at most 20 sources. A note that repeats one of the run's last 200 research notes word for word, case, punctuation and spaces aside, is refused |
 | Field notes in a worker's brief | Its lane's newest 10, and the run's newest 5 decisions and lessons by other writers |
 | Field notes in the planner's and the teachers' brief | The run's newest 20 |
 | The run page's **Journal** tab | The newest 500 field notes; the rest are in the campaign's folder and the run's export |

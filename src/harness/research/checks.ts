@@ -7,6 +7,29 @@ import type { Ledger } from "../ledger.ts";
 
 type Row = Record<string, unknown>;
 
+/** Whitespace folded, typographic quotes and dashes made plain: "verbatim" up to layout. */
+export function normalizeQuote(s: string): string {
+  return s
+    .replace(/[‘’‛′]/g, "'")
+    .replace(/[“”‟″]/g, '"')
+    .replace(/[‐-―−]/g, "-")
+    .replace(/ /g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * A text's words for telling a repeat (claims, findings, notes and hypotheses, goal 117): quotes,
+ * dashes and spaces made plain, lowercase, punctuation taken out, one space between words.
+ */
+export function foldText(s: string): string {
+  return normalizeQuote(s)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Numbers as written (1,200 and 3.5 and 42), for checking claims, findings and answers. */
 export function numbersIn(s: string): string[] {
   return [...s.matchAll(/\d[\d,.]*\d|\d/g)].map((m) => m[0]);

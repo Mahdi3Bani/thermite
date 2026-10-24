@@ -323,7 +323,7 @@ A **field note** is a short note an agent keeps as it works: what it saw, decide
 | `text` | text, 1 to 2,000 characters, trimmed | Required |
 | `about` | `{type, id}` | What the note is about: one record of the same run, or the run itself. `type` is `run`, `experiment`, `attempt`, `source`, `claim`, `finding`, `round`, `trial` or `message`; `id` is 1 to 200 characters. A `run` is named by its id, and must be the note's own run: `about: a note is about its own run (<run>), not run <other>`. A `round` or a `message` is named by its number. The harness refuses a record the run does not have: `about: no <type> <id> in run <run>`. A writer may leave `about` out: the harness then records the note as about its run, `{"type": "run", "id": "<run>"}`. Every recorded note has its `about` |
 
-Nothing limits how many notes an agent writes. Nobody edits or deletes a note, its own or another's.
+Nothing limits how many notes an agent writes. Nobody edits or deletes a note, its own or another's. In a research run, a worker's note that repeats one of the run's last 200 field notes word for word, case, punctuation and spaces aside, is refused in words, and so is a research note that repeats one of the run's last 200 research notes: a note is kept once.
 
 ### Who writes them
 
