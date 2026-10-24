@@ -365,6 +365,31 @@ export function gapPlan(
   return out;
 }
 
+/**
+ * Where each question stands, in short, for the teachers' brief (goal 117): its card's certainty
+ * and how many open evidence gaps it names, whether the review panel decided it (and how),
+ * whether it is saturated, the weight the gap-driven plan gives it, and its share of the last
+ * tasks given out. The teachers propose for the questions still open.
+ */
+export function stateBrief(state: ResearchState) {
+  return {
+    window: state.window,
+    all_saturated: state.allSaturated,
+    all_decided: state.allDecided,
+    questions: state.questions.map((q) => ({
+      index: q.index,
+      label: q.label,
+      certainty: q.card?.certainty ?? null,
+      evidence_gaps: q.card?.evidence_gaps.length ?? null,
+      decided: q.decided,
+      ...(q.decision ? { decision: q.decision.decision } : {}),
+      saturated: q.saturated,
+      weight: q.weight,
+      share: q.share,
+    })),
+  };
+}
+
 /** A question's state in a few words, for a round's notes: its certainty, gaps and share. */
 export function stateWords(q: QuestionState): string {
   const card = q.card

@@ -27,7 +27,7 @@ import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
-import { measurementIn, measurementRefusal } from "../core/research-check.ts";
+import { labelledQuestion, measurementIn, measurementRefusal } from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
@@ -82,6 +82,7 @@ import {
   type ResearchVerdicts,
   reviewerGaps,
 } from "./research/review.ts";
+import { researchState, stateBrief } from "./research/shares.ts";
 import {
   type ResearchReviewPackage,
   type ReviewKind,
@@ -2100,6 +2101,15 @@ export class HarnessService {
       // goal run's when its trials recorded some. Short, before the long parts a window may cut;
       // the teachers' research tools read the rest.
       ...(research ? { research } : {}),
+      // Where each question stands for the plan (goal 117): decided, saturated, the weight its card
+      // gives it and its share of the last tasks. The teachers propose for the open ones.
+      ...(contract.mode === "research"
+        ? {
+            question_state: stateBrief(
+              researchState(this.ledger, run, contract, { lanes: contract.lanes.count }),
+            ),
+          }
+        : {}),
       // The campaign's brief from its author, whole (goal 078): ahead of the long parts, so a
       // brief cut to the teacher's window loses the evidence first.
       ...(brief ? { campaign_brief: brief } : {}),
@@ -2393,6 +2403,14 @@ export class HarnessService {
         : undefined;
       if (measures) {
         out.refused.push(`add "${a.title.slice(0, 120)}": ${measurementRefusal(measures)}`);
+        continue;
+      }
+      // A research run's task serves one question (goal 117): an item that names none, in its
+      // question or a title labelled "Question N (index K)", is refused in words.
+      if (research && a.question === undefined && labelledQuestion(a.title) === undefined) {
+        out.refused.push(
+          `add "${a.title.slice(0, 120)}": a research run's task names the question it serves (question, an index from 0)`,
+        );
         continue;
       }
       // A question the run does not have, or one in a run whose tasks name none: refused in words.

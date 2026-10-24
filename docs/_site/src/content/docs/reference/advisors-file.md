@@ -320,7 +320,7 @@ Every answer is one JSON object with exactly these fields. A `cli` or `claude-co
 
 | Role | Answer |
 | --- | --- |
-| Teacher | `summary`: text, 1 to 4000 characters. `portfolio`: optional, its [new opportunities](#the-portfolio). `recommendations`: optional, up to 20 directives, default `[]`. `answers`: optional, its [answers to the owner's messages](#answers-to-the-owners-messages). `moves`: optional, its [moves of queued experiments](#experiments-and-moves-for-the-queue). `experiments`: optional, plain experiments, still read |
+| Teacher | `summary`: text, 1 to 4000 characters. `portfolio`: optional, its [new opportunities](#the-portfolio) (a research run's: [research tasks](#a-research-runs-portfolio)). `recommendations`: optional, up to 20 directives, default `[]`. `answers`: optional, its [answers to the owner's messages](#answers-to-the-owners-messages). `moves`: optional, its [moves of queued experiments](#experiments-and-moves-for-the-queue). `experiments`: optional, plain experiments, still read |
 | Merged by | `portfolio`: optional, the teachers' portfolios merged, each opportunity with `from`. `directives`: optional, up to 20 directives, default `[]`. `moves`: optional, the teachers' moves merged. `experiments`: optional, still read |
 | Auditor | `decision`: `"clear"`, `"block"` or `"needs_owner"`. `reasons`: text, 1 to 8000 characters. `citations`: up to 20 texts of 1 to 500 characters, default `[]`. `answers`: optional, as for a teacher. `check`: optional, [one check for the queue](#experiments-and-moves-for-the-queue) |
 | Reviewer of the review panel | `pass`: `true` or `false`. `reasons`: text of at least 1 character; longer than 8000 characters, it is cut to 8000, not refused. `answers`: optional, as for a teacher. A research review's answer also has `questions`, one for each question, each `{index, answered, answer, claims, missing}`: the question's `index` in the package, whether it is answered, the answer in a few sentences (up to 8000 characters), the ids of the verified claims it rests on (up to 100), and what is not known yet (up to 4000); and `hypotheses`, one for each hypothesis, each `{id, verdict, why, claims}`: `"supported"`, `"refuted"` or `"undecided"`, why (up to 4000), and the claims that show it, needed for supported or refuted. A text over its limit is cut to it, a list of claims to its first 100, and a verdict's word counts in any case (`Undecided` is `undecided`); an entry that still does not fit is left out. A reviewer whose answer leaves out a question or a hypothesis is asked once more for those alone, and what it gives is added to its answer. What is still missing counts as not answered, or as no verdict. Fields the answer does not have are dropped, not refused |
@@ -373,6 +373,24 @@ Each opportunity is checked on its own: one that does not fit, such as one witho
 With a merged by model, code adds back each teacher's opportunity that no merged one names in `from` and whose title is in none, and the run's Live says so: `the teachers' portfolio: the merged by model left out teacher-a#2: kept, since distinct ideas are never dropped`. Without one, every teacher's opportunities are kept. Either way, two with the same title words are kept once.
 
 The supervisor writes each opportunity to the queue as one experiment: its `title` and `family`, and in its details `Mechanism: …`, `Expected gain, at most: …`, `Smallest discriminating experiment: …`, `Matched control: …`, `Stop when: …` and `Evidence: …`, one to a line, cut to 4000 characters; its why is `New since the teachers' last round: <new_because>`, cut to 2000.
+
+#### A research run's portfolio
+
+A research run's teachers get their own prompt, and their portfolio holds research tasks instead (goal 117): a research run measures nothing, so a task has no gain bound, control or measured experiment. The merged by model's set holds the same, each with `from`.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `portfolio[].question` | whole number, 0 or more | The question it serves, by its index |
+| `portfolio[].gap` | text of at least 1 character; a longer one is cut to 500 | One gap in that question's evidence that it closes |
+| `portfolio[].source_kind` | text of at least 1 character; a longer one is cut to 200 | The kind of source to read |
+| `portfolio[].title` | text of at least 1 character; a longer one is cut to 200 | The task, in a few words |
+| `portfolio[].details` | text of at least 1 character; a longer one is cut to 2000 | Optional. Where to start and what to look for |
+| `portfolio[].why` | text of at least 1 character; a longer one is cut to 2000 | Why a lane should take it now, and why it is new since the teachers' last round |
+| `portfolio[].citations` | up to 20 texts, each cut to 500 | Optional. What it rests on; a list that is not one is taken as empty |
+| `portfolio[].kind` | `explore`, `primary`, `contradict` or `consolidate` | Optional. Its kind of task; any other word is dropped, and the task kept |
+| `portfolio[].from` | up to 40 texts | The merged by model's only: the ids of the teachers' tasks it holds |
+
+The supervisor writes each task to the queue with its `question` and, as its family, its `kind`. Its title is `Question <n> (index <i>): <title>`, unless the title already names that question so; its details are `Evidence gap to close: <gap>`, `What to read: <source_kind>`, its `details` and `Evidence: <citations>`, one to a line, cut to 4000 characters; its why is its `why`, cut to 2000. The harness then refuses, each on its own and in words, a task whose title, details or why ask for a measurement, and one that names no question.
 
 ### Experiments and moves for the queue
 

@@ -546,6 +546,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       family?: string | undefined;
       why: string;
       position?: string | undefined;
+      /** A research run's task: its question, an index from 0 (goal 117). */
+      question?: number | undefined;
     }[],
     move: { id: string; position: string | number; why: string }[],
   ): Promise<unknown> => {
@@ -723,6 +725,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           brief,
           why: ideasNow,
           keeper: keeperFor(inst.id),
+          // A research run's teachers give research tasks, each for one question's gap (goal 117).
+          research: inst.mode === "research",
           tools: {
             ...toolsFor(),
             // A research run has no code: its seed is a placeholder, with no repository on the
