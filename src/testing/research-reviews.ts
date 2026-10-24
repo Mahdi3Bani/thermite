@@ -453,6 +453,17 @@ export function researchRunEvents(): Ev[] {
       },
       5,
     ),
+    // Two tries that could not be posted before the third did.
+    ev(
+      "review_try_failed",
+      { review: 2, try: 1, error: "2 of 3 reviewers of the review panel answered" },
+      5.2,
+    ),
+    ev(
+      "review_try_failed",
+      { review: 2, try: 2, error: "reviewer-2: the answer was not JSON" },
+      5.4,
+    ),
     decided(2, "question", 0, "answered", "high", 1, [], 5.6),
     decided(2, "question", 1, "insufficient", null, 2, [], 5.6),
     decided(2, "hypothesis", "h-p2", "supported", null, null, [], 5.6),

@@ -145,7 +145,10 @@ describe("a research run's page (goals 116 and 117)", () => {
     const r2 = part(html, 'data-k="review-rig-a-s-1-2"', 'data-k="review-rig-a-s-1-1"');
     assert.match(r2, /<span class="label ok">Accepted<\/span>/);
     assert.match(r2, />3 tries<\/span>/);
-    assert.match(r2, /<dt>Tries<\/dt><dd>3, as the rig reported it\.<\/dd>/);
+    assert.match(
+      r2,
+      /<dt>Tries<\/dt><dd>3, as the rig reported it\. The tries that failed:<ul class="small"><li>Try 1, .+? UTC\)<\/span>: 2 of 3 reviewers of the review panel answered<\/li><li>Try 2, /,
+    );
     assert.match(
       r2,
       /<dt>Outcome<\/dt><dd>Accepted by you: 3 items decided, 0 still open\. You accepted it [^ ]+ ago: “Good enough\.”\.<\/dd>/,
