@@ -59,8 +59,26 @@ export function measurementRefusal(words: string): string {
 /** The reserved goal name of a research run's review (a research contract has no goals). */
 export const RESEARCH_REVIEW = "research";
 
-/** A research run's close reason when the review panel found every question answered. */
+/**
+ * A research run's close reason when the review panel's decisions give every question an end
+ * (answered, or the best that sources allow) and every required hypothesis a verdict.
+ */
 export const ANSWERED = "every question is answered";
+
+/**
+ * A research run's close reason when the progress rule ends it (goal 117): every question still
+ * open is saturated, and no item improved for a quarter of the running time. Not a time cap: the
+ * rule holds only once research stopped adding. The run's open items are stated with it.
+ */
+export const PROGRESS_STOPPED = "research stopped adding: its open questions are saturated";
+
+/** The review panel's events of a research review (goal 117): each reviewer's checked answers per item, and each item's decision. */
+export const REVIEW_ITEMS = "review_items";
+export const ITEM_DECIDED = "item_decided";
+/** Where the progress rule stands, at each digest after the minimum (goal 117). */
+export const RESEARCH_PROGRESS = "research_progress";
+/** The progress rule held: the run ends with its open items stated, and its paper (goal 117). */
+export const RESEARCH_STOPPED = "research_stopped";
 
 /** The harness asks the supervisor's final writer for a run's research paper. */
 export const PAPER_REQUESTED = "research_paper_requested";

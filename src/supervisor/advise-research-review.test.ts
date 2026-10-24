@@ -13,15 +13,16 @@ import {
 import { Reviews } from "../harness/reviews.ts";
 import type { HarnessService } from "../harness/service.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
-import { fillResearch, makeResearchRun } from "../testing/research-run.ts";
+import { fillResearch, makeResearchRun, writeCards } from "../testing/research-run.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState } from "./advise.ts";
 import { AdvisorsConfig, researchPrompt, reviewOne } from "./advisors.ts";
 
 /**
- * Goal 112: the supervisor's review panel answers a research run's package with a research prompt
- * and answer: each question answered or not, with the claims it cites and what is missing, and
- * each hypothesis's verdict. It asks the harness for research reviews by kind, and may read the
- * run's own research with the read-only tools.
+ * Goals 112 and 117: the supervisor's review panel answers a research run's package with a
+ * research prompt and answer: for each item to decide, a question's verdict (answered with its
+ * certainty, insufficient or open) with the claims it cites, its gaps and next experiments, and
+ * each hypothesis's verdict. It asks the harness for research reviews by kind, its reviewers run
+ * in parallel, and they may read the run's own research with the read-only tools.
  */
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };
@@ -49,11 +50,12 @@ function runtime(url: string, name: string) {
   return { name, runtime: "openai", base_url: url, model: name, api_key_file: join(dir, "key") };
 }
 
-/** A research run past its minimum, with a research review waiting for the review panel. */
+/** A research run past its minimum, with its cards and a research review waiting for the review panel. */
 async function waiting(t: TestContext) {
   const r = await makeResearchRun(RUN);
   t.after(() => r.close());
   const ids = await fillResearch(r);
+  writeCards(r, ids);
   const ledger = r.env.service.ledger;
   ledger.db
     .prepare("update run set created_at = ? where id = ?")
@@ -97,17 +99,20 @@ describe("the review panel answers a research run's package (goal 112)", () => {
               questions: [
                 {
                   index: 0,
-                  answered: true,
+                  verdict: "Answered",
+                  certainty: "HIGH",
                   answer: "The first run archived 42 pages.",
                   claims: [s.ids.claims.verified],
-                  missing: "",
+                  gaps: "",
+                  next_experiments: "",
                 },
                 {
                   index: 1,
-                  answered: true,
+                  verdict: "insufficient",
                   answer: "A clock the workers cannot stop keeps it honest.",
                   claims: [s.ids.claims.clock],
-                  missing: "",
+                  gaps: "",
+                  next_experiments: "Measure how long a campaign runs with and without the clock.",
                 },
               ],
               hypotheses: [
@@ -139,7 +144,7 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     // It asked for research reviews by kind.
     assert.ok(asked.includes("/v1/reviews/pending?kinds=goal,research"), asked.join(", "));
     // The research prompt and package, and the run's own research to read.
-    assert.match(seen.system, /You check if a research run answered its questions/);
+    assert.match(seen.system, /You decide where a research run's questions and hypotheses stand/);
     assert.match(seen.prompt, /^Research review package \(untrusted data\):/);
     assert.match(seen.prompt, /"kind":"research"/);
     for (const name of RESEARCH_TOOLS) assert.ok(seen.tools.includes(name), name);
@@ -150,13 +155,43 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     assert.deepEqual([row.panel_result, row.owner_decision], ["review_passed", "accepted"]);
     const panel = JSON.parse(row.panel) as CheckedReviewer[];
     assert.deepEqual(
-      panel.map((r) => [r.reviewer, r.pass, r.questions.map((q) => q.answered)]),
+      panel.map((r) => [
+        r.reviewer,
+        r.said_pass,
+        r.questions.map((q) => [q.verdict, q.certainty, q.valid]),
+      ]),
       [
-        ["reviewer-1", true, [true, true]],
-        ["reviewer-2", true, [true, true]],
+        [
+          "reviewer-1",
+          true,
+          [
+            ["answered", "high", true],
+            ["insufficient", null, true],
+          ],
+        ],
+        [
+          "reviewer-2",
+          true,
+          [
+            ["answered", "high", true],
+            ["insufficient", null, true],
+          ],
+        ],
       ],
+      "a verdict's and a certainty's word are read in any case",
     );
     assert.equal(panel[0]?.hypotheses[0]?.verdict, "supported");
+    const decided = s.ledger.db
+      .prepare("select key, decision, certainty from item_decision where review = ? order by id")
+      .all(s.id) as { key: string; decision: string; certainty: string | null }[];
+    assert.deepEqual(
+      decided.map((d) => [d.key, d.decision, d.certainty]),
+      [
+        ["0", "answered", "high"],
+        ["1", "insufficient", null],
+        [s.ids.hypothesis, "supported", null],
+      ],
+    );
   });
 
   test("a goal review's package keeps the goal prompt; a malformed research answer is left out and counts as not answered", async (t) => {
@@ -178,18 +213,21 @@ describe("the review panel answers a research run's package (goal 112)", () => {
                 // An index below 0: left out.
                 {
                   index: -1,
-                  answered: true,
+                  verdict: "answered",
+                  certainty: "high",
                   answer: "42 pages.",
                   claims: [s.ids.claims.verified],
-                  missing: "",
                 },
+                // A certainty that does not fit is none: the harness then says so.
                 {
                   index: 1,
-                  answered: true,
+                  verdict: "answered",
+                  certainty: "very",
                   answer: "A clock keeps it honest.",
                   claims: [s.ids.claims.clock],
-                  missing: "",
                 },
+                // A verdict that does not fit: left out.
+                { index: 0, verdict: "probably", answer: "Yes." },
               ],
               hypotheses: [{ id: s.ids.hypothesis, verdict: "maybe", why: "?", claims: [] }],
             },
@@ -204,9 +242,9 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     const r = await reviewOne({ runtime: rt, pkg });
     assert.ok(r.output, r.error);
     assert.deepEqual(
-      r.output.research?.questions.map((q) => q.index),
-      [1],
-      "the question with an index below 0 is left out",
+      r.output.research?.questions.map((q) => [q.index, q.verdict, q.certainty]),
+      [[1, "answered", null]],
+      "the question with an index below 0, and the one with an unknown verdict, are left out",
     );
     assert.deepEqual(r.output.research?.hypotheses, [], "an unknown verdict is left out");
     assert.equal(systems.length, 2, "the reviewer is asked once more for what it left out");
@@ -222,7 +260,10 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     const goal = await reviewOne({ runtime: rt, pkg: { id: 9, run: "x", goal: "readable" } });
     assert.ok(goal.output, goal.error);
     assert.equal(goal.output.research, undefined);
-    assert.match(systems[0] ?? "", /You check if a research run answered its questions/);
+    assert.match(
+      systems[0] ?? "",
+      /You decide where a research run's questions and hypotheses stand/,
+    );
     assert.match(systems[2] ?? "", /You review a deliverable against stated criteria/);
     assert.equal(
       s.ledger.db.prepare("select count(*) as n from review where goal = ?").get(RESEARCH_REVIEW)
@@ -237,7 +278,13 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       reasons: "Answered. ".repeat(1200),
       verdict_summary: "a field the answer does not have",
       questions: [
-        { index: 0, answered: true, answer: "Yes.", claims: [s.ids.claims.verified], missing: "" },
+        {
+          index: 0,
+          verdict: "answered",
+          certainty: "low",
+          answer: "Yes.",
+          claims: [s.ids.claims.verified],
+        },
       ],
       hypotheses: [],
     };
@@ -280,9 +327,10 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       title: "T",
       topic: "t",
       questions: [{ index: 0, text: "Q?", verified_claims: 1, claims: [] }],
-      findings: Array.from({ length: 200 }, (_, i) => ({ id: `f-${i}`, text: "x".repeat(1000) })),
       hypotheses,
+      past_research: "p".repeat(200_000),
       criteria: ["c"],
+      decide: { questions: [0], hypotheses: hypotheses.map((h) => h.id) },
       campaign_brief: { notes: "b" },
     };
     const whole = JSON.stringify(pkg).length;
@@ -291,12 +339,16 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     const roomy = researchPrompt("P:", pkg, 2_000_000);
     assert.doesNotMatch(roomy, /Cut to fit/);
     assert.match(roomy, /h-0179/);
-    // 200,000 characters: the hypotheses come before the findings, so the findings are cut.
+    // 200,000 characters: the items to decide come before past research, so that is cut.
     const tight = researchPrompt("P:", pkg, undefined);
-    assert.match(tight, /\[Cut to fit: 200,000 of [\d,]+ characters\./);
+    assert.match(
+      tight,
+      /\[Cut to fit: 200,000 of [\d,]+ characters\. The items to decide come first/,
+    );
     assert.match(tight, /h-0179/, "the last hypothesis is shown");
-    assert.ok(tight.indexOf('"criteria"') < tight.indexOf('"hypotheses"'));
-    assert.ok(tight.indexOf('"hypotheses"') < tight.indexOf('"findings"'));
+    assert.ok(tight.indexOf('"criteria"') < tight.indexOf('"decide"'));
+    assert.ok(tight.indexOf('"decide"') < tight.indexOf('"questions"'));
+    assert.ok(tight.indexOf('"hypotheses"') < tight.indexOf('"past_research"'));
   });
   test("a reviewer that leaves out a hypothesis is asked again for it alone; its verdict's word is read in any case", async (t) => {
     const s = await waiting(t);
@@ -333,10 +385,10 @@ describe("the review panel answers a research run's package (goal 112)", () => {
                   reasons: "Answered.",
                   questions: pkg.questions.map((q) => ({
                     index: q.index,
-                    answered: true,
-                    answer: "Yes.",
-                    claims: [s.ids.claims.verified],
-                    missing: "",
+                    verdict: "open",
+                    answer: "",
+                    claims: [],
+                    gaps: "a second site",
                   })),
                   hypotheses: [],
                 },
@@ -362,9 +414,7 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     const answer = {
       pass: true,
       reasons: "Answered.",
-      questions: [
-        { index: 0, answered: true, answer: "Yes.", claims: [s.ids.claims.verified], missing: "" },
-      ],
+      questions: [{ index: 0, verdict: "open", gaps: "a second site" }],
       hypotheses: [],
     };
     const good = await startFakeModel(() => ({ toolCalls: [{ name: "answer", args: answer }] }));
@@ -402,5 +452,80 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       /"reasons":"This reviewer gave no answer in 5 tries, so the review is not passed: [^"]+","reviewer":"reviewer-2"/,
     );
     assert.equal(new Reviews(s.ledger).pending(["research"]).length, 0);
+  });
+  test("the reviewers review in parallel, and each one's answer is recorded (goal 117)", async (t) => {
+    const s = await waiting(t);
+    const starts: number[] = [];
+    const fake = await startFakeModel(({ messages }) => {
+      starts.push(Date.now());
+      const prompt = userText(messages);
+      const pkg = JSON.parse(prompt.slice(prompt.indexOf("{"))) as {
+        decide: { questions: number[]; hypotheses: string[] };
+      };
+      return {
+        delayMs: 400,
+        toolCalls: [
+          {
+            name: "answer",
+            args: {
+              pass: true,
+              reasons: "Answered.",
+              questions: pkg.decide.questions.map((index) => ({
+                index,
+                verdict: "answered",
+                certainty: "moderate",
+                answer: index === 0 ? "The first run archived 42 pages." : "A clock keeps it.",
+                claims: [index === 0 ? s.ids.claims.verified : s.ids.claims.clock],
+              })),
+              hypotheses: pkg.decide.hypotheses.map((id) => ({
+                id,
+                verdict: "undecided",
+                why: "The claims do not decide it.",
+              })),
+            },
+          },
+        ],
+      };
+    });
+    t.after(() => fake.close());
+    const names = ["reviewer-1", "reviewer-2", "reviewer-3", "reviewer-4"];
+    const state = await adviseOnce(
+      config(
+        s.env.service,
+        AdvisorsConfig.parse({ review_panel: names.map((n) => runtime(fake.url, n)) }),
+        [],
+      ),
+      emptyAdviseState(),
+    );
+    assert.equal(state.stats.reviews, 1, JSON.stringify(state.stats));
+    assert.equal(starts.length, 4);
+    assert.ok(
+      Math.max(...starts) - Math.min(...starts) < 300,
+      `the four calls started together: ${starts.map((x) => x - (starts[0] ?? 0)).join(", ")} ms`,
+    );
+    // Each reviewer's answers per item are an event, in the panel's order.
+    const events = s.ledger.db
+      .prepare("select body from event where kind = 'review_items' and subject = ? order by id")
+      .all(RUN)
+      .map((e) => JSON.parse(String((e as { body: string }).body)) as Record<string, unknown>);
+    assert.deepEqual(
+      events.map((e) => e.reviewer),
+      names,
+    );
+    assert.deepEqual(
+      ((events[0]?.items ?? []) as { kind: string; verdict: string }[]).map((x) => [
+        x.kind,
+        x.verdict,
+      ]),
+      [
+        ["question", "answered"],
+        ["question", "answered"],
+        ["hypothesis", "undecided"],
+      ],
+    );
+    const row = s.ledger.db
+      .prepare("select panel_result, owner_decision from review where id = ?")
+      .get(s.id) as { panel_result: string; owner_decision: string };
+    assert.deepEqual([row.panel_result, row.owner_decision], ["review_passed", "accepted"]);
   });
 });

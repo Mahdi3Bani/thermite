@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, type TestContext, test } from "node:test";
 import { parseContract } from "../core/contract.ts";
+import { MEASURES_NOTHING } from "../core/research-check.ts";
 import { researchFixture } from "../testing/fixtures.ts";
-import { fillResearch, makeResearchRun, RESEARCH_QUESTIONS } from "../testing/research-run.ts";
+import { goodReviewer } from "../testing/research-paper.ts";
+import {
+  fillResearch,
+  makeResearchRun,
+  RESEARCH_QUESTIONS,
+  writeCards,
+} from "../testing/research-run.ts";
 import type { ResearchTrialSpec } from "./agents/research-worker.ts";
 import { Scheduler } from "./agents/scheduler.ts";
 import { createHarnessApi } from "./api.ts";
@@ -12,20 +19,22 @@ import {
   ANSWERED,
   briefGaps,
   type CheckedReviewer,
-  RESEARCH_PACKAGE_MAX,
   RESEARCH_REVIEW,
   type ResearchPackage,
+  type ResearchVerdicts,
   researchPackage,
   researchReviewDue,
 } from "./research/review.ts";
 import { Reviews } from "./reviews.ts";
 
 /**
- * Goal 112: a research run ends when the review panel finds its questions answered. After the
- * minimum running time, at a digest, code checks the evidence and asks the review panel; code
- * checks each reviewer's answers; a pass closes the run with its final report, hands-off or after
- * the owner's acceptance; gaps reach the run's journal and the workers' briefs, and the run goes
- * on until new evidence is checked again.
+ * Goals 112 and 117: a research run's items are its questions, each with its answer card, and its
+ * required hypotheses. After the minimum running time, at a digest, code asks the review panel
+ * about the items with no standing decision, once every question has a card; code checks each
+ * reviewer's answers; each item is decided by the majority, and the decision stands until the
+ * question's card changes. A review that leaves every question at an end and every required
+ * hypothesis with a verdict passes, and closes the run with its final report, hands-off or after
+ * the owner's acceptance; open questions' evidence gaps reach the workers' briefs.
  */
 
 const RUN = "r-1";
@@ -33,6 +42,8 @@ const tokens = { supervisor: "sup-token", proposer: "prop-token" };
 
 type Env = Awaited<ReturnType<typeof makeResearchRun>>;
 type Ids = Awaited<ReturnType<typeof fillResearch>>;
+type Q = ResearchVerdicts["questions"][number];
+type H = ResearchVerdicts["hypotheses"][number];
 
 const done = {
   stopped: "no_submission" as const,
@@ -42,13 +53,41 @@ const done = {
   tokensOut: 0,
 };
 
+const answered = (
+  index: number,
+  claims: string[],
+  answer: string,
+  certainty: "high" | "moderate" | "low" = "high",
+): Q => ({ index, verdict: "answered", certainty, answer, claims, gaps: "", next_experiments: "" });
+const open = (index: number, gaps: string): Q => ({
+  index,
+  verdict: "open",
+  certainty: null,
+  answer: "",
+  claims: [],
+  gaps,
+  next_experiments: "",
+});
+const reviewer = (name: string, questions: Q[], hypotheses: H[] = []) => ({
+  reviewer: name,
+  pass: questions.every((q) => q.verdict !== "open"),
+  reasons: "Checked against the criteria.",
+  research: { questions, hypotheses },
+});
+
 async function setup(
   t: TestContext,
-  o: { contract?: Record<string, unknown>; assign?: Record<string, unknown>; fill?: boolean } = {},
+  o: {
+    contract?: Record<string, unknown>;
+    assign?: Record<string, unknown>;
+    fill?: boolean;
+    cards?: boolean;
+  } = {},
 ) {
   const r = await makeResearchRun(RUN, o);
   t.after(() => r.close());
   const ids = o.fill === false ? undefined : await fillResearch(r);
+  if (ids && o.cards !== false) writeCards(r, ids);
   const ledger = r.env.service.ledger;
   /** The run has run for this many hours (its clock counts from its creation). */
   const ranFor = (hours: number) =>
@@ -58,13 +97,8 @@ async function setup(
   /** The newest report is old, so the next step writes a digest. */
   const digestDue = () =>
     ledger.db.prepare("update report_version set created_at = '2000-01-01T00:00:00.000Z'").run();
-  const due = () =>
-    researchReviewDue(
-      ledger,
-      RUN,
-      r.env.service.contractFor(RUN) as Parameters<typeof researchReviewDue>[2],
-      r.research.clock(RUN),
-    );
+  const contract = () => r.env.service.contractFor(RUN) as Parameters<typeof researchReviewDue>[2];
+  const due = () => researchReviewDue(ledger, RUN, contract(), r.research.clock(RUN));
   /** Asks the review panel as the scheduler does at a digest. Returns the review's id. */
   const ask = () => {
     const d = due();
@@ -72,11 +106,7 @@ async function setup(
     return new Reviews(ledger).requestResearch({
       run: RUN,
       marker: d.marker,
-      pkg: researchPackage(
-        ledger,
-        RUN,
-        r.env.service.contractFor(RUN) as Parameters<typeof researchPackage>[2],
-      ),
+      pkg: researchPackage(ledger, RUN, contract()),
       by: "s",
     });
   };
@@ -84,7 +114,22 @@ async function setup(
     ledger.db
       .prepare("select * from review where run = ? and goal = ? order by id")
       .all(RUN, RESEARCH_REVIEW) as Record<string, unknown>[];
-  return { ...r, ids, ledger, ranFor, digestDue, due, ask, reviews };
+  /** A new card for a question, as the synthesizer writes one: its version. */
+  const card = (question: number, answer: string, claims: string[], certainty = "moderate") => {
+    const out = r.env.service.submitCards(
+      RUN,
+      {
+        synthesizer: "synthesizer",
+        cards: [{ question, answer, certainty, claims, borrowed: [], gaps: [], through: null }],
+      },
+      "supervisor",
+    ).results[0];
+    assert.ok(out?.accepted, JSON.stringify(out));
+    return out.version;
+  };
+  const pending = () =>
+    new Reviews(ledger).pending(["research"]).at(-1) as ResearchPackage & { id: number };
+  return { ...r, ids, ledger, ranFor, digestDue, due, ask, reviews, card, pending, contract };
 }
 
 /** A scheduler for the run, its research trials run by `trial`, `concurrent` at once. */
@@ -111,46 +156,20 @@ function scheduler(
   });
 }
 
-/** A reviewer who answers both questions from the fixture's verified claims, and the hypothesis. */
-function goodReviewer(name: string, ids: Ids) {
-  return {
-    reviewer: name,
-    pass: true,
-    reasons: "Both questions are answered by verified claims.",
-    research: {
-      questions: [
-        {
-          index: 0,
-          answered: true,
-          answer: "The first run archived 42 pages.",
-          claims: [ids.claims.verified],
-          missing: "",
-        },
-        {
-          index: 1,
-          answered: true,
-          answer: "A clock the workers cannot stop keeps a long campaign honest.",
-          claims: [ids.claims.clock],
-          missing: "",
-        },
-      ],
-      hypotheses: [
-        {
-          id: ids.hypothesis,
-          verdict: "supported" as const,
-          why: "The archive kept every page the workers read.",
-          claims: [ids.claims.verified],
-        },
-      ],
-    },
-  };
-}
-
 const lastFinal = (s: { ledger: Env["env"]["service"]["ledger"] }) =>
   String(
     (
       s.ledger.db
         .prepare("select body from report_version where kind = 'final' order by id desc limit 1")
+        .get() as { body: string } | undefined
+    )?.body ?? "",
+  );
+
+const lastDigest = (s: { ledger: Env["env"]["service"]["ledger"] }) =>
+  String(
+    (
+      s.ledger.db
+        .prepare("select body from report_version where kind = 'digest' order by id desc limit 1")
         .get() as { body: string } | undefined
     )?.body ?? "",
   );
@@ -162,69 +181,74 @@ const notes = (s: { ledger: Env["env"]["service"]["ledger"] }) =>
     text: string;
   }[];
 
-describe("the review panel is asked whether a research run's questions are answered (goal 112)", () => {
-  test("only after the minimum, at a digest, with a verified claim for each question, and never twice on the same evidence", async (t) => {
-    const s = await setup(t);
+describe("when the review panel is asked about a research run's items (goals 112 and 117)", () => {
+  test("only after the minimum, at a digest, once every question has an answer card; never again on items that did not change", async (t) => {
+    const s = await setup(t, { cards: false });
+    const ids = s.ids as Ids;
     const sch = scheduler(s);
     // Before the minimum (2h): a digest asks nothing, and says when the check starts.
     s.digestDue();
     await sch.tick();
     await sch.idle();
     assert.equal(s.reviews().length, 0, "no review before the minimum");
-    const early = String(
-      (
-        s.ledger.db
-          .prepare("select body from report_version where kind = 'digest' order by id desc limit 1")
-          .get() as { body: string }
-      ).body,
-    );
-    assert.match(early, /Answer check: it starts after the minimum running time/);
-    // After it: the next digest asks once, and says so.
+    assert.match(lastDigest(s), /Answer check: it starts after the minimum running time/);
+    // After it, but no answer card yet: none.
     s.ranFor(3);
     s.digestDue();
     await sch.tick();
     await sch.idle();
-    assert.equal(s.reviews().length, 1, "one review at the digest after the minimum");
-    const digest = String(
-      (
-        s.ledger.db
-          .prepare("select body from report_version where kind = 'digest' order by id desc limit 1")
-          .get() as { body: string }
-      ).body,
-    );
-    assert.match(digest, /Answer check: the review panel checks review \d+\./);
+    assert.equal(s.reviews().length, 0);
+    const bare = s.due();
+    assert.equal("why" in bare ? bare.why : "", "questions 1, 2 have no answer card yet");
+    // Both cards: the next digest asks once, about every item.
+    writeCards(s, ids);
+    s.digestDue();
+    await sch.tick();
+    await sch.idle();
+    assert.equal(s.reviews().length, 1, "one review at the digest after the cards");
+    assert.match(lastDigest(s), /Answer check: the review panel checks review \d+\./);
+    const first = Number(s.reviews()[0]?.id);
+    assert.deepEqual(s.pending().decide, { questions: [0, 1], hypotheses: [ids.hypothesis] });
+    assert.match(String(s.reviews()[0]?.commit_sha), /^items:0v1\.1v1:h1-[0-9a-f]{12}$/);
     // The next digest, the review still waiting: none more.
     s.digestDue();
     await sch.tick();
     await sch.idle();
     assert.equal(s.reviews().length, 1, "none while one waits");
-    // Gaps on this evidence: not asked again on it.
-    const ids = s.ids as Ids;
-    const first = Number(s.reviews()[0]?.id);
-    const fail = {
-      ...goodReviewer("reviewer-2", ids),
-      pass: false,
-      research: {
-        ...goodReviewer("reviewer-2", ids).research,
-        questions: [
-          goodReviewer("reviewer-2", ids).research.questions[0] as never,
-          { index: 1, answered: false, answer: "", claims: [], missing: "a second site" },
+    // Question 1 answered, question 2 open, the hypothesis supported: decisions that stand.
+    const good = goodReviewer("reviewer-1", ids).research;
+    const r = (name: string) =>
+      reviewer(
+        name,
+        [
+          good.questions[0] as Q,
+          open(1, "a second, independent site on what keeps campaigns honest"),
         ],
-      },
-    };
+        good.hypotheses,
+      );
     assert.deepEqual(
-      s.env.service.recordReviewPanel(first, [goodReviewer("reviewer-1", ids), fail], "supervisor"),
+      s.env.service.recordReviewPanel(first, [r("reviewer-1"), r("reviewer-2")], "supervisor"),
       { result: "review_failed" },
     );
-    s.digestDue();
-    await sch.tick();
-    await sch.idle();
-    assert.equal(s.reviews().length, 1, "the same evidence is not asked again");
+    // Nothing changed: no review is asked, at this digest or the next.
+    for (let k = 0; k < 2; k++) {
+      s.digestDue();
+      await sch.tick();
+      await sch.idle();
+    }
+    assert.equal(s.reviews().length, 1, "no item changed: no review");
     const again = s.due();
-    assert.match("why" in again ? again.why : "", /saw this evidence/);
-    // New evidence: a new review at the next digest.
+    assert.equal(
+      "why" in again ? again.why : "",
+      "every item has a decision that stands: a question is reviewed again when its answer card changes",
+    );
+    assert.match(
+      lastDigest(s),
+      /Answer check: not yet\. 1 of 2 questions have an end, and 1 of 1 required hypotheses a verdict; open: Question 2 \(index 1\) \(open in review \d+\); every item has a decision that stands/,
+    );
+    // A new card for question 2: the next digest asks about it alone, question 1 standing.
     const b = (await s.research.fetch(RUN, "lane-1", `${s.base}/b.html`)) as { source: string };
-    s.research.addClaim(RUN, "lane-1", {
+    const more = s.research.addClaim(RUN, "lane-1", {
       text: "Long research campaigns need a clock.",
       quotes: [
         {
@@ -234,103 +258,74 @@ describe("the review panel is asked whether a research run's questions are answe
       ],
       question: 1,
     });
+    assert.equal(s.card(1, "A long campaign needs a clock.", [ids.claims.clock, more.claim]), 2);
     s.digestDue();
     await sch.tick();
     await sch.idle();
-    assert.equal(s.reviews().length, 2, "new evidence: a new review");
+    assert.equal(s.reviews().length, 2, "a new card: a new review");
     assert.notEqual(s.reviews()[0]?.commit_sha, s.reviews()[1]?.commit_sha);
+    const pkg = s.pending();
+    assert.deepEqual(pkg.decide, { questions: [1], hypotheses: [] });
+    assert.equal(pkg.questions[0]?.decide, false);
+    assert.equal(pkg.questions[0]?.standing?.decision, "answered");
+    assert.equal(pkg.questions[1]?.card?.version, 2);
+    assert.equal(pkg.hypotheses[0]?.standing?.decision, "supported");
   });
 
-  test("a question without a verified claim, or fewer verified claims than the campaign's floor, holds the check", async (t) => {
-    const s = await setup(t, { fill: false, contract: { min_verified_claims: 2 } });
+  test("a campaign's floor of verified claims holds the check", async (t) => {
+    const s = await setup(t, { contract: { min_verified_claims: 3 } });
+    const ids = s.ids as Ids;
     s.ranFor(3);
-    const a = (await s.research.fetch(RUN, "lane-1", `${s.base}/a.html`)) as { source: string };
-    s.research.addClaim(RUN, "lane-1", {
-      text: "The first run archived 42 pages.",
-      quotes: [{ source: a.source, quote: "The harness archived 42 pages in its first run." }],
-      question: 0,
-    });
     let d = s.due();
-    assert.equal(d.due, false);
-    assert.match("why" in d ? d.why : "", /^question 2 has no verified claim yet$/);
-    const b = (await s.research.fetch(RUN, "lane-1", `${s.base}/b.html`)) as { source: string };
-    s.research.addClaim(RUN, "lane-1", {
-      text: "Long campaigns need a clock the workers cannot stop.",
-      quotes: [
-        {
-          source: b.source,
-          quote: "Long research campaigns need a clock the workers cannot stop.",
-        },
-      ],
-      question: 1,
-    });
-    // Both questions covered, and the floor of 2 met.
-    assert.equal(s.due().due, true);
-    // A floor of 3: held until a third verified claim.
-    const t3 = await setup(t, { fill: false, contract: { min_verified_claims: 3 } });
-    t3.ranFor(3);
-    const a3 = (await t3.research.fetch(RUN, "lane-1", `${t3.base}/a.html`)) as { source: string };
-    const b3 = (await t3.research.fetch(RUN, "lane-1", `${t3.base}/b.html`)) as { source: string };
-    t3.research.addClaim(RUN, "lane-1", {
-      text: "The first run archived 42 pages.",
-      quotes: [{ source: a3.source, quote: "The harness archived 42 pages in its first run." }],
-      question: 0,
-    });
-    t3.research.addClaim(RUN, "lane-1", {
-      text: "Long campaigns need a clock the workers cannot stop.",
-      quotes: [
-        {
-          source: b3.source,
-          quote: "Long research campaigns need a clock the workers cannot stop.",
-        },
-      ],
-      question: 1,
-    });
-    d = t3.due();
     assert.equal(d.due, false);
     assert.match(
       "why" in d ? d.why : "",
       /the run has 2 verified claims of the 3 the campaign asks for/,
     );
-    t3.research.addClaim(RUN, "lane-1", {
+    const a = (await s.research.fetch(RUN, "lane-1", `${s.base}/a.html`)) as { source: string };
+    s.research.addClaim(RUN, "lane-1", {
       text: "Stateless workers lose nothing when they crash.",
-      quotes: [{ source: a3.source, quote: "Stateless workers lose nothing when they crash." }],
+      quotes: [{ source: a.source, quote: "Stateless workers lose nothing when they crash." }],
       question: 1,
     });
-    assert.equal(t3.due().due, true);
+    d = s.due();
+    assert.equal(d.due, true, JSON.stringify(d));
+    assert.ok(ids);
   });
 
-  test("while a review waits for the review panel or for the owner, new evidence asks nothing more", async (t) => {
+  test("while a review waits for the review panel or for the owner, a new card asks nothing more", async (t) => {
     const s = await setup(t, { assign: { ask_owner: { reviews: true } } });
     const ids = s.ids as Ids;
     s.ranFor(3);
     const first = s.ask();
-    const more = async (text: string) => {
-      const b = (await s.research.fetch(RUN, "lane-1", `${s.base}/b.html`)) as { source: string };
-      s.research.addClaim(RUN, "lane-1", {
-        text,
-        quotes: [
-          {
-            source: b.source,
-            quote: "Long research campaigns need a clock the workers cannot stop.",
-          },
-        ],
-        question: 1,
-      });
-    };
-    await more("Long research campaigns need a clock.");
+    s.card(0, "The first run archived 42 pages, as its archive shows.", [ids.claims.verified]);
     let d = s.due();
-    assert.equal(d.due, false);
     assert.equal("why" in d ? d.why : "", `review ${first} waits`);
     // Passed, and waiting for the owner's acceptance: still none.
-    s.env.service.recordReviewPanel(
-      first,
-      [goodReviewer("reviewer-1", ids), goodReviewer("reviewer-2", ids)],
-      "supervisor",
+    assert.deepEqual(
+      s.env.service.recordReviewPanel(
+        first,
+        [goodReviewer("reviewer-1", ids), goodReviewer("reviewer-2", ids)],
+        "supervisor",
+      ),
+      { result: "review_failed" },
+      "question 1's card changed while the panel reviewed it: its decision does not stand",
     );
-    await more("Research campaigns need a clock the workers cannot stop.");
     d = s.due();
-    assert.equal("why" in d ? d.why : "", `review ${first} waits`);
+    assert.equal(d.due, true, "question 1's newer card is to decide");
+    const second = s.ask();
+    assert.deepEqual(s.pending().decide, { questions: [0], hypotheses: [] });
+    assert.deepEqual(
+      s.env.service.recordReviewPanel(
+        second,
+        [goodReviewer("reviewer-1", ids), goodReviewer("reviewer-2", ids)],
+        "supervisor",
+      ),
+      { result: "review_passed" },
+    );
+    s.card(1, "A long campaign needs a clock the workers cannot stop.", [ids.claims.clock], "high");
+    d = s.due();
+    assert.equal("why" in d ? d.why : "", `review ${second} waits`);
   });
 
   test("min_verified_claims is a whole number from 1, and a contract without it keeps its hash", () => {
@@ -346,78 +341,122 @@ describe("the review panel is asked whether a research run's questions are answe
   });
 });
 
-describe("the research review's package (goal 112)", () => {
-  test("the topic, each question with its verified claims, the supported findings and the hypotheses; no lane or model", async (t) => {
-    const s = await setup(t);
+describe("the research review's package (goal 117)", () => {
+  test("each question's newest card with the claims it cites and its rubric, the required hypotheses, the items to decide; no lane or model", async (t) => {
+    const s = await setup(t, {
+      contract: { rubrics: ["How many pages, and when.", "What keeps it honest, and why."] },
+    });
     const ids = s.ids as Ids;
     s.ranFor(3);
     const id = s.ask();
-    const pkg = new Reviews(s.ledger).pending(["research"])[0] as ResearchPackage & {
-      id: number;
-    };
+    const pkg = s.pending();
     assert.equal(pkg.id, id);
     assert.equal(pkg.kind, "research");
     assert.equal(pkg.topic, researchFixture.topic);
+    assert.deepEqual(pkg.decide, { questions: [0, 1], hypotheses: [ids.hypothesis] });
     assert.deepEqual(
-      pkg.questions.map((q) => [q.index, q.text, q.claims.map((c) => c.id)]),
+      pkg.questions.map((q) => [q.index, q.label, q.text, q.rubric, q.decide, q.card?.version]),
       [
-        [0, RESEARCH_QUESTIONS[0], [ids.claims.verified]],
-        [1, RESEARCH_QUESTIONS[1], [ids.claims.clock]],
+        [0, "Question 1 (index 0)", RESEARCH_QUESTIONS[0], "How many pages, and when.", true, 1],
+        [
+          1,
+          "Question 2 (index 1)",
+          RESEARCH_QUESTIONS[1],
+          "What keeps it honest, and why.",
+          true,
+          1,
+        ],
       ],
-      "verified claims only, by their question",
     );
-    assert.deepEqual(pkg.questions[0]?.claims[0], {
-      id: ids.claims.verified,
-      text: "The first run archived 42 pages.",
-      domains: ["127.0.0.1"],
-      corroborated: false,
-    });
-    assert.deepEqual(
-      pkg.findings.map((f) => f.id),
-      [ids.findings.supported],
-      "supported findings only",
-    );
-    assert.deepEqual(pkg.hypotheses, [
+    assert.deepEqual(pkg.questions[0]?.claims, [
       {
-        id: ids.hypothesis,
-        text: "Stateless workers make long runs safe.",
-        supporting: [],
+        id: ids.claims.verified,
+        text: "The first run archived 42 pages.",
+        quotes: ["The harness archived 42 pages in its first run."],
+        domains: ["127.0.0.1"],
+        corroborated: false,
       },
     ]);
-    assert.ok(pkg.criteria.length > 0);
+    assert.deepEqual(pkg.questions[1]?.card?.gaps, [
+      { kind: "evidence", text: "a second, independent site" },
+    ]);
+    assert.deepEqual(
+      pkg.hypotheses.map((h) => [h.id, h.text, h.status, h.decide]),
+      [[ids.hypothesis, "Stateless workers make long runs safe.", "author", true]],
+    );
+    assert.ok(pkg.criteria.some((c) => c.includes(MEASURES_NOTHING)));
+    assert.equal(pkg.corpus.verified_claims, 2);
     // Nothing about which lane, trial or model wrote what.
     const text = JSON.stringify(pkg);
     assert.ok(!/lane|trial|model/i.test(text), text);
   });
 
-  test("a large corpus is shortened to fit: corroborated and newest claims first, and it says so", async (t) => {
+  test("a large package is shortened to fit: the items that stand lose their claims first, and it says so", async (t) => {
     const s = await setup(t);
     const ids = s.ids as Ids;
     const insert = s.ledger.db.prepare(
       "insert into claim (id, run, lane, question, text, quotes, verified, problems, created_at) values (?, ?, ?, ?, ?, ?, 1, '[]', ?)",
     );
-    const quotes = JSON.stringify([{ source: ids.sources[0], quote: "x" }]);
-    for (let i = 0; i < 400; i++)
-      insert.run(
-        `c-bulk${i}`,
-        RUN,
-        "lane-1",
-        0,
-        `Claim ${"w".repeat(900)} ${i}`,
-        quotes,
-        new Date(Date.now() + i).toISOString(),
-      );
-    const pkg = researchPackage(
-      s.ledger,
-      RUN,
-      s.env.service.contractFor(RUN) as Parameters<typeof researchPackage>[2],
+    const quotes = JSON.stringify(
+      Array.from({ length: 5 }, () => ({ source: ids.sources[0], quote: "q".repeat(1500) })),
     );
-    assert.ok(JSON.stringify(pkg).length <= RESEARCH_PACKAGE_MAX);
-    const q0 = pkg.questions[0];
-    assert.ok(q0?.not_shown && q0.not_shown > 0);
-    assert.equal(q0?.verified_claims, 401);
-    assert.equal(q0?.claims[0]?.id, "c-bulk399", "the newest first");
-    assert.match(String(pkg.shortened), /not shown/);
+    const bulk = (q: number, k: number) =>
+      Array.from({ length: 50 }, (_, i) => {
+        const id = `c-bulk${q}x${k}x${String(i).padStart(3, "0")}`;
+        insert.run(
+          id,
+          RUN,
+          "lane-1",
+          q,
+          `Claim ${"w".repeat(3000)}`,
+          quotes,
+          new Date().toISOString(),
+        );
+        return id;
+      });
+    s.card(0, "The first run archived 42 pages.", [ids.claims.verified, ...bulk(0, 1)]);
+    s.card(1, "A long campaign needs a clock.", [ids.claims.clock, ...bulk(1, 1)]);
+    s.ranFor(3);
+    const full = researchPackage(s.ledger, RUN, s.contract());
+    assert.ok(JSON.stringify(full).length <= 200_000);
+    assert.match(
+      String(full.shortened),
+      /^To keep this package short, the claims of the items whose decision stands are not shown, and each item to decide shows its first 26 cited claims, without quotes/,
+    );
+    const q0 = full.questions[0];
+    assert.deepEqual(
+      [q0?.claims.length, q0?.claims_not_shown],
+      [26, 25],
+      "every cited claim is counted",
+    );
+    assert.deepEqual([q0?.claims[0]?.quotes, q0?.claims[0]?.quotes_not_shown], [[], 1]);
+    // Question 1 decided (it stands): its claims go before question 2's.
+    const id = s.ask();
+    s.env.service.recordReviewPanel(
+      id,
+      [
+        reviewer("reviewer-1", [
+          answered(0, [ids.claims.verified], "The first run archived 42 pages."),
+          open(1, "a second site"),
+        ]),
+        reviewer("reviewer-2", [
+          answered(0, [ids.claims.verified], "The first run archived 42 pages."),
+          open(1, "a second site"),
+        ]),
+      ],
+      "supervisor",
+    );
+    s.card(1, "A long campaign needs a clock.", [ids.claims.clock, ...bulk(1, 2)]);
+    const next = researchPackage(s.ledger, RUN, s.contract());
+    assert.ok(JSON.stringify(next).length <= 200_000);
+    assert.deepEqual(next.decide.questions, [1]);
+    assert.equal(next.questions[0]?.claims.length, 0, "the question that stands shows no claims");
+    assert.equal(next.questions[0]?.claims_not_shown, 51);
+    assert.equal(next.questions[1]?.claims.length, 51, "the question to decide keeps them all");
+    assert.match(
+      String(next.shortened),
+      /the claims of the items whose decision stands are not shown, and the other claims are shown without their quotes\. When you have the tools/,
+    );
   });
 
   test("a supervisor that does not ask for research reviews never gets one", async (t) => {
@@ -441,16 +480,12 @@ describe("the research review's package (goal 112)", () => {
       (await get("/v1/reviews/pending?kinds=goal,research")).map((r) => r.kind),
       ["research"],
     );
-    assert.deepEqual(
-      (await get("/v1/reviews/pending?kinds=research")).map((r) => r.kind),
-      ["research"],
-    );
     assert.deepEqual(await get("/v1/reviews/pending?kinds=goal"), []);
   });
 });
 
-describe("code checks the review panel's answers (goal 112)", () => {
-  test("a bad citation, a draft, a number not in the cited claims, a missing verdict and too few reviewers fail it", async (t) => {
+describe("code checks the review panel's answers (goal 117)", () => {
+  test("a bad citation, a draft, a number not in the cited claims, a missing certainty, gaps or next experiments, a missing verdict and too few reviewers", async (t) => {
     const s = await setup(t);
     const ids = s.ids as Ids;
     s.ranFor(3);
@@ -460,103 +495,138 @@ describe("code checks the review panel's answers (goal 112)", () => {
       () => s.env.service.recordReviewPanel(id, [good], "supervisor"),
       /at least 2 reviewers/,
     );
-    const bad = {
-      reviewer: "reviewer-2",
-      pass: true,
-      reasons: "All answered.",
-      research: {
-        questions: [
-          // A number its claims do not have, and a claim that does not exist.
-          {
-            index: 0,
-            answered: true,
-            answer: "The first run archived 43 pages.",
-            claims: [ids.claims.verified, "c-nope"],
-            missing: "",
-          },
-          // A draft claim.
-          {
-            index: 1,
-            answered: true,
-            answer: "A clock keeps it honest.",
-            claims: [ids.claims.draft],
-            missing: "",
-          },
-        ],
-        // No verdict on the hypothesis.
-        hypotheses: [],
+    const bad = reviewer("reviewer-2", [
+      // A number its claims do not have, and a claim that does not exist.
+      answered(0, [ids.claims.verified, "c-nope"], "The first run archived 43 pages."),
+      // A draft claim, and no certainty.
+      { ...answered(1, [ids.claims.draft], "A clock keeps it honest."), certainty: null },
+    ]);
+    const thin = reviewer("reviewer-3", [
+      {
+        index: 0,
+        verdict: "insufficient",
+        certainty: null,
+        answer: "42 pages.",
+        claims: [ids.claims.verified],
+        gaps: "",
+        next_experiments: "",
       },
-    };
-    assert.deepEqual(s.env.service.recordReviewPanel(id, [good, bad], "supervisor"), {
-      result: "review_failed",
+      open(1, " "),
+    ]);
+    assert.deepEqual(s.env.service.recordReviewPanel(id, [good, bad, thin], "supervisor"), {
+      result: "review_passed",
+      accepted: true,
     });
-    const row = new Reviews(s.ledger).byId(id) as { panel: string; panel_result: string };
+    const row = new Reviews(s.ledger).byId(id) as { panel: string };
     const panel = JSON.parse(row.panel) as CheckedReviewer[];
-    assert.equal(panel[0]?.pass, true);
+    assert.deepEqual(
+      panel[0]?.questions.map((q) => q.valid),
+      [true, true],
+    );
     const r2 = panel[1] as CheckedReviewer;
-    assert.deepEqual([r2.pass, r2.said_pass], [false, true]);
     assert.deepEqual(r2.questions[0]?.problems, [
       "no claim c-nope",
       "the number 43 is not in the claims it cites",
     ]);
-    assert.equal(r2.questions[0]?.answered, false);
     assert.deepEqual(r2.questions[1]?.problems, [
+      "an answered verdict needs its certainty: high, moderate or low",
       `claim ${ids.claims.draft} is a draft, not verified`,
     ]);
     assert.deepEqual(r2.hypotheses[0]?.problems, [
       "the reviewer gave no verdict on this hypothesis",
     ]);
-    // Each reviewer's findings in the run's journal, by the review panel; the run goes on.
-    const panelNotes = notes(s).filter((n) => n.by.startsWith("panel:"));
+    const r3 = panel[2] as CheckedReviewer;
+    assert.deepEqual(r3.questions[0]?.problems, [
+      "an insufficient verdict names what is missing, which only a measurement could settle, in next_experiments",
+    ]);
+    assert.deepEqual(r3.questions[1]?.problems, ["an open verdict names the evidence gaps"]);
+    // Every reviewer's answer per item is kept, as checked.
+    const items = s.ledger.db
+      .prepare(
+        "select reviewer, kind, key, verdict, problems from review_item where review = ? order by id",
+      )
+      .all(id) as {
+      reviewer: string;
+      kind: string;
+      key: string;
+      verdict: string;
+      problems: string;
+    }[];
+    assert.equal(items.length, 9, "3 reviewers × (2 questions + 1 hypothesis)");
     assert.deepEqual(
-      panelNotes.map((n) => n.by),
-      ["panel:reviewer-1", "panel:reviewer-2"],
+      items.filter((x) => x.reviewer === "reviewer-2").map((x) => [x.kind, x.key, x.verdict]),
+      [
+        ["question", "0", "answered"],
+        ["question", "1", "answered"],
+        ["hypothesis", ids.hypothesis, "none"],
+      ],
     );
-    assert.match(
-      panelNotes[1]?.text ?? "",
-      /Question 1: the answer did not pass the check \(no claim c-nope; the number 43 is not in the claims it cites\)/,
+    // A failed check does not count: reviewer-1's answers alone decide each item.
+    const decided = s.ledger.db
+      .prepare(
+        "select key, decision, certainty, dissent from item_decision where review = ? order by id",
+      )
+      .all(id) as { key: string; decision: string; certainty: string | null; dissent: string }[];
+    assert.deepEqual(
+      decided.map((d) => [d.key, d.decision, d.certainty, JSON.parse(d.dissent)]),
+      [
+        ["0", "answered", "moderate", []],
+        ["1", "answered", "high", []],
+        [ids.hypothesis, "supported", null, []],
+      ],
     );
-    assert.match(panelNotes[1]?.text ?? "", /Hypothesis h-[0-9a-f]+: no verdict/);
-    assert.equal(s.env.service.ledger.getRun(RUN)?.status, "running");
   });
 
-  test("a verdict needs its claims (supported or refuted) or its why (undecided); the reviewer's own fail counts", async (t) => {
+  test("a verdict needs its claims (supported or refuted) or its why (undecided); a tie of what passes is undecided", async (t) => {
     const s = await setup(t);
     const ids = s.ids as Ids;
     s.ranFor(3);
     const id = s.ask();
-    const g = goodReviewer("reviewer-1", ids);
-    const noClaims = {
-      ...goodReviewer("reviewer-2", ids),
-      research: {
-        ...g.research,
-        hypotheses: [{ id: ids.hypothesis, verdict: "supported" as const, why: "yes", claims: [] }],
-      },
-    };
-    const noWhy = {
-      ...goodReviewer("reviewer-3", ids),
-      research: {
-        ...g.research,
-        hypotheses: [{ id: ids.hypothesis, verdict: "undecided" as const, why: " ", claims: [] }],
-      },
-    };
-    const saysFail = { ...goodReviewer("reviewer-4", ids), pass: false };
-    s.env.service.recordReviewPanel(id, [g, noClaims, noWhy, saysFail], "supervisor");
+    const g = goodReviewer("reviewer-1", ids).research;
+    const with_ = (name: string, h: H) => reviewer(name, g.questions, [h]);
+    s.env.service.recordReviewPanel(
+      id,
+      [
+        with_("reviewer-1", {
+          id: ids.hypothesis,
+          verdict: "supported",
+          why: "It shows.",
+          claims: [ids.claims.verified],
+        }),
+        with_("reviewer-2", { id: ids.hypothesis, verdict: "supported", why: "yes", claims: [] }),
+        with_("reviewer-3", { id: ids.hypothesis, verdict: "undecided", why: " ", claims: [] }),
+        with_("reviewer-4", {
+          id: ids.hypothesis,
+          verdict: "refuted",
+          why: "No.",
+          claims: [ids.claims.clock],
+        }),
+      ],
+      "supervisor",
+    );
     const panel = JSON.parse(
       String((new Reviews(s.ledger).byId(id) as { panel: string }).panel),
     ) as CheckedReviewer[];
-    assert.deepEqual(
-      panel.map((r) => r.pass),
-      [true, false, false, false],
-    );
     assert.deepEqual(panel[1]?.hypotheses[0]?.problems, ["a supported verdict cites no claim"]);
     assert.deepEqual(panel[2]?.hypotheses[0]?.problems, ["an undecided verdict needs its why"]);
-    assert.equal(panel[3]?.said_pass, false);
+    const d = s.ledger.latestEventBody("item_decided", RUN) as Record<string, unknown>;
+    assert.deepEqual(
+      [d.kind, d.key, d.decision],
+      ["hypothesis", ids.hypothesis, "undecided"],
+      "one supported and one refuted passed: a tie",
+    );
+    assert.deepEqual(
+      (d.dissent as { reviewer: string; verdict: string }[]).map((x) => [x.reviewer, x.verdict]),
+      [
+        ["reviewer-1", "supported"],
+        ["reviewer-4", "refuted"],
+      ],
+    );
   });
 });
 
-describe("a passed review closes the run with its answers (goal 112)", () => {
-  test("hands-off: running trials end first, then the final report holds the answers and verdicts, and the run closes", async (t) => {
+describe("a passed review closes the run with its decisions (goals 112 and 117)", () => {
+  test("hands-off: running trials end first, then the final report holds the decisions, and the run closes", async (t) => {
     const s = await setup(t);
     const ids = s.ids as Ids;
     // Trials that run until they are let go, on two lanes; one of them ends at once, so a lane
@@ -586,7 +656,7 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
       ),
       { result: "review_passed", accepted: true },
     );
-    // Hands-off, said in its event and in the journal.
+    // Hands-off, said in its event and in the journal, with the decisions.
     const decided = s.ledger.latestEventBody("review_decided", RUN) as Record<string, unknown>;
     assert.equal(decided.decision, "accepted");
     assert.equal(
@@ -597,10 +667,15 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
       notes(s).some(
         (n) =>
           n.by === "harness" &&
-          n.text.includes(
-            "hands-off: the review panel passed it, and the run does not ask the owner",
-          ),
+          n.text ===
+            `Review ${id} decided 3 items by the majority of 2 reviewers: Question 1 answered, certainty moderate (2 of 2); Question 2 answered, certainty high (2 of 2); Hypothesis ${ids.hypothesis} supported (2 of 2).`,
       ),
+      JSON.stringify(notes(s)),
+    );
+    const panelEvent = s.ledger.latestEventBody("review_panel", RUN) as Record<string, unknown>;
+    assert.deepEqual(
+      [panelEvent.result, panelEvent.decided, panelEvent.open],
+      ["review_passed", 3, []],
     );
     // Its running trial ends first: no new trial starts on the free lane, and the run stays open.
     await sch.tick();
@@ -615,39 +690,29 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
       "running",
       "it waits for the supervisor",
     );
-    // A rig with no final writer: the run closes with the review panel's answers, and says why it
-    // has no research paper.
+    // A rig with no final writer: the run closes with the decisions, and says why it has no paper.
     await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: false }, "supervisor");
     await sch.tick();
     const run = s.env.service.ledger.getRun(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", ANSWERED]);
     const final = lastFinal(s);
     assert.match(final, /Research paper: none, no final writer on this rig\./);
-    assert.equal(
-      s.ledger.latestEventBody("research_final", RUN)?.no_paper,
-      "no final writer on this rig",
-    );
-    assert.equal(
-      s.ledger.db
-        .prepare("select count(*) as n from event where kind like 'research_paper_%'")
-        .get()?.n,
-      0,
-      "no paper is asked for",
-    );
-    assert.match(
-      final,
-      /## The review panel's answers\nThe review panel found every question answered \(review \d+, 2 reviewers\)\./,
-    );
     assert.match(
       final,
       new RegExp(
-        `### 1\\. ${RESEARCH_QUESTIONS[0]?.replace(/\?/g, "\\?")}\\n\\nThe first run archived 42 pages\\.\\n\\nCites: ${ids.claims.verified}\\. Found answered by 2 of 2 reviewers\\.`,
+        `## The review panel's decisions\\nThe review panel's decisions give every question an end and every required hypothesis a verdict \\(review ${id}\\)\\. Each decision`,
       ),
     );
     assert.match(
       final,
       new RegExp(
-        `## Hypotheses: the review panel's verdicts\\n- Stateless workers make long runs safe\\. \\(${ids.hypothesis}\\): supported \\(2 of 2 reviewers\\)\\.`,
+        `### 1\\. ${RESEARCH_QUESTIONS[0]?.replace(/\?/g, "\\?")}\\n\\nDecision: answered, certainty moderate \\(review ${id}, card version 1; 2 of 2 reviewers\\)\\.\\n\\nThe first run archived 42 pages\\.\\n\\nCites: ${ids.claims.verified}\\.`,
+      ),
+    );
+    assert.match(
+      final,
+      new RegExp(
+        `## Hypotheses: the review panel's verdicts\\n- Stateless workers make long runs safe\\. \\(${ids.hypothesis}\\): supported \\(review ${id}; 2 of 2 reviewers\\)\\.`,
       ),
     );
     // Once.
@@ -664,14 +729,12 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     );
   });
 
-  test("a run that asks the owner about reviews waits for accept_review; a rejection goes on and needs new evidence", async (t) => {
+  test("a run that asks the owner about reviews waits for accept_review; a rejection goes on until a card changes", async (t) => {
     const s = await setup(t, { assign: { ask_owner: { reviews: true } } });
     const ids = s.ids as Ids;
     const sch = scheduler(s);
     s.ranFor(3);
     const pass = [goodReviewer("reviewer-1", ids), goodReviewer("reviewer-2", ids)];
-    // Rejected: the run goes on, the owner's note in its journal, and no new review on the
-    // same evidence.
     const first = s.ask();
     assert.deepEqual(s.env.service.recordReviewPanel(first, pass, "supervisor"), {
       result: "review_passed",
@@ -700,20 +763,11 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
           n.text.includes("question 2 needs a primary source"),
       ),
     );
-    assert.equal(s.due().due, false, "not asked again on the same evidence");
-    // New evidence: asked again; this time the owner accepts, and the run closes.
-    const b = (await s.research.fetch(RUN, "lane-1", `${s.base}/b.html`)) as { source: string };
-    s.research.addClaim(RUN, "lane-2", {
-      text: "Long research campaigns need a clock.",
-      quotes: [
-        {
-          source: b.source,
-          quote: "Long research campaigns need a clock the workers cannot stop.",
-        },
-      ],
-      question: 1,
-    });
+    assert.equal(s.due().due, false, "not asked again while its items' decisions stand");
+    // A new card for question 2: asked again about it; the owner accepts, and the run closes.
+    s.card(1, "A long campaign needs a clock the workers cannot stop.", [ids.claims.clock], "high");
     const second = s.ask();
+    assert.deepEqual(s.pending().decide, { questions: [1], hypotheses: [] });
     s.env.service.recordReviewPanel(second, pass, "supervisor");
     const yes = await s.env.service.applyCommand(
       s.env.sign("accept_review", { run: RUN, review: second, accept: true }),
@@ -726,10 +780,13 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     await sch.tick();
     const run = s.env.service.ledger.getRun(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", ANSWERED]);
-    assert.match(lastFinal(s), /review \d+, 2 reviewers\), and the owner accepted it\./);
+    assert.match(
+      lastFinal(s),
+      new RegExp(`verdict \\(review ${second}\\), and the owner accepted them\\.`),
+    );
   });
 
-  test("gaps reach the next workers' brief; a final report with no passed review says the questions were not checked as answered", async (t) => {
+  test("open questions' evidence gaps reach the next workers' brief; measurements and failed answers stay out", async (t) => {
     const s = await setup(t);
     const ids = s.ids as Ids;
     const briefs: string[] = [];
@@ -739,106 +796,71 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
     });
     s.ranFor(3);
     const id = s.ask();
-    const gap = {
-      ...goodReviewer("reviewer-2", ids),
-      pass: false,
-      research: {
-        ...goodReviewer("reviewer-2", ids).research,
-        questions: [
-          goodReviewer("reviewer-2", ids).research.questions[0] as never,
-          {
-            index: 1,
-            answered: false,
-            answer: "",
-            claims: [],
-            missing: "a second, independent site on what keeps campaigns honest",
-          },
-        ],
-      },
-    };
-    s.env.service.recordReviewPanel(id, [goodReviewer("reviewer-1", ids), gap], "supervisor");
-    await sch.tick();
-    await sch.idle();
-    const brief = briefs.at(-1) ?? "";
-    assert.match(brief, new RegExp(`# What the review panel found missing \\(review ${id}\\)`));
-    assert.match(
-      brief,
-      /- Question 2 \(index 1\): a second, independent site on what keeps campaigns honest/,
-      "numbered as the brief numbers its questions",
-    );
-    // The digest's line, which workers read in REPORT.md, names both too (goal 117).
-    assert.match(
-      s.research.report(RUN, "digest").body,
-      /Answer check: not yet\. Review \d+ found gaps \(Question 2 \(index 1\): missing: a second, independent site/,
-    );
-    // The owner closes it before new evidence is checked: its final report says so.
-    s.research.report(RUN, "final");
-    assert.match(
-      lastFinal(s),
-      new RegExp(
-        `## The review panel's answers\\nThe questions were not checked as answered: review ${id} found gaps\\.`,
-      ),
-    );
-  });
-
-  test("only evidence gaps reach the workers: measurements, failed answers and missing verdicts stay out (goal 117)", async (t) => {
-    const s = await setup(t);
-    const ids = s.ids as Ids;
-    s.ranFor(3);
-    const id = s.ask();
-    const good = goodReviewer("reviewer-1", ids).research;
-    type Answer = (typeof good.questions)[number];
-    const reviewer = (name: string, q0: Answer, q1: Answer) => ({
-      reviewer: name,
-      pass: false,
-      reasons: "gaps",
-      research: { questions: [q0, q1], hypotheses: [] },
-    });
+    const g = goodReviewer("reviewer-1", ids).research;
     s.env.service.recordReviewPanel(
       id,
       [
-        // An evidence gap, and one that only a measurement could close.
-        reviewer("reviewer-1", good.questions[0] as Answer, {
-          index: 1,
-          answered: false,
-          answer: "",
-          claims: [],
-          missing: "a second, independent site on what keeps campaigns honest",
-        }),
+        reviewer(
+          "reviewer-1",
+          [
+            g.questions[0] as Q,
+            open(1, "a second, independent site on what keeps campaigns honest"),
+          ],
+          g.hypotheses,
+        ),
         reviewer(
           "reviewer-2",
-          {
-            index: 0,
-            answered: false,
-            answer: "",
-            claims: [],
-            missing: "Benchmark the archive on the target box to see how many pages it keeps",
-          },
-          // An answer that fails code's check: the reviewer's problem, not the workers'.
-          { index: 1, answered: true, answer: "It is 43.", claims: ["c-nope"], missing: "" },
+          [g.questions[0] as Q, open(1, "Benchmark the clock on the target box")],
+          g.hypotheses,
+        ),
+        // An answer that fails code's check: the reviewer's problem, not the workers'.
+        reviewer(
+          "reviewer-3",
+          [g.questions[0] as Q, answered(1, ["c-nope"], "It is 43.")],
+          g.hypotheses,
         ),
       ],
       "supervisor",
     );
     const gaps = briefGaps(s.ledger, RUN) ?? "";
-    assert.match(gaps, new RegExp(`# What the review panel found missing \\(review ${id}\\)`));
+    assert.match(gaps, new RegExp(`^# What the review panel found missing \\(review ${id}\\)`));
     assert.match(
       gaps,
-      /found gaps in the evidence\. The run goes on until they are filled: work on them first/,
+      new RegExp(
+        `- Question 2 \\(index 1\\) \\(review ${id}\\): a second, independent site on what keeps campaigns honest`,
+      ),
     );
-    assert.match(
-      gaps,
-      /- Question 2 \(index 1\): a second, independent site on what keeps campaigns honest/,
-    );
-    assert.doesNotMatch(
-      gaps,
-      /Benchmark|Question 1 \(index 0\)/,
-      "a measurement is not the workers' work",
-    );
+    assert.doesNotMatch(gaps, /Benchmark|Question 1 \(index 0\)|c-nope|43/);
     assert.match(
       gaps,
       /\(One more gap asks for a measurement: a next experiment for the report, not work for this run\.\)/,
     );
-    assert.doesNotMatch(gaps, /did not pass the check|c-nope|no verdict/);
+    // Each reviewer that found an item open or failed the check has a note in the journal.
+    assert.deepEqual(
+      notes(s)
+        .filter((n) => n.by.startsWith("panel:"))
+        .map((n) => n.by),
+      ["panel:reviewer-1", "panel:reviewer-2", "panel:reviewer-3"],
+    );
+    assert.match(
+      notes(s).find((n) => n.by === "panel:reviewer-3")?.text ?? "",
+      /Question 2: the answered verdict did not pass the check \(no claim c-nope; the number 43 is not in the claims it cites\)/,
+    );
+    await sch.tick();
+    await sch.idle();
+    assert.match(briefs.at(-1) ?? "", /# What the review panel found missing/);
+    // A new card for question 2: its open decision no longer stands, and the gap leaves the brief.
+    s.card(1, "A long campaign needs a clock the workers cannot stop.", [ids.claims.clock]);
+    assert.equal(briefGaps(s.ledger, RUN), undefined);
+    // The owner closes the run before it ends: its final report says so.
+    s.research.report(RUN, "final");
+    assert.match(
+      lastFinal(s),
+      /## The review panel's decisions\nThe run ended before the review panel's decisions gave every question an end: question 2 stayed open\./,
+    );
+    assert.match(
+      lastFinal(s),
+      /### 2\. .*\n\nNo decision stands: the review panel did not decide it on its newest card\./,
+    );
   });
 });

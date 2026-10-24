@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { researchPackage, researchReviewDue } from "../harness/research/review.ts";
 import { Reviews } from "../harness/reviews.ts";
-import { fillResearch, makeResearchRun } from "./research-run.ts";
+import { fillResearch, makeResearchRun, writeCards } from "./research-run.ts";
 
 /**
- * Goal 112's tests of the final paper: a research run (research-run.ts) whose review the review
- * panel passed and the harness accepted hands-off, two reviewers who answer it, and a paper that
- * holds against the harness's checks.
+ * Goal 112's tests of the final paper: a research run (research-run.ts) with an answer card for
+ * each question (goal 117), whose review the review panel passed and the harness accepted
+ * hands-off, two reviewers who answer it, and a paper that holds against the harness's checks.
  */
 
 export type ResearchIds = Awaited<ReturnType<typeof fillResearch>>;
@@ -21,19 +21,31 @@ export function goodReviewer(name: string, ids: ResearchIds) {
       questions: [
         {
           index: 0,
-          answered: true,
+          verdict: "answered" as const,
+          certainty: "moderate" as const,
           answer: "The first run archived 42 pages.",
           claims: [ids.claims.verified],
-          missing: "",
+          gaps: "",
+          next_experiments: "",
         },
         {
           index: 1,
-          answered: true,
+          verdict: "answered" as const,
+          certainty: "high" as const,
           answer: "A clock the workers cannot stop keeps a long campaign honest.",
           claims: [ids.claims.clock],
-          missing: "",
+          gaps: "",
+          next_experiments: "",
         },
-      ],
+      ] as {
+        index: number;
+        verdict: "answered" | "insufficient" | "open";
+        certainty: "high" | "moderate" | "low" | null;
+        answer: string;
+        claims: string[];
+        gaps: string;
+        next_experiments: string;
+      }[],
       hypotheses: [
         {
           id: ids.hypothesis,
@@ -47,12 +59,14 @@ export function goodReviewer(name: string, ids: ResearchIds) {
 }
 
 /**
- * A research run past its minimum whose review the review panel passed, accepted hands-off: it
- * now waits for its paper once its supervisor says it has a final writer. Close it when done.
+ * A research run past its minimum, with a card for each question, whose review the review panel
+ * passed, accepted hands-off: it now waits for its paper once its supervisor says it has a final
+ * writer. Close it when done.
  */
 export async function answeredResearchRun(run = "r-1") {
   const r = await makeResearchRun(run);
   const ids = await fillResearch(r);
+  writeCards(r, ids);
   const ledger = r.env.service.ledger;
   ledger.db
     .prepare("update run set created_at = ? where id = ?")

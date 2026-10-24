@@ -242,7 +242,8 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | `closed` | A goal campaign meets its goals, and a second, independent check agrees, with the held-out cases of the goals met ([The goal report](#the-goal-report)) | `every required goal is met` |
 | | The owner accepts a "not possible" proposal | `not possible: the owner accepted the evidence` |
 | | A "not possible" proposal, in a run that does not ask the owner | `not possible: the evidence holds, and the run does not ask the owner` |
-| | A research run's review panel found every question answered, and the pass was accepted (hands-off, or by the owner where the run asks), once code accepted its research paper and its running trials ended, or, on a rig with no final writer, once the trials ended ([When a research run ends](../explanation/campaign-modes.md#when-a-research-run-ends)) | `every question is answered` |
+| | A research run's review panel's decisions gave every question an end and every required hypothesis a verdict, and the pass was accepted (hands-off, or by the owner where the run asks), once code accepted its research paper and its running trials ended, or, on a rig with no final writer, once the trials ended ([When a research run ends](../explanation/campaign-modes.md#when-a-research-run-ends)) | `every question is answered` |
+| | A research run's open questions were all saturated and no item improved for a quarter of its running time (the progress rule), once its paper was in, or there was no final writer, and its running trials ended | `research stopped adding: its open questions are saturated` |
 | | A research campaign's time is over | `the research window is over` |
 | | The owner closes it by hand (`close_run`, **Close run** under **⋯** on the run's page), running or paused | the reason given: what you typed in **Why**, or the payload's `reason` |
 | | A smoke check finishes its own run | `the smoke check is done` |

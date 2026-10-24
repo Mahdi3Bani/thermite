@@ -27,7 +27,7 @@ import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
-import { measurementIn, measurementRefusal } from "../core/research-check.ts";
+import { measurementIn, measurementRefusal, questionName } from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
@@ -77,9 +77,11 @@ import { type PaperPackage, type PaperSubmission, Papers } from "./research/pape
 import { NOTE_REPEATS, startingHypotheses } from "./research/research.ts";
 import {
   checkResearchPanel,
+  decisionWords,
   RESEARCH_REVIEW,
   type ResearchPackage,
   type ResearchVerdicts,
+  researchEnd,
   reviewerGaps,
 } from "./research/review.ts";
 import {
@@ -629,17 +631,27 @@ export class HarnessService {
     return new Cards(this.ledger, (run) => this.contractFor(run));
   }
 
-  /** For each running research run whose evidence changed since a card, its request (goal 117). */
+  /**
+   * For each running research run whose evidence changed since a card, its request (goal 117). A
+   * run that ended (its review's pass accepted, or the progress rule's stop) gets none: its cards,
+   * and so the decisions on them, stay as they were when it ended, for its paper.
+   */
   cardPackages(): ReturnType<Cards["pending"]> {
-    return this.cards.pending();
+    return this.cards.pending().filter((p) => !researchEnd(this.ledger, p.run));
   }
 
   /**
    * The synthesizer's cards for a research run, as the supervisor posts them (goal 117): each
    * checked by code, then kept as its question's next version or refused with its problems, which
    * go back with the question's next request. The run's research folder follows what was kept.
+   * A run that ended takes no card.
    */
   submitCards(run: string, input: CardSubmission, by: string): { results: CardResult[] } {
+    if (researchEnd(this.ledger, run))
+      throw new LedgerError(
+        "conflict",
+        `run ${run} has ended: its answer cards stay as they were, for its paper`,
+      );
     const out = this.cards.submit(run, input, by);
     const q = (i: number) => `question ${i + 1}`;
     const kept: string[] = [];
@@ -764,11 +776,13 @@ export class HarnessService {
   }
 
   /**
-   * A research review's results (goal 112): each reviewer's answers checked by code against the
-   * package it was given (research/review.ts), and recorded with each failed check's reason. On
-   * gaps, each reviewer's findings go in the run's journal and the run goes on. A pass is accepted
-   * hands-off, unless the run asks the owner about reviews; once accepted, the scheduler ends the
-   * run when its running trials end, with its final report.
+   * A research review's results (goals 112 and 117): each reviewer's answers to the items it was
+   * asked to decide, checked by code against the package it was given (research/review.ts), and
+   * recorded with each failed check's reason; each item's decision is the panel's majority
+   * (reviews.ts). The decisions go in the run's journal, and, when items stay open, what each
+   * reviewer found open. A pass (every question has an end, every required hypothesis a verdict)
+   * is accepted hands-off, unless the run asks the owner about reviews; once accepted, the
+   * scheduler asks for the run's paper and ends the run when its running trials end.
    */
   private recordResearchPanel(
     reviews: Reviews,
@@ -785,22 +799,38 @@ export class HarnessService {
     const run = String(row.run);
     const pkg = JSON.parse(String(row.package)) as ResearchPackage;
     const checked = checkResearchPanel(this.ledger, run, pkg, results);
-    const result = reviews.recordResearchPanel(id, checked, by);
-    const panelNote = (reviewer: string, text: string) =>
-      this.journal.writeAll(run, [{ kind: "observation", text: text.slice(0, 2000) }], {
-        by: `panel:${reviewer}`,
-        actor: by,
-        source: "supervisor",
-      });
+    const { result, decided, open } = reviews.recordResearchPanel(id, checked, by);
+    const name = (d: { kind: string; key: string }) =>
+      d.kind === "question" ? questionName(Number(d.key)) : `Hypothesis ${d.key}`;
+    this.journal.writeAll(
+      run,
+      [
+        {
+          kind: "decision",
+          text: `Review ${id} decided ${decided.length} ${decided.length === 1 ? "item" : "items"} by the majority of ${checked.length} reviewers: ${decided
+            .map(
+              (d) =>
+                `${name(d)} ${decisionWords(d)}${d.why ? ` (${d.why === "tie" ? "a tie" : d.why})` : ` (${d.majority.length} of ${checked.length})`}${d.dissent.length ? `, ${d.dissent.length} dissenting` : ""}`,
+            )
+            .join(
+              "; ",
+            )}.${open.questions.length ? ` Still open: ${open.questions.map(questionName).join(", ")}.` : ""}`.slice(
+            0,
+            2000,
+          ),
+        },
+      ],
+      { by: "harness", actor: by, source: "supervisor" },
+    );
     if (result === "review_failed") {
-      // One note for each reviewer: what it found missing, and each answer that failed the check.
+      // One note for each reviewer that found an item open or gave an answer that failed the check.
       for (const r of checked) {
         const gaps = reviewerGaps(r);
-        panelNote(
-          r.reviewer,
-          r.pass
-            ? `Review ${id}: this reviewer found every question answered; the review panel as a whole did not.`
-            : `Review ${id}: not every question is answered yet. ${gaps.join(". ")}.`,
+        if (!gaps.length) continue;
+        this.journal.writeAll(
+          run,
+          [{ kind: "observation", text: `Review ${id}: ${gaps.join(". ")}.`.slice(0, 2000) }],
+          { by: `panel:${r.reviewer}`, actor: by, source: "supervisor" },
         );
       }
       return { result };
@@ -813,7 +843,7 @@ export class HarnessService {
       [
         {
           kind: "decision",
-          text: `Review ${id}: ${words}. Every question is answered: the run writes its final report and ends once its running trials end.`,
+          text: `Review ${id}: ${words}. Every question has an end and every required hypothesis a verdict: the run writes its paper and final report, and ends once its running trials end.`,
         },
       ],
       { by: "harness", actor: "harness (hands-off)", source: "supervisor" },
@@ -1144,9 +1174,9 @@ export class HarnessService {
         const p = CommandPayloads.accept_review.parse(payload);
         this.decidingRun(p.run, "accept_review");
         const row = new Reviews(this.ledger).ownerDecision(p.review, p.run, p.accept, p.note, by);
-        // A research review (goal 112): accepted, the run ends once its running trials end; not
-        // accepted, it goes on, and a new review needs new evidence. The owner's word goes in
-        // the run's journal.
+        // A research review (goals 112 and 117): accepted, the run writes its paper and ends once
+        // its running trials end; not accepted, it goes on, and the review panel is asked again
+        // only when an item has no standing decision. The owner's word goes in the run's journal.
         if (row.goal === RESEARCH_REVIEW) {
           const note = p.note?.trim();
           this.journal.writeAll(
@@ -1155,8 +1185,8 @@ export class HarnessService {
               {
                 kind: "decision",
                 text: (p.accept
-                  ? `The owner accepted review ${p.review}: every question is answered. The run writes its final report and ends once its running trials end.${note ? ` The owner's note: ${note}` : ""}`
-                  : `The owner did not accept review ${p.review}. The run goes on; the review panel is asked again only on new evidence.${note ? ` The owner's note: ${note}` : ""}`
+                  ? `The owner accepted review ${p.review}: every question has an end and every required hypothesis a verdict. The run writes its paper and final report, and ends once its running trials end.${note ? ` The owner's note: ${note}` : ""}`
+                  : `The owner did not accept review ${p.review}. The run goes on; the review panel is asked again when a question's answer card changes.${note ? ` The owner's note: ${note}` : ""}`
                 ).slice(0, 2000),
               },
             ],

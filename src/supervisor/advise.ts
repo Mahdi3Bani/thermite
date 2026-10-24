@@ -14,6 +14,7 @@ import {
   type AdvisorCompaction,
   type AdvisorKeeper,
   type AdvisorMcp,
+  type AdvisorResult,
   type AdvisorsConfig,
   type AdvisorTools,
   type AdvisorUsage,
@@ -21,6 +22,7 @@ import {
   auditOne,
   isResearchPackage,
   type ResearchReviewAnswers,
+  type ReviewOutput,
   reviewOne,
   synthesizeCards,
   teacherRound,
@@ -36,8 +38,8 @@ import { NO_STE_CHECKER, steCheckerAt, steResultOf, steToolAnswer } from "./ste-
  * The supervisor's advisor loop: the teachers review each running run on their cadence, and at
  * once when the owner has written to it; the auditor answers open audits, the review panel
  * answers open reviews, the synthesizer rewrites the answer cards of each research run whose
- * evidence changed (goal 117), and the final writer writes the paper of each research run whose
- * questions the review panel found answered (goal 112). Everything goes through the harness API
+ * evidence changed (goal 117), and the final writer writes the paper of each research run that
+ * ended (goals 112 and 117). Everything goes through the harness API
  * with the supervisor's token, which cannot write verdicts, champions or contracts. Each run is kept in the supervisor's
  * home, the figures go to control, and each step is a line in the live view.
  *
@@ -1103,15 +1105,34 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const compactions: AdvisorCompaction[] = [];
         // Each reviewer that gave no answer, and why.
         const unanswered: { reviewer: string; why: string }[] = [];
-        for (const runtime of panel) {
-          const r = await reviewOne({
-            runtime,
-            pkg: { ...pkg, owner_messages: owner },
-            ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
-            ...(mcp ? { mcp } : {}),
-            ...(research && pkg.run ? { research: researchFor(pkg.run) } : {}),
-            keeper: keeperFor(pkg.run),
-          });
+        // The reviewers review at once, in parallel (goal 117), each blind to the others. Each
+        // one's call is then recorded in the panel's order: its usage, its line in Live and its
+        // answer. A reviewer whose call throws gave no answer, with the error as why.
+        const calls = await Promise.all(
+          panel.map((runtime) =>
+            reviewOne({
+              runtime,
+              pkg: { ...pkg, owner_messages: owner },
+              ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
+              ...(mcp ? { mcp } : {}),
+              ...(research && pkg.run ? { research: researchFor(pkg.run) } : {}),
+              keeper: keeperFor(pkg.run),
+            }).then(
+              (r) => ({ runtime, r }),
+              (err: unknown) => ({
+                runtime,
+                r: {
+                  output: undefined,
+                  error: err instanceof Error ? err.message : String(err),
+                  tokensIn: 0,
+                  tokensOut: 0,
+                  usd: 0,
+                } as AdvisorResult<ReviewOutput>,
+              }),
+            ),
+          ),
+        );
+        for (const { runtime, r } of calls) {
           count(r);
           await usageOut(pkg.run, `review ${pkg.id}`, "panel", r.usage);
           compactions.push(...(r.compactions ?? []));
@@ -1127,8 +1148,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           });
           for (const a of r.output.answers) answers.push({ ...a, advisor: runtime.name });
           if (r.output.journal.length) journal.push({ by: runtime.name, notes: r.output.journal });
+          const rq = r.output.research?.questions ?? [];
           const answered = r.output.research
-            ? ` ${r.output.research.questions.filter((q) => q.answered).length} of the questions answered.`
+            ? ` Questions: ${rq.filter((q) => q.verdict === "answered").length} answered, ${rq.filter((q) => q.verdict === "insufficient").length} insufficient, ${rq.filter((q) => q.verdict === "open").length} open; ${r.output.research.hypotheses.length} hypotheses judged.`
             : "";
           say(
             pkg.run,
@@ -1193,7 +1215,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     }
   }
   // The final writer (goal 112): the rig's first teacher's model writes the research paper of
-  // each research run whose review panel found every question answered. The supervisor runs the
+  // each research run that ended (goal 117: its review's pass accepted, or the progress rule). The supervisor runs the
   // STE checker itself on the paper it posts; the harness checks the rest and accepts or refuses
   // it. A refused paper is written again at the next round, with the problems in its package; a
   // try that gave no paper, after retryMs. No cap on tries.

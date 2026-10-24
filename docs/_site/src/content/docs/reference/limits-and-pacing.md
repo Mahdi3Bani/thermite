@@ -186,7 +186,7 @@ The dashboard calls an epoch a **round**.
 | Past research synced into each running run's `knowledge/` folder | Every 180 s. A run that control says it did not assign, such as a rig check's run, is asked about again 1 hour later, or once it has stopped running and runs again | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off. The hour is fixed |
 | A rig's MCP servers, from control to its supervisor and harness | Every 30 s, with the model route. Control renews an OAuth or client sign-in when less than 5 minutes of its access token are left | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
 | An MCP server's tool list, as the harness and the supervisor keep it | Read again at the first use after 5 minutes, or when the server's sign-in changes | Fixed |
-| Research digests | Every 60 minutes. After `min_duration`, the review panel is asked at a digest whether every question is answered, when every question has a verified claim, the run has `min_verified_claims` (when set), no review of the run waits and the evidence is new | The contract's `report_cadence.digest_minutes` |
+| Research digests | Every 60 minutes. After `min_duration`, at a digest, the review panel is asked about the items with no standing decision, when every question has an answer card, the run has `min_verified_claims` (when set) and no review of the run waits; then the progress rule is checked | The contract's `report_cadence.digest_minutes` |
 | Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | A research run: the contract's `fetch_policy.per_domain_per_minute`. A hill-climb or goal run: fixed |
 
 ## Back-pressure
