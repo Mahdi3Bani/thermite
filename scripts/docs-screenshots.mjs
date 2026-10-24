@@ -115,10 +115,11 @@ try {
   );
   await signedIn;
 
-  const firstLink = (prefix) =>
+  const firstLink = (prefix, skip = []) =>
     evaluate(
       `[...document.querySelectorAll('a')].map(a => a.getAttribute('href'))` +
-        `.find(h => h && h.startsWith(${JSON.stringify(prefix)}) && h !== ${JSON.stringify(prefix)})`,
+        `.find(h => h && h.startsWith(${JSON.stringify(prefix)}) && h !== ${JSON.stringify(prefix)}` +
+        ` && !${JSON.stringify(skip)}.includes(h))`,
     );
   // A hill climb shows the most: its champion chart, decisions and lanes.
   await go(`${values.demo}/ui/campaigns`);
@@ -131,7 +132,8 @@ try {
   const run = await firstLink(`${campaign}?run=`);
   const live = await firstLink("/ui/live?run=");
   await go(`${values.demo}/ui/rigs`);
-  const rig = await firstLink("/ui/rigs/");
+  // A rig's own page, not Add a rig, which comes first on the Rigs page.
+  const rig = await firstLink("/ui/rigs/", ["/ui/rigs/add"]);
 
   const shots = [
     ["overview", "/ui"],

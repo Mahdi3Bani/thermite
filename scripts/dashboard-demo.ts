@@ -121,6 +121,27 @@ function hillClimb(
     mode: "hill_climb",
     seed: { repo: "inference-engine", commit: "a1b2c3d4e5f6" },
   });
+  // A hill climb's judge measures its starting point first (goal 115), then the rig's noise.
+  const ppl = { median: 1, mad: 0.0001, n: 9 };
+  u.ev(hours - 0.1, "baseline", run, {
+    run,
+    job: 1,
+    champion_seq: 1,
+    commit: "a1b2c3d4e5f6",
+    attempt: null,
+    blocks: 3,
+    runs_per_cell: 3,
+    primary: { metric: "tok_per_s", direction: "max" },
+    guards: [{ metric: "ppl_ratio", direction: "min", max_total_regression: 0.01 }],
+    units: { tok_per_s: "tok/s", ppl_ratio: "ratio" },
+    cells: {
+      small: { tok_per_s: { median: 182.4, mad: 0.6, n: 9 }, ppl_ratio: ppl },
+      large: { tok_per_s: { median: 61.7, mad: 0.3, n: 9 }, ppl_ratio: ppl },
+    },
+    files: [],
+    bytes: 0,
+    summary: "tok_per_s small 182 ±0.33%, large 61.7 ±0.49% (median of 3 blocks)",
+  });
   u.ev(hours - 0.2, "calibration", run, {
     sigma: 0.0042 + rnd() * 0.004,
     summary: "A/A over 6 blocks",
