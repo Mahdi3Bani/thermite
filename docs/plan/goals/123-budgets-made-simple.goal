@@ -1,0 +1,82 @@
+---
+id: "123"
+title: "Budgets made simple: one amount in dollars, easy to set, that holds on every rig"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 123 · Budgets made simple: one amount in dollars, easy to set, that holds on every rig
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is built.
+
+An owner with a fixed amount to spend, such as the credit on a GPU cloud account, wants to set it once, see it count down, and have Thermite stop before it is gone. Today that takes three limits, and none of them covers the whole cost:
+
+| Limit | What it counts | What it misses |
+| --- | --- | --- |
+| A RunPod pod's spend limit | What the pod cost while it ran; at the limit, control stops the pod | The model's cost. It is for one pod, not for a run or a campaign |
+| The contract's `budget.llm_usd` | The workers' tokens, at one pair of prices set on the harness | The planner and the advisors. Only the local stack can set the prices: on other rigs it does nothing, and nothing says so |
+| The advisors' `max_usd_per_day` | Some advisors' calls | Advisors given their model on **Edit rig** |
+
+Control already adds up what each run costs, its tokens at the models' prices and its GPU time on RunPod, and shows it on the run's page. Nothing stops a run at an amount. Goal [061](061-gaps-found-by-the-docs.goal) lists the other gaps under "Budgets and run time": a run that a budget paused cannot go on, no command changes a budget, and the stop time counts paused time.
+
+This goal makes budgets simple:
+
+- **One amount in dollars.** The owner sets it on the **New campaign** page and in **Start a run**, with the same field in the contract, REST, MCP and the command line.
+- **Control counts it, on every rig.** It counts what the run's page already shows: every agent's tokens (workers, planner, advisors, review panel and final writer) at the models' prices, and GPU time on RunPod, including goal [100](100-on-demand-gpus.goal)'s pods on demand. Nobody sets prices on a harness. Tokens on a subscription cost $0 and show as tokens.
+- **At the budget, the run pauses,** with the reason "the budget is spent ($X of $Y)". No new trial or judge job starts. On RunPod, the pod stops once its runs are paused, with its results sent out first, as it does at its spend limit.
+- **To go on, the owner raises the budget,** on the run's page or with a REST, MCP or command-line twin, and the same run goes on.
+- **The run's page shows the budget plainly:** what was spent of the budget, with a bar, what is left, and how far it goes, such as "about 40 more changes at this run's cost so far".
+- **Before a run starts,** **New campaign** and **Start a run** say what it can cost: with a budget, "This run stops at $100"; without one, "No budget: this run goes on until you stop it. It costs about $0.50 an hour on the pod, plus the model's tokens." This is a statement, not a refusal.
+- **One page,** "Run on a budget", replaces "Set a budget or a stop time": what each cost is, how to set the budget, what happens at it, and how to make a budget go further (a free GPU of your own first, short measurements, and goal [122](122-repeat-measurements-setting.goal)'s setting).
+
+## Why
+
+A tester, 2026-10-24, had a fixed amount of credit on RunPod and asked how to run a campaign until it was spent, and how to manage compute that is not unlimited.
+
+The owner, 2026-10-24: "we need a goal for v0.1.1 that overhauls the budget stuff and makes it much more straight forward and easy UX that helps folks like him."
+
+## Constraints
+
+- **No default caps** ([rules for every goal](../README.md#rules-for-every-goal)): no run gets a budget it was not given. Thermite says plainly when a run has none.
+- **Agents never change a budget.**
+- **A mockup first:** the budget on **New campaign**, **Start a run** and the run's page, shown to the owner before it is built.
+- **The owner's OK first** before any test that spends money. The acceptance uses the fake RunPod API and a scripted model.
+
+## Done when
+
+- [ ] A design: what the budget counts, where it is set and changed, what happens at it, and what becomes of `budget.llm_usd`, `device_hours`, the harness's token prices and the advisors' daily limit.
+- [ ] A mockup of the budget on **New campaign**, **Start a run** and the run's page, approved by the owner.
+- [ ] The build, with tests: control's count, the pause at the budget, raising it, the pages, and the REST, MCP and command-line twins.
+- [ ] An acceptance run with the fake RunPod API and a scripted model: a run with a budget pauses at it and its pod stops; the owner raises the budget and the same run goes on; the amounts match control's records of what the run cost.
+- [ ] The first four items under "Budgets and run time" in goal [061](061-gaps-found-by-the-docs.goal) are fixed or replaced, and ticked there.
+- [ ] The pages that describe budgets and costs: the new "Run on a budget" page, the contract reference, the **New campaign** page, **Start a run**, the run's page, model use and cost, a rig on RunPod, the REST API, the MCP tools and the command line.
+
+## Decisions
+
+- 2026-10-24, owner: in v0.1.1, an overhaul of budgets that makes them easy to set and to follow.
+
+## Open questions
+
+- A budget for each run, for the whole campaign (all its runs), or both.
+- Whether trials and judge jobs that are running at the budget stop at once, or end first and go a little past it.
+- Whether the old limits stay, as advanced fields, or go, and how contracts that use them are read.
+- Who may change a budget: the owner only, or also the operator's token.
+- Whether control can read the RunPod account's balance, to suggest a budget below it.
+- How goal [100](100-on-demand-gpus.goal)'s spend caps for each batch and each day fit in, and goal [095](095-runpod-spend-on-providers.goal)'s RunPod spend on **Providers**.
+- Whether the stop time should count only the time the run was not paused.
+- How the budget counts a model with no known price: its tokens show as `no price` on the run's page, never as $0, so the page must say that the budget leaves them out, or ask for a price before the run starts.
+
+## Progress
+
+- 2026-10-24: Goal written from a tester's feedback and the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/123-budgets-made-simple.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

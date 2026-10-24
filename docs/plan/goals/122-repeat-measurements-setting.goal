@@ -1,0 +1,82 @@
+---
+id: "122"
+title: "Repeat measurements: a setting to turn off the judge's repeats, with why to keep them or not"
+status: PROPOSED
+version: "0.1.1"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 122 · Repeat measurements: a setting to turn off the judge's repeats, with why to keep them or not
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+
+## What
+
+A plan only; nothing of it is built.
+
+Today a hill climb's judge never trusts one measurement. It measures the champion again beside each change, in rounds (blocks), and decides only when several rounds agree. It then confirms a win on fresh rounds. It also measures the run's starting point in 3 rounds, and the rig's noise in 6 rounds of the champion against itself, every 24 hours while the run runs.
+
+When one measurement takes seconds, this costs little. When one measurement takes minutes or hours, such as one training of a model, most of the GPU time goes to the repeats. With one case and the **New campaign** page's 3 runs per case:
+
+| What | Measurements |
+| --- | --- |
+| A change that loses | 18 to 54 |
+| A change that wins | 48 to 84, and 3 for each hidden test |
+| The starting point | 9 |
+| Each noise check | 36 |
+
+The contract can make this smaller (`acceptance.runs_per_cell`, `looks` and `confirm_blocks`), but nothing tells an owner when to do it, and the noise check can be changed only in the harness's settings.
+
+This goal adds one setting, **Repeat measurements**:
+
+- **Where:** the **New campaign** page, with a field in the contract and the same choice over REST, MCP and the command line.
+- **On by default:** the judge works as it does today.
+- **Off:** the judge measures the starting point once on each case, measures each change once on each case, and runs each hidden test once. It runs no confirmation rounds and no noise check. A change becomes the champion when its gain is at least the smallest gain that counts.
+- **A description beside the setting,** and in its ⓘ, in plain words:
+  - Keep it on when a measurement is quick, or when its number changes from run to run, such as a time, or a training with a random seed. The repeats stop a lucky run from becoming the champion.
+  - Turn it off when a measurement is slow or costs money, such as a training on a rented GPU, and its number is almost the same each time, such as a training with a fixed seed, or an evaluation that gives the same score each time. Then each change costs one measurement. But a lucky run can become the champion, and each change after it builds on it.
+- **The cost of each choice:** the page says how many measurements a change costs with the setting on and off and, once **Try the kit first** has measured one, how long that takes.
+- **It shows on the results:** a champion that the judge promoted with repeats off says so on its attempt's page and on the run's page, for example "measured once", and the verdict records it.
+
+## Why
+
+A tester, 2026-10-24, planned a campaign that trains a model on a rented GPU with a fixed amount of credit. At the judge's defaults, most of that credit would go to repeats.
+
+The owner, 2026-10-24: "This should be a setting you can turn off with a description of why you may or may not want it."
+
+## Constraints
+
+- **Agents never judge** (a settled decision): with repeats off, the judge still measures every change and decides. Only how sure it must be changes.
+- **The default stays as it is:** repeats on.
+- **A mockup first:** the setting, its description and its cost on the **New campaign** page, and the "measured once" marks, shown to the owner before they are built.
+
+## Done when
+
+- [ ] A design: the contract's field, what the judge runs with repeats off, and what the verdict records.
+- [ ] A mockup of the setting and of the marks on the results, approved by the owner.
+- [ ] The build, with tests: the contract, the judge, the **New campaign** page, the run's page and the attempt's page, and the REST, MCP and command-line choices.
+- [ ] An acceptance run with repeats off, in which a change becomes the champion after one measurement on each case, and the run's page says so.
+- [ ] The pages that describe the judge's measurements: the contract reference, verdicts, campaign modes, the **New campaign** page and the budget page.
+
+## Decisions
+
+- 2026-10-24, owner: a setting that can be turned off, with a description of why one may or may not want it.
+- 2026-10-24: placed in v0.1.1 with goal [123](123-budgets-made-simple.goal), for the same owners. The owner did not name a version.
+
+## Open questions
+
+- Only on and off, or a middle choice too, such as one run per case, a decision after 2 rounds, and 2 rounds to confirm.
+- With repeats off, whether the champion is measured again beside each change (2 measurements for each change, safer when the device changes) or compared with its last measurement (1).
+- What happens when the device changes, such as a pod that starts again on another GPU, or goal [100](100-on-demand-gpus.goal)'s pods on demand: the champion's values must then be measured again.
+- Whether a goal campaign's metric thresholds (`threshold_reps`, 2 to 20 runs) follow the same setting.
+- How it fits goal [114](114-hill-climb-contract-gaps.goal) (a check once per candidate, and held-out cells at their cost) and goal [121](121-hill-climb-stages.goal) (stages).
+
+## Progress
+
+- 2026-10-24: Goal written from a tester's feedback and the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/122-repeat-measurements-setting.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
