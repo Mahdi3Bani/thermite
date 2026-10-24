@@ -1,7 +1,7 @@
 import { harnessConfirmed } from "./issue.ts";
 import { sameModel } from "./providers.ts";
 import type { CommandRow, ControlStore } from "./store.ts";
-import { EXPORT_WHERE } from "./ui/exports.ts";
+import { EXPORT_WHERE, exportWords } from "./ui/exports.ts";
 import { foldCheck, type RigCheckView, type RigModelView, readModelInfo } from "./views.ts";
 
 /**
@@ -90,14 +90,9 @@ export function commandProgress(cmd: CommandRow, now: number): Progress {
   const p = commandProgressOnly(cmd, now);
   if (cmd.kind !== "export_now" || p.tone === "bad") return p;
   // An export the owner asked for (goal 103): which kind, and where it will show.
-  const full = (cmd.payload as { full?: unknown }).full === true;
+  const words = exportWords(cmd.payload as { full?: unknown; run?: unknown });
   const made = (cmd.outcome as { result?: { export?: unknown } } | null)?.result?.export;
-  const what =
-    p.state === "done" && typeof made === "string"
-      ? `It made ${full ? "the full export" : "export"} ${made}.`
-      : full
-        ? "A full export was asked for."
-        : "An export was asked for.";
+  const what = p.state === "done" && typeof made === "string" ? words.made(made) : words.asked;
   return { ...p, said: `${p.said} ${what} ${EXPORT_WHERE}` };
 }
 

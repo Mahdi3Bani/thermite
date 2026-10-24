@@ -220,6 +220,97 @@ describe("a run's export holds its journal, its research notes and its briefing"
     assert.ok(folderFiles(last.dir, RUN).includes(`research/${RUN}/folder/INDEX.md`));
   });
 
+  test("a run's export holds that run alone, from its start, outside the rig's chain of exports (goal 103)", async () => {
+    const { env, s, research } = await setup();
+    const parsed = parseContract({ ...researchFixture, lanes: { count: 1, trials_per_epoch: 1 } });
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    const out = await s.applyCommand(
+      env.sign("assign_campaign", {
+        run: "r-1",
+        contract: parsed.contract,
+        contract_sha: parsed.sha,
+        imports: [],
+      }),
+    );
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    research.addNote("r-1", "lane-1", "The paper's table 3 has the numbers.", [], "t-9");
+    research.addNote(RUN, "lane-1", "Aligned loads matter.", [], "t-1");
+    // The chain: a normal export first.
+    const before = await s.export("test");
+    const chain = s.ledger.lastExport();
+
+    // Through the command, as Export on the run's page sends it.
+    const r = (await s.applyCommand(env.sign("export_now", { run: "r-1" }))) as {
+      status: string;
+      result?: { export: string; export_id: number };
+    };
+    assert.equal(r.status, "applied", JSON.stringify(r));
+    const name = String(r.result?.export);
+    const dir = join(s.paths.outboxDir, name);
+    const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as {
+      run?: string;
+      full?: boolean;
+      from_event: number;
+      files: Record<string, string>;
+    };
+    assert.equal(m.run, "r-1");
+    assert.equal(m.full, undefined);
+    assert.equal(m.from_event, 0, "from the run's start");
+    assert.equal(r.result?.export_id, 0, "not in the rig's chain");
+    const files = Object.keys(m.files);
+    assert.ok(!files.includes("ledger.sqlite"), "the ledger is every run's");
+    assert.ok(!files.some((f) => f.startsWith(`research/${RUN}/`)), files.join(", "));
+    assert.ok(files.includes(`research/r-1/folder-${name}/INDEX.md`), files.join(", "));
+    // Its events and notes are the run's alone.
+    const events = lines(join(dir, "events.jsonl"));
+    assert.ok(events.length > 0);
+    assert.ok(
+      events.every(
+        (e) => e.subject === "r-1" || (e.body as { run?: string } | null)?.run === "r-1",
+      ),
+      JSON.stringify(events.map((e) => [e.kind, e.subject])),
+    );
+    assert.ok(
+      events.some((e) => e.kind === "run_created"),
+      "from its start",
+    );
+    assert.deepEqual(
+      lines(join(dir, "research-notes.jsonl")).map((n) => n.run),
+      ["r-1"],
+    );
+    // The chain is as it was: the next export starts where the last of the chain ended.
+    assert.deepEqual(s.ledger.lastExport(), chain);
+    research.addNote(RUN, "lane-1", "After the run's export.", [], "t-1");
+    const next = await s.export("test");
+    const nm = manifestOf(next.dir) as { from_event?: number };
+    assert.equal(
+      nm.from_event,
+      (manifestOf(before.dir) as { through_event?: number }).through_event,
+    );
+
+    // The supervisor pushes its research folder too, as a full export's.
+    const root = mkdtempSync(join(tmpdir(), "thermite-results-"));
+    const remote = join(root, "remote.git");
+    mkdirSync(remote);
+    execFileSync("git", ["-C", remote, "init", "--bare", "--quiet"]);
+    const state = await exportOnce(
+      {
+        rig: "rig-a",
+        outboxDir: s.paths.outboxDir,
+        workDir: join(root, "work"),
+        remote: `file://${remote}`,
+      },
+      { done: [] },
+    );
+    assert.equal(state.lastError, undefined);
+    const pushed = execFileSync(
+      "git",
+      ["-C", remote, "ls-tree", "-r", "--name-only", "thermite/rig-a/attempts"],
+      { encoding: "utf8" },
+    );
+    assert.match(pushed, new RegExp(`research/r-1/folder-${name}/INDEX\\.md`));
+  });
+
   test("an export holds the run's part of its campaign's folder: the items control files, each with its origin", async () => {
     const { s, research } = await setup();
     const reg = new Registry(s.ledger);

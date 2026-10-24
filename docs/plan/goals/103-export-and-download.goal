@@ -5,7 +5,7 @@ status: IN_PROGRESS
 version: "0.1.0"
 depends_on: ["024", "080", "112"]
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # 103 · Export, full or not, from the dashboard; an Exports page that downloads each export
@@ -35,7 +35,8 @@ On 2026-10-23 the owner wanted to take a research run's whole record (knowledge,
 - [x] The archive route gives a `.tar.gz` whose files match the export's kept files and their SHA-256, with the manifest; it refuses without the owner's token, and answers 404 for an unknown or incomplete export. Test: `src/control/exports.test.ts`.
 - [x] The Exports page lists each export with its fields, and **Download** only for a complete one; the dashboard's download needs the owner's session. Test: `src/control/exports.test.ts`.
 - [x] The pages match the code: Get a rig's results from control, Exports, REST API, MCP tools, signed commands, the rig's page, glossary, Set up the results repository, Stop, restart, remove or reset a rig, Take the result, Several rigs, Automate over REST, Your own project; the changelog has the change.
-- [ ] On the deployment: a full export of a rig holding a research run reaches control, shows on the Exports page, and its download unpacks with the run's research folder and the ledger snapshot.
+- [x] **Export** on a run's page exports that run alone (**This run**, chosen there), outside the rig's chain of exports; the rig's choices stay beside it. Tests: `src/harness/export-notes.test.ts`, `src/control/exports.test.ts`.
+- [ ] On the deployment: a run's export of a closed research run holds its folder with its paper, and no other run; and a full export of a rig holding a research run reaches control, shows on the Exports page, and its download unpacks with the run's research folder and the ledger snapshot.
 
 ## Decisions
 
@@ -46,6 +47,9 @@ On 2026-10-23 the owner wanted to take a research run's whole record (knowledge,
   - **The archive.** A gzip-compressed POSIX tar (ustar, with pax records for a path ustar can't hold), written by a small writer in `src/control/tar-gz.ts` with Node's zlib: no new dependency. Everything sits under one folder, `<rig>-<export>/`, so unpacking several archives keeps them apart. Control streams it from the files it keeps; each download is in the audit log as `export_downloaded`.
   - **What the page says.** The words after **Export** name the kind of export asked for and say it shows on the **Exports** page when all its files reach control; a rig with a results repository pushes it there instead.
 - 2026-10-23, owner: the last box waits for goal 112, so that the research run's full export holds its final paper, not only its corpus: "I need the export to be a fully cohesive research report not just a brain dump."
+
+- 2026-10-24, owner, after **Full export** on a run's page held every run of its rig: "full export failed.. it exported runs that was not related to the run I asked to export." So **Export** on a run's page exports that run alone, first and chosen, with the rig's two choices beside it.
+- 2026-10-24, builder, within that: a run's export holds the run from its start (its events, attempts, notes, briefing and knowledge items), its research folder as it stands and its fetched pages, and no ledger snapshot (the ledger is every run's) and no champion patch; it stays outside the rig's chain of exports, so it never moves where the next export starts, and a full reset never takes it.
 
 ## Open questions
 
@@ -59,6 +63,7 @@ On 2026-10-23 the owner wanted to take a research run's whole record (knowledge,
   - Checks before the commit: typecheck, Biome, the touched test files and their neighbours, `npm run docs:build`, `npm run docs:check`, and the public check. No compose acceptance was run, as the owner asked.
 - 2026-10-23: Deployed. On the deployment, a full export of a rig that runs a research run was asked for with `export_now {full: true}`: 1,670 files, 454.5 MiB, complete on control about 8 minutes later, listed on the **Exports** page with **Download**. Left: the owner downloads it and checks that it unpacks with the run's research folder and the ledger snapshot (the last box).
 
+- 2026-10-24: Built a run's export. `export_now` takes `run` (`src/core/commands.ts`); `writeExport` with `run` (`src/harness/outbox.ts`) takes that run's events from its start and what they name, its research folder at `research/<run>/folder-<export>/` and its fetched pages, writes no ledger snapshot, publishes no champion and records nothing in the ledger's chain of exports (its id is `0`); the manifest says `"run"`. The supervisor pushes its research files to a results repository as a full export's (`src/supervisor/git-export.ts`). On the dashboard (`src/control/ui/exports.ts`), a run's page has **This run** first and chosen, and the rig's choices say **(all of <rig>)**; the **Exports** page shows `run <id>`; MCP's `exports` gives `run`. Tests: `export-notes.test.ts` (the run's export through the command: its manifest, only its files and events, no ledger, the chain unchanged, the supervisor's push) and `exports.test.ts` (the run page's form and its command). Pages: Get a rig's results from control, Exports (a new section, A run's export), signed commands, the rig's page, MCP tools, the changelog. Left: it reaches the lab with the next roll.
 ---
 
 Run with `/goal Complete docs/plan/goals/103-export-and-download.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

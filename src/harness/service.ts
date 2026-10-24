@@ -1187,7 +1187,7 @@ export class HarnessService {
         return receivePropagation(this, CommandPayloads.propagate.parse(payload), by);
       case "export_now": {
         const p = CommandPayloads.export_now.parse(payload);
-        const r = await this.export(by, { full: p.full });
+        const r = await this.export(by, p);
         return {
           export: r.dir.split("/").pop(),
           export_id: r.id,
@@ -2975,19 +2975,16 @@ export class HarnessService {
     return removed;
   }
 
-  /**
-   * An export for the supervisor to push. A full export (a full reset's, or the owner's choice
-   * on Export) also carries the research archive and every run's research folder, and the
-   * supervisor always pushes its ledger snapshot.
-   */
-  async export(actor: string, opts: { full?: boolean } = {}) {
+  /** An export for the supervisor: normal, full or one run's (outbox.ts says what each holds). */
+  async export(actor: string, o: { full?: boolean; run?: string | undefined } = {}) {
     return writeExport({
       ledger: this.ledger,
       mirrorFor: (repo) => this.mirrorFor(repo),
       outboxDir: this.paths.outboxDir,
       rig: this.rig,
       actor,
-      ...(opts.full ? { full: true, researchDir: join(this.paths.stateDir, "research") } : {}),
+      ...o,
+      researchDir: o.full || o.run ? join(this.paths.stateDir, "research") : undefined,
       researchFolder: this.researchFolder,
     });
   }

@@ -31,6 +31,20 @@ The harness makes a normal export every hour when something new happened (the **
 
 A run's folder in a full export goes beside the place its end exports to, under the export's name, because a results repository never replaces a file it already has: the folder exported when the run finishes still reaches `research/<run>/folder/`. A folder leaves out the working areas and the past research in its `knowledge/`, which are in their own runs' exports. [Set up the results repository](../how-to/operate/results-repository.md#what-gets-pushed) lists every file.
 
+## A run's export
+
+**This run** under **Export** on a run's page, and the command `export_now` with `{"run": "<run>"}`, export one run alone. Its manifest says `"run"` with the run's id.
+
+| Part | A run's export |
+| --- | --- |
+| Events, attempts, field notes, research notes, briefing and knowledge items | The run's alone, from its start |
+| `research/<run>/folder-<export>/…` | The run's research folder as it stands, with its paper as `paper.md` when it has one |
+| `research/<run>/…`, other files | The run's archive of the web pages it fetched |
+| `ledger.sqlite` | No: the ledger holds every run |
+| Champion patches | No: a champion is published with the rig's own exports |
+
+A run's export stays outside the rig's chain of exports: the next export, by the hour or asked for, starts where the last export of the chain ended, so it still holds everything the run's export also held. A full reset never takes a run's export as its full export. A supervisor pushes it to the results repository with its research folder and pages, or sends it to control, as it does the rig's exports.
+
 ## Where exports go
 
 | The rig's supervisor has | Its exports go to | The rig's **Results** row says |
@@ -74,10 +88,10 @@ The dashboard's **Exports** page, in the sidebar, lists the exports control keep
 | --- | --- |
 | **Rig** | The rig that sent it |
 | **Export** | Its name: the time the harness made it, and 8 hexadecimal characters |
-| **Kind** | `full`, or `what changed` for a normal export |
+| **Kind** | `full`, `what changed` for a normal export, or `run <id>` for [a run's export](#a-runs-export) |
 | **Made** | When control received its start |
 | **Complete** | When its last file reached control and passed its check, or `still arriving` |
-| **Events** | The rig's ledger events it holds, such as `181–245`, or `none new (through 245)` |
+| **Events** | The rig's ledger events it holds, such as `181–245`, or `none new (through 245)`; for a run's export, `the run's, through 245` |
 | **Files** | How many files it holds, or `k of n` while they arrive |
 | **Size** | The size of all its files |
 | **Download** | One `.tar.gz` of the export, for a complete one only. One that is not says `still arriving`; on a control with no folder for exports, a complete one says `not kept` |
