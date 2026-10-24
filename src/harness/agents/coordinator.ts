@@ -1,7 +1,13 @@
 import type { StoredRule } from "../../core/commands.ts";
 import { ideaWords, ruleRefusal } from "../../core/queue-target.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
-import { directionOf, type Experiment, type ExperimentQueue, inFamily } from "../queue.ts";
+import {
+  directionOf,
+  type Experiment,
+  type ExperimentQueue,
+  inFamily,
+  type TaskYield,
+} from "../queue.ts";
 import type { NewFamily, QueuePlan } from "./planner.ts";
 import type { Assignment, Registry } from "./registry.ts";
 
@@ -390,6 +396,8 @@ export class Coordinator {
       kind?: string | undefined;
       /** The trial ended because its model calls failed until the run's agents stopped. */
       agentsStopped?: boolean | undefined;
+      /** What a research task's trial added (goal 117), kept when the task is done. */
+      yield?: TaskYield | undefined;
     },
     actor: string,
   ): void {
@@ -411,7 +419,11 @@ export class Coordinator {
       );
       return;
     }
-    this.queue.finish(trial, { result: r.result, attempt: r.attempt, cause: r.cause }, actor);
+    this.queue.finish(
+      trial,
+      { result: r.result, attempt: r.attempt, cause: r.cause, yield: r.yield },
+      actor,
+    );
   }
 
   /**

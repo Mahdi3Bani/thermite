@@ -15,6 +15,7 @@ import {
 } from "../../core/research-check.ts";
 import { CODE_RESEARCH_TOOLS, moreText, READ_MAX, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
+import type { TaskYield } from "../queue.ts";
 import {
   checkCited,
   claimNumbers,
@@ -1005,6 +1006,106 @@ export class Research {
         : ["The pool is empty."]),
       "Every hypothesis, with its status and question: INDEX.md and hypotheses/ in the research folder.",
     ].join("\n");
+  }
+
+  /**
+   * What a research trial added (goal 117), from the records its lane wrote between the trial's
+   * start and now (a lane runs one trial at a time): its verified claims, by question, and how
+   * many brought a registrable domain its question's claims had not cited before; the registrable
+   * domains new to the run among the pages it fetched; its supported findings. Cards come later in
+   * goal 117: their changes are 0 for now. Undefined for a trial the ledger does not have.
+   */
+  trialYield(run: string, trial: string, until = new Date().toISOString()): TaskYield | undefined {
+    const t = this.get("select lane, started_at from trial where id = ? and run = ?", trial, run);
+    if (!t) return undefined;
+    const lane = String(t.lane);
+    const since = String(t.started_at);
+    const domainOf = new Map(
+      this.all("select id, domain from source where run = ?", run).map((s) => [
+        String(s.id),
+        registrableDomain(String(s.domain)),
+      ]),
+    );
+    const domainsOf = (quotes: unknown) =>
+      new Set(
+        (JSON.parse(String(quotes)) as { source: string }[]).flatMap((q) => {
+          const d = domainOf.get(q.source);
+          return d ? [d] : [];
+        }),
+      );
+    // What each question's verified claims cited before the trial started.
+    const seen = new Map<number, Set<string>>();
+    for (const c of this.all(
+      "select question, quotes from claim where run = ? and verified = 1 and question is not null and created_at < ?",
+      run,
+      since,
+    )) {
+      const q = Number(c.question);
+      seen.set(q, new Set([...(seen.get(q) ?? []), ...domainsOf(c.quotes)]));
+    }
+    const by = new Map<number, { verified_claims: number; new_domain_claims: number }>();
+    let total = 0;
+    let none = 0;
+    for (const c of this.all(
+      "select question, quotes from claim where run = ? and lane = ? and verified = 1 and created_at >= ? and created_at <= ? order by created_at, rowid",
+      run,
+      lane,
+      since,
+      until,
+    )) {
+      total++;
+      if (c.question === null) {
+        none++;
+        continue;
+      }
+      const q = Number(c.question);
+      const had = seen.get(q) ?? new Set<string>();
+      const ds = domainsOf(c.quotes);
+      const fresh = [...ds].some((d) => !had.has(d));
+      seen.set(q, new Set([...had, ...ds]));
+      const row = by.get(q) ?? { verified_claims: 0, new_domain_claims: 0 };
+      row.verified_claims++;
+      if (fresh) row.new_domain_claims++;
+      by.set(q, row);
+    }
+    const before = new Set(
+      this.all("select domain from source where run = ? and fetched_at < ?", run, since).map((s) =>
+        registrableDomain(String(s.domain)),
+      ),
+    );
+    const fresh = [
+      ...new Set(
+        this.all(
+          "select domain from source where run = ? and fetched_by = ? and fetched_at >= ? and fetched_at <= ? order by fetched_at",
+          run,
+          lane,
+          since,
+          until,
+        )
+          .map((s) => registrableDomain(String(s.domain)))
+          .filter((d) => !before.has(d)),
+      ),
+    ];
+    const findings = Number(
+      this.get(
+        "select count(*) as n from finding where run = ? and lane = ? and supported = 1 and created_at >= ? and created_at <= ?",
+        run,
+        lane,
+        since,
+        until,
+      )?.n ?? 0,
+    );
+    return {
+      verified_claims: total,
+      by_question: [...by.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([question, r]) => ({ question, ...r })),
+      no_question: none,
+      new_domains: fresh.length,
+      domains: fresh.slice(0, 20),
+      findings,
+      card_changes: 0,
+    };
   }
 
   updateSection(run: string, by: string | null, name: string, body: string) {

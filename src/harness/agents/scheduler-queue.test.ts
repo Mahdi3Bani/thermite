@@ -1056,6 +1056,14 @@ describe("research runs use the queue", () => {
     assert.ok(planned);
     assert.ok(["explore", "primary", "contradict", "consolidate"].includes(planned.family));
     assert.match(planned.details, /^Question \d+ \(index \d+\): /);
+    // The plan's task keeps its question (goal 117), in its row and its event.
+    assert.equal(planned.question, 0);
+    assert.equal(
+      events(env, "experiment_added")
+        .map(body)
+        .find((b) => b.id === planned.id)?.question,
+      0,
+    );
     assert.deepEqual(
       events(env, "experiment_assigned").map((e) => body(e).lane),
       ["lane-1", "lane-2"],
@@ -1065,6 +1073,25 @@ describe("research runs use the queue", () => {
     assert.deepEqual(
       events(env, "experiment_finished").map((e) => body(e).result),
       ["finished", "finished"],
+    );
+    // Each research trial's yield is kept with its task (goal 117): these added nothing.
+    const none = {
+      verified_claims: 0,
+      by_question: [],
+      no_question: 0,
+      new_domains: 0,
+      domains: [],
+      findings: 0,
+      card_changes: 0,
+    };
+    assert.deepEqual(
+      events(env, "experiment_finished").map((e) => body(e).yield),
+      [none, none],
+    );
+    assert.deepEqual(JSON.parse(String(q.get(planned.id)?.yield)), none);
+    assert.deepEqual(
+      q.brief("r-1").tried.map((x) => x.yield),
+      [none, none],
     );
     const h = body(events(env, "planner_handout")[0]);
     assert.equal((h.assignments as unknown[]).length, 2);

@@ -143,6 +143,15 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       { title: "list the loads first" },
       "a command word inside a longer title is fine",
     );
+    // A research task's question, by its index (goal 117).
+    await trialCli(["idea", "vendor", "docs", "--question", "1"], env, call);
+    assert.deepEqual(calls.at(-1)?.body, { title: "vendor docs", question: 1 });
+    const sent = calls.length;
+    assert.match(
+      await trialCli(["idea", "vendor", "docs", "--question", "two"], env, call),
+      /^error: --question takes the index of a campaign question, a whole number from 0/,
+    );
+    assert.equal(calls.length, sent, "nothing sent for a mistake");
   });
 
   test("note writes a field note: its words are the text, --kind and --about the rest", async () => {

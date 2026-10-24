@@ -126,6 +126,13 @@ export interface ExperimentRow {
   cause?: string | null | undefined;
   /** How many times its trial ended without really trying it, and it came back (goal 079). */
   returns?: number | undefined;
+  /** A research task's question, as an index from 0 (goal 117); null: none named. */
+  question?: number | null | undefined;
+  /**
+   * What a research task's trial added, as JSON (goal 117: TaskYield); null until its trial
+   * ended, and for other runs' experiments.
+   */
+  yield?: string | null | undefined;
   created_at: string;
   updated_at: string;
 }
@@ -1493,13 +1500,15 @@ export class Ledger {
       const upsert = this.db.prepare(
         `insert into experiment (id, run, title, details, family, why, added_by, state, place, lane,
            trial, attempt, result, dropped_by, dropped_why, from_run, from_id, cause, returns,
-           created_at, updated_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           question, yield, created_at, updated_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          on conflict (id) do update set title = excluded.title, details = excluded.details,
            family = excluded.family, why = excluded.why, state = excluded.state,
            place = excluded.place, lane = excluded.lane, trial = excluded.trial,
            attempt = excluded.attempt, result = excluded.result, dropped_by = excluded.dropped_by,
            dropped_why = excluded.dropped_why, cause = excluded.cause, returns = excluded.returns,
+           question = coalesce(excluded.question, experiment.question),
+           yield = coalesce(excluded.yield, experiment.yield),
            updated_at = excluded.updated_at
          where experiment.run = excluded.run`,
       );
@@ -1524,6 +1533,8 @@ export class Ledger {
           r.from_id,
           r.cause ?? null,
           r.returns ?? 0,
+          r.question ?? null,
+          r.yield ?? null,
           now,
           now,
         );
@@ -1708,6 +1719,8 @@ function toExperiment(r: ExperimentRow): ExperimentRow {
     place: r.place === null ? null : Number(r.place),
     cause: r.cause ?? null,
     returns: Number(r.returns ?? 0),
+    question: r.question === null || r.question === undefined ? null : Number(r.question),
+    yield: r.yield ?? null,
   };
 }
 

@@ -439,7 +439,7 @@ These rules hold for the five queue kinds:
 - The harness refuses a run it doesn't have (`no run <run>`), a closed run (`run <run> is closed: its queue and rules no longer change`), and an experiment the run doesn't have (`no experiment <id> in run <run>`).
 - The harness writes the experiment and one event in one step. The event's actor is `control:<issued_by>`, such as `control:owner:ui`, and its `by` is `owner`, whoever issued the command.
 
-The new experiment is up next, with `owner` as its author. Result: `{"experiment": "x-…", "state": "queued", "position": <n>}`, `position` being its place now. Event: `experiment_added`, `{id, title, details?, family?, why?, by, state, position}`.
+The new experiment is up next, with `owner` as its author. Result: `{"experiment": "x-…", "state": "queued", "position": <n>}`, `position` being its place now. Event: `experiment_added`, `{id, title, details?, family?, why?, question?, by, state, position}`. In a research run, a title labelled `Question <n> (index <i>)` names that question, when the run has it, and the task keeps it as `question`.
 
 ### `queue_move`
 

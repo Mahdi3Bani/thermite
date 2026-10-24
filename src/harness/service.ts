@@ -158,6 +158,8 @@ export const AdvisorQueueRequest = z.strictObject({
         family: ExperimentText.family.optional(),
         why: z.string().trim().min(1).max(2000),
         position: QueuePosition.optional(),
+        /** A research run's task: the question it is about, an index from 0 (goal 117). */
+        question: z.number().int().min(0).optional(),
       }),
     )
     .max(20)
@@ -181,6 +183,8 @@ export const IdeaRequest = z.strictObject({
   details: ExperimentText.details.optional(),
   family: ExperimentText.family.optional(),
   why: ExperimentText.why.optional(),
+  /** In a research run, the question the task is about, an index from 0 (goal 117). */
+  question: z.number().int().min(0).optional(),
 });
 
 /** What a queue command did, as its result: the experiment, its state and its place. */
@@ -2319,7 +2323,15 @@ export class HarnessService {
         out.refused.push(`add "${a.title.slice(0, 120)}": ${measurementRefusal(measures)}`);
         continue;
       }
-      const x = this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor);
+      // A question the run does not have, or one in a run whose tasks name none: refused in words.
+      let x: Experiment;
+      try {
+        x = this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor);
+      } catch (err) {
+        if (!(err instanceof LedgerError)) throw err;
+        out.refused.push(`add "${a.title.slice(0, 120)}": ${err.message}`);
+        continue;
+      }
       waiting.set(ideaWords(x.title), x);
       out.added.push(x.id);
     }

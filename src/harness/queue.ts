@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { ExperimentText, type QueuePosition } from "../core/commands.ts";
 import { DIRECTION_NAME, directionOf, RESEARCH_TASK_KINDS } from "../core/directions.ts";
+import { labelledQuestion } from "../core/research-check.ts";
 import { type ExperimentRow, type Ledger, LedgerError } from "./ledger.ts";
 
 /**
@@ -52,6 +53,24 @@ function indexOf(pos: QueuePosition | undefined, others: number): number {
   return others;
 }
 
+/**
+ * What a research task's trial added (goal 117), kept with the task when its trial ends: the
+ * verified claims it recorded, by question, with how many brought a registrable domain new to
+ * their question; the registrable domains new to the run; its supported findings; and its
+ * changes to answer cards (none yet: cards come later in goal 117).
+ */
+export interface TaskYield {
+  verified_claims: number;
+  by_question: { question: number; verified_claims: number; new_domain_claims: number }[];
+  /** Verified claims that name no question of the run. */
+  no_question: number;
+  new_domains: number;
+  /** The first of the new registrable domains (at most 20). */
+  domains: string[];
+  findings: number;
+  card_changes: number;
+}
+
 /** An experiment as an agent reads it in the queue's brief. */
 export interface BriefExperiment {
   id: string;
@@ -59,6 +78,8 @@ export interface BriefExperiment {
   details?: string;
   family?: string;
   why?: string;
+  /** A research task's question, as an index from 0 (goal 117). */
+  question?: number;
   by: string;
   /**
    * Up next: its trials that ended without really trying it (the provider failed, the harness
@@ -80,7 +101,20 @@ export interface QueueBrief {
     verdict?: string;
     delta?: number;
     lifecycle?: string;
+    /** What a research task's trial added (goal 117). */
+    yield?: TaskYield;
   })[];
+}
+
+/** A task's yield as the ledger keeps it, read back; undefined when it has none. */
+export function yieldOf(x: Pick<Experiment, "yield">): TaskYield | undefined {
+  if (!x.yield) return undefined;
+  try {
+    return JSON.parse(x.yield) as TaskYield;
+  } catch {
+    // Only the harness writes a yield, as JSON (finish); a row that holds anything else has none.
+    return undefined;
+  }
 }
 
 type Row = Omit<ExperimentRow, "created_at" | "updated_at">;
@@ -190,6 +224,7 @@ export class ExperimentQueue {
       ...(x.details ? { details: clip(x.details, 600) } : {}),
       ...(x.family ? { family: x.family } : {}),
       ...(x.why ? { why: clip(x.why, 400) } : {}),
+      ...(typeof x.question === "number" ? { question: x.question } : {}),
       by: x.added_by,
     });
     const judged = (attempt: string) => {
@@ -220,6 +255,7 @@ export class ExperimentQueue {
             : (x.result ?? ""),
         ...(x.state === "done" && x.cause ? { cause: clip(x.cause, 300) } : {}),
         ...(x.attempt ? { attempt: x.attempt, ...judged(x.attempt) } : {}),
+        ...(yieldOf(x) ? { yield: yieldOf(x) } : {}),
       })),
     };
   }
@@ -255,6 +291,40 @@ export class ExperimentQueue {
     return [x, ...rows];
   }
 
+  /**
+   * The question a new experiment names (goal 117). In a research run: the one it was given,
+   * checked against the run's questions and refused in words when the run has no such question;
+   * else the index its title's "Question N (index K)" names, when the run has it (a copy from
+   * another run names none: its numbers were that run's). In another run: none, and one given is
+   * refused.
+   */
+  private questionFor(
+    run: string,
+    given: number | null | undefined,
+    title: string,
+    copied: boolean,
+  ): number | null {
+    const inst = this.ledger.getRun(run);
+    const contract = inst ? this.ledger.getContract(inst.campaign, inst.version) : undefined;
+    if (contract?.mode !== "research") {
+      if (given !== undefined && given !== null)
+        throw new LedgerError("invalid", "only a research run's tasks name a question");
+      return null;
+    }
+    const n = contract.questions.length;
+    const has = (q: number) => Number.isInteger(q) && q >= 0 && q < n;
+    if (given !== undefined && given !== null) {
+      if (!has(given))
+        throw new LedgerError(
+          "invalid",
+          `no question ${given}: a task's "question" is the index of one of the campaign's ${n} questions, from 0 to ${n - 1}`,
+        );
+      return given;
+    }
+    const labelled = copied ? undefined : labelledQuestion(title);
+    return labelled !== undefined && has(labelled) ? labelled : null;
+  }
+
   /** The owner's, the planner's, an advisor's or a lane's new experiment. */
   add(
     run: string,
@@ -277,11 +347,17 @@ export class ExperimentQueue {
             result: "interrupted" | "error";
           }
         | undefined;
+      /**
+       * A research task's question, an index from 0 (goal 117). Left out, a title labelled
+       * "Question N (index K)" names it; other runs' experiments name none.
+       */
+      question?: number | null | undefined;
     },
     actor: string,
   ): Experiment {
     const text = ExperimentInput.parse(input);
     const state = input.state ?? "queued";
+    const question = this.questionFor(run, input.question, text.title, input.from !== undefined);
     const x: Row = {
       id: newExperimentId(),
       run,
@@ -300,6 +376,8 @@ export class ExperimentQueue {
       dropped_why: null,
       from_run: input.from?.run ?? null,
       from_id: input.from?.id ?? null,
+      question,
+      yield: null,
     };
     const rows = state === "queued" ? this.reorder(run, x, { place: input.position }) : [x];
     this.ledger.writeExperiments(rows, {
@@ -312,6 +390,7 @@ export class ExperimentQueue {
         ...(x.details ? { details: x.details } : {}),
         ...(x.family ? { family: x.family } : {}),
         ...(x.why ? { why: x.why } : {}),
+        ...(question !== null ? { question } : {}),
         by: input.by,
         state,
         ...(state === "queued" && input.position !== undefined ? { position: input.position } : {}),
@@ -468,6 +547,8 @@ export class ExperimentQueue {
       attempt?: string | null | undefined;
       /** How its trial ended, in words (goal 079). */
       cause?: string | undefined;
+      /** What a research task's trial added (goal 117). */
+      yield?: TaskYield | undefined;
     },
     actor: string,
   ): Experiment | undefined {
@@ -480,6 +561,7 @@ export class ExperimentQueue {
       result: o.result,
       attempt: o.attempt ?? null,
       cause,
+      ...(o.yield ? { yield: JSON.stringify(o.yield) } : {}),
     };
     this.ledger.writeExperiments([row], {
       actor,
@@ -492,6 +574,7 @@ export class ExperimentQueue {
         ...(o.attempt ? { attempt: o.attempt } : {}),
         result: o.result,
         ...(cause ? { cause: cause.slice(0, 500) } : {}),
+        ...(o.yield ? { yield: o.yield } : {}),
       },
     });
     return this.require(x.run, x.id);

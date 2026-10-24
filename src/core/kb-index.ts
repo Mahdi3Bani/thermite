@@ -362,6 +362,8 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
             str(b.details),
             b.why ? `Why: ${str(b.why)}` : "",
             b.family ? `Direction: ${str(b.family)}` : "",
+            // A research task's question (goal 117).
+            typeof b.question === "number" ? `About: ${questionLabel(b.question)}` : "",
           ]),
           by: str(b.by) || e.actor,
           meta: { details: str(b.details), why: str(b.why), family: str(b.family) },
@@ -373,10 +375,15 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
     case "experiment_dropped": {
       const old = t.body(run, "experiment", ref(b.id));
       if (old === undefined) return;
+      // What a research task's trial added (goal 117), after its result.
+      const y = b.yield && typeof b.yield === "object" ? (b.yield as Row) : undefined;
+      const added = y
+        ? `; it added ${n(y.verified_claims)} verified claims, ${n(y.new_domains)} new domains and ${n(y.findings)} findings`
+        : "";
       const result =
         e.kind === "experiment_dropped"
           ? `Dropped: ${str(b.why)}`
-          : `Result: ${str(b.attempt) ? `attempt ${str(b.attempt)}` : "no attempt"}${str(b.result) ? ` (${str(b.result)})` : ""}`;
+          : `Result: ${str(b.attempt) ? `attempt ${str(b.attempt)}` : "no attempt"}${str(b.result) ? ` (${str(b.result)})` : ""}${added}`;
       t.put(
         run,
         "experiment",

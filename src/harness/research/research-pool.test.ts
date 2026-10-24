@@ -539,3 +539,182 @@ describe("measurements stay out of a research run's queue (goal 117)", () => {
     assert.equal(kept.added.length, 1, "a hill climb measures: its teachers' items stand");
   });
 });
+
+/** A source archived for the run, as fetched by a lane now. */
+function archive(
+  env: ReturnType<typeof makeHarnessEnv>,
+  id: string,
+  host: string,
+  text: string,
+  lane: string,
+): void {
+  const dir = join(env.service.paths.stateDir, "test-archive");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${id}.txt`);
+  writeFileSync(path, text);
+  env.service.ledger.db
+    .prepare(
+      `insert into source (id, run, url, final_url, domain, fetched_at, http_status, content_type, bytes, sha256,
+         title, raw_path, text_path, fetched_by) values (?, 'r-1', ?, ?, ?, ?, 200, 'text/plain', 1, ?, null, ?, ?, ?)`,
+    )
+    .run(
+      id,
+      `https://${host}/p`,
+      `https://${host}/p`,
+      host,
+      new Date().toISOString(),
+      id,
+      path,
+      path,
+      lane,
+    );
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 5));
+
+describe("a research task's question and yield (goal 117)", () => {
+  test("a task keeps its question: given, or from a 'Question N (index K)' title; a question the run lacks is refused", async () => {
+    const { env } = await poolEnv();
+    const q = env.service.queue;
+    const given = q.add("r-1", { title: "Primary sources", by: "owner", question: 2 }, "owner");
+    assert.equal(given.question, 2);
+    const titled = q.add(
+      "r-1",
+      { title: "Question 2 (index 1): find a second site", by: "teacher" },
+      "teacher",
+    );
+    assert.equal(titled.question, 1);
+    assert.equal(
+      q.add("r-1", { title: "Question 9 (index 8): x", by: "teacher" }, "t").question,
+      null,
+    );
+    assert.equal(q.add("r-1", { title: "Read more", by: "owner" }, "owner").question, null);
+    assert.throws(
+      () => q.add("r-1", { title: "Out of range", by: "owner", question: 3 }, "owner"),
+      /no question 3: a task's "question" is the index of one of the campaign's 3 questions, from 0 to 2/,
+    );
+    // An advisor's item and a worker's idea take one too; a wrong one is refused in words.
+    const out = env.service.advisorQueue({
+      run: "r-1",
+      role: "teacher",
+      add: [
+        { title: "Costs in vendor docs", why: "q2 has one source", question: 1 },
+        { title: "Nothing there", why: "x", question: 7 },
+      ],
+      move: [],
+    });
+    assert.equal(q.get(out.added[0] as string)?.question, 1);
+    assert.match(String(out.refused[0]), /^add "Nothing there": no question 7/);
+    const token = openTrial(env, "lane-1", "t-q");
+    const idea = env.service.proposeIdea(token, { title: "Failure reports", question: 2 });
+    assert.equal(q.get(idea.experiment)?.question, 2);
+    assert.deepEqual(
+      q
+        .brief("r-1")
+        .up_next.filter((x) => x.id === given.id)
+        .map((x) => x.question),
+      [2],
+    );
+    // Another mode's experiments name no question.
+    const hc = makeHarnessEnv();
+    await hc.service.applyCommand(hc.sign("assign_campaign", hc.assignPayload({})));
+    const run = (hc.service.ledger.db.prepare("select id from run").get() as { id: string }).id;
+    assert.throws(
+      () => hc.service.queue.add(run, { title: "x", by: "owner", question: 0 }, "owner"),
+      /only a research run's tasks name a question/,
+    );
+  });
+
+  test("a trial's yield: its verified claims by question, sites new to each question and to the run, its findings", async () => {
+    const { env, research, claims } = await poolEnv();
+    await tick();
+    new Registry(env.service.ledger).startTrial({
+      id: "t-y",
+      run: "r-1",
+      lane: "lane-2",
+      epoch: 2,
+      family: "primary",
+      parent: "research",
+    });
+    await tick();
+    const quote = "A second page says the workers keep every result they recorded.";
+    // example.org is cited for question 0 already (docs.example.org); example.com is new.
+    archive(env, "s-0000000000b1", "blog.example.org", `Text: ${quote}`, "lane-2");
+    archive(env, "s-0000000000b2", "www.example.com", `Text: ${quote}`, "lane-2");
+    const claim = (text: string, source: string, question?: number) =>
+      research.addClaim("r-1", "lane-2", {
+        text,
+        quotes: [{ source, quote }],
+        ...(question === undefined ? {} : { question }),
+      });
+    assert.equal(
+      claim("A second page says workers keep results.", "s-0000000000b1", 0).verified,
+      true,
+    );
+    assert.equal(claim("Workers keep every recorded result.", "s-0000000000b1", 1).verified, true);
+    assert.equal(
+      claim("The workers keep every result they recorded.", "s-0000000000b2").verified,
+      true,
+    );
+    assert.equal(claim("Workers keep 9 results.", "s-0000000000b2", 2).verified, false, "a draft");
+    research.addFinding("r-1", "lane-2", {
+      text: "Workers keep what they record.",
+      summary: "Two sites say so.",
+      why_it_matters: "Nothing is lost.",
+      supporting: [claims[0] as string],
+    });
+    // Another lane's work in the same time is not this trial's.
+    research.addNote("r-1", "lane-1", "A note of another lane.");
+    const y = research.trialYield("r-1", "t-y");
+    assert.deepEqual(y, {
+      verified_claims: 3,
+      by_question: [
+        { question: 0, verified_claims: 1, new_domain_claims: 0 },
+        { question: 1, verified_claims: 1, new_domain_claims: 1 },
+      ],
+      no_question: 1,
+      new_domains: 1,
+      domains: ["example.com"],
+      findings: 1,
+      card_changes: 0,
+    });
+    assert.equal(research.trialYield("r-1", "t-none"), undefined);
+    // Kept with the task when its trial ends, in its event, and in the queue's brief.
+    const q = env.service.queue;
+    const task = q.add("r-1", { title: "Primary sources", by: "planner", question: 0 }, "planner");
+    q.assign("r-1", task.id, { lane: "lane-2", trial: "t-y", by: "planner" }, "planner");
+    q.finish("t-y", { result: "finished", yield: y }, "planner");
+    assert.deepEqual(JSON.parse(String(q.get(task.id)?.yield)), y);
+    const finished = env.service.ledger.db
+      .prepare("select body from event where kind = 'experiment_finished' order by id desc limit 1")
+      .get() as { body: string };
+    assert.deepEqual(JSON.parse(finished.body).yield, y);
+    const tried = q.brief("r-1").tried.find((x) => x.id === task.id);
+    assert.deepEqual([tried?.question, tried?.yield], [0, y]);
+    // The knowledge base's item for it says what it added.
+    const items = new Map<string, KbFields>();
+    const target = {
+      runCreated: () => {},
+      body: (_r: string, _k: string, ref: string) => items.get(ref)?.body,
+      attempt: () => undefined,
+      put: (_r: string, _k: string, ref: string, f: KbFields) => {
+        items.set(ref, { ...items.get(ref), ...f });
+      },
+    };
+    for (const kind of ["experiment_added", "experiment_finished"])
+      for (const e of env.service.ledger.db
+        .prepare("select actor, body from event where kind = ? order by id")
+        .all(kind) as { actor: string; body: string }[])
+        indexEvent(target, {
+          at: "t",
+          actor: e.actor,
+          kind,
+          subject: "r-1",
+          body: JSON.parse(e.body),
+        });
+    assert.equal(
+      items.get(task.id)?.body,
+      "About: Question 1 (index 0)\nResult: no attempt (finished); it added 3 verified claims, 1 new domains and 1 findings",
+    );
+  });
+});

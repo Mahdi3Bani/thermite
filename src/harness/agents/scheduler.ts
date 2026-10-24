@@ -28,7 +28,7 @@ import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
 import { type McpCaller, NOT_HANDED } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
-import { type Experiment, inFamily } from "../queue.ts";
+import { type Experiment, inFamily, type TaskYield } from "../queue.ts";
 import { writeAtomic } from "../research/folder.ts";
 import type { Research } from "../research/research.ts";
 import {
@@ -2044,9 +2044,12 @@ export class Scheduler {
     );
     const busy = new Map<number, number>();
     for (const x of waiting) {
-      // "Question 1 (index 0): …"; a task the plan queued before that form, "Question 0: …".
+      // Its question (goal 117); a task the plan queued before tasks kept one, by its title:
+      // "Question 1 (index 0): …", or before that, "Question 0: …".
       const i =
-        labelledQuestion(x.title) ?? Number(/^Question (\d+):/.exec(x.title)?.[1] ?? Number.NaN);
+        x.question ??
+        labelledQuestion(x.title) ??
+        Number(/^Question (\d+):/.exec(x.title)?.[1] ?? Number.NaN);
       if (Number.isInteger(i)) busy.set(i, (busy.get(i) ?? 0) + 1);
     }
     const added: Experiment[] = [];
@@ -2066,6 +2069,7 @@ export class Scheduler {
             title: `${questionLabel(q.i)}: ${task.description}`,
             details: questionDetails(q.i, contract.questions[q.i] ?? ""),
             family: task.id,
+            question: q.i,
             why: stalled
               ? "the research plan: novelty fell, so primary sources and contradictions first"
               : "the research plan: the least-covered questions first, task kinds in turn",
@@ -2187,7 +2191,8 @@ export class Scheduler {
         r = this.withProgress(id, r);
         this.o.service.trialEnded(id, r.turns > 0 || r.tokensIn > 0);
         this.registry.finishTrial(id, r, this.o.owner);
-        this.finishExperiment(id, r);
+        // What the task's trial added, kept with the task (goal 117).
+        this.finishExperiment(id, r, undefined, this.taskYield(run, id));
         this.afterTrial(id, run, r);
         this.trialLine(
           id,
@@ -2348,6 +2353,16 @@ export class Scheduler {
     this.running.set(a.lane, work);
   }
 
+  /** What a research trial added (goal 117); undefined when it cannot be read (logged). */
+  private taskYield(run: string, trial: string): TaskYield | undefined {
+    try {
+      return (this.o.research as Research).trialYield(run, trial);
+    } catch (err) {
+      log("scheduler", "the research trial's yield was not read", { trial, error: String(err) });
+      return undefined;
+    }
+  }
+
   /**
    * A trial ended: its experiment is done, with how its trial ended in words, or goes back to the
    * top of the queue when the trial never really tried it (interrupted, or the provider's error:
@@ -2355,7 +2370,12 @@ export class Scheduler {
    * kind (`errorKind`) is set where the call was made, never read from a local failure's words. A
    * failure here is logged; the trial's own record stands.
    */
-  private finishExperiment(trial: string, r: TrialResult, attempt?: string | undefined): void {
+  private finishExperiment(
+    trial: string,
+    r: TrialResult,
+    attempt?: string | undefined,
+    taskYield?: TaskYield | undefined,
+  ): void {
     try {
       this.coordinator.finish(
         trial,
@@ -2366,6 +2386,7 @@ export class Scheduler {
           kind: r.errorKind,
           // Its calls failed until the run's agents stopped: it never really tried it either.
           agentsStopped: r.stopped === "error" && !!r.failing && failedTooLong(r.failing.since),
+          yield: taskYield,
         },
         this.o.owner,
       );
