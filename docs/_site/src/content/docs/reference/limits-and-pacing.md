@@ -156,7 +156,7 @@ The dashboard calls an epoch a **round**.
 
 | What | Default | Notes |
 | --- | --- | --- |
-| A hill climb's baseline | 3 blocks of the starting point alone, each running every cell `acceptance.runs_per_cell` times, as the run's first job (priority 10, before every other job) | Fixed. Until it exists, no other job of the run is leased and no round or trial starts. After a failure of the rig itself, tried again 10 minutes later; a starting point that can't be measured puts the run in setup ([The baseline](contract.md#the-baseline)) |
+| A hill climb's baseline | 3 blocks of the starting point alone, each running every cell `acceptance.runs_per_cell` times, as the run's first job (priority 10, before every other job) | Fixed. Until it exists, no other job of the run is leased and no round or trial starts. After a failure of the rig itself, tried again at once; after a second such failure, 10 minutes after each; a starting point that can't be measured puts the run in setup ([The baseline](contract.md#the-baseline)) |
 | The baseline's folder | 64 MiB and 1,000 files, at most 32 folders deep | Fixed. More fails the baseline ([The check's baseline folder](kit-manifest.md#the-checks-baseline-folder)) |
 | Calibration (A/A) | 6 blocks (`THERMITE_CALIBRATION_BLOCKS`), at most once in 24 hours for each hill-climb run, at the lowest priority, and only once its baseline exists | Fewer than 2 blocks turns it off |
 | Goal checks of the champion | Once for each champion. After a failure, up to 3 times, 10 minutes apart | |

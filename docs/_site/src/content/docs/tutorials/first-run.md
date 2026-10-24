@@ -130,7 +130,7 @@ Open the check's run again, this time from **Campaigns**. Its table hides rig ch
 2. Choose `rig-check-smoke-cpu-69c3d2f6`. On the campaign's page, under **Earlier runs**, the run `check-smoke-…` shows **Finished**, and **Why it stopped** says `the smoke check is done`.
 3. Choose `check-smoke-…`, then the **Attempts** tab at the top of the run's page.
 
-**How the judge decided** counts the judge's **verdicts**, its decision on each change: `invalid 4`, `neutral 3`, `rejected v0 2`, `crash candidate 2` and `win confirmed 1`. Below it, each change is listed by what it tries, and starts with one word for how it ended. Here is what the judge did with some of the twelve:
+**How the judge decided** counts the judge's **verdicts**, its decision on each change: `invalid 4`, `neutral 3`, `rejected v0 2`, `crash candidate 2` and `win confirmed 1`. Two of the neutral changes test the rig itself: one overwrites the champion's build, and one leaves a process running. On a busy machine either can come out `inconclusive` or `regress` instead, and the check accepts that too. Below it, each change is listed by what it tries, and starts with one word for how it ended. Here is what the judge did with some of the twelve:
 
 | The change | Its word | The verdict | Why |
 | --- | --- | --- | --- |
