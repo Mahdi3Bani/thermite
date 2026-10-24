@@ -5,7 +5,7 @@ status: PROPOSED
 version: "0.1.1"
 depends_on: ["078"]
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-24
 ---
 
 # 090 · An Info tab for campaigns and runs: everything they were started with
@@ -17,13 +17,15 @@ updated: 2026-10-22
 A campaign's page and a run's page each get an **Info** tab, after the others, that shows in full what was submitted and decided, read-only:
 
 - **The campaign:** its mode and aim, the brief as written (additional information in Markdown, starting links, ideas to try, hypotheses), the contract (goals or objective, cells and held-out cells, guards, lanes, budget, `queue_target`), the kit and project with their commits, the MCP servers, the context settings, its versions with their hashes and who saved each, and where a copy came from.
-- **The run:** the rig and when and by whom it was started, the contract version and hash it runs, its seed and imports (repositories with commits, models with their hashes), the rig's settings and each agent's model and harness when it started, "Ask me first about", the GPU split, and the changes since (directives, messages kept in force, settings changed), each with who and when.
+- **The run:** the rig and when and by whom it was started, the contract version and hash it runs, its seed and imports (repositories with commits, models with their hashes), the rig's settings and each agent's model and harness when it started (the workers, the planner, the teachers and their merged by model, the auditor, the review panel's reviewers and the final writer), "Ask me first about", the GPU split, and the changes since (directives, messages kept in force, settings changed), each with who and when.
 
 Nothing in it is new data: it shows what control and the rig already keep, in one place, so the owner never has to guess what a run was given.
 
 ## Why
 
 The owner, 2026-10-22: "Campaigns and runs need "info" tabs that show full details on what was submitted, configuration decided, etc. Like briefs submitted, etc... Lacking this information is bad, but doesn't need to be up front can be in a tab called "info"", for v0.1.1, after the v0.1.0 release.
+
+The owner again, 2026-10-24: "details page on campaign and on run page that show all details of its submission (brief, config, models, etc...)", for v0.1.1.
 
 ## Done when
 
@@ -34,6 +36,7 @@ The owner, 2026-10-22: "Campaigns and runs need "info" tabs that show full detai
 ## Decisions
 
 - 2026-10-22, owner: in v0.1.1; a tab called Info, not on the front of the page.
+- 2026-10-24, owner: asked for again, for v0.1.1, with the models named.
 
 ## Open questions
 
@@ -42,6 +45,7 @@ The owner, 2026-10-22: "Campaigns and runs need "info" tabs that show full detai
 ## Progress
 
 - 2026-10-22: Goal written from the owner's feedback.
+- 2026-10-24: The owner's request of 2026-10-24 added; the run's models listed by agent.
 
 ---
 

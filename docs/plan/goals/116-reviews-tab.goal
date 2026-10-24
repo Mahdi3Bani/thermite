@@ -1,0 +1,58 @@
+---
+id: "116"
+title: "A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["112"]
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 116 · A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [112](112-research-ends-when-answered.goal)
+
+## What
+
+A plan only; nothing of it is built.
+
+A research run's page and its campaign's page each get a **Reviews** tab. The run's tab lists every review the review panel made of the run's questions, newest first, and opens each one. The campaign's tab lists the reviews of all its runs, by run.
+
+For each review:
+
+- **When and on what:** when it was asked, the evidence it saw (its verified claims, findings and hypotheses at that time), when it was posted, and how many tries it took. Each failed try shows its time and its error, for example `2 of 3 reviewers of the review panel answered (reviewer-2: …)`.
+- **Each reviewer:** pass or fail, and its reasons. For each question: whether it found the question answered, its answer with the claims it cites, what it found missing, and each problem code found in the answer (a claim that is not a verified claim of the run, a number that is not in the claims it cites). For each hypothesis: its verdict, why, and the claims it cites. Its field notes, linked to the run's **Journal**.
+- **The outcome:** passed, not passed, or the owner's acceptance or rejection with the note. The gaps by question, as the next workers' briefs got them. The owner's messages to the review panel that the review was given, and each reviewer's answer to them.
+- **Its cost:** the review's model usage (tokens and time in calls), from what the run's model usage already records.
+
+Between reviews, a question's answer and gaps can be compared, so the owner sees what the run's new evidence changed.
+
+## Why
+
+The owner, 2026-10-24: "be able to review past review panel runs, their comments, and outcomes in a reviews tab for deep research campaigns", for v0.1.1.
+
+On 2026-10-23 a research run's review panel did not pass two reviews and could not post a third. The Overview's **Answer check** line said only that the panel checked a review. The reviewers' comments were in the **Journal** among the workers' notes, and why the third review was not posted was only in the supervisor's log and the run's **Live** view.
+
+## Done when
+
+- [ ] A mockup of the two tabs, approved by the owner.
+- [ ] The tabs, with tests that each item above shows for a review that passed, one that did not, one with failed tries, and one the owner decided; and that nothing secret shows.
+- [ ] A failed try's error reaches the harness and is kept with its review (today it is only in the supervisor's log and the run's Live view), so the tab and MCP can show it.
+- [ ] MCP's `get_run` gives the same details for each review, with its times.
+- [ ] The pages that describe a run's page, a campaign's page and the review panel.
+
+## Decisions
+
+- 2026-10-24, owner: in v0.1.1, as a tab called Reviews.
+
+## Open questions
+
+- Whether a goal run's reviews of subjective goals (today a short table on its Overview) move into the same tab.
+
+## Progress
+
+- 2026-10-24: Goal written from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/116-reviews-tab.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
