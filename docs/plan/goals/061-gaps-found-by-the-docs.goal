@@ -5,7 +5,7 @@ status: PROPOSED
 version: "0.2.0"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-20
+updated: 2026-10-24
 ---
 
 # 061 · Gaps found by the docs work
@@ -253,6 +253,8 @@ The docs describe only what exists. Each gap here is a place where a tester expe
 - 2026-10-20: Goals 064 and 065 and the fixes after them closed one more item (a research run's folder in the export, `ab95204`) and changed four others, which stay open with notes.
 
 - 2026-10-20: Goal 024 (exports sent to control) partly fixed the item on rigs without a results repository; it stays open for propagation.
+
+- 2026-10-24: The first four items under "Budgets and run time" are taken up by goal [123](123-budgets-made-simple.goal) (v0.1.1), which makes budgets one amount in dollars that control counts on every rig.
 
 ---
 
