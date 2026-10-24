@@ -1,0 +1,74 @@
+---
+id: "121"
+title: "Stages: a hill climb that improves several metrics, one after the other"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 121 · Stages: a hill climb that improves several metrics, one after the other
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+Today a hill climb improves one metric. The other metrics can only be guards, which must not get worse. To improve several metrics in turn, an owner starts one run for each metric, with a new contract version each time, and starts each run from the champion of the run before it with `thermite assign --seed-commit`. The dashboard's **Start a run** can't start from an earlier champion.
+
+With stages, one hill climb run improves several metrics in an order the owner gives:
+
+- **The contract lists the stages in order.** Each stage has its metric, which way is better, the smallest gain that counts, and, if the owner wants one, a target, such as "at least 0.71".
+- **One stage at a time.** The run's champion is promoted on the current stage's metric, as a hill climb is promoted on its one metric today.
+- **A stage ends** when the champion reaches the stage's target and the judge has confirmed it, or when the owner presses **Next stage** (with a REST, MCP and command-line twin). A stage with no target, and no rule for its end, goes on until the owner moves it on. An owner can also set a rule such as "end the stage after N rounds with no promotion". It has no default.
+- **The next stage starts from the champion,** in the same run, with no new run and no new contract version.
+- **A finished stage's metric becomes a guard.** It may not get worse by more than the stage's allowance from its value at the stage's end.
+- **The agents know the stage.** The planner and the workers see the current stage, its target, and the finished stages that are now held as guards.
+- **The dashboard shows the stages.** The run's page shows each stage: finished (from what value to what value), the current one with its target, and the ones still to come. The **New campaign** page takes several metrics in order.
+- **The ledger records each change of stage** as an event, with the reason: the target was reached, the owner moved it on, or the owner's rule ended it.
+
+One measurement already gives every metric of the kit, so a guard for a finished stage costs no extra runs.
+
+## Why
+
+A tester, 2026-10-24, on the work they wanted to bring to Thermite: "Hill climb, basically trying to beat 8 different metrics one after the other." Today that needs eight runs, each started by hand from the command line.
+
+The owner, 2026-10-24: "make stages feature a v0.2.0 item".
+
+## Constraints
+
+- **Agents never judge** (a settled decision): the judge decides when a target is reached, from measurements; an agent can't end a stage.
+- **No default caps** ([rules for every goal](../README.md#rules-for-every-goal)): a stage ends by its target, by the owner, or by a rule the owner set. Nothing ends a stage by default.
+- **A mockup first:** the stages on the **New campaign** page and on the run's page, shown to the owner before they are built.
+
+## Done when
+
+- [ ] A design: the contract's form for stages, when a stage ends, how a finished stage's metric is guarded, what the agents are told, and the events.
+- [ ] A mockup of the stages on the **New campaign** page and on the run's page, approved by the owner.
+- [ ] The build, with tests: the judge, the planner's and the workers' briefs, the ledger's events, the dashboard, and the REST, MCP and command-line twins of **Next stage**.
+- [ ] An acceptance run on a kit with at least two metrics, which goes through two stages: one that ends at its target, and one that the owner moves on.
+- [ ] The pages that describe hill climbs: the contract reference, campaign modes, the **New campaign** page, the run's page, verdicts, the REST API, the MCP tools and the command line.
+
+## Decisions
+
+- 2026-10-24, owner: in v0.2.0.
+
+## Open questions
+
+- What a tester means by "beat" a metric: a target number, a reference model's score, or only better than where the run started. The design should allow each.
+- How much a finished stage's metric may get worse in the later stages: an allowance for each stage in the contract, and what the **New campaign** page offers.
+- Whether a stage's end measures the champion again, as the run's [baseline](_completed/115-hill-climb-baseline.goal) does, so that its guard holds against fresh values.
+- How the judge's noise check works when the primary metric changes: for each stage's metric, or for every metric at once.
+- Whether stages use the contract's `objective.policy: "lexicographic"` and `objective.secondary`, which are accepted but not used now, or replace them.
+- Whether goal campaigns get the same order, through each goal's `priority`, which is stored but not used now.
+- How stages fit goal [102](102-kits-define-campaigns.goal), in which kits define how a campaign runs: stages may become part of a hill-climbing kit.
+
+## Progress
+
+- 2026-10-24: Goal written from a tester's feedback and the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/121-hill-climb-stages.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
