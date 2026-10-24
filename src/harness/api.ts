@@ -17,6 +17,7 @@ import { SEARCH_MAX } from "./knowledge.ts";
 import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
+import { CardSubmission } from "./research/cards.ts";
 import { PAPER_MAX, PaperSubmission } from "./research/paper.ts";
 import type { Research } from "./research/research.ts";
 import { ResearchVerdicts } from "./research/review.ts";
@@ -476,6 +477,28 @@ export function createHarnessApi(
       .parse(await c.req.json());
     return c.json({ review: id, ...service.recordReviewPanel(id, body.results, "supervisor") });
   });
+
+  // Answer cards (goal 117): for each running research run, the questions whose evidence changed
+  // since their card, each with its card, its new verified claims, its rubric and the problems of
+  // its last refused card, as the synthesizer's request. Only a supervisor from goal 117 asks.
+  app.get("/v1/research/cards/pending", supervisor, (c) =>
+    c.json({ runs: service.cardPackages() }),
+  );
+  // The synthesizer's cards for a run: each checked by code, then kept as its question's next
+  // version or refused with its problems.
+  app.post(
+    "/v1/research/cards/:run",
+    supervisor,
+    bodyLimit({ maxSize: 2 * 1024 * 1024 }),
+    async (c) =>
+      c.json(
+        service.submitCards(
+          c.req.param("run"),
+          CardSubmission.parse(await c.req.json()),
+          "supervisor",
+        ),
+      ),
+  );
 
   // The research runs that wait for their paper (goal 112), each as the final writer's package:
   // the review panel's checked answers and verdicts, the brief, the corpus figures and the rules

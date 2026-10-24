@@ -619,6 +619,21 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         { run: String(e.subject) },
       );
     }
+    // A research run's answer cards (goal 117).
+    case "card_written":
+      return s(
+        `The synthesizer wrote the answer card of question ${Number(b.question) + 1} (version ${String(b.version)}): certainty ${String(b.certainty)}, ${Number(b.claims) || 0} ${Number(b.claims) === 1 ? "claim" : "claims"} cited, ${Number(b.gaps) || 0} open ${Number(b.gaps) === 1 ? "gap" : "gaps"}.`,
+        "ok",
+        { run: String(e.subject) },
+      );
+    case "card_refused": {
+      const problems = Array.isArray(b.problems) ? b.problems.map(String) : [];
+      return s(
+        `The harness refused the synthesizer's answer card of question ${Number(b.question) + 1}: ${Number(b.count) || problems.length} ${Number(b.count) === 1 ? "problem" : "problems"}${problems[0] ? `, the first: ${clip(problems[0], 200)}` : ""}. The old card stands.`,
+        "warn",
+        { run: String(e.subject) },
+      );
+    }
     case "conclusion_proposed":
       return s(
         "The harness proposes ending the campaign as not possible: it needs your decision.",

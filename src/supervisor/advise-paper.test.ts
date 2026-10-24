@@ -7,6 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createHarnessApi } from "../harness/api.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
+import { cardsUpToDate } from "../testing/research-cards.ts";
 import { answeredResearchRun, goodPaper } from "../testing/research-paper.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState } from "./advise.ts";
 import { AdvisorsConfig, STE_SHORT_RULES } from "./advisors.ts";
@@ -66,6 +67,8 @@ async function waiting(t: TestContext) {
   t.after(() => s.close());
   await s.env.service.setAdvisors({ auditor: false, panel: 0, writer: true }, "supervisor");
   assert.ok(s.env.service.papers.request(RUN, "s"));
+  // Every answer card is up to date: only the final writer works in these rounds (goal 117).
+  cardsUpToDate(s.env.service, RUN);
   const events = (kind: string) =>
     s.ledger.db
       .prepare("select body from event where kind = ? and subject = ? order by id")

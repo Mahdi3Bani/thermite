@@ -10,6 +10,7 @@ import { Research } from "../harness/research/research.ts";
 import type { HarnessService } from "../harness/service.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
 import { makeJudgeEnv } from "../testing/judge-env.ts";
+import { cardsUpToDate } from "../testing/research-cards.ts";
 import { fillResearch, makeResearchRun, servePages } from "../testing/research-run.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState } from "./advise.ts";
 import { AdvisorsConfig } from "./advisors.ts";
@@ -56,17 +57,22 @@ function runtime(url: string, name: string) {
 const answer = { toolCalls: [{ name: "answer", args: { summary: "read", portfolio: [] } }] };
 
 /**
- * A read of a run's own research. The final writer's look at the papers to write (goal 112), which
- * a rig with teachers makes each round, is not one.
+ * A read of a run's own research. The final writer's look at the papers to write (goal 112) and
+ * the synthesizer's at the answer cards to write (goal 117), which a rig with teachers makes each
+ * round, are not one.
  */
 const readsResearch = (p: string) =>
-  p.startsWith("/v1/research/") && p !== "/v1/research/papers/pending";
+  p.startsWith("/v1/research/") &&
+  p !== "/v1/research/papers/pending" &&
+  p !== "/v1/research/cards/pending";
 
 describe("a run's teachers read what the run found (goal 098)", () => {
   test("a research run's teachers read its claims, a source, a lane's file and a search before they propose", async (t: TestContext) => {
     const r = await makeResearchRun();
     t.after(() => r.close());
     const ids = await fillResearch(r);
+    // Every answer card is up to date: the synthesizer has nothing to write (goal 117).
+    cardsUpToDate(r.env.service, r.run);
     const seen = { tools: [] as string[], system: "", prompt: "" };
     const results: string[] = [];
     const fake = await startFakeModel(({ messages, tools }) => {
@@ -178,6 +184,7 @@ describe("a run's teachers read what the run found (goal 098)", () => {
     const r = await makeResearchRun();
     t.after(() => r.close());
     await fillResearch(r);
+    cardsUpToDate(r.env.service, r.run);
     const lines: string[] = [];
     const open: string[] = [];
     const cfg = config(

@@ -34,6 +34,7 @@ export function researchFolderNote(f: ResearchFolderPaths): string {
 - REPORT.md: the newest report
 - BRIEF.md, when there is one: the campaign's brief from its author, whole
 - sources/: every archived page as text (the words a claim's quotes must match)
+- cards/: each question's answer card (q0.md for question 1 (index 0), and so on): the run's current answer, its certainty and its open gaps. Fill its evidence gaps; you never edit a card
 - claims/, findings/, hypotheses/, notes/, report/: every claim (verified or draft), finding, hypothesis, note and report section
 - lanes/: the files each lane wrote, as they were when its last trial ended
 - compactions/, when there is one: conversations the harness kept whole before each compaction

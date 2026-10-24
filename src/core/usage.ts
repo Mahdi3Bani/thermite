@@ -11,7 +11,8 @@ import { z } from "zod";
 
 /**
  * The agents a record names, by their internal identifiers: `combiner` is the teachers' merged by
- * model and `panel` the review panel (goal 074's names, in AGENT_WORDS). Records keep these
+ * model, `panel` the review panel (goal 074's names, in AGENT_WORDS) and `synthesizer` the writer
+ * of a research run's answer cards (goal 117), on the first teacher's model. Records keep these
  * values; this list and AGENT_WORDS are the one place that names them.
  */
 export const USAGE_AGENTS = [
@@ -21,12 +22,13 @@ export const USAGE_AGENTS = [
   "combiner",
   "auditor",
   "panel",
+  "synthesizer",
 ] as const;
 export const UsageAgent = z.enum(USAGE_AGENTS);
 export type UsageAgent = z.infer<typeof UsageAgent>;
 
 /** The agents in the supervisor: what the supervisor may record. */
-export const ADVISOR_AGENTS = ["teachers", "combiner", "auditor", "panel"] as const;
+export const ADVISOR_AGENTS = ["teachers", "combiner", "auditor", "panel", "synthesizer"] as const;
 export const AdvisorAgent = z.enum(ADVISOR_AGENTS);
 export type AdvisorAgent = z.infer<typeof AdvisorAgent>;
 
@@ -38,6 +40,7 @@ export const AGENT_WORDS: Record<UsageAgent, string> = {
   combiner: "Teachers (merged by)",
   auditor: "Auditor",
   panel: "Review panel",
+  synthesizer: "Synthesizer",
 };
 
 /** The programs an agent's calls run in. */

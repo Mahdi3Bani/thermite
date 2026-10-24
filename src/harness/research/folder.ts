@@ -21,6 +21,7 @@ import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
+import { cardFile, cardHistory, questionLabel } from "./cards.ts";
 
 /** The research paper's file in a research run's folder (goal 112). */
 export const PAPER_FILE = "paper.md";
@@ -31,6 +32,7 @@ export const PAPER_FILE = "paper.md";
  *
  *   INDEX.md, REPORT.md                 the harness writes them
  *   paper.md                            the research paper, once code accepted it (goal 112)
+ *   cards/q<index>.md                   each question's answer card, with its versions (goal 117)
  *   sources/ claims/ findings/          from the harness's records, kept current as they change
  *   hypotheses/ notes/ report/
  *   lanes/LANE/                         each lane's files, as they were when its last trial ended
@@ -140,6 +142,9 @@ function textOf(data: Buffer): string | undefined {
 /** A name safe as one path part: a section's name, say. */
 const fileName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[.-]+/, "") || "x";
 
+/** A question's answer card in the folder, from its top: cards/q<index>.md (goal 117). */
+export const cardPath = (index: number) => `cards/q${index}.md`;
+
 /** A report section's file in the folder, from its top: report/<name>.md. */
 export const sectionPath = (name: string) => `report/${fileName(name)}.md`;
 
@@ -210,10 +215,11 @@ export class ResearchFolder {
       title?: string;
       topic?: string;
       questions?: string[];
+      rubrics?: string[];
       quality?: { min_independent_sources?: number };
     };
     for (const d of research
-      ? ["sources", "claims", "findings", "hypotheses", "notes", "report", "lanes", "work"]
+      ? ["sources", "claims", "findings", "hypotheses", "notes", "report", "cards", "lanes", "work"]
       : ["sources", "claims", "notes"])
       mkdirSync(join(root, d), { recursive: true });
     this.showCompactions(run);
@@ -364,6 +370,21 @@ export class ResearchFolder {
       return root;
     }
 
+    // Each question's answer card (goal 117), whole, with its earlier versions: cards/q<index>.md.
+    const claimText = new Map(claims.map((c) => [String(c.id), String(c.text)]));
+    const cardRows = questions.map((_, i) => cardHistory(this.ledger, run, i));
+    const verifiedOf = (i: number) =>
+      claims.filter(
+        (c) => Number(c.verified) === 1 && c.question !== null && Number(c.question) === i,
+      ).length;
+    for (const [i, history] of cardRows.entries())
+      this.changed(
+        join(root, cardPath(i)),
+        cardFile({ questions, rubrics: contract.rubrics }, i, history, verifiedOf(i), (id) =>
+          claimText.get(id),
+        ),
+      );
+
     const sections = this.all("select * from report_section where run = ? order by name", run);
     for (const s of sections)
       this.changed(
@@ -423,8 +444,20 @@ export class ResearchFolder {
         `- hypotheses/: ${hypotheses.length}`,
         `- notes/: ${notes.length}`,
         `- report/: ${sections.length} report sections`,
+        `- cards/: one answer card for each question, whole with its earlier versions (cards/q0.md for question 1 (index 0), and so on); workers never edit them`,
         `- lanes/: the files each lane wrote, as they were when its last trial ended (${files.length} files)`,
         ...knowledgeLine,
+        "",
+        "## Answer cards",
+        "",
+        "The run's current answer to each question: the synthesizer writes each card from verified claims, and code checks it.",
+        "",
+        ...cardRows.map((history, i) => {
+          const c = history.at(-1);
+          return c
+            ? `- ${questionLabel(i)}: ${cardPath(i)}, certainty ${c.certainty} (version ${c.version}), ${c.gaps.filter((g) => g.kind === "evidence").length} open evidence gaps`
+            : `- ${questionLabel(i)}: ${cardPath(i)}, no card yet (${verifiedOf(i)} verified claims)`;
+        }),
         "",
         "## Findings",
         "",

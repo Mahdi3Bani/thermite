@@ -80,7 +80,10 @@ const TIP = {
 const costTip = (gpu: string) =>
   `Tokens times each model's price for a million tokens: in, cached in, out. Prices: Settings › Providers. “on a plan”: a subscription; its tokens are counted, not priced. “no price”: none is known, so it is never $0. GPU time on RunPod: ${gpu}.`;
 
-/** Each agent in words (goal 074), and the line under it: the teachers' merged by model. */
+/**
+ * Each agent in words (goal 074), and the line under it: the teachers' merged by model, and the
+ * synthesizer's answer cards (goal 117).
+ */
 const AGENT: Record<string, [string, string]> = {
   workers: ["Workers", ""],
   planner: ["Planner", ""],
@@ -88,6 +91,7 @@ const AGENT: Record<string, [string, string]> = {
   combiner: ["Teachers", "merged by"],
   auditor: ["Auditor", ""],
   panel: ["Review panel", ""],
+  synthesizer: ["Synthesizer", "answer cards"],
 };
 const WORK = new Set(["workers", "planner"]);
 export const harnessWord = (h: string) => HARNESS_NAMES[h as Harness] ?? h;
