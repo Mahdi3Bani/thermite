@@ -766,6 +766,11 @@ describe("a passed review closes the run with its answers (goal 112)", () => {
       /- Question 2 \(index 1\): a second, independent site on what keeps campaigns honest/,
       "numbered as the brief numbers its questions",
     );
+    // The digest's line, which workers read in REPORT.md, names both too (goal 117).
+    assert.match(
+      s.research.report(RUN, "digest").body,
+      /Answer check: not yet\. Review \d+ found gaps \(Question 2 \(index 1\): missing: a second, independent site/,
+    );
     // The owner closes it before new evidence is checked: its final report says so.
     s.research.report(RUN, "final");
     assert.match(

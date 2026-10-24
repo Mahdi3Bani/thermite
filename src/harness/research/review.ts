@@ -4,6 +4,7 @@ import {
   ANSWERED,
   measurementIn,
   questionLabel,
+  questionName,
   REQUIRED_HYPOTHESES,
   RESEARCH_REVIEW,
 } from "../../core/research-check.ts";
@@ -473,8 +474,16 @@ export function checkResearchPanel(
   });
 }
 
-/** What one reviewer found missing, a line each, in plain words (questions numbered from 1). */
-export function reviewerGaps(r: CheckedReviewer, n = 300): string[] {
+/**
+ * What one reviewer found missing, a line each, in plain words. Questions are named for people,
+ * "Question 1" (the journal, the dashboard), or with `questionLabel` where agents read it too
+ * ("Question 1 (index 0)": the digest's line in REPORT.md).
+ */
+export function reviewerGaps(
+  r: CheckedReviewer,
+  n = 300,
+  name: (index: number) => string = questionName,
+): string[] {
   const out: string[] = [];
   for (const q of r.questions) {
     if (q.answered) continue;
@@ -487,7 +496,7 @@ export function reviewerGaps(r: CheckedReviewer, n = 300): string[] {
         ? clip(q.problems.join("; "), n)
         : "",
     ].filter(Boolean);
-    out.push(`Question ${q.index + 1}: ${parts.join("; ") || "not answered"}`);
+    out.push(`${name(q.index)}: ${parts.join("; ") || "not answered"}`);
   }
   for (const h of r.hypotheses) {
     if (h.valid) continue;
@@ -572,7 +581,7 @@ export function checkLine(
   if (newest?.owner_decision === "rejected")
     return `Answer check: the owner did not accept review ${String(newest.id)}; ${due.due ? "the next digest asks the review panel again, on new evidence" : due.why}.`;
   if (newest?.panel_result === "review_failed") {
-    const gaps = checkedPanel(newest).flatMap((r) => reviewerGaps(r, 120));
+    const gaps = checkedPanel(newest).flatMap((r) => reviewerGaps(r, 120, questionLabel));
     return `Answer check: not yet. Review ${String(newest.id)} found gaps${gaps.length ? ` (${clip([...new Set(gaps)].slice(0, 3).join("; "), 400)})` : ""}; ${due.due ? "the next digest asks the review panel again, on new evidence" : due.why}.`;
   }
   return `Answer check: ${due.due ? "the next digest asks the review panel" : `waiting: ${due.why}`}.`;
