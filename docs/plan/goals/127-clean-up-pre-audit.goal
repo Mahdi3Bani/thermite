@@ -38,10 +38,12 @@ Across all the code in goal 125's scope (`src/`, `scripts/`, and the scripts in 
 2. **Knowledge in many places.** The same fact kept in several parts, such as status words, agent names, limits, schemas, routes and messages, repeated between control, the harness, the supervisor, the dashboard and the command line.
 3. **One job done many ways.** Patterns that each part does in its own way and that want one shared module: errors and their types, logging, retries and timeouts, HTTP calls, reading settings, checking input, test helpers and fakes.
 4. **The large files.** For each file over 800 lines, its responsibilities and the folder it should become, so that every split follows the same shape.
-5. **The shape of the code.** The rules that every change should follow in the same way: folder and file names, where shared code lives, which parts may import which, and the patterns for errors and logging. Where a rule is missing from CONVENTIONS.md, the guide proposes it, for the owner to accept. This goal does not change CONVENTIONS.md itself.
-6. **Dead code at scale.** Exports, files, scripts, settings and dependencies that nothing uses, found across the whole code.
-7. **Hot spots.** The files that change most often (from `git log`), and the files that many parts depend on. Changes there carry the most risk and the most gain.
-8. **Fences.** Code that looks wrong but has a reason, from its history, its tests or its comments. The guide says to leave it, and why.
+5. **Names in place of folders.** The groups of files whose names share a word at the start or the end (`model-check.ts` and `model-source.ts` beside `model.ts`, the `*-client.ts` files, the `*-acceptance.mjs` scripts), and the folder each group becomes, with its `index.ts`.
+6. **Where the tests go.** Every test sits beside its code today. The guide says how they move to `tests/`, in folders that mirror `src/`: what `npm test`, the typecheck, the lint, CI and the pages that name test paths need, and where the helpers, fakes and stand-ins in `src/testing/` go, since scripts and the dashboard demo use some of them.
+7. **The shape of the code.** The rules that every change should follow in the same way: folder and file names, where shared code lives, which parts may import which, and the patterns for errors and logging. Where a rule is missing from CONVENTIONS.md, the guide proposes it, for the owner to accept. This goal does not change CONVENTIONS.md itself.
+8. **Dead code at scale.** Exports, files, scripts, settings and dependencies that nothing uses, found across the whole code.
+9. **Hot spots.** The files that change most often (from `git log`), and the files that many parts depend on. Changes there carry the most risk and the most gain.
+10. **Fences.** Code that looks wrong but has a reason, from its history, its tests or its comments. The guide says to leave it, and why.
 
 ### The guide
 
@@ -73,7 +75,7 @@ Then: "This will give us double audit.. the one in the goal you ran where it aud
 ## Done when
 
 - [ ] The guide exists at `docs/plan/code-clean-up-guide.md`, with each of its seven parts.
-- [ ] Every area in goal 125's scope is covered by the map, and each file over 800 lines has the folder it should become.
+- [ ] Every area in goal 125's scope is covered by the map. Each file over 800 lines, and each group of files named in place of a folder, has the folder it should become. The move of the tests to `tests/` is planned.
 - [ ] Security findings, if any, are in `.internal/` and in no tracked file.
 - [ ] `git status` shows no change apart from the guide and this goal. The public check (`npm run check:public`) passes.
 - [ ] The owner has read the guide, and answered or deferred its questions.
@@ -81,6 +83,7 @@ Then: "This will give us double audit.. the one in the goal you ran where it aud
 ## Decisions
 
 - 2026-10-24, owner: a read-only pre-audit in v0.1.1, before goal 125, that looks at the whole code and writes a guide for goal 125, not a diff.
+- 2026-10-24, owner: two rules of shape to plan for: tests in a `tests/` folder, not beside the code, and folders and modules with proper imports, not files named `<name>-<part>.ts` side by side. Both are in CONVENTIONS.md.
 
 ## Open questions
 

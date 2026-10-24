@@ -25,17 +25,19 @@ It is the second half of a double audit. Goal 127 looks at the whole code, read-
 Each rule of CONVENTIONS.md, in particular:
 
 1. **File size and structure.** A file over 500 lines gets a cohesion review. A file over 800 lines is split by responsibility into a folder named for it (`store/runs.ts`, never `store-runs.ts` beside it).
-2. **Duplication.** Knowledge kept in more than one place: a rule, a limit, a schema, a status word, a name, a route, a message. Code repeated a third time. Two ways of doing the same job. One thing with more than one name.
-3. **Module design.** Shallow modules, and layers that only pass things through. Complexity pushed onto callers. Implementation details that leak through an interface. Two modules that share knowledge of one design decision. Related code spread over many files.
-4. **Interfaces and errors.** Errors that the interface could define away. Silent catches, and errors without a type.
-5. **Readable code.** Clever expressions, unclear names, long callback chains, generics beyond container types.
-6. **Dead code and loose ends.** Code, exports, files, scripts, settings and dependencies that nothing uses. Code commented out. Placeholders that look finished. Suppressions and switched-off tests without a reason.
-7. **Limits and state.** Mechanical parts without a named limit, or without a defined result at the limit. Duplicate state that can drift. Unclear units. A run's turns, trials, time and spending keep **No default caps**: a finding never adds a limit there.
-8. **Logging.** Major branches that are not logged. Lines without the IDs that tie them to their cause. Log levels that can't be changed while the program runs.
-9. **Security.** The security rules. Findings are handled as [SECURITY.md](../../../SECURITY.md) says, and never written in this goal or in any public file.
-10. **Tests.** Tests that can't fail. Mocks inside the system instead of at its boundaries. Missing failure, empty and over-limit cases. Fixed bugs without a regression test.
-11. **TypeScript.** `any` without a stated reason. Input at a trust boundary without a schema.
-12. **Words.** Code comments and the messages that people read, in plain words.
+2. **Folders, not names.** Files whose names share a word at the start or the end become a folder named for that word, with an `index.ts` that is its interface, and the code outside imports from it.
+3. **Tests in `tests/`.** Every test moves out of `src/` into `tests/`, in folders that mirror `src/`, with its helpers, fakes and stand-ins.
+4. **Duplication.** Knowledge kept in more than one place: a rule, a limit, a schema, a status word, a name, a route, a message. Code repeated a third time. Two ways of doing the same job. One thing with more than one name.
+5. **Module design.** Shallow modules, and layers that only pass things through. Complexity pushed onto callers. Implementation details that leak through an interface. Two modules that share knowledge of one design decision. Related code spread over many files.
+6. **Interfaces and errors.** Errors that the interface could define away. Silent catches, and errors without a type.
+7. **Readable code.** Clever expressions, unclear names, long callback chains, generics beyond container types.
+8. **Dead code and loose ends.** Code, exports, files, scripts, settings and dependencies that nothing uses. Code commented out. Placeholders that look finished. Suppressions and switched-off tests without a reason.
+9. **Limits and state.** Mechanical parts without a named limit, or without a defined result at the limit. Duplicate state that can drift. Unclear units. A run's turns, trials, time and spending keep **No default caps**: a finding never adds a limit there.
+10. **Logging.** Major branches that are not logged. Lines without the IDs that tie them to their cause. Log levels that can't be changed while the program runs.
+11. **Security.** The security rules. Findings are handled as [SECURITY.md](../../../SECURITY.md) says, and never written in this goal or in any public file.
+12. **Tests.** Tests that can't fail. Mocks inside the system instead of at its boundaries. Missing failure, empty and over-limit cases. Fixed bugs without a regression test.
+13. **TypeScript.** `any` without a stated reason. Input at a trust boundary without a schema.
+14. **Words.** Code comments and the messages that people read, in plain words.
 
 ### How to work
 
@@ -67,6 +69,8 @@ Then: "not only file sizes and restructure stuff, but also looking for DRY, etc 
 - [ ] The size check, with tests, runs in `npm run check` and in CI.
 - [ ] The audit covers every area in scope, recorded below.
 - [ ] Every file in scope over 800 lines is split into a folder named for it, or has a recorded reason to stay.
+- [ ] No group of files is named in place of a folder, unless it has a recorded reason.
+- [ ] Every test is in `tests/`. `npm test`, the typecheck, the lint, CI and the pages that name test paths ([AGENTS.md](../../../AGENTS.md), [docs/writing-docs.md](../../writing-docs.md), [docs/local-development.md](../../local-development.md) and the site's Contributing page) point there.
 - [ ] Every finding is fixed, or has a recorded reason to stay.
 - [ ] Every theme of goal 127's guide is done, or has a recorded reason to stay.
 - [ ] `npm run check`, the docs checks and the acceptance checks that the changes need pass, and the goal records which ran.
@@ -91,6 +95,8 @@ Known at the start, 2026-10-24:
   | `src/harness/judge/judge.ts` | 2,134 |
 
   In `scripts/`, 2 files are over 800 lines.
+- **Names in place of folders.** 32 groups of files, 96 files in all, share a word at the start or the end of their names, such as the 16 `scripts/*-acceptance.mjs`, the 9 `src/control/ui/*-client.ts` and the 6 `src/control/runpod-*.ts`.
+- **Tests beside the code.** All 206 test files sit in `src/`, beside the code they test. `npm test` looks for `src/**/*.test.ts`.
 - **Logging.** No log level can be changed while a program runs.
 
 ## Decisions
@@ -99,6 +105,7 @@ Known at the start, 2026-10-24:
 - 2026-10-24, owner: v0.1.1 is the code clean-up, to the engineering rules and the new conventions.
 - 2026-10-24, owner: one goal for all of it, to run with `/goal` after v0.1.0 ships: file sizes, the code's structure, duplication and every other rule that CONVENTIONS.md checks. Goal [124](124-file-sizes.goal) is merged into it, and CONVENTIONS.md gets rules on duplication and dead code.
 - 2026-10-24, owner: a read-only pre-audit, goal [127](127-clean-up-pre-audit.goal), comes first and writes the guide this goal works from: a double audit.
+- 2026-10-24, owner: tests live in a `tests/` folder, not beside the code ("It makes reading code and finding actual code faster"); and folders and modules with proper imports, not files named `<name>-<part>.ts` side by side ("we just made tons of files putting hierarchy flat and hard to follow").
 
 ## Open questions
 
