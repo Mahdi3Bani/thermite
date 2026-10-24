@@ -125,19 +125,24 @@ describe("the owner's messages to the advisors", () => {
       { diff: "x".repeat(300_000), owner_messages },
       200_000,
     );
+    // The cut is said (goal 117).
+    const said = `[Cut to fit the prompt's limit: 200,000 of ${JSON.stringify({ owner_messages, diff: "x".repeat(300_000) }).length.toLocaleString("en-US")} characters.]\n`;
     assert.ok(
       p.startsWith(
-        'Audit package:\n{"owner_messages":[{"id":1,"text":"keep the API stable"}],"diff":"xxx',
+        `Audit package:\n${said}{"owner_messages":[{"id":1,"text":"keep the API stable"}],"diff":"xxx`,
       ),
     );
-    assert.equal(p.length, "Audit package:\n".length + 200_000);
+    assert.equal(p.length, "Audit package:\n".length + said.length + 200_000);
     // Messages longer than the cut are kept whole, with a little of the rest.
     const big = [{ id: 2, text: "y".repeat(5000) }];
     assert.match(
       advisorPrompt("B:", { diff: "z".repeat(9000), owner_messages: big }, 1000),
       /y{5000}"\}\],"diff":"z/,
     );
-    assert.equal(advisorPrompt("B:", { a: 1 }, 3), 'B:\n{"a');
+    assert.equal(
+      advisorPrompt("B:", { a: 1 }, 3),
+      "B:\n[Cut to fit the prompt's limit: 3 of 7 characters.]\n{\"a",
+    );
   });
 
   test("at the day's spending limit, a message to the teachers starts no round, and says so once", async () => {

@@ -146,9 +146,16 @@ describe("the advisors' context window and compaction (goal 070)", () => {
       cut.slice(0, 200),
     );
     assert.equal(cut.split("\n")[2]?.length, 20_000);
-    // A package that fits, or a window larger than the cap: as before, with no words.
+    // A package that fits: with no words. One cut to the prompt's limit, below a larger window: said.
     assert.doesNotMatch(advisorPrompt("B:", { a: 1 }, 200_000, 20_000), /Cut to fit/);
-    assert.doesNotMatch(advisorPrompt("B:", pkg, 50_000, 900_000), /Cut to fit/);
+    assert.match(
+      advisorPrompt("B:", pkg, 50_000, 900_000),
+      new RegExp(`^B:\\n\\[Cut to fit the prompt's limit: 50,000 of ${length} characters\\.\\]\\n`),
+    );
+    assert.match(
+      advisorPrompt("B:", pkg, 50_000),
+      /^B:\n\[Cut to fit the prompt's limit: 50,000 of /,
+    );
     // The owner's messages are never cut, even to fit.
     const big = [{ id: 2, text: "y".repeat(5000) }];
     assert.match(

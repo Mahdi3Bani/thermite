@@ -624,6 +624,10 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
         [2, "open", null, true],
       ],
     );
+    assert.deepEqual(
+      pkg.questions.map((x) => x.certainty_line),
+      ["Certainty: high", "Certainty: open"],
+    );
     const v = claimId(0, 0);
     const c = claimId(1, 0);
     const paper = [
@@ -635,8 +639,8 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
       "## Method",
       "The workers read archived sources, and the harness verified each claim against them.",
       "## Results",
-      `### Question 1\n\nFamily A moves its weights through shared memory [${v}].`,
-      `### Question 2\n\nThe question stays open. The sources show only part of the answer [${c}].`,
+      `### Question 1\n\nCertainty: high\n\nFamily A moves its weights through shared memory [${v}].`,
+      `### Question 2\n\nCertainty: open\n\nThe question stays open. The sources show only part of the answer [${c}].`,
       "## Hypotheses",
       "The run has no hypothesis that needs a verdict.",
       "## Limits of the evidence",

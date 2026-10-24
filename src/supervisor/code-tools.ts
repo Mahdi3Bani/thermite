@@ -36,6 +36,16 @@ export const CODE_TOOLS = {
     "The judge's public findings, read only. With `attempt`: that attempt in full (its hypothesis, claim and declared flaws, the verdict and change, the judge's reasons, and the checks that refused it before building). Without: the newest 40 attempts and the newest 40 experiments tried, each with its cause. Never a held-out result.",
 } as const;
 
+/** The most characters of a tool's answer that an advisor gets. */
+export const TOOL_TEXT_MAX = 120_000;
+
+/** A tool's answer as an advisor reads it: whole, or cut with the cut said (goal 117). */
+export function toolText(out: unknown): string {
+  const json = JSON.stringify(out) ?? "null";
+  if (json.length <= TOOL_TEXT_MAX) return json;
+  return `[Cut to ${TOOL_TEXT_MAX.toLocaleString("en-US")} of ${json.length.toLocaleString("en-US")} characters: ask for less, with offset and limit where the tool has them.]\n${json.slice(0, TOOL_TEXT_MAX)}`;
+}
+
 /** A number given by a model, or none. */
 export const toolNumber = (v: unknown) =>
   typeof v === "number" && Number.isFinite(v)
@@ -93,7 +103,7 @@ export function registerCodeTools(server: McpServer, code: AdvisorCode): void {
         try {
           const out = await runCodeTool(code, name, a);
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(out).slice(0, 120_000) }],
+            content: [{ type: "text" as const, text: toolText(out) }],
           };
         } catch (err) {
           return {
