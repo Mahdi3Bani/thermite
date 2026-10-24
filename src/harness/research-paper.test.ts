@@ -8,7 +8,7 @@ import { Scheduler } from "./agents/scheduler.ts";
 import { createHarnessApi } from "./api.ts";
 import { LocalRunner } from "./broker/runner.ts";
 import { knowledgePart } from "./kb-part.ts";
-import { PAPER_FILE } from "./research/folder.ts";
+import { NEXT_EXPERIMENTS_FILE, PAPER_FILE } from "./research/folder.ts";
 import { PAPER_PACKAGE_MAX, type PaperProblem, paperSha } from "./research/paper.ts";
 import type { Research } from "./research/research.ts";
 import { ANSWERED } from "./research/review.ts";
@@ -535,8 +535,24 @@ describe("a research run whose questions are answered waits for its paper (goal 
       writer: "teacher-1",
       paper,
       experiments: [
-        { title: "Count again", why: "To be sure.", findings: [s.ids.findings.draft] },
-        { title: "Nothing under it", why: "A hunch." },
+        {
+          title: "Count again",
+          why: "To be sure.",
+          kind: "hill_climb",
+          measure: "pages archived a minute, higher",
+          findings: [s.ids.findings.draft],
+        },
+        { title: "Nothing under it", why: "A hunch.", kind: "goal", measure: "x" },
+        // Goal 119: no kind; a kind that is not one; a kind with no measure.
+        { title: "No kind", why: "W.", claims: [s.ids.claims.verified] },
+        {
+          title: "Odd kind",
+          why: "W.",
+          kind: "survey",
+          measure: "m",
+          claims: [s.ids.claims.verified],
+        },
+        { title: "No measure", why: "W.", kind: "Goal campaign", claims: [s.ids.claims.verified] },
       ],
       ste: NO_STE,
     });
@@ -550,6 +566,27 @@ describe("a research run whose questions are answered waits for its paper (goal 
         problem:
           'next experiment 2 ("Nothing under it") rests on no finding or claim: give the ids of the supported findings or verified claims it builds on',
       },
+      {
+        line: null,
+        problem:
+          'next experiment 3 ("No kind") has no kind: give hill_climb (an improvement a hill climb measures against its champion) or goal (an outcome a goal campaign proves)',
+      },
+      {
+        line: null,
+        problem:
+          'next experiment 4 ("Odd kind") has the kind "survey", which is not one: give hill_climb (an improvement a hill climb measures against its champion) or goal (an outcome a goal campaign proves)',
+      },
+      {
+        line: null,
+        problem:
+          'next experiment 5 ("No measure") has no measure: give how a check would know the goal is reached',
+      },
+      // The paper has no "### For a goal campaign" section for its goal experiments.
+      {
+        line: null,
+        problem:
+          'Next experiments has no "### For a goal campaign" section, and 2 of its next experiments are for a goal campaign',
+      },
     ]);
     const good = await s.call("POST", `/v1/research/papers/${RUN}`, {
       writer: "teacher-1",
@@ -559,6 +596,8 @@ describe("a research run whose questions are answered waits for its paper (goal 
           title: "Measure the archive on a second site",
           why: "Every claim comes from one site.",
           details: "Run the same fetch on a second site and compare the page counts.",
+          kind: "Hill climb",
+          measure: "pages archived a minute, higher",
           findings: [s.ids.findings.supported],
           claims: [s.ids.claims.verified],
         },
@@ -566,6 +605,15 @@ describe("a research run whose questions are answered waits for its paper (goal 
       ste: NO_STE,
     });
     assert.equal(good.body.accepted, true, JSON.stringify(good.body));
+    // Goal 119: the kind is read whatever its case, and kept with the measure.
+    const kept = (s.events("research_paper_accepted")[0]?.experiments ?? []) as Record<
+      string,
+      unknown
+    >[];
+    assert.deepEqual(
+      kept.map((x) => [x.kind, x.measure]),
+      [["hill_climb", "pages archived a minute, higher"]],
+    );
     assert.equal(good.body.cited, 2);
     // Its event keeps the paper whole, with the references code appended.
     const accepted = s.events("research_paper_accepted")[0] as Record<string, unknown>;
@@ -592,6 +640,15 @@ describe("a research run whose questions are answered waits for its paper (goal 
     const folderPaper = join(s.folder.root(RUN), PAPER_FILE);
     assert.ok(existsSync(folderPaper));
     assert.equal(readFileSync(folderPaper, "utf8"), whole);
+    // Its next experiments beside it, each with its kind (goal 119), for the next campaign.
+    const nextFile = JSON.parse(
+      readFileSync(join(s.folder.root(RUN), NEXT_EXPERIMENTS_FILE), "utf8"),
+    ) as { run: string; experiments: Record<string, unknown>[] };
+    assert.equal(nextFile.run, RUN);
+    assert.deepEqual(
+      nextFile.experiments.map((x) => [x.title, x.kind, x.measure]),
+      [["Measure the archive on a second site", "hill_climb", "pages archived a minute, higher"]],
+    );
     // A second paper is refused.
     const again = await s.call("POST", `/v1/research/papers/${RUN}`, {
       writer: "teacher-1",
@@ -608,6 +665,12 @@ describe("a research run whose questions are answered waits for its paper (goal 
     assert.equal(part[0]?.by, "writer:teacher-1");
     assert.equal(part[0]?.run, RUN);
     assert.match(String(part[0]?.body), /Why: Every claim comes from one site\./);
+    // Tagged with the run it is for (goal 119): in words, and as the item's sub, which the export keeps.
+    assert.match(
+      String(part[0]?.body),
+      /^For: a hill climb, an improvement to measure against its champion\.\nMeasure: pages archived a minute, higher\n/,
+    );
+    assert.equal(part[0]?.sub, "for a hill climb");
     assert.match(
       String(part[0]?.body),
       new RegExp(

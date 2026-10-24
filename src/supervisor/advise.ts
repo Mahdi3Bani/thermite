@@ -1264,8 +1264,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       // With the campaign's own context settings, when it sets any (goal 070).
       const runtime = (await configFor(run)).teachers[0] ?? writer;
       const path = `/v1/research/papers/${encodeURIComponent(run)}`;
-      const checkDraft = async (markdown: string) =>
-        (await api("POST", `${path}/check`, { paper: markdown })) as {
+      // The harness's checks of a draft; with its next experiments when the writer gives them, so
+      // a missing kind or measure (goal 119) comes back within the call.
+      const checkDraft = async (markdown: string, experiments?: unknown[]) =>
+        (await api("POST", `${path}/check`, {
+          paper: markdown,
+          ...(experiments ? { experiments } : {}),
+        })) as {
           ok: boolean;
           problems: { line: number | null; problem: string }[];
         };
@@ -1290,7 +1295,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           // to run takes the answer: the supervisor checks it again below, and the harness last.
           accept: async (o) => {
             try {
-              const c = await checkDraft(o.paper);
+              const c = await checkDraft(o.paper, o.experiments);
               const errors = ste
                 ? (await ste.check(o.paper)).findings.filter((f) => f.severity === "error")
                 : [];

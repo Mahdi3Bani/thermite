@@ -18,7 +18,7 @@ import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
 import { forwardToProvider } from "./model-forward.ts";
 import { CardSubmission } from "./research/cards.ts";
-import { PAPER_MAX, PaperSubmission } from "./research/paper.ts";
+import { PAPER_MAX, PaperExperiment, PaperSubmission } from "./research/paper.ts";
 import type { Research } from "./research/research.ts";
 import { ResearchVerdicts } from "./research/review.ts";
 import { KIND_PATHS, PAGE_MAX, RESEARCH_KINDS, SOURCE_CHARS_MAX } from "./run-research.ts";
@@ -523,9 +523,13 @@ export function createHarnessApi(
     bodyLimit({ maxSize: 1024 * 1024 }),
     async (c) => {
       const body = z
-        .strictObject({ paper: z.string().min(1).max(PAPER_MAX) })
+        .strictObject({
+          paper: z.string().min(1).max(PAPER_MAX),
+          // The next experiments beside it, when the writer has them (goal 119): checked too.
+          experiments: z.array(PaperExperiment).max(50).optional(),
+        })
         .parse(await c.req.json());
-      return c.json(service.papers.check(c.req.param("run"), body.paper));
+      return c.json(service.papers.check(c.req.param("run"), body.paper, body.experiments));
     },
   );
   // The final writer's paper, with the STE checker's result the supervisor ran on its text:

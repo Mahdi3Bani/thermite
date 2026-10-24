@@ -110,7 +110,7 @@ export function goodPaper(ids: ResearchIds, over: Partial<Record<string, string>
     hypotheses: `## Hypotheses\n\n| Hypothesis | Verdict | Evidence |\n| --- | --- | --- |\n| ${ids.hypothesis}: stateless workers make long runs safe | supported | The archive kept every page that the workers read [${v}]. |\n\n### Proposed by the run\n\nThe run proposed no other hypotheses.`,
     limits:
       "## Limits of the evidence\n\nAll the claims come from 1 site. 1 claim stays a draft, and 1 finding stays a draft.",
-    next: `## Next experiments\n\nFind a second site that gives the number of pages [${v}].`,
+    next: `## Next experiments\n\n### For a hill climb\n\nFind a second site that gives the number of pages [${v}].`,
     ...over,
   };
   return `${Object.values(parts).join("\n\n")}\n`;

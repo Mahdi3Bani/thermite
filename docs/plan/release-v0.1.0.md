@@ -114,7 +114,7 @@ Research workers build on what earlier trials learned, and a research campaign g
 | [117 · Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach](goals/117-research-that-answers.goal) | `IN_PROGRESS` | [112](goals/112-research-ends-when-answered.goal), [047](goals/047-research-planner.goal), [116](goals/116-reviews-tab.goal) |
 | [047 · A model planner for research mode](goals/047-research-planner.goal) | `IN_PROGRESS` | [046](goals/_completed/046-web-search.goal) |
 | [116 · A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome](goals/116-reviews-tab.goal) | `IN_PROGRESS` | [112](goals/112-research-ends-when-answered.goal) |
-| [119 · A research run's next experiments, sorted by the run that takes them: improvements for a hill climb, goals for a goal campaign](goals/119-next-experiments-by-run-kind.goal) | `PROPOSED` | [117](goals/117-research-that-answers.goal) |
+| [119 · A research run's next experiments, tagged by the run that takes them: improvements for a hill climb, goals for a goal campaign](goals/_completed/119-next-experiments-by-run-kind.goal) | `VERIFIED` | [117](goals/117-research-that-answers.goal) |
 
 ### Rigs on RunPod
 

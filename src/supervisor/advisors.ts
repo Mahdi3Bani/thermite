@@ -2679,7 +2679,7 @@ export async function reviewOne(input: {
 
 /**
  * The final writer's answer (goal 112): the whole paper, and its next experiments as items, each
- * with why, its details and the findings or claims it rests on.
+ * with why, its details, its kind and measure (goal 119) and the findings or claims it rests on.
  */
 export const WriterAnswer = z.strictObject({
   paper: z.string().min(1).max(PAPER_MAX),
@@ -2695,6 +2695,14 @@ const WriterAnswerSchema = Type.Object({
       title: Type.String({ description: "What to try, in a few words" }),
       why: Type.String({ description: "Why it is worth trying, from the evidence" }),
       details: Type.Optional(Type.String({ description: "How to try it, in plain steps" })),
+      kind: Type.String({
+        description:
+          "The run it is for: hill_climb (an improvement a hill climb measures against its champion) or goal (an outcome a goal campaign proves)",
+      }),
+      measure: Type.String({
+        description:
+          "For hill_climb, the metric it should move and which way; for goal, how a check would know the goal is reached",
+      }),
       findings: Type.Optional(
         Type.Array(Type.String(), {
           description: "Ids of the supported findings it rests on (f-…)",
@@ -2763,10 +2771,14 @@ The paper has these parts, in this order: the title (# Title), then ${PAPER_PART
 - Next experiments: what only a measurement could settle (each question's next_experiments), then
   what else to try, each with why.
 
-Give the next experiments also as items in experiments: each with its title, why, details, and
-the ids of the supported findings or verified claims that it rests on. Code keeps each item as an
-experiment in the campaign's knowledge-base folder, for a goal or hill-climb run to take into its
-queue.
+Give the next experiments also as items in experiments: each with its title, why, details, its
+kind, its measure, and the ids of the supported findings or verified claims that it rests on. The
+kind is hill_climb for an improvement that a hill climb measures against its champion (its measure:
+the metric it should move, and which way), or goal for an outcome that a goal campaign proves (its
+measure: how a check would know the goal is reached). In the Next experiments part, put each one
+under "### For a hill climb" or "### For a goal campaign", as its kind says. Code keeps each item,
+tagged with its kind, in the campaign's knowledge-base folder and in the run's research folder, for
+the next campaign to take up.
 
 Before you answer, check your draft: check_paper runs the harness's checks, and ste_check runs the
 rig's STE checker. Fix each problem. Then call answer with paper and experiments. When the package

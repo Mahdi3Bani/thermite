@@ -624,9 +624,17 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     }
     case "research_paper_accepted": {
       const ste = (b.ste ?? {}) as { checked?: unknown };
-      const n = Array.isArray(b.experiments) ? b.experiments.length : 0;
+      const xs = (Array.isArray(b.experiments) ? b.experiments : []) as { kind?: unknown }[];
+      const n = xs.length;
+      // By the run each is for (goal 119), when the paper tagged them.
+      const hill = xs.filter((x) => x?.kind === "hill_climb").length;
+      const goal = xs.filter((x) => x?.kind === "goal").length;
+      const split =
+        hill + goal
+          ? ` (${[hill ? `${hill} for a hill climb` : "", goal ? `${goal} for a goal campaign` : ""].filter(Boolean).join(", ")})`
+          : "";
       return s(
-        `The research paper passed the harness's checks${ste.checked === true ? " and the rig's STE checker" : " (no STE checker on the rig)"}. It cites ${Number(b.cited_claims) || 0} claims, and ${n} next ${n === 1 ? "experiment" : "experiments"} went to the knowledge base.`,
+        `The research paper passed the harness's checks${ste.checked === true ? " and the rig's STE checker" : " (no STE checker on the rig)"}. It cites ${Number(b.cited_claims) || 0} claims, and ${n} next ${n === 1 ? "experiment" : "experiments"}${split} went to the knowledge base.`,
         "ok",
         { run: String(e.subject) },
       );

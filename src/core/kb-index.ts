@@ -124,6 +124,12 @@ function setLine(body: string, label: string, line: string): string {
   return lines([...kept, line]).trim();
 }
 
+/** A research paper's next experiment's kind (goal 119), in words: the run it is for. */
+const NEXT_FOR_WORDS: Record<string, string> = {
+  hill_climb: "a hill climb, an improvement to measure against its champion",
+  goal: "a goal campaign, an outcome to prove",
+};
+
 const MODE_WORD: Record<string, string> = {
   hill_climb: "hill climb",
   goal: "goal",
@@ -555,6 +561,9 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
         if (!x || typeof x !== "object" || !str((x as Row).id)) continue;
         const y = x as Row;
         const rests = Array.isArray(y.rests_on) ? y.rests_on.map(str).filter(Boolean) : [];
+        // Its kind (goal 119): the run it is for, a hill climb or a goal campaign, and its measure.
+        const kind = str(y.kind);
+        const forWords = NEXT_FOR_WORDS[kind] ?? "";
         const details = lines([
           str(y.details),
           rests.length
@@ -567,9 +576,24 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
           ref(y.id),
           {
             title: str(y.title) || `experiment ${str(y.id)}`,
-            body: lines([details, str(y.why) ? `Why: ${str(y.why)}` : ""]),
+            body: lines([
+              forWords ? `For: ${forWords}.` : "",
+              str(y.measure)
+                ? `${kind === "goal" ? "Reached when" : "Measure"}: ${str(y.measure)}`
+                : "",
+              details,
+              str(y.why) ? `Why: ${str(y.why)}` : "",
+            ]),
             by: `writer:${str(b.writer) || "final writer"}`,
-            meta: { details, why: str(y.why), family: "" },
+            ...(forWords
+              ? { sub: kind === "goal" ? "for a goal campaign" : "for a hill climb" }
+              : {}),
+            meta: {
+              details,
+              why: str(y.why),
+              family: "",
+              ...(forWords ? { next_for: kind, measure: str(y.measure) } : {}),
+            },
           },
           e.at,
         );

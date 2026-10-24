@@ -1,0 +1,56 @@
+---
+id: "119"
+title: "A research run's next experiments, tagged by the run that takes them: improvements for a hill climb, goals for a goal campaign"
+status: VERIFIED
+version: "0.1.0"
+depends_on: ["117"]
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 119 · A research run's next experiments, tagged by the run that takes them: improvements for a hill climb, goals for a goal campaign
+
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Depends on:** [117](../117-research-that-answers.goal)
+
+## What
+
+Today a research run's paper ends with **Next experiments**: what only a measurement could settle. Each goes to the campaign's folder in the knowledge base as one kind of item, an experiment, and **Start a run** can copy it into a goal or hill-climb run's queue. A next experiment can be two different things, though:
+
+- **An improvement to try**, which a hill climb measures against its champion: for example, "unroll the dequantize loop by 4", "a second warm-up run before timing". It belongs in a hill climb's experiment queue.
+- **An outcome to reach and prove**, which a goal campaign checks: for example, "a benchmark whose run-to-run spread is under 1%", "the kernel passes the vendor's conformance tests". It is a goal, not an experiment in a queue.
+
+The plan (the paper's output and its tags; using them to start the next campaign is goal 120):
+
+- **The final writer gives each next experiment its kind and its measure:** `hill_climb` (an improvement, with the metric it should move and which way) or `goal` (an outcome, with how a check would know it is reached). Code refuses a next experiment with no kind or no measure, with words, as it refuses one that rests on no finding or claim.
+- **The paper's Next experiments part has a section for each kind** it has: `### For a hill climb` and `### For a goal campaign`. Code refuses a paper whose experiments include a kind with no such section.
+- **The tag goes everywhere the next experiments go:** the accepted paper's event, the campaign's folder in the knowledge base (each item tagged, so a search or a filter can tell them apart), the run's research folder and its export (`next-experiments.json`, every next experiment with its kind, measure and what it rests on, for goal 120 to read), control's `get_run` and the run's History.
+
+## Why
+
+The owner, 2026-10-24: "we should categorize next experiments on hill climbe experiments (things they help improve stuff) or a goal run where these experiments become the goals."
+
+A goal campaign has no queue of improvements to try; its work is to reach goals. Next experiments that are really goals do not fit **Start a run**'s copy into a queue, and today nothing turns them into a goal campaign's goals.
+
+## Done when
+
+- [x] The final writer's schema and prompt, and the harness's checks, give and keep each next experiment's kind and measure; the paper's Next experiments part has a section for each kind.
+- [x] The knowledge base, the research folder and its export (`next-experiments.json`), `get_run` and History carry the kind; tests for each.
+- [x] The pages that describe the paper, the knowledge base and the research folder.
+
+## Decisions
+
+- 2026-10-24, owner: two kinds, improvements for a hill climb and goals for a goal campaign.
+- 2026-10-24, owner: 119 is the paper's output and the tags ("I'd want 119 to focus on the paper output and the tagging for exports etc. So that 120 could work better"); Start a run and New campaign using them move to goal 120.
+
+## Open questions
+
+- Whether a third kind is needed for questions only more research can answer (a follow-up research campaign).
+
+## Progress
+
+- 2026-10-24: Goal written from the owner's words.
+- 2026-10-24 17:11 UTC: built and verified (branch `feat/119-next-experiment-kinds`). Each next experiment has `kind` (`hill_climb` or `goal`, read whatever its case: `Hill climb`, `goal campaign`) and `measure`; the harness refuses one with no kind, a kind that is neither, or no measure, and a paper whose Next experiments part has no `### For a hill climb` or `### For a goal campaign` section for a kind its items have. The paper check route takes the next experiments too (`{paper, experiments}`), and the supervisor sends them in a Pi writer's call. Tags: the accepted event's experiments keep `kind` and `measure`; the knowledge base item starts `For: …` and `Measure: …` (`Reached when: …`) and has `sub` `for a hill climb` or `for a goal campaign`, which the export's knowledge part keeps; the research folder has `next-experiments.json`; `get_run`'s paper has `next_for`; History counts them by kind. Decided in the build: the export's machine tag is `sub` and `next-experiments.json` (the knowledge part has no `meta`); a paper from before the kinds keeps untagged items. Tests: `src/harness/research-paper.test.ts`, `src/control/research-view.test.ts`, with the supervisor, folder, review, knowledge-base and control tests.
+
+---
+
+Run with `/goal Complete docs/plan/goals/_completed/119-next-experiments-by-run-kind.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).
