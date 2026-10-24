@@ -268,7 +268,7 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
 }
 
 async function runCheck(ctx: MeasureContext, vars: Record<string, string>): Promise<CheckResult> {
-  const r = await runSupervised({
+  const r = await (ctx.runner.check ?? runSupervised)({
     argv: expandArgv(ctx.kit.check.command, vars),
     cwd: ctx.kitDir,
     env: {

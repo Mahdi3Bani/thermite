@@ -20,7 +20,7 @@ function why(
 }
 
 async function setup(opts: Parameters<typeof makeJudgeEnv>[0] = {}) {
-  const env = makeJudgeEnv(opts);
+  const env = makeJudgeEnv({ realRuns: true, ...opts });
   const out = await env.service.applyCommand(env.assign);
   assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
   const submit = async (kernel: string, hypothesis: string) =>
@@ -202,12 +202,12 @@ describe("judge pipeline (local runner, Node test kit)", () => {
 
     // Another rig makes the same starting commit from the same signed commit and folder.
     const share = { root: env.root, seed: env.seed, kitCommit: env.kitCommit };
-    const other = makeJudgeEnv({ folder: "examples/sum", rig: "rig-b", share });
+    const other = makeJudgeEnv({ realRuns: true, folder: "examples/sum", rig: "rig-b", share });
     const out = await other.service.applyCommand(other.assign);
     assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
     assert.equal(other.ledger.getRun("js-1")?.seed_commit, start);
     // A folder the commit does not have is refused, and no run is made.
-    const none = makeJudgeEnv({ folder: "examples/none", rig: "rig-c", share });
+    const none = makeJudgeEnv({ realRuns: true, folder: "examples/none", rig: "rig-c", share });
     const refused = await none.service.applyCommand(none.assign);
     assert.match(
       JSON.stringify(refused),
