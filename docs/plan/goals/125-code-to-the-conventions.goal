@@ -1,64 +1,110 @@
 ---
 id: "125"
-title: "The code to the conventions: an audit against the engineering rules, and the fixes"
+title: "Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication"
 status: PROPOSED
 version: "0.1.1"
-depends_on: []
+depends_on: ["026"]
 created: 2026-10-24
 updated: 2026-10-24
 ---
 
-# 125 · The code to the conventions: an audit against the engineering rules, and the fixes
+# 125 · Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](026-ship-v0.1.0.goal)
 
 ## What
 
-A plan only; nothing of it is done.
+The one goal of v0.1.1, worked on after v0.1.0 ships. It brings all of Thermite's code to [CONVENTIONS.md](../../../CONVENTIONS.md), so that later changes are easier to make, to review and to trust. The conventions got their engineering rules on 2026-10-24; the code was written before them.
 
-On 2026-10-24, [CONVENTIONS.md](../../../CONVENTIONS.md) got Thermite's engineering rules: code design, files and their size, limits on mechanical parts, logging, security, tests, and writing and reporting. The code was written before them. This goal brings the code to them, so that later changes are easier to make and to review:
+**In scope:** every handwritten file that Thermite builds or runs: `src/` (production code and tests), `scripts/`, and the scripts in `containers/` and `kits/`. **Not in scope:** `.agents/`, `.claude/`, `skills-lock.json`, generated files, vendored code and `node_modules/`.
 
-- **An audit,** one area at a time (control and its dashboard, the harness and its judge, the supervisor, the command line, the scripts), against each rule. Each gap is recorded in this goal, as goal [061](061-gaps-found-by-the-docs.goal) records the gaps the docs found, with the file it is in and what the rule asks.
-- **Security findings stay out of this goal.** They are handled as [SECURITY.md](../../../SECURITY.md) says, never written in a public file.
-- **The fixes,** in small, safe steps. Each step keeps the system working and its tests passing. Behaviour changes only where the fix is the point, such as a new setting for log levels, and then the pages that describe it change in the same commit.
-- **Code organization:** the files split by goal [124](124-file-sizes.goal) go into folders named for them, and modules that share knowledge of one design decision are merged or given a cleaner boundary.
+### What the audit checks
 
-Known at the start, 2026-10-24:
+Each rule of CONVENTIONS.md, in particular:
 
-- The file sizes (goal [124](124-file-sizes.goal)).
-- No log level can be changed while a program runs.
+1. **File size and structure.** A file over 500 lines gets a cohesion review. A file over 800 lines is split by responsibility into a folder named for it (`store/runs.ts`, never `store-runs.ts` beside it).
+2. **Duplication.** Knowledge kept in more than one place: a rule, a limit, a schema, a status word, a name, a route, a message. Code repeated a third time. Two ways of doing the same job. One thing with more than one name.
+3. **Module design.** Shallow modules, and layers that only pass things through. Complexity pushed onto callers. Implementation details that leak through an interface. Two modules that share knowledge of one design decision. Related code spread over many files.
+4. **Interfaces and errors.** Errors that the interface could define away. Silent catches, and errors without a type.
+5. **Readable code.** Clever expressions, unclear names, long callback chains, generics beyond container types.
+6. **Dead code and loose ends.** Code, exports, files, scripts, settings and dependencies that nothing uses. Code commented out. Placeholders that look finished. Suppressions and switched-off tests without a reason.
+7. **Limits and state.** Mechanical parts without a named limit, or without a defined result at the limit. Duplicate state that can drift. Unclear units. A run's turns, trials, time and spending keep **No default caps**: a finding never adds a limit there.
+8. **Logging.** Major branches that are not logged. Lines without the IDs that tie them to their cause. Log levels that can't be changed while the program runs.
+9. **Security.** The security rules. Findings are handled as [SECURITY.md](../../../SECURITY.md) says, and never written in this goal or in any public file.
+10. **Tests.** Tests that can't fail. Mocks inside the system instead of at its boundaries. Missing failure, empty and over-limit cases. Fixed bugs without a regression test.
+11. **TypeScript.** `any` without a stated reason. Input at a trust boundary without a schema.
+12. **Words.** Code comments and the messages that people read, in plain words.
+
+### How to work
+
+1. Read CONVENTIONS.md, [AGENTS.md](../../../AGENTS.md) and this goal. Set the status to `IN_PROGRESS`, with a dated line under Progress.
+2. **Build the size check first,** so that nothing gets worse while the rest goes on. `npm run check` and CI run it. It lists each file in scope over 500 and over 800 lines. It fails when a file over 800 lines gets bigger, or a new file is over 800 lines, unless a reason is recorded for that file. The sizes it starts from are recorded in the repository, and each split lowers them.
+3. **Audit one area at a time:** `src/control/`, `src/harness/` (the judge in `src/harness/judge/` on its own), `src/supervisor/`, `src/cli/`, `src/core/`, `src/testing/`, then `scripts/`, `containers/` and `kits/`. Record each finding under [Audit](#audit) as you go: the file, the rule, and what to change. The engineering and anti-slop skills in `.agents/skills/` can help to find candidates. Treat what they report as evidence, and check it against CONVENTIONS.md.
+4. **Fix in small, safe steps:** one finding, or one part of a file, in each commit. Behaviour stays the same unless the fix is the point. The tests and checks that the change needs pass after each step, and a test is never weakened to let a refactor through. Split the largest files first.
+5. **Docs follow the code.** A fix that changes what Thermite does, such as a new setting for log levels or a changed message, updates the pages that describe it in the same commit.
+6. **Close each finding:** tick it when it is fixed, with the commit, or record why it stays.
+7. **At the end,** run `npm run check`, `npm run docs:build` and `npm run docs:check`, and each compose acceptance check that the changed parts need ([AGENTS.md](../../../AGENTS.md#checks)). Record which ran.
 
 ## Why
 
 The owner, 2026-10-24: "What becomes v0.1.1? Code clean up and adherance to our Good Engineering and new Conventions and organization of code etc to make easier modifications and clean up bits."
 
+Then: "not only file sizes and restructure stuff, but also looking for DRY, etc (which code conventions should check I guess). Write a singular goal for v0.1.1 that I can use with a `/goal` to work on stuff after we release v0.1.0."
+
 ## Constraints
 
+- **After v0.1.0.** Work starts once goal [026](026-ship-v0.1.0.goal) ships the release.
 - **Behaviour stays the same,** except where a fix is meant to change it.
 - **Small steps,** each one reviewable on its own.
-- **Other work goes on.** Change a file when no other branch is changing it, to avoid long merges.
-- The design invariants and the [rules for every goal](../README.md#rules-for-every-goal) win over a general rule, as CONVENTIONS.md says. In particular, the rule on limits applies to mechanical parts, never to a run's turns, trials, time or spending (**No default caps**).
+- **Other work goes on.** Change a file when no other open branch is changing it, to avoid long merges.
+- **The design invariants and the [rules for every goal](../README.md#rules-for-every-goal) win** over a general rule, as CONVENTIONS.md says.
+- **No new dependency** for the audit or the size check without the owner's OK.
 
 ## Done when
 
-- [ ] The audit is recorded here, area by area.
-- [ ] Each gap is fixed, or has a recorded reason to stay.
-- [ ] `npm run check` passes, and so does each compose acceptance check that the changed parts need ([AGENTS.md](../../../AGENTS.md#checks)).
-- [ ] The pages that describe changed behaviour, such as logging and its settings, match the code.
+- [ ] The size check, with tests, runs in `npm run check` and in CI.
+- [ ] The audit covers every area in scope, recorded below.
+- [ ] Every file in scope over 800 lines is split into a folder named for it, or has a recorded reason to stay.
+- [ ] Every finding is fixed, or has a recorded reason to stay.
+- [ ] `npm run check`, the docs checks and the acceptance checks that the changes need pass, and the goal records which ran.
+- [ ] [CONTRIBUTING.md](../../../CONTRIBUTING.md) and the site's Contributing page name the size check.
+
+## Audit
+
+Filled in as the work goes, one heading for each area.
+
+Known at the start, 2026-10-24:
+
+- **File sizes.** Of the 262 production files in `src/` (tests not counted), 33 are over 800 lines, and 29 more are between 500 and 800. The largest:
+
+  | File | Lines |
+  | --- | --- |
+  | `src/control/dashboard.ts` | 8,894 |
+  | `src/control/store.ts` | 4,303 |
+  | `src/harness/agents/scheduler.ts` | 3,086 |
+  | `src/supervisor/advisors.ts` | 3,070 |
+  | `src/harness/service.ts` | 2,994 |
+  | `src/control/views.ts` | 2,175 |
+  | `src/harness/judge/judge.ts` | 2,134 |
+
+  In `scripts/`, 2 files are over 800 lines.
+- **Logging.** No log level can be changed while a program runs.
 
 ## Decisions
 
+- 2026-10-24, owner: the file-size rule goes in CONVENTIONS.md, and its large files need a better handle.
 - 2026-10-24, owner: v0.1.1 is the code clean-up, to the engineering rules and the new conventions.
+- 2026-10-24, owner: one goal for all of it, to run with `/goal` after v0.1.0 ships: file sizes, the code's structure, duplication and every other rule that CONVENTIONS.md checks. Goal [124](124-file-sizes.goal) is merged into it, and CONVENTIONS.md gets rules on duplication and dead code.
 
 ## Open questions
 
-- The order of the areas.
+- Whether the size check counts test files.
+- Where a recorded reason lives: a comment at the top of the file, or a list beside the check's starting sizes.
 - Whether log levels are a setting for each part (control, harness, supervisor), and where the owner changes them.
-- Whether each area's fixes become a goal of their own.
 
 ## Progress
 
-- 2026-10-24: Goal written from the owner's words.
+- 2026-10-24: Goal written from the owner's words; goal 124 merged into it.
 
 ---
 
