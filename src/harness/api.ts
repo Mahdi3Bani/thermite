@@ -458,6 +458,15 @@ export function createHarnessApi(
 
   // A research review's answers are larger than a goal review's verdicts: one for each question
   // and hypothesis, from each reviewer.
+  // A try of a review that the supervisor could not post (goal 116): kept with the review, so the
+  // run's Reviews tab and get_run say each failed try and why. Nothing else changes.
+  app.post("/v1/reviews/:id/tries", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const id = z.coerce.number().int().positive().parse(c.req.param("id"));
+    const body = z
+      .strictObject({ try: z.number().int().min(1).max(1000), error: z.string().min(1).max(4000) })
+      .parse(await c.req.json());
+    return c.json(service.recordReviewTry(id, body.try, body.error, "supervisor"));
+  });
   app.post("/v1/reviews/:id", supervisor, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
     const id = z.coerce.number().int().positive().parse(c.req.param("id"));
     const body = z

@@ -53,6 +53,13 @@ describe("a research run's items on control (goals 116 and 117)", () => {
     // Counts given as lists count their items.
     assert.deepEqual(r2.counts, { reviewers: 3, decided: 3, open: 0 });
     assert.equal(r2.tries, 3);
+    assert.deepEqual(
+      r2.failed_tries.map((f: { try: number; error: string }) => [f.try, f.error]),
+      [
+        [1, "2 of 3 reviewers of the review panel answered"],
+        [2, "reviewer-2: the answer was not JSON"],
+      ],
+    );
     assert.equal(r2.owner_note, "Good enough.");
     assert.ok(r2.requested_at < r2.posted_at && r2.posted_at < r2.owner_at);
     assert.deepEqual(
@@ -95,6 +102,35 @@ describe("a research run's items on control (goals 116 and 117)", () => {
     ]);
     assert.equal(queue.up_next.find((x: { id: string }) => x.id === "x-4").question, 2);
     assert.equal(queue.in_progress[0].yield, null);
+  });
+
+  test("History says a failed review try and the progress rule's stop; a digest's progress alone is not said", () => {
+    const say = (kind: string, body: Record<string, unknown>) =>
+      sentence(
+        { runs: [] } as unknown as RigView,
+        {
+          seq: 1,
+          id: 1,
+          at: at(1),
+          actor: "harness",
+          kind,
+          subject: "s-1",
+          body,
+        } as unknown as StoredEvent,
+      )?.text;
+    assert.equal(
+      say("review_try_failed", {
+        review: 4,
+        try: 2,
+        error: "2 of 3 reviewers of the review panel answered",
+      }),
+      "Review 4, try 2, could not be posted: 2 of 3 reviewers of the review panel answered. It is tried again at the review panel's next round.",
+    );
+    assert.equal(say("research_progress", { open: [1], stopped: false }), undefined);
+    assert.match(
+      String(say("research_stopped", { open: { questions: [1, 3], hypotheses: [] } })),
+      /^Research stopped adding: 2 questions stay open, every open one saturated/,
+    );
   });
 
   test("History says each new event in words", () => {

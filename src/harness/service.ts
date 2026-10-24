@@ -745,6 +745,18 @@ export class HarnessService {
    * asks the owner (`ask_owner.reviews`); the goal tree is checked again. A research review's
    * results (goal 112) are checked by code first (recordResearchPanel).
    */
+  /** A failed try of a review (goal 116): a `review_try_failed` event on the review's run. */
+  recordReviewTry(id: number, attempt: number, error: string, by: string): { recorded: true } {
+    const row = new Reviews(this.ledger).byId(id);
+    if (!row) throw new LedgerError("not_found", `no review ${id}`);
+    this.ledger.appendEvent(by, "review_try_failed", String(row.run), {
+      review: id,
+      try: attempt,
+      error: error.slice(0, 2000),
+    });
+    return { recorded: true };
+  }
+
   recordReviewPanel(
     id: number,
     results: {

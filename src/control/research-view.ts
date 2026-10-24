@@ -127,6 +127,8 @@ export interface ReviewFigures {
   answered_by: { question: number; reviewers: number }[] | null;
   /** How many tries the review took, when its event says. */
   tries: number | null;
+  /** Each try the supervisor could not post, with why (`review_try_failed`, goal 116). */
+  failed_tries: { at: string; try: number; error: string }[];
 }
 
 /** The figures of a review just asked for. */
@@ -147,6 +149,7 @@ export function newReviewFigures(at: string, b: Record<string, unknown>): Review
     counts: { reviewers: null, decided: null, open: null },
     answered_by: null,
     tries: null,
+    failed_tries: [],
   };
 }
 
@@ -280,6 +283,19 @@ export function researchEvent(v: RunView, e: StoredEvent): boolean {
         ...r.reviewers.filter((x) => x.reviewer !== reviewer),
         { reviewer, at: e.at, items },
       ];
+      return true;
+    }
+    case "review_try_failed": {
+      const r = v.reviews.find((x) => x.review === int(b.review));
+      if (!r) return true;
+      r.failed_tries = [
+        ...r.failed_tries,
+        {
+          at: e.at,
+          try: int(b.try) ?? r.failed_tries.length + 1,
+          error: str(b.error).slice(0, 2000),
+        },
+      ].slice(-20);
       return true;
     }
     case "item_decided": {

@@ -707,6 +707,25 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         { run: String(e.subject) },
       );
     }
+    // A review try the supervisor could not post (goal 116).
+    case "review_try_failed":
+      return s(
+        `Review ${String(b.review)}, try ${String(b.try)}, could not be posted: ${clip(String(b.error ?? ""), 200)}. It is tried again at the review panel's next round.`,
+        "warn",
+        { run: String(e.subject) },
+      );
+    // The progress rule (goal 117): said only when it ends the run, not at every digest.
+    case "research_progress":
+      return null;
+    case "research_stopped": {
+      const o = (b.open ?? {}) as { questions?: unknown };
+      const open = Array.isArray(o.questions) ? o.questions.length : 0;
+      return s(
+        `Research stopped adding: ${open ? `${open} ${open === 1 ? "question stays" : "questions stay"} open, every open one saturated` : "every open question saturated"}, and nothing improved for a quarter of the running time. The run writes its paper and closes.`,
+        "warn",
+        { run: String(e.subject) },
+      );
+    }
     case "conclusion_proposed":
       return s(
         "The harness proposes ending the campaign as not possible: it needs your decision.",

@@ -477,6 +477,20 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   };
   const say = (run: string | undefined, kind: LiveKind, text: string) =>
     cfg.live?.({ kind, text, ...(run ? { run } : {}) });
+  /**
+   * A review try that could not be posted (goal 116): kept with the review, so its Reviews tab and
+   * get_run say why. A harness from before it has no route for this; the Live line still says it.
+   */
+  const tryFailed = async (review: number, attempt: number, err: unknown) => {
+    try {
+      await api("POST", `/v1/reviews/${review}/tries`, {
+        try: Math.max(1, attempt),
+        error: (err instanceof Error ? err.message : String(err)).slice(0, 4000) || "no answer",
+      });
+    } catch {
+      // An older harness: nothing more to keep than the Live line.
+    }
+  };
   const fail = (what: string, err: unknown, run?: string) => {
     s.errors++;
     s.last_error = `${what}: ${err instanceof Error ? err.message : String(err)}`.slice(0, 500);
@@ -1166,6 +1180,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           const why = `${results.length} of ${cfg.advisors.review_panel.length} reviewers of the review panel answered${unanswered.length ? ` (${unanswered.map((u) => `${u.reviewer}: ${u.why}`).join("; ")})` : ""}`;
           if (!last) {
             fail(`review ${pkg.id}`, why, pkg.run);
+            await tryFailed(pkg.id, next.tries[key] ?? 0, why);
             continue;
           }
           for (const u of unanswered)
@@ -1211,6 +1226,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         });
       } catch (err) {
         fail(`review ${pkg.id}`, err, pkg.run);
+        await tryFailed(pkg.id, next.tries[key] ?? 0, err);
       }
     }
   }

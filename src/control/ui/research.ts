@@ -428,10 +428,12 @@ function reviewRow(
   ].filter(Boolean);
   const why = `Asked ${esc(ago(rv.requested_at, now))} ago${saw.length ? ` on ${esc(saw.join(", "))}` : ""}; ${rv.posted_at ? `posted ${esc(ago(rv.posted_at, now))} ago${rv.counts.reviewers !== null ? ` by ${plural(rv.counts.reviewers, "reviewer")}` : ""}` : "not posted yet"}.`;
   const lines = src.lines?.(rv.review) ?? [];
-  // A failed try: the supervisor's error line for the review (it posts nothing then).
-  const failed = lines.filter((l) =>
-    new RegExp(`^review ${rv.review}: (?!the review panel )`).test(l.text),
-  );
+  // A failed try: kept with the review when the rig reports it (review_try_failed); from an older
+  // rig, the supervisor's error line for the review in Live (it posts nothing then).
+  const reported = rv.failed_tries ?? [];
+  const failed = reported.length
+    ? reported.map((f) => ({ text: f.error }))
+    : lines.filter((l) => new RegExp(`^review ${rv.review}: (?!the review panel )`).test(l.text));
   const chips = [
     ...decided.slice(0, 10).map((d) => decisionChip(d, itemName(d.kind, d.key))),
     decided.length > 10 ? `<span class="chip">and ${decided.length - 10} more</span>` : "",
@@ -441,6 +443,14 @@ function reviewRow(
       : "",
   ].join("");
   const usage = src.usage?.(rv.review);
+  const failedList = reported.length
+    ? `<ul class="small">${reported
+        .map((f) => `<li>Try ${f.try}, ${when(f.at, now)}: ${esc(clip(f.error, 400))}</li>`)
+        .join("")}</ul>`
+    : "";
+  const triesHtml = reported.length
+    ? `${esc(rv.posted_at ? `${rv.tries ?? reported.length + 1}, as the rig reported it. The tries that failed:` : `${reported.length} failed so far; it is tried again at the review panel's next round. The tries that failed:`)}${failedList}`
+    : null;
   const tries =
     rv.tries !== null
       ? `${rv.tries}, as the rig reported it.`
@@ -458,7 +468,7 @@ function reviewRow(
         ? `${when(rv.posted_at, now)}${rv.counts.reviewers !== null ? `, by ${plural(rv.counts.reviewers, "reviewer")}` : ""}`
         : "Not yet. The review panel reviews at its next round; a review whose reviewers fail to answer is tried again.",
     ],
-    ["Tries", esc(tries)],
+    ["Tries", triesHtml ?? esc(tries)],
     [
       "Outcome",
       `${esc(o.pill.replace(/^./, (c) => c.toUpperCase()))}${rv.counts.decided !== null ? `: ${plural(rv.counts.decided, "item")} decided` : ""}${rv.counts.open !== null ? `, ${rv.counts.open} still open` : ""}.${rv.owner_at ? ` You ${esc(rv.owner ?? "")} it ${esc(ago(rv.owner_at, now))} ago${rv.owner_note ? `: “${esc(rv.owner_note)}”` : ""}.` : rv.panel === "review_passed" && !rv.owner && r.ask_owner.reviews ? ` It waits for your acceptance in <a href="${runHref(u.id, r)}#needs">Needs you</a>.` : ""}`,

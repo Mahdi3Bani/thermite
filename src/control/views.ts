@@ -1436,6 +1436,7 @@ export function rigView(
       case "hypothesis_merged":
       case "hypothesis_status":
       case "review_items":
+      case "review_try_failed":
       case "item_decided":
       case "research_progress":
         researchEvent(inst(String(e.subject)), e);
