@@ -18,7 +18,7 @@
 //   - the image has no bubblewrap: no call of Claude Code needs it.
 //
 // Usage: COMPOSE="podman compose" node scripts/claude-real-acceptance.mjs
-//   CLAUDE_CODE_VERSION  the version the image is built with (default 2.1.305)
+//   CLAUDE_CODE_VERSION  the version the image is built with (default 2.1.308)
 //   IMAGE                an image already built with Claude Code: no build, and it is kept
 //   KEEP=1               leave the container and the image
 import { execFileSync, spawnSync } from "node:child_process";
@@ -27,7 +27,7 @@ import { resolve } from "node:path";
 import { cleanEngine } from "./lib/smoke-env.mjs";
 
 const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
-const version = process.env.CLAUDE_CODE_VERSION ?? "2.1.305";
+const version = process.env.CLAUDE_CODE_VERSION ?? "2.1.308";
 const image = process.env.IMAGE ?? "localhost/thermite-harness:claude-real-check";
 const name = "thermite-claude-real";
 const sh = (args, opts = {}) =>
