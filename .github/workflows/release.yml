@@ -142,9 +142,9 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
       # arm64 images are built under emulation.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         if: contains(matrix.platforms, 'arm64')
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         with:
           # On the host's network, the CUDA job's builder reaches the job's own registry.
           driver-opts: ${{ matrix.cuda && 'network=host' || '' }}
@@ -186,7 +186,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=${{ matrix.licenses }}
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.containerfile }}
@@ -258,7 +258,7 @@ jobs:
             org.opencontainers.image.licenses=${{ matrix.licenses }}
       - id: rig-build
         if: matrix.cuda
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: containers/rig/Containerfile
@@ -298,10 +298,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: digest-*
           path: digests

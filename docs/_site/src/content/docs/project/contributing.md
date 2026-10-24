@@ -101,7 +101,7 @@ A new commit on a pull request cancels the run for the commit before it. Every p
 
 A second workflow, `.github/workflows/release.yml`, runs on a tag that starts with `v`. It builds the control, harness (CPU and CUDA) and supervisor images, and the one-container rig image for RunPod on the CUDA harness, pushes them to `ghcr.io`, and attaches the release bundle (`compose.yaml` and `README.md`, made by `scripts/release-bundle.ts`) to a draft GitHub Release. Run by hand from the **Actions** tab, it builds the same images and bundle but pushes nothing. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#releases) describes each step.
 
-`.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x. The pull requests go to the development branch, `v1/build`, where work happens; `main` follows it.
+`.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x. `@types/node` gets no major update: its major is the Node.js version Thermite supports, 22, and a newer one's types would let code use what Node.js 22 does not have. The pull requests go to the development branch, `v1/build`, where work happens; `main` follows it.
 
 ### The secret scan
 

@@ -6,6 +6,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ### Install and run
 
+- Pi 1.3.0 (was 1.2.0) for the workers, the planner and the advisors in Pi, and the MCP TypeScript SDK 1.32.1. The build uses TypeScript 7.0.2 (was 5.9.3); the JavaScript it writes for the images is the same as before. The docs site is built with Astro 7.4.0.
 - The harness and supervisor images carry OpenCode 2.1.4 (was 2.0.32). An image built with Claude Code (`CLAUDE_CODE_VERSION`) is tested with 2.1.308 (was 2.1.305).
 - A rig whose broker stops at start with a fatal error holds it a minute before it exits (`THERMITE_FATAL_HOLD_SECONDS`, 60 in the one-container rig image), so the pod's log on RunPod keeps the error and the container does not restart every few seconds. A throw while the rig's folders are prepared is logged as fatal too.
 - The images are built on Node.js 22.23.4. A release builds every image layer again, without the build cache, so each image has its base's newest system packages.
