@@ -28,9 +28,20 @@ export interface ClusterSlot {
   network_ok?: boolean | undefined;
   network_why?: string | undefined;
   /** What the slot's quota allows a rig (limits, else requests), when control can read it. */
-  quota?:
-    | { cpus?: number | undefined; memoryGi?: number | undefined; storageGi?: number | undefined }
-    | undefined;
+  quota?: SlotQuota | undefined;
+}
+
+/**
+ * What a slot's quota allows, each when the quota sets it: CPUs, memory and storage; GPUs through
+ * NVIDIA's device plugin (requests.nvidia.com/gpu); and devices of each DRA device class
+ * (`<class>.deviceclass.resource.k8s.io/devices`).
+ */
+export interface SlotQuota {
+  cpus?: number | undefined;
+  memoryGi?: number | undefined;
+  storageGi?: number | undefined;
+  gpus?: number | undefined;
+  devices?: Record<string, number> | undefined;
 }
 
 /** A Kubernetes quantity ("6", "5500m", "24Gi", "200G") in CPUs or GiB. */
@@ -74,12 +85,29 @@ export function slotQuota(json: string): ClusterSlot["quota"] {
   const hard = items.map((q) => q.status?.hard ?? q.spec?.hard ?? {});
   const pick = (keys: string[], unit: "cpu" | "gi") =>
     min(hard.flatMap((h) => keys.map((k) => quantity(h[k], unit))));
-  const out = {
+  const count = (v: unknown) => {
+    const n = quantity(v, "cpu");
+    return n !== undefined && Number.isInteger(n) ? n : undefined;
+  };
+  const devices: Record<string, number> = {};
+  for (const h of hard)
+    for (const [key, v] of Object.entries(h)) {
+      const m = /^(.+)\.deviceclass\.resource\.k8s\.io\/devices$/.exec(key);
+      const n = count(v);
+      if (m?.[1] && n !== undefined) devices[m[1]] = Math.min(devices[m[1]] ?? n, n);
+    }
+  const out: SlotQuota = {
     cpus: pick(["limits.cpu", "requests.cpu", "cpu"], "cpu"),
     memoryGi: pick(["limits.memory", "requests.memory", "memory"], "gi"),
     storageGi: pick(["requests.storage"], "gi"),
+    gpus: min(hard.map((h) => count(h["requests.nvidia.com/gpu"]))),
+    ...(Object.keys(devices).length ? { devices } : {}),
   };
-  return out.cpus === undefined && out.memoryGi === undefined && out.storageGi === undefined
+  return out.cpus === undefined &&
+    out.memoryGi === undefined &&
+    out.storageGi === undefined &&
+    out.gpus === undefined &&
+    !out.devices
     ? undefined
     : out;
 }

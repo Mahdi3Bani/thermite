@@ -6,7 +6,7 @@ sidebar:
   order: 3
 ---
 
-Control can set [rigs](../../reference/glossary.md) up on a Kubernetes cluster with a kubeconfig you give it once. Each rig is two pods, its harness and its supervisor, which share one volume on one node. Control applies them, waits for the rig's first report, and later stops, starts and removes it, or moves it onto new images.
+Control can set [rigs](../../reference/glossary.md) up on a Kubernetes cluster with a kubeconfig you give it once. Each rig is two pods, its harness and its supervisor, which share one volume on one node. Control applies them, waits for the rig's first report, and later stops, starts and removes it, moves it onto new images, or changes its GPUs, CPUs and memory.
 
 Control places each rig in one of two ways:
 
@@ -34,7 +34,7 @@ Rigs that control sets up, on a machine, on a cluster or with a join command, ge
 
 ### What created namespaces need
 
-Rights across the cluster, since the namespaces don't exist yet: to create and delete namespaces, and in them to create, change and delete deployments, services, secrets, persistent volume claims and network policies (and resource claim templates for DRA). Control also scales and restarts the deployments to stop, start and restart the rig. To move the rig onto new images, it applies the deployments again. After a start, a restart or a move, it reads the deployments' status (`get`) until the new pods run. With rights to read nodes, storage classes and device classes, its check of the cluster shows them; without them it shows less. Control never reads pods.
+Rights across the cluster, since the namespaces don't exist yet: to create and delete namespaces, and in them to create, change and delete deployments, services, secrets, persistent volume claims and network policies (and resource claim templates for DRA). Control also scales and restarts the deployments to stop, start and restart the rig. To move the rig onto new images, or to change its GPUs, CPUs or memory, it applies the deployments again; with DRA and a new number of GPUs, it also deletes the rig's resource claim template and makes it again, since a template can't change. After a start, a restart or a change, it reads the deployments' status (`get`) until the new pods run. With rights to read nodes, storage classes and device classes, its check of the cluster shows them; without them it shows less. Control never reads pods.
 
 Thermite's own cluster test uses the cluster's admin kubeconfig for this placement, so there is no tested narrower role to copy. If the cluster's operators won't give control rights across the cluster, use slots.
 
@@ -55,7 +55,7 @@ kubectl create rolebinding thermite-control-read -n thermite-slot-1 \
   --role=thermite-control-read --serviceaccount=thermite-slot-1:thermite-control
 ```
 
-For a user rather than a service account, give `--user=<the kubeconfig's user>` to the two `rolebinding` commands. With rights to read the slot's resource quota (add `resourcequotas` to the second role's `--resource`), control also fills in the rig's CPUs, memory and volume from it.
+For a user rather than a service account, give `--user=<the kubeconfig's user>` to the two `rolebinding` commands. With rights to read the slot's resource quota (add `resourcequotas` to the second role's `--resource`), control also fills in the rig's CPUs, memory and volume from it, and keeps the rig within it when it adds the rig and when it [changes its GPUs, CPUs and memory](#change-the-rigs-gpus-cpus-and-memory): its CPUs (`limits.cpu`, else `requests.cpu`), its memory (`limits.memory`, else `requests.memory`), its GPUs through the device plugin (`requests.nvidia.com/gpu`), and, with DRA, the devices of its class (`gpu.nvidia.com.deviceclass.resource.k8s.io/devices` for the class `gpu.nvidia.com`).
 
 Control writes no network rules in a slot, but it reads them. It refuses a slot unless some network rule selects the rig's harness pods (label `app.kubernetes.io/component: harness`), and every such rule lets them reach only DNS (port 53) or addresses outside the private (RFC 1918) ranges. Thermite's cluster test uses this rule. Its egress part is the same as the rule control writes in a namespace it creates:
 
@@ -164,14 +164,15 @@ kubectl logs -n thermite-rig-1 deployment/thermite-rig-1-supervisor
 | `ErrImagePull` or `ImagePullBackOff` | The nodes can't pull an image | Make the image pullable without signing in: [Push the images to your own registry](own-registry.md) |
 | `Running`, and still no report | The supervisor's log says why | [A rig is quiet](../operate/troubleshoot.md#a-rig-is-quiet) |
 
-Once the cause is fixed, the pods start and the rig reports by itself, and its status goes back to `running`. If the rig needs other choices (another storage class, node or number of GPUs), remove it (below) and add a new one under a new name: a removed rig's name can't be used again. New images need no new rig: see [Update the rig's images](#update-the-rigs-images).
+Once the cause is fixed, the pods start and the rig reports by itself, and its status goes back to `running`. If the rig needs another storage class or node, remove it (below) and add a new one under a new name: a removed rig's name can't be used again. New images need no new rig, and neither do another number of GPUs, other CPUs or other memory: see [Update the rig's images](#update-the-rigs-images) and [Change the rig's GPUs, CPUs and memory](#change-the-rigs-gpus-cpus-and-memory).
 
 ## Afterwards
 
-The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `starting`, `draining`, `updating` or `failed`. Its buttons:
+The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the CPUs and memory (`16 CPUs, 52 GiB`, or "the namespace's defaults", with a link to change them on **Edit rig**), the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `starting`, `draining`, `updating` or `failed`. Its buttons:
 
 - **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**. After a start or a restart, the page says `Started.` or `Restarted.`, and the status says `starting`. As after an update, control waits up to 15 minutes for the pods and then up to 10 minutes for a report. The steps "Its pods run again" and "A report reached control after the start" get a ✓, and the status says `running`. If a wait runs out, its step gets ✕ and the status says `failed`.
 - **Update to these images**, when control deploys other images than the rig runs; **Try the update again**, when the last change to its pods failed; **Give it control's new address**, when only control's address changed. See [Update the rig's images](#update-the-rigs-images).
+- **Change now, without waiting** and **Call the change off**, while the rig drains before a new number of GPUs, CPUs or memory. See [Change the rig's GPUs, CPUs and memory](#change-the-rigs-gpus-cpus-and-memory).
 - **Remove it from cluster-1**: type `remove rig-1` and press **Remove the rig**. Control deletes the namespace it created, or the rig's objects in the slot, and retires the rig's token. The rig's results go with its volume; control keeps only its events, its champions' patches and what its runs added to Thermite's [knowledge base](../../explanation/journals-and-knowledge.md), so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the cluster.`, and the rig stays in **Rigs**, **Stale** and then **Offline**. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
 
 Control makes one change at a time. While the status says `starting` or `updating`, it refuses a start, a restart or an update, and the page shows a card that starts with **Not done.**, such as `rig-1 is starting: wait until its page shows it running, or failed.` It refuses an update before it compares any images, even for a rig that already runs control's images. **Stop its pods** and **Remove the rig** are never refused for this, and they end control's wait: a rig you stopped or removed meanwhile doesn't turn `failed` later.
@@ -189,9 +190,48 @@ After you update Thermite, push the new images and restart control with them ([P
 
 For the steps, what changes and what to check afterwards, see [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster), [Try again after a failure](../operate/rig-lifecycle.md#try-again-after-a-failure) and [When only control's address changed](../operate/rig-lifecycle.md#when-only-controls-address-changed).
 
+## Change the rig's GPUs, CPUs and memory
+
+When the rig's place gains room, such as a fourth GPU and a larger quota in its slot, the rig can take it as it is: its volume, tokens, runs and results stay. Control applies the rig's two deployments again with the new size, on the images the rig runs, as an image update does.
+
+Before you start:
+
+- **The place allows the new size.** In a slot, control reads the slot's quota again when you save, if its role may read it ([What a slot needs](#what-a-slot-needs)), and refuses a size above it. Through the device plugin, a node must offer that many GPUs, as control last read the nodes. Where control can read neither, the cluster's own rules decide: the pods then wait as `Pending` (see [If it doesn't report](#if-it-doesnt-report)).
+- **The rig keeps its kind.** A rig on GPUs keeps at least one, and a rig on the CPU takes none: its harness image and its target would change, and its runs' timings would no longer compare. Add a new rig for that.
+- **Control's address for rigs is set** (`THERMITE_CONTROL_PUBLIC_URL`), as for an image update.
+- **The rig is not starting, being updated or draining for an image update.**
+
+Steps:
+
+1. On the rig's page, press **Edit rig**. Under **4 · Where it runs**, a rig control set up on a cluster has these fields, each with an "i" that says what it means:
+   - **GPUs** (a rig on GPUs only): how many GPUs the harness pod asks for, 1 to 16, through the rig's own way: NVIDIA's device plugin or its DRA device class.
+   - **CPUs** and **Memory (GiB)**: both, with at least 1.5 CPUs and 6 GiB, or both empty for the namespace's defaults. The supervisor takes half a CPU and 2 GiB, and the harness the rest.
+
+   Under them, a line says what the place allows, as control last read it, such as `The slot's quota allows 16 CPUs, 52 GiB of memory and 4 GPUs, as control last read it. Save reads it again first.`
+2. Change the values. With a new number of GPUs, **GPUs for the judge** (on a rig with two or more GPUs) is the judge's share of the new ones. The box **What changes when you save** lists each change, the new split, such as `The judge gets 2 of the 4 GPUs, the agents 2.`, and that the rig's pods restart.
+3. Press **Save changes**. The rig's page says, for example, `rig-1's pods restart with 4 GPUs (2 for the judge, 2 for the agents), 16 CPUs and 52 GiB of memory.` The block's status says `updating`, and a new step reads "Its deployments applied with new GPUs, CPUs or memory", with what changed: `GPUs 3 → 4 (2 for the judge, 2 for the agents); CPUs and memory: namespace defaults → 16 CPUs, 52 GiB`.
+4. Wait on the page: the block shows each step as it comes. Control waits up to 15 minutes for the new pods, then up to 10 minutes for a report from them. The steps "Its pods run with the new GPUs, CPUs or memory" and "A report reached control after the change" get a ✓, and the status says `running`.
+
+A rig at work drains first, as for new images: the page says `rig-1 drains first: it starts nothing new, and its pods restart with 4 GPUs (2 for the judge, 2 for the agents), 16 CPUs and 52 GiB of memory once 1 trial finishes. …`, the status says `draining`, and the block says "Draining before its pods restart with …" and what it waits for. **Change now, without waiting** restarts its pods at once; **Call the change off** ends the drain, and the rig goes back to work as it was. Control makes the change once the rig reports that nothing runs. While the rig drains for a new size, an image update is refused, and the other way round.
+
+What changes and what stays:
+
+| Changes | Stays |
+| --- | --- |
+| The GPUs, CPUs and memory of the rig's pods, and the split of its GPUs | Its secret, so its tokens and control's public key |
+| With DRA and a new number of GPUs, its resource claim template: deleted, then made again with the new number | Its volume, so its ledger, runs, results and signing key |
+| The supervisor's address for control, written again from `THERMITE_CONTROL_PUBLIC_URL` | Its images, its service, its network rules, its node and its storage |
+
+- **The judge's share.** With a new number of GPUs and no share given, the judge gets half of them, rounded up, as when a rig is added. A share the rig kept from **GPUs for the judge** would come first in its harness, so control also sends the rig the new share ([`rig_settings`](../../reference/signed-commands.md#rig_settings)), and the step ends with, for example, `the judge's share it kept, 1, → 2`. With the same number of GPUs, the split stays as it is: change it with **GPUs for the judge** alone, which restarts only the harness ([Give a rig several GPUs](several-gpus.md#change-the-split-later)).
+- **A stopped rig stays stopped.** The page says `rig-1 has 4 GPUs (2 for the judge, 2 for the agents), 16 CPUs and 52 GiB of memory when it starts again.`, the step ends with "at its next start", and **Start its pods** starts it with the new size.
+- **A refusal changes nothing.** The page shows a card that starts with **Not done.**, such as `Not saved: The slot thermite-slot-1 allows 4 GPUs.`, `Not saved: The slot thermite-slot-1 allows 16 CPUs.`, `Not saved: a rig needs at least 1.5 CPUs and 6 GiB of memory`, `Not saved: No node of cluster-1 offers 9 GPUs through the device plugin.`, `Not saved: rig-1 measures on GPUs, and can't move to none: …` or `Not saved: rig-1 is being updated: wait until its page shows it running, or failed.`
+- **The same values change nothing:** the page says `Nothing changed.`
+
+After a new number of GPUs, run the rig's **Isolation** and **Judge smoke** checks ([Check a rig](../operate/check-a-rig.md)).
+
 ## From an agent or a script
 
-Over MCP, the owner's and the operator's tokens have four tools for clusters (see [MCP tools](../../reference/mcp-tools.md)):
+Over MCP, the owner's and the operator's tokens have five tools for clusters (see [MCP tools](../../reference/mcp-tools.md)):
 
 - `add_cluster_rig` adds a rig on a cluster in Providers, with the same checks as **Add a rig**. Its fields are `rig`, `cluster`, `slot`, `gpus`, `judge_gpus`, `gpu_mode` (`device-plugin` or `dra:<device class>`), `node`, `storage_class`, `storage_gb`, `cpus` and `memory_gib`. It answers with the rig's name and `"status": "deploying"`; follow the rig with `rig_setup` and `list_rigs`.
 - `set_cluster_slots` replaces the list of slots of a cluster that uses slots. A slot that holds a rig must stay in the list.
@@ -207,7 +247,8 @@ Over MCP, the owner's and the operator's tokens have four tools for clusters (se
   - `rig-1 already runs control's images.`: the images and control's address are the same as the rig's.
 
   An update while the rig is `updating` or `starting` is refused, and so is one without control's address for rigs, with the same reasons as on the page. When control can't read the rig's supervisor deployment to compare the address, the tool answers with an error: `Control could not read rig-1's deployment to compare control's address:` and kubectl's error.
+- `set_cluster_rig_resources` changes a rig's GPUs, CPUs and memory, as **Edit rig** does ([above](#change-the-rigs-gpus-cpus-and-memory)). Its fields are `rig`, `gpus`, `judge_gpus`, `cpus`, `memory_gib` and `wait`; give only what changes, and `null` for both `cpus` and `memory_gib` for the namespace's defaults. For example `{"rig": "rig-1", "gpus": 4, "cpus": 16, "memory_gib": 52}` answers `rig-1's pods restart with 4 GPUs (2 for the judge, 2 for the agents), 16 CPUs and 52 GiB of memory.` It drains a rig at work first, as `update_rig_images` does; `"wait": false` restarts its pods now. An operator's token may change the GPUs, CPUs and memory; `judge_gpus` is the owner's alone, and a call with it from another token is refused, with nothing changed: `Only the owner's token changes a rig's GPU split: leave out judge_gpus. …`
 
-`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `drain` (while an update waits for the rig's work), `images`, `images_running` and `report_after_images` for an update, or `pods_running` and `report_after_start` for a start or a restart. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig, a start or an update. It is for those who run control: the agent token doesn't have it, and a reader's token gets each step with `detail` set to `null`.
+`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, its `gpus`, `judge_gpus`, `cpus` and `memory_gib` (`null` for the namespace's defaults), the change it drains for in `pending` (`null` when none), and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `drain` (while an update or a change of size waits for the rig's work), `images`, `images_running` and `report_after_images` for an update, `resources`, `resources_running` and `report_after_resources` for a change of GPUs, CPUs or memory, or `pods_running` and `report_after_start` for a start or a restart. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig, a start or an update. It is for those who run control: the agent token doesn't have it, and a reader's token gets each step with `detail` set to `null`.
 
 Once the rig shows on **Rigs**, `set_rig_model` gives its agents a model from **Providers**, and `set_rig_settings` sets the rest of **Edit rig** (with the owner's token, also its promotion rule and GPU split), as the page does. Adding the cluster itself is done on the dashboard.

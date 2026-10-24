@@ -22,6 +22,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 ### Rigs
 
 - Rigs on your own machines over SSH, and on Kubernetes clusters, in a namespace that control creates or in a slot that your operators made.
+- A rig control set up on a Kubernetes cluster changes its number of GPUs, its CPUs and its memory, and keeps its volume, tokens, runs and results: **GPUs**, **CPUs** and **Memory (GiB)** on **Edit rig**, `POST /v1/rigs/<rig>/cluster/resources`, or MCP's `set_cluster_rig_resources`. Control checks the new size as **Add a rig** does, reads the slot's quota again (now with its GPUs and DRA devices, which **Add a rig** checks too), and applies the rig's deployments again on the images it runs, draining a rig at work first. A new number of GPUs gives the judge half of them unless the owner sets its share; an operator's token may change the rest. A rig never moves between none and some GPUs: add a new rig for that.
 - Rigs on RunPod GPUs, on Secure cloud, launched by the owner from the dashboard's **Launch on RunPod** or over REST, MCP or the command line:
   - control connects to the pod through RunPod's proxy, and enrolls it with a one-time code;
   - the pod runs one container that holds the harness and the supervisor;

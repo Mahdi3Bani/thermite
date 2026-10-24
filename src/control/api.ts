@@ -27,6 +27,7 @@ import {
   unarchiveCampaign,
 } from "./campaign-folders.ts";
 import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
+import { ClusterResourcesBody, clusterResourcesRequest } from "./cluster-resources.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { CopyCampaignBody, copyCampaignAnswer } from "./copy-campaign.ts";
 import { Credential, newToken } from "./credential.ts";
@@ -552,7 +553,11 @@ export function createControlApi(
           ? "first_report"
           : failed === "pods_running" || failed === "report_after_start"
             ? "report_after_start"
-            : "report_after_images";
+            : failed === "resources" ||
+                failed === "resources_running" ||
+                failed === "report_after_resources"
+              ? "report_after_resources"
+              : "report_after_images";
       store.rigSetupEvent(rig, step, true, "it reported after the wait ended");
     }
     return c.json({ added });
@@ -1460,6 +1465,36 @@ export function createControlApi(
     }
     return c.json(rigSettingsAnswer(rig, out));
   });
+
+  // A cluster rig's GPUs, CPUs and memory (goal 118): the twin of Edit rig's fields for a rig
+  // control set up on a cluster and of MCP's set_cluster_rig_resources, with their refusals in
+  // words. Its pods restart with the new size, draining first while it works.
+  app.post(
+    "/v1/rigs/:rig/cluster/resources",
+    admin,
+    bodyLimit({ maxSize: 16 * 1024 }),
+    async (c) => {
+      const resize = actions.setClusterRigResources;
+      if (!resize) return c.json({ error: "this control sets no rigs up on clusters" }, 404);
+      const rig = c.req.param("rig");
+      const raw: unknown = await c.req.json().catch(() => undefined);
+      const body = ClusterResourcesBody.safeParse(raw);
+      const out = body.success
+        ? await resize(rig, clusterResourcesRequest(body.data), "owner:api", {
+            wait: body.data.wait,
+            owner: true,
+          })
+        : ({ error: bodyRefusal(body.error), status: 400 } as const);
+      if ("error" in out) {
+        store.audit("owner:api", "refused", {
+          path: `/v1/rigs/${rig}/cluster/resources`,
+          why: redact(out.error),
+        });
+        return c.json({ error: out.error }, out.status);
+      }
+      return c.json({ rig, said: out.ok });
+    },
+  );
 
   // The settings a rig reports, and its GPU split: the twin of MCP's rig_settings.
   app.get("/v1/rigs/:rig/settings", admin, (c) => {

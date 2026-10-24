@@ -53,6 +53,17 @@ The last three change the rig's split for every run on it, not just the new one,
 
 A rig without a GPU set of two or more has no such field on Edit rig. From a campaign it says "rig-1 has no GPU set to split: its GPUs are set where it is deployed."
 
+## Change the number of GPUs later
+
+A rig that control set up on a Kubernetes cluster can take more GPUs, or fewer, and keep its volume, tokens, runs and results:
+
+- **Edit rig**: under **4 · Where it runs**, set **GPUs** (1 to 16), and, for a rig with two or more GPUs, **GPUs for the judge**, which is then the judge's share of the new GPUs. **What changes when you save** says the new split, such as "The judge gets 2 of the 4 GPUs, the agents 2.", and that the rig's pods restart. Press **Save changes**.
+- **From a script or an agent**: `gpus` in `POST /v1/rigs/<rig>/cluster/resources`, or MCP's `set_cluster_rig_resources`, with `judge_gpus` for the judge's share ([A cluster rig's GPUs, CPUs and memory](../../reference/rest-api.md#a-cluster-rigs-gpus-cpus-and-memory)). An operator's token may change `gpus`, but not `judge_gpus`.
+
+With a new number of GPUs and no share given, the judge gets half, rounded up, as when the rig was added, and a share the rig kept from **Edit rig** follows it. The rig's pods restart with the new GPUs; a rig at work drains first, as for new images. In a slot, the slot's quota must allow them (`requests.nvidia.com/gpu`, or the devices of its DRA class). A rig on GPUs keeps at least one, and a rig on the CPU takes none: add a new rig for that. The steps, the drain and what stays are in [Change the rig's GPUs, CPUs and memory](rig-on-a-cluster.md#change-the-rigs-gpus-cpus-and-memory).
+
+A rig on a machine, joined, or on RunPod keeps the GPUs it was set up with: add a new rig with the GPUs you want ([goal 104](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/104-change-a-cloud-rigs-gpu.goal) plans it for RunPod).
+
 ## The settings behind the split
 
 Control writes these settings on the harness of each rig it sets up, and `thermite local init` writes them in `compose.gpu.yaml` for the local stack's rig. They are here for reference: no guide covers running a GPU harness by other means. Such a harness would need them set on its container:

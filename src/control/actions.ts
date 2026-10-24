@@ -1,3 +1,4 @@
+import type { ClusterResourcesRequest, ResizeRefusal } from "./cluster-resources.ts";
 import type { CopyCampaignOutcome, CopyCampaignRequest } from "./copy-campaign.ts";
 import type { AgentModels, RigModelOutcome, RigModelRequest } from "./rig-model.ts";
 import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
@@ -56,6 +57,18 @@ export interface ControlActions {
     by: string,
     o?: { wait?: boolean | undefined },
   ) => Promise<{ ok: string } | { error: string }>;
+  /**
+   * Changes the GPUs, CPUs or memory of a rig control set up on a cluster, keeping its volume and
+   * tokens (Edit rig, REST's POST /v1/rigs/<rig>/cluster/resources, MCP's set_cluster_rig_resources;
+   * goal 118), as an image update moves it: it drains first unless `wait: false`. `owner`: whether
+   * the owner's token asks, which alone may give the judge's share.
+   */
+  setClusterRigResources?: (
+    rig: string,
+    want: ClusterResourcesRequest,
+    by: string,
+    o: { wait?: boolean | undefined; owner: boolean },
+  ) => Promise<{ ok: string } | ResizeRefusal>;
   /** Stop, start or restart a rig control set up on a cluster, as on its page. */
   clusterRigAction?: (
     rig: string,

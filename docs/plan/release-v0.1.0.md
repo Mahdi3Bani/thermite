@@ -17,6 +17,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-20:** The owner merges the code into `main` and makes the tag, when the project is ready for one.
 - **2026-10-20:** The docs site is served at usethermite.com by Cloudflare Pages, built from `main`. So the code moved to `main` early, at the development branch's state that day. Work stays on the development branch, and `main` follows it.
 - **2026-10-23:** The local rig uses what its machine has: every CPU and all the memory, and on Linux every NVIDIA GPU through NVIDIA's container toolkit. AMD GPUs and a Mac's Apple GPU are found and explained, not used yet (goal 037, moved from v0.3.0).
+- **2026-10-24:** A rig control set up on a Kubernetes cluster changes its GPUs, CPUs and memory from control, keeping its state (goal 118). The owner needs it for a slot that gained a GPU and a larger quota; an operator's token may make the change, and only the judge's share stays the owner's.
 
 ## What a tester gets
 
@@ -98,6 +99,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | [014 · The quick start, tested in CI](goals/_completed/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/_completed/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
 | [015 · Log paging](goals/_completed/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/_completed/016-small-fixes.goal) | `VERIFIED` | — |
+| [118 · Change a cluster rig's GPUs, CPUs and memory from control](goals/118-cluster-rig-resources.goal) | `IN_PROGRESS` | [035](goals/035-rig-upgrades.goal) |
 | [017 · Remove the legacy model names](goals/_completed/017-legacy-names.goal) | `VERIFIED` | — |
 
 ### Research mode

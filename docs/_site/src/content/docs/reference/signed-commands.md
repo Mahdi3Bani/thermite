@@ -130,7 +130,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `redirect` | None: on the dashboard, rules come from **Tell the planner**, a `message_agent` to the planner, which makes them | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export** in the header of a rig's page or a run's page, with **What changed** (`full: false`) or **Full export** (`full: true`) | Yes | Yes | Yes | Yes | |
-| `drain_rig` | **Update to these images**, **Try the update again** and **Give it control's new address** on the page of a rig at work set up on a cluster, and **Call the update off**; control issues it as the caller | Yes (`POST /v1/commands`): the rig drains, but its page shows no update waiting, and it stays drained until `drain: false` or a restart | `update_rig_images` | `update_rig_images` | No | |
+| `drain_rig` | **Update to these images**, **Try the update again** and **Give it control's new address** on the page of a rig at work set up on a cluster, and **Call the update off**; **Save changes** on **Edit rig** with a new number of GPUs, CPUs or memory for such a rig, and **Call the change off**; control issues it as the caller | Yes (`POST /v1/commands`): the rig drains, but its page shows no update waiting, and it stays drained until `drain: false` or a restart; `POST /v1/rigs/<rig>/cluster/resources` | `update_rig_images`, `set_cluster_rig_resources` | `update_rig_images`, `set_cluster_rig_resources` | No | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
 | `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
@@ -144,7 +144,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
 | `accept_review` | **Needs you**: **Accept**, **Reject** | Yes | No | No | No | Yes |
 | `conclude` | **Needs you**: **End it: not possible**, **Keep going** | Yes | No | No | No | Yes |
-| `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands` | `set_rig_settings`; `start_run` with `judge_gpus` | `set_rig_settings`, but not `promotion` or `judge_gpus` | No | Yes |
+| `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands`; `POST /v1/rigs/<rig>/cluster/resources` with a new number of GPUs | `set_rig_settings`; `start_run` with `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs | `set_rig_settings`, but not `promotion` or `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs, which sends the new default share only | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
 Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion` or `decline_promotion`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
@@ -532,7 +532,7 @@ The harness writes an export to its outbox for the supervisor to push. Result: `
 
 ### `drain_rig`
 
-Control issues it before it moves a rig at work onto new images or a new address (**Update to these images** and the other buttons above, or [`update_rig_images`](mcp-tools.md#update_rig_images)), and with `drain: false` to call the update off, or after a drained update that failed (`the update did not happen`). `POST /v1/commands` takes it too.
+Control issues it before it moves a rig at work onto new images or a new address (**Update to these images** and the other buttons above, or [`update_rig_images`](mcp-tools.md#update_rig_images)), with the reason `its images are about to change`, and before it gives a rig at work a new number of GPUs, CPUs or memory (**Edit rig**, [`set_cluster_rig_resources`](mcp-tools.md#set_cluster_rig_resources) or [its REST twin](rest-api.md#a-cluster-rigs-gpus-cpus-and-memory)), with the reason `its GPUs, CPUs or memory are about to change`. It sends `drain: false` to call the update or the change off, or after a drained one that failed (`the update did not happen`). `POST /v1/commands` takes it too.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -574,7 +574,7 @@ The attempt never becomes the champion and stays in the record as `declined`. Re
 
 ### `rig_settings`
 
-The rig's own settings, as on its **Edit rig** page. Only the fields that change are sent, and no other field is allowed. [`POST /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings) and MCP's [`set_rig_settings`](mcp-tools.md#set_rig_settings) send it with **Edit rig**'s checks, and only the fields that differ from what the rig reports.
+The rig's own settings, as on its **Edit rig** page. Only the fields that change are sent, and no other field is allowed. [`POST /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings) and MCP's [`set_rig_settings`](mcp-tools.md#set_rig_settings) send it with **Edit rig**'s checks, and only the fields that differ from what the rig reports. Control also sends `{judge_gpus}` alone when it gives a rig on a cluster a new number of GPUs and the rig keeps a judge's share of its own that differs from the new one ([Change the rig's GPUs, CPUs and memory](../how-to/install/rig-on-a-cluster.md#change-the-rigs-gpus-cpus-and-memory)), issued as the caller who asked for the change.
 
 | Field | Type | Meaning |
 | --- | --- | --- |

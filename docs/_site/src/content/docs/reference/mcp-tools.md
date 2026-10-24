@@ -54,6 +54,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `runpod_rig_logs` | Yes | Yes | No | No |
 | `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `kit_add`, `set_campaign_context`, `archive_campaign`, `unarchive_campaign`, `create_campaign_folder`, `rename_campaign_folder`, `delete_campaign_folder`, `move_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `set_rig_settings` | Yes | Yes, but not the promotion rule or the GPU split | No | No |
+| `set_cluster_rig_resources` | Yes | Yes, but not `judge_gpus` (the GPU split) | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -370,7 +371,7 @@ The same inputs as `kb_grant`. Returns `{revoked: true, reads}`. Error: `<campai
 | --- | --- | --- | --- |
 | `rig` | string | | The rig |
 
-For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster, namespace, placement, status, images: {harness, supervisor}, steps}`. For one it set up on a machine over SSH, `{rig, on: "machine", machine, status, steps}`. For one the owner launched on RunPod, `{rig, on: "runpod", cloud, pod, status, op, steps}`: `status` is the pod's at RunPod, such as `RUNNING` or `EXITED`, or `TERMINATED` once it is gone, and `op` is the stop, start, restart or terminate under way, as in [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud), or `null`. `steps` is `[{at, step, ok, detail}]`, oldest first. `ok` is false for a step that failed, and `detail` then says why; otherwise it can say what the step did, such as the images it changed.
+For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster, namespace, placement, status, images: {harness, supervisor}, gpus, judge_gpus, cpus, memory_gib, pending, steps}`: `gpus` and `judge_gpus` (`null` for fewer than two GPUs) as control deploys them, `cpus` and `memory_gib` (`null`: the namespace's defaults), and `pending`, the change of GPUs, CPUs or memory the rig drains for, `{gpus, judge_gpus, cpus, memory_gib}`, or `null` ([`set_cluster_rig_resources`](#set_cluster_rig_resources)). For one it set up on a machine over SSH, `{rig, on: "machine", machine, status, steps}`. For one the owner launched on RunPod, `{rig, on: "runpod", cloud, pod, status, op, steps}`: `status` is the pod's at RunPod, such as `RUNNING` or `EXITED`, or `TERMINATED` once it is gone, and `op` is the stop, start, restart or terminate under way, as in [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud), or `null`. `steps` is `[{at, step, ok, detail}]`, oldest first. `ok` is false for a step that failed, and `detail` then says why; otherwise it can say what the step did, such as the images it changed.
 
 | `step` | On the rig's page |
 | --- | --- |
@@ -381,9 +382,12 @@ For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster,
 | `first_report` | First report reached control. Also written, with the detail `it reported after the wait ended`, when a cluster rig that control marked `failed` because its first report did not come reports after all |
 | `stop`, `start`, `restart` | Stopped; Started; Restarted |
 | `images` | Its deployments applied with new images. Its `detail` names the images that changed; `control's address for rigs → <url>` when only that changed; or `the same images again, after a failed change` for a retry. It is followed by `; at its next start` for a stopped rig |
-| `drain` | Draining: it starts nothing new until its work ends. Its detail: `waiting for … to finish` when an update waits for the rig's work, `its harness started again and was not draining: asked again`, `nothing runs any more: its pods restart now`, or `called off: the rig goes back to work on its images` |
+| `drain` | Draining: it starts nothing new until its work ends. Its detail: `waiting for … to finish` when an update or a change of size waits for the rig's work, `now for …` when a change of size under way takes a new size, `its harness started again and was not draining: asked again`, `nothing runs any more: its pods restart now`, `called off: the rig goes back to work on its images`, or `called off: the rig goes back to work with its GPUs, CPUs and memory as they were` |
 | `images_running` | Its pods run the new images |
 | `report_after_images` | A report reached control from the new images. Also written, with the detail `it reported after the wait ended`, when a cluster rig marked `failed` while waiting for its new images reports after all |
+| `resources` | Its deployments applied with new GPUs, CPUs or memory. Its `detail` says what changed, such as `GPUs 3 → 4 (2 for the judge, 2 for the agents); CPUs and memory: namespace defaults → 16 CPUs, 52 GiB`, with `; the judge's share it kept, 1, → 2` when control also sent the rig its new share, and `; at its next start` for a stopped rig. A failed one has kubectl's error |
+| `resources_running` | Its pods run with the new GPUs, CPUs or memory |
+| `report_after_resources` | A report reached control after the change. Also written, with the detail `it reported after the wait ended`, when a cluster rig marked `failed` during a change of size reports after all |
 | `pods_running` | Its pods run again. Written after a cluster rig's `start` or `restart` |
 | `report_after_start` | A report reached control after the start. Written after a cluster rig's `start` or `restart`, and, with the detail `it reported after the wait ended`, when a cluster rig marked `failed` while waiting after a start or restart reports after all |
 | `remove_cluster`, `remove` | Removed from the cluster; Removed from the machine |
@@ -988,7 +992,58 @@ Errors:
 - `Control could not read <rig>'s deployment to compare control's address: <kubectl's error>`: the same images, and the supervisor's deployment could not be read
 - kubectl's own error
 
-Besides `mcp:update_rig_images`, the audit log records `cluster_rig_drain` when the rig drains first, and `cluster_rig_images` with the old and the new images. A rig on a machine moves onto control's images only with **Update to** control's version on its page; one joined with a join command has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+Besides `mcp:update_rig_images`, the audit log records `cluster_rig_drain` when the rig drains first, and `cluster_rig_images` with the old and the new images. A rig on a machine moves onto control's images only with **Update to** control's version on its page; one joined with a join command has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). During a drain for a new number of GPUs, CPUs or memory, an update is refused: `<rig> is draining for a change to its GPUs, CPUs or memory: wait until its page shows it running, or call the change off first.`
+
+### set_cluster_rig_resources
+
+**Change a cluster rig's GPUs, CPUs and memory.** Owner and operator. The operator's token can't give `judge_gpus`.
+
+> For a rig control set up on a cluster: changes how many GPUs its harness pod asks for, and its CPUs and memory, as Edit rig does, keeping its volume, tokens, runs and results. Give only what changes. Checked as Add a rig checks them: 1 to 16 GPUs through the rig's own way (NVIDIA's device plugin, against its nodes as control last read them, or its DRA device class); at least 1.5 CPUs and 6 GiB, both or neither (null for both: the namespace's defaults); and, in a slot, the slot's quota (CPUs, memory, requests.nvidia.com/gpu, or the device class's devices), which control reads again first. A rig on the CPU can't take GPUs, nor a GPU rig move to none: add a new rig for that. With a new number of GPUs, judge_gpus sets the judge's share (1 to min(8, gpus - 1), the agents at most 8); left out, the judge gets half, rounded up, as when a rig is added, and a share the rig kept from Edit rig follows. Its pods restart with the new size on the images it runs, as update_rig_images moves them: by default it drains first (rig_setup shows it draining, and the change it waits for in pending); wait false restarts them now, also during its drain (a call with no other field then makes the change the drain waits for). Follow it with rig_setup and list_rigs. Returns {rig, said}. Refused in words: no such rig, one still being set up, updating, starting or draining for an image update, a value out of range or above the slot's quota, and judge_gpus without a new number of GPUs.
+
+The operator's description ends with one more sentence: `judge_gpus is the owner's alone: a call with it is refused, and nothing changes.`
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | A rig control set up on a Kubernetes cluster |
+| `gpus` | integer | as it has | How many GPUs its harness pod asks for, 1 to 16, through NVIDIA's device plugin or the rig's DRA device class. A rig on the CPU stays at 0 |
+| `judge_gpus` | integer | half, rounded up | Only with a new number of GPUs: how many are the judge's, 1 to min(8, `gpus` − 1); the agents get the rest, at most 8. The owner's token only |
+| `cpus` | number or `null` | as it has | The rig's CPUs, at least 1.5: the supervisor gets half a CPU, the harness the rest. `null`, with `memory_gib` `null`: the namespace's defaults |
+| `memory_gib` | number or `null` | as it has | The rig's memory in GiB, at least 6: the supervisor gets 2 GiB, the harness the rest. `null`, with `cpus` `null`: the namespace's defaults |
+| `wait` | boolean | `true` | Wait for the running trials and the judge's job to finish before the restart; `false`: restart now |
+
+It does what **Save changes** on **Edit rig** does with a rig's **GPUs**, **CPUs** and **Memory (GiB)** ([Change the rig's GPUs, CPUs and memory](../how-to/install/rig-on-a-cluster.md#change-the-rigs-gpus-cpus-and-memory)). Control checks the new size first, then applies the rig's two deployments again with it, on the images the rig runs, and with control's address for rigs as the supervisor's `CONTROL_URL`. With DRA and a new number of GPUs, it deletes the rig's resource claim template and applies it again with the new number (a template can't change); if the apply then fails, it puts the old template back. The rig's secret, volume, service and network rules stay as they are. Control then waits, in the background, up to 15 minutes for the new pods and up to 10 minutes for a report from them; [`rig_setup`](#rig_setup) shows the steps `resources`, `resources_running` and `report_after_resources`. The rig's status is `updating` until then, and `running` after, or `failed` with the step that failed.
+
+- **The checks.** One field of `cpus` and `memory_gib` may be given alone when the rig has both already; the other keeps its value. In a slot, control reads the slot's quota again with `kubectl get resourcequota` and refuses a size above it; when it can't read the quota, it uses the quota from its last check of the cluster, if any. Through the device plugin, some node (the rig's node, if it has one) must offer that many GPUs, as control last read the nodes; a slot whose role can't read nodes is not checked for this. With DRA, the rig's device class must still be among the cluster's, when control can read them.
+- **The judge's share.** With a new number of GPUs, the deployment's `THERMITE_JUDGE_GPUS` is `judge_gpus`, or half the GPUs, rounded up. When the rig reports a judge's share of its own (from **Edit rig** or a campaign, `judge_gpus` in [`rig_settings`](#rig_settings)) that differs, control also sends the rig a [`rig_settings`](signed-commands.md#rig_settings) command with the new share, issued as the caller, since the rig's own share comes first in its harness. With the same number of GPUs, the split is not changed: `judge_gpus` is refused then, and [`set_rig_settings`](#set_rig_settings) changes the split alone.
+- **The drain.** As for [`update_rig_images`](#update_rig_images): when the rig's last report shows work, control sends [`drain_rig`](signed-commands.md#drain_rig) with the reason `its GPUs, CPUs or memory are about to change`, the status is `draining`, `rig_setup`'s `pending` holds the new size, and control applies it once a report says nothing runs. Another call during that drain takes its new size in place of the old one; with `wait` false it applies it now, and a call with no field but `rig` and `"wait": false` applies the size the drain waits for. **Call the change off** on the rig's page ends the drain and drops the change. A stop or a removal of the rig drops it too. If the apply fails after a drain, the drain ends, the rig goes back to work as it was, and its status says `failed`.
+
+Returns `{rig, said}`, where `said` is one of:
+
+- `<rig>'s pods restart with <size>.`, such as `rig-1's pods restart with 4 GPUs (2 for the judge, 2 for the agents), 16 CPUs and 52 GiB of memory.`, or `…, the namespace's default CPUs and memory.`
+- `<rig> drains first: it starts nothing new, and its pods restart with <size> once <its work> finish. Change now, on its page or with set_cluster_rig_resources and wait false, skips the wait.`: the rig was at work
+- `<rig> is draining: its pods restart with <size> once its trials and the judge's job end. Change now skips the wait.`: a drain for a new size is under way, and `wait` is true
+- `<rig> has <size> when it starts again.`: the rig is stopped, and stays stopped
+- `Nothing changed: <rig> has these GPUs, CPUs and memory already.`
+
+Errors:
+
+- `Control didn't set <rig> up on a cluster.` (also for a removed rig)
+- `<rig> is still being set up.`
+- `Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.`
+- `The cluster <cluster> is no longer in Providers.`
+- `<rig> is being updated: wait until its page shows it running, or failed.`, or `<rig> is starting: …`
+- `<rig> is draining for an image update: wait until its page shows it running, or call the update off first.`
+- `Only the owner's token changes a rig's GPU split: leave out judge_gpus. A new number of GPUs without it gives the judge half of them, rounded up.`: an operator's call with `judge_gpus`. Nothing changes, whatever else the call gives
+- `A rig takes from none to 16 GPUs.`
+- `<rig> measures on GPUs, and can't move to none: …` and `<rig> measures on the CPU, and can't take GPUs: …`
+- `judge_gpus goes with a new number of GPUs. To change the split of <rig>'s <n> GPUs alone, use GPUs for the judge on Edit rig, or set_rig_settings.`
+- `With <n> GPUs the judge takes 1 to <m> of them, and the agents at most 8.`
+- `No node of <cluster> offers <n> GPUs through the device plugin.`, `The node <node> offers <m> GPUs through the device plugin, not <n>.`, or `<cluster> no longer offers the DRA device class <class>.`
+- `The slot <slot> allows <n> GPUs.`, `The slot <slot> allows <n> devices of the class <class>.`, `The slot <slot> allows <n> CPUs.` or `The slot <slot> allows <n> GiB of memory.`
+- `Give the rig both its CPUs and its memory, or neither: null for both gives it the namespace's defaults.`, `Give <rig> both its CPUs and its memory: it has the namespace's defaults now.`, `a rig needs at least 1.5 CPUs and 6 GiB of memory`, or `CPUs and memory are numbers, such as 16 and 52, or 1.5 and 6.`
+- kubectl's own error
+
+Besides `mcp:set_cluster_rig_resources`, the audit log records `cluster_rig_drain` when the rig drains first, and `cluster_rig_resources` with the old and the new size.
 
 ### set_cluster_slots
 

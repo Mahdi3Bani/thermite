@@ -254,6 +254,35 @@ curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
 
 Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why; the command sent is `command_issued`, by `owner:api`. MCP's [`set_rig_settings`](mcp-tools.md#set_rig_settings) does the same with the owner's or the operator's token; the operator's may not change `promotion` or `judge_gpus`.
 
+### A cluster rig's GPUs, CPUs and memory
+
+**Edit rig**'s **GPUs**, **CPUs** and **Memory (GiB)** for a rig control set up on a Kubernetes cluster ([Change the rig's GPUs, CPUs and memory](../how-to/install/rig-on-a-cluster.md#change-the-rigs-gpus-cpus-and-memory)).
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `POST /v1/rigs/<rig>/cluster/resources` | Owner | Changes how many GPUs the rig's harness pod asks for, and its CPUs and memory, with the checks of **Add a rig** and the slot's quota read again, then applies its two deployments again with the new size, draining a rig at work first | Any of `{gpus, judge_gpus, cpus, memory_gib, wait}`, as MCP's [`set_cluster_rig_resources`](mcp-tools.md#set_cluster_rig_resources) takes them | `{rig, said}`. 400, 404 or 409 `{"error":"<why>"}` |
+
+Give only what changes: a field left out stays. `gpus` is 1 to 16 for a rig on GPUs, and a rig on the CPU stays at none. `judge_gpus` goes only with a new number of GPUs; without it, the judge gets half of them, rounded up. `cpus` (at least 1.5) and `memory_gib` (at least 6) are numbers, or `null` for both for the namespace's defaults. `wait` is `true` by default: a rig at work drains first; `false` restarts its pods now. MCP's tool gives the answers and the errors word for word. For example, to move a rig from 3 GPUs and the namespace's defaults to 4 GPUs, 16 CPUs and 52 GiB:
+
+```sh
+curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
+  -H "content-type: application/json" -d '{"gpus":4,"cpus":16,"memory_gib":52}' \
+  "https://control.example.com/v1/rigs/rig-1/cluster/resources"
+```
+
+```json
+{"rig":"rig-1","said":"rig-1's pods restart with 4 GPUs (2 for the judge, 2 for the agents), 16 CPUs and 52 GiB of memory."}
+```
+
+| Status | Error |
+| --- | --- |
+| 404 | `Control didn't set <rig> up on a cluster.` |
+| 409 | `<rig> is still being set up.`, `<rig> is being updated: …`, `<rig> is starting: …`, `<rig> is draining for an image update: …`, `The cluster <cluster> is no longer in Providers.`, `Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): …`, or kubectl's error when the apply failed |
+| 400 | A size that the checks refuse, such as `The slot thermite-slot-1 allows 4 GPUs.`, `rig-1 measures on GPUs, and can't move to none: …` or `a rig needs at least 1.5 CPUs and 6 GiB of memory` |
+| 400 | `bad request: <field>: <message>`: a body that is not these fields, has others, or has a value of the wrong type |
+
+Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why; the change is `cluster_rig_resources`, by `owner:api`. Follow the rig with MCP's [`rig_setup`](mcp-tools.md#rig_setup) or on its page.
+
 ### Signed commands
 
 [Signed commands](signed-commands.md) lists every kind and its payload.
@@ -865,14 +894,14 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 | Group | Actions |
 | --- | --- |
-| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs`, `POST /v1/campaigns/<campaign>/copy`, `POST /v1/campaigns/<campaign>/context`, `POST /v1/rigs/<rig>/settings` or `POST /v1/kits/<name>`, or a route that archives a campaign or changes a folder, it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
+| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs`, `POST /v1/campaigns/<campaign>/copy`, `POST /v1/campaigns/<campaign>/context`, `POST /v1/rigs/<rig>/settings`, `POST /v1/rigs/<rig>/cluster/resources` or `POST /v1/kits/<name>`, or a route that archives a campaign or changes a folder, it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
 | Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `rig_refused` and `rig_refusal_ended` (by `rig:<rig>`: control started or stopped refusing the rig for its protocol, with the reason and the builds; see [Rig versions](#rig-versions)), `git_access_handed` |
 | Joins | `joined_rig_added`, `join_command_made`, `join_command_revoked`, `join_command_used` |
 | Restart and reset | `restart`, `reset_requested`, `reset_step` |
 | Providers | `model_provider_added`, `model_provider_changed`, `model_provider_deleted`, `model_provider_model_added`, `model_price_set`, `model_price_cleared`, `rig_model_given`, `agent_model_given`, `git_access_added`, `git_access_deleted`, `git_access_token_replaced`, `gpu_cloud_added`, `gpu_cloud_deleted`, `gpu_cloud_key_replaced` |
-| Machines and clusters | `machine_added`, `machine_deleted`, `machine_host_key_trusted`, `machine_install_approved`, `machine_install_finished`, `machine_rig_created`, `machine_rig_stop`, `machine_rig_start`, `machine_rig_restart`, `machine_rig_remove`, `cluster_added`, `cluster_deleted`, `cluster_slots_set`, `cluster_rig_created`, `cluster_rig_stop`, `cluster_rig_start`, `cluster_rig_restart`, `cluster_rig_remove`, `cluster_rig_drain` (a cluster rig at work asked to drain before it moves onto new images: the rig and the images it will get), `cluster_rig_images` (a cluster rig moved onto control's images, with the old and the new), `machine_rig_images` (a machine rig moved onto control's images, with the old and the new), `rig_update` (the owner pressed **Update to** control's version on a rig's page, with the version), `rig_check_place` (control checked where a rig it set up runs, and whether it found it running: by the owner with **Check again** on the rig's page, or by `control` when the rig turned stale or offline) |
+| Machines and clusters | `machine_added`, `machine_deleted`, `machine_host_key_trusted`, `machine_install_approved`, `machine_install_finished`, `machine_rig_created`, `machine_rig_stop`, `machine_rig_start`, `machine_rig_restart`, `machine_rig_remove`, `cluster_added`, `cluster_deleted`, `cluster_slots_set`, `cluster_rig_created`, `cluster_rig_stop`, `cluster_rig_start`, `cluster_rig_restart`, `cluster_rig_remove`, `cluster_rig_drain` (a cluster rig at work asked to drain before it moves onto new images or takes a new number of GPUs, CPUs or memory: the rig, and the images it will get or the change of size in words), `cluster_rig_images` (a cluster rig moved onto control's images, with the old and the new), `cluster_rig_resources` (a cluster rig given a new size, `from` and `to`, each `{gpus, judgeGpus, resources: {cpus, memoryGi}}`, with `resources` left out for the namespace's defaults), `machine_rig_images` (a machine rig moved onto control's images, with the old and the new), `rig_update` (the owner pressed **Update to** control's version on a rig's page, with the version), `rig_check_place` (control checked where a rig it set up runs, and whether it found it running: by the owner with **Check again** on the rig's page, or by `control` when the rig turned stale or offline) |
 | Test pods | `runpod_test_started`, `runpod_test_ended`, `runpod_test_done` |
 | Pull mode and rigs on RunPod | `tunnel_rig_added` (a rig minted for a pod), `tunnel_rig_pod` (its pod named), `tunnel_rig_enrolled`, `tunnel_refusals` (the requests a pod refused since its last exchange), `tunnel_rig_dropped` (a minted rig whose launch failed), `runpod_rig_launched` (by the owner: the cloud, pod, GPU and count, cloud type, data center, price, image and limits), `runpod_rig_limits` (the limits now), `runpod_rig_stop`, `runpod_rig_start`, `runpod_rig_restart` and `runpod_rig_terminate` (by the owner, as asked), `runpod_rig_stopped` (the pod stopped, why, `spend_limit`, `idle_stop` or `owner`, and the spend: by `control` at a limit, by the owner otherwise), `runpod_rig_started` (by `control`: the pod runs again, its GPUs and the runs resumed), `runpod_rig_start_refused` (by `control`: why, such as no GPU free), `runpod_rig_terminated` (by the owner: the pod removed, and the spend), `runpod_rig_terminate_refused` (by `control`: why a result could not leave) |
 | Campaigns | `campaign_version_created`, `campaign_copied` (a campaign copied: the copy, `from`, which is the source campaign with its version or its assignment's rig and run, and the copy's contract `sha`; for a research copy that names other MCP servers, also the copy's `mcp_servers`; for a copy given its own context settings, its `agents_context`; for a copy given its own brief, `own_brief`, the parts given), `campaign_context_set` (a campaign's own [context settings](#a-campaigns-context-settings) saved: the campaign, its new version and `sha`, and `agents_context`, or `null` when they were removed), `campaign_archived` and `campaign_unarchived` (the campaign, and the folder it keeps or comes back into, or `null`), `campaign_moved` (the campaign, its `folder` and the folder it came `from`, each a name or `null`), `campaign_folder_created`, `campaign_folder_renamed` (the folder's old name and its new `name`) and `campaign_folder_deleted` ([Archive a campaign, and folders](#archive-a-campaign-and-folders)) |
