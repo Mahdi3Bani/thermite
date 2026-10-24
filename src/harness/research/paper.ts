@@ -4,7 +4,7 @@ import type { ResearchContract } from "../../core/contract.ts";
 import { PAPER_ACCEPTED, PAPER_REFUSED, PAPER_REQUESTED } from "../../core/research-check.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { newExperimentId } from "../queue.ts";
-import { checkCited, numbersIn } from "./checks.ts";
+import { checkCited, numbersIn, withoutReferences } from "./checks.ts";
 import {
   acceptedReview,
   type CheckedReviewer,
@@ -199,12 +199,7 @@ export function citationsIn(text: string): string[] {
  * (c-…, h-…, f-…), question numbers ("question 2", "Q2") and a list item's own number.
  */
 function forNumbers(text: string): string {
-  return text
-    .replace(CITE, " ")
-    .replace(/\b[a-z]-(?=[0-9a-z]*\d)[0-9a-z]{6,}\b/g, " ")
-    .replace(/\bquestions?\s+\d+(?:\s*(?:,|and|or|to|–|-)\s*\d+)*/gi, " ")
-    .replace(/\bQ\d+\b/g, " ")
-    .replace(/^\s*(?:[-*+]\s+)?\d+[.)]\s+/, " ");
+  return withoutReferences(text.replace(CITE, " "));
 }
 
 /** A number as it may be written: 1200 and 1,200. */

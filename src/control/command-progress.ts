@@ -189,8 +189,9 @@ export function checkRow(
   const after = (iso: string) => Date.parse(iso) >= Date.parse(cmd.issued_at);
   if (cmd.status === "delivered" && refusalOf(cmd) === null) {
     const id = startedId(cmd);
-    // The command's own run reached control (by its id; an older rig's answer has none).
-    if (last && (id ? last.id === id : after(last.started_at))) return fromRig();
+    // The command's own run reached control (by its id; an older rig's answer has none), or a
+    // run newer than the command did: the rig ran the check again by itself, after the command.
+    if (last && ((id !== null && last.id === id) || after(last.started_at))) return fromRig();
     return row("running", { since: cmd.acked_at ?? cmd.issued_at });
   }
   if (last && (after(last.started_at) || last.finished_at === null)) return fromRig();

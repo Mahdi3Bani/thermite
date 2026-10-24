@@ -2,15 +2,15 @@
 id: "047"
 title: "A model planner for research mode"
 status: PROPOSED
-version: "0.5.0"
+version: "0.1.0"
 depends_on: ["046"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-24
 ---
 
 # 047 · A model planner for research mode
 
-**Status:** `PROPOSED` · **Version:** [v0.5.0](../roadmap.md#v050) · **Depends on:** [046](_completed/046-web-search.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [046](_completed/046-web-search.goal)
 
 ## What
 
@@ -35,6 +35,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
+- 2026-10-24: Moved into v0.1.0 by the owner, as part of goal 117's redesign of research mode.
 
 ---
 

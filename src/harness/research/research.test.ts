@@ -477,6 +477,14 @@ describe("research integrity", () => {
     // A number in the claim's own words gets the plain problem.
     const plain = said("Stateless workers lose nothing in 3 crashes.");
     assert.deepEqual(plain.problems, ["the number 3 is not in the claim's quotes"]);
+    // A name's digits state no number; a number is matched whole, so 4 is not in the quote's 42.
+    const named = said("Stateless workers on sm_50 or a V100 lose nothing when they crash.");
+    assert.deepEqual(named.problems, []);
+    const part = research.addClaim("r-1", "lane-1", {
+      text: "The harness archived 4 pages in its first run.",
+      quotes: [{ source: a.source, quote: "The harness archived 42 pages in its first run." }],
+    });
+    assert.deepEqual(part.problems, ["the number 4 is not in the claim's quotes"]);
     // Without the heading, and the question given in its field, the same claim is verified.
     const ok = research.addClaim("r-1", "lane-1", {
       text: quote,

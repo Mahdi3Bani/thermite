@@ -9,7 +9,7 @@ import { parseDuration } from "../../core/duration.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
-import { checkCited, claimNumbers, numbersIn } from "./checks.ts";
+import { checkCited, claimNumbers, numbersIn, withoutNames } from "./checks.ts";
 import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
 import { acceptedReview, answerSections, checkLine } from "./review.ts";
@@ -485,9 +485,12 @@ export class Research {
     }
     // A claim may not state numbers its own quotes do not contain. One from a heading or a label
     // ("Question 0:", "# Claim …") counts the same; the problem says where it comes from.
-    const quoted = c.quotes.map((q) => normalizeQuote(q.quote)).join(" ");
-    for (const num of numbersIn(c.text)) {
-      if (quoted.includes(num)) continue;
+    // Whole numbers, not parts of them: a claim's 5 is not in a quote's 2025. A name's digits
+    // (sm_50) are not stated numbers; a heading or label in the claim's text still is.
+    const plain = (n: string) => n.replace(/,/g, "");
+    const quoted = new Set(c.quotes.flatMap((q) => numbersIn(normalizeQuote(q.quote))).map(plain));
+    for (const num of numbersIn(withoutNames(c.text))) {
+      if (quoted.has(plain(num))) continue;
       const head = headingWith(c.text, num);
       problems.push(
         head
