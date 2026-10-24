@@ -87,6 +87,20 @@ The design invariants and the [rules for every goal](docs/plan/README.md#rules-f
 - When a reviewer says that code is not obvious, it is not obvious. Fix it.
 - Closures are good for operations on collections, and bad in excess, as in long callback chains. Don't use the Visitor pattern. Limit generics to container types where you can.
 
+### Duplication
+
+- Don't repeat knowledge. Each fact that the code relies on has one home: a rule, a limit, a schema, a status word, an agent's name, a route, or a message that people read. Two copies drift apart.
+- Repeated code is a different case. A little duplicated code is better than an abstraction made too early. When the same code appears a third time, or a fix had to be made in two places, factor it at a natural cut-point.
+- When two pieces of code do the same job in different ways, keep one of them.
+- One thing has one name, the same in the code, the API, the dashboard and the docs.
+
+### Dead code and loose ends
+
+- Remove what nothing uses: functions, exports, files, scripts, settings and dependencies. Git keeps the history.
+- Don't commit code that is commented out, or a placeholder that looks finished. An unfinished part says so, and its goal records it.
+- Each suppression, such as `biome-ignore`, `@ts-expect-error` or a skipped test, states its reason next to it. A test that is switched off also names the goal that brings it back.
+- A new module follows the patterns of the modules around it, unless the change replaces that pattern everywhere.
+
 ### Changing code
 
 - Find out why code exists before you change or remove it. Old code often has hidden reasons, and its tests and history can show them. Don't clean up code that you don't understand.

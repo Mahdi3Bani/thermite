@@ -109,10 +109,10 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ## v0.1.1
 
-**Code clean-up.** The code follows the [conventions](../../CONVENTIONS.md): files of a size you can review, in folders, and the engineering rules for design, errors, limits, logging, security and tests, so that later changes are easier. Proposed.
+**Code clean-up.** The code follows the [conventions](../../CONVENTIONS.md): files of a size you can review, in folders, no duplicated knowledge or dead code, and the engineering rules for design, errors, limits, logging, security and tests, so that later changes are easier. One goal, worked on after v0.1.0 ships. Proposed.
 
-- [124](goals/124-file-sizes.goal) Files of a size you can review: a check that stops large files growing, and the large files split · `PROPOSED`
-- [125](goals/125-code-to-the-conventions.goal) The code to the conventions: an audit against the engineering rules, and the fixes · `PROPOSED`
+- [125](goals/125-code-to-the-conventions.goal) Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication · `PROPOSED`
+- [124](goals/124-file-sizes.goal) Files of a size you can review · `DROPPED`, merged into 125
 
 ## v0.1.2
 
