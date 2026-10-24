@@ -946,6 +946,19 @@ c1.ev(
   "supervisor",
 );
 review(3, 0.6, 112, null, {}, [], "");
+// Review 3's tries that could not be posted, as the harness keeps them (goal 116).
+c1.ev(0.54, "review_try_failed", RS, {
+  review: 3,
+  try: 1,
+  error:
+    "2 of 3 reviewers of the review panel answered (reviewer-2: the provider refused: 429 too many requests)",
+});
+c1.ev(0.05, "review_try_failed", RS, {
+  review: 3,
+  try: 2,
+  error:
+    "1 of 3 reviewers of the review panel answered (reviewer-2: the provider refused: 429 too many requests; reviewer-3: no answer in 15 min)",
+});
 for (const [h, run, calls] of [
   [4.3, "review 1", 3],
   [2.0, "review 2", 3],
