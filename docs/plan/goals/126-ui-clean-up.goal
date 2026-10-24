@@ -1,0 +1,58 @@
+---
+id: "126"
+title: "UI clean-up: every screen checked against the rules for screens, and the gaps fixed"
+status: PROPOSED
+version: "0.1.4"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 126 · UI clean-up: every screen checked against the rules for screens, and the gaps fixed
+
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014)
+
+## What
+
+A plan only; nothing of it is done.
+
+The dashboard grew one screen at a time. This goal checks every screen against the rules for screens, records each gap here, and fixes them:
+
+- every form label has a description in its ⓘ;
+- cards, call-outs and summaries use plain words (Simplified Technical English);
+- each action says what it decides and what happens next, before and after the click;
+- each button shows at once that it was pressed, and shows its outcome without a refresh;
+- the same thing has the same name, the same word and the same look on every screen.
+
+The other goals of v0.1.4 improve one screen each. This one makes the screens agree with each other.
+
+## Why
+
+The owner, 2026-10-24: "v0.1.4 becomes UI Cleanup and UX improvements."
+
+## Constraints
+
+- **A mockup first** ([rules for every goal](../README.md#rules-for-every-goal)): a real change to a screen is mocked up and shown to the owner before it is built.
+- **Docs follow the code:** each fix updates the pages that describe the screen, its words and its screenshots, in the same commit.
+
+## Done when
+
+- [ ] Every screen is checked, and its gaps are recorded here.
+- [ ] Each gap is fixed, after the owner approved its mockup, or has a recorded reason to stay.
+- [ ] The pages and the screenshots match the screens.
+
+## Decisions
+
+- 2026-10-24, owner: v0.1.4 is the UI clean-up and UX improvements.
+
+## Open questions
+
+- Whether this check and goal [089](089-dashboard-performance.goal)'s faster pages go through the screens together.
+
+## Progress
+
+- 2026-10-24: Goal written from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/126-ui-clean-up.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

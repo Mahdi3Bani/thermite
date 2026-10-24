@@ -2,7 +2,7 @@
 id: "100"
 title: "GPUs on demand for the judge and the workers"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.2"
 depends_on: ["022", "023"]
 created: 2026-10-23
 updated: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 100 · GPUs on demand for the judge and the workers
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.2](../roadmap.md#v012)
 
 ## What
 
@@ -39,6 +39,7 @@ Thermite's settled decisions already reach measurement targets through target dr
 - 2026-10-23, owner: built next, after v0.1.0's release steps, to be tested live within days ("I think we will finish the releases steps tonight or tomorrow and then we can build this. I'd expect us to be live testing this before the end of this weekend."). So it moves from v0.2.0 to v0.1.1.
 - 2026-10-23, owner: RunPod first ("RunPod cloud is fine"). A spend cap, set by the owner and raised by the owner when reached ("$100 to start, can be added to it if reached").
 - 2026-10-24, owner: the first goal of v0.1.1 ("on-demand GPUs is the first goal of v0.1.1 cause I have exact need for it").
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up, and GPUs on demand leads v0.1.2.
 
 ## Open questions
 

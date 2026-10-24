@@ -109,23 +109,43 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ## v0.1.1
 
-**Quick follow-ups to the first release.** Proposed.
+**Code clean-up.** The code follows the [conventions](../../CONVENTIONS.md): files of a size you can review, in folders, and the engineering rules for design, errors, limits, logging, security and tests, so that later changes are easier. Proposed.
+
+- [124](goals/124-file-sizes.goal) Files of a size you can review: a check that stops large files growing, and the large files split · `PROPOSED`
+- [125](goals/125-code-to-the-conventions.goal) The code to the conventions: an audit against the engineering rules, and the fixes · `PROPOSED`
+
+## v0.1.2
+
+**GPUs on demand, and work within a budget.** GPUs rented only while they work, a secondary judge, one budget in dollars that holds on every rig, measurements that cost less, and what Thermite spent on RunPod. Proposed.
 
 - [100](goals/100-on-demand-gpus.goal) GPUs on demand for the judge and the workers · `PROPOSED`
+- [101](goals/101-secondary-judge.goal) A secondary judge: an outside service's checks on a schedule, and its submissions · `PROPOSED`
+- [123](goals/123-budgets-made-simple.goal) Budgets made simple: one amount in dollars, easy to set, that holds on every rig · `PROPOSED`
+- [122](goals/122-repeat-measurements-setting.goal) Repeat measurements: a setting to turn off the judge's repeats, with why to keep them or not · `PROPOSED`
+- [114](goals/114-hill-climb-contract-gaps.goal) Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields · `PROPOSED`
+- [095](goals/095-runpod-spend-on-providers.goal) Providers shows what Thermite spent on a GPU cloud, not only its test pods · `PROPOSED`
+
+## v0.1.3
+
+**Follow-ups to the first release.** Proposed.
+
+- [097](goals/097-add-a-kit-bundle-from-the-dashboard.goal) Give control a kit bundle from the dashboard · `PROPOSED`
+- [108](goals/108-gated-models-on-cloud-rigs.goal) Gated models on cloud rigs · `PROPOSED`
+
+## v0.1.4
+
+**UI clean-up and UX improvements.** The screens agree with each other, and each one says what you need to know. Proposed.
+
+- [126](goals/126-ui-clean-up.goal) UI clean-up: every screen checked against the rules for screens, and the gaps fixed · `PROPOSED`
 - [088](goals/088-new-campaign-button-progress.goal) New campaign's buttons show they were pressed · `PROPOSED`
 - [090](goals/090-info-tab.goal) An Info tab for campaigns and runs: everything they were started with · `PROPOSED`
 - [091](goals/091-needs-you-stuck-rigs.goal) Needs you shows a rig that is stuck · `PROPOSED`
 - [093](goals/093-live-shows-reasoning.goal) Live shows what the model thinks and says, not only its tool calls · `PROPOSED`
 - [094](goals/094-copy-id.goal) Copy an ID from any page · `PROPOSED`
-- [095](goals/095-runpod-spend-on-providers.goal) Providers shows what Thermite spent on a GPU cloud, not only its test pods · `PROPOSED`
-- [097](goals/097-add-a-kit-bundle-from-the-dashboard.goal) Give control a kit bundle from the dashboard · `PROPOSED`
-- [123](goals/123-budgets-made-simple.goal) Budgets made simple: one amount in dollars, easy to set, that holds on every rig · `PROPOSED`
-- [122](goals/122-repeat-measurements-setting.goal) Repeat measurements: a setting to turn off the judge's repeats, with why to keep them or not · `PROPOSED`
-- [101](goals/101-secondary-judge.goal) A secondary judge: an outside service's checks on a schedule, and its submissions · `PROPOSED`
-- [108](goals/108-gated-models-on-cloud-rigs.goal) Gated models on cloud rigs · `PROPOSED`
 - [109](goals/109-exports-page-shows-what-matters.goal) The Exports page shows what matters, not every slice · `PROPOSED`
 - [110](goals/110-judge-only-runs-show-progress.goal) A judge-only run shows its progress · `PROPOSED`
-- [114](goals/114-hill-climb-contract-gaps.goal) Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields · `PROPOSED`
+- [072](goals/072-why-nothing-at-work.goal) Say why a running run has nothing at work · `PROPOSED`
+- [089](goals/089-dashboard-performance.goal) Faster dashboard pages · `PROPOSED`
 
 ## v0.2.0
 
@@ -135,11 +155,9 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [028](goals/028-log-store.goal) Search every log and session · `PROPOSED`
 - [029](goals/029-api-mcp-coverage.goal) Full API and MCP coverage · `IN_PROGRESS`
 - [071](goals/071-bounded-mcp-answers.goal) MCP answers that fit an agent's context · `PROPOSED`
-- [072](goals/072-why-nothing-at-work.goal) Say why a running run has nothing at work · `PROPOSED`
 - [083](goals/083-deep-research-teacher.goal) A deep-research teacher that runs on a trigger · `PROPOSED`
 - [084](goals/084-research-tasks-in-code-runs.goal) Research tasks inside goal and hill-climb runs, with web search · `PROPOSED`
 - [085](goals/085-move-a-campaign-to-another-rig.goal) Move a campaign's work to another rig · `PROPOSED`
-- [089](goals/089-dashboard-performance.goal) Faster dashboard pages · `PROPOSED`
 - [092](goals/092-knowledge-explore-and-dumps.goal) Explore the knowledge base, and dump it to outside stores · `PROPOSED`
 - [102](goals/102-kits-define-campaigns.goal) Kits define how a campaign runs; rigs are the slots it runs in · `PROPOSED`
 - [120](goals/120-research-kit-prep.goal) From research to the next campaign: next experiments in Start a run and New campaign, and kit prep · `PROPOSED`
@@ -150,7 +168,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
 - [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`
-- [124](goals/124-file-sizes.goal) Files of a size you can review: a check that stops large files growing, and the large files split · `PROPOSED`
 
 ## v0.3.0
 

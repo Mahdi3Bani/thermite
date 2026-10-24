@@ -2,15 +2,15 @@
 id: "072"
 title: "Say why a running run has nothing at work"
 status: PROPOSED
-version: "0.2.0"
+version: "0.1.4"
 depends_on: []
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-24
 ---
 
 # 072 · Say why a running run has nothing at work
 
-**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014)
 
 ## What
 
@@ -28,6 +28,8 @@ On 2026-10-21 a goal run had no trial at work for six minutes after its rig rest
 - [ ] The run page's reference says each reason.
 
 ## Decisions
+
+- 2026-10-24, owner: moves from v0.2.0 to v0.1.4, the UI clean-up and UX improvements.
 
 ## Open questions
 

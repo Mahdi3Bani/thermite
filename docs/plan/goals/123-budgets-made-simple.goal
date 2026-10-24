@@ -2,7 +2,7 @@
 id: "123"
 title: "Budgets made simple: one amount in dollars, easy to set, that holds on every rig"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.2"
 depends_on: []
 created: 2026-10-24
 updated: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 123 · Budgets made simple: one amount in dollars, easy to set, that holds on every rig
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.2](../roadmap.md#v012)
 
 ## What
 
@@ -61,6 +61,7 @@ The owner, 2026-10-24: "we need a goal for v0.1.1 that overhauls the budget stuf
 ## Decisions
 
 - 2026-10-24, owner: in v0.1.1, an overhaul of budgets that makes them easy to set and to follow.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.2, with GPUs on demand.
 
 ## Open questions
 

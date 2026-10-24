@@ -2,15 +2,15 @@
 id: "094"
 title: "Copy an ID from any page"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.4"
 depends_on: []
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-24
 ---
 
 # 094 · Copy an ID from any page
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014)
 
 ## What
 
@@ -29,6 +29,7 @@ The owner, 2026-10-22: "There should be a "copy id" of things like run, campaign
 ## Decisions
 
 - 2026-10-22, owner: in v0.1.1.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.4, the UI clean-up and UX improvements.
 
 ## Open questions
 

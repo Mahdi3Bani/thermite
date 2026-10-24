@@ -2,15 +2,15 @@
 id: "108"
 title: "Gated models on cloud rigs"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.3"
 depends_on: []
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # 108 · Gated models on cloud rigs
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.3](../roadmap.md#v013)
 
 ## What
 
@@ -28,7 +28,7 @@ A RunPod launch gives the pod no token for a gated model source, so a campaign t
 
 ## Decisions
 
-None yet.
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.3.
 
 ## Open questions
 

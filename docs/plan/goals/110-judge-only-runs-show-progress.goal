@@ -2,15 +2,15 @@
 id: "110"
 title: "A judge-only run shows its progress"
 status: PROPOSED
-version: "0.1.1"
+version: "0.1.4"
 depends_on: []
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # 110 · A judge-only run shows its progress
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011)
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014)
 
 ## What
 
@@ -34,6 +34,7 @@ The owner, 2026-10-23, on a goal campaign's second judge-only check, about 1 h 4
 ## Decisions
 
 - 2026-10-23, owner: in v0.1.1 ("yeah file as v0.1.1 goal").
+- 2026-10-24, owner: v0.1.1 becomes the code clean-up; this goal moves to v0.1.4, the UI clean-up and UX improvements.
 
 ## Open questions
 
