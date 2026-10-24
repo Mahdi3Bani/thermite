@@ -139,7 +139,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `queue_drop` | **Drop**, then **Drop it**, on an experiment under **Up next**; **Drop** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `queue_accept` | **Queue it** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `drop_directive` | **Remove** on a rule on a run's **Planner** tab | Yes | Yes | Yes | No | Yes |
-| `hypothesis_status` | None yet | Yes | Yes | Yes | No | Yes |
+| `hypothesis_status` | None | Yes | No | No | No | Yes |
 | `propagate` | **Send champion #&lt;n&gt;** on a run's **Planner** tab, under **Other rigs** | `POST /v1/propagate`, or `POST /v1/commands` | `propagate_champion` | `propagate_champion` | `propagate_champion` | |
 | `approve_promotion` | **Needs you**: **Make it the champion**, **Overrule the auditor** | Yes | Yes | No | No | Yes |
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
@@ -148,7 +148,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands`; `POST /v1/rigs/<rig>/cluster/resources` with a new number of GPUs | `set_rig_settings`; `start_run` with `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs | `set_rig_settings`, but not `promotion` or `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs, which sends the new default share only | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
-Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds, `hypothesis_status` and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion` or `decline_promotion`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message`, the six queue kinds and the `rig_settings` that `set_rig_settings` sends. The operator's list has no `close_run`, `approve_promotion` or `decline_promotion`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
 
 On the dashboard, only an experiment up next has **Edit**: a lane's idea's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
 
@@ -514,7 +514,7 @@ Changes the status of one of a research run's hypotheses. The author's hypothese
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `run` | lowercase id | The research run |
-| `id` | text, 1–200 characters | The hypothesis's id, `h-…` |
+| `id` | text, 1–64 characters | The hypothesis's id, `h-…` |
 | `status` | `"promoted"`, `"pool"` or `"retired"` | Its new status |
 | `reason` | text, 1–2,000 characters, not spaces alone | Why |
 

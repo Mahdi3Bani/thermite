@@ -203,7 +203,7 @@ export type HypothesisStatusChange = (typeof HYPOTHESIS_STATUS_CHANGES)[number];
 
 /** A change of a hypothesis's status, as the owner's command and the planner give it. */
 export const HypothesisStatusInput = z.strictObject({
-  id: z.string().trim().min(1).max(200),
+  id: z.string().trim().min(1).max(64),
   status: z.enum(HYPOTHESIS_STATUS_CHANGES),
   reason: z.string().trim().min(1).max(2000),
 });
