@@ -268,4 +268,50 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       /^review \d+: 1 of 2 reviewers of the review panel answered \(reviewer-2: .+\)/,
     );
   });
+  test("a review's fifth try, or any later one, posts it with each reviewer that gave no answer failing it", async (t) => {
+    const s = await waiting(t);
+    const answer = {
+      pass: true,
+      reasons: "Answered.",
+      questions: [
+        { index: 0, answered: true, answer: "Yes.", claims: [s.ids.claims.verified], missing: "" },
+      ],
+      hypotheses: [],
+    };
+    const good = await startFakeModel(() => ({ toolCalls: [{ name: "answer", args: answer }] }));
+    const silent = await startFakeModel(() => ({ text: "I would rather not answer." }));
+    t.after(() => good.close());
+    t.after(() => silent.close());
+    const cfg = config(
+      s.env.service,
+      AdvisorsConfig.parse({
+        review_panel: [runtime(good.url, "reviewer-1"), runtime(silent.url, "reviewer-2")],
+      }),
+      [],
+    );
+    const id = Number(new Reviews(s.ledger).pending(["research"])[0]?.id);
+    const key = `review:${id}`;
+    const long = new Date(0).toISOString();
+    // The fourth try leaves it waiting, as every try before it does.
+    const fourth = await adviseOnce(cfg, {
+      ...emptyAdviseState(),
+      tries: { [key]: 3 },
+      tried: { [key]: long },
+    });
+    assert.equal(fourth.stats.reviews, 0);
+    assert.equal(new Reviews(s.ledger).pending(["research"]).length, 1);
+    // The fifth: posted, not passed, with why.
+    const fifth = await adviseOnce(cfg, { ...fourth, tried: { [key]: long } });
+    assert.equal(fifth.tries[key], 5);
+    assert.equal(fifth.stats.reviews, 1);
+    const row = s.ledger.db
+      .prepare("select panel, panel_result from review where id = ?")
+      .get(id) as { panel: string; panel_result: string };
+    assert.equal(row.panel_result, "review_failed");
+    assert.match(
+      row.panel,
+      /"reasons":"This reviewer gave no answer in 5 tries, so the review is not passed: [^"]+","reviewer":"reviewer-2"/,
+    );
+    assert.equal(new Reviews(s.ledger).pending(["research"]).length, 0);
+  });
 });
