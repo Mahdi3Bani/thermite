@@ -468,7 +468,12 @@ describe("close_run (goal 087)", () => {
       env.sign("close_run", { run: "r-1", reason: "the question is answered elsewhere" }),
     )) as Applied;
     assert.equal(closed.accepted, true, JSON.stringify(closed));
+    // The trial stops at the scheduler's next check, each second. That check's timer does not
+    // keep a process open, and nothing else in this harness does, so the test holds it open while
+    // it waits (on Node.js 22 the wait was otherwise cancelled).
+    const hold = setTimeout(() => {}, 5000);
     await s.idle();
+    clearTimeout(hold);
     assert.equal(await s.tick(), false);
     assert.equal(finals(), 1, "its final report is written");
     const report = env.service.ledger.db
