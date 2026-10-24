@@ -13,6 +13,7 @@ import {
   type GoalCellValues as GoalValues,
   parseGoalValues as goalValuesOf,
 } from "../harness/judge/goal-values.ts";
+import { type MetricValues, metricValuesOf } from "./metric-values.ts";
 import {
   type HypothesisView,
   type ItemDecisionView,
@@ -54,6 +55,8 @@ export interface AttemptView {
   lifecycle: string;
   verdict: string | null;
   delta: number | null;
+  /** The main metric's values its latest verdict's gain comes from (goal 133). */
+  values: MetricValues | null;
   hypothesis: string | null;
   recorded_at: string;
   updated_at: string;
@@ -1065,6 +1068,7 @@ export function rigView(
           lifecycle: String(b.lifecycle),
           verdict: null,
           delta: null,
+          values: null,
           hypothesis: (b.hypothesis as string | null) ?? null,
           recorded_at: e.at,
           updated_at: e.at,
@@ -1123,6 +1127,7 @@ export function rigView(
         if (a) {
           a.verdict = String(b.verdict);
           a.delta = typeof b.delta === "number" ? b.delta : null;
+          a.values = metricValuesOf(b.values);
           a.ci =
             typeof b.ci_low === "number" && typeof b.ci_high === "number"
               ? [b.ci_low, b.ci_high]

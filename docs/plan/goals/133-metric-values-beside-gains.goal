@@ -1,8 +1,8 @@
 ---
 id: "133"
 title: "A hill climb shows its main metric's real values beside each gain"
-status: PROPOSED
-version: "0.1.4"
+status: IN_PROGRESS
+version: "0.1.0"
 depends_on: []
 created: 2026-10-24
 updated: 2026-10-24
@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 133 · A hill climb shows its main metric's real values beside each gain
 
-**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010)
 
 ## What
 
@@ -31,7 +31,7 @@ A gain the owner can't read without a calculator does not tell them what the run
 
 ## Done when
 
-- [ ] Each hill-climb verdict records the main metric's medians for both sides in each public case, with the unit, and the event that reaches control carries them; nothing of a held-out case.
+- [x] Each hill-climb verdict records the main metric's medians for both sides in each public case, with the unit, and the event that reaches control carries them; nothing of a held-out case.
 - [ ] The run's Overview, its champion history, each attempt, the campaign's page and the leaderboard show the values beside each gain, after the owner approved a mockup.
 - [ ] `get_run`, `leaderboard` and the REST routes give the values.
 - [ ] Tests, and the pages for the run's page, the judge's verdicts and MCP.
@@ -42,12 +42,14 @@ A gain the owner can't read without a calculator does not tell them what the run
 
 ## Decisions
 
-- 2026-10-24, owner: show the actual values, not only the change.
+- 2026-10-24, owner: show the actual values, not only the change; "that needs to get fixed now": moved into v0.1.0.
+- 2026-10-24, builder: with several cases, the summary is the cases' geometric mean, as the gain is computed, with each case's values on hover; the unit is the main metric's in the run's baseline.
 
 ## Progress
 
 - 2026-10-24: Goal written from the owner's report. The measurements are on the rig; the verdict and its event carry only the relative change.
 
+- 2026-10-24: Built the first part. `metricValues` (`src/harness/judge/decide.ts`) takes each public case's median of the main metric for both sides from the blocks the gain comes from; screen and confirmation decisions carry it, and the `verdict` event gets it as `values` (no ledger column, no migration). Control reads it onto each attempt (`src/control/metric-values.ts`, `views.ts`), and `src/control/ui/gains.ts` shows it: beside each attempt's gain (its row and its decision chips), in what the judge measured, and in the Champions list, whose starting point row gives the baseline's value. Tests: `src/control/metric-values.test.ts`. Pages: verdicts, the changelog. Left: the gain chart's label, the campaign page and the leaderboard, and REST's leaderboard.
 ---
 
 Run with `/goal Complete docs/plan/goals/133-metric-values-beside-gains.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

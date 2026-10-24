@@ -285,6 +285,7 @@ import {
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
 import { EXPORT_WHERE, exportForm, exportMenu, exportsBody, exportsHref } from "./ui/exports.ts";
 import { FOLLOW_JS } from "./ui/follow-client.ts";
+import { gainChip, startWords } from "./ui/gains.ts";
 import { type ChecksSource, howChecked, howCheckedDetails } from "./ui/goal-checks.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
@@ -1057,7 +1058,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             .slice(0, 12)
             .map((x) => {
               const a = x.attempt ? i.attempts.find((y) => y.id === x.attempt) : undefined;
-              return `<div class="lad"><span class="lad-n">#${x.seq}</span><span class="lad-main">${x.attempt ? `<a href="${attemptHref(u.id, x.attempt)}">${esc(clip(a?.hypothesis ?? x.attempt, 140))}</a>` : `<span class="muted">the starting point</span>`}</span><span>${typeof x.delta === "number" ? `<span class="chip ok">${esc(signed(x.delta))}</span>` : ""}</span><b class="fig">${esc(signed(x.cumulative - 1))}</b><span class="lad-age">${esc(ago(x.at, now))}</span></div>`;
+              return `<div class="lad"><span class="lad-n">#${x.seq}</span><span class="lad-main">${x.attempt ? `<a href="${attemptHref(u.id, x.attempt)}">${esc(clip(a?.hypothesis ?? x.attempt, 140))}</a>` : `<span class="muted">the starting point</span>`}</span><span>${x.attempt ? gainChip(i, { delta: x.delta, values: a?.values }, "ok") : esc(startWords(i))}</span><b class="fig">${esc(signed(x.cumulative - 1))}</b><span class="lad-age">${esc(ago(x.at, now))}</span></div>`;
             })
             .join("")}</div></div>`
         : "";

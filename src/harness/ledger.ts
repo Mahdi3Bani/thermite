@@ -1172,6 +1172,8 @@ export class Ledger {
     reasons: string;
     judgedBy: string;
     supersedes?: number | undefined;
+    /** The main metric's measured values (goal 133): in the event only, for control's pages. */
+    values?: unknown;
   }): number {
     return this.tx(() => {
       const a = this.getAttempt(v.attempt);
@@ -1208,6 +1210,7 @@ export class Ledger {
       ci_high: v.ciHigh ?? null,
       reasons: clipReason(v.reasons, REASONS_CHARS),
       supersedes: v.supersedes ?? null,
+      ...(v.values ? { values: v.values } : {}),
     });
     return id;
   }

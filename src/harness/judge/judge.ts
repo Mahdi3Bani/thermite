@@ -752,6 +752,7 @@ export class Judge {
       delta: toFraction(d.primary.estimate),
       ciLow: toFraction(d.primary.low),
       ciHigh: toFraction(d.primary.high),
+      values: d.values,
       guards: d.guards.map((g) => {
         // At confirmation, the guard against the run's baseline too (goal 115): a log ratio.
         const s = d.vsStart?.find((x) => x.metric === g.metric);

@@ -39,10 +39,45 @@ export interface Decision<V> {
   /** Undefined when the look is not final and nothing is decided yet. */
   verdict: V | undefined;
   primary: Interval;
+  /** The main metric's values the gain comes from (goal 133). */
+  values?: MetricValues | undefined;
   guards: GuardResult[];
   /** At confirmation, each guard against the run's baseline (goal 115), when it has one. */
   vsStart?: StartGuard[] | undefined;
   reasons: string;
+}
+
+/**
+ * The main metric's measured values (goal 133): in each case, the median of its blocks' values for
+ * the candidate and for the reference (the champion it was compared with), as the gain compares
+ * them. A reader sees `412 → 614 tok/s`, not only `+49%`.
+ */
+export interface MetricValues {
+  metric: string;
+  cells: { cell: string; candidate: number; reference: number }[];
+}
+
+/** The main metric's values of blocks, each case's median of each side (MetricValues). */
+export function metricValues(
+  blocks: readonly Block[],
+  metric: string,
+  cells: readonly string[],
+): MetricValues {
+  const median = (xs: number[]) => {
+    const v = [...xs].sort((p, q) => p - q);
+    const m = Math.floor(v.length / 2);
+    return v.length % 2 ? (v[m] as number) : ((v[m - 1] as number) + (v[m] as number)) / 2;
+  };
+  const side = (cell: string, k: "candidate" | "reference") =>
+    blocks.map((b) => b[k][cell]?.[metric]).filter((x): x is number => typeof x === "number");
+  return {
+    metric,
+    cells: cells.flatMap((cell) => {
+      const c = side(cell, "candidate");
+      const r = side(cell, "reference");
+      return c.length && r.length ? [{ cell, candidate: median(c), reference: median(r) }] : [];
+    }),
+  };
 }
 
 /**
@@ -194,6 +229,7 @@ export function decideScreen(
   const result = (verdict: ScreenVerdict | undefined, reasons: string) => ({
     verdict,
     primary,
+    values: metricValues(blocks, metric, policy.cells),
     guards,
     reasons: `${reasons}; ${metric} ${describe(primary)}`,
   });
@@ -248,6 +284,7 @@ export function decideConfirm(
   const result = (verdict: ConfirmVerdict, reasons: string) => ({
     verdict,
     primary,
+    values: metricValues(blocks, metric, policy.cells),
     guards,
     ...(vsStart ? { vsStart } : {}),
     reasons: `${reasons}; ${metric} ${describe(primary)}`,
