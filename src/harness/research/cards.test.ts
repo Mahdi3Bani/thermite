@@ -19,8 +19,10 @@ import {
   BRIEF_ANSWER_CHARS,
   CARD_ANSWER_MAX,
   CARD_GAP_MAX,
+  CARD_PACE,
   CARDS_PACKAGE_MAX,
   type CardInput,
+  Cards,
   type CardsPackage,
   cardHistory,
   cardOf,
@@ -395,10 +397,11 @@ describe("the synthesizer's request: the questions whose evidence changed since 
     const [first] = await s.pending();
     const at = (i: number) => first?.questions.find((q) => q.index === i);
     const shown0 = at(0)?.new_claims.length ?? 0;
-    // While the synthesizer works, question 4 (index 3) gets 3 new claims.
+    // While the synthesizer works, question 4 (index 3) gets 5 new claims: enough to be asked
+    // again at once (CARD_PACE).
     const late = seedClaims(s.ledger, RUN, {
       question: 3,
-      n: 3,
+      n: 5,
       sources: [...s.src.values()],
       from: Date.now(),
       tag: "qlate",
@@ -435,6 +438,35 @@ describe("the synthesizer's request: the questions whose evidence changed since 
     assert.equal(now(2), undefined);
   });
 
+  test("a card is written again once 5 new claims came, or once it is 30 minutes old; not on every new claim", async (t) => {
+    const s = await sixQuestions(t);
+    const [first] = await s.pending();
+    const cards = (first?.questions ?? []).map((q) =>
+      card(q.index, [q.new_claims[0]?.id as string], [0], { through: q.through }),
+    );
+    await s.call("POST", `/v1/research/cards/${RUN}`, { synthesizer: "teacher-1", cards });
+    const fresh = (n: number, tag: string) =>
+      seedClaims(s.ledger, RUN, {
+        question: 5,
+        n,
+        sources: [...s.src.values()],
+        from: Date.now(),
+        tag,
+      });
+    const asked = (pkgs: CardsPackage[]) =>
+      pkgs.flatMap((p) => p.questions).some((q) => q.index === 5);
+    fresh(1, "pace1");
+    assert.equal(asked(await s.pending()), false, "one new claim: not yet");
+    const cardsNow = new Cards(s.ledger, (run) => s.env.service.contractFor(run));
+    assert.equal(
+      asked(cardsNow.pending(Date.now() + CARD_PACE.ms + 1000)),
+      true,
+      "its card is old",
+    );
+    fresh(CARD_PACE.claims - 1, "pace2");
+    assert.equal(asked(await s.pending()), true, "5 new claims: at once");
+  });
+
   test("claims recorded in the same millisecond are ordered by id: none is skipped", async (t) => {
     const s = await sixQuestions(t);
     const when = Date.now() + 60_000;
@@ -457,7 +489,9 @@ describe("the synthesizer's request: the questions whose evidence changed since 
       cards: [card(5, ["c-same000001"], [0], { through: "c-same000001" })],
     });
     assert.deepEqual(ok.body.results, [{ question: 5, accepted: true, version: 1 }]);
-    const [pkg] = await s.pending();
+    // Asked once the card is old enough (CARD_PACE), as one new claim alone does not ask again.
+    const cards = new Cards(s.ledger, (run) => s.env.service.contractFor(run));
+    const [pkg] = cards.pending(when + CARD_PACE.ms + 1000);
     assert.deepEqual(
       pkg?.questions.find((q) => q.index === 5)?.new_claims.map((c) => c.id),
       ["c-same000002"],

@@ -141,6 +141,13 @@ export function cardsOf(ledger: Ledger, run: string): Card[] {
 }
 
 /** A question's card: its newest version, if it has one. */
+/**
+ * When a question's card is written again: once this many new verified claims came since it, or
+ * once it is this old and any came. A question with no card is asked at once. Without it the
+ * synthesizer would be called in nearly every supervisor round while claims arrive.
+ */
+export const CARD_PACE = { claims: 5, ms: 30 * 60_000 };
+
 export function cardOf(ledger: Ledger, run: string, question: number): Card | undefined {
   const r = ledger.db
     .prepare(
@@ -431,7 +438,7 @@ export class Cards {
   }
 
   /** The questions of a run whose evidence changed since their card, as one request. */
-  package(run: string): CardsPackage | undefined {
+  package(run: string, now = Date.now()): CardsPackage | undefined {
     const contract = this.contract(run);
     const min = contract.quality.min_independent_sources;
     const counts = verifiedByQuestion(this.ledger, run);
@@ -439,6 +446,14 @@ export class Cards {
       const fresh = this.newClaims(run, index);
       if (!fresh.length) return [];
       const card = cardOf(this.ledger, run, index);
+      // Paced (CARD_PACE): a card is written again once enough new claims came, or once it is old
+      // enough; a question with no card yet is asked at once.
+      if (
+        card &&
+        fresh.length < CARD_PACE.claims &&
+        now - Date.parse(card.created_at) < CARD_PACE.ms
+      )
+        return [];
       const cited = card
         ? card.claims.flatMap((id) => {
             const cl = this.ledger.db
@@ -516,12 +531,12 @@ export class Cards {
   }
 
   /** For each running research run whose evidence changed since a card, its request. */
-  pending(): CardsPackage[] {
+  pending(now = Date.now()): CardsPackage[] {
     const runs = this.ledger.db
       .prepare("select id from run where mode = 'research' and status = 'running' order by id")
       .all() as { id: string }[];
     return runs.flatMap(({ id }) => {
-      const pkg = this.package(id);
+      const pkg = this.package(id, now);
       return pkg ? [pkg] : [];
     });
   }
