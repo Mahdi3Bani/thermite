@@ -40,6 +40,8 @@ const clipWords = (s: string, n: number) => {
 
 /** The research paper's file in a research run's folder (goal 112). */
 export const PAPER_FILE = "paper.md";
+/** The paper's next experiments with their kinds (goal 119), beside paper.md. */
+export const NEXT_EXPERIMENTS_FILE = "next-experiments.json";
 
 /**
  * A research run's folder: everything the run has learned, as files a worker can search with
@@ -438,11 +440,23 @@ export class ResearchFolder {
         : "No report yet: the harness writes one at each digest and at the end.\n",
     );
     // The run's research paper, once code accepted it (goal 112): whole, with its references.
-    const paper = this.ledger.latestEventBody(PAPER_ACCEPTED, run)?.paper;
+    const accepted = this.ledger.latestEventBody(PAPER_ACCEPTED, run);
+    const paper = accepted?.paper;
     if (typeof paper === "string") this.changed(join(root, PAPER_FILE), paper);
+    // Its next experiments, each tagged with the run it is for (goal 119), for the next campaign
+    // to read: a hill climb's improvements and a goal campaign's goals.
+    const next = Array.isArray(accepted?.experiments) ? accepted.experiments : [];
+    if (typeof paper === "string")
+      this.changed(
+        join(root, NEXT_EXPERIMENTS_FILE),
+        `${JSON.stringify({ run, experiments: next }, null, 2)}\n`,
+      );
     const paperLine =
       typeof paper === "string"
-        ? [`- ${PAPER_FILE}: the run's research paper, which leads its final report`]
+        ? [
+            `- ${PAPER_FILE}: the run's research paper, which leads its final report`,
+            `- ${NEXT_EXPERIMENTS_FILE}: its next experiments, each with its kind (hill_climb or goal), measure and what it rests on`,
+          ]
         : [];
 
     // The newest state of each file each lane wrote.

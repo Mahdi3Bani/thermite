@@ -82,6 +82,30 @@ export const PROPOSED_MAX = 100;
 export const PAPER_CERTAINTIES = ["high", "moderate", "low", "insufficient", "open"] as const;
 const CERTAINTY_LINES = `"Certainty: high", "Certainty: moderate" or "Certainty: low" for a question the review panel found answered, "Certainty: insufficient" for one at the best available, and "Certainty: open" for one that stayed open`;
 
+/**
+ * The kinds of next experiment (goal 119), by the run that takes one: an improvement a hill climb
+ * measures against its champion, or an outcome a goal campaign proves.
+ */
+export const NEXT_KINDS = ["hill_climb", "goal"] as const;
+export type NextKind = (typeof NEXT_KINDS)[number];
+/** Each kind in words. */
+export const NEXT_KIND_WORDS: Record<NextKind, string> = {
+  hill_climb: "an improvement a hill climb measures against its champion",
+  goal: "an outcome a goal campaign proves",
+};
+/** Each kind's section heading in the paper's Next experiments part. */
+export const NEXT_HEADINGS: Record<NextKind, string> = {
+  hill_climb: "For a hill climb",
+  goal: "For a goal campaign",
+};
+/** What a kind's measure says. */
+const MEASURE_WORDS: Record<NextKind, string> = {
+  hill_climb: "the metric it should move, and which way",
+  goal: "how a check would know the goal is reached",
+};
+export const isNextKind = (k: string): k is NextKind =>
+  (NEXT_KINDS as readonly string[]).includes(k);
+
 /** The rules a paper is checked against, in words: the writer's package carries them. */
 export const PAPER_RULES = [
   "The paper is Markdown in Simplified Technical English (descriptive text).",
@@ -92,6 +116,7 @@ export const PAPER_RULES = [
   `Results: one ### Question N section for each question, N from 1. Its first line is the review panel's decision on it: ${CERTAINTY_LINES}. Then the answer from the question's card, with its evidence. Cite only the question's own evidence: the claims of its card (questions[].claims) or other verified claims of that question. For a question that stayed open, write what the evidence shows and what is missing. When reviewers dissent (questions[].dissent), say so. Each section cites at least one claim, unless its question has no verified claim.`,
   "Hypotheses: a table of verdicts, | Hypothesis | Verdict | Evidence |, with one row for each hypothesis in the package's hypotheses: its id (h-…) in the first cell, and supported, refuted or undecided in the Verdict cell. The verdict is the review panel's decision; when it has none, undecided. You may add a ### section for a hypothesis under the table. Then ### Proposed by the run: the hypotheses in the package's proposed, as a list, with no verdict: the review panel did not judge them.",
   "Method: how the sources were found, archived and checked, with the figures. Limits of the evidence: claims from a single domain, open gaps, and draft findings that stay unverified. Next experiments: the measurement gaps of the cards and the next experiments the review panel named (questions[].next_experiments), then what else to try, each with why.",
+  `Next experiments has a ### section for each kind of next experiment it has: ${NEXT_KINDS.map((k) => `### ${NEXT_HEADINGS[k]} (${NEXT_KIND_WORDS[k]})`).join(", and ")}. Give each next experiment the same kind in experiments.`,
 ];
 
 /** The fields of one of the paper's next experiments (the supervisor reads a model's answer with them). */
@@ -99,6 +124,23 @@ export const PAPER_EXPERIMENT_FIELDS = {
   title: z.string().trim().min(1).max(200),
   why: z.string().trim().min(1).max(2000),
   details: z.string().max(4000).default(""),
+  /**
+   * The run it is for (goal 119): `hill_climb` or `goal`. Read whatever its case and spacing
+   * ("Hill climb", "goal campaign"); checked in code, with words, when it is neither.
+   */
+  kind: z.preprocess(
+    (v) =>
+      typeof v === "string"
+        ? v
+            .trim()
+            .toLowerCase()
+            .replace(/[\s-]+/g, "_")
+            .replace(/^goal_campaign$/, "goal")
+        : v,
+    z.string().max(40).default(""),
+  ),
+  /** For a hill climb, the metric it should move and which way; for a goal, how a check knows it is reached. */
+  measure: z.string().trim().max(2000).default(""),
   findings: z.array(z.string().min(1).max(100)).max(50).default([]),
   claims: z.array(z.string().min(1).max(100)).max(50).default([]),
 };
@@ -613,11 +655,19 @@ export function checkPaper(
   return { problems, cited };
 }
 
-/** Each next experiment checked: it rests on supported findings or verified claims of the run. */
+/**
+ * Each next experiment checked: its kind and measure (goal 119), and that it rests on supported
+ * findings or verified claims of the run.
+ */
 export function checkExperiments(ledger: Ledger, run: string, xs: PaperExperiment[]): string[] {
   const out: string[] = [];
   xs.forEach((x, i) => {
     const which = `next experiment ${i + 1} ("${clip(x.title, 80)}")`;
+    if (!isNextKind(x.kind))
+      out.push(
+        `${which} ${x.kind ? `has the kind "${clip(x.kind, 40)}", which is not one` : "has no kind"}: give hill_climb (${NEXT_KIND_WORDS.hill_climb}) or goal (${NEXT_KIND_WORDS.goal})`,
+      );
+    else if (!x.measure) out.push(`${which} has no measure: give ${MEASURE_WORDS[x.kind]}`);
     if (!x.findings.length && !x.claims.length)
       out.push(
         `${which} rests on no finding or claim: give the ids of the supported findings or verified claims it builds on`,
@@ -633,6 +683,34 @@ export function checkExperiments(ledger: Ledger, run: string, xs: PaperExperimen
     for (const p of checkCited(ledger, run, x.claims, []).problems) out.push(`${which}: ${p}`);
   });
   return out;
+}
+
+/**
+ * The paper's Next experiments part has a ### section for each kind its experiments have (goal
+ * 119), headed as NEXT_HEADINGS says. Problems in words, or none.
+ */
+export function nextSectionProblems(markdown: string, xs: PaperExperiment[]): PaperProblem[] {
+  const kinds = [...new Set(xs.map((x) => x.kind).filter(isNextKind))];
+  if (!kinds.length) return [];
+  let part = "";
+  const headings: string[] = [];
+  let fence = false;
+  for (const line of markdown.replace(/\r\n?/g, "\n").split("\n")) {
+    if (FENCE.test(line)) fence = !fence;
+    if (fence) continue;
+    const h = HEADING.exec(line);
+    if (!h) continue;
+    const level = (h[1] as string).length;
+    if (level <= 2) part = fold(h[2] as string);
+    else if (level === 3 && part.startsWith(fold("Next experiments")))
+      headings.push(fold(h[2] as string));
+  }
+  return kinds
+    .filter((k) => !headings.some((x) => x.startsWith(fold(NEXT_HEADINGS[k]))))
+    .map((k) => ({
+      line: null,
+      problem: `Next experiments has no "### ${NEXT_HEADINGS[k]}" section, and ${xs.filter((x) => x.kind === k).length} of its next experiments are for ${k === "goal" ? "a goal campaign" : "a hill climb"}`,
+    }));
 }
 
 /** A run's items as its paper reads them (goal 117): each with its standing decision and dissent. */
@@ -970,9 +1048,24 @@ export class Papers {
     };
   }
 
-  /** A draft checked, as the writer's check_paper tool asks: each problem with its line. */
-  check(run: string, markdown: string): { ok: boolean; problems: PaperProblem[] } {
+  /**
+   * A draft checked, as the writer's check_paper tool asks: each problem with its line; with its
+   * next experiments when it gives them (goal 119).
+   */
+  check(
+    run: string,
+    markdown: string,
+    experiments?: PaperExperiment[],
+  ): { ok: boolean; problems: PaperProblem[] } {
     const { problems } = checkPaper(this.ledger, run, this.basis(run), markdown);
+    if (experiments)
+      problems.push(
+        ...checkExperiments(this.ledger, run, experiments).map((problem) => ({
+          line: null,
+          problem,
+        })),
+        ...nextSectionProblems(markdown, experiments),
+      );
     return { ok: problems.length === 0, problems };
   }
 
@@ -1213,6 +1306,7 @@ export class Papers {
         line: null,
         problem,
       })),
+      ...nextSectionProblems(input.paper, input.experiments),
       ...steProblems(input.ste, input.paper),
     ];
     if (problems.length) {
@@ -1248,6 +1342,8 @@ export class Papers {
       title: x.title,
       why: x.why,
       details: x.details,
+      kind: x.kind,
+      measure: x.measure,
       findings: [...new Set(x.findings)],
       claims: [...new Set(x.claims)],
       // What it rests on, in words: a run that takes it cannot read this run's records.

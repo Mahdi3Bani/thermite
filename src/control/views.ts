@@ -472,6 +472,8 @@ export interface RunView {
     writer: string | null;
     ste_checked: boolean | null;
     experiments: number;
+    /** Its next experiments by the run each is for (goal 119); both 0 for a paper that tagged none. */
+    next_for: { hill_climb: number; goal: number };
     /** The paper, with the references the harness appended, as its event carries it. */
     text: string | null;
   } | null;
@@ -1451,6 +1453,7 @@ export function rigView(
           writer: null,
           ste_checked: null,
           experiments: 0,
+          next_for: { hill_climb: 0, goal: 0 },
           text: null,
         };
         break;
@@ -1478,6 +1481,14 @@ export function rigView(
           writer: typeof b.writer === "string" ? b.writer : null,
           ste_checked: ste.checked === true,
           experiments: Array.isArray(b.experiments) ? b.experiments.length : 0,
+          next_for: {
+            hill_climb: (Array.isArray(b.experiments) ? b.experiments : []).filter(
+              (x) => (x as { kind?: unknown })?.kind === "hill_climb",
+            ).length,
+            goal: (Array.isArray(b.experiments) ? b.experiments : []).filter(
+              (x) => (x as { kind?: unknown })?.kind === "goal",
+            ).length,
+          },
           text: typeof b.paper === "string" ? b.paper : null,
         };
         break;

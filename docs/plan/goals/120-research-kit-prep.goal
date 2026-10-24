@@ -1,6 +1,6 @@
 ---
 id: "120"
-title: "Kit prep: a research run can end with kits prepared for the hill climb or goal campaign that follows"
+title: "From research to the next campaign: next experiments in Start a run and New campaign, and kit prep"
 status: PROPOSED
 version: "0.2.0"
 depends_on: ["119", "102"]
@@ -8,13 +8,19 @@ created: 2026-10-24
 updated: 2026-10-24
 ---
 
-# 120 · Kit prep: a research run can end with kits prepared for the hill climb or goal campaign that follows
+# 120 · From research to the next campaign: next experiments in Start a run and New campaign, and kit prep
 
-**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020) · **Depends on:** [119](119-next-experiments-by-run-kind.goal), [102](102-kits-define-campaigns.goal)
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020) · **Depends on:** [119](_completed/119-next-experiments-by-run-kind.goal), [102](102-kits-define-campaigns.goal)
 
 ## What
 
 A plan only; nothing of it is built.
+
+The automated way from a research run to its next steps, reading the tagged next experiments of goal 119:
+
+- **Start a run (hill climb)** offers the run's `hill_climb` next experiments to copy into the new run's queue.
+- **New campaign (goal)** offers its `goal` next experiments as starting goals: each a goal of the new campaign, with its words, its measure as the criteria to fill in, and what it rests on. The owner keeps, edits or drops each before the campaign is made.
+- **Kit prep**, below.
 
 A research campaign gets an optional setting, **Kit prep**. With it on, a research run that ends does more than write its paper and hand on its next experiments (goal 119). It also prepares a kit for each campaign its next experiments call for, when one is needed: a kit for a hill climb that tries its improvements, or a kit for a goal campaign that proves its goals. The owner can then go straight from the research to the next campaign.
 
@@ -36,6 +42,7 @@ The owner, 2026-10-24: "for v0.2.0 we should add the features of 'kit prep' as o
 
 ## Done when
 
+- [ ] A mockup of Start a run's and New campaign's next experiments, approved by the owner; the build, with tests.
 - [ ] A design: what a prepared kit holds for each kind of campaign, how the run drafts it (which agent, with which tools), how control keeps and checks it, and how the owner accepts it.
 - [ ] A mockup of the setting, the prepared kits on the run's page and the owner's acceptance, approved by the owner.
 - [ ] The build, with tests, and an acceptance run that goes from a research run to a hill climb or goal campaign on its prepared kit.
@@ -44,6 +51,7 @@ The owner, 2026-10-24: "for v0.2.0 we should add the features of 'kit prep' as o
 ## Decisions
 
 - 2026-10-24, owner: in v0.2.0, as an optional setting of a research campaign.
+- 2026-10-24, owner: Start a run and New campaign using the next experiments belong here, "the automated way to go from research to next steps"; goal 119 is the paper's output and tags.
 
 ## Open questions
 

@@ -127,6 +127,15 @@ describe("a research run's items on control (goals 116 and 117)", () => {
       "Review 4, try 2, could not be posted: 2 of 3 reviewers of the review panel answered. It is tried again at the review panel's next round.",
     );
     assert.equal(say("research_progress", { open: [1], stopped: false }), undefined);
+    // A paper's next experiments, by the run each is for (goal 119).
+    assert.equal(
+      say("research_paper_accepted", {
+        cited_claims: 4,
+        ste: { checked: false },
+        experiments: [{ kind: "hill_climb" }, { kind: "goal" }, { kind: "goal" }],
+      }),
+      "The research paper passed the harness's checks (no STE checker on the rig). It cites 4 claims, and 3 next experiments (1 for a hill climb, 2 for a goal campaign) went to the knowledge base.",
+    );
     assert.match(
       String(say("research_stopped", { open: { questions: [1, 3], hypotheses: [] } })),
       /^Research stopped adding: 2 questions stay open, every open one saturated/,
