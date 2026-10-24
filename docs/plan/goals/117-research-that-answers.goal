@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 117 · Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal), [047](047-research-planner.goal), [116](116-reviews-tab.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [112](112-research-ends-when-answered.goal), [047](047-research-planner.goal), [116](_completed/116-reviews-tab.goal)
 
 ## What
 
@@ -114,6 +114,10 @@ None now: the owner answered them (Decisions).
 - 2026-10-24 10:32 UTC: every part is merged on the build branch (A1, A2, B1, B2, C1, C2, with goal 116's failed tries); the merge of B1 also gives a research run's dashboard its planner (**Tell the planner** in plain words, the plan card, round counts, Live's **Planner** filter, History's `The gap-driven plan set round N (the planner is off)`). The full test suite passed, 1457 of 1457. Left: the three acceptance runs on the deployment, which wait for the owner's push and the roll.
 - 2026-10-24 17:48 UTC: the paper as a normal paper (branch `paper/normal-structure`), from the owner's decision above. The writer is asked for the parts of a usual paper (`PAPER_PARTS`: Abstract, Introduction, Related work, Method, Results, Discussion, Limitations, Future work, Conclusion) and chooses them; `checkPaper` no longer checks parts, `### Question N` sections, `Certainty:` lines or a table of verdicts. It checks the title, no References part or appendix, every question with a verified claim answered (the paper cites one of its card's claims or the question's verified claims), citations and numbers as before (the numbers of the questions' and hypotheses' own words now pass anywhere), and a verdict the paper gives (a table row or `Verdict:` line naming the id) against the panel's. On acceptance `numberCitations` turns `[c-…]` into source numbers in first-cite order, and code appends References (`[n] Title. site, archived day. <url>`), Appendix A (how the run ended; each question's decision, certainty, reviewers and dissent; each hypothesis's verdict; the proposed hypotheses) and Appendix B (each claim cited with its numbers); the event keeps `citations` and `references`. The package loses `certainty_line`. The next-experiment headings are looked for anywhere in the paper. The final report's records after the paper are **Supplementary material**. Also fixed: `advise-paper.test.ts` gave an experiment with no kind or measure, which goal 119's schema refuses. Tests: `research-paper.test.ts`, `review-items.test.ts`, `advise-paper.test.ts`.
 
+- 2026-10-24: Findings from the two short tests (30 minutes to 2 hours, 15-minute digests), both to fix in this goal before its acceptance:
+  1. The known-answers test closed with one required hypothesis `undecided` and no claim for or against it: no task looked for its evidence, and the review panel's `undecided` stood as its end. The expected verdict was `refuted`. To fix: a hypothesis that needs a verdict and has no claim for or against it gets a task from the plan, as a question's gap does, and an `undecided` decision with no evidence does not count as an end.
+  2. In the third-topic test, one lane added the same draft finding (`supported: false`) four times in four minutes. Repeated notes are refused (part A1), repeated findings are not. To fix: a finding that repeats one of the run's recent findings is refused in words, with the finding it repeats, and a draft's reasons reach the lane so it can fix the finding instead of adding it again.
+  The owner approved the Reviews and Hypotheses tabs on the known-answers test (goal 116).
 ---
 
 Run with `/goal Complete docs/plan/goals/117-research-that-answers.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
