@@ -21,6 +21,7 @@ import {
   runHref,
   sparkline,
 } from "./components.ts";
+import { gainChip, measuredWords } from "./gains.ts";
 import {
   attemptState,
   auditReason,
@@ -239,7 +240,7 @@ const changeHeadline = (r: RunView, a: AttemptView | undefined, id: string) => {
   if (r.mode === "goal" && a.gained?.length)
     return `${who} With this change, the project gets ${a.gained.length} more goal${a.gained.length === 1 ? "" : "s"}: ${esc(listText(a.gained))}.`;
   if (r.mode !== "goal" && typeof a.delta === "number")
-    return `${who} The judge measured it: ${esc(signed(a.delta))} compared with the champion.`;
+    return `${who} The judge measured it: ${esc(measuredWords(r, { ...a, delta: a.delta }))} compared with the champion.`;
   return `${who} ${esc(clip(a.hypothesis ?? "", 140))}`;
 };
 
@@ -248,9 +249,7 @@ export function changeChips(r: RunView, a: AttemptView | undefined): string {
   if (!a) return "";
   const out: string[] = [];
   if (r.mode !== "goal" && typeof a.delta === "number") {
-    out.push(
-      `<span class="chip ${a.delta > 0 ? "ok" : "bad"}"><b>${esc(signed(a.delta))}</b></span>`,
-    );
+    out.push(gainChip(r, a, a.delta > 0 ? "ok" : "bad"));
     if (a.ci)
       out.push(`<span class="chip">${esc(signed(a.ci[0]))} to ${esc(signed(a.ci[1]))}</span>`);
   }
@@ -1273,7 +1272,7 @@ export function attemptRows(u: RigView, r: RunView, xs: AttemptView[], now: numb
             ? `${a.gained?.length ? `<span class="chip ok">+${a.gained.length} goal${a.gained.length === 1 ? "" : "s"}</span>` : ""}${a.lost.length ? `<span class="chip bad">−${a.lost.length}</span>` : ""}`
             : ""
           : typeof a.delta === "number"
-            ? `<span class="chip ${a.delta > 0 ? "ok" : a.delta < 0 ? "bad" : ""}"><b>${esc(signed(a.delta))}</b></span>`
+            ? gainChip(r, a)
             : "";
       const where =
         o.word === "Blocked" ? "the judge measured it; the auditor blocked it" : attemptState(a);

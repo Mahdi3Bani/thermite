@@ -83,6 +83,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [099](goals/_completed/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `VERIFIED`
 - [115](goals/_completed/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `VERIFIED`
 - [128](goals/_completed/128-get-run-bounded.goal) `get_run` stays a size an agent can read, for a run of any length · `VERIFIED`
+- [133](goals/133-metric-values-beside-gains.goal) A hill climb shows its main metric's real values beside each gain · `IN_PROGRESS`
 
 ### Research mode
 
@@ -142,7 +143,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 **UI clean-up and UX improvements.** The screens agree with each other, and each one says what you need to know. Proposed.
 
 - [126](goals/126-ui-clean-up.goal) UI clean-up: every screen checked against the rules for screens, and the gaps fixed · `PROPOSED`
-- [133](goals/133-metric-values-beside-gains.goal) A hill climb shows its main metric's real values beside each gain · `PROPOSED`
 - [131](goals/131-ux-fixes-found-in-use.goal) UX fixes found in use: the screens' small faults that the owner reports · `PROPOSED`
 - [088](goals/088-new-campaign-button-progress.goal) New campaign's buttons show they were pressed · `PROPOSED`
 - [090](goals/090-info-tab.goal) An Info tab for campaigns and runs: everything they were started with · `PROPOSED`
