@@ -532,6 +532,72 @@ describe("advisors", () => {
     assert.deepEqual(sent, [undefined, "low", "high"]);
   });
 
+  test("a Pi advisor refused for the same problems three times running ends its call; changing problems go on", async () => {
+    const runtime = {
+      name: "panel-1",
+      runtime: "openai" as const,
+      base_url: "",
+      model: "m",
+      api_key: "k",
+      context_window: 200_000,
+      max_tokens: 8192,
+      usd_per_mtok_in: 0,
+      usd_per_mtok_out: 0,
+    };
+    const call = (
+      url: string,
+      accept?: (o: { pass: boolean }) => Promise<string | undefined>,
+      schema: z.ZodType<{ pass: boolean }> = z.strictObject({ pass: z.boolean() }),
+    ) =>
+      runAdvisor({
+        runtime: { ...runtime, base_url: url },
+        system: "Grade it.",
+        prompt: "The change.",
+        schema,
+        answerSchema: Type.Object({ pass: Type.Boolean() }),
+        accept,
+      });
+    // The same wrong answer every time, refused by Pi's check of the tool's schema, then by the
+    // role's own schema: no turn or time limit is set, and the call still ends.
+    let asked = 0;
+    let args: unknown = { pass: "yes" };
+    const stuck = await startFakeModel(() => {
+      asked++;
+      return { toolCalls: [{ name: "answer", args }] };
+    });
+    try {
+      const r = await call(stuck.url);
+      assert.equal(r.output, undefined);
+      assert.match(
+        r.error ?? "",
+        /refused 3 times running for the same problems: .*pass: must be boolean/s,
+      );
+      assert.equal(asked, 3);
+      asked = 0;
+      args = { pass: false };
+      const own = await call(stuck.url, undefined, z.strictObject({ pass: z.literal(true) }));
+      assert.equal(own.output, undefined);
+      assert.match(own.error ?? "", /refused 3 times running for the same problems: pass: /);
+      assert.equal(asked, 3);
+    } finally {
+      await stuck.close();
+    }
+    // Problems that change each time are asked again, past three, until the answer is taken.
+    asked = 0;
+    const fixing = await startFakeModel(() => {
+      asked++;
+      return { toolCalls: [{ name: "answer", args: { pass: true } }] };
+    });
+    const refusals = ["a", "b", "a", "b"];
+    try {
+      const r = await call(fixing.url, async () => refusals.shift());
+      assert.deepEqual(r.output, { pass: true }, r.error);
+      assert.equal(asked, 5);
+    } finally {
+      await fixing.close();
+    }
+  });
+
   test("advisors have no spending limit unless the owner sets one", () => {
     assert.equal(AdvisorsConfig.parse({}).max_usd_per_day, undefined);
     assert.equal(AdvisorsConfig.parse({ max_usd_per_day: 5 }).max_usd_per_day, 5);
