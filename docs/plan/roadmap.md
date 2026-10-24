@@ -150,6 +150,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
 - [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`
+- [124](goals/124-file-sizes.goal) Files of a size you can review: a check that stops large files growing, and the large files split · `PROPOSED`
 
 ## v0.3.0
 

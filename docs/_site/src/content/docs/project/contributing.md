@@ -159,7 +159,7 @@ Every change keeps these rules. [CONVENTIONS.md](https://github.com/iammrduncan/
 8. **Targets go through drivers.** Never assume a GPU, one provider or one model.
 9. **Steering is traceable.** Every directive and command records who issued it and why.
 
-The code is TypeScript in strict mode. Every input that crosses a trust boundary is checked against a schema: API requests, contracts, commands, imported files and all model output. Tests check behaviour that can fail, including the failure cases.
+The code is TypeScript in strict mode. Every input that crosses a trust boundary is checked against a schema: API requests, contracts, commands, imported files and all model output. Tests check behaviour that can fail, including the failure cases. CONVENTIONS.md also has the rules for code design, file sizes, limits, logging, security, tests and reports.
 
 ## Change the docs
 

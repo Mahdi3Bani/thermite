@@ -1,0 +1,69 @@
+---
+id: "124"
+title: "Files of a size you can review: a check that stops large files growing, and the large files split"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 124 · Files of a size you can review: a check that stops large files growing, and the large files split
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+A plan only; nothing of it is built.
+
+[CONVENTIONS.md](../../../CONVENTIONS.md#files-and-their-size) now sets file sizes: a handwritten production file stays under 500 lines where it can; a file over 500 lines gets a cohesion review; a file over 800 lines is normally split, by responsibility, into a folder named for it. Nothing checks this yet, and much of the code is over it. On 2026-10-24, of the 262 production files in `src/` (tests not counted), 33 were over 800 lines and 29 more were between 500 and 800. The largest:
+
+| File | Lines |
+| --- | --- |
+| `src/control/dashboard.ts` | 8,894 |
+| `src/control/store.ts` | 4,303 |
+| `src/harness/agents/scheduler.ts` | 3,086 |
+| `src/supervisor/advisors.ts` | 3,070 |
+| `src/harness/service.ts` | 2,994 |
+| `src/control/views.ts` | 2,175 |
+| `src/harness/judge/judge.ts` | 2,134 |
+
+This goal does two things:
+
+- **A size check** in `npm run check` and in CI. It lists each production file over 500 and over 800 lines. It fails when a file over 800 lines gets bigger, or when a new file is over 800 lines, unless a reason is recorded for that file. The sizes it starts from are recorded in the repository, so the check can only make things better.
+- **The large files split,** the largest first, by responsibility and ownership, each into a folder named for it, in small, safe steps: the tests pass after each step, and behaviour does not change.
+
+## Why
+
+The owner, 2026-10-24, on the file-size rule: "we need to get a better handle on that". Large files make each of the costs of complexity worse: a change touches more, a reader must hold more, and it is harder to see what a change could break.
+
+## Constraints
+
+- **Behaviour does not change.** Each split is a refactor only, with the tests and the checks that its files need passing before and after.
+- **Small steps:** one file, or one part of a file, at a time, so that a review can follow each step.
+- **Other work goes on.** Split a file when no other branch is changing it, to avoid long merges.
+
+## Done when
+
+- [ ] The size check, with tests, runs in `npm run check` and in CI, and fails on a file over 800 lines that grows.
+- [ ] Every production file over 800 lines is split, or has a recorded reason to stay as it is.
+- [ ] [CONTRIBUTING.md](../../../CONTRIBUTING.md) and the site's Contributing page name the check.
+
+## Decisions
+
+- 2026-10-24, owner: the file-size rule goes in CONVENTIONS.md, and its large files need a better handle.
+- 2026-10-24: placed in v0.2.0. The owner did not name a version.
+
+## Open questions
+
+- Whether the check also covers the scripts in `scripts/` (2 of them were over 800 lines on 2026-10-24) and the test files.
+- Where a recorded reason lives: a comment at the top of the file, or a list beside the check's starting sizes.
+- The order of the splits after the largest, and whether each split is its own goal.
+
+## Progress
+
+- 2026-10-24: Goal written from the owner's words, with the sizes counted that day.
+
+---
+
+Run with `/goal Complete docs/plan/goals/124-file-sizes.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
