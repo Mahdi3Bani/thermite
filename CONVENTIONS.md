@@ -130,6 +130,12 @@ The design invariants and the [rules for every goal](docs/plan/README.md#rules-f
 - When you split a file into modules, put them in a folder named for it: for example, `store/runs.ts` and `store/rigs.ts` for `store.ts`, not `store-runs.ts` and `store-rigs.ts` beside it.
 - Many files are over these sizes now. Don't make one of them bigger: add the new code as a module in the file's folder, or split the file first.
 
+## Folders and names
+
+- Hierarchy goes in folders, not in file names. Files whose names share a word at the start or the end belong in a folder named for that word: `model.ts`, `model-check.ts`, `model-source.ts` and `model-stall.ts` become `model/index.ts`, `model/check.ts`, `model/source.ts` and `model/stall.ts`; the sixteen `scripts/*-acceptance.mjs` become `scripts/acceptance/`.
+- A folder that is a module has an `index.ts`: its interface. Code outside the folder imports from `index.ts`, not from the files inside it.
+- New code follows this now. Add a module to a folder; never add another `<name>-<part>.ts` beside the rest. Goal [125](docs/plan/goals/125-code-to-the-conventions.goal) moves the existing files.
+
 ## Limits and state
 
 - **Mechanical parts have limits.** Name a limit for each queue, retry, buffer, payload, file read and the work done per request, and say what happens when it is reached.
@@ -168,6 +174,7 @@ The design invariants and the [rules for every goal](docs/plan/README.md#rules-f
 
 ## Testing
 
+- **Tests live in `tests/`,** never beside the code, so that the code is quick to read and to find. Its folders mirror `src/`: the tests of `src/control/store.ts` are in `tests/control/store.test.ts`. Test helpers, fakes and stand-ins live in `tests/` too. Goal [125](docs/plan/goals/125-code-to-the-conventions.goal) moves the existing tests and points `npm test`, the typecheck and the docs at `tests/`. Until it does, `npm test` finds tests only beside the code, so a new test goes there too.
 - Test observable behaviour and important failure transitions. Tests must be able to fail.
 - Tests at the system's cut-points and on the users' critical paths give the most value, and they survive refactoring. Keep fine-grained unit tests for what needs exact reference values, such as the statistics and state machines below.
 - Mock only at system boundaries, with stand-ins such as the fake RunPod API, the scripted model and the stand-in agent programs.
