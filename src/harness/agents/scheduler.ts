@@ -13,7 +13,7 @@ import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { queueTarget } from "../../core/queue-target.ts";
-import { labelledQuestion, NO_WRITER, questionLabel } from "../../core/research-check.ts";
+import { NO_WRITER, questionLabel } from "../../core/research-check.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
@@ -39,6 +39,17 @@ import {
   researchPackage,
   researchReviewDue,
 } from "../research/review.ts";
+import {
+  GAP_LINE,
+  gapOf,
+  nextGap,
+  nextQuestion,
+  type QuestionState,
+  type ResearchState,
+  researchState,
+  stateWords,
+  took,
+} from "../research/shares.ts";
 import { Reviews } from "../reviews.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
@@ -46,6 +57,7 @@ import { violationsOf, violationsText } from "../v0.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import {
   Coordinator,
+  type Directive,
   focusOf,
   type Handout,
   PLANNER,
@@ -1602,8 +1614,6 @@ export class Scheduler {
     o: {
       perEpoch: number;
       laneCount: number;
-      /** Research: the research plan fills the queue instead (its MANDATEs name task kinds). */
-      fill?: (() => Experiment | undefined) | undefined;
     },
   ): { x: Experiment; why: string } | undefined {
     const queue = this.o.service.queue;
@@ -1621,7 +1631,7 @@ export class Scheduler {
         .map((b) => b.experiment as string),
     );
     const directives = this.directives(run);
-    if (!o.fill) this.coordinator.ensureMandates(run, directives);
+    this.coordinator.ensureMandates(run, directives);
     let x = this.coordinator.pick(run, a.lane, {
       directives,
       window: o.laneCount,
@@ -1629,13 +1639,11 @@ export class Scheduler {
     });
     let why = x ? this.coordinator.whyPicked(run, a.lane, x, directives) : "";
     if (!x) {
-      x =
-        o.fill?.() ??
-        this.coordinator.fill(
-          run,
-          a,
-          `the queue had nothing for ${a.lane}: it goes on in its round's direction (${a.family})`,
-        );
+      x = this.coordinator.fill(
+        run,
+        a,
+        `the queue had nothing for ${a.lane}: it goes on in its round's direction (${a.family})`,
+      );
       why = "the queue had nothing for this lane, so it goes on in its round's direction";
     }
     if (!x) return undefined;
@@ -1828,11 +1836,7 @@ export class Scheduler {
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.laneWaitMs(run, a.lane, true) > 0) continue;
       if (this.halted()) return started;
-      const got = this.experimentFor(run, epoch, a, trials.length + 1, {
-        perEpoch: contract.lanes.trials_per_epoch,
-        laneCount: 1,
-        fill: () => this.fillResearch(run, contract, epoch.n, 1).added[0],
-      });
+      const got = this.researchTaskFor(run, contract, epoch, a, trials.length + 1);
       if (!got) continue;
       this.startResearchTrial(run, contract, epoch.n, a, clock, got);
       started = true;
@@ -1909,43 +1913,37 @@ export class Scheduler {
   ];
 
   /**
-   * A research round: research tasks are the run's experiments. The research plan (below) fills
-   * the queue when it has fewer tasks than lanes, then each lane takes the next task in order:
-   * the owner's and the advisors' as much as the plan's. One hand-out in the planner's log.
+   * A research round (goal 117): research tasks are the run's experiments, each about one
+   * question and one evidence gap. Each lane gets its task by the gap-driven rules
+   * (nextResearchTask): the owner's queued tasks as before, another's when its question may take
+   * a task now, else a new task of the gap-driven plan. One hand-out in the planner's log.
    */
   private planResearchEpoch(run: string, contract: ResearchContract, n: number): void {
     for (const t of Scheduler.RESEARCH_TASKS)
       this.registry.addFamily(run, t.id, t.description, "research-plan");
     const directives = this.directives(run);
     const lanes = lanesOf(this.laneCount(run, contract));
-    // The research plan fills the queue when it has fewer tasks than lanes; then each lane takes
-    // the next task in order (AVOID task kinds skipped, MANDATE and TRY first).
-    const avoided = (x: Experiment) =>
-      directives.some(
-        (d) => d.body.kind === "avoid" && d.body.family && x.family === d.body.family,
-      );
-    const free = this.o.service.queue.queued(run).filter((x) => !avoided(x)).length;
-    const filled = this.fillResearch(run, contract, n, lanes.length - free);
+    const state = researchState(this.ledger, run, contract, { lanes: lanes.length, epoch: n });
     const given = new Set<string>();
     const handout: Handout[] = [];
     const assignments: Assignment[] = [];
+    let stalled = false;
     for (const lane of lanes) {
-      const x =
-        this.coordinator.pick(run, lane, { directives, window: 1, exclude: given }) ??
-        this.fillResearch(run, contract, n, 1).added[0];
-      if (!x) continue;
-      given.add(x.id);
-      const why = this.coordinator.whyPicked(run, lane, x, directives);
-      handout.push({ lane, experiment: x.id, why });
+      const got = this.nextResearchTask(run, contract, n, lane, state, given, directives);
+      if (!got) continue;
+      stalled ||= got.stalled;
+      given.add(got.x.id);
+      handout.push({ lane, experiment: got.x.id, why: got.why });
       assignments.push({
         lane,
-        family: x.family || "explore",
-        focus: focusOf(x),
+        family: got.x.family || "explore",
+        focus: focusOf(got.x),
         parent: "champion",
-        experiment: x.id,
-        why,
+        experiment: got.x.id,
+        why: got.why,
       });
     }
+    const notes = `research plan, gap-driven${stalled ? "; novelty fell, so primary sources and contradictions first" : ""}: ${state.questions.map(stateWords).join("; ")}`;
     this.registry.startEpoch({
       run,
       n,
@@ -1955,9 +1953,7 @@ export class Scheduler {
       rawViolations: [],
       assignments: attribute(assignments, directives),
       directives: directives.map((d) => d.id),
-      notes: filled.stalled
-        ? "research plan (deterministic in v1); novelty fell, so primary sources and contradictions first"
-        : "research plan (deterministic in v1)",
+      notes,
       plan: "research",
       by: this.o.owner,
     });
@@ -1965,59 +1961,13 @@ export class Scheduler {
       run,
       n,
       handout,
-      "research plan: lanes take the queued research tasks in order",
+      "research plan, gap-driven: each lane takes the next task whose question may take one now (the owner's as they come), else a new task for the question its gaps weigh for",
     );
   }
 
-  /**
-   * The research plan's tasks for the queue: least-covered questions first, task kinds rotating
-   * by round. Directives steer it by structure only (redirects in research mode): MANDATE and TRY
-   * name task kinds to put first, AVOID removes a task kind, and a numeric TRY or MANDATE value
-   * puts that question first. Each task is an experiment: its family is the task kind and its
-   * details hold the question. Directive text never reaches a worker's brief.
-   */
-  private fillResearch(
-    run: string,
-    contract: ResearchContract,
-    n: number,
-    count: number,
-  ): { added: Experiment[]; stalled: boolean } {
-    const research = this.o.research as Research;
-    const directives = this.directives(run);
-    const avoid = new Set(
-      directives.filter((d) => d.body.kind === "avoid" && d.body.family).map((d) => d.body.family),
-    );
-    const rank = (id: string) =>
-      directives.some((d) => d.body.kind === "mandate" && d.body.family === id)
-        ? 0
-        : directives.some((d) => d.body.kind === "try" && d.body.family === id)
-          ? 1
-          : 2;
-    // When novelty falls (an hour with no new source and no newly verified claim), lanes go
-    // deeper instead of wider: primary sources and contradictions first. Otherwise task kinds
-    // rotate by epoch. Directives then reorder or remove task kinds.
-    const stats = research.stats(run);
-    const stalled =
-      research.clock(run).elapsed_ms > 3_600_000 &&
-      stats.last_hour.sources === 0 &&
-      stats.last_hour.verified === 0;
-    const deep = (id: string) => Number(!["primary", "contradict"].includes(id));
-    const rotated = stalled
-      ? [...Scheduler.RESEARCH_TASKS].sort((x, y) => deep(x.id) - deep(y.id))
-      : Scheduler.RESEARCH_TASKS.map(
-          (_, k) =>
-            Scheduler.RESEARCH_TASKS[(n + k - 1) % Scheduler.RESEARCH_TASKS.length] as {
-              id: string;
-              description: string;
-            },
-        );
-    const tasks = rotated
-      .filter((t) => !avoid.has(t.id))
-      .map((t, k) => ({ t, k }))
-      .sort((a, b) => rank(a.t.id) - rank(b.t.id) || a.k - b.k)
-      .map((x) => x.t);
-    if (!tasks.length) tasks.push(rotated[0] as { id: string; description: string });
-    const firstQuestions = directives
+  /** The questions a TRY or MANDATE rule with a question's index puts first. */
+  private firstQuestions(directives: Directive[], contract: ResearchContract): number[] {
+    return directives
       .filter(
         (d) =>
           (d.body.kind === "mandate" || d.body.kind === "try") &&
@@ -2027,60 +1977,195 @@ export class Scheduler {
           d.body.value < contract.questions.length,
       )
       .map((d) => Number(d.body.value));
-    const coverage = stats.questions
-      .map((q, i) => ({ i, verified: q.verified }))
-      .sort(
-        (x, y) =>
-          Number(!firstQuestions.includes(x.i)) - Number(!firstQuestions.includes(y.i)) ||
-          x.verified - y.verified ||
-          x.i - y.i,
-      );
-    // The plan's own tasks already waiting or under way: each new task goes to the least-covered
-    // question with the fewest of them, so a fill does not repeat them, and other tasks in the
-    // queue (the teachers', the owner's) do not push the least-covered questions out of turn.
-    // Task kinds go on in turn after the plan's waiting tasks.
-    const queue = this.o.service.queue;
-    const waiting = [...queue.queued(run), ...queue.assigned(run)].filter(
-      (x) => x.added_by === PLANNER,
-    );
-    const busy = new Map<number, number>();
-    for (const x of waiting) {
-      // Its question (goal 117); a task the plan queued before tasks kept one, by its title:
-      // "Question 1 (index 0): …", or before that, "Question 0: …".
-      const i =
-        x.question ??
-        labelledQuestion(x.title) ??
-        Number(/^Question (\d+):/.exec(x.title)?.[1] ?? Number.NaN);
-      if (Number.isInteger(i)) busy.set(i, (busy.get(i) ?? 0) + 1);
-    }
-    const added: Experiment[] = [];
-    for (let k = 0; k < count; k++) {
-      const q = coverage.reduce((best, c) =>
-        (busy.get(c.i) ?? 0) < (busy.get(best.i) ?? 0) ? c : best,
-      ) as { i: number };
-      busy.set(q.i, (busy.get(q.i) ?? 0) + 1);
-      const task = tasks[(waiting.length + k) % tasks.length] as {
-        id: string;
-        description: string;
+  }
+
+  /**
+   * A lane's next research task by the gap-driven rules (goal 117). First the owner's queued tasks,
+   * in queue order, as before (AVOID task kinds skipped, MANDATE and TRY kinds first), and any
+   * other that names no question. Then the question the gaps weigh for (nextQuestion: the floor,
+   * then the weighted shares under the ceiling; never a question decided or saturated, unless
+   * every open one is): the first task queued for it, whoever added it (a teacher's, a lane's idea
+   * once queued, the plan's), else a new task of the gap-driven plan for it. Each task given
+   * counts in `state`.
+   */
+  private nextResearchTask(
+    run: string,
+    contract: ResearchContract,
+    n: number,
+    lane: string,
+    state: ResearchState,
+    exclude: ReadonlySet<string>,
+    directives: Directive[],
+  ): { x: Experiment; why: string; stalled: boolean } | undefined {
+    const queued = this.o.service.queue.queued(run);
+    const only = (keep: (x: Experiment) => boolean) =>
+      this.coordinator.pick(run, lane, {
+        directives,
+        window: 1,
+        exclude: new Set([...exclude, ...queued.filter((x) => !keep(x)).map((x) => x.id)]),
+      });
+    const unbalanced = only((x) => x.added_by === "owner" || typeof x.question !== "number");
+    if (unbalanced) {
+      if (typeof unbalanced.question === "number") took(state, unbalanced.question);
+      return {
+        x: unbalanced,
+        why: this.coordinator.whyPicked(run, lane, unbalanced, directives),
+        stalled: false,
       };
-      added.push(
-        queue.add(
-          run,
-          {
-            title: `${questionLabel(q.i)}: ${task.description}`,
-            details: questionDetails(q.i, contract.questions[q.i] ?? ""),
-            family: task.id,
-            question: q.i,
-            why: stalled
-              ? "the research plan: novelty fell, so primary sources and contradictions first"
-              : "the research plan: the least-covered questions first, task kinds in turn",
-            by: PLANNER,
-          },
-          PLANNER,
-        ),
-      );
     }
-    return { added, stalled };
+    const next = nextQuestion(state, this.firstQuestions(directives, contract));
+    if (!next) return undefined;
+    const q = next.question.index;
+    const waiting = only((x) => x.question === q);
+    if (waiting) {
+      took(state, q);
+      return {
+        x: waiting,
+        why: `the gap-driven plan: ${next.why}; this task was queued for it`,
+        stalled: false,
+      };
+    }
+    const added = this.fillResearch(
+      run,
+      contract,
+      n,
+      next.question,
+      `the gap-driven plan: ${next.why}`,
+      directives,
+    );
+    took(state, q);
+    return { x: added.x, why: added.x.why, stalled: added.stalled };
+  }
+
+  /**
+   * The task a lane's research trial takes (goal 117): the round's own for its first trial, while
+   * it can still be given out; otherwise the next by the gap-driven rules (one hand-out of its
+   * own). Tasks other lanes were given this round, and have not started yet, are left to them.
+   */
+  private researchTaskFor(
+    run: string,
+    contract: ResearchContract,
+    epoch: EpochRecord,
+    a: Assignment,
+    k: number,
+  ): { x: Experiment; why: string } | undefined {
+    const queue = this.o.service.queue;
+    const mine = k === 1 && a.experiment ? queue.get(a.experiment) : undefined;
+    if (mine && mine.run === run && (mine.state === "queued" || mine.state === "proposed"))
+      return { x: mine, why: a.why ?? "the round's hand-out" };
+    const reserved = epoch.assignments
+      .filter(
+        (b) =>
+          b.lane !== a.lane &&
+          b.experiment &&
+          this.registry.trials(run, b.lane, epoch.n).length === 0,
+      )
+      .map((b) => b.experiment as string);
+    const state = researchState(this.ledger, run, contract, {
+      lanes: this.laneCount(run, contract),
+      epoch: epoch.n,
+      reserved,
+    });
+    const got = this.nextResearchTask(
+      run,
+      contract,
+      epoch.n,
+      a.lane,
+      state,
+      new Set(reserved),
+      this.directives(run),
+    );
+    if (!got) return undefined;
+    this.coordinator.handout(
+      run,
+      epoch.n,
+      [{ lane: a.lane, experiment: got.x.id, why: got.why }],
+      k === 1
+        ? `${a.lane}'s first trial of round ${epoch.n}: the task the round gave it can no longer be given out`
+        : `${a.lane}'s trial ${k} of ${contract.lanes.trials_per_epoch} in round ${epoch.n}`,
+    );
+    return { x: got.x, why: got.why };
+  }
+
+  /**
+   * Whether a research run's novelty fell: past its first hour, an hour with no new source and no
+   * newly verified claim. Then the plan's tasks go deeper instead of wider.
+   */
+  private noveltyFell(run: string): boolean {
+    const research = this.o.research as Research;
+    if (research.clock(run).elapsed_ms <= 3_600_000) return false;
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    const n = (sql: string) =>
+      Number((this.ledger.db.prepare(sql).get(run, hourAgo) as { n: number }).n);
+    return (
+      n("select count(*) as n from source where run = ? and fetched_at > ?") === 0 &&
+      n("select count(*) as n from claim where run = ? and verified = 1 and created_at > ?") === 0
+    );
+  }
+
+  /**
+   * A new task of the gap-driven plan for one question (goal 117): its title names the question,
+   * its details the gap it closes (nextGap: the first of its card's open evidence gaps that no
+   * task waiting for it names), and its task kind comes in turn. When novelty fell, primary
+   * sources and contradictions come first. Directives steer it by structure only: MANDATE and TRY
+   * name task kinds to put first, AVOID removes a task kind. Directive text never reaches a
+   * worker's brief.
+   */
+  private fillResearch(
+    run: string,
+    contract: ResearchContract,
+    n: number,
+    q: QuestionState,
+    why: string,
+    directives: Directive[] = this.directives(run),
+  ): { x: Experiment; stalled: boolean } {
+    const question = q.index;
+    const avoid = new Set(
+      directives.filter((d) => d.body.kind === "avoid" && d.body.family).map((d) => d.body.family),
+    );
+    const rank = (id: string) =>
+      directives.some((d) => d.body.kind === "mandate" && d.body.family === id)
+        ? 0
+        : directives.some((d) => d.body.kind === "try" && d.body.family === id)
+          ? 1
+          : 2;
+    const stalled = this.noveltyFell(run);
+    const deep = (id: string) => Number(!["primary", "contradict"].includes(id));
+    const all = Scheduler.RESEARCH_TASKS;
+    const rotated = stalled
+      ? [...all].sort((x, y) => deep(x.id) - deep(y.id))
+      : all.map((_, k) => all[(n + k - 1) % all.length] as { id: string; description: string });
+    const kinds = rotated
+      .filter((t) => !avoid.has(t.id))
+      .map((t, k) => ({ t, k }))
+      .sort((a, b) => rank(a.t.id) - rank(b.t.id) || a.k - b.k)
+      .map((x) => x.t);
+    if (!kinds.length) kinds.push(rotated[0] as { id: string; description: string });
+    const queue = this.o.service.queue;
+    const waiting = [...queue.queued(run), ...queue.assigned(run)];
+    // Task kinds go on in turn after the plan's own waiting tasks.
+    const own = waiting.filter((x) => x.added_by === PLANNER).length;
+    const kind = kinds[own % kinds.length] as { id: string; description: string };
+    const gap = nextGap(
+      q,
+      waiting.filter((x) => x.question === question).flatMap((x) => gapOf(x.details) ?? []),
+    );
+    const x = queue.add(
+      run,
+      {
+        title: `${questionLabel(question)}: ${kind.description}`,
+        details: taskDetails(question, contract.questions[question] ?? "", gap),
+        family: kind.id,
+        question,
+        why: (stalled
+          ? `${why}; novelty fell, so primary sources and contradictions first`
+          : why
+        ).slice(0, 2000),
+        by: PLANNER,
+      },
+      PLANNER,
+    );
+    return { x, stalled };
   }
 
   private startResearchTrial(
@@ -2676,14 +2761,25 @@ export class Scheduler {
 
 /**
  * A research task's details: its question. A question has no length limit (goal 078); an
- * experiment's details hold at most EXPERIMENT_DETAILS characters, so a longer one is cut there
- * and says where the whole question is: in the trial brief's Questions.
+ * experiment's details hold at most EXPERIMENT_DETAILS characters (`max`), so a longer one is cut
+ * there and says where the whole question is: in the trial brief's Questions.
  */
-export function questionDetails(i: number, q: string): string {
+export function questionDetails(i: number, q: string, max = EXPERIMENT_DETAILS): string {
   const whole = `${questionLabel(i)}: ${q}`;
-  if (whole.length <= EXPERIMENT_DETAILS) return whole;
+  if (whole.length <= max) return whole;
   const note = ` … (cut: the whole question is under Questions in your brief)`;
-  return `${whole.slice(0, EXPERIMENT_DETAILS - note.length)}${note}`;
+  return `${whole.slice(0, max - note.length)}${note}`;
+}
+
+/**
+ * A research task's details (goal 117): the evidence gap it closes, on its first line
+ * (GAP_LINE), then its question, cut as questionDetails cuts it. `more`: what else the task says,
+ * such as the kind of source to read and the planner's details, between the two.
+ */
+export function taskDetails(i: number, q: string, gap: string, more: string[] = []): string {
+  const head = [`${GAP_LINE}${gap.replace(/\s+/g, " ").trim()}`, ...more].join("\n");
+  const room = EXPERIMENT_DETAILS - head.length - 1;
+  return room > 200 ? `${head}\n${questionDetails(i, q, room)}` : head.slice(0, EXPERIMENT_DETAILS);
 }
 
 /**

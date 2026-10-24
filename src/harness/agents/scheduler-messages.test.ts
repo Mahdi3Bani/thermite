@@ -243,7 +243,7 @@ describe("a research run's rounds", () => {
       .eventsAfter(0, 5000)
       .events.find((e) => e.kind === "epoch_started")?.body as Record<string, unknown>;
     assert.equal(started.plan, "research");
-    assert.equal(started.notes, "research plan (deterministic in v1)");
+    assert.equal(started.notes, "research plan, gap-driven: Question 1 (index 0): no card");
     assert.equal(started.source, "fallback");
     assert.match(
       String(briefs[0]),
