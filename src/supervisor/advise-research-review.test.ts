@@ -209,7 +209,8 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       "the question with an index below 0 is left out",
     );
     assert.deepEqual(r.output.research?.hypotheses, [], "an unknown verdict is left out");
-    // The harness then counts question 1 and the hypothesis as missing.
+    assert.equal(systems.length, 2, "the reviewer is asked once more for what it left out");
+    // The harness then counts question 0 and the hypothesis as missing.
     const results = [
       { reviewer: "reviewer-1", pass: true, reasons: "Answered.", research: r.output.research },
       { reviewer: "reviewer-2", pass: true, reasons: "Answered.", research: r.output.research },
@@ -222,7 +223,7 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     assert.ok(goal.output, goal.error);
     assert.equal(goal.output.research, undefined);
     assert.match(systems[0] ?? "", /You check if a research run answered its questions/);
-    assert.match(systems[1] ?? "", /You review a deliverable against stated criteria/);
+    assert.match(systems[2] ?? "", /You review a deliverable against stated criteria/);
     assert.equal(
       s.ledger.db.prepare("select count(*) as n from review where goal = ?").get(RESEARCH_REVIEW)
         ?.n,
@@ -267,6 +268,65 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       String(state.stats.last_error),
       /^review \d+: 1 of 2 reviewers of the review panel answered \(reviewer-2: .+\)/,
     );
+  });
+  test("a reviewer that leaves out a hypothesis is asked again for it alone; its verdict's word is read in any case", async (t) => {
+    const s = await waiting(t);
+    const pkg = new Reviews(s.ledger).pending(["research"])[0] as unknown as {
+      questions: { index: number }[];
+      hypotheses: { id: string }[];
+    };
+    const hyp = pkg.hypotheses.map((h) => h.id);
+    assert.ok(hyp.length >= 1);
+    const asked: string[] = [];
+    const fake = await startFakeModel((req) => {
+      const said = JSON.stringify(req.messages);
+      asked.push(said);
+      return {
+        toolCalls: [
+          {
+            name: "answer",
+            args: said.includes("left out")
+              ? {
+                  pass: true,
+                  reasons: "Answered.",
+                  questions: [],
+                  hypotheses: [
+                    {
+                      id: hyp[0],
+                      verdict: "Undecided",
+                      why: "The claims do not decide it.",
+                      claims: [],
+                    },
+                  ],
+                }
+              : {
+                  pass: true,
+                  reasons: "Answered.",
+                  questions: pkg.questions.map((q) => ({
+                    index: q.index,
+                    answered: true,
+                    answer: "Yes.",
+                    claims: [s.ids.claims.verified],
+                    missing: "",
+                  })),
+                  hypotheses: [],
+                },
+          },
+        ],
+      };
+    });
+    t.after(() => fake.close());
+    const rt = AdvisorsConfig.parse({ review_panel: [runtime(fake.url, "reviewer-1")] })
+      .review_panel[0] as never;
+    const r = await reviewOne({ runtime: rt, pkg });
+    assert.ok(r.output, r.error);
+    assert.equal(asked.length, 2, "asked once more");
+    assert.match(asked[1] ?? "", new RegExp(`left out a verdict on hypothesis ${hyp[0]}`));
+    assert.deepEqual(
+      r.output.research?.hypotheses.map((h) => [h.id, h.verdict]),
+      [[hyp[0], "undecided"]],
+    );
+    assert.equal(r.output.research?.questions.length, pkg.questions.length);
   });
   test("a review's fifth try, or any later one, posts it with each reviewer that gave no answer failing it", async (t) => {
     const s = await waiting(t);
