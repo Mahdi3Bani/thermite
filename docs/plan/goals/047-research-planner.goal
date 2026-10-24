@@ -37,6 +37,7 @@ None.
 - 2026-10-19: Goal written from the roadmap.
 - 2026-10-24: Moved into v0.1.0 by the owner, as part of goal 117's redesign of research mode.
 - 2026-10-24 09:35 UTC: built on branch `feat/117-b1-planner` (goal 117, part B1). With the planner on, each research round is one planner call through the hill climb's machinery (`plannerTries`: Pi or another harness, compaction, usage, causes), from a research context (`research-planner.ts`): the questions with their rubrics, answer cards and gaps, standing decisions, shares, yields and saturation, the queue, the hypotheses, the rules, the owner's messages and field notes. Code checks each task (a question the run has, a gap and words with no measurement, not a decided or saturated question unless every open one is, task kinds under the rules) and refuses the rest in words, once; then the gap-driven plan in code sets the round. It promotes at most 3 pool hypotheses a round and 10 a run (each one is an item every reviewer must judge), and retires repeats, through `hypothesis_status`'s harness function. Owners can message a research run's planner. Tests: `research-planner.test.ts`, `scheduler-research.test.ts`. Not yet: the acceptance runs of goal 117, which verify this goal too.
+- 2026-10-24: Evidence from use, on 366c680: once a research run's rig had 3 workers at a time (it had 1, goal 131 item 3), the run's model planner gave lane 2 its first task, with its reasons.
 
 ---
 

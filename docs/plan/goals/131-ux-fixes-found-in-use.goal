@@ -28,6 +28,12 @@ A list of small faults in the dashboard's screens, found while the owner uses Th
 - **What to do.** Once clicked, the page follows the export to its end, as a rig check's button does (goal 080): sent, written by the rig with its size, sent to control, then a link to download it on the **Exports** page, or the error in words. MCP's and REST's answers for the export give the same states.
 - **Pages:** [Get a rig's results from control](../../_site/src/content/docs/how-to/operate/exports-on-control.md), and the export reference (`reference/exports.md`).
 
+### 3. A run's page doesn't say when its lanes take turns
+
+- **What is wrong.** A campaign's **Agents working at once** (the contract's `lanes.count`) is how many lanes the planner plans. The rig's **Workers at a time** on **Edit rig** is how many trials run at the same moment, one by default. When a run has more lanes than the rig has workers, the lanes take turns, and nothing on the run's page or the campaign's page says so. The owner, 2026-10-24, on a research run on a rig with one worker at a time: "it seems that it doesn't work its multiple lanes in parallel?"
+- **What to do.** Where a run's lanes show (its Overview and Live, and the campaign's **Where it runs**), a line says when the rig's **Workers at a time** is below the run's lanes, such as "3 lanes, 1 worker at a time on this rig: the lanes take turns", with a link to **Edit rig**. `get_run` gives both numbers. Starting a run on a rig with fewer workers than lanes says the same before it starts.
+- **Pages:** [Agents, lanes and the planner](../../_site/src/content/docs/explanation/agents-lanes-planner.md) (how many lanes run at once), [Start a campaign from the dashboard](../../_site/src/content/docs/how-to/campaigns/start-from-dashboard.md#5-where-it-runs), and the run's page.
+
 ## Why
 
 The owner reports these from use, 2026-10-24: "ux fixes to add".
@@ -53,6 +59,7 @@ The owner reports these from use, 2026-10-24: "ux fixes to add".
 
 - 2026-10-24: Goal written, with item 1 from the owner's report.
 - 2026-10-24: Item 2, export status and progress, from the owner's report.
+- 2026-10-24: Item 3, a run's lanes that take turns on a rig with fewer workers at a time, from the owner's report. The rig had 1 worker at a time; raised to 3 over `set_rig_settings`.
 
 ---
 
