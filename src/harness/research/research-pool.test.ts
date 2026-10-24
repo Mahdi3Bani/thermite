@@ -479,3 +479,63 @@ describe("the hypothesis pool (goal 117)", () => {
     assert.match(String(items.get(author)?.body), /Status: the author's, which needs a verdict/);
   });
 });
+
+describe("measurements stay out of a research run's queue (goal 117)", () => {
+  test("a worker's idea that asks for a measurement is refused in words; one sources can answer is proposed", async () => {
+    const { env } = await researchEnv();
+    const token = openTrial(env, "lane-1", "t-1");
+    assert.throws(
+      () =>
+        env.service.proposeIdea(token, {
+          title: "Check preemption",
+          details: "Run the litmus tests on the card and compare",
+        }),
+      /this asks for a measurement \("Run the litmus tests on the card"\), and a research run measures nothing: record it as a next experiment in a report section or a note/,
+    );
+    const ok = env.service.proposeIdea(token, {
+      title: "Find the vendor's documentation of compute preemption",
+    });
+    assert.equal(ok.state, "proposed");
+    assert.equal(
+      env.service.queue.all("r-1").filter((x) => x.added_by === "lane-1").length,
+      1,
+      "the refused idea left no record",
+    );
+  });
+
+  test("a teacher's item that asks for a measurement is refused, the others are added; a hill-climb run's teachers keep theirs", async () => {
+    const { env } = await researchEnv();
+    const out = env.service.advisorQueue({
+      run: "r-1",
+      role: "teacher",
+      add: [
+        {
+          title: "Shared-memory bank conflicts on Maxwell",
+          details:
+            "Mechanism: … Smallest discriminating experiment: profile the kernel with Nsight",
+          why: "it may explain the stalls",
+        },
+        {
+          title: "Primary sources on Maxwell's shared memory banks",
+          details: "Find NVIDIA's own documentation and papers that describe the bank layout",
+          why: "the second question has one source",
+        },
+      ],
+      move: [],
+    });
+    assert.equal(out.added.length, 1);
+    assert.deepEqual(out.refused, [
+      `add "Shared-memory bank conflicts on Maxwell": this asks for a measurement ("Smallest discriminating experiment"), and a research run measures nothing: record it as a next experiment in a report section or a note (what it would settle, and how), and propose only work that sources can answer`,
+    ]);
+    const hc = makeHarnessEnv();
+    await hc.service.applyCommand(hc.sign("assign_campaign", hc.assignPayload({})));
+    const run = (hc.service.ledger.db.prepare("select id from run").get() as { id: string }).id;
+    const kept = hc.service.advisorQueue({
+      run,
+      role: "teacher",
+      add: [{ title: "Profile the kernel and time each tile size", why: "find the bottleneck" }],
+      move: [],
+    });
+    assert.equal(kept.added.length, 1, "a hill climb measures: its teachers' items stand");
+  });
+});

@@ -12,6 +12,50 @@
 export const MEASURES_NOTHING =
   "A research run reads, archives and cites sources, and its evidence is what those sources say. It has no target to measure, and nothing its workers run counts as evidence: no benchmark, no test on the hardware its questions are about, no change to a deployed system. A fact that only such a measurement could settle is not a gap that research can close: it is a next experiment, for a goal or hill-climb run to take after this one.";
 
+/** Words that a verb of measuring starts: "Time the kernel", "and measure how", "to time it". */
+const VERB_START = String.raw`(?:^|[.;:!?(]\s*|\b(?:to|and|then|or|first|please|must|should|we|you)\s+)`;
+const OBJECT = String.raw`(?:it|this|that|them|these|those|the|each|both|our|its|how|whether|with|on|under|using|a|an)\b`;
+
+/**
+ * What asks for a measurement (goal 117): a research run measures nothing, so a task, an idea or
+ * a gap that asks for one is a next experiment, never work for the queue. Each rule names an act
+ * of measuring, not the topic: "run a benchmark", "profile the kernel", "time each variant", "an
+ * A/B test", "run it on the card", "run the litmus tests", and the fields of a measured
+ * experiment ("matched control", "expected gain"). A task about published measurements ("find the
+ * benchmark results reported for the A100", "papers that profile memory traffic", "documentation
+ * on the hardware scheduler") asks for none. The tests hold the cases on each side.
+ */
+const MEASUREMENT: RegExp[] = [
+  /\b(?:run|rerun|re-run|write|build|perform|execute|do|repeat)\s+(?:(?:a|an|the|some|our|its|this|that|these|those|new|own|small|quick|simple)\s+){0,3}(?:micro-?)?benchmarks?\b/i,
+  /\bbenchmark\s+(?:it|this|that|them|these|those|the|each|both|our|its)\b/i,
+  new RegExp(String.raw`\bprofile\s+${OBJECT}`, "i"),
+  /\brun\s+(?:a\s+|the\s+)?profil(?:e|er|ing)\b/i,
+  new RegExp(String.raw`${VERB_START}time\s+${OBJECT}`, "i"),
+  new RegExp(String.raw`${VERB_START}(?:re-?)?measure\s+${OBJECT}`, "i"),
+  /\bA\s*\/\s*B\b/,
+  /\bA-?B\s+tests?\b/i,
+  /\b(?:run|runs|running|rerun|test|testing|try|measure|measuring|time|timing|profile|profiling|verify|execute|reproduce|replay|benchmark|benchmarking)\b[^.;\n]{0,60}?\bon\s+(?:(?:the|our|this|that|a|real|actual|target|its|their|your)\s+)+(?:[\w-]+\s+){0,2}?(?:hardware|cards?|box|boxes|machines?|rigs?)\b/i,
+  /\bon-(?:box|device|card|hardware)\b/i,
+  /\b(?:run|rerun|write|execute|perform)\s+(?:(?:a|an|the|some|our|its|these|those|new)\s+){0,2}litmus\b/i,
+  /\b(?:matched\s+control|smallest\s+discriminating\s+experiment|expected\s+gain)\b/i,
+  /\bdev[- ]runs?\b/i,
+];
+
+/** The first words of a text that ask for a measurement, or undefined when it asks for none. */
+export function measurementIn(text: string): string | undefined {
+  let first: RegExpExecArray | undefined;
+  for (const re of MEASUREMENT) {
+    const m = re.exec(text);
+    if (m && (first === undefined || m.index < first.index)) first = m;
+  }
+  return first?.[0].replace(/^[\s.;:!?(]+/, "").trim();
+}
+
+/** Why a task that asks for a measurement stays out of a research run's queue, in words. */
+export function measurementRefusal(words: string): string {
+  return `this asks for a measurement ("${words}"), and a research run measures nothing: record it as a next experiment in a report section or a note (what it would settle, and how), and propose only work that sources can answer`;
+}
+
 /** The reserved goal name of a research run's review (a research contract has no goals). */
 export const RESEARCH_REVIEW = "research";
 

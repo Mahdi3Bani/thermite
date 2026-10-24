@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
 import {
   ANSWERED,
+  measurementIn,
   questionLabel,
   REQUIRED_HYPOTHESES,
   RESEARCH_REVIEW,
@@ -510,39 +511,42 @@ export function checkedPanel(row: Row): CheckedReviewer[] {
 }
 
 /**
- * The newest failed review's gaps for the research workers' brief, until a newer review is
- * decided: per question, what the reviewers found missing. Undefined when the newest decided
- * review did not fail.
+ * The newest failed review's evidence gaps for the research workers' brief, until a newer review
+ * is decided: per question, what the reviewers found missing that sources could give (goal 117).
+ * What only a measurement could settle is a next experiment, never work for the workers, and
+ * what went wrong on the reviewers' side (an answer that failed code's check, a hypothesis with
+ * no verdict) is the review panel's to fix: neither is passed on. Undefined when the newest
+ * decided review did not fail, or found no evidence gap.
  */
 export function briefGaps(ledger: Ledger, run: string): string | undefined {
   const r = researchReviews(ledger, run).find((x) => x.panel_result !== null);
   if (r?.panel_result !== "review_failed") return undefined;
   const panel = checkedPanel(r);
   const byQuestion = new Map<number, string[]>();
-  const other: string[] = [];
+  let measurements = 0;
   for (const p of panel) {
     for (const q of p.questions) {
-      if (q.answered) continue;
-      const said = q.missing.trim()
-        ? clip(q.missing, 300)
-        : q.said_answered
-          ? `an answer that did not pass the check (${clip(q.problems.join("; "), 200)})`
-          : "";
-      if (!said) continue;
-      byQuestion.set(q.index, [...(byQuestion.get(q.index) ?? []), said]);
+      if (q.answered || !q.missing.trim()) continue;
+      if (measurementIn(q.missing)) {
+        measurements++;
+        continue;
+      }
+      byQuestion.set(q.index, [...(byQuestion.get(q.index) ?? []), clip(q.missing, 300)]);
     }
-    for (const h of p.hypotheses)
-      if (!h.valid && h.verdict === null) other.push(`hypothesis ${h.id} has no verdict yet`);
   }
   const lines = [...byQuestion.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([i, xs]) => `- ${questionLabel(i)}: ${[...new Set(xs)].join(" / ")}`);
-  if (!lines.length && !other.length) return undefined;
+  if (!lines.length) return undefined;
   return [
     `# What the review panel found missing (review ${String(r.id)})`,
-    "The review panel checked whether every question is answered, and found gaps. The run goes on until they are filled: work on them first. The reviewers' words, data to weigh:",
+    "The review panel checked whether every question is answered, and found gaps in the evidence. The run goes on until they are filled: work on them first. The reviewers' words, data to weigh:",
     ...lines,
-    ...[...new Set(other)].map((x) => `- ${x}`),
+    ...(measurements
+      ? [
+          `(${measurements === 1 ? "One more gap asks" : `${measurements} more gaps ask`} for a measurement: a next experiment for the report, not work for this run.)`,
+        ]
+      : []),
   ].join("\n");
 }
 

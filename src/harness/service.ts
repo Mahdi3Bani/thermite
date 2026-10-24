@@ -27,6 +27,7 @@ import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
+import { measurementIn, measurementRefusal } from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { handedOut, rulesInForce } from "./agents/coordinator.ts";
 import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
@@ -2300,12 +2301,22 @@ export class HarnessService {
       proposed: "a lane's idea",
       assigned: "in progress",
     };
+    // A research run measures nothing (goal 117): an item that asks for a measurement is a next
+    // experiment for the run's report, never a task for its queue.
+    const research = this.ledger.getRun(p.run)?.mode === "research";
     for (const a of p.add) {
       const same = p.role === "teacher" ? waiting.get(ideaWords(a.title)) : undefined;
       if (same) {
         out.refused.push(
           `add "${a.title.slice(0, 120)}": it repeats ${same.id} (${where[same.state] ?? same.state})`,
         );
+        continue;
+      }
+      const measures = research
+        ? measurementIn([a.title, a.details ?? "", a.why].join("\n"))
+        : undefined;
+      if (measures) {
+        out.refused.push(`add "${a.title.slice(0, 120)}": ${measurementRefusal(measures)}`);
         continue;
       }
       const x = this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor);
@@ -2327,11 +2338,18 @@ export class HarnessService {
   /**
    * A worker's idea for its run's queue: proposed, by its lane, until the planner queues or drops
    * it (or the owner does first). The trial (found by its token) decides the run and the lane.
-   * No limit on how many: none is set by default (the rules for every goal).
+   * No limit on how many: none is set by default (the rules for every goal). In a research run,
+   * an idea that asks for a measurement is refused in words (goal 117): it is a next experiment.
    */
   proposeIdea(token: string, input: unknown): { experiment: string; state: "proposed" } {
     const t = new Registry(this.ledger).openTrial(token);
     const idea = IdeaRequest.parse(input);
+    if (this.ledger.getRun(t.run)?.mode === "research") {
+      const measures = measurementIn(
+        [idea.title, idea.details ?? "", idea.why ?? "", idea.family ?? ""].join("\n"),
+      );
+      if (measures) throw new LedgerError("invalid", measurementRefusal(measures));
+    }
     const x = this.queue.add(
       t.run,
       { ...idea, by: t.lane, state: "proposed", trial: t.id },
