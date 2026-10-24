@@ -15,7 +15,7 @@ import type { HarnessService } from "../harness/service.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
 import { fillResearch, makeResearchRun } from "../testing/research-run.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState } from "./advise.ts";
-import { AdvisorsConfig, reviewOne } from "./advisors.ts";
+import { AdvisorsConfig, researchPrompt, reviewOne } from "./advisors.ts";
 
 /**
  * Goal 112: the supervisor's review panel answers a research run's package with a research prompt
@@ -268,6 +268,35 @@ describe("the review panel answers a research run's package (goal 112)", () => {
       String(state.stats.last_error),
       /^review \d+: 1 of 2 reviewers of the review panel answered \(reviewer-2: .+\)/,
     );
+  });
+  test("a research package is never cut silently: the questions and hypotheses come first, and a cut is said", () => {
+    const hypotheses = Array.from({ length: 180 }, (_, i) => ({
+      id: `h-${String(i).padStart(4, "0")}`,
+      text: "If the poller reads the flag before the payload, a stale row follows. ".repeat(12),
+      supporting: [],
+    }));
+    const pkg = {
+      kind: "research",
+      title: "T",
+      topic: "t",
+      questions: [{ index: 0, text: "Q?", verified_claims: 1, claims: [] }],
+      findings: Array.from({ length: 200 }, (_, i) => ({ id: `f-${i}`, text: "x".repeat(1000) })),
+      hypotheses,
+      criteria: ["c"],
+      campaign_brief: { notes: "b" },
+    };
+    const whole = JSON.stringify(pkg).length;
+    assert.ok(whole > 350_000);
+    // A window that takes it all: nothing is cut, every hypothesis is there.
+    const roomy = researchPrompt("P:", pkg, 2_000_000);
+    assert.doesNotMatch(roomy, /Cut to fit/);
+    assert.match(roomy, /h-0179/);
+    // 200,000 characters: the hypotheses come before the findings, so the findings are cut.
+    const tight = researchPrompt("P:", pkg, undefined);
+    assert.match(tight, /\[Cut to fit: 200,000 of [\d,]+ characters\./);
+    assert.match(tight, /h-0179/, "the last hypothesis is shown");
+    assert.ok(tight.indexOf('"criteria"') < tight.indexOf('"hypotheses"'));
+    assert.ok(tight.indexOf('"hypotheses"') < tight.indexOf('"findings"'));
   });
   test("a reviewer that leaves out a hypothesis is asked again for it alone; its verdict's word is read in any case", async (t) => {
     const s = await waiting(t);
