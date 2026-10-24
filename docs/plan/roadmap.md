@@ -90,6 +90,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [117](goals/117-research-that-answers.goal) Research that answers its questions: one living answer per question, work driven by its gaps, and an end it can reach · `IN_PROGRESS`
 - [047](goals/047-research-planner.goal) A model planner for research mode · `IN_PROGRESS`
 - [116](goals/116-reviews-tab.goal) A Reviews tab for research runs: every review, each reviewer's answers and comments, and the outcome · `IN_PROGRESS`
+- [119](goals/119-next-experiments-by-run-kind.goal) A research run's next experiments, sorted by the run that takes them: improvements for a hill climb, goals for a goal campaign · `PROPOSED`
 
 ### Rigs on RunPod
 
@@ -139,6 +140,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [089](goals/089-dashboard-performance.goal) Faster dashboard pages · `PROPOSED`
 - [092](goals/092-knowledge-explore-and-dumps.goal) Explore the knowledge base, and dump it to outside stores · `PROPOSED`
 - [102](goals/102-kits-define-campaigns.goal) Kits define how a campaign runs; rigs are the slots it runs in · `PROPOSED`
+- [120](goals/120-research-kit-prep.goal) Kit prep: a research run can end with kits prepared for the hill climb or goal campaign that follows · `PROPOSED`
 - [105](goals/105-amd-gpus.goal) AMD GPUs in rigs · `PROPOSED`
 - [106](goals/106-apple-silicon-rig.goal) A rig on Apple silicon that uses its GPU · `PROPOSED`
 - [107](goals/107-runs-side-by-side.goal) Several runs at once on one rig, within its resources · `PROPOSED`

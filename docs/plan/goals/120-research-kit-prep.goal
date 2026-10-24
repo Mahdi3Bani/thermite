@@ -1,0 +1,59 @@
+---
+id: "120"
+title: "Kit prep: a research run can end with kits prepared for the hill climb or goal campaign that follows"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["119", "102"]
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 120 · Kit prep: a research run can end with kits prepared for the hill climb or goal campaign that follows
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020) · **Depends on:** [119](119-next-experiments-by-run-kind.goal), [102](102-kits-define-campaigns.goal)
+
+## What
+
+A plan only; nothing of it is built.
+
+A research campaign gets an optional setting, **Kit prep**. With it on, a research run that ends does more than write its paper and hand on its next experiments (goal 119). It also prepares a kit for each campaign its next experiments call for, when one is needed: a kit for a hill climb that tries its improvements, or a kit for a goal campaign that proves its goals. The owner can then go straight from the research to the next campaign.
+
+A prepared kit holds what the next campaign needs to start:
+
+- its contract: the project, the editable paths, the goals or the metric, the budget, from the run's findings and next experiments;
+- its measurement or check scripts, drafted from the sources the run read (a benchmark's method, a conformance test's steps);
+- its brief: the campaign's notes, starting links, ideas and hypotheses, from the paper and the cards;
+- the next experiments to start the queue with (hill climb) or the goals (goal campaign).
+
+## Why
+
+The owner, 2026-10-24: "for v0.2.0 we should add the features of 'kit prep' as optional setting for a research where it outputs prepared kits for goal or hill climb (if needed) so you can go directly into the next campaign."
+
+## Constraints
+
+- **Agents never judge** (a settled decision): a kit's measurement and check scripts decide results, and here agents would draft them. So a prepared kit is a draft. It is not used until the owner accepts it, and control checks it as it checks any kit pushed to it (its smoke check, an A/A run of its measurement) before a campaign can use it. The agents of the campaign that uses a kit never write it.
+- Kit prep is off by default; a research run without it ends as today.
+
+## Done when
+
+- [ ] A design: what a prepared kit holds for each kind of campaign, how the run drafts it (which agent, with which tools), how control keeps and checks it, and how the owner accepts it.
+- [ ] A mockup of the setting, the prepared kits on the run's page and the owner's acceptance, approved by the owner.
+- [ ] The build, with tests, and an acceptance run that goes from a research run to a hill climb or goal campaign on its prepared kit.
+- [ ] The pages that describe research mode, kits and New campaign.
+
+## Decisions
+
+- 2026-10-24, owner: in v0.2.0, as an optional setting of a research campaign.
+
+## Open questions
+
+- Whether kit prep waits for goal 102 (kits that define how a campaign runs), or prepares today's kits first.
+- Which agent drafts the kits: the final writer, a new advisor, or a last task for the lanes.
+
+## Progress
+
+- 2026-10-24: Goal written from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/120-research-kit-prep.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

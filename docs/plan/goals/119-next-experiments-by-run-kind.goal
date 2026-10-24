@@ -1,0 +1,61 @@
+---
+id: "119"
+title: "A research run's next experiments, sorted by the run that takes them: improvements for a hill climb, goals for a goal campaign"
+status: PROPOSED
+version: "0.1.0"
+depends_on: ["117"]
+created: 2026-10-24
+updated: 2026-10-24
+---
+
+# 119 · A research run's next experiments, sorted by the run that takes them: improvements for a hill climb, goals for a goal campaign
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Depends on:** [117](117-research-that-answers.goal)
+
+## What
+
+A plan only; nothing of it is built.
+
+Today a research run's paper ends with **Next experiments**: what only a measurement could settle. Each goes to the campaign's folder in the knowledge base as one kind of item, an experiment, and **Start a run** can copy it into a goal or hill-climb run's queue. A next experiment can be two different things, though:
+
+- **An improvement to try**, which a hill climb measures against its champion: for example, "unroll the dequantize loop by 4", "a second warm-up run before timing". It belongs in a hill climb's experiment queue.
+- **An outcome to reach and prove**, which a goal campaign checks: for example, "a benchmark whose run-to-run spread is under 1%", "the kernel passes the vendor's conformance tests". It is a goal, not an experiment in a queue.
+
+The plan:
+
+- **The final writer gives each next experiment its kind:** `hill_climb` (an improvement, with the metric it should move) or `goal` (an outcome, with how a check would know it is reached). Code refuses a next experiment with no kind, as it refuses one that rests on no finding or claim.
+- **The paper's Next experiments part has a section for each kind**, so a reader sees which campaign each one feeds.
+- **The knowledge base keeps the kind** with each item, and the campaign's folder lists the two apart.
+- **Start a run (hill climb)** offers the `hill_climb` ones to copy into the run's queue, as today's next experiments are offered.
+- **New campaign (goal)** offers the `goal` ones as starting goals: each a goal of the new campaign, with its words, its check as the criteria to fill in, and what it rests on. The owner keeps, edits or drops each before the campaign is made.
+
+## Why
+
+The owner, 2026-10-24: "we should categorize next experiments on hill climbe experiments (things they help improve stuff) or a goal run where these experiments become the goals."
+
+A goal campaign has no queue of improvements to try; its work is to reach goals. Next experiments that are really goals do not fit **Start a run**'s copy into a queue, and today nothing turns them into a goal campaign's goals.
+
+## Done when
+
+- [ ] The final writer's schema, prompt and the harness's check give and keep each next experiment's kind; the paper's Next experiments part has a section for each kind.
+- [ ] The knowledge base and the campaign's folder keep and show the kind.
+- [ ] A mockup of New campaign's starting goals from a research run, approved by the owner.
+- [ ] Start a run offers the `hill_climb` ones; New campaign offers the `goal` ones as starting goals; tests for both.
+- [ ] The pages that describe the paper, the knowledge base, Start a run and New campaign.
+
+## Decisions
+
+- 2026-10-24, owner: two kinds, improvements for a hill climb and goals for a goal campaign.
+
+## Open questions
+
+- Whether a third kind is needed for questions only more research can answer (a follow-up research campaign).
+- The version: placed in v0.1.0 beside goal 117, the research output a v0.1.0 run produces; the owner may move it.
+
+## Progress
+
+- 2026-10-24: Goal written from the owner's words.
+
+---
+
+Run with `/goal Complete docs/plan/goals/119-next-experiments-by-run-kind.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
