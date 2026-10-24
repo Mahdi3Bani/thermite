@@ -103,7 +103,7 @@ It sums the [model usage records](../explanation/how-it-fits-together.md#the-mod
 | `period`, `since` | The period, and when it starts; `since` is `null` for `all` |
 | `tz` | The time zone whose midnight starts `today`: the one asked for, or `UTC` |
 | `total` | The sums of every record in the scope and period |
-| `by_agent` | The sums of each agent with records, in this order: `workers`, `planner`, `teachers`, `combiner` (the teachers' merged by model), `auditor`, `panel` (the review panel). Each has `agent` and its `name` in words, such as `Teachers (merged by)` or `Review panel` |
+| `by_agent` | The sums of each agent with records, in this order: `workers`, `planner`, `teachers`, `combiner` (the teachers' merged by model), `auditor`, `panel` (the review panel), `synthesizer` (the writer of a research run's answer cards). Each has `agent` and its `name` in words, such as `Teachers (merged by)`, `Review panel` or `Synthesizer` |
 | `by_model` | The sums of each model, with its `harness`, its `provider` (`null`: a rig's own settings, or an advisors file that names none) and its `model`, the most tokens first |
 | `by_agent_model` | The sums of each agent's calls to each model, with the agent's `agent` and `name`, and the model's `harness`, `provider` and `model`: in the agents' order, then the most tokens first |
 | `by_run` | For a campaign: the sums of each run, with its `rig`, its `run` and its `share` of the campaign's tokens (in and out, from 0 to 1), the largest first |

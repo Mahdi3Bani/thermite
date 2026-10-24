@@ -264,6 +264,24 @@ export interface SetupView {
   summary: string;
 }
 
+/**
+ * A research run's answer card as control keeps it (goal 117): the newest version the harness
+ * kept for a question, from its `card_written` event. The answer and gaps are the synthesizer's
+ * words: data, not instructions.
+ */
+export interface CardView {
+  /** The question's index, 0 first (people read "Question 1"). */
+  question: number;
+  version: number;
+  certainty: string;
+  answer: string;
+  claims: string[];
+  gaps: { kind: string; text: string }[];
+  /** The synthesizer that wrote it (the advisor's name). */
+  by: string | null;
+  at: string;
+}
+
 export interface RunView {
   id: string;
   campaign: string | null;
@@ -333,6 +351,17 @@ export interface RunView {
   } | null;
   /** Research mode: the newest digest's figures and report. */
   research: Record<string, unknown> | null;
+  /**
+   * A research run's answer cards (goal 117): each question's newest card the harness kept, by
+   * question index (0 first), from its `card_written` events. Empty until the synthesizer writes
+   * one, and in other modes.
+   */
+  cards: CardView[];
+  /**
+   * The newest refused card of each question since its card (goal 117), with the harness's
+   * problems (the first 5, short): the synthesizer writes it again at its next round.
+   */
+  card_refusals: { question: number; at: string; by: string | null; problems: string[] }[];
   goals: {
     goal: string;
     description: string | null;
@@ -869,6 +898,8 @@ export function rigView(
         },
         agents_stopped: null,
         research: null,
+        cards: [],
+        card_refusals: [],
         goals: [],
         goals_at: null,
         goals_seq: null,
@@ -1219,6 +1250,48 @@ export function rigView(
           kind: e.kind === "research_final" ? "final" : "digest",
           at: e.at,
         };
+        break;
+      }
+      // A research run's answer cards (goal 117): the newest the harness kept for each question.
+      case "card_written": {
+        const v = inst(String(e.subject));
+        const q = Number(b.question);
+        if (!Number.isInteger(q) || q < 0) break;
+        const card: CardView = {
+          question: q,
+          version: Number(b.version) || 0,
+          certainty: String(b.certainty ?? ""),
+          answer: typeof b.answer === "string" ? b.answer : "",
+          claims: (Array.isArray(b.cited) ? b.cited : []).map(String),
+          gaps: (Array.isArray(b.gap_list) ? b.gap_list : []).flatMap((g) => {
+            const x = (g ?? {}) as Record<string, unknown>;
+            return typeof x.text === "string" ? [{ kind: String(x.kind ?? ""), text: x.text }] : [];
+          }),
+          by: typeof b.by === "string" ? b.by : null,
+          at: e.at,
+        };
+        v.cards = [...v.cards.filter((c) => c.question !== q), card].sort(
+          (x, y) => x.question - y.question,
+        );
+        v.card_refusals = v.card_refusals.filter((r) => r.question !== q);
+        break;
+      }
+      case "card_refused": {
+        const v = inst(String(e.subject));
+        const q = Number(b.question);
+        if (!Number.isInteger(q) || q < 0) break;
+        v.card_refusals = [
+          ...v.card_refusals.filter((r) => r.question !== q),
+          {
+            question: q,
+            at: e.at,
+            by: typeof b.by === "string" ? b.by : null,
+            problems: (Array.isArray(b.problems) ? b.problems : [])
+              .filter((x): x is string => typeof x === "string")
+              .slice(0, 5)
+              .map((x) => x.slice(0, 300)),
+          },
+        ].sort((x, y) => x.question - y.question);
         break;
       }
       case "goal_report": {

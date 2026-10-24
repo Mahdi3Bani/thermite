@@ -320,6 +320,7 @@ async function main(): Promise<void> {
           audits: a.audits - before.audits,
           reviews: a.reviews - before.reviews,
           papers: (a.papers ?? 0) - (before.papers ?? 0),
+          cards: (a.cards ?? 0) - (before.cards ?? 0),
           errors: a.errors - before.errors,
         };
         // A round that did nothing says nothing: the live view is for what happens.
@@ -328,7 +329,7 @@ async function main(): Promise<void> {
           supervisorLive.append({
             source: "supervisor",
             kind: "status",
-            text: `advisor round done: ${n(did.teachers, "teacher run")}, ${n(did.sets, "directive set")}, ${n(did.audits, "audit")}, ${n(did.reviews, "review")}, ${did.papers ? `${n(did.papers, "research paper")}, ` : ""}${n(did.errors, "error")}`,
+            text: `advisor round done: ${n(did.teachers, "teacher run")}, ${n(did.sets, "directive set")}, ${n(did.audits, "audit")}, ${n(did.reviews, "review")}, ${did.papers ? `${n(did.papers, "research paper")}, ` : ""}${did.cards ? `${n(did.cards, "answer card")}, ` : ""}${n(did.errors, "error")}`,
           });
       } catch (err) {
         log("supervisor", "advisor loop error", { error: String(err) });
