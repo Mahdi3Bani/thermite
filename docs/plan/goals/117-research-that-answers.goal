@@ -83,7 +83,7 @@ The published state of the art solves these with a locked brief, a living answer
 
 - [x] The owner's decisions below are recorded.
 - [x] Each part of the design is built, with tests at the scale of a long run: hundreds of hypotheses proposed, a thousand claims, five reviewers.
-- [ ] Three acceptance runs on the deployment, with at least 8 hours each: a rerun of the 35-hour run's brief, a small brief whose answers are known, and a third topic. Each closes on its own with its paper; each question ends with an answer card and a certainty; no task asks for a measurement; no question has more than half of the run's work while another has an open gap; and the owner reads each paper and accepts it.
+- [ ] Three acceptance runs on the deployment: a rerun of the 35-hour run's brief, and two short tests (30 minutes to 2 hours, owner 2026-10-24), a small brief whose answers are known and a third topic. Each closes on its own with its paper; each question ends with an answer card and a certainty; no task asks for a measurement; no question has more than half of the run's work while another has an open gap; and the owner reads each paper and accepts it.
 - [x] The pages that describe research mode match the code.
 
 ## Decisions
@@ -96,6 +96,7 @@ The published state of the art solves these with a locked brief, a living answer
   4. Reviews: "a majority, with the dissent kept in the review and the paper."
   5. Planning: "Model planner goes now for v0.1.0." Goal 047 moves into v0.1.0 and plans research runs from their answer cards and gaps.
   6. "Reviews tab goes now for v0.1.0." Goal 116 moves into v0.1.0.
+- 2026-10-24, owner, on acceptance runs of 8 hours: "we don't have to run for 8 hours to test stuff". The two test briefs run 30 minutes to 2 hours, with digests every 15 minutes.
 - 2026-10-24, owner, on the paper reading "very mechanical", not "a nice to read paper that could get submitted to arxiv": "STE is not the problem, at all... your structure and sections and stuff is what hurts it. We are NOT dropping STE." The writer chooses a normal paper structure (abstract, introduction, related work, method, results, discussion, limitations), in STE, and code checks "only that every question is answered somewhere"; citations become "normal reference numbering like [1] in the text, mapped to claims behind the scenes"; the certainty lines, the table of verdicts and the review panel's table move into an appendix.
 
 ## Open questions
