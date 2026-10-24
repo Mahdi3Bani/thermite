@@ -118,6 +118,7 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `git-mirrors` | List | The harness's git mirrors |
 | `models-list` | List | The model store |
 | `builds-list` | List | The build store |
+| `baselines-list` | List | The folders a hill climb's kit check keeps with its [baseline](contract.md#the-baseline) |
 | `broker-socket` | Check for write access | The broker's socket |
 | `outbox-write` | Check for write access | The outbox |
 | `outbox-read` | List | The outbox |
@@ -126,6 +127,7 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `kit-by-path` | Read | A checked-out `kit.json`, reached by its full path. Skipped before any kit is checked out |
 | `secret:<file>` | Read | Each secret file: the supervisor token, the proposer token and the model key files. The rig check also tries the stored model route. Where the harness shares its container with a supervisor in [pull mode](../explanation/trust.md#rigs-in-pull-mode) (`THERMITE_TUNNEL_DIR` set), also the pod's own keys, `keys.json` |
 | `build-overwrite` | Write | A file of a stored build. Skipped before any build exists |
+| `baseline-by-path` | Read | A file a kit's check kept with a baseline, reached by its full path. Skipped before any baseline kept a file |
 | `run-kit-write`, `run-kit-create` | Write, create a file | A run's read-only copy of kit files, made the way the judge makes it |
 | `research-write`, `research-create` | Write, create a file | A claim's file in a run's [research folder](../explanation/campaign-modes.md#research), and its `claims/` folder, written the way the harness writes them |
 | `controller-environ` | Read | The environment of the harness's controller process |

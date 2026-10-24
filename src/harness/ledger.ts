@@ -368,8 +368,9 @@ export class Ledger {
   }
 
   /**
-   * Creates a campaign run from a stored contract. The seed commit becomes champion seq 1
-   * (the baseline). Goal-mode runs also get their goal tree.
+   * Creates a campaign run from a stored contract. The seed commit becomes champion seq 1, the
+   * run's starting point; a hill climb's judge measures it first, its baseline (goal 115).
+   * Goal-mode runs also get their goal tree.
    */
   createRun(input: {
     id: string;
@@ -598,6 +599,57 @@ export class Ledger {
     });
   }
 
+  /**
+   * A hill climb's setup change that the judge measured becomes the run's starting point (goal
+   * 115): a champion like a promotion's, by compare-and-swap on the champion the judge read, with
+   * `promoted_by` ending in `:setup` (SETUP_MARK) and `setup: true` in its event, so readers start
+   * the cumulative gain again from it. It needs no promotable verdict: the judge's baseline job,
+   * not a comparison with a champion, decided it.
+   */
+  setStartingPoint(input: {
+    run: string;
+    expectedSeq: number;
+    attempt: string;
+    commitSha: string;
+    by: string;
+  }): PromoteResult {
+    return this.tx(() => {
+      const a = this.getAttempt(input.attempt);
+      if (!a || String(a.run) !== input.run) {
+        throw new LedgerError("invalid", `attempt ${input.attempt} is not in ${input.run}`);
+      }
+      if (String(a.commit_sha) !== input.commitSha) {
+        throw new LedgerError(
+          "invalid",
+          `commit ${input.commitSha} is not attempt ${input.attempt}'s`,
+        );
+      }
+      if (a.invalidated_by !== null) {
+        throw new LedgerError("invalid", `attempt ${input.attempt} is invalidated`);
+      }
+      const current = this.currentChampion(input.run).seq;
+      if (current !== input.expectedSeq) return { ok: false, currentSeq: current };
+      const top = this.get<Row>("select max(seq) as m from champion where run = ?", input.run);
+      const seq = Number(top?.m) + 1;
+      this.run(
+        "insert into champion (run, seq, attempt, commit_sha, promoted_by, promoted_at) values (?, ?, ?, ?, ?, ?)",
+        input.run,
+        seq,
+        input.attempt,
+        input.commitSha,
+        `${input.by}:setup`,
+        this.now(),
+      );
+      this.appendEvent(input.by, "champion_promoted", input.run, {
+        seq,
+        attempt: input.attempt,
+        commit: input.commitSha,
+        setup: true,
+      });
+      return { ok: true, seq };
+    });
+  }
+
   // ---------------------------------------------------------------- attempts
 
   recordAttempt(a: AttemptInput, actor: string): void {
@@ -716,9 +768,12 @@ export class Ledger {
         at,
         at,
       ).id;
+      const run = (input.spec as { run?: unknown } | undefined)?.run;
       this.appendEvent(input.actor, "job_queued", String(id), {
         attempt: input.attempt ?? null,
         kind: input.kind,
+        // The run it serves, when its spec names one: readers need not guess it.
+        ...(typeof run === "string" ? { run } : {}),
       });
       return id;
     });
@@ -731,13 +786,16 @@ export class Ledger {
   /**
    * Leases the next job. On a rig with several judge cards each executor passes its card: it
    * then skips a job pinned to another card (a calibration) and a job that must avoid its card
-   * (a confirmation, which belongs on another card than its screen's).
+   * (a confirmation, which belongs on another card than its screen's). The runs in `baseline`
+   * wait for the baseline of their starting point (goal 115): of their jobs, only a `baseline`
+   * job is leased.
    */
   leaseJob(
     owner: string,
     ttlMs: number,
     kinds?: readonly string[],
     card?: string | undefined,
+    baseline: readonly string[] = [],
   ): JobRow | undefined {
     return this.tx(() => {
       const filter = kinds?.length ? `and j.kind in (${kinds.map(() => "?").join(",")})` : "";
@@ -746,16 +804,20 @@ export class Ledger {
           ? ""
           : `and coalesce(json_extract(j.spec, '$.card'), ?) = ?
              and coalesce(json_extract(j.spec, '$.avoid_card'), '') <> ?`;
+      const waits = baseline.length
+        ? `and (i.id is null or j.kind = 'baseline' or i.id not in (${baseline.map(() => "?").join(",")}))`
+        : "";
       // A paused or closed run's jobs wait in the queue: the judge's time goes to running runs.
       const r = this.get<Row>(
         `select j.id from job j
          left join attempt a on a.id = j.attempt
          left join run i on i.id = coalesce(a.run, json_extract(j.spec, '$.run'))
-         where j.state = 'queued' ${filter} ${cards}
+         where j.state = 'queued' ${filter} ${cards} ${waits}
            and (i.status is null or i.status = 'running')
          order by j.priority, j.id limit 1`,
         ...(kinds ?? []),
         ...(card === undefined ? [] : [card, card, card]),
+        ...baseline,
       );
       if (!r) return undefined;
       const until = new Date(this.clock().getTime() + ttlMs).toISOString();

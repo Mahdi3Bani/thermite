@@ -288,6 +288,8 @@ import {
   attemptDetail,
   attemptHref,
   attemptRows,
+  baselineBlock,
+  baselineWords,
   cap,
   championHeldOutBlock,
   confirmingWords,
@@ -997,6 +999,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
           : "No lane is at work."
         : `It is ${esc(runStatusText(i))}.`,
       i.status === "running" ? confirmingWords(i) : "",
+      // A hill climb's baseline (goal 115): the judge measures the starting point first.
+      i.status === "running" ? esc(baselineWords(i)) : "",
       judging
         ? `The judge is ${esc(jobText(judging).replace(/^[A-Z]/, (x) => x.toLowerCase()))}.`
         : "",
@@ -1144,7 +1148,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                   : `<p class="run-said" data-part="run-said">${said}</p>
 <div data-part="run-needs">${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}</div>
 <div class="cols run-cols"><div>
-${goals}${championHeldOutBlock(i, now)}${research}${ladder}
+${goals}${championHeldOutBlock(i, now)}${research}${baselineBlock(i, u, now)}${ladder}
 <div class="block" data-part="attempts"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
 </div><div class="side">
 <div class="block" data-part="now"><div class="head"><h2>Now</h2></div>${now_}</div>

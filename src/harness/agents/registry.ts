@@ -223,8 +223,11 @@ export class Registry {
     assignments: Assignment[];
     directives?: number[] | undefined;
     notes?: string | undefined;
-    /** "research": planned by the research plan's fixed method, not by a model (no refusal). */
-    plan?: "research" | undefined;
+    /**
+     * "research": planned by the research plan's fixed method, not by a model (no refusal).
+     * "setup": a hill climb's setup round (goal 115), from the judge's reasons, not by a model.
+     */
+    plan?: "research" | "setup" | undefined;
     /** Why each of the model's tries gave no usable plan (goal 079). */
     causes?: { try: number; cause: string; detail: string }[] | undefined;
     by: string;
@@ -250,8 +253,8 @@ export class Registry {
       this.ledger.appendEvent(input.by, "epoch_started", input.run, {
         n: input.n,
         source: input.source,
-        // A research run's rounds are planned by a fixed method on purpose: say so, so a reader
-        // does not take its "fallback" source for a refused plan.
+        // A research run's rounds and a hill climb's setup rounds are planned by a fixed method on
+        // purpose: say so, so a reader does not take their "fallback" source for a refused plan.
         ...(input.plan ? { plan: input.plan } : {}),
         ...(input.notes ? { notes: input.notes.slice(0, 500) } : {}),
         planner_tries: input.tries,

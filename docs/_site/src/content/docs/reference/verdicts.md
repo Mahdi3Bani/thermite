@@ -32,30 +32,41 @@ flowchart LR
   X --> N
 ```
 
-The diagram leaves out three returns to `queued`: after one infrastructure failure, when the champion changed before confirmation, and when another change became the champion first. After a second infrastructure failure the attempt is `errored`. When its run closes, an attempt still `queued` becomes `not_judged`, and the judge never takes its job. The owner can also decline an attempt in `awaiting_audit`. A patch that does not apply to its parent never becomes an attempt: the submission is refused and counted as a `submission_refused` event.
+The diagram leaves out three returns to `queued`: after one infrastructure failure, when the champion changed before confirmation, and when another change became the champion first. After a second infrastructure failure the attempt is `errored`. It also leaves out a hill climb in [setup](#setup), whose changes go from `building` and `screening` to `promoted` or `judged` by the judge's baseline job alone. When its run closes, an attempt still `queued` becomes `not_judged`, and the judge never takes its job. The owner can also decline an attempt in `awaiting_audit`. A patch that does not apply to its parent never becomes an attempt: the submission is refused and counted as a `submission_refused` event.
 
 ## Verdicts
 
 A verdict is written once and never changed. A later verdict on the same attempt, such as the confirmation after a screen, is added after it. The dashboard shows the newest one.
 
-Only two verdicts can make an attempt the champion: `win_confirmed` and `goal_progress`.
+Only two verdicts can make an attempt the champion by beating it: `win_confirmed` and `goal_progress`. A third, `starting_point`, makes a hill climb's setup change the champion as its new starting point ([Setup](#setup)).
 
 ### Hill climb
 
-The judge times the change against the champion in **blocks**: each block runs every case (a **cell** of the kit) that the contract names, for both, in a random order. It looks at the result after the block counts in `acceptance.looks`. The [contract reference](contract.md) describes each setting named here.
+Before any change, the judge measures the starting point alone, the run's [baseline](contract.md#the-baseline). It gives no verdict: it records a `baseline` event, or `baseline_failed` with the reasons. Then the judge times each change against the champion in **blocks**: each block runs every case (a **cell** of the kit) that the contract names, for both, in a random order. It looks at the result after the block counts in `acceptance.looks`. The [contract reference](contract.md) describes each setting named here.
 
 | Verdict | Given at | Meaning | Dashboard says |
 | --- | --- | --- | --- |
 | `win_screened` | Screen | The gain's interval is above zero, its estimate is at least `min_effect`, and no guard is broken or unclear. A confirmation follows | "looked faster in screening; being confirmed on fresh runs" |
 | `neutral` | Screen | The interval lies inside ± `equivalence_band` (reason `equivalent`), or it is above zero but wholly below `min_effect` (reason `gain below min_effect`) | "no measurable difference" |
 | `regress` | Screen | The interval lies wholly below zero (reason `worse`) | "worse than the champion" |
-| `tradeoff` | Screen or confirmation | At the screen: the change would be a win, but a guard metric got worse by more than its step allowance. At confirmation: a guard got worse by more than its step allowance, or a guard's total allowance since the seed is spent | (the verdict's name) |
+| `tradeoff` | Screen or confirmation | At the screen: the change would be a win, but a guard metric got worse by more than its step allowance. At confirmation: a guard got worse by more than its step allowance, or a guard's total allowance against the starting point is spent: by the steps since it (`cumulative guard allowance spent: <metric>`), or by the change's values against the baseline's (`the guard's total allowance against the starting point is spent: …`) | (the verdict's name) |
 | `infeasible` | Screen or confirmation | A `min` or `max` hard constraint failed | (the verdict's name) |
 | `inconclusive` | Screen | No decision by the last look, or a guard still unclear at the last look | "too noisy, or not checkable, to tell" |
 | `win_confirmed` | Confirmation | On fresh blocks alone, the gain's interval is above zero, no guard is broken or unclear, and the held-out cases pass | "confirmed faster on fresh runs" |
 | `not_confirmed` | Confirmation | The gain did not hold on fresh blocks, a guard stayed unclear, or a held-out case failed | "did not hold up on fresh runs" |
 
-Reasons name the metric with its estimate and interval, for example `flops_per_s 12.40% [8.10%, 16.90%] n=6`, and end with `; vs champion seq <n>`. A confirmation that held on the measured cases but failed on a held-out case is `not_confirmed` with `confirmation failed: <kinds>; on the measured cells: <their reasons>`, such as `confirmation failed: a held-out check timed out; on the measured cells: confirmed on fresh data; flops_per_s 12.40% [8.10%, 16.90%] n=4`. When the measured cases failed too, the verdict stays as they decided it (`not_confirmed`, `tradeoff` or `infeasible`), and the kinds follow their reasons: `<their reasons>; <kinds>`. The figures are the measured cases' only. [Held-out failures](#held-out-failures) lists the kinds, and what the owner sees besides.
+Reasons name the metric with its estimate and interval, for example `flops_per_s 12.40% [8.10%, 16.90%] n=6`, and end with `; vs champion seq <n>`. At confirmation, each guard in the verdict's record also has `vs_start`, `{estimate, noise, spent}`, when the run has a baseline: the guard against the starting point, as log ratios. A confirmation that held on the measured cases but failed on a held-out case is `not_confirmed` with `confirmation failed: <kinds>; on the measured cells: <their reasons>`, such as `confirmation failed: a held-out check timed out; on the measured cells: confirmed on fresh data; flops_per_s 12.40% [8.10%, 16.90%] n=4`. When the measured cases failed too, the verdict stays as they decided it (`not_confirmed`, `tradeoff` or `infeasible`), and the kinds follow their reasons: `<their reasons>; <kinds>`. The figures are the measured cases' only. [Held-out failures](#held-out-failures) lists the kinds, and what the owner sees besides.
+
+### Setup
+
+A hill climb is in **setup** while the judge could not measure its starting point ([The baseline](contract.md#the-baseline)). Each change submitted then is judged by a baseline job of its own, not screened:
+
+| Verdict | Meaning | Dashboard says |
+| --- | --- | --- |
+| `starting_point` | The judge measured the change alone on every case: it becomes the run's starting point, a new champion, and its values the run's baseline. Its reasons begin `the judge measured this setup change on every cell: it is the run's starting point, champion #<n>` | "measured: it became the run's starting point" |
+| `invalid` or `crash_candidate` | The judge could not measure it, as for any candidate. Its reasons begin `the judge could not measure this setup change, so the run is still in setup: `, then the cell and the failure, such as `cell small: exit 3: …` | as below |
+
+A change submitted in setup that is still waiting when another one became the starting point is screened against the champion, as usual.
 
 ### Goal campaigns
 
@@ -141,7 +152,7 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | `duplicate` | The same change as an earlier attempt of the run. Not judged again | "the same change as an earlier attempt" |
 | `building` | The judge is building the change and the champion | "being built" |
 | `gating` | Hill climb: each case runs once for both; the change must pass the kit's check | "gating" |
-| `screening` | Hill climb: timed against the champion in blocks | "being measured" |
+| `screening` | Hill climb: timed against the champion in blocks; in setup, timed alone by the baseline job | "being measured" |
 | `verifying` | Goal campaign: the goals are being checked | "being checked" |
 | `confirming` | A screened win, waiting for its confirmation or, in a hill climb, in it. A goal campaign's confirmation shows `verifying` | "being confirmed on fresh runs" |
 | `judged` | The judge is done, and the verdict does not make it the champion | "judged" |
@@ -194,7 +205,7 @@ Attempt lists show one word for each attempt, in this order of precedence:
 
 | Word | When |
 | --- | --- |
-| **Champion #N** | It became champion number N: the current champion or an earlier one. The run's starting point is champion #1, so the first change to win is #2 |
+| **Champion #N** | It became champion number N: the current champion or an earlier one. The run's starting point is champion #1, so the first change to win is #2. In a hill climb in setup, the setup change that became the starting point is a champion too |
 | **Blocked** | The auditor blocked it |
 | **Run closed** | It waited for the owner or for an audit when its run closed: no one decides it now, and it does not become the champion |
 | **Auditing** | The rig's auditor is checking it |
@@ -330,7 +341,7 @@ Beside the chips, two lists narrow the rows further: **Every direction** (the **
 | --- | --- | --- |
 | Trial ending | `submitted`, `no_submission`, `finished`, `interrupted`, `turns`, `wall`, `context`, `error` | Why a trial ended: it submitted; it stopped without submitting; a research trial ended on its own; a pause, reset or restart ended it; the turn cap; its time ran out; the model's context was full; an error |
 | Judge job | `queued`, `leased`, `done`, `failed`, `blocked` | A job is `blocked` after three lease expiries or harness restarts. The ledger also allows `cancelled`, which nothing sets |
-| Judge job kind | `validate`, `confirm`, `evaluate`, `calibrate` | Taken lowest priority number first: `validate` 40 (or 60 for a new champion), `confirm` 50, `evaluate` 100, `calibrate` 200 |
+| Judge job kind | `baseline`, `validate`, `confirm`, `evaluate`, `calibrate` | Taken lowest priority number first: `baseline` 10, `validate` 40 (or 60 for a new champion), `confirm` 50, `evaluate` 100, `calibrate` 200. A hill climb's `baseline` measures its starting point, or a change in setup; until the run has its baseline, the judge takes no other job of it |
 | Goal check | `met`, `unmet`, `inconclusive`, `not_runnable` | One check of one goal. A threshold goal is `met` only when every case's interval is on the passing side |
 | Goal (on the champion) | `untouched`, `verified`, `unmet`, `attempted`, `not_runnable` | The champion's goals: not checked yet, met, unmet, unclear, cannot be checked. The dashboard shows each goal's latest check: "met", "unmet", "inconclusive", "not runnable" or "waiting on another goal" |
 | Audit decision | `clear`, `block`, `needs_owner`, `skipped` | The auditor's answer, or `skipped` when the rig has no auditor. The dashboard shows "waiting for the auditor", "waiting for you (no auditor configured)", "blocked by the auditor", "cleared by the auditor", "passed to you" or "skipped" with why, such as "this rig has no auditor"; the change's page says `This rig has no auditor: the audit was skipped` |
@@ -339,7 +350,7 @@ Beside the chips, two lists narrow the rows further: **Every direction** (the **
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A quote names its source by its id, or by the address or file name of exactly one archived source ([`add_claim`](command-line.md#thermite-trial)). A draft lists its problems. Workers in every mode may record claims. Each claim is a `claim_added` event, `{claim, verified, question, text, quote, sources, problems, more_problems?}`: `text` and `quote` (its first quote) cut to 500 characters; `sources`, each quote's source id, or what was cited when it names no archived source; `problems`, a draft's problems, `[]` for a verified claim, at most 20, each cut to 300 characters, and `more_problems` counts the rest. The run's **History** says `lane-1 recorded a verified claim: "…".` or `lane-1's claim stays a draft: "…". Why: …`, with its first three problems |
 | Research finding | supported (a finding), draft | A finding counts when every claim it cites is verified and every number in it is in those claims. A draft finding lists its problems. See [Campaign modes](../explanation/campaign-modes.md#research) |
-| Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or gave no usable plan: lanes take queued experiments in order. History then says why: "(by the fixed rules: no model)", "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because …)", with the reason; after more than one try, each try's reason in turn: "try 1: …; try 2: …". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …" |
+| Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or gave no usable plan: lanes take queued experiments in order. History then says why: "(by the fixed rules: no model)", "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because …)", with the reason; after more than one try, each try's reason in turn: "try 1: …; try 2: …". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …". A hill climb's setup rounds are `fallback` too, with `plan: "setup"`, and History says "Round N is a setup round: lane-1 works to make the starting point build and run its cases."; neither counts as a fallback |
 | Promotion policy | `auto`, `owner_approval` | Set for the run when it is assigned, or the rig's default |
 
 [Signed commands](signed-commands.md) lists the states of a command, and [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) the steps of a full reset.

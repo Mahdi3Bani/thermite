@@ -23,6 +23,7 @@ const VERDICT: Record<string, string> = {
   invalidated: "its evidence was invalidated",
   goal_screened: "looked like goal progress; being confirmed on fresh runs",
   goal_progress: "confirmed: it meets more goals and loses none",
+  starting_point: "measured: it became the run's starting point",
 };
 
 const LIFECYCLE: Record<string, string> = {
@@ -66,6 +67,10 @@ export const signed = (x: number, digits = 1) =>
 export function jobText(job: Pick<JudgeJob, "kind" | "attempt">, lane?: string | null): string {
   const who = job.attempt ? `${job.attempt}${lane ? ` (${lane})` : ""}` : "";
   switch (job.kind) {
+    case "baseline":
+      return job.attempt
+        ? `measuring setup change ${who} to see whether it can be the starting point`
+        : "measuring the starting point on every case (the run's baseline)";
     case "evaluate":
       return `screening ${who}: building it and measuring it against the champion`;
     case "confirm":
@@ -193,6 +198,13 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
           : [];
       const because =
         refused.length === 1 ? String(refused[0]).replace(/^try \d+: /, "") : refused.join("; ");
+      // A hill climb's setup round (goal 115): set from the judge's reasons, not a refused plan.
+      if (b.plan === "setup")
+        return s(
+          `${round.charAt(0).toUpperCase()}${round.slice(1)} is a setup round: ${listText(as.map((a) => String(a.lane)))} work${as.length === 1 ? "s" : ""} to make the starting point build and run its cases.`,
+          "warn",
+          { run: String(e.subject) },
+        );
       // A research run plans its rounds with a fixed method on purpose: not a refused plan.
       if (b.plan === "research" || String(b.notes ?? "").startsWith("research plan"))
         return s(
@@ -295,11 +307,26 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     }
     case "champion_promoted":
       return s(
-        b.attempt
-          ? `${String(b.attempt)} became champion #${String(b.seq)}: lanes now build on it.`
-          : `Champion #${String(b.seq)} was set.`,
+        b.setup === true
+          ? `${String(b.attempt)} became champion #${String(b.seq)}, the run's new starting point: the judge could measure it. The gain counts from here.`
+          : b.attempt
+            ? `${String(b.attempt)} became champion #${String(b.seq)}: lanes now build on it.`
+            : `Champion #${String(b.seq)} was set.`,
         "ok",
         { attempt: b.attempt ? String(b.attempt) : undefined, run: String(e.subject) },
+      );
+    // A hill climb's baseline (goal 115): where the run started, as the judge measured it.
+    case "baseline":
+      return s(
+        `The judge measured the starting point, champion #${String(b.champion_seq ?? "?")}${b.attempt ? ` (setup change ${String(b.attempt)})` : ""}, on every case: ${clip(String(b.summary ?? ""), 300)}. Every change is held against these values.`,
+        "ok",
+        { run: String(e.subject), attempt: b.attempt ? String(b.attempt) : undefined },
+      );
+    case "baseline_failed":
+      return s(
+        `The judge could not measure the starting point, champion #${String(b.champion_seq ?? "?")}: ${clip(String(b.reasons ?? "").split("\n")[0] ?? "", 300)}. The run is in setup: the lanes work to make it build and run its cases.`,
+        "bad",
+        { run: String(e.subject) },
       );
     case "champion_reopened":
       return s(`Champion #${String(b.seq)} was withdrawn: its evidence was invalidated.`, "bad", {

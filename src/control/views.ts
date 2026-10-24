@@ -138,6 +138,65 @@ function heldOutView(at: string, b: Record<string, unknown>): HeldOutView {
   };
 }
 
+/** A hill climb's baseline from its event's body (goal 115), each field checked. */
+function baselineView(at: string, b: Record<string, unknown>): BaselineView {
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const txt = (v: unknown, n = 200) => (typeof v === "string" ? clip(v, n) : "");
+  const dir = (v: unknown) => (v === "min" ? "min" : "max");
+  const p = (b.primary ?? null) as Record<string, unknown> | null;
+  const cells = (b.cells ?? {}) as Record<string, Record<string, Record<string, unknown>>>;
+  return {
+    at,
+    champion_seq: num(b.champion_seq) || 1,
+    commit: txt(b.commit, 80),
+    attempt: typeof b.attempt === "string" ? clip(b.attempt, 80) : null,
+    blocks: num(b.blocks),
+    runs_per_cell: num(b.runs_per_cell),
+    primary:
+      p && typeof p.metric === "string"
+        ? { metric: txt(p.metric), direction: dir(p.direction) }
+        : null,
+    guards: (Array.isArray(b.guards) ? b.guards : []).slice(0, 50).flatMap((x) => {
+      const g = (x ?? {}) as Record<string, unknown>;
+      return typeof g.metric === "string"
+        ? [
+            {
+              metric: txt(g.metric),
+              direction: dir(g.direction),
+              max_total_regression: num(g.max_total_regression),
+            },
+          ]
+        : [];
+    }),
+    units: Object.fromEntries(
+      Object.entries((b.units ?? {}) as Record<string, unknown>)
+        .slice(0, 100)
+        .map(([k, v]) => [clip(k, 200), txt(v, 40)]),
+    ),
+    cells: Object.entries(cells)
+      .slice(0, 200)
+      .map(([cell, metrics]) => ({
+        cell: clip(cell, 200),
+        metrics: Object.entries(metrics ?? {})
+          .slice(0, 100)
+          .map(([metric, v]) => ({
+            metric: clip(metric, 200),
+            median: num(v?.median),
+            mad: num(v?.mad),
+            n: num(v?.n),
+          })),
+      })),
+    files: (Array.isArray(b.files) ? b.files : []).slice(0, 1000).flatMap((x) => {
+      const f = (x ?? {}) as Record<string, unknown>;
+      return typeof f.path === "string"
+        ? [{ path: clip(f.path, 300), bytes: num(f.bytes), sha256: txt(f.sha256, 64) }]
+        : [];
+    }),
+    bytes: num(b.bytes),
+    summary: txt(b.summary, 1000),
+  };
+}
+
 /** A judge job, from its queued, leased and finished events. */
 export interface JudgeJob {
   id: string;
@@ -159,9 +218,50 @@ export interface ChampionStep {
   at: string;
   /** Step gain from the confirming verdict (a fraction), when known. */
   delta: number | null;
-  /** Product of step gains since the seed: the relative gain against the campaign baseline. */
+  /**
+   * Product of step gains since the run's starting point: the relative gain against it. A setup
+   * change that became the starting point (goal 115) starts it again at 1.
+   */
   cumulative: number;
   reopened: boolean;
+  /** A setup change the judge could measure: the run's starting point from here (goal 115). */
+  setup?: boolean | undefined;
+}
+
+/**
+ * A hill climb's baseline (goal 115): the judge's values of its starting point, measured alone
+ * on every measured cell before any change was judged. Never a held-out cell's.
+ */
+export interface BaselineView {
+  at: string;
+  /** The starting point: its champion number and commit. */
+  champion_seq: number;
+  commit: string;
+  /** The setup change that became the starting point; null for the seed. */
+  attempt: string | null;
+  blocks: number;
+  runs_per_cell: number;
+  /** The contract's main metric and guards, as the judge's event names them. */
+  primary: { metric: string; direction: string } | null;
+  guards: { metric: string; direction: string; max_total_regression: number }[];
+  /** Each kit metric's unit. */
+  units: Record<string, string>;
+  /** Each measured cell: each kit metric's median, median absolute deviation and count. */
+  cells: { cell: string; metrics: { metric: string; median: number; mad: number; n: number }[] }[];
+  /** What the kit's check kept in the baseline's judge-only folder: each file's size and hash. */
+  files: { path: string; bytes: number; sha256: string }[];
+  bytes: number;
+  summary: string;
+}
+
+/** A hill climb in setup (goal 115): the judge could not measure its starting point. */
+export interface SetupView {
+  at: string;
+  champion_seq: number;
+  commit: string;
+  /** The judge's reasons, in words (a build's error, a cell's crash, a check's words). */
+  reasons: string;
+  summary: string;
 }
 
 export interface RunView {
@@ -192,6 +292,15 @@ export interface RunView {
   /** Confirmed wins that wait for the owner's approval; none in a closed run (goal 087). */
   pending_promotions: string[];
   calibration: { at: string; sigma: number; summary: string } | null;
+  /** A hill climb's baseline (goal 115); null before the judge measured it, and in other modes. */
+  baseline: BaselineView | null;
+  /** A hill climb in setup (goal 115): its starting point can't be measured yet. */
+  setup: SetupView | null;
+  /**
+   * A hill climb waits for the judge's baseline of its starting point (goal 115): no round is
+   * planned and no trial starts until it has one.
+   */
+  baseline_waiting: boolean;
   /** Agents (M4): planner quality, duplicates, effort. */
   agents: {
     epochs: number;
@@ -742,6 +851,9 @@ export function rigView(
         verdicts: {},
         pending_promotions: [],
         calibration: null,
+        baseline: null,
+        setup: null,
+        baseline_waiting: false,
         agents: {
           epochs: 0,
           planner_valid: 0,
@@ -973,7 +1085,9 @@ export function rigView(
       case "champion_promoted": {
         const v = inst(String(e.subject));
         const attempt = (b.attempt as string | null) ?? null;
-        const delta = attempt ? (confirmDelta.get(attempt) ?? null) : null;
+        // A setup change that became the starting point (goal 115): the gain starts again.
+        const setup = b.setup === true;
+        const delta = attempt && !setup ? (confirmDelta.get(attempt) ?? null) : null;
         const prev = v.champion.filter((c) => !c.reopened).at(-1);
         v.champion.push({
           seq: Number(b.seq),
@@ -981,8 +1095,9 @@ export function rigView(
           commit: String(b.commit ?? ""),
           at: e.at,
           delta,
-          cumulative: (prev?.cumulative ?? 1) * (1 + (delta ?? 0)),
+          cumulative: setup ? 1 : (prev?.cumulative ?? 1) * (1 + (delta ?? 0)),
           reopened: false,
+          ...(setup ? { setup: true } : {}),
         });
         v.pending_promotions = v.pending_promotions.filter((p) => p !== attempt);
         break;
@@ -991,6 +1106,30 @@ export function rigView(
         const v = inst(String(e.subject));
         const step = v.champion.find((c) => c.seq === Number(b.seq));
         if (step) step.reopened = true;
+        // A starting point withdrawn takes its baseline with it (goal 115).
+        if (v.baseline?.champion_seq === Number(b.seq)) v.baseline = null;
+        break;
+      }
+      // A hill climb's baseline (goal 115): the judge measured its starting point.
+      case "baseline": {
+        const v = inst(String(e.subject));
+        v.baseline = baselineView(e.at, b);
+        v.setup = null;
+        v.baseline_waiting = false;
+        break;
+      }
+      // The judge could not measure the starting point: the run is in setup.
+      case "baseline_failed": {
+        const v = inst(String(e.subject));
+        v.baseline = null;
+        v.baseline_waiting = false;
+        v.setup = {
+          at: e.at,
+          champion_seq: Number(b.champion_seq ?? 1),
+          commit: String(b.commit ?? ""),
+          reasons: clip(String(b.reasons ?? ""), 4000),
+          summary: clip(String(b.summary ?? ""), 1000),
+        };
         break;
       }
       case "promotion_pending": {
@@ -1031,8 +1170,9 @@ export function rigView(
         a.epochs++;
         if (b.planner_valid === true) a.planner_valid++;
         // A research round is planned by the research plan on purpose: not a fallback (goal 079).
+        // Nor is a hill climb's setup round, set from the judge's reasons (goal 115).
         if (b.plan === "research") a.research_rounds++;
-        else if (b.source === "fallback") a.fallbacks++;
+        else if (b.source === "fallback" && b.plan !== "setup") a.fallbacks++;
         if (Number(b.raw_violations ?? 0) > 0) a.epochs_with_violations++;
         break;
       }
@@ -1453,17 +1593,27 @@ export function rigView(
       }
       case "job_queued": {
         const attempt = (b.attempt as string | null) ?? null;
+        const run =
+          typeof b.run === "string" && b.run
+            ? b.run
+            : attempt
+              ? (attempts.get(attempt)?.run ?? null)
+              : running;
         jobs.set(String(e.subject), {
           id: String(e.subject),
           kind: String(b.kind ?? ""),
           attempt,
-          run: attempt ? (attempts.get(attempt)?.run ?? null) : running,
+          run,
           queued_at: e.at,
           started_at: null,
           finished_at: null,
           state: "queued",
           result: {},
         });
+        // The judge measures a hill climb's starting point (goal 115): its rounds wait.
+        const jr = run ? runs.get(run) : undefined;
+        if (jr && b.kind === "baseline" && !attempt && !jr.baseline && !jr.setup)
+          jr.baseline_waiting = true;
         break;
       }
       case "job_leased": {

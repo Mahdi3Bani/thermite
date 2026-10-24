@@ -55,7 +55,7 @@ async function setup(
   } = {},
 ) {
   const env = makeJudgeEnv({ lanes: { count: o.lanes ?? 2, trials_per_epoch: o.perEpoch ?? 1 } });
-  await env.service.applyCommand(env.assign);
+  await env.start();
   const prompts: string[] = [];
   const fake = await startFakeModel(({ messages, tools }) => {
     if (!tools.some((x) => x.function.name === "submit_plan")) return { text: "done" };
@@ -870,7 +870,7 @@ describe("goal runs use the queue", () => {
       goal: { opsPerSecond: 90e6 },
       contract: { lanes: { count: 1, trials_per_epoch: 1 } },
     });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     let planner = true;
     const ids: string[] = [];
     const prompts: string[] = [];
@@ -1107,7 +1107,7 @@ describe("the queue's target drives ideas (goal 081)", () => {
       const e = makeJudgeEnv({
         contract: { lanes: { count: 2, trials_per_epoch: 1, queue_target: target } },
       });
-      await e.service.applyCommand(e.assign);
+      await e.start();
       for (const title of ["a", "b", "c"]) e.service.queue.add(RUN, { title, by: "owner" }, "o");
       const scheduler = new Scheduler({
         service: e.service,

@@ -333,7 +333,13 @@ export function kpi(k: string, v: string, s = "", cls = ""): string {
 
 /** Verdict colours, shared by the stacked bar, chips and legends. */
 export function verdictColor(v: string): string {
-  if (v === "win_confirmed" || v === "promoted" || v === "goal_progress" || v === "met")
+  if (
+    v === "win_confirmed" ||
+    v === "promoted" ||
+    v === "goal_progress" ||
+    v === "met" ||
+    v === "starting_point"
+  )
     return "var(--success)";
   if (v === "win_screened" || v === "goal_screened")
     return "color-mix(in srgb, var(--success) 55%, transparent)";
@@ -346,7 +352,7 @@ export function verdictColor(v: string): string {
 export function verdictChip(v: string | null, lifecycle: string): string {
   const k = v ?? lifecycle;
   const cls =
-    k === "win_confirmed" || k === "goal_progress" || k === "promoted"
+    k === "win_confirmed" || k === "goal_progress" || k === "promoted" || k === "starting_point"
       ? "ok"
       : k === "regress" || k === "crash_candidate"
         ? "bad"

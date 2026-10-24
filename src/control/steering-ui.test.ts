@@ -237,7 +237,7 @@ describe("Live's message box", () => {
   test("each recipient, kept in force and removed; who read it from the rig's own record, and the advisors' answers, under You", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
     const s = await stack(env.service, env.keys.privateKeyPem);
-    await env.service.applyCommand(env.assign);
+    await env.start();
     await s.sync();
     await s.advisorsSetUp({ teachers: 2, combiner: true, auditor: true, panel: 1 });
     // Two lanes at work: the first lines of their agents.
@@ -591,7 +591,7 @@ describe("Live's lanes", () => {
   test("a lane works while the ledger has its trial at work; Restart the lanes in Live's header, or a restart of the harness, ends it", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
     const s = await stack(env.service, env.keys.privateKeyPem);
-    await env.service.applyCommand(env.assign);
+    await env.start();
     await s.sync();
     // Trials that work until they are stopped: each says so in its first line.
     const trials: string[] = [];
@@ -703,7 +703,7 @@ describe("Live's lanes", () => {
   test("the box says when each program's workers read a message: Pi at its next step, OpenCode, Claude Code and Codex when their run ends", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
     const s = await stack(env.service, env.keys.privateKeyPem);
-    await env.service.applyCommand(env.assign);
+    await env.start();
     env.service.trialReport(
       { id: "t-1111111111111111", run: "js-1", lane: "lane-1" },
       { entries: [{ kind: "text", text: "Working on it." }] },
@@ -1078,6 +1078,7 @@ describe("the run page's Experiments and Planner tabs", () => {
         return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       },
     });
+    await env.drain(); // the judge's baseline of the starting point: the rounds wait for it
     assert.ok(await scheduler.tick(), "trials started");
     await scheduler.idle();
     await scheduler.tick();

@@ -23,7 +23,8 @@ import { clipReason } from "./reasons.ts";
  */
 
 export interface Arm {
-  name: "champion" | "candidate" | "retained" | "twin";
+  /** baseline: a hill climb's starting point, measured on its own (goal 115). */
+  name: "champion" | "candidate" | "retained" | "twin" | "baseline";
   dir: string;
   manifest: BuildManifest;
 }
@@ -74,6 +75,12 @@ export interface MeasureContext {
   note?: ((arm: string, cell: string, outcome: string) => void) | undefined;
   /** The user that times runs on this executor's judge card: run, or run-1 to run-7. */
   runRole?: Role | undefined;
+  /**
+   * A hill climb's baseline folder (goal 115): the kit's check gets it as THERMITE_BASELINE_DIR,
+   * writable during the baseline job and read-only (sealed) in every later job of the run. The
+   * kit's run command never gets it, and the folder is the judge's, mode 0700.
+   */
+  baselineDir?: string | undefined;
 }
 
 /**
@@ -264,7 +271,10 @@ async function runCheck(ctx: MeasureContext, vars: Record<string, string>): Prom
   const r = await runSupervised({
     argv: expandArgv(ctx.kit.check.command, vars),
     cwd: ctx.kitDir,
-    env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    env: {
+      PATH: process.env.PATH ?? "/usr/bin:/bin",
+      ...(ctx.baselineDir ? { THERMITE_BASELINE_DIR: ctx.baselineDir } : {}),
+    },
     timeoutMs: ctx.kit.check.timeout_s * 1000,
   });
   const last = r.stdout.trim().split("\n").pop() ?? "";

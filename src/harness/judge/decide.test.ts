@@ -181,6 +181,37 @@ describe("confirmation", () => {
     const d = decideConfirm(policy, fresh, { mem_mib: -0.018 });
     assert.equal(d.verdict, "tradeoff", d.reasons);
   });
+
+  test("against the baseline (goal 115): a step within its margin that has drifted past the total allowance from the start is a tradeoff", () => {
+    // mem_mib (lower is better): 0.6% above the champion in these blocks, within the 1% step.
+    const fresh = blocks(5, policy.cells, { gflops: 1.05, mem_mib: 1.006 }, 0.0005, 4);
+    const now = Math.min(
+      ...fresh.map((b) => b.candidate.mem_mib?.[policy.cells[0] as string] ?? 0),
+    );
+    // The starting point's mem_mib on every cell, `drift` below the change's values.
+    const start = (drift: number, mad = 0) =>
+      Object.fromEntries(
+        policy.cells.map((c) => [c, { mem_mib: { median: now / (1 + drift), mad } }]),
+      );
+    // No step estimates to add up (they were not recorded), and 3% above the start: spent.
+    const d = decideConfirm(policy, fresh, {}, 0, start(0.03));
+    assert.equal(d.verdict, "tradeoff", d.reasons);
+    assert.match(
+      d.reasons,
+      /^the guard's total allowance against the starting point is spent: mem_mib -(2\.9|3\.0)\d% against the starting point \(allowed -2\.00%, and its noise 0\.00%\)/,
+    );
+    assert.equal(d.vsStart?.[0]?.spent, true);
+    // 1.5% above the start: within the 2% allowance.
+    assert.equal(decideConfirm(policy, fresh, {}, 0, start(0.015)).verdict, "win_confirmed");
+    // 2.4% above, but the start's own spread is 1% of its value: its noise never counts against
+    // the change.
+    const noisy = decideConfirm(policy, fresh, {}, 0, start(0.024, now / 1.024 / 100));
+    assert.equal(noisy.verdict, "win_confirmed", noisy.reasons);
+    assert.equal(noisy.vsStart?.[0]?.spent, false);
+    // A cell the baseline has no value for: the guard is not checked against it.
+    const partial = { [policy.cells[0] as string]: { gflops: { median: 1, mad: 0 } } };
+    assert.deepEqual(decideConfirm(policy, fresh, {}, 0, partial).vsStart, []);
+  });
 });
 
 describe("goal thresholds", () => {

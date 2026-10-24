@@ -24,7 +24,7 @@ async function setup(
   assign: Record<string, unknown> = {},
 ) {
   const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 }, assign });
-  await env.service.applyCommand(env.assign);
+  await env.start();
   const prompts: string[] = [];
   const offered: string[][] = [];
   const fake = await startFakeModel(({ messages, tools }) => {

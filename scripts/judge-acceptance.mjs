@@ -10,6 +10,7 @@
 //   - nothing a run starts outlives it;
 //   - the isolation and smoke rig checks pass when asked for through control;
 //   - a killed controller is recorded as crash_infra exactly once, and the job completes;
+//   - the run's first job measures the starting point on every cell (its baseline, goal 115);
 //   - an A/A calibration measures the rig's noise.
 // It writes a JSON report to .dev/acceptance/. Usage: COMPOSE="podman compose" node scripts/judge-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -64,7 +65,23 @@ try {
   await assign(env, "smoke-1");
   check("assign_campaign with pinned project and kit bundles", true);
 
-  // Calibration runs first (the judge schedules it when the run starts).
+  // The baseline runs first (goal 115): the starting point alone on every measured cell. The
+  // calibration follows it.
+  const baseline = await until(
+    "the baseline of the starting point",
+    async () => (await events()).find((e) => e.kind === "baseline" && e.subject === "smoke-1"),
+    600_000,
+    2000,
+  );
+  check(
+    "baseline measured: champion #1 on every cell",
+    baseline.body.champion_seq === 1 &&
+      Object.values(baseline.body.cells ?? {}).length > 0 &&
+      Object.values(baseline.body.cells).every((m) =>
+        Object.values(m).every((v) => v.median > 0 && v.n === baseline.body.blocks),
+      ),
+    baseline.body.summary,
+  );
   const calibration = await until(
     "A/A calibration",
     async () => (await events()).find((e) => e.kind === "calibration"),

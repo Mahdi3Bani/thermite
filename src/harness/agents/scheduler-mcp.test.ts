@@ -27,7 +27,8 @@ async function setup(waitMs: number) {
     assign: { mcp_servers: USES },
     lanes: { count: 1, trials_per_epoch: 1 },
   });
-  const out = (await env.service.applyCommand(env.assign)) as { accepted?: boolean };
+  // With the judge's baseline of the starting point (goal 115), which the run's rounds wait for.
+  const out = (await env.start()) as { accepted?: boolean };
   assert.equal(out.accepted, true);
   const started: { spec: TrialSpec; held: string[] }[] = [];
   const scheduler = new Scheduler({
@@ -138,7 +139,7 @@ describe("a run waits for the MCP servers its kit names before its first plan or
 
   test("a run whose kit names no MCP server never waits; the bound is two minutes", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     let trials = 0;
     const scheduler = new Scheduler({
       service: env.service,

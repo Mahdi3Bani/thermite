@@ -42,7 +42,7 @@ const BRIEF = {
  */
 async function hillClimb(t: TestContext, brief: Record<string, unknown> = BRIEF) {
   const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 }, contract: brief });
-  await env.service.applyCommand(env.assign);
+  await env.start();
   const prompts: string[] = [];
   const fake = await startFakeModel(({ messages, tools }) => {
     if (!tools.some((x) => x.function.name === "submit_plan")) return { text: "done" };
@@ -336,7 +336,7 @@ describe("a campaign's brief (goal 078)", () => {
         },
       },
     });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     const brief = env.service.brief("js-1") as Record<string, unknown>;
     assert.deepEqual(brief.campaign_brief, briefData(BRIEF));
     const keys = Object.keys(brief);
@@ -359,7 +359,7 @@ describe("a campaign's brief (goal 078)", () => {
 
   test("the review panel's package carries the brief before the diff", async () => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 }, contract: BRIEF });
-    await env.service.applyCommand(env.assign);
+    await env.start();
     await env.drain();
     const pkg = env.service.reviewPackages()[0] as Record<string, unknown> | undefined;
     assert.ok(pkg, "a review waits for the panel");
