@@ -368,10 +368,15 @@ describe("a research run's page (goals 116 and 117)", () => {
     );
   });
 
-  test("the Experiments tab shows each research task's question and yield; a task that added nothing is not drawn as a gain", async () => {
+  test("the Tasks tab shows each research task's question and yield; a task that added nothing is not drawn as a gain", async () => {
     const c = await researchControl();
     c.ingest(researchRunEvents());
     const html = await c.page(`${RUN}&view=experiments`);
+    // A research run's queue is called Tasks, and its parts are named for tasks.
+    assert.match(html, /view=experiments">Tasks <span class="muted">/);
+    assert.doesNotMatch(html, />Experiments <span class="muted">|Add an experiment/);
+    assert.match(html, /<span class="lb">Add a task<i class="ii"/);
+    assert.match(html, /<thead><tr><th>Task<\/th><th>Kind of task<\/th><th>Added by<\/th>/);
     // Up next: a task whose title names no question gets its question as a chip.
     assert.match(
       html,
