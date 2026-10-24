@@ -4,6 +4,7 @@ import { clip } from "../core/kb-index.ts";
 import { FILE_BYTES_MAX, READ_LINES_DEFAULT, READ_LINES_MAX } from "./evidence.ts";
 import { searchLimit, searchWords } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
+import { registrableDomain } from "./research/fetcher.ts";
 import { readNoFollow, sectionPath } from "./research/folder.ts";
 
 /**
@@ -256,8 +257,12 @@ export class RunResearch {
             const problems = ids(c.problems);
             const verified = Number(c.verified) === 1;
             const q = c.question === null || c.question === undefined ? null : Number(c.question);
+            // Registrable domains (goal 117): docs.example.com and blog.example.com are one.
             const domains = new Set(
-              quotes.map((x) => sources.get(String(x.source))?.domain).filter(Boolean),
+              quotes.flatMap((x) => {
+                const d = sources.get(String(x.source))?.domain;
+                return d ? [registrableDomain(d)] : [];
+              }),
             );
             return {
               id: String(c.id),
@@ -717,7 +722,11 @@ export class RunResearch {
     return {
       note: noteFor(mode),
       sources,
-      domains: n("select count(distinct domain) as n from source where run = ?"),
+      domains: new Set(
+        this.all("select distinct domain from source where run = ?", run).map((r) =>
+          registrableDomain(String(r.domain)),
+        ),
+      ).size,
       claims: { verified, draft: drafts },
       hypotheses: n("select count(*) as n from hypothesis where run = ?"),
       findings: {

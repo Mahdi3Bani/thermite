@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseContract } from "../../core/contract.ts";
 import { startFakeModel } from "../../testing/fake-model.ts";
@@ -11,7 +13,7 @@ import { runResearchTrial } from "../agents/research-worker.ts";
 import { Scheduler } from "../agents/scheduler.ts";
 import { createHarnessApi } from "../api.ts";
 import { LocalRunner } from "../broker/runner.ts";
-import { blockedAddress, htmlToText } from "./fetcher.ts";
+import { blockedAddress, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Research } from "./research.ts";
 
 /** A tiny "web" for tests: two linked pages, a robots.txt and a disallowed path. */
@@ -538,6 +540,76 @@ describe("research integrity", () => {
     assert.match(body, /single domain[\s\S]*Stateless workers/);
     assert.match(body, /Numbers without a source[\s\S]*77/);
     await w.close();
+  });
+
+  test("a registrable domain is what one owner registers: public suffixes of more than one label are kept in code", () => {
+    const cases: [string, string][] = [
+      ["docs.example.com", "example.com"],
+      ["blog.example.com", "example.com"],
+      ["Example.COM.", "example.com"],
+      ["example.com", "example.com"],
+      ["www.bbc.co.uk", "bbc.co.uk"],
+      ["research.ox.ac.uk", "ox.ac.uk"],
+      ["www.gov.uk", "www.gov.uk"],
+      ["gov.uk", "gov.uk"],
+      ["news.abc.net.au", "abc.net.au"],
+      ["www.example.co.jp", "example.co.jp"],
+      ["alice.github.io", "alice.github.io"],
+      ["bob.github.io", "bob.github.io"],
+      ["github.io", "github.io"],
+      ["docs.nvidia.com", "nvidia.com"],
+      ["my-bucket.s3.amazonaws.com", "my-bucket.s3.amazonaws.com"],
+      ["127.0.0.1", "127.0.0.1"],
+      ["[::1]", "::1"],
+      ["localhost", "localhost"],
+    ];
+    for (const [host, want] of cases) assert.equal(registrableDomain(host), want, host);
+  });
+
+  test("corroboration counts registrable domains: two hosts of one site are one domain", async () => {
+    const { env, research } = await researchEnv();
+    const dir = mkdtempSync(join(env.service.paths.stateDir, "sites-"));
+    const quote = "Fresh workers that start from the ledger lose nothing that matters.";
+    const archive = (id: string, url: string) => {
+      const text = join(dir, `${id}.txt`);
+      writeFileSync(text, `A page that says: ${quote}`);
+      env.service.ledger.db
+        .prepare(
+          `insert into source (id, run, url, final_url, domain, fetched_at, http_status, content_type, bytes, sha256,
+             title, raw_path, text_path, fetched_by) values (?, 'r-1', ?, ?, ?, ?, 200, 'text/plain', 1, ?, null, ?, ?, 'lane-1')`,
+        )
+        .run(id, url, url, new URL(url).hostname, new Date().toISOString(), id, text, text);
+    };
+    archive("s-000000000001", "https://docs.example.com/a");
+    archive("s-000000000002", "https://blog.example.com/b");
+    archive("s-000000000003", "https://www.example.org/c");
+    const same = research.addClaim("r-1", "lane-1", {
+      text: "Fresh workers lose nothing that matters.",
+      quotes: [
+        { source: "s-000000000001", quote },
+        { source: "s-000000000002", quote },
+      ],
+      question: 0,
+    });
+    assert.equal(same.verified, true);
+    let stats = research.stats("r-1");
+    assert.equal(
+      stats.domains,
+      2,
+      "docs.example.com and blog.example.com are one, example.org another",
+    );
+    assert.equal(stats.corroborated, 0, "two hosts of one site are one independent source");
+    const two = research.addClaim("r-1", "lane-1", {
+      text: "Workers that start fresh from the ledger lose nothing that matters.",
+      quotes: [
+        { source: "s-000000000001", quote },
+        { source: "s-000000000003", quote },
+      ],
+      question: 0,
+    });
+    assert.equal(two.verified, true);
+    stats = research.stats("r-1");
+    assert.equal(stats.corroborated, 1);
   });
 
   test("paused time does not count on the research clock", async () => {

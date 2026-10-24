@@ -319,7 +319,7 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | `report_cadence.digest_minutes` | integer ≥ 1 | 60 | Minutes between digests. After `min_duration`, the check whether every question is answered runs at a digest |
 | `report_cadence.report_hours` | number > 0 | 24 | Accepted, not used yet. A research run writes digests and one final report |
 | `quality.verbatim_quotes` | `true` | `true` | Always on: a claim counts only when every quote is found word for word in its archived source |
-| `quality.min_independent_sources` | integer ≥ 1 | 2 | Different domains a verified claim's quotes must come from to be listed as independently sourced. The report lists those claims apart from the rest, and says for each finding how many of its claims are |
+| `quality.min_independent_sources` | integer ≥ 1 | 2 | Different registrable domains a verified claim's quotes must come from to be listed as independently sourced: `docs.example.com` and `blog.example.com` count as one, `example.com`. The report lists those claims apart from the rest, and says for each finding how many of its claims are |
 | `fetch_policy.respect_robots` | boolean | `true` | Whether fetches obey each site's `robots.txt` |
 | `fetch_policy.per_domain_per_minute` | integer ≥ 1 | 6 | Fetches per domain per minute. Further fetches wait; they are not refused |
 | `fetch_policy.max_bytes` | integer ≥ 1 | 5000000 | The largest response fetched, in bytes. A larger one is refused: `larger than <n> bytes` |

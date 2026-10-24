@@ -11,7 +11,7 @@ import { questionLabel } from "../../core/research-check.ts";
 import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited, claimNumbers, numbersIn, withoutNames } from "./checks.ts";
-import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
+import { Fetcher, FetchRefused, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
 import { acceptedReview, answerSections, checkLine } from "./review.ts";
 
@@ -27,7 +27,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
  *   the harness itself fetched, and every number in the claim appears in its quotes; anything
  *   else stays a draft;
  * - a verified claim is corroborated when its quotes come from at least the contract's number of
- *   independent domains;
+ *   independent domains: registrable domains, so docs.example.com and blog.example.com are one;
  * - a finding is a worker's conclusion with a summary and why it matters; it is reported as a
  *   finding only when every claim it cites is verified and every number in it appears in those
  *   claims; anything else stays a draft finding;
@@ -788,16 +788,27 @@ export class Research {
     return merged;
   }
 
-  /** Distinct domains a verified claim's quotes come from. */
+  /**
+   * Distinct registrable domains a verified claim's quotes come from (goal 117): a source keeps
+   * the host it was fetched from, and docs.example.com and blog.example.com count as one.
+   */
   private claimDomains(run: string, quotesJson: string): number {
     const ids = (JSON.parse(quotesJson) as { source: string }[]).map((q) => q.source);
-    const domains = new Set(
-      ids.map(
-        (id) => this.get("select domain from source where run = ? and id = ?", run, id)?.domain,
-      ),
-    );
-    domains.delete(undefined);
+    const domains = new Set<string>();
+    for (const id of ids) {
+      const d = this.get("select domain from source where run = ? and id = ?", run, id)?.domain;
+      if (d !== undefined && d !== null) domains.add(registrableDomain(String(d)));
+    }
     return domains.size;
+  }
+
+  /** The run's distinct registrable domains (goal 117). */
+  private domains(run: string): number {
+    return new Set(
+      this.all("select distinct domain from source where run = ?", run).map((r) =>
+        registrableDomain(String(r.domain)),
+      ),
+    ).size;
   }
 
   stats(run: string) {
@@ -816,7 +827,7 @@ export class Research {
       )?.t;
     return {
       sources: n("select count(*) as n from source where run = ?", run),
-      domains: n("select count(distinct domain) as n from source where run = ?", run),
+      domains: this.domains(run),
       verified: n("select count(*) as n from claim where run = ? and verified = 1", run),
       corroborated,
       drafts: n("select count(*) as n from claim where run = ? and verified = 0", run),

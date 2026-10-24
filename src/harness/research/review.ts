@@ -3,6 +3,7 @@ import type { ResearchContract } from "../../core/contract.ts";
 import { ANSWERED, questionLabel, RESEARCH_REVIEW } from "../../core/research-check.ts";
 import type { Ledger } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
+import { registrableDomain } from "./fetcher.ts";
 
 /**
  * A research run ends when its questions are answered (goal 112). After the run's minimum running
@@ -40,7 +41,7 @@ export const RESEARCH_CRITERIA = [
 export interface PackageClaim {
   id: string;
   text: string;
-  /** The domains its quotes' sources come from. */
+  /** The registrable domains its quotes' sources come from (docs.example.com: example.com). */
   domains: string[];
   /** From at least the contract's number of independent domains. */
   corroborated: boolean;
@@ -230,7 +231,7 @@ export function researchReviewDue(
   return { due: true, marker };
 }
 
-/** Distinct domains of a claim's quotes' sources. */
+/** Distinct registrable domains of a claim's quotes' sources (goal 117). */
 function claimDomains(ledger: Ledger, run: string, quotes: string): string[] {
   const ids = (JSON.parse(quotes) as { source: string }[]).map((q) => q.source);
   const out = new Set<string>();
@@ -240,7 +241,7 @@ function claimDomains(ledger: Ledger, run: string, quotes: string): string[] {
         | { domain: string }
         | undefined
     )?.domain;
-    if (d) out.add(d);
+    if (d) out.add(registrableDomain(d));
   }
   return [...out];
 }
@@ -316,7 +317,13 @@ export function researchPackage(
   }));
   const corpus = {
     sources: count(ledger, "select count(*) as n from source where run = ?", run),
-    domains: count(ledger, "select count(distinct domain) as n from source where run = ?", run),
+    domains: new Set(
+      (
+        ledger.db.prepare("select distinct domain from source where run = ?").all(run) as {
+          domain: string;
+        }[]
+      ).map((r) => registrableDomain(r.domain)),
+    ).size,
     verified_claims: claims.length,
     corroborated_claims: claims.filter((c) => c.claim.corroborated).length,
     findings: findings.length,

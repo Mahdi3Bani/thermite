@@ -130,6 +130,68 @@ function domainMatches(host: string, domain: string): boolean {
   return host === domain || host.endsWith(`.${domain}`);
 }
 
+/**
+ * Public suffixes of more than one label: under each, a registrable domain has one label more
+ * (example.co.uk, someone.github.io). A small table kept in code, from the Public Suffix List
+ * (publicsuffix.org), with no dependency: the country second-level domains research cites most,
+ * and hosting services where each name under the suffix is another owner. A suffix of one label
+ * (com, org, de) needs no entry: the registrable domain is then the last two labels. A host under
+ * a suffix missing here counts as its last two labels, so two owners under it count as one: a
+ * miss can only make corroboration stricter, never looser.
+ */
+const MULTI_LABEL_SUFFIXES = new Set(
+  [
+    // United Kingdom
+    "co.uk ac.uk gov.uk org.uk me.uk ltd.uk plc.uk net.uk sch.uk nhs.uk police.uk",
+    // Australia and New Zealand
+    "com.au net.au org.au edu.au gov.au asn.au id.au",
+    "co.nz ac.nz govt.nz org.nz net.nz",
+    // Japan, Korea, China, Taiwan, Hong Kong, Singapore, India
+    "co.jp ac.jp go.jp or.jp ne.jp gr.jp ed.jp lg.jp",
+    "co.kr ac.kr go.kr or.kr re.kr",
+    "com.cn edu.cn gov.cn org.cn net.cn ac.cn",
+    "com.tw edu.tw gov.tw org.tw",
+    "com.hk edu.hk gov.hk org.hk",
+    "com.sg edu.sg gov.sg org.sg",
+    "co.in ac.in gov.in org.in net.in edu.in res.in",
+    // The Americas, Africa, the Middle East and Europe
+    "com.br gov.br org.br edu.br net.br",
+    "com.mx gob.mx edu.mx org.mx com.ar gob.ar",
+    "co.za ac.za gov.za org.za",
+    "co.il ac.il gov.il org.il",
+    "com.tr edu.tr gov.tr",
+    "co.at ac.at gv.at or.at com.pl edu.pl gov.pl com.es org.es gob.es",
+    // Hosting services: each name under one is its own site
+    "github.io gitlab.io readthedocs.io pages.dev workers.dev netlify.app",
+    "vercel.app web.app firebaseapp.com herokuapp.com appspot.com blogspot.com",
+    "wordpress.com substack.com azurewebsites.net cloudfront.net s3.amazonaws.com",
+  ].flatMap((line) => line.split(" ")),
+);
+
+/**
+ * A host's registrable domain: the part one owner registers, which corroboration counts (goal
+ * 117). docs.example.com and blog.example.com are one, example.com; www.example.co.uk is
+ * example.co.uk; alice.github.io and bob.github.io are two. An address (IPv4 or IPv6) or a host of
+ * one label stays as it is.
+ */
+export function registrableDomain(host: string): string {
+  const h = host
+    .trim()
+    .toLowerCase()
+    .replace(/\.+$/, "")
+    .replace(/^\[|\]$/g, "");
+  if (!h || h.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h)) return h;
+  const labels = h.split(".");
+  if (labels.length < 2) return h;
+  // The longest suffix in the table that ends the host, then one label more.
+  for (let k = Math.min(labels.length, 3); k >= 2; k--) {
+    const suffix = labels.slice(-k).join(".");
+    if (MULTI_LABEL_SUFFIXES.has(suffix))
+      return labels.length > k ? labels.slice(-(k + 1)).join(".") : suffix;
+  }
+  return labels.slice(-2).join(".");
+}
+
 const ENTITIES: Record<string, string> = {
   nbsp: " ",
   amp: "&",
