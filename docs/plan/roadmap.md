@@ -81,6 +81,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [098](goals/_completed/098-research-teachers-read-the-research.goal) A run's teachers read what the run found: its sources, claims, findings and files · `VERIFIED`
 - [099](goals/_completed/099-campaign-status-words.goal) Status words say how a run ended; a judge-only run says so · `VERIFIED`
 - [115](goals/_completed/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `VERIFIED`
+- [128](goals/128-get-run-bounded.goal) `get_run` stays a size an agent can read, for a run of any length · `PROPOSED`
 
 ### Research mode
 
@@ -132,6 +133,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 - [097](goals/097-add-a-kit-bundle-from-the-dashboard.goal) Give control a kit bundle from the dashboard · `PROPOSED`
 - [108](goals/108-gated-models-on-cloud-rigs.goal) Gated models on cloud rigs · `PROPOSED`
+- [129](goals/129-copy-takes-rubrics.goal) A research campaign's copy can take its own rubrics · `PROPOSED`
+- [130](goals/130-mcp-tools-after-update.goal) An MCP client sees control's new tools after control is updated · `PROPOSED`
 
 ## v0.1.4
 
