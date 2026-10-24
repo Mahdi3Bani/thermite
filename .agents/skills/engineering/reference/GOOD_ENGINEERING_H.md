@@ -144,6 +144,7 @@ What follows are short bullet points on what makes good engineering, will be exp
 - Files above 500 lines require a cohesion review.
 - Files above 800 lines should normally be decomposed.
 - Split by responsibility and ownership, not merely to satisfy a line count.
+- Don't split and use kebab case on files, if one large file is broken down into many modules, organize it cleanly in folders not a folder of kebab case files with `<originalname>-<module>.tld`.
 
 ## Bound Resources and State Transitions
 - Name limits for queues, retries, payloads and work per request; define what happens at each limit.
