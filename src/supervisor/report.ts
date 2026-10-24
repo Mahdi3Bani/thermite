@@ -52,8 +52,8 @@ export async function dailyReport(input: {
           .map(([k, n]) => `${k} ${n}`)
           .join(", ") || "none"
       }.`,
-      // A research run's rounds are set by its research plan, not by a planner (goal 079).
-      `- Epochs: ${b.epochs.length ? `${b.epochs[0]?.n} so far; ${inst.mode === "research" ? "set by the research plan" : `planner valid in ${b.epochs.filter((e) => e.planner_valid).length} of the last ${b.epochs.length}`}` : "none yet"}.`,
+      // A research run's rounds: by its planner, or by its research plan in code (goal 117).
+      `- Epochs: ${b.epochs.length ? `${b.epochs[0]?.n} so far; ${inst.mode === "research" ? `${b.epochs.filter((e) => e.planner_valid).length} of the last ${b.epochs.length} planned by the planner, the rest set by the research plan` : `planner valid in ${b.epochs.filter((e) => e.planner_valid).length} of the last ${b.epochs.length}`}` : "none yet"}.`,
       `- Directions: ${b.families.map((x) => `${x.id} (${x.status}, ${x.attempts} attempts)`).join("; ") || "none"}.`,
       `- Directives in force: ${b.directives.length}.`,
       ...(b.goals ? [`- Goals: ${b.goals.map((g) => `${g.id} ${g.status}`).join(", ")}.`] : []),
