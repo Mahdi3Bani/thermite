@@ -1,15 +1,19 @@
 # On every pull request and every push to main and to the development branch (v1/build): the fast
-# checks, the documentation site's build and checks, a secret scan of the history, then the compose
-# smoke test: control and one rig built from this commit, a campaign assigned through control, a
-# candidate judged. Beside it, the one-container rig image's acceptance, rigs on RunPod against
-# the fake RunPod API, and the quick start as a tester follows it (on pull requests, only those
-# that touch what it runs).
+# checks, the judge's tests on machines of their own, the documentation site's build and checks
+# and a secret scan of the history. The heavy jobs run only when the change touches what they test
+# (the owner, 2026-10-24: "the heavy stuff should run before a version tag and release, not a
+# commit and roll to lab"): the compose smoke test (control and one rig built from this commit, a
+# campaign assigned through control, a candidate judged), the one-container rig image's
+# acceptance, rigs on RunPod against the fake RunPod API, and the quick start as a tester follows
+# it. On a version tag, and when run by hand, every job runs. No job waits for another.
 name: ci
 
 on:
   pull_request:
   push:
     branches: [main, v1/build]
+    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -38,10 +42,29 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      # One test file at a time: the judge's tests time real processes.
-      - run: npm test
+      # Every test file but the judge's and the broker's, side by side: they run in the next job.
+      - run: node scripts/test.mjs --part parallel
       # Generic patterns only here; maintainers' checkouts add a private denylist.
       - run: npm run check:public
+
+  # The judge's and the broker's tests time real processes, so they run one file at a time, on a
+  # machine with nothing else on it.
+  judge-tests:
+    name: judge tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: node scripts/test.mjs --part alone
 
   docs:
     name: docs site
@@ -90,7 +113,8 @@ jobs:
             --log-opts="--full-history HEAD"
 
   compose-smoke:
-    needs: checks
+    needs: heavy
+    if: needs.heavy.outputs.compose == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -108,7 +132,8 @@ jobs:
   # starts it: enrollment by control in pull mode, its isolation selftest, restarts and a clean
   # stop.
   rig-image:
-    needs: checks
+    needs: heavy
+    if: needs.heavy.outputs.rig_image == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -127,7 +152,8 @@ jobs:
   # script launches a rig whose pod is a container of the one-container rig image, enrolls it,
   # takes its reports, then stops, starts and terminates it, its results sent to control first.
   runpod:
-    needs: checks
+    needs: heavy
+    if: needs.heavy.outputs.runpod == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -141,14 +167,18 @@ jobs:
         env:
           COMPOSE: docker compose
 
-  # Whether the quick start runs: always on a push, and on a pull request that changes one of these
-  # paths (extended regular expressions, matched against each changed file's path).
-  quick-start-paths:
-    name: quick start, needed?
+  # Which heavy jobs run: every one on a version tag and when run by hand; on a push or a pull
+  # request, each one whose paths (extended regular expressions, matched against each changed
+  # file's path) the change touches.
+  heavy:
+    name: heavy checks, needed?
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      run: ${{ steps.paths.outputs.run }}
+      compose: ${{ steps.paths.outputs.compose }}
+      rig_image: ${{ steps.paths.outputs.rig_image }}
+      runpod: ${{ steps.paths.outputs.runpod }}
+      quick_start: ${{ steps.paths.outputs.quick_start }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -156,10 +186,46 @@ jobs:
       - id: paths
         env:
           EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
           BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          # The containers and compose files, the APIs and the relay, and the smoke test.
+          COMPOSE: |
+            ^containers/
+            ^compose[^/]*\.yaml$
+            ^package(-lock)?\.json$
+            ^kits/smoke-cpu/
+            ^src/(control|harness)/api\.ts$
+            ^src/(control|harness|supervisor)/main\.ts$
+            ^src/supervisor/relay\.ts$
+            ^scripts/(compose-smoke|stage-smoke)\.mjs$
+            ^scripts/lib/
+            ^\.github/workflows/ci\.yml$
+          # The rig image and the harness image under it, the broker, the isolation selftest and
+          # pull mode's enrollment.
+          RIG_IMAGE: |
+            ^containers/(rig|harness)/
+            ^package(-lock)?\.json$
+            ^src/harness/broker(\.ts|/)
+            ^src/harness/selftest\.ts$
+            ^src/(core|control)/tunnel\.ts$
+            ^scripts/rig-image-acceptance\.mjs$
+            ^scripts/lib/
+            ^\.github/workflows/ci\.yml$
+          # Rigs on RunPod, pull mode, results sent to control, and the rig image.
+          RUNPOD: |
+            ^src/control/runpod
+            ^src/control/(tunnel|exports)\.ts$
+            ^src/core/tunnel\.ts$
+            ^src/supervisor/(export-upload|relay)\.ts$
+            ^src/testing/fake-runpod\.ts$
+            ^containers/rig/
+            ^scripts/runpod-acceptance\.mjs$
+            ^scripts/lib/
+            ^\.github/workflows/ci\.yml$
           # The images and compose files, the release bundle, the quick start's pages, the sample
           # and the smoke kit the rig's check runs, and this test itself.
-          PATHS: |
+          QUICK_START: |
             ^containers/
             ^compose[^/]*\.yaml$
             ^scripts/release-bundle\.ts$
@@ -174,20 +240,35 @@ jobs:
             ^src/testing/quick-start\.ts$
             ^\.github/workflows/ci\.yml$
         run: |
-          if [ "$EVENT" != pull_request ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          all=
+          case "$EVENT" in
+            pull_request) from=$BASE ;;
+            push) from=$BEFORE ;;
+            *) all=yes ;;
+          esac
+          # A tag, a new branch or a history that was rewritten: no change to compare, so all.
+          if [ "$REF_TYPE" = tag ] || ! git cat-file -e "${from:-none}^{commit}" 2>/dev/null; then
+            all=yes
           fi
-          printf '%s\n' "$PATHS" | sed '/^$/d' > "$RUNNER_TEMP/paths"
-          matched=$(git diff --name-only "$BASE" HEAD | grep -E -f "$RUNNER_TEMP/paths" || true)
-          if [ -n "$matched" ]; then
-            echo "The quick start runs: this pull request changes"
-            printf '%s\n' "$matched" | sed 's/^/  /'
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No change here touches the quick start: it does not run."
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+          [ -z "$all" ] && git diff --name-only "$from" HEAD > "$RUNNER_TEMP/changed"
+          for job in compose rig_image runpod quick_start; do
+            if [ -n "$all" ]; then
+              echo "$job runs: a version tag, a run by hand or no change to compare"
+              echo "$job=true" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+            var=$(echo "$job" | tr a-z A-Z)
+            printenv "$var" | sed '/^$/d' > "$RUNNER_TEMP/paths"
+            matched=$(grep -E -f "$RUNNER_TEMP/paths" "$RUNNER_TEMP/changed" || true)
+            if [ -n "$matched" ]; then
+              echo "$job runs: the change touches"
+              printf '%s\n' "$matched" | sed 's/^/  /'
+              echo "$job=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$job does not run: no change here touches what it tests"
+              echo "$job=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
 
   # The quick start on a clean runner, as a tester follows it (scripts/quick-start-acceptance.mjs):
   # this commit's images in a release bundle written by scripts/release-bundle.ts, init and up,
@@ -195,8 +276,8 @@ jobs:
   # judge's first verdict, with the scripted model of the agents acceptance (no key, no network
   # model). It reads its steps from the tutorials, so a page that breaks the quick start fails it.
   quick-start:
-    needs: [checks, quick-start-paths]
-    if: needs.quick-start-paths.outputs.run == 'true'
+    needs: heavy
+    if: needs.heavy.outputs.quick_start == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

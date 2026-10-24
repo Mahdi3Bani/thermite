@@ -53,7 +53,7 @@ Run these from the repository root before each commit:
 | --- | --- |
 | `npm run typecheck` | The TypeScript types |
 | `npm run lint` | Style and common mistakes, with Biome. `npm run format` fixes what it can |
-| `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all, one file at a time. Each file ends when its tests end, so a failed test that leaves a server open fails at once instead of hanging |
+| `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all: the files side by side, one for each CPU, then the judge's and the broker's one at a time, alone, because they time real processes. Each file ends when its tests end, so a failed test that leaves a server open fails at once instead of hanging |
 | `npm run check:public` | That no tracked or staged file holds private names (see below). Stage new files first, or run `node scripts/check-public.mjs --untracked` |
 
 `npm run check` runs the typecheck, the lint, every test and the public check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `src/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit.
@@ -89,18 +89,19 @@ One test is run by hand only, with the owner's OK, because it spends money: `scr
 
 ## What CI runs
 
-Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, and on every push to `main` and to the development branch, `v1/build`. It has these jobs, and runs **quick-start** on a pull request only when the change can affect the quick start:
+Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, on every push to `main` and to the development branch, `v1/build`, and on every version tag (`v…`); it can also be run by hand from the **Actions** tab. Its jobs run at once, none waiting for another. The heavy jobs, **compose-smoke**, **rig image**, **runpod** and **quick-start**, run on a pull request or a push only when the change touches what they test, so a small change gets its answer in minutes. On a version tag, and when run by hand, every job runs:
 
 | Job | What it runs |
 | --- | --- |
-| **checks (Node 22)**, **checks (Node 24)** | `npm ci`, the typecheck, the lint, every test and the public check, on each Node.js version |
+| **checks (Node 22)**, **checks (Node 24)** | `npm ci`, the typecheck, the lint, every test but the judge's and the broker's (`node scripts/test.mjs --part parallel`), and the public check, on each Node.js version |
+| **judge tests (Node 22)**, **judge tests (Node 24)** | The judge's and the broker's tests, one file at a time, on a machine of their own, because they time real processes (`node scripts/test.mjs --part alone`) |
 | **docs site** | `npm run docs:build` and `npm run docs:check` |
 | **secret scan** | gitleaks over the whole history of the commit (see below) |
-| **compose-smoke** | The compose smoke test with Docker, after both **checks** jobs pass |
-| **rig image** | Builds the one-container rig image, enrolls it in pull mode from control's code in the script, and runs its isolation self-test with Docker (`scripts/rig-image-acceptance.mjs`) |
-| **runpod** | Launches a rig on the fake RunPod API, whose pod is a container of the rig image, then stops, starts and terminates it, with Docker (`scripts/runpod-acceptance.mjs`) |
-| **quick start, needed?** | Decides whether **quick-start** runs: always on a push, and on a pull request only when it changes the containers, a compose file, the release bundle, the quick start's pages, `examples/`, the smoke kit or the test itself |
-| **quick-start** | The quick-start test with Docker (`scripts/quick-start-acceptance.mjs`), after both **checks** jobs pass. It stops after 60 minutes. Its report, with each check and how long each step took, is the run's artifact `quick-start-report` |
+| **compose-smoke** | The compose smoke test with Docker, when the change touches the containers, a compose file, the APIs, the relay or the smoke test |
+| **rig image** | Builds the one-container rig image, enrolls it in pull mode from control's code in the script, and runs its isolation self-test with Docker (`scripts/rig-image-acceptance.mjs`), when the change touches the rig or harness image, the broker, the isolation self-test or pull mode |
+| **runpod** | Launches a rig on the fake RunPod API, whose pod is a container of the rig image, then stops, starts and terminates it, with Docker (`scripts/runpod-acceptance.mjs`), when the change touches rigs on RunPod, pull mode, results sent to control or the rig image |
+| **heavy checks, needed?** | Decides which heavy jobs run, and says why in its log: every one on a version tag or a run by hand; on a pull request or a push, each one whose paths the change touches. Changing the workflow runs them all |
+| **quick-start** | The quick-start test with Docker (`scripts/quick-start-acceptance.mjs`), when the change touches the containers, a compose file, the release bundle, the quick start's pages, `examples/`, the smoke kit or the test itself. It stops after 60 minutes. Its report, with each check and how long each step took, is the run's artifact `quick-start-report` |
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
 

@@ -16,7 +16,7 @@ npm ci
 npm run check            # typecheck, lint, tests, public-content check
 ```
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main` and to the development branch, `v1/build`. It runs the same checks on Node 22 and 24, builds and checks the documentation site, scans the whole history for secrets with gitleaks (the allowlists for made-up keys are in `.gitleaks.toml`), then runs the compose smoke test with Docker. On pushes, and on pull requests that touch the containers, compose, the release bundle, the quick start's pages or the sample, it also runs [the quick-start test](#the-quick-start-test). [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
+CI (`.github/workflows/ci.yml`) runs on every pull request, every push to `main` and to the development branch, `v1/build`, and every version tag. Its jobs run at once, none waiting for another. It runs the same checks on Node 22 and 24, with the judge's tests in jobs of their own, builds and checks the documentation site, and scans the whole history for secrets with gitleaks (the allowlists for made-up keys are in `.gitleaks.toml`). The heavy jobs, the compose smoke test, the rig image, RunPod and [the quick-start test](#the-quick-start-test), run on a push or a pull request only when the change touches what they test, and always on a version tag. [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
 
 The documentation site has its own build and checks: see [Writing the documentation](writing-docs.md).
 
