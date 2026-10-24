@@ -9,12 +9,12 @@ Thermite is open-source **autoresearch**: AI agents that run experiments in a lo
 ![Node.js 22.19+](https://img.shields.io/badge/node-%E2%89%A522.19-339933)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/3Qs2uejUf9)
 
-[Quick start](docs/_site/src/content/docs/tutorials/first-run.md) · [Documentation](https://usethermite.com) · [Architecture](docs/_site/src/content/docs/explanation/how-it-fits-together.md) · [Roadmap](docs/plan/roadmap.md) · [Changelog](CHANGELOG.md) · [Discord](https://discord.gg/3Qs2uejUf9)
+[Quick start](https://usethermite.com/tutorials/first-run/) · [Documentation](https://usethermite.com) · [Architecture](https://usethermite.com/explanation/how-it-fits-together/) · [Roadmap](https://usethermite.com/project/roadmap/) · [Changelog](CHANGELOG.md) · [Discord](https://discord.gg/3Qs2uejUf9)
 
 > [!WARNING]
 > **Thermite is under heavy development.** It changes every day, and some parts will break. If you don't want to take every update as it comes, pin a release: install from a tagged release's bundle, whose compose file pins every image by digest, and update when you choose. Most of Thermite can be driven from the dashboard, and its REST API and MCP server work well with coding agents, which can help you set it up, test it and run it.
 
-> **Status:** work is toward v0.1.0, the first public release. The judge, control, agents and supervision are built and pass their acceptance tests. See the [release plan](docs/plan/release-v0.1.0.md) and the [roadmap](docs/plan/roadmap.md).
+> **Status:** work is toward v0.1.0, the first public release. The judge, control, agents and supervision are built and pass their acceptance tests. See the [roadmap](https://usethermite.com/project/roadmap/) and, for every detail, the [release plan](docs/plan/release-v0.1.0.md).
 
 ![The dashboard's page for one run: a decision that waits for the owner, the champion's gains over time and what each lane works on now](docs/_site/src/assets/screenshots/run.webp)
 
@@ -34,7 +34,7 @@ Each campaign is one of three kinds, called **modes**:
 | **Goal** | Meet a list of checks: it builds, it loads the model, its answers match | Every required goal is met, or the evidence shows that they cannot be | Port a library to a new platform: it builds, matches its goldens and meets a speed target |
 | **Research** | Answer a question from sources. Code checks every quote, word for word, against the page it came from | A review panel finds every question answered, or its longest time is up | How do modern memory allocators keep tail latency low? |
 
-The modes combine: a hill climb or a goal campaign can read what a research campaign found. [Choose a campaign mode](docs/_site/src/content/docs/how-to/campaigns/choose-a-mode.md) helps you pick, [campaign modes](docs/_site/src/content/docs/explanation/campaign-modes.md) explains each, and the [contract reference](docs/_site/src/content/docs/reference/contract.md) has every field.
+The modes combine: a hill climb or a goal campaign can read what a research campaign found. [Choose a campaign mode](https://usethermite.com/how-to/campaigns/choose-a-mode/) helps you pick, [campaign modes](https://usethermite.com/explanation/campaign-modes/) explains each, and the [contract reference](https://usethermite.com/reference/contract/) has every field.
 
 ## How a campaign runs
 
@@ -59,7 +59,7 @@ flowchart LR
 - **Agents never grade their own work.** They submit a change and what they expect it to do. "The agent says it's faster" and "it is faster" stay separate: only the judge's measurement counts.
 - **The judge holds the clock.** It times each change and the champion in alternating blocks on the same device, decides with statistics, and times the champion against itself once a day to learn how noisy the machine is.
 - **A surprising win gets a second look.** On a rig with an auditor, an unusually large gain is audited before it is kept. You can also ask to approve every new champion yourself.
-- **You can watch it catch cheats.** Each project comes with a **kit**, the judge's half of the project: how a change is built, run, timed and checked. Agents never see it. Thermite's CPU smoke kit ships 12 changes whose right verdicts are known: a real speed-up, a no-op, a timer edit, a fallback to the reference code, NaN output, memory and disk exhaustion, and an attempt to overwrite the champion. The judge acceptance test requires each one to get its expected verdict, and the [quick start](docs/_site/src/content/docs/tutorials/first-run.md) shows it on your computer. [Kits](docs/_site/src/content/docs/explanation/kits.md) and [judging](docs/_site/src/content/docs/explanation/why-agents-never-judge.md) explain the mechanism.
+- **You can watch it catch cheats.** Each project comes with a **kit**, the judge's half of the project: how a change is built, run, timed and checked. Agents never see it. Thermite's CPU smoke kit ships 12 changes whose right verdicts are known: a real speed-up, a no-op, a timer edit, a fallback to the reference code, NaN output, memory and disk exhaustion, and an attempt to overwrite the champion. The judge acceptance test requires each one to get its expected verdict, and the [quick start](https://usethermite.com/tutorials/first-run/) shows it on your computer. [Kits](https://usethermite.com/explanation/kits/) and [judging](https://usethermite.com/explanation/why-agents-never-judge/) explain the mechanism.
 
 ## What you get
 
@@ -72,7 +72,7 @@ flowchart LR
 
 You need Linux or macOS, and Podman or Docker with compose. Thermite runs from published images: you build nothing. A model is optional at first: the judge works without one.
 
-Before you give Thermite a model, read the [known limits](docs/_site/src/content/docs/reference/known-limits.md). Agents run the code that a model writes on your computer, and under compose that code can reach your local network. [The security model](docs/_site/src/content/docs/explanation/security-model.md) says what each part can reach and what it trusts.
+Before you give Thermite a model, read the [known limits](https://usethermite.com/reference/known-limits/). Agents run the code that a model writes on your computer, and under compose that code can reach your local network. [The security model](https://usethermite.com/explanation/security-model/) says what each part can reach and what it trusts.
 
 ```sh
 mkdir thermite && cd thermite
@@ -81,13 +81,13 @@ docker compose run --rm init     # writes local tokens to .dev/
 docker compose up -d
 ```
 
-With Podman, write `podman compose` in place of `docker compose`. The first start downloads the images. To check the machine before the first `up`, run `npx thermite doctor` from the [command line](docs/_site/src/content/docs/how-to/install/one-machine.md#the-command-line), built from the source with Node.js and git: it checks Docker or Podman, compose, the port, disk and the clock, and says how to fix each problem ([Troubleshoot](docs/_site/src/content/docs/how-to/operate/troubleshoot.md#check-the-machine)). Then:
+With Podman, write `podman compose` in place of `docker compose`. The first start downloads the images. To check the machine before the first `up`, run `npx thermite doctor` from the [command line](https://usethermite.com/how-to/install/one-machine/#the-command-line), built from the source with Node.js and git: it checks Docker or Podman, compose, the port, disk and the clock, and says how to fix each problem ([Troubleshoot](https://usethermite.com/how-to/operate/troubleshoot/#check-the-machine)). Then:
 
 1. Open <http://127.0.0.1:8800/ui> and sign in with the token in `.dev/secrets/control-admin-token`.
 2. Go to **Rigs › local-1 › Checks** and run **smoke**. The rig builds a small benchmark and submits known changes to its judge: a real speed-up, a no-op, broken builds and attempts to cheat. Each one gets its expected verdict in about ten minutes on a CPU.
 3. Add a model under **Settings › Providers** (any OpenAI-compatible endpoint with tool calling, Anthropic, or OpenCode), then start a campaign from **Campaigns › New campaign**: on the sample project in [`examples/matmul-cpu`](examples/matmul-cpu/README.md), a folder of this repository, or on your own project.
 
-The [quick start](docs/_site/src/content/docs/tutorials/first-run.md) walks through every step, including taking the winning patch back to your project. To build Thermite from its source code instead, see the [contributor guide](docs/local-development.md).
+The [quick start](https://usethermite.com/tutorials/first-run/) walks through every step, including taking the winning patch back to your project. To build Thermite from its source code instead, see [Contributing](https://usethermite.com/project/contributing/#set-up).
 
 **Just want to look around?** `npm ci && node --experimental-strip-types scripts/dashboard-demo.ts` serves the dashboard with synthetic campaigns and rigs at <http://127.0.0.1:8810/ui>, with no containers. It prints the token to sign in with.
 
@@ -111,36 +111,36 @@ flowchart TB
   S --> Net[Git, the internet, frontier models]
 ```
 
-- A **rig** is two containers. The **harness** does the research. It needs only DNS, the internet and its model endpoint; on Kubernetes, network rules keep it to those, and under compose or on a machine it can also reach the local network ([known limits](docs/_site/src/content/docs/reference/known-limits.md)). The **supervisor** does everything that needs more reach: git, reporting and relaying signed commands from control.
+- A **rig** is two containers. The **harness** does the research. It needs only DNS, the internet and its model endpoint; on Kubernetes, network rules keep it to those, and under compose or on a machine it can also reach the local network ([known limits](https://usethermite.com/reference/known-limits/)). The **supervisor** does everything that needs more reach: git, reporting and relaying signed commands from control.
 - Rigs run under docker-compose or podman-compose on one machine. **Control** can also set rigs up on your own machines over SSH, or on a Kubernetes cluster.
 - **Target drivers** connect the judge to what is measured: CUDA GPUs and CPUs today.
 
-More in [architecture](docs/_site/src/content/docs/explanation/how-it-fits-together.md).
+More in [architecture](https://usethermite.com/explanation/how-it-fits-together/).
 
 ## Documentation
 
 | Read this | To |
 | --- | --- |
-| [Quick start](docs/_site/src/content/docs/tutorials/first-run.md) | Go from a clean clone to a campaign on your own project |
-| [Write a kit](docs/_site/src/content/docs/how-to/campaigns/write-a-kit.md) | Teach the judge how to build, run and check your project |
-| [Judging and integrity](docs/_site/src/content/docs/explanation/why-agents-never-judge.md) | See how results are accepted without trusting the agents |
-| [Known limits](docs/_site/src/content/docs/reference/known-limits.md) | Know the risks and what is not built yet, before you run it |
-| [The security model](docs/_site/src/content/docs/explanation/security-model.md) | See what each part can reach and what it trusts |
-| [Settings reference](docs/_site/src/content/docs/reference/settings.md) | Configure control, the harness and the supervisor |
-| [Contributor guide](docs/local-development.md) | Run the checks, the compose stack and the acceptance tests |
-| [Glossary](docs/_site/src/content/docs/reference/glossary.md) | Look up a term |
+| [Quick start](https://usethermite.com/tutorials/first-run/) | Go from a clean clone to a campaign on your own project |
+| [Write a kit](https://usethermite.com/how-to/campaigns/write-a-kit/) | Teach the judge how to build, run and check your project |
+| [Judging and integrity](https://usethermite.com/explanation/why-agents-never-judge/) | See how results are accepted without trusting the agents |
+| [Known limits](https://usethermite.com/reference/known-limits/) | Know the risks and what is not built yet, before you run it |
+| [The security model](https://usethermite.com/explanation/security-model/) | See what each part can reach and what it trusts |
+| [Settings reference](https://usethermite.com/reference/settings/) | Configure control, the harness and the supervisor |
+| [Contributing](https://usethermite.com/project/contributing/) | Set up a copy, run the checks and the acceptance tests, and send a change |
+| [Glossary](https://usethermite.com/reference/glossary/) | Look up a term |
 
 ## Community and contributing
 
 Thermite's community meets on the [Hackers in the Loop Discord](https://discord.gg/3Qs2uejUf9): questions, ideas and results go there. Bugs and feature requests go in [GitHub issues](https://github.com/iammrduncan/thermite/issues).
 
-- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) has the essentials. There is no contributor agreement and no sign-off rule. Read [CONVENTIONS.md](CONVENTIONS.md) before you change the code, and run `npm run check` (typecheck, lint, tests and the public-content check) before you open a pull request. The [contributor guide](docs/local-development.md) lists the compose and acceptance tests for changes to containers, the judge or control.
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) has the essentials. There is no contributor agreement and no sign-off rule. Read [CONVENTIONS.md](CONVENTIONS.md) before you change the code, and run `npm run check` (typecheck, lint, tests and the public-content check) before you open a pull request. [Contributing](https://usethermite.com/project/contributing/#the-checks) lists the compose and acceptance tests for changes to containers, the judge or control.
 - **Code of conduct:** the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md).
 - **Security:** report a problem privately, as [SECURITY.md](SECURITY.md) says, never in a public issue.
 
 ## Credits
 
-Thermite builds on other people's research and software. [CREDITS.md](CREDITS.md) lists the papers, systems, programs, libraries, standards and services it draws on, runs or ships, each with its licence.
+Thermite builds on other people's research and software. [Credits](https://usethermite.com/project/credits/) lists the papers, systems, programs, libraries, standards and services it draws on, runs or ships, each with its licence.
 
 ## License
 
