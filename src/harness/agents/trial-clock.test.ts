@@ -15,7 +15,10 @@ const MIN = 60_000;
 const clockAt = (wallMs: number | undefined) => {
   let t = Date.UTC(2026, 9, 25, 18, 38, 0);
   const clock = new TrialClock(wallMs, () => t);
-  return { clock, move: (ms: number) => void (t += ms) };
+  const move = (ms: number) => {
+    t += ms;
+  };
+  return { clock, move };
 };
 const said = (r: { content: { type: string; text?: string }[] }) =>
   r.content.map((c) => c.text ?? "").join("\n");
@@ -102,7 +105,10 @@ describe("a trial's clock (goal 144)", () => {
   test("the trial's end stops a tool still running at once; a submission is waited for", async () => {
     const { clock } = clockAt(120 * MIN);
     let finish: (s: string) => void = () => undefined;
-    const slow = () => new Promise<string>((resolve) => void (finish = resolve));
+    const slow = () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      });
     const [run, submit] = clock.wrap([tool("dev_run", slow), tool("submit", slow)]) as AgentTool[];
     const end = new AbortController();
     const waiting = (run as AgentTool).execute("c", {}, end.signal);
@@ -112,7 +118,9 @@ describe("a trial's clock (goal 144)", () => {
     assert.match(said(await (run as AgentTool).execute("c", {}, end.signal)), /trial ended/);
     const submitting = (submit as AgentTool).execute("c", {}, end.signal);
     let settled = false;
-    void submitting.then(() => void (settled = true));
+    void submitting.then(() => {
+      settled = true;
+    });
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(settled, false, "a submission is not given up");
     finish("submitted a-1");
