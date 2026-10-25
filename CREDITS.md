@@ -156,7 +156,7 @@ Thermite grew out of long hill-climbing campaigns on inference kernels. They tun
 
 | Program | By | Licence | How Thermite uses it |
 | --- | --- | --- | --- |
-| [Pi](https://github.com/earendil-works/pi): `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` | Mario Zechner, Earendil Works | MIT | Built into Thermite: the default worker harness, and the model client for the planner and Pi's workers |
+| [Pi](https://github.com/earendil-works/pi): `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` | Mario Zechner, Earendil Works | MIT | Built into Thermite: the default worker harness, and the model client for the planner and Pi's workers. Thermite patches pi-ai's parse of a tool call's arguments while they stream, at install (`scripts/patch-pi-ai.mjs`, goal 140) |
 | [OpenCode](https://github.com/anomalyco/opencode) | Anomaly | MIT | A worker harness, in the harness and supervisor images, with its licence at `/usr/local/share/doc/opencode/` |
 | [Codex CLI](https://github.com/openai/codex) | OpenAI | Apache-2.0 | A worker harness, in the harness and supervisor images, with its LICENSE and NOTICE at `/opt/codex/`. Its NOTICE credits code derived from [Ratatui](https://github.com/ratatui/ratatui) (MIT, © 2016-2022 Florian Dehau, © 2023-2025 The Ratatui Developers) |
 | [Claude Code](https://github.com/anthropics/claude-code) | Anthropic | Proprietary: © Anthropic PBC, all rights reserved; use is under Anthropic's Commercial Terms of Service | A worker harness, for a Claude subscription. It is in an image only when that image is built with `CLAUDE_CODE_VERSION`; no published image has it |

@@ -4,6 +4,8 @@ ARG NODE_IMAGE=docker.io/library/node:22.23.4-bookworm-slim@sha256:de170b39439eb
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+# npm ci runs it after the install: it patches Pi's streaming tool-call parse (goal 140).
+COPY scripts/patch-pi-ai.mjs ./scripts/
 RUN npm ci --no-fund --no-audit
 COPY src ./src
 RUN npm run build && npm prune --omit=dev --no-fund --no-audit

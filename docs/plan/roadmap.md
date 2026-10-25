@@ -89,6 +89,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [137](goals/_completed/137-auditor-sees-checks.goal) The auditor sees what the judge checked · `VERIFIED`
 - [138](goals/_completed/138-answers-fit-tool-output.goal) `get_run`, `run_queue` and `rig_setup` fit an agent's tool output · `VERIFIED`
 - [139](goals/139-trial-session-over-mcp.goal) A trial's session, read over MCP · `IN_PROGRESS`
+- [140](goals/140-long-tool-call-no-stall.goal) A long tool call doesn't stall the process that streams it · `IN_PROGRESS`
 
 ### Research mode
 
