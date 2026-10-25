@@ -166,7 +166,7 @@ Each note in `journal` is `{id, by, kind, text, about, lane, trial, at}`:
 | `run` | string | | The run's id |
 | `tried` | whole number, 0 to 500 | 50 | How many of the newest tried experiments to return |
 
-Returns `{run, mode, status, up_next, proposed, in_progress, at_work, tried, rules, directions, handouts, messages}`. Errors: `no rig <rig>`, `no run <run> on <rig>`. Control builds it from the events the rig reported, so it is as fresh as the rig's last report.
+Returns `{run, mode, status, up_next, proposed, in_progress, at_work, tried, rules, directions, handouts, messages}`, and `cut` when it was cut. It keeps to the same budget as [`get_run`](#get_run), 40,000 characters as MCP sends it: above it, every entry stays, in order, and the texts in the entries are cut, shorter each step, and `cut` says how many and how short. [`get_run`](#get_run) with `list: "queue"` gives the queue whole. Errors: `no rig <rig>`, `no run <run> on <rig>`. Control builds it from the events the rig reported, so it is as fresh as the rig's last report.
 
 | Field | What it holds |
 | --- | --- |

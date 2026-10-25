@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DETAIL_CHARS, REPORT_CHARS, RUN_LIST_LIMIT, runDetail } from "./run-lists.ts";
+import { DETAIL_CHARS, REPORT_CHARS, RUN_LIST_LIMIT, runDetail, runQueue } from "./run-lists.ts";
+import type { RunView } from "./views.ts";
 
 /** A run's view the size of a research run that worked for a day and a half. */
 function longRun() {
@@ -123,4 +124,42 @@ test("a run's default detail keeps to the budget an agent's tool takes: texts in
   // A run under the budget is not cut.
   const small = { id: "r-3", attempts: [], queue: [{ id: "x-1", details: "M".repeat(4000) }] };
   assert.equal(runDetail(small, opts).cut, undefined);
+});
+
+test("run_queue keeps to the same budget: a research run's thirty tasks up next, cut in words (goal 138)", () => {
+  const task = (i: number) => ({
+    id: `x-${i}`,
+    title: `Task ${i}`,
+    details: "Find the vendor's support matrix for this release and quote it. ".repeat(25),
+    state: "queued",
+    position: i,
+    question: i % 6,
+    updated_at: "2026-10-25T09:00:00Z",
+  });
+  const run = {
+    id: "r-4",
+    mode: "research",
+    status: "running",
+    queue: Array.from({ length: 30 }, (_, i) => task(i)),
+    at_work: {},
+    rules: [],
+    directions: [],
+    handouts: [],
+    messages: [],
+  } as unknown as RunView;
+  const q = runQueue(run, 0) as { up_next: { id: string; details: string }[]; cut?: string[] };
+  assert.ok(JSON.stringify(q, null, 2).length <= DETAIL_CHARS);
+  // Every task stays, in order; only its texts are shorter.
+  assert.deepEqual(
+    q.up_next.map((t) => t.id),
+    Array.from({ length: 30 }, (_, i) => `x-${i}`),
+  );
+  assert.ok(q.up_next[0]?.details.endsWith("…"));
+  assert.match(
+    q.cut?.[0] ?? "",
+    /^texts in lists: \d+ cut to their first [\d,]+ characters, to keep the answer under 40,000 \(get_run with list "queue" gives the queue whole\)$/,
+  );
+  // A short queue is given whole, with no cut.
+  const short = runQueue({ ...run, queue: [task(0)] } as RunView, 0) as { cut?: string[] };
+  assert.equal(short.cut, undefined);
 });

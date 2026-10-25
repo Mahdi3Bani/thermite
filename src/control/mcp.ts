@@ -80,7 +80,13 @@ import {
   setRigSettings,
 } from "./rig-settings.ts";
 import { rigSetupView, SETUP_STEPS } from "./rig-setup-view.ts";
-import { RUN_DETAIL_INPUT, RUN_DETAIL_WORDS, type RunDetailArgs, runDetail } from "./run-lists.ts";
+import {
+  RUN_DETAIL_INPUT,
+  RUN_DETAIL_WORDS,
+  type RunDetailArgs,
+  runDetail,
+  runQueue,
+} from "./run-lists.ts";
 import { POD_LOG_MAX_TAIL, POD_LOG_TAIL } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
@@ -337,26 +343,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     audited("run_queue", (a: { rig: string; run: string; tried: number }) => {
       const r = view(a.rig).runs.find((x) => x.id === a.run);
       if (!r) throw new Error(`no run ${a.run} on ${a.rig}`);
-      const q = r.queue;
-      return {
-        run: r.id,
-        mode: r.mode,
-        status: r.status,
-        up_next: q
-          .filter((x) => x.state === "queued")
-          .sort((x, y) => (x.position ?? 0) - (y.position ?? 0)),
-        proposed: q.filter((x) => x.state === "proposed"),
-        in_progress: q.filter((x) => x.state === "assigned"),
-        at_work: r.at_work,
-        tried: q
-          .filter((x) => x.state === "done" || x.state === "dropped")
-          .sort((x, y) => y.updated_at.localeCompare(x.updated_at))
-          .slice(0, a.tried),
-        rules: r.rules,
-        directions: r.directions,
-        handouts: r.handouts.slice(-10).reverse(),
-        messages: r.messages.slice(-20).reverse(),
-      };
+      return runQueue(r, a.tried);
     }),
   );
 

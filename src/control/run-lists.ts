@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { RunView } from "./views.ts";
 
 /**
  * A run's detail of a size an agent can read (goal 128), for MCP's get_run and REST's
@@ -104,22 +105,65 @@ export function runDetail(
       `research.report: its first ${count(REPORT_CHARS)} of ${count(research.report.length)} characters (full_report: true gives it whole)`,
     );
   }
-  const keys = ["attempts", ...lists];
+  if (cut.length) out.cut = cut;
+  return keepToBudget(out, "list with a list's name gives its entries whole");
+}
+
+/**
+ * An answer kept under DETAIL_CHARS as MCP sends it (goal 138): above it, the texts in its lists
+ * are cut, shorter each step, until it fits, and a line in `cut` says how, and where to read
+ * them whole (`whole`).
+ */
+export function keepToBudget(
+  answer: Record<string, unknown>,
+  whole: string,
+): Record<string, unknown> {
+  const out = { ...answer };
+  const keys = Object.keys(out).filter((k) => k !== "cut" && Array.isArray(out[k]));
   const kept = keys.map((k) => out[k]);
+  const fits = () => JSON.stringify(out, null, 2).length <= DETAIL_CHARS;
   for (const max of TEXT_STEPS) {
-    if (JSON.stringify(out, null, 2).length <= DETAIL_CHARS) break;
+    if (fits()) break;
     const clipped = { n: 0 };
     keys.forEach((k, i) => {
       out[k] = clipTexts(kept[i], max, clipped);
     });
-    if (
-      clipped.n &&
-      (max === TEXT_STEPS.at(-1) || JSON.stringify(out, null, 2).length <= DETAIL_CHARS)
-    )
-      cut.push(
-        `texts in lists: ${count(clipped.n)} cut to their first ${count(max)} characters, to keep the answer under ${count(DETAIL_CHARS)} (list with a list's name gives its entries whole)`,
-      );
+    if (clipped.n && (max === TEXT_STEPS.at(-1) || fits()))
+      out.cut = [
+        ...((answer.cut as string[] | undefined) ?? []),
+        `texts in lists: ${count(clipped.n)} cut to their first ${count(max)} characters, to keep the answer under ${count(DETAIL_CHARS)} (${whole})`,
+      ];
   }
-  if (cut.length) out.cut = cut;
   return out;
+}
+
+/**
+ * MCP's run_queue: up next in order, the lanes' ideas, what each lane is on, the newest `tried`,
+ * the rules, the directions, the newest hand-outs and the owner's newest messages, kept to the
+ * budget (goal 138).
+ */
+export function runQueue(r: RunView, tried: number): Record<string, unknown> {
+  const q = r.queue;
+  return keepToBudget(
+    {
+      run: r.id,
+      mode: r.mode,
+      status: r.status,
+      up_next: q
+        .filter((x) => x.state === "queued")
+        .sort((x, y) => (x.position ?? 0) - (y.position ?? 0)),
+      proposed: q.filter((x) => x.state === "proposed"),
+      in_progress: q.filter((x) => x.state === "assigned"),
+      at_work: r.at_work,
+      tried: q
+        .filter((x) => x.state === "done" || x.state === "dropped")
+        .sort((x, y) => y.updated_at.localeCompare(x.updated_at))
+        .slice(0, tried),
+      rules: r.rules,
+      directions: r.directions,
+      handouts: r.handouts.slice(-10).reverse(),
+      messages: r.messages.slice(-20).reverse(),
+    },
+    'get_run with list "queue" gives the queue whole',
+  );
 }
