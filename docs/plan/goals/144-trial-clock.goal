@@ -1,0 +1,73 @@
+---
+id: "144"
+title: "A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials"
+status: PROPOSED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 144 · A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+On the lab, 2026-10-24 and 25, a hill climb's lane-2 ended five trials in a row with no submission: four at the trial's length, one with an error. A sixth ended with the same error later. The trials' sessions show four causes. Three of them are in Thermite.
+
+- **A command outlives its trial.** At the trial's end the worker aborts its agent (`src/harness/agents/worker.ts`), but the `run` and `dev_run` tools don't take that abort. The command goes on, the worker waits for it, and two minutes later the harness kills the worker (`spawn.ts`: the trial's length plus two minutes). The trial then ends as `error (worker process gave no result (timeout))`, and nothing it did is kept. Two cases:
+  - 07:35 UTC: a build started with `timeout_s` 1800 and 8 minutes left.
+  - 18:37 UTC: a `dev_run` with `timeout_s` 600, started 75 seconds before the end.
+- **The agent doesn't see the time left.** The worker warns once, at 85% of the trial's length, and only when a turn ends. During a long build or test no turn ends, so the warning comes late or never. Twice the agent had a win with 8 to 15 minutes left, started a check of 6 to 8 minutes, and the trial ended before it submitted. The brief gives the trial's length, but not when it ends.
+- **A lane's build cache misses across its trials.** Each trial's checkout is in a new folder, `lanes/<lane>/<random id>/repo`. The lane's cache is kept (`CCACHE_DIR`, `workspace.ts`), but ccache hashes each compile with its absolute paths and its folder. A new folder misses everything: 4 hits in 2,193 compiles. So each trial built the engine from nothing, 16 to 50 minutes of a 60- or 120-minute trial.
+- The fourth cause is the campaign's: each trial spent 7 to 27 minutes finding paths and commands again. The operator sent the lanes a message kept in force with the build commands, on 2026-10-25.
+
+1. **The trial's end, in the brief and on each tool result near it.**
+   - The brief gives the time the trial ends, in UTC, beside its length: "This trial lasts 120 minutes, to 20:38 UTC."
+   - From 75% of the trial's length, each tool result ends with one line: "About 18 minutes are left in this trial."
+   - The warning at 85% stays.
+2. **A command ends before its trial does.**
+   - `run` and `dev_run` stop a command 3 minutes before the trial's end, at the latest, whatever its `timeout_s`. Their result says why: "stopped 3 minutes before the trial's end, so that you can submit".
+   - The tools' texts say so.
+3. **The end of a trial stops what runs.**
+   - At the trial's end, the worker's abort also stops the lane's running command and the processes it started, as a timeout does.
+   - The worker then gives its result: `wall`, with its turns, tokens and notes.
+   - A trial never ends as "gave no result" because of a command that still ran.
+4. **A lane's build cache hits across its trials.**
+   - The lane's environment gets `CCACHE_BASEDIR`, the lane's folder that holds each trial's checkout, and `CCACHE_NOHASHDIR=1`, beside `CCACHE_DIR`. ccache then hashes paths relative to the build folder, not the trial's folder.
+   - The brief's line on the cache says to build in the same folder of the checkout in each trial, so the relative paths are the same.
+
+## Why
+
+A trial that ends with no result costs a lane's whole trial: up to two hours of a GPU and a model. The causes are in the harness's clock and in the cache it gives each lane, so every campaign has them. The owner, 2026-10-25, on lane-2's trials: "I want you to dig into the logs and figure out why."
+
+## Constraints
+
+- **No default caps.** Each item comes from the trial's length that the campaign or the rig sets. A trial with no length gets none of items 1 to 3.
+- **Every harness, where the harness runs the command.** Items 1 to 3 apply to Pi's tools and to what the harness runs for the other harnesses (`dev_run`, the end of the trial). The shell tools of OpenCode, Claude Code and Codex are theirs; for them, the brief's end time is item 1.
+- **Files over 800 lines don't grow.** `worker.ts` has 926 lines: an addition there is offset in the same file, or the code goes into a module of its own.
+
+## Done when
+
+- [ ] Item 1, with tests: the brief's end time, and the line on a tool result from 75%.
+- [ ] Item 2, with a test: a command with a `timeout_s` past the trial's end stops 3 minutes before it, and its result says why.
+- [ ] Item 3, with a test: a trial whose command still runs at its end ends as `wall`, with its notes, in seconds, not as "gave no result".
+- [ ] Item 4, with a test of the lane's environment, and a test with ccache, where it is installed: a second checkout in another folder hits the cache.
+- [ ] Pages: Limits and pacing, the worker's tools, and the changelog.
+- [ ] On the lab: a trial whose command runs at its end ends as `wall`; a lane's second trial after the roll shows ccache hits.
+
+## Decisions
+
+## Open questions
+
+- Should a lane's checkout have the same path in each trial, in place of item 4's environment? It would also serve caches that only key on absolute paths. Two trials of one lane never run at the same time, but a drain or a crash can leave the old folder.
+
+## Progress
+
+- 2026-10-25 19:55 UTC: Goal written from lane-2's trial sessions, read over MCP (`trial_session`). The operator sent both lanes the build commands, the cache settings and the clock rules as a message kept in force (command 237a32b5), for the campaign's part.
+
+---
+
+Run with `/goal Complete docs/plan/goals/144-trial-clock.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

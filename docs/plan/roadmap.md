@@ -93,6 +93,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [141](goals/141-waiting-win-after-champion-moved.goal) A waiting win the champion moved past: closed when a champion has it, an approval when none does · `PROPOSED`
 - [142](goals/142-champion-value-on-run-page.goal) A hill climb's champion value: measured right, and at the top of its run's page · `IN_PROGRESS`
 - [143](goals/143-stuck-and-looping-trials.goal) A stuck or looping trial shows itself, and an agent's refused request says why · `PROPOSED`
+- [144](goals/144-trial-clock.goal) A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials · `PROPOSED`
 
 ### Research mode
 
