@@ -37,7 +37,7 @@ The owner, 2026-10-25, on a lane that had run its trials and waited: "wtf explai
 
 - [x] Item 1: a round ends without waiting for other lanes' running trials, in hill-climb, goal and research runs, with the judge's wait kept; tests that fail on the old code (`src/harness/agents/scheduler.test.ts`, `scheduler-research.test.ts`, `scheduler/rounds.test.ts`).
 - [x] Item 2: a lasting refusal is answered at once when asked again, with no download; the fetcher's size refusal is caught; a test (`src/harness/research/research.test.ts`).
-- [ ] Items 1 and 2 rolled to the lab, and a research run there shows no lane idle behind another's trial.
+- [x] Items 1 and 2 rolled to the lab, and a research run there shows no lane idle behind another's trial.
 - [ ] Item 3, after the owner approved its mockup.
 - [ ] Item 4.
 - [ ] Item 5, after the owner approved its mockup.
@@ -54,6 +54,8 @@ The owner, 2026-10-25, on a lane that had run its trials and waited: "wtf explai
 ## Progress
 
 - 2026-10-25 05:23 UTC: Goal written. Items 1 and 2 built, with tests that fail on the old code, and pages updated: Agents, lanes and the planner; Campaign modes; Steer a run; Write a contract; the contract reference; the glossary; Limits and pacing. A side effect to watch on the lab: rounds can end more often than before, when one lane is much faster than another, so a run with the planner on makes more planner calls: at most one for each `trials_per_epoch` trials of its fastest lane, where it was one for each `trials_per_epoch` trials of every lane.
+
+- 2026-10-25 09:20 UTC: Items 1 and 2 are on the lab. In a research run there, one lane started its round-3 trial at 09:18:30; round 4 started at 09:18:55 while that trial ran, and the other lane began its round-4 task at once. The run's sixth question, which had no work for nine hours before, got the first task of round 4, and every question has tasks up next.
 
 ---
 
