@@ -145,7 +145,12 @@ The judge holds a result back for an **audit** before it can become the champion
 - in a hill climb, the gain is surprisingly large: above the contract's absolute trigger (15% by default), or well above the run's earlier confirmed gains;
 - in a goal campaign, the contract has an adversarial checklist. Then every promotion is audited.
 
-The **auditor** gets the change, the agent's hypothesis and declared flaws, the verdict, and the contract's lists of what does not count, plus any of the owner's messages to it that it has not read, and the run's background from past research when it has one. It looks for ways the change could game the measurement, and answers in one of three ways:
+The **auditor** gets the change, the agent's hypothesis and declared flaws, the verdict, and the contract's lists of what does not count, plus any of the owner's messages to it that it has not read, and the run's background from past research when it has one. It also gets what the judge checked before its verdict, from the judge's own records (`checked`):
+
+- **In a hill climb:** the cells the change was measured on and the number of confirmation blocks; that the kit's check passed on every run of the change, as a failed check makes a change `invalid`; each guard with its allowances and the judge's result, as the change against the champion with its interval, and against the run's starting point; and the contract's minimums and maximums, which held. A named check in `hard_constraints` is not listed, because the judge does not run it on its own.
+- **In a goal campaign:** each goal's status as the judge recorded it.
+
+The held-out results are never in it: they stay with the code that promotes. So a declared flaw such as "I did not check the numerics in my trial" can be read against the kit's own check, which the judge ran. The auditor looks for ways the change could game the measurement, and answers in one of three ways:
 
 | Answer | What happens |
 | --- | --- |

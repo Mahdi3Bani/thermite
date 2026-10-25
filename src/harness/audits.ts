@@ -1,5 +1,6 @@
 import { canonicalJson } from "../core/canonical.ts";
 import type { Contract } from "../core/contract.ts";
+import { toFraction } from "../core/stats.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 
 /**
@@ -35,6 +36,74 @@ export interface AuditPackage {
     editable_paths: string[];
     insufficient: string[];
     adversarial_checklist: string[];
+  };
+  /** What the judge checked before its verdict (goal 137), from its own records. */
+  checked: AuditChecks;
+}
+
+/** A guard's result as the judge recorded it: changes as fractions, positive meaning better. */
+export interface AuditGuard {
+  metric: string;
+  direction: string;
+  max_step_regression: number;
+  max_total_regression: number;
+  status: string | null;
+  change: number | null;
+  low: number | null;
+  high: number | null;
+  vs_start?: { change: number | null; noise: number | null; spent: boolean };
+}
+
+export type AuditChecks =
+  | {
+      said: string;
+      cells: string[];
+      confirm_blocks: number;
+      guards: AuditGuard[];
+      hard_constraints: { kind: "min" | "max"; metric: string; value: number }[];
+    }
+  | { said: string; goals: { goal: string; status: string }[] };
+
+export const HILL_CLIMB_CHECKED =
+  "What the judge checked before this verdict, from its own records. It measured the change " +
+  "against the champion on these cells and confirmed the gain on fresh blocks. The kit's check " +
+  "ran on the outputs of every run of the change: a failed check makes a change invalid, so " +
+  "every measured run of this change passed it. Each guard has the judge's result: change is the " +
+  "guard metric against the champion (a fraction, positive is better) with its interval, and " +
+  "vs_start is against the run's starting point. Any hard constraints held on every cell.";
+export const GOAL_CHECKED =
+  "What the judge checked before this verdict, from its own records: each goal's status from " +
+  "the kit's verifiers or the goal's threshold (met, unmet, inconclusive or not_runnable).";
+
+/** The checks behind a verdict: the contract's guards and constraints, with the verdict's results. */
+function checksOf(contract: Contract, recorded: Row[]): AuditChecks {
+  if (contract.mode !== "hill_climb") {
+    const goals = recorded.flatMap((r) =>
+      typeof r.goal === "string" ? [{ goal: r.goal, status: String(r.status) }] : [],
+    );
+    return { said: GOAL_CHECKED, goals };
+  }
+  const frac = (x: unknown) => (typeof x === "number" ? toFraction(x) : null);
+  return {
+    said: HILL_CLIMB_CHECKED,
+    cells: contract.cells,
+    confirm_blocks: contract.acceptance.confirm_blocks,
+    guards: contract.guards.map((g) => {
+      const r = recorded.find((x) => x.metric === g.metric);
+      const s = r?.vs_start as Row | undefined;
+      return {
+        ...g,
+        status: typeof r?.status === "string" ? r.status : null,
+        change: frac(r?.estimate),
+        low: frac(r?.low),
+        high: frac(r?.high),
+        ...(s
+          ? { vs_start: { change: frac(s.estimate), noise: frac(s.noise), spent: !!s.spent } }
+          : {}),
+      };
+    }),
+    // A named check is not one the judge runs on its own: only the measured limits are listed.
+    hard_constraints: contract.hard_constraints.flatMap((h) => (h.kind === "check" ? [] : [h])),
   };
 }
 
@@ -159,8 +228,9 @@ export class Audits {
   }
 
   /**
-   * What an auditor sees: the claim, the judge's verdict and the contract's rules. The diff is
-   * added by the service (from git). Never held-out results: those stay with promotion code.
+   * What an auditor sees: the claim, the judge's verdict, what the judge checked and the
+   * contract's rules. The diff is added by the service (from git). Never held-out results: those
+   * stay with promotion code.
    */
   package(id: number, contract: Contract): AuditPackage {
     const au = this.ledger.db.prepare("select * from audit where id = ?").get(id) as
@@ -170,7 +240,7 @@ export class Audits {
     const a = this.ledger.getAttempt(String(au.attempt)) as Row;
     const current = this.ledger.currentVerdict(String(au.attempt));
     const v = this.ledger.db
-      .prepare("select verdict, delta, ci_low, ci_high from verdict where id = ?")
+      .prepare("select verdict, delta, ci_low, ci_high, guards from verdict where id = ?")
       .get(current?.id ?? -1) as Row | undefined;
     const num = (x: unknown) => (typeof x === "number" ? x : null);
     return {
@@ -201,6 +271,7 @@ export class Audits {
         insufficient: contract.mode === "goal" ? contract.insufficient : [],
         adversarial_checklist: contract.mode === "goal" ? contract.adversarial_checklist : [],
       },
+      checked: checksOf(contract, JSON.parse(String(v?.guards ?? "[]")) as Row[]),
     };
   }
 

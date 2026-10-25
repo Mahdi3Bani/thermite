@@ -36,9 +36,9 @@ The owner, 2026-10-22 (goal 079): hands-off by default. A win is promoted by the
 
 ## Done when
 
-- [ ] The package has items 1–3; a test (`src/harness/audits.test.ts` or the steering tests) checks each, and that the held-out results are still absent.
-- [ ] The auditor's prompt says what the new fields mean.
-- [ ] The pages that describe the package match it (Verdicts, the REST API's audits route).
+- [x] The package has items 1–3; a test (`src/harness/audits.test.ts`) checks each, and that the held-out results are still absent.
+- [x] The auditor's prompt says what the new fields mean.
+- [x] The pages that describe the package match it (Supervision and advisors; the REST API does not describe the harness's audits route, which serves the supervisor only).
 - [ ] Rolled to the lab, and the next audit of a win with a declared flaw cites the judge's checks.
 
 ## Decisions
@@ -46,6 +46,8 @@ The owner, 2026-10-22 (goal 079): hands-off by default. A win is promoted by the
 ## Open questions
 
 ## Progress
+
+- 2026-10-25 08:19 UTC: Built (branch `feat/137-audit-sees-checks`). `AuditPackage.checked` (`src/harness/audits.ts`): for a hill climb, `said` (what the judge's checks mean, in words), `cells`, `confirm_blocks`, each guard with its allowances and the verdict's result as fractions (`change`, `low`, `high`, `vs_start`), and the minimum and maximum hard constraints; for a goal campaign, `said` and each goal's status. A named check in `hard_constraints` is left out: the judge does not run it yet (the contract page says so). The auditor's prompt reads the declared flaws against `checked`. Tests: `src/harness/audits.test.ts` (both modes, held-out results absent). Pages: Supervision and advisors (the auditor), CHANGELOG.
 
 ---
 
