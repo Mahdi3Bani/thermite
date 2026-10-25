@@ -186,6 +186,7 @@ import {
 } from "./rig-model.ts";
 import {
   QUIET_TIP,
+  quietField,
   type RigPart,
   type RigSettingsChange,
   rigSettingsChange,
@@ -8549,7 +8550,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <div class="g3" style="margin-top:14px">
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit. Empty: no limit; a trial lasts until the worker submits or stops.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
-<label class="fd">${infoLabel("Ask me after a quiet spell of (minutes)", QUIET_TIP)}<input name="quiet_minutes" type="number" min="1" max="1440" value="${s?.quiet_minutes ?? ""}" placeholder="never" data-empty="never" data-unit=" minutes"${s ? "" : " disabled"}></label>
+<label class="fd">${infoLabel("Ask me after a quiet spell of (minutes)", QUIET_TIP)}${quietField(u, s?.quiet_minutes ?? null)}</label>
 </div></div>
 <div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
 <label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion with no step of yours. When the campaign calls for an audit and this rig has an auditor, the auditor's clear comes first; its block stops the change. A run can still ask you about some changes (Ask me first, when you start it).</span></span></label>

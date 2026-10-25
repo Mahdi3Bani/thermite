@@ -7,7 +7,7 @@ import { createHarnessApi } from "../harness/api.ts";
 import { relayOnce } from "../supervisor/relay.ts";
 import { makeJudgeEnv } from "../testing/judge-env.ts";
 import { createControlApi } from "./api.ts";
-import { rigSettingsChange } from "./rig-settings.ts";
+import { quietField, rigSettingsChange } from "./rig-settings.ts";
 import { ControlStore } from "./store.ts";
 
 /**
@@ -559,4 +559,13 @@ describe("Edit rig's settings over REST and MCP", () => {
     assert.deepEqual(read.gpu_split, { set: 4, judge: 2 });
     await operator.close();
   });
+});
+
+test("Edit rig's quiet field is off on a rig whose harness can't take it (goal 143)", () => {
+  const older = quietField({ summary: { settings: { lanes: 1, max_turns: null } } }, null);
+  assert.match(older, /placeholder="update the rig first"[^>]* disabled>/);
+  const newer = quietField({ summary: { settings: { lanes: 1, quiet_minutes: null } } }, null);
+  assert.match(newer, /value="" placeholder="never"/);
+  assert.doesNotMatch(newer, /disabled/);
+  assert.match(quietField({ summary: { settings: { quiet_minutes: 20 } } }, 20), /value="20"/);
 });

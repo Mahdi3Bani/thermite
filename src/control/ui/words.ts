@@ -397,6 +397,15 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         { attempt: b.attempt ? String(b.attempt) : undefined, run: String(e.subject) },
       );
     }
+    // A trial that repeats the same tool calls (goal 143): it asks the owner under Needs you.
+    case "trial_repeating": {
+      const n = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US") : "");
+      return s(
+        `${b.lane ? `${String(b.lane)}'s` : "A"} trial repeats the same tool calls: ${n(b.count)} in a row, each with the same answer as before, ${n(b.different)} different. It goes on, and asks you under Needs you.`,
+        "warn",
+        { run: String(e.subject) },
+      );
+    }
     // A conversation compacted near the model's window (goal 070): the trial went on.
     case "context_compacted": {
       const by =

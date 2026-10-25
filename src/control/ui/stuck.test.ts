@@ -205,3 +205,22 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
     assert.deepEqual(stuckTrials(q, run({ last_line_at: ago(40) }, "paused"), now), []);
   });
 });
+
+test("History says a streak of the same calls in words (goal 143)", async () => {
+  const { sentence } = await import("./words.ts");
+  const said = sentence(
+    { judge: { jobs: [] }, runs: [] } as never,
+    {
+      kind: "trial_repeating",
+      subject: "s-1",
+      actor: "harness",
+      at: "2026-10-25T19:04:23Z",
+      body: { trial: "t-1", lane: "lane-1", count: 10, different: 11, calls: [] },
+    } as never,
+  );
+  assert.deepEqual(said, {
+    text: "lane-1's trial repeats the same tool calls: 10 in a row, each with the same answer as before, 11 different. It goes on, and asks you under Needs you.",
+    tone: "warn",
+    run: "s-1",
+  });
+});

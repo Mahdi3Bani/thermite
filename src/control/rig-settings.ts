@@ -58,6 +58,16 @@ export type RigSettingsWanted = { [P in RigPart]?: boolean | undefined } & {
 export const QUIET_TIP =
   "When a trial sends no line for this long, its lane is marked quiet and the trial waits for you under Needs you. Empty: never. Nothing ends the trial.";
 
+/**
+ * Edit rig's quiet field. A rig whose harness is older than goal 143 reports no quiet_minutes
+ * and would refuse the whole change, so there the field is off and says why.
+ */
+export function quietField(u: { summary: unknown }, value: number | null): string {
+  const reported = (u.summary as { settings?: Record<string, unknown> } | null)?.settings;
+  const takes = !!reported && Object.hasOwn(reported, "quiet_minutes");
+  return `<input name="quiet_minutes" type="number" min="1" max="1440" value="${value ?? ""}" placeholder="${takes ? "never" : "update the rig first"}" data-empty="never" data-unit=" minutes"${takes ? "" : " disabled"}>`;
+}
+
 /** Edit rig's words when a new GPU split is sent, as its page says them under the field. */
 export const SPLIT_RESTARTS =
   "A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again.";

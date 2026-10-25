@@ -103,6 +103,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 
 - 2026-10-25, owner: work on this goal starts now (the owner ran it as a task).
 - 2026-10-25, owner, on the first mockup: "Too much detail and junk on the page. Highlight an issue, bring it to "needs you" and keep details behind view more details or something." When a trial is quiet is a setting on **Edit rig**, none by default, and a stuck trial also asks under **Needs you**. The owner approved the second mockup as it is.
+- 2026-10-25, owner: goal 143 ships in v0.1.0. The lab check rolls control and the two research rigs, and a quiet setting of 20 minutes on one of them is set for the check and cleared after it.
 - 2026-10-25, builder: **Stop this trial…** is in a stuck trial's card (and, as before, on a draining rig's page), not on every lane's row: the owner asked for less on the page. `stop_trial` over MCP and REST stops any running trial.
 - 2026-10-25, builder: the teachers' brief has each lane's trial now (`at_work`); the auditor's package does not. The auditor decides one change, and a lane's state says nothing about it.
 - 2026-10-25, builder: only a Pi worker gets short answers. OpenCode, Claude Code and Codex compact on their own, and the harness learns of it only afterwards, so a short answer to a `thermite-trial` command could point at an answer the program no longer holds. Their repeats show from their lines: the watch reads every harness's lines alike.
