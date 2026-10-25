@@ -1,0 +1,117 @@
+---
+id: "143"
+title: "A stuck or looping trial shows itself, and an agent's refused request says why"
+status: PROPOSED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["136", "140"]
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 143 · A stuck or looping trial shows itself, and an agent's refused request says why
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+On the lab, 2026-10-25, a research run had two lanes, with its workers in Pi. Three gaps showed in one evening.
+
+- **A trial does nothing, and nobody can see it.**
+  - Lane-2's trial started at 15:08 UTC. At 19:32 UTC, after 4 h 24 m, it had recorded nothing: no source, claim, file, compaction or line in Live.
+  - The run's page and `get_run` showed only "at work since 15:08". Three rounds ran on lane-1 alone.
+  - The rig sets no trial length, as intended: there are no default caps. Goal 079's stall check cuts only a stream that sends nothing for 10 minutes. So nothing ended the trial, and nothing said that it was quiet.
+  - Control had no lines of it either: see the next gap. The cause isn't known yet (see Open questions).
+- **A trial repeats the same tool calls.**
+  - Lane-1's trial started at 18:48 UTC. At 19:04:13, one model reply held the same 13 tool calls (11 different ones) at least 74 times. Most were `search_files` calls on the same three sources with the same words. The harness ran each copy.
+  - Until 19:26, the trial went on in the same way with another set of 10 calls, about once a second.
+  - Pi compacts a conversation only before the next model call (`src/harness/agents/compaction.ts`). So the conversation grew to 6.6 million tokens before compaction could act.
+  - After the third compaction, the model wrote "I'll break the degenerate loop" and worked normally again.
+  - In 38 minutes, the trial wrote 15,700 lines in Live; most of its other trials wrote 250 to 630. These lines filled most of control's window of a rig's newest 20,000 lines. Control then no longer had any line of the quiet trial.
+- **A refused request doesn't say why.**
+  - The research API refuses a claim whose quote is shorter than 20 characters (`ClaimInput` in `src/harness/research/research.ts`).
+  - The harness API answers each request its schema refuses with only `invalid request` (`app.onError` in `src/harness/api.ts`). This applies to every endpoint an agent calls.
+  - The `add_claim` tool's text doesn't give the limit. A worker lost turns on it. Then it wrote a lesson for later trials: "Retry on 400".
+
+Goal 136 already gives part of this, but only while a rig drains. The rig's page then lists each trial the drain waits for, with **Stop this trial…** (`stop_trial`), and a chip when the trial "repeats a refused request". This goal gives the same for any running trial, and adds the rest.
+
+1. **A quiet trial shows itself.**
+   - For each open trial, the harness knows when its last line was: a tool call, its answer, or the agent's text or thinking.
+   - While a model call is open, the harness also knows since when it streams, and how many characters it has received of the text, the thinking and a tool call's arguments.
+   - For Pi, these facts come from the worker's stream. For OpenCode, Claude Code and Codex, they come from the last event in their event files.
+   - `get_run`, `run_queue` and the rig's report give these facts with each lane's trial in `at_work`.
+   - On the run's page, under **At work**, each lane's row shows them. For example: "quiet for 4 h 24 m", or "in one reply for 52 m: 1.2 MB of a tool call's arguments so far". The same row has **Stop this trial…** for any running trial, as on a draining rig's page. A mockup comes first.
+   - The package of the teachers and the auditor names a quiet trial, so their notes can say so.
+   - Control keeps the newest lines of each open trial. A trial that writes many lines can't push out the lines of another trial.
+   - Nothing ends a trial by itself. The owner, or an operator, stops it.
+2. **A trial that repeats the same calls is caught.**
+   - The check is code in the harness. A repeated call has the same tool and the same arguments as an earlier call of the trial, and its answer is the same as the answer already in the conversation. Compare the arguments as JSON with sorted keys, and compare the answers by hash.
+   - A repeated call gets a short answer, not the full answer again. For example: "Same call and same answer as at 19:04:13 (call 214). Its answer is above. Change what you ask, or go on."
+   - After a compaction, the earlier answer can be gone from the conversation. A call whose earlier answer is gone gets its full answer.
+   - The trial goes on. This isn't a cap.
+   - The trial's line in Live and its row under **At work** say "repeats the same calls", with how many. A `trial_repeating` event, once for each streak, says which calls. The teachers see it.
+   - The check covers Pi workers (code and research trials) and the harness's own tools in every harness: the `thermite-trial` commands and the research tools.
+   - The check can't reach the built-in tools of OpenCode, Claude Code and Codex. For them, a repeat shows from their event stream only.
+   - Check how this fits with goal 136's "repeats a refused request". Show both in one way.
+3. **A refused request says why.**
+   - When the harness API's schema refuses a request, the answer names each field and the problem, in plain words. For example: `invalid request: quotes[0].quote has 9 characters; it needs 20 to 2,000`.
+   - This applies to each endpoint the agents call, and to the research tools in Pi.
+   - The `add_claim` tool's text and `thermite-trial research help` give the limits: a claim's text has 5 to 4,000 characters; a claim has 1 to 10 quotes; each quote has 20 to 2,000 characters.
+   - When the answers give reasons, find out if the worker's "intermittent" refusals had another cause. Fix it, or record it here.
+
+## Why
+
+A lane that does nothing for four hours costs half of the run's work. The owner had no way to see it, except by reading each trial's session. A loop of repeated calls wastes a lane's time and fills its conversation, and its flood of lines hid the other lane's lines. An agent that gets only "invalid request" must guess, and it spends turns on its guesses.
+
+## Constraints
+
+- **No default caps.** Nothing here ends or cuts a trial. A quiet or repeating trial is shown. To stop a trial stays the owner's decision, or an operator's, with `stop_trial`.
+- **Agents never judge.** The checks are code in the harness. An advisor can only read them.
+- **A mockup first.** The new words of the **At work** row and its **Stop this trial…** are shown to the owner as a mockup. The owner approves them before they are built.
+- **Plain words.** The row's words and the refusals are in Simplified Technical English.
+
+## Done when
+
+- [ ] Item 1, with tests:
+  - A trial with no line for some time shows as quiet in `at_work`, in the rig's report and on the run's page.
+  - A Pi trial in one long reply shows since when it streams and how much it has received.
+  - **Stop this trial…** on the run's page sends `stop_trial`.
+  - When one trial writes many lines, control keeps the lines of another open trial.
+- [ ] Item 2, with tests that replay the lab's case:
+  - 74 copies of 13 calls in one reply give a full answer for each of the 11 different calls and a short answer for each copy.
+  - A call with the same arguments and a changed answer gets its full answer.
+  - After a compaction, the full answer comes back.
+  - The streak gives one `trial_repeating` event.
+- [ ] Item 3, with tests: a short quote, a missing field and a wrong type each get an answer that names the field and the problem, through the API, `thermite-trial` and Pi's tool. The tool texts give the limits.
+- [ ] The owner approved the mockup of the **At work** row.
+- [ ] Pages:
+  - Steer a run (At work, Stop this trial…)
+  - A rig's page
+  - MCP tools (the new fields of `at_work`)
+  - Signed commands (`stop_trial` from the run's page)
+  - Troubleshoot (a quiet trial, a trial that repeats calls, a refused claim)
+  - Command line (`thermite-trial research help`)
+  - Limits and pacing
+  - every page that lists the events (`trial_repeating`)
+- [ ] On the lab:
+  - A quiet trial shows on its run's page, and the owner stops it from there.
+  - A repeating trial shows as such.
+  - A refused claim says why.
+
+## Decisions
+
+## Open questions
+
+- What held the lab's quiet trial?
+  - Its rig ran an image without goal 140's patch. Pi's parse of a tool call's arguments grows with the square of their length. One reply that kept on streaming a very long tool call fits what was seen.
+  - This isn't shown: nothing in control can see a worker's process. Item 1's view of an open model call would show it next time.
+- Should a quiet or repeating trial also go to the owner under **Needs you**, or only to the run's page and the advisors?
+- How long without a line makes a trial "quiet"? The row could always give the time since the last line. It could mark the trial only after a time the rig sets, with no time set by default.
+
+## Progress
+
+- 2026-10-25 19:40 UTC: Goal written at the owner's request, from a research run on the lab. One lane was quiet for more than four hours. The other lane repeated tool calls for about 22 minutes. A worker got only "invalid request".
+
+---
+
+Run with `/goal Complete docs/plan/goals/143-stuck-and-looping-trials.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
