@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Install from images"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-20
+updated: 2026-10-24
 ---
 
 # 013 · `thermite doctor`
@@ -39,6 +39,7 @@ None.
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-20: Built. `thermite doctor` (`src/cli/doctor.ts`) checks the container engine and its compose tool, control's port, disk, the clock, the GPU driver and NVIDIA's container toolkit where there is a GPU, and whether control and the model server answer. Each finding says what is wrong and how to fix it, in plain sentences; `--json` gives the same as data. `src/cli/doctor.test.ts` covers every check with stand-ins for the probes, and the command's usage and option check. Run on macOS with Podman (all checks), and on Linux in a Debian container with Node 22 (no engine there, so the engine checks failed as they should). The engine and GPU checks on a real Linux machine are covered by the stand-ins only. Pages: `reference/command-line` (the command, its options and checks), `how-to/operate/troubleshoot` (Check the machine, and the entries it helps with), `project/getting-help` and `reference/settings` (`THERMITE_CONTROL_PORT`).
+- 2026-10-24: Found in use: on Linux, `podman compose` handed its work to the system's `docker-compose` 1.29.2, which stops at `compose.yaml`'s `name:`, and the doctor said `podman compose works.` Its fix even said to install docker-compose. Now `docker-compose` 1.x doesn't count: the check fails, or warns when another compose program works, and names it, with how to remove it. The check moved to `src/cli/doctor/compose.ts`. Pages: `tutorials/first-run`, `how-to/install/one-machine`, `how-to/operate/troubleshoot`, `reference/command-line`, `reference/compatibility`, and `docs/local-development.md`.
 
 ---
 

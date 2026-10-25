@@ -15,7 +15,7 @@ It takes about twenty minutes. You build nothing: Thermite comes as ready-made c
 ## What you need
 
 - A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory and several gigabytes of free disk. Thermite's three images take about 2.5 GB. With Podman on a Mac, that space must be free in Podman's virtual machine.
-- **Docker** with Docker Compose, or **Podman** with `podman compose`. These run Thermite's parts as containers. `podman compose` hands the work to a compose program, `docker-compose` or `podman-compose`, so install one of them too. On a Mac, Podman runs the containers in a small virtual machine, which must be started (`podman machine start`).
+- **Docker** with Docker Compose, or **Podman** with `podman compose`. These run Thermite's parts as containers. `podman compose` hands the work to a compose program, so install one of them too: podman-compose (for example, `pipx install podman-compose`), or Docker Compose 2 or later. Not `docker-compose` 1.x, which some Linux systems' packages still give: it can't read Thermite's compose file, and `podman compose` uses it first when it is installed. On a Mac, Podman runs the containers in a small virtual machine, which must be started (`podman machine start`).
 - `curl`, which macOS and most Linux systems already have, and an internet connection.
 
 Thermite's agents run code that an AI model writes, on your computer. This tutorial uses no agents, but read [Known limits](../reference/known-limits.md) before you give Thermite a model: it says what that code can reach, and why to set a budget before you use a paid key. [The security model](../explanation/security-model.md) says what each part of Thermite can reach and what it trusts.

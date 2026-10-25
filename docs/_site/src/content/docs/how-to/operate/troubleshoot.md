@@ -54,6 +54,12 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 - **Why:** the local tokens don't exist yet. `compose.yaml` reads them from `.dev/secrets/`.
 - **Do:** run `docker compose run --rm init` (or `podman compose run --rm init`) in the folder that holds `compose.yaml`, then start again. In a checkout of the source code, run `npm run dev:init` in the repository's top folder instead.
 
+### Compose won't start: `'name' does not match any of the regexes`
+
+- **You see:** `podman compose up` or `docker-compose up` stops with `The Compose file './compose.yaml' is invalid because: 'name' does not match any of the regexes: '^x-'`. With Podman, a line before it says `Executing external compose provider "/usr/bin/docker-compose"`.
+- **Why:** the compose program is `docker-compose` 1.x, the old Compose v1. It can't read the `name:` at the top of Thermite's compose file. `podman compose` uses `docker-compose` first when it is installed, even when podman-compose is installed too. `thermite doctor` names the program on its **Compose tool** line.
+- **Do:** remove `docker-compose` 1.x: `docker-compose version` shows it, and on Debian or Ubuntu `sudo apt remove docker-compose` removes it. Then install podman-compose (for example, `pipx install podman-compose`) or Docker Compose 2 or later, and start again. Or, with podman-compose installed, type `podman-compose` in place of `podman compose`.
+
 ### Control stops at start: `control needs the owner's credential`
 
 - **You see:** control keeps restarting, and `docker compose logs control` has a `fatal` line that says `control needs the owner's credential`.

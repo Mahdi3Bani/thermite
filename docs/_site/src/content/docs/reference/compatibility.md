@@ -44,9 +44,10 @@ Installs need `sudo` without a password. See [Add a rig on a machine over SSH](.
 | Docker with `docker compose` | Supported | CI runs the compose smoke test with it |
 | Podman with `podman compose` | Supported | Every compose acceptance script takes it, and it is their default. Not in CI |
 | podman-compose | Supported | The compose smoke test takes it (`COMPOSE="podman-compose"`). Not in CI |
+| `docker-compose` 1.x (Compose v1) | Not supported: it stops at the top-level `name:` of `compose.yaml`. `thermite doctor` fails or warns when it finds it, as the command for Docker or the program behind `podman compose` | The doctor's tests |
 | Podman on a machine that hosts rigs | 4.4 or later, for its Quadlet units | The rig deploy acceptance, on Fedora 41's Podman. Neither the join script nor setting up over SSH checks the version: the join script checks only that Podman is there |
 
-No minimum version of Docker, Docker Compose, Podman or podman-compose is stated or checked for the compose stack. `compose.yaml` uses secrets from files, profiles, internal networks, `extra_hosts` with `host-gateway`, dropped and added capabilities, `no-new-privileges`, restart policies and `${VAR:-default}` defaults. A release's compose file uses the same, images pinned by digest alone (`name@sha256:…`), and `network_mode: none` for its `init` service, which you start with `compose run --rm`.
+Apart from Compose v1, no minimum version of Docker, Docker Compose, Podman or podman-compose is stated or checked for the compose stack. `compose.yaml` uses secrets from files, profiles, internal networks, `extra_hosts` with `host-gateway`, dropped and added capabilities, `no-new-privileges`, restart policies and `${VAR:-default}` defaults. A release's compose file uses the same, images pinned by digest alone (`name@sha256:…`), and `network_mode: none` for its `init` service, which you start with `compose run --rm`.
 
 Two acceptance tests need Podman and refuse Docker: rig deploy and cluster. [Install Thermite on one machine](../how-to/install/one-machine.md) gives the commands for each tool.
 
