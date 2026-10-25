@@ -94,7 +94,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [142](goals/142-champion-value-on-run-page.goal) A hill climb's champion value: measured right, and at the top of its run's page · `IN_PROGRESS`
 - [143](goals/143-stuck-and-looping-trials.goal) A stuck or looping trial shows itself, and an agent's refused request says why · `PROPOSED`
 - [144](goals/144-trial-clock.goal) A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials · `IN_PROGRESS`
-- [147](goals/147-notes-per-turn.goal) An optional limit on the field notes a worker writes in one reply · `PROPOSED`
+- [147](goals/147-notes-per-turn.goal) An optional limit on the field notes a worker writes in one reply · `IN_PROGRESS`
 
 ### Research mode
 

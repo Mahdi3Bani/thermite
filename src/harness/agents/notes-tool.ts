@@ -46,6 +46,37 @@ export const JOURNAL_FIELD = Type.Optional(
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: {} });
 
+/**
+ * The notes of one model reply, held to the contract's `notes_per_turn` when it sets one (goal
+ * 147): past it, a note is not recorded and its answer says so; the trial goes on. The worker
+ * resets the count when a reply's turn ends. Without a limit, every note is recorded.
+ */
+export class NoteLimit {
+  private readonly limit: number | undefined;
+  private count = 0;
+
+  constructor(limit: number | undefined) {
+    this.limit = limit;
+  }
+
+  /** A new reply: its notes count from 0. */
+  reset(): void {
+    this.count = 0;
+  }
+
+  async write(
+    note: (req: NoteRequest) => Promise<{ note: number }>,
+    p: Record<string, unknown>,
+  ): Promise<ReturnType<typeof text>> {
+    if (this.limit !== undefined && this.count >= this.limit)
+      return text(
+        `not recorded: this campaign keeps at most ${this.limit} note${this.limit === 1 ? "" : "s"} from one reply. Write the most important ones in your next reply. Your trial goes on.`,
+      );
+    this.count++;
+    return writeNote(note, p);
+  }
+}
+
 /** Runs the note tool: the note through the harness API, and the answer in words. */
 export async function writeNote(
   note: (req: NoteRequest) => Promise<{ note: number }>,

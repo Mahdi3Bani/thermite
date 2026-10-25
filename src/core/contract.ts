@@ -85,6 +85,11 @@ const LaneLimits = z.strictObject({
    */
   nudges: z.number().int().min(0).max(10_000).optional(),
   /**
+   * The field notes a Pi worker records from one model reply; past it, a note is refused in words
+   * and the trial goes on. Unset: no limit (goal 147).
+   */
+  notes_per_turn: z.number().int().min(1).max(10_000).optional(),
+  /**
    * Processes and threads each of a lane's users may have at once (RLIMIT_NPROC): its commands
    * and OpenCode or Claude Code, its development runs, and its Pi worker. Unset: 256.
    */
@@ -481,6 +486,8 @@ export interface LaneLimitValues {
   cutoffsInARow?: number | undefined;
   /** Nudges to a worker that stopped without submitting; unset: no number (goal 079). */
   nudges?: number | undefined;
+  /** Field notes a Pi worker records from one model reply; unset: no limit (goal 147). */
+  notesPerTurn?: number | undefined;
 }
 
 /** A dev run's limit on a device the judge shares, when the contract sets none. */
@@ -503,6 +510,7 @@ export function laneLimits(contract: Pick<Contract, "lanes">): LaneLimitValues {
     failuresInARow: l.failures_in_a_row,
     cutoffsInARow: l.cutoffs_in_a_row,
     nudges: l.nudges,
+    notesPerTurn: l.notes_per_turn,
   };
 }
 

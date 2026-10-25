@@ -7,7 +7,7 @@ import { Compactor, summarizer } from "./compaction.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
-import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import { NOTE_TOOL, NoteLimit, type NoteRequest } from "./notes-tool.ts";
 import { type FailureCount, failingOf, ProviderWatch } from "./provider-errors.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
@@ -97,6 +97,7 @@ export async function runResearchTrial(
   };
   // Near a set length's end, each tool result says the time left, and the end stops a tool (goal 144).
   const clock = new TrialClock(spec.wallMs);
+  const notes = new NoteLimit(spec.limits?.notesPerTurn); // the notes of one reply (goal 147)
   const tools: AgentTool[] = [
     ...researchAgentTools(
       RESEARCH_TOOLS.map((t) => t.name),
@@ -133,7 +134,7 @@ export async function runResearchTrial(
             parameters: NOTE_TOOL.parameters,
             execute: async (_id: string, params: unknown) => {
               result.toolCalls++;
-              return writeNote(
+              return notes.write(
                 deps.note as NonNullable<ResearchDeps["note"]>,
                 params as Record<string, unknown>,
               );
@@ -200,6 +201,7 @@ export async function runResearchTrial(
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       result.turns++;
+      notes.reset();
       const usage = (event.message as { usage?: { input?: number; output?: number } }).usage;
       result.tokensIn += usage?.input ?? 0;
       result.tokensOut += usage?.output ?? 0;

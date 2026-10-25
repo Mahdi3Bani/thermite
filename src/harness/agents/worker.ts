@@ -10,7 +10,7 @@ import { type CompactionReport, Compactor, summarizer } from "./compaction.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
-import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import { NOTE_TOOL, NoteLimit, type NoteRequest } from "./notes-tool.ts";
 import {
   classifyProviderError,
   type FailureCount,
@@ -293,6 +293,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   // Without the contract's limits: the defaults (the server enforces the contract's own).
   const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
   const clock = new TrialClock(spec.wallMs); // the trial's length, when it has one (goal 144)
+  const notes = new NoteLimit(limits.notesPerTurn); // the notes of one reply (goal 147)
   const tools: AgentTool[] = [
     tool(
       "list_files",
@@ -413,7 +414,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ...(deps.note
       ? [
           tool(NOTE_TOOL.name, NOTE_TOOL.description, NOTE_TOOL.parameters, (p) =>
-            writeNote(deps.note as NonNullable<TrialDeps["note"]>, p),
+            notes.write(deps.note as NonNullable<TrialDeps["note"]>, p),
           ),
         ]
       : []),
@@ -576,6 +577,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       result.turns++;
+      notes.reset();
       const usage = (event.message as { usage?: { input?: number; output?: number } }).usage;
       result.tokensIn += usage?.input ?? 0;
       result.tokensOut += usage?.output ?? 0;
@@ -585,9 +587,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       } else if (maxTurns !== undefined && warnTurns !== undefined && result.turns >= warnTurns) {
         warn(`${maxTurns - result.turns} turns are left in this trial.`);
       } else if (wallMs !== undefined && Date.now() - started >= wallMs * 0.85) {
-        warn(
-          `About ${Math.max(1, Math.round((wallMs - (Date.now() - started)) / 60_000))} minutes are left in this trial.`,
-        );
+        warn(clock.leftWords());
       }
     }
   });

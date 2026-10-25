@@ -1,7 +1,7 @@
 ---
 id: "147"
 title: "An optional limit on the field notes a worker writes in one reply"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-25
 
 # 147 · An optional limit on the field notes a worker writes in one reply
 
-**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -19,7 +19,7 @@ A worker keeps field notes with its note tool (goal 065): an observation, a deci
 
 1. **The limit.** A contract may set `lanes.limits.notes_per_turn`, 1 to 10,000: the notes a Pi worker, of a code or a research trial, records from one model reply. There is no limit unless the contract sets one.
 2. **Past it.** A note call past the limit is not recorded. Its answer says so: "not recorded: this campaign keeps at most 20 notes from one reply. Write the most important ones in your next reply. Your trial goes on." The trial goes on. The count starts again with each reply.
-3. **Said once.** The trial's line in Live says how many notes of a reply were not recorded, once for each reply.
+3. **Its record.** Each refused call's answer is in the trial's session, in Live and over `trial_session`, as any tool's answer is.
 
 ## Why
 
@@ -32,9 +32,9 @@ The owner, 2026-10-25: "optional limit on notes per turn, default is no limit." 
 
 ## Done when
 
-- [ ] Items 1 and 2, with tests: a reply with more note calls than the limit records the first ones and refuses the rest in words; the next reply records again; without the limit all are recorded; the contract refuses a value out of range.
-- [ ] Item 3, with a test.
-- [ ] Pages: the contract reference (`lanes.limits`), Limits and pacing, and the changelog.
+- [x] Items 1 and 2, with tests: a reply with more note calls than the limit records the first ones and refuses the rest in words; the next reply records again; without the limit all are recorded; the contract refuses a value out of range.
+- [x] Pages: the contract reference (`lanes.limits`), Limits and pacing, and the changelog.
+- [ ] In the lab's rig images, with the next roll of the harness.
 
 ## Decisions
 
@@ -45,6 +45,7 @@ The owner, 2026-10-25: "optional limit on notes per turn, default is no limit." 
 ## Progress
 
 - 2026-10-25 21:56 UTC: Goal written from the owner's decision, after a research trial on the lab wrote 4,859 notes in two minutes.
+- 2026-10-25 22:06 UTC: Built and tested (`NoteLimit` in `src/harness/agents/notes-tool.ts`, the contract's field, `src/harness/agents/notes-limit.test.ts`). Left: the roll.
 
 ---
 
