@@ -1,4 +1,5 @@
 import type { StoredRule } from "../../core/commands.ts";
+import { type Contract, type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { ideaWords, ruleRefusal } from "../../core/queue-target.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import {
@@ -89,6 +90,15 @@ export function rulesInForce(ledger: Ledger, run: string): { id: number; body: S
           !(d.body.kind === "lane_count" && ownerLanes)),
     )
     .map((d) => ({ id: d.id, body: d.body }));
+}
+
+/** The run's lane limits: the contract's, with the trial length a trial_minutes rule sets. */
+export function limitsInForce(ledger: Ledger, run: string, contract: Contract): LaneLimitValues {
+  const rule = rulesInForce(ledger, run)
+    .filter((d) => d.body.kind === "trial_minutes" && typeof d.body.value === "number")
+    .at(-1);
+  const limits = laneLimits(contract);
+  return rule ? { ...limits, trialMinutes: Number(rule.body.value) } : limits;
 }
 
 /** The experiments the run's newest hand-out gave its lanes. */

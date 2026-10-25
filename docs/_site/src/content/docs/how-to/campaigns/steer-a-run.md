@@ -181,6 +181,7 @@ A `redirect` takes up to 40 directives, each with a `kind`, a `rationale`, and, 
 | `mandate` | Every plan gives that direction a lane (**Always** on the dashboard) |
 | `priority` | Ranks a direction for the planner |
 | `lane_count` | `value`: how many lanes to plan, up to the contract's `lanes.count` |
+| `trial_minutes` | `value`: how long one trial lasts, in minutes, a whole number from 1 to 1440. It comes before the contract's `lanes.limits.trial_minutes` and the rig's **One trial lasts (minutes)**, from the next trial on; a trial already at work keeps its length. The **Planner** tab shows it as `Trials last <n> minutes`. Otherwise refused: `a trial_minutes rule gives value: minutes, a whole number from 1 to 1440` |
 | `note` | Free text for the planner |
 
 - Without `"replace": false`, a set replaces the rules sent earlier the same way, and only those. The command line and the REST API share one set. Over MCP, each token's role has its own: the owner's, the operator's and the agent's. The dashboard sends no `redirect`: its rules come from the planner, which adds them from your messages. Rules from elsewhere stay: remove them with `drop_directive`.

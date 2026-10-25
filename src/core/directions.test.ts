@@ -103,6 +103,16 @@ describe("directions, written as plain words or :name: (goal 066)", () => {
       words.error.issues.map((i) => i.message).join("; "),
       /a rule no longer takes match: name its direction in family, in plain words or as :name:/,
     );
+    // A trial_minutes rule gives its minutes, a whole number from 1 to 1440.
+    assert.equal(
+      StructuredDirective.parse({ kind: "trial_minutes", value: 120, rationale: "r" }).value,
+      120,
+    );
+    for (const value of [0, 1441, 1.5, "120", undefined]) {
+      const bad = StructuredDirective.safeParse({ kind: "trial_minutes", value, rationale: "r" });
+      assert.ok(!bad.success, String(value));
+      assert.match(bad.error.issues[0]?.message ?? "", /a trial_minutes rule gives value: minutes/);
+    }
     // An experiment's direction written :name: is kept without its colons.
     const add = CommandPayloads.queue_add.parse({ run: "r-1", title: "t", family: ":split k:" });
     assert.equal(add.family, "split k");

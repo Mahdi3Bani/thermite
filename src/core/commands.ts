@@ -97,7 +97,8 @@ export type ImportSpec = z.infer<typeof ImportSpec>;
  * set a verdict, a contract or text for workers. AVOID, TRY and MANDATE name a direction (goal
  * 066), in plain words or as `:name:`, kept as its name; code keeps them at every hand-out. A
  * direction the run doesn't have yet is the planner's to design at its next round. PRIORITY ranks a
- * direction; LANE_COUNT sets the lanes (up to the contract's count); NOTE is free text for the
+ * direction; LANE_COUNT sets the lanes (up to the contract's count); TRIAL_MINUTES sets how long
+ * one trial lasts, in minutes (value, 1 to 1,440), over the contract's; NOTE is free text for the
  * planner only. The planner sees rationales and notes; workers never do. A rule in words that
  * names no direction (`match`) is no longer made: one already in a ledger stays in force as
  * legacy (isLegacyRule) until the planner's next round converts it to a named direction.
@@ -109,6 +110,7 @@ export const DIRECTIVE_KINDS = [
   "mandate",
   "priority",
   "lane_count",
+  "trial_minutes",
   "note",
 ] as const;
 
@@ -139,6 +141,15 @@ export const StructuredDirective = z
     {
       message: "an avoid, try or mandate rule names a direction (family)",
       path: ["family"],
+    },
+  )
+  .refine(
+    (d) =>
+      d.kind !== "trial_minutes" ||
+      (Number.isInteger(d.value) && Number(d.value) >= 1 && Number(d.value) <= 1440),
+    {
+      message: "a trial_minutes rule gives value: minutes, a whole number from 1 to 1440",
+      path: ["value"],
     },
   );
 export type StructuredDirective = z.infer<typeof StructuredDirective>;

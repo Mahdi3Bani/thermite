@@ -240,6 +240,7 @@ function kindOf(kind: string): { chip: string; verb: string } {
   if (kind === "avoid") return { chip: "avoid", verb: "Avoid" };
   if (kind === "try") return { chip: "try", verb: "Try" };
   if (kind === "lane_count") return { chip: "lanes", verb: "Lanes" };
+  if (kind === "trial_minutes") return { chip: "trial", verb: "Trials last" };
   return { chip: kind, verb: kind };
 }
 
@@ -332,7 +333,13 @@ export function plannerTab(o: {
         ? esc(`“${String(x.body.match ?? "")}”`)
         : esc(String(x.body.value ?? ""));
     const said =
-      kind === "lane_count" ? `${what} lanes` : kind === "note" ? what : `${esc(k.verb)} ${what}`;
+      kind === "lane_count"
+        ? `${what} lanes`
+        : kind === "trial_minutes"
+          ? `Trials last ${what} minutes`
+          : kind === "note"
+            ? what
+            : `${esc(k.verb)} ${what}`;
     const fromMsg =
       typeof x.body.from_message === "number"
         ? r.messages.find((m) => m.id === x.body.from_message)

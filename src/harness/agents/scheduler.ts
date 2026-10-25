@@ -5,7 +5,6 @@ import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief
 import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
 import {
   type Contract,
-  laneLimits,
   MAX_LANES,
   type ResearchContract,
 } from "../../core/contract.ts";
@@ -72,6 +71,7 @@ import {
   type Directive,
   focusOf,
   type Handout,
+  limitsInForce,
   PLANNER,
   resultOf,
   rulesInForce,
@@ -2525,6 +2525,7 @@ export class Scheduler {
       `research trial on ${a.lane}: ${a.family}, ${got.x.title}`,
     );
     const fullBrief = this.withOwnerMessages(id, run, a.lane, brief);
+    const limits = limitsInForce(this.ledger, run, contract);
     const abort = new AbortController();
     this.aborts.set(a.lane, abort);
     this.laneRun.set(a.lane, run);
@@ -2544,11 +2545,9 @@ export class Scheduler {
             run,
             lane: a.lane,
             brief: fullBrief,
-            wallMs: laneLimits(contract).trialMinutes
-              ? (laneLimits(contract).trialMinutes as number) * 60_000
-              : this.o.trialWallMs,
+            wallMs: limits.trialMinutes ? limits.trialMinutes * 60_000 : this.o.trialWallMs,
             maxTurns: this.o.maxTurns,
-            limits: laneLimits(contract),
+            limits,
             mcpServers: this.o.service.mcp.given(run, "workers").map((g) => g.name),
           },
           abort.signal,
@@ -2636,7 +2635,7 @@ export class Scheduler {
         "status",
         `trial on ${a.lane}: ${a.family}, ${got.x.title} (from ${parent === champion.commit_sha ? `the champion, seq ${champion.seq}` : `the lane's best, ${best}`})`,
       );
-      const limits = laneLimits(contract);
+      const limits = limitsInForce(this.ledger, run, contract);
       let ws: { dir: string; repo: string } | undefined;
       let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       try {

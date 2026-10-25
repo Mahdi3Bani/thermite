@@ -662,6 +662,20 @@ describe("agent scheduler", () => {
     assert.equal(walls[1], 45 * 60_000);
     release();
     await scheduler.idle();
+    // A trial_minutes rule on the run comes before the rig's, as it does before the contract's.
+    env.ledger.addDirective("js-1", "control:owner", {
+      kind: "trial_minutes",
+      value: 120,
+      rationale: "trials end at their limit before they submit",
+      citations: [],
+    });
+    for (let i = 0; i < 200 && walls.length < 3; i++) {
+      await scheduler.tick();
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.equal(walls[2], 120 * 60_000);
+    release();
+    await scheduler.idle();
   });
 
   test("with a dedicated development card, dev runs and the judge do not wait for each other", async () => {

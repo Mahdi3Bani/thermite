@@ -282,7 +282,10 @@ describe("planner", () => {
       bad.errors.map((e) => e.replace(/ is a kind of rule .*/, "")),
       ['new_families: "mandate"', 'add n-1: the family "Lane_Count"', 'lane-1: the family "try"'],
     );
-    assert.match(String(bad.errors[0]), /avoid, try, mandate, priority, lane_count, note/);
+    assert.match(
+      String(bad.errors[0]),
+      /avoid, try, mandate, priority, lane_count, trial_minutes, note/,
+    );
     const ok = validatePlan(
       {
         new_families: [{ id: "try-unroll", description: "unroll the tail" }],

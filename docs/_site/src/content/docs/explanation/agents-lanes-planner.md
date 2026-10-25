@@ -129,7 +129,7 @@ Code checks the answer before anything changes. It refuses an answer that:
 - has a lane build on its best result when it has none yet;
 - gives out an experiment in a direction that an **Avoid** rule names, or gives no lane one in a direction that an **Always** rule names;
 - moves an experiment that isn't queued, drops one that isn't queued or an idea, or queues something that isn't an idea;
-- names a new approach family, or the direction of an experiment it adds or describes in place, after a kind of rule (`avoid`, `try`, `mandate`, `priority`, `lane_count` or `note`), so that no lane shows as "on try";
+- names a new approach family, or the direction of an experiment it adds or describes in place, after a kind of rule (`avoid`, `try`, `mandate`, `priority`, `lane_count`, `trial_minutes` or `note`), so that no lane shows as "on try";
 - adds a rule for a message that wasn't in its input, or a rule that names no direction;
 - adds a rule for a direction that is neither the run's nor designed in the same answer;
 - leaves undesigned a direction that a rule in force names but the run doesn't have yet;
