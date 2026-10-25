@@ -58,7 +58,13 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 
 - **You see:** `podman compose up` or `docker-compose up` stops with `The Compose file './compose.yaml' is invalid because: 'name' does not match any of the regexes: '^x-'`. With Podman, a line before it says `Executing external compose provider "/usr/bin/docker-compose"`.
 - **Why:** the compose program is `docker-compose` 1.x, the old Compose v1. It can't read the `name:` at the top of Thermite's compose file. `podman compose` uses `docker-compose` first when it is installed, even when podman-compose is installed too. `thermite doctor` names the program on its **Compose tool** line.
-- **Do:** remove `docker-compose` 1.x: `docker-compose version` shows it, and on Debian or Ubuntu `sudo apt remove docker-compose` removes it. Then install podman-compose (for example, `pipx install podman-compose`) or Docker Compose 2 or later, and start again. Or, with podman-compose installed, type `podman-compose` in place of `podman compose`.
+- **Do:**
+  1. Check the version: `docker-compose version`. Compose v1 prints a 1.x number, such as `docker-compose version 1.29.2`.
+  2. Remove it. On Debian or Ubuntu: `sudo apt remove docker-compose`.
+  3. Install podman-compose, or Docker Compose 2 or later. For podman-compose from pipx on Debian or Ubuntu: `sudo apt install pipx`, then `pipx ensurepath`, open a new shell, and `pipx install podman-compose`.
+  4. Start again: `podman compose up -d` (with `--build` in a checkout of the source code).
+
+  To keep `docker-compose` 1.x for other projects, skip step 2 and type `podman-compose` in place of `podman compose`.
 
 ### Control stops at start: `control needs the owner's credential`
 
