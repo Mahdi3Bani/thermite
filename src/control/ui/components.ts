@@ -323,6 +323,13 @@ export const runHref = (
   view: RunTab = "overview",
 ) =>
   `${campaignHref(i.campaign || i.id)}?run=${encodeURIComponent(runKey(rig, i.id))}${view === "overview" ? "" : `&view=${view}`}`;
+export const attemptHref = (rig: string, attempt: string) =>
+  `/ui/rigs/${encodeURIComponent(rig)}/attempts/${encodeURIComponent(attempt)}`;
+export const liveHref = (rig: string, source?: string) =>
+  `/ui/rigs/${encodeURIComponent(rig)}/live${source ? `?source=${encodeURIComponent(source)}` : ""}`;
+/** Live for one run: its lanes, judge, planner and advisors, and the message box. */
+export const runLiveHref = (rig: string, run: string, more = "") =>
+  `/ui/live?run=${encodeURIComponent(`${rig}/${run}`)}${more}`;
 
 export function label(text: string, cls: string, ic = ""): string {
   return `<span class="label ${cls}">${ic}${esc(text)}</span>`;

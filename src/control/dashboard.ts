@@ -244,8 +244,10 @@ import {
   workCard,
 } from "./ui/campaigns.ts";
 import { CLIENT_JS } from "./ui/client.ts";
+import { formPayload } from "./ui/command-forms.ts";
 import {
   ago,
+  attemptHref,
   avatar,
   campaignHref,
   deltaCell,
@@ -268,6 +270,7 @@ import {
   runCompleted,
   runHref,
   runKey,
+  runLiveHref,
   runState,
   type Shell,
   shell,
@@ -275,6 +278,7 @@ import {
 } from "./ui/components.ts";
 import { copyDrawer, postedUses, suggestCopyName } from "./ui/copy-campaign.ts";
 import { COPY_JS } from "./ui/copy-campaign-client.ts";
+import { drainView } from "./ui/drain.ts";
 import {
   type AgentLineId,
   type AgentLineNow,
@@ -301,7 +305,6 @@ import { infoLabel, newCampaignBody, QUEUE_TARGET_TIP } from "./ui/new-campaign.
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import {
   attemptDetail,
-  attemptHref,
   attemptRows,
   baselineBlock,
   baselineWords,
@@ -315,7 +318,6 @@ import {
   type Need,
   needs as operatorNeeds,
   runBrief,
-  runLiveHref,
   runRow,
   type TimelineRow,
   timeline,
@@ -3215,10 +3217,23 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
       return `${name}: downloading, ${size(m.bytes)}${total ? ` of ${size(total)} (${Math.floor((100 * Number(m.bytes)) / Math.max(1, total))}%)` : ""}`;
     };
     const adv = sup?.advisors ? obj(sup.advisors) : null;
+    // A drain under way (goal 136): a sentence, a card, and each trial it waits for by its lane.
+    const drain = drainView(u, {
+      store,
+      now,
+      csrf: t,
+      cluster: onCluster?.status === "draining",
+      form: (f) => cmdForm(c, { rig: u.id, back, ...f }),
+    });
     const live = u.runs.filter((i) => i.status === "running");
     const runsNow = live
       .map((i) =>
-        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i, u) }),
+        runBrief(store, u, i, now, {
+          heading: true,
+          detail: true,
+          waiting: waitingOn(i, u),
+          lane: drain?.lanes(i.id),
+        }),
       )
       .join("");
     const checks: [string, string, string][] = [
@@ -3251,6 +3266,7 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
           : u.stale
             ? `<b class="bad">${esc(u.id)} has ${neverReported(u) ? "not reported yet" : `not reported for ${esc(span(u.last_seen, now))}`}.</b>`
             : `${esc(u.id)} is live; it reported ${esc(ago(u.last_seen, now))} ago.`,
+      drain?.said ?? "",
       live.length
         ? `It runs ${live.map((i) => `<a href="${runHref(u.id, i)}">${esc(i.campaign || i.id)} › ${esc(i.id)}</a>`).join(" and ")}.`
         : u.runs.length
@@ -3442,7 +3458,7 @@ ${retireForm}</div></details>`;
         active: "rigs",
       },
       `<p class="run-said" data-part="said">${said}</p>
-${flash}<div data-part="banners"${stateIn.updating ? ` data-follow="${esc(updateFollowUrl(u.id))}" data-follow-state="${esc(updateProgress(u.id).state)}"` : ""}>${stateBanners(stateIn)}</div>${keyCard}
+${flash}<div data-part="banners"${stateIn.updating ? ` data-follow="${esc(updateFollowUrl(u.id))}" data-follow-state="${esc(updateProgress(u.id).state)}"` : ""}>${stateBanners(stateIn)}${drain?.banner ?? ""}</div>${keyCard}
 ${rp ? podSection(c, u.id, now) : ""}
 <div data-part="at-work">${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}</div>
 <div class="cols run-cols"><div>
@@ -8771,67 +8787,12 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const kind = String(f.kind) as CommandKind;
     if (!COMMAND_KINDS.includes(kind)) return c.text("unknown command", 400);
     const run = String(f.run ?? "");
-    // Kinds the rig's harness doesn't know yet are refused above (COMMAND_KINDS). Rules come
-    // from Tell the planner (goal 066): the dashboard sends no redirect of its own.
-    const payloads: Partial<Record<string, unknown>> = {
-      pause_run: { run, reason: String(f.reason || "paused from the dashboard") },
-      resume_run: { run },
-      close_run: { run, reason: String(f.reason ?? "").trim() },
-      reset_workers: { run },
-      // Export (goal 103): what changed since the last export, or a full one, as the owner chose.
-      export_now: exportForm(f).payload,
-      rig_check: { check: String(f.check ?? ""), ...(f.force === "true" ? { force: true } : {}) },
-      approve_promotion: { run, attempt: String(f.attempt ?? "") },
-      decline_promotion: { run, attempt: String(f.attempt ?? "") },
-      accept_review: { run, review: Number(f.review), accept: f.accept === "true" },
-      conclude: { run, proposal: Number(f.proposal), accept: f.accept === "true" },
-      // A research run's hypothesis (goal 117): promoted, back to the pool or retired, with why.
-      hypothesis_status: {
-        run,
-        id: String(f.id ?? ""),
-        status: String(f.status ?? ""),
-        reason: String(f.reason ?? "").trim(),
-      },
-      // The experiment queue (goal 064).
-      queue_add: {
-        run,
-        title: String(f.title ?? "").trim(),
-        ...(String(f.details ?? "").trim() ? { details: String(f.details).trim() } : {}),
-        ...(String(f.family ?? "").trim() ? { family: String(f.family).trim() } : {}),
-        ...(String(f.why ?? "").trim() ? { why: String(f.why).trim() } : {}),
-        position: f.position === "end" ? "end" : "top",
-      },
-      // Each field as the form has it: emptied details or why are cleared; a title and a
-      // direction stay unless given.
-      queue_edit: {
-        run,
-        id: String(f.id ?? ""),
-        ...(String(f.title ?? "").trim() ? { title: String(f.title).trim() } : {}),
-        details: String(f.details ?? "").trim(),
-        ...(String(f.family ?? "").trim() ? { family: String(f.family).trim() } : {}),
-        why: String(f.why ?? "").trim(),
-      },
-      queue_move: {
-        run,
-        id: String(f.id ?? ""),
-        position:
-          f.position === "top" || f.position === "end"
-            ? f.position
-            : Math.max(0, Math.trunc(Number(f.position)) || 0),
-      },
-      queue_drop: {
-        run,
-        id: String(f.id ?? ""),
-        why: String(f.why ?? "").trim() || "dropped by the owner",
-      },
-      queue_accept: { run, id: String(f.id ?? "") },
-      drop_directive: { run, id: Number(f.id) },
-      unkeep_message: { run, message: Number(f.message) },
-    };
+    // Kinds the rig's harness doesn't know yet are refused above (COMMAND_KINDS).
+    const payload = formPayload(kind, f);
     // The page's script sends the form with fetch and follows the command (goal 080): it takes
     // JSON. A plain form post gets the page again, which says "Sent".
     const json = wantsJson(c);
-    if (!(kind in payloads)) {
+    if (payload === undefined) {
       const why = "this command is not available from the dashboard";
       return json ? c.json(notSent(why), 400) : c.text(why, 400);
     }
@@ -8856,7 +8817,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       ({ id, woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
         rig: String(f.rig),
         kind,
-        payload: payloads[kind],
+        payload,
         issuedBy: "owner:ui",
         owner: true,
       }));

@@ -1,3 +1,4 @@
+import { MAX_LANES } from "../../core/contract.ts";
 import type { Ledger } from "../ledger.ts";
 
 /**
@@ -5,7 +6,8 @@ import type { Ledger } from "../ledger.ts";
  * and those running end as they would. The harness keeps it in memory only, and the restart it
  * prepares ends it. The ledger keeps each change as `rig_drain`, and the harness records the end
  * of a drain that a restart ended when it starts again (goal 136), so a research run's clock can
- * leave the drain out.
+ * leave the drain out. While it drains, the rig's report lists each trial it waits for, and the
+ * owner can stop one (`stop_trial`).
  */
 
 export interface Draining {
@@ -69,4 +71,176 @@ export function drainSpans(ledger: Ledger, now: number): [number, number][] {
   }
   if (since !== null) spans.push([since, now]);
   return spans;
+}
+
+/** A trial the drain waits for, as the rig's report gives it (goal 136, item 3). */
+export interface OpenTrial {
+  trial: string;
+  run: string;
+  lane: string;
+  started_at: string;
+  /** Its experiment's title, and a research task's question (from 0). */
+  task: string | null;
+  question: number | null;
+  /** What its worker last reported. */
+  turns: number;
+  tool_calls: number;
+  tokens_in: number;
+  /** The verified claims it recorded, for a research trial; null for a code trial. */
+  claims: number | null;
+  /**
+   * Its newest ask for a page the run refused before for a reason that lasts (a `fetch_refused`
+   * with `asked`): the URL, why, how many times the run asked for it, when, and how many such
+   * asks this trial made. Null when it made none.
+   */
+  refused_again: { url: string; reason: string; asked: number; at: string; times: number } | null;
+}
+
+/** What still runs, for the rig's report (goal 079), and while it drains, each open trial. */
+export interface Work {
+  trials: number;
+  judge_jobs: number;
+  draining: Draining | null;
+  open?: OpenTrial[];
+}
+
+/**
+ * The open trials a report lists: a rig runs one trial on each lane, and at most `MAX_LANES`
+ * lanes. More, which only a ledger left inconsistent could hold, are counted in `trials` only.
+ */
+const OPEN_MAX = MAX_LANES;
+
+/**
+ * What still runs: open trials and the judge's jobs under a lease still in force. A lease that
+ * ran out is no work: its holder is gone, the judge takes it back (while draining too), and a
+ * drain never waits on it. While the rig drains, the report lists the open trials too.
+ */
+export function workNow(ledger: Ledger, at: Date, draining: Draining | undefined): Work {
+  const n = (sql: string, ...params: string[]) =>
+    Number((ledger.db.prepare(sql).get(...params) as { n: number } | undefined)?.n ?? 0);
+  return {
+    trials: n("select count(*) as n from trial where ended_at is null"),
+    judge_jobs: n(
+      "select count(*) as n from job where state = 'leased' and lease_until > ?",
+      at.toISOString(),
+    ),
+    draining: draining ? { ...draining } : null,
+    ...(draining ? { open: openTrials(ledger) } : {}),
+  };
+}
+
+/** Each open trial, oldest first, with its task, its counters and a request it repeats. */
+export function openTrials(ledger: Ledger): OpenTrial[] {
+  const rows = ledger.db
+    .prepare(
+      `select t.id, t.run, t.lane, t.started_at, t.turns, t.tool_calls, t.tokens_in,
+         r.mode, x.title, x.question
+       from trial t left join run r on r.id = t.run
+         left join experiment x on x.trial = t.id
+       where t.ended_at is null order by t.started_at limit ?`,
+    )
+    .all(OPEN_MAX) as {
+    id: string;
+    run: string;
+    lane: string;
+    started_at: string;
+    turns: number | null;
+    tool_calls: number | null;
+    tokens_in: number | null;
+    mode: string | null;
+    title: string | null;
+    question: number | null;
+  }[];
+  return rows.map((t) => ({
+    trial: t.id,
+    run: t.run,
+    lane: t.lane,
+    started_at: t.started_at,
+    task: t.title,
+    question: t.question,
+    turns: t.turns ?? 0,
+    tool_calls: t.tool_calls ?? 0,
+    tokens_in: t.tokens_in ?? 0,
+    claims:
+      t.mode === "research"
+        ? Number(
+            (
+              ledger.db
+                .prepare(
+                  "select count(*) as n from claim where run = ? and lane = ? and verified = 1 and created_at >= ?",
+                )
+                .get(t.run, t.lane, t.started_at) as { n: number }
+            ).n,
+          )
+        : null,
+    refused_again: refusedAgain(ledger, t),
+  }));
+}
+
+/** The trial's newest ask for a URL refused before for a lasting reason (refusals.ts). */
+function refusedAgain(
+  ledger: Ledger,
+  t: { run: string; lane: string; started_at: string },
+): OpenTrial["refused_again"] {
+  const again = ledger.db
+    .prepare(
+      `select count(*) as times, max(id) as id from event
+       where kind = 'fetch_refused' and subject = ? and actor = ? and at >= ?
+         and json_extract(body, '$.asked') > 1`,
+    )
+    .get(t.run, t.lane, t.started_at) as { times: number; id: number | null };
+  if (!again.id) return null;
+  const e = ledger.db.prepare("select at, body from event where id = ?").get(again.id) as {
+    at: string;
+    body: string;
+  };
+  const b = JSON.parse(e.body) as { url?: unknown; reason?: unknown; asked?: unknown };
+  return {
+    url: String(b.url ?? ""),
+    reason: String(b.reason ?? ""),
+    asked: Number(b.asked ?? 0),
+    at: e.at,
+    times: Number(again.times),
+  };
+}
+
+/** drain_rig (goal 079): the drain begins, goes on or ends, and the ledger records it. */
+export function drainCommand(
+  svc: { ledger: Ledger; draining: Draining | undefined },
+  p: { drain: boolean; reason?: string | undefined },
+  by: string,
+  at: Date,
+): Omit<Work, "open"> {
+  svc.draining = drainAfter(svc.draining, p, by, at);
+  const { open: _open, ...w } = workNow(svc.ledger, at, svc.draining);
+  svc.ledger.appendEvent(by, "rig_drain", null, {
+    drain: p.drain,
+    ...(p.reason ? { reason: p.reason } : {}),
+    ...w,
+  });
+  return w;
+}
+
+/**
+ * stop_trial (goal 136): the trial must still run, in that run. The ledger records the ask
+ * (`trial_stop_asked`), and the scheduler stops the trial within a second (`scheduler/stops.ts`),
+ * as a restart would: it ends as interrupted, and its experiment goes back to the top of the
+ * run's queue. A trial that ends meanwhile is left as it ended.
+ */
+export function askStop(
+  ledger: Ledger,
+  p: { run: string; trial: string; reason?: string | undefined },
+  by: string,
+): { run: string; trial: string; lane: string; stopping: true } {
+  const t = ledger.db.prepare("select run, lane, ended_at from trial where id = ?").get(p.trial) as
+    | { run: string; lane: string; ended_at: string | null }
+    | undefined;
+  if (!t || t.run !== p.run) throw new Error(`run ${p.run} has no trial ${p.trial}`);
+  if (t.ended_at) throw new Error(`trial ${p.trial} has ended already`);
+  ledger.appendEvent(by, "trial_stop_asked", p.run, {
+    trial: p.trial,
+    lane: t.lane,
+    ...(p.reason ? { reason: p.reason } : {}),
+  });
+  return { run: p.run, trial: p.trial, lane: t.lane, stopping: true };
 }

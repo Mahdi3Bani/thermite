@@ -106,6 +106,7 @@ import {
 } from "./research-planner.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import { heldHandouts, lanesInRound, roundOver, waitsForJudge } from "./scheduler/rounds.ts";
+import { lastStopAsked, stopTrials } from "./scheduler/stops.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
 
@@ -315,8 +316,9 @@ export class Scheduler {
   /** The planner call in flight, if any. */
   private planning: { run: string; ctrl: AbortController } | undefined;
   private watcher: ReturnType<typeof setInterval> | undefined;
-  /** The newest workers_reset event acted on. */
+  /** The newest workers_reset and trial_stop_asked events acted on. */
   private resetSeen: number;
+  private stopSeen: number;
   private reportNoted = "";
   /** Shutting down: no new plan or trial (goal 079). */
   private stopping = false;
@@ -347,6 +349,7 @@ export class Scheduler {
     this.registry.interruptUnfinished(opts.owner);
     this.coordinator.finishOrphans(opts.owner);
     this.resetSeen = this.lastReset();
+    this.stopSeen = lastStopAsked(this.ledger);
   }
 
   private lastReset(): number {
@@ -357,22 +360,15 @@ export class Scheduler {
   }
 
   /**
-   * Work in flight for a run that is no longer running (paused, closed) stops at once: its
-   * trials are killed and its planner call is cancelled, instead of running to their end.
+   * Work in flight that must stop stops at once (scheduler/stops.ts): the trials of a run that is
+   * no longer running (paused, closed) and those the owner asked to stop are killed, and a planner
+   * call for a run no longer running is cancelled, instead of running to their end.
    */
-  private stopIfNotRunning(): void {
-    const running = (id: string) => this.ledger.getRun(id)?.status === "running";
-    for (const [lane, ctrl] of this.aborts) {
-      const run = this.laneRun.get(lane);
-      if (run && !running(run) && !ctrl.signal.aborted) {
-        this.ledger.appendEvent(this.o.owner, "trial_stopped", run, {
-          lane,
-          reason: "run not running",
-        });
-        ctrl.abort();
-      }
-    }
-    if (this.planning && !running(this.planning.run)) this.planning.ctrl.abort();
+  private applyStops(): void {
+    const o = { aborts: this.aborts, laneRun: this.laneRun, owner: this.o.owner };
+    this.stopSeen = stopTrials(this.ledger, { ...o, seen: this.stopSeen });
+    const p = this.planning;
+    if (p && this.ledger.getRun(p.run)?.status !== "running") p.ctrl.abort();
   }
 
   /**
@@ -482,7 +478,7 @@ export class Scheduler {
     if (this.watcher) return;
     this.watcher = setInterval(() => {
       try {
-        this.stopIfNotRunning();
+        this.applyStops();
       } catch (err) {
         log("scheduler", "stop check failed", { error: String(err) });
       }
@@ -1702,7 +1698,7 @@ export class Scheduler {
 
   /** One scheduling step: plan when needed, start trials that may start. */
   async tick(): Promise<boolean> {
-    this.stopIfNotRunning();
+    this.applyStops();
     await this.applyResets();
     // Stopping or draining: no new plan or trial; those running end as they would.
     if (this.halted()) return false;

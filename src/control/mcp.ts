@@ -65,7 +65,7 @@ import {
 import { registerRigReads } from "./mcp-rig-reads.ts";
 import { redirectUriOf, ServerBody, serverJson } from "./mcp-server-routes.ts";
 import type { McpServers } from "./mcp-servers.ts";
-import { copiedFromRecords } from "./queue-copy.ts";
+import { queueFromRecords } from "./queue-copy.ts";
 import {
   type RigModelBody,
   rigModelAnswer,
@@ -110,17 +110,6 @@ import { campaignModes, leaderboard, rigView } from "./views.ts";
  */
 
 /**
- * A run's copied experiments (assign_campaign.queue) are taken from the rigs' signed events, as
- * copiedFromRecords says: never the caller's words, unless control has no record it may use.
- */
-function queueFromRecords(store: ControlStore, payload: unknown): unknown {
-  const p = payload as { queue?: unknown; contract?: { campaign?: unknown } };
-  if (!p || typeof p !== "object" || !Array.isArray(p.queue)) return payload;
-  const target = typeof p.contract?.campaign === "string" ? p.contract.campaign : "";
-  return { ...p, queue: copiedFromRecords(store, target, p.queue) };
-}
-
-/**
  * Commands agents may issue through MCP. Wiping state, full resets, accepting a subjective goal
  * and accepting a "not possible" ending stay with the owner (dashboard or REST): no model is the
  * final gate.
@@ -135,13 +124,14 @@ const AGENT_COMMANDS = [
   "rig_check",
 ] as const satisfies readonly CommandKind[];
 /**
- * An operator (a token the owner gives an operating agent) may also message the run's agents, on
- * the owner's behalf; it never approves, accepts or wipes.
+ * An operator (a token the owner gives an operating agent) may also message the run's agents and
+ * stop a trial (goal 136), on the owner's behalf; it never approves, accepts or wipes.
  */
 const OPERATOR_COMMANDS = [
   ...AGENT_COMMANDS,
   "message_agent",
   "unkeep_message",
+  "stop_trial",
   // The experiment queue and the rules for the plan (goal 064): the owner's and operators'.
   "queue_add",
   "queue_move",
@@ -423,7 +413,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       "issue_command",
       {
         title: "Issue a signed command",
-        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|trial_minutes|keep_working|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value? (lane_count: lanes; trial_minutes: one trial's length in minutes, 1 to 1440, over the contract's; keep_working: on or off, whether lanes keep working while the judge works, over the contract's), rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; ${role === "owner" ? "close_run {run, reason} (the owner's token only: the run ends for good, nothing more starts and it can't be resumed; its results stay); hypothesis_status {run, id, status: promoted|pool|retired, reason} (the owner's token only: a research run's hypothesis promoted, so the review panel must give it a verdict, back to the pool, or retired; get_run lists them); " : ""}${role === "agent" ? "" : "message_agent {run, to: all|lane-N|trial:ID|planner|advisors|teachers|auditor|review_panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top|end|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); "}assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. \`thermite assign --print\` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.`,
+        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|trial_minutes|keep_working|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value? (lane_count: lanes; trial_minutes: one trial's length in minutes, 1 to 1440, over the contract's; keep_working: on or off, whether lanes keep working while the judge works, over the contract's), rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; ${role === "owner" ? "close_run {run, reason} (the owner's token only: the run ends for good, nothing more starts and it can't be resumed; its results stay); hypothesis_status {run, id, status: promoted|pool|retired, reason} (the owner's token only: a research run's hypothesis promoted, so the review panel must give it a verdict, back to the pool, or retired; get_run lists them); " : ""}${role === "agent" ? "" : "message_agent {run, to: all|lane-N|trial:ID|planner|advisors|teachers|auditor|review_panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top|end|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); stop_trial {run, trial, reason?} (one running trial ends as interrupted, and its experiment goes back to the top of the queue; run_queue's at_work gives each lane's trial); "}assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. \`thermite assign --print\` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.`,
         inputSchema: {
           rig: z.string().min(1),
           kind: z.enum(kinds as unknown as [CommandKind, ...CommandKind[]]),

@@ -418,6 +418,17 @@ export const CommandPayloads = {
     reason: z.string().trim().min(1).max(500).optional(),
   }),
   /**
+   * The owner (or an operator, for the owner) stops one running trial (goal 136), such as one a
+   * drain waits for. It ends as interrupted, with its counters, sources and claims, and its
+   * experiment goes back to the top of the run's queue, as a trial a restart interrupts does.
+   * Nothing else stops.
+   */
+  stop_trial: z.strictObject({
+    run: IdSchema,
+    trial: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "a trial's id"),
+    reason: z.string().trim().min(1).max(500).optional(),
+  }),
+  /**
    * Owner-only full reset, after control verified that `export` (an export_now's result) was
    * pushed to the results repository. The harness refuses if research was recorded after it.
    */

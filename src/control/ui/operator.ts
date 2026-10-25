@@ -12,15 +12,19 @@ import {
 } from "../views.ts";
 import {
   ago,
+  attemptHref,
   esc,
   icon,
   judgeOnlyMark,
+  liveHref,
   modeAvatar,
   moreText,
   reportingTag,
   runHref,
+  runLiveHref,
   sparkline,
 } from "./components.ts";
+import type { LaneExtra } from "./drain.ts";
 import { gainChip, measuredWords } from "./gains.ts";
 import {
   attemptState,
@@ -84,14 +88,6 @@ export interface Need {
   /** The same decision as a box on its attempt's page: the buttons, each choice and why. */
   box: string;
 }
-
-export const attemptHref = (rig: string, attempt: string) =>
-  `/ui/rigs/${encodeURIComponent(rig)}/attempts/${encodeURIComponent(attempt)}`;
-export const liveHref = (rig: string, source?: string) =>
-  `/ui/rigs/${encodeURIComponent(rig)}/live${source ? `?source=${encodeURIComponent(source)}` : ""}`;
-/** Live for one run: its lanes, judge, planner and advisors, and the message box. */
-export const runLiveHref = (rig: string, run: string, more = "") =>
-  `/ui/live?run=${encodeURIComponent(`${rig}/${run}`)}${more}`;
 
 const champSeq = (r: RunView) => r.champion.filter((c) => !c.reopened).at(-1)?.seq ?? 1;
 const nextSeq = (r: RunView) => Math.max(1, ...r.champion.map((c) => c.seq)) + 1;
@@ -1074,14 +1070,15 @@ export function runProgress(r: RunView): string {
 /**
  * What a run is doing now, one line each: every lane's focus and for how long, the judge, and the
  * planner when it waits. With `heading`, the run's name, progress and champion lead; with
- * `detail`, each lane also shows its last step and the judge its latest line.
+ * `detail`, each lane also shows its last step and the judge its latest line; `lane` adds to a
+ * lane's row and below it (a drain's trial: ui/drain.ts).
  */
 export function runBrief(
   store: ControlStore,
   u: RigView,
   r: RunView,
   now: number,
-  opts: { heading?: boolean; detail?: boolean; waiting?: number } = {},
+  opts: { heading?: boolean; detail?: boolean; waiting?: number; lane?: LaneExtra } = {},
 ): string {
   const rows: string[] = [];
   const row = (who: string, what: string, when = "", cls = "") =>
@@ -1097,6 +1094,7 @@ export function runBrief(
     ]),
   ].sort();
   for (const lane of lanes) {
+    const extra = opts.lane?.(lane);
     const t = trials.find((x) => x.lane === lane);
     const plan = r.epoch?.assignments.find((a) => a.lane === lane);
     const work = r.at_work[lane];
@@ -1118,7 +1116,7 @@ export function runBrief(
           : "";
       row(
         lane,
-        `${esc(clip(what, 200))}${t ? ` <a class="small" href="${runLiveHref(u.id, r.id, `&w=${encodeURIComponent(lane)}`)}">watch</a>` : ""}${last}`,
+        `${esc(clip(what, 200))}${extra?.mark ?? ""}${t ? ` <a class="small" href="${runLiveHref(u.id, r.id, `&w=${encodeURIComponent(lane)}`)}">watch</a>` : ""}${last}`,
         esc(span(work?.since ?? t?.started_at ?? null, now)),
       );
     } else {
@@ -1134,6 +1132,7 @@ export function runBrief(
         "muted",
       );
     }
+    if (extra) rows.push(extra.below);
   }
   if (!lanes.length && r.status === "running")
     row(
