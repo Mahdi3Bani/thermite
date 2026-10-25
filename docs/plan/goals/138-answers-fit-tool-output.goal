@@ -42,7 +42,7 @@ The owner, 2026-10-24 (goal 128): gaps found while operating the lab become goal
 ## Progress
 
 - 2026-10-25 08:27 UTC: Built (branch `feat/137-audit-sees-checks`). `DETAIL_CHARS` and `clipTexts` in `src/control/run-lists.ts`: the default answer is measured as MCP sends it, and the texts in the lists' entries (attempts included) are cut in steps until it fits, with a line in `cut`. `rig_setup`'s answer moved to `src/control/rig-setup-view.ts` (`rigSetupView`, `SETUP_STEPS`), which gives the newest steps and `steps_total`. Tests: `run-lists.test.ts`, `rig-setup-view.test.ts`. Pages: MCP tools (`get_run`, `rig_setup`), REST API, CHANGELOG. To verify on the lab: the same `get_run` call reads in full.
-- 2026-10-25 08:38 UTC: Found in the same answer: `promotion_waits` kept the reason of a change that had since become the champion ("the auditor asked for the owner"). The run's view now keeps a wait only while its change is pending (`views.ts`); the dashboard read only pending ones already. Test: `queue-view.test.ts`.
+- 2026-10-25 08:32 UTC: Found in the same answer: `promotion_waits` kept the reason of a change that had since become the champion ("the auditor asked for the owner"). The run's view now keeps a wait only while its change is pending (`views.ts`); the dashboard read only pending ones already. Test: `queue-view.test.ts`.
 
 ---
 
