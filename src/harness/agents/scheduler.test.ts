@@ -223,6 +223,105 @@ describe("agent scheduler", () => {
     await fake.close();
   });
 
+  test("a round ends without waiting for a lane's long trial; the judge's wait holds the round and the lane's next trial in any round (goal 136)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
+    await env.start();
+    const fake = await startFakeModel(({ messages, tools }) => {
+      if (tools.some((t) => t.function.name === "submit_plan")) {
+        return {
+          toolCalls: [
+            {
+              name: "submit_plan",
+              args: {
+                new_families: [{ id: "loops", description: "simplify the inner loop" }],
+                assignments: ["lane-1", "lane-2"].map((lane) => ({
+                  lane,
+                  family: "loops",
+                  focus: "remove waste",
+                  parent: "champion",
+                })),
+              },
+            },
+          ],
+        };
+      }
+      const content = `${FAST_KERNEL}\n// ${Math.random()}\n`;
+      const steps = [
+        { name: "write_file", args: { path: "src/kernel/work.mjs", content } },
+        { name: "submit", args: { hypothesis: "drop waste" } },
+      ];
+      const done = messages.filter((m) => m.role === "tool").length;
+      return steps[done] ? { toolCalls: [steps[done]] } : { text: "done" };
+    });
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const model = {
+      baseUrl: fake.url,
+      model: "m",
+      apiKey: "k",
+      contextWindow: 32000,
+      maxTokens: 2000,
+    };
+    // Lane-1's first trial waits until it is released: a long trial.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    let holding = true;
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner,
+      model,
+      owner: "scheduler-test",
+      maxConcurrent: 2,
+      runTrial: async (spec) => {
+        if (spec.lane === "lane-1" && holding) await held;
+        return runTrial(spec, {
+          runner,
+          laneTool,
+          model,
+          submit: (req) => env.service.submitForTrial(String(spec.token), req) as never,
+          status: async (id) => env.service.attemptStatus(id),
+        });
+      },
+    });
+    const trials = (lane: string) =>
+      (
+        env.ledger.db
+          .prepare("select epoch, ended_at from trial where lane = ? order by rowid")
+          .all(lane) as { epoch: number; ended_at: string | null }[]
+      ).map((x) => ({ epoch: Number(x.epoch), ended: x.ended_at !== null }));
+    const until = async (ok: () => boolean) => {
+      for (let i = 0; i < 1000 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
+      assert.ok(ok(), "in time");
+    };
+    const round = () => scheduler.registry.currentEpoch("js-1");
+    assert.ok(await scheduler.tick(), "round 1: both lanes start");
+    await until(() => trials("lane-2")[0]?.ended === true);
+    // Lane-2's change waits for the judge: it holds the round.
+    await scheduler.tick();
+    assert.equal(round()?.ended_at, null);
+    // Judged, lane-2 is free and lane-1 is still on its trial: the round ends, and lane-2 goes on.
+    await env.drain();
+    await scheduler.tick();
+    assert.notEqual(round()?.ended_at, null);
+    assert.ok(await scheduler.tick(), "round 2: lane-2 starts");
+    assert.deepEqual(trials("lane-2")[1], { epoch: 2, ended: false });
+    assert.deepEqual(trials("lane-1"), [{ epoch: 1, ended: false }]);
+    await until(() => trials("lane-2")[1]?.ended === true);
+    // Lane-1's trial of round 1 ends with a change: its next trial, in round 2, waits for the judge.
+    holding = false;
+    release();
+    await until(() => trials("lane-1")[0]?.ended === true);
+    assert.equal(await scheduler.tick(), false);
+    assert.equal(trials("lane-1").length, 1);
+    assert.equal(round()?.ended_at, null);
+    await env.drain();
+    assert.ok(await scheduler.tick(), "lane-1 joins round 2");
+    assert.deepEqual(trials("lane-1")[1], { epoch: 2, ended: false });
+    await scheduler.idle();
+    await fake.close();
+  });
+
   test("a campaign that keeps working sets it for its runs; a run's rule comes first (goal 135)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1, keep_working: true } });
     await env.start();

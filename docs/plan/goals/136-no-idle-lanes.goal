@@ -1,0 +1,60 @@
+---
+id: "136"
+title: "No idle lanes: a round doesn't wait for another lane's trial, and a refused page isn't fetched again and again"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 136 · No idle lanes: a round doesn't wait for another lane's trial, and a refused page isn't fetched again and again
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A lane that can work must not sit idle. In a research run on the lab, 2026-10-24 and 25, two of six questions got no work for nine hours, and the review panel was never asked, because every question needs an answer card first. Five causes, each a fix:
+
+1. **A round waited for every lane's trials.** Each lane ran its trials of the round, then waited until every other lane's trials had ended and nothing ran. One long trial held every other lane. Now a round ends once every free lane has run its trials. A lane still on a trial joins the next round when its trial ends. Unless the run keeps working (goal [135](135-lanes-and-judge-throughput.goal)), a change waiting for the judge still holds the round, so the next plan has its verdict, and it holds its own lane's next trial in whatever round that is. An experiment the round gave a lane that never started in it stays up next. Code: `src/harness/agents/scheduler/rounds.ts`, used by the scheduler's tick for each mode.
+2. **A refused page was fetched again and again.** A worker asked for the same PDF, larger than the run's `fetch_policy.max_bytes`, every two minutes for hours, and each time it was downloaded again and got only `larger than 5000000 bytes`. Now a refusal for a reason that lasts (size, scope, `robots.txt`, a private address) is kept for the run: asked again, the URL is refused at once, with no download, and the answer says it was refused before, how many times it was asked for, and to look for the same text elsewhere. A failure that can pass, such as a timeout, is not kept. Code: `src/harness/research/refusals.ts`. The fetcher's size refusal also had a fault: when the last chunk crossed the limit, the refusal was thrown where nothing caught it, and the fetch returned a body cut short. It now refuses first and then closes the request.
+3. **A drain waits on a stuck trial, and nothing says which.** An image update drained the rig and waited 5¼ hours on the stuck trial, with no new trial on any lane. The rig's page should say which trials the drain waits for, on which lane, how long each has run and when it last did something, with a way to stop one.
+4. **The progress rule's clock counts time when no trial could run.** The run's time without an improvement grew through the drain. Time when the rig drained, or the run's agents were stopped, should not count toward the progress rule.
+5. **The progress meter reads like a countdown that ran out.** **Without an improvement** showed 5.6 h of 2.2 h, full and in the warning colour, while the rule could not apply (no question was saturated). The meter should show the rule's state: not in force until the open questions are saturated, and only then the time left.
+
+## Why
+
+The owner, 2026-10-25, on a lane that had run its trials and waited: "wtf explain lane-1 used its 3 trials and now just decides to never do fucking work again? idle lanes are the destroyer of progress... so yeah we need to fix this crap."
+
+## Constraints
+
+- **No default caps:** none of these fixes ends a trial for its length, turns or time. A trial runs until it ends ([rules for every goal](../README.md#rules-for-every-goal)).
+- **The judge's wait stays as the owner set it** in goal 135: a run that doesn't keep working still waits for verdicts.
+- **A mockup first** for items 3 and 5, which change screens.
+
+## Done when
+
+- [x] Item 1: a round ends without waiting for other lanes' running trials, in hill-climb, goal and research runs, with the judge's wait kept; tests that fail on the old code (`src/harness/agents/scheduler.test.ts`, `scheduler-research.test.ts`, `scheduler/rounds.test.ts`).
+- [x] Item 2: a lasting refusal is answered at once when asked again, with no download; the fetcher's size refusal is caught; a test (`src/harness/research/research.test.ts`).
+- [ ] Items 1 and 2 rolled to the lab, and a research run there shows no lane idle behind another's trial.
+- [ ] Item 3, after the owner approved its mockup.
+- [ ] Item 4.
+- [ ] Item 5, after the owner approved its mockup.
+- [ ] The pages match the code for each item.
+
+## Decisions
+
+- 2026-10-25, owner: idle lanes are not acceptable. A round must not hold a free lane behind another lane's trial.
+
+## Open questions
+
+- Item 3: whether **Stop this trial** on a drain's list gives the trial's experiment back to the queue, as an interrupted trial's is now.
+
+## Progress
+
+- 2026-10-25 05:23 UTC: Goal written. Items 1 and 2 built, with tests that fail on the old code, and pages updated: Agents, lanes and the planner; Campaign modes; Steer a run; Write a contract; the contract reference; the glossary; Limits and pacing. A side effect to watch on the lab: rounds can end more often than before, when one lane is much faster than another, so a run with the planner on makes more planner calls: at most one for each `trials_per_epoch` trials of its fastest lane, where it was one for each `trials_per_epoch` trials of every lane.
+
+---
+
+Run with `/goal Complete docs/plan/goals/136-no-idle-lanes.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
