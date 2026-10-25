@@ -155,6 +155,9 @@ function repeatsWords(twin: Row): string {
     : `this hypothesis repeats ${id}${twin.lane ? ` (proposed by ${String(twin.lane)})` : ""}: change that one with revise_hypothesis (id ${id}), its words, its question or its supporting claims, instead of proposing it again`;
 }
 
+/** What a worker is told of a finding it sends again once it is recorded, supported. */
+const KEPT_FINDING =
+  "this finding is already recorded, supported: record a finding only for a new conclusion";
 /** What a worker is told of a finding kept as a draft: how to fix it (goal 117). */
 const DRAFT_FINDING =
   "recorded as a draft finding: fix these problems and send it again with the same words, which records it as supported";
@@ -1032,12 +1035,7 @@ export class Research {
     ).filter((r) => claimKey(String(r.text)) === claimKey(f.text));
     const kept = before.find((r) => Number(r.supported) === 1);
     if (kept)
-      return {
-        finding: String(kept.id),
-        supported: true,
-        problems: [],
-        note: "this finding is already recorded, supported: record a finding only for a new conclusion",
-      };
+      return { finding: String(kept.id), supported: true, problems: [], note: KEPT_FINDING };
     const draft = before[0];
     if (draft && !supported)
       throw new LedgerError(
@@ -1448,6 +1446,8 @@ export class Research {
     const fence = (body: string) => body.replace(/^(\s*)#/gm, "$1\\#");
     const byId = new Map(claims.map((cl) => [String(cl.id), cl]));
     const findings = this.all("select * from finding where run = ? order by created_at", run);
+    const supportedFindings = findings.filter((f) => Number(f.supported) === 1);
+    const supportedWords = new Set(supportedFindings.map((f) => claimKey(String(f.text))));
     const finding = (f: Row) => {
       const cited = (JSON.parse(String(f.supporting)) as string[])
         .map((id) => byId.get(id))
@@ -1490,7 +1490,7 @@ export class Research {
       ),
       "",
       "## Findings",
-      ...findings.filter((f) => Number(f.supported) === 1).flatMap(finding),
+      ...supportedFindings.flatMap(finding),
       "",
       `## Verified claims from at least ${min} independent domains`,
       ...corroborated.map(cite),
@@ -1500,7 +1500,7 @@ export class Research {
       "",
       "## Draft findings (not supported by verified claims)",
       ...findings
-        .filter((f) => Number(f.supported) !== 1)
+        .filter((f) => Number(f.supported) !== 1 && !supportedWords.has(claimKey(String(f.text))))
         .map(
           (f) =>
             `- ${fence(String(f.text)).replace(/\n+/g, " ")} (${(JSON.parse(String(f.problems)) as string[]).join("; ")})`,

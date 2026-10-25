@@ -392,6 +392,9 @@ describe("research integrity", () => {
     const fixed = research.addFinding("r-1", "lane-1", { ...draft, supporting: [first.claim] });
     assert.equal(fixed.supported, true, JSON.stringify(fixed));
     assert.equal(findings(), count + 1);
+    // The report gives it as a finding, and no longer lists the draft it fixed.
+    const drafts = research.report("r-1", "digest").body.split("## Draft findings")[1] ?? "";
+    assert.doesNotMatch(drafts.split("\n## ")[0] ?? "", /Workers keep no state of their own/);
     await w.close();
   });
 
