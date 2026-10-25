@@ -28,7 +28,7 @@ Since M5, control also sets rigs up by itself, on machines over SSH and on Kuber
 
 The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
-**Scope frozen, 2026-10-25.** v0.1.0 ships what is on `main`. Before the tag: goal 135's pages, goal 117's acceptance runs, the CUDA 13 image out of the release, and goal 026's steps. A goal here whose code is on `main` and whose only open item is a check on the lab doesn't hold the tag; its check goes on after the release. Anything new goes into a later version.
+**Scope frozen, 2026-10-25.** v0.1.0 ships what is on `main`. Before the tag: goal 117's acceptance runs, the CUDA 13 image out of the release, and goal 026's steps. A goal here whose code is on `main` and whose only open item is a check on the lab doesn't hold the tag; its check goes on after the release. Anything new goes into a later version.
 
 ### Tester basics
 
@@ -85,7 +85,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [115](goals/_completed/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `VERIFIED`
 - [128](goals/_completed/128-get-run-bounded.goal) `get_run` stays a size an agent can read, for a run of any length · `VERIFIED`
 - [133](goals/_completed/133-metric-values-beside-gains.goal) A hill climb shows its main metric's real values beside each gain · `VERIFIED`
-- [135](goals/135-lanes-and-judge-throughput.goal) Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion · `IN_PROGRESS`
+- [135](goals/_completed/135-lanes-and-judge-throughput.goal) Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion · `VERIFIED`
 - [136](goals/136-no-idle-lanes.goal) No idle lanes: a round doesn't wait for another lane's trial, and a refused page isn't fetched again and again · `IN_PROGRESS`
 - [137](goals/_completed/137-auditor-sees-checks.goal) The auditor sees what the judge checked · `VERIFIED`
 - [138](goals/_completed/138-answers-fit-tool-output.goal) `get_run`, `run_queue` and `rig_setup` fit an agent's tool output · `VERIFIED`

@@ -1,7 +1,7 @@
 ---
 id: "135"
 title: "Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-25
 
 # 135 · Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -48,16 +48,16 @@ On changes written on an older champion: "we want to see the old submissions aga
 ## Done when
 
 - [x] `lanes.keep_working` in the contract, off by default; on, lanes and rounds go on while the judge works; a `keep_working` rule turns it on or off for a running run, and dropping it returns to the campaign's setting.
-- [ ] Moved to [148](148-keep-working-on-screens.goal) (v0.1.4, owner, 2026-10-25): New campaign has the setting, and a run's page shows which is in force with a switch.
+- [ ] Moved to [148](../148-keep-working-on-screens.goal) (v0.1.4, owner, 2026-10-25): New campaign has the setting, and a run's page shows which is in force with a switch.
 - [x] A `trial_minutes` rule sets a running run's trial length.
 - [x] A change written on an older champion is screened against the current one; a win becomes champion and queues a port of the champion it replaced; a loss that helped on its own parent queues its own port onto the champion; each port is judged against its new base.
 - [x] Two judge executors build two changes at once, each as its own builder user, and the isolation check covers both. (Built and tested in unit tests; the multi-GPU acceptance checks the second builder, not yet run.)
 - [x] A build cached before an update to images with the same packages and compilers is used after it.
-- [ ] The pages for the contract, steering a run, the judge, verdicts, limits and pacing, the isolation check and the harness image describe all of it.
+- [x] The pages for the contract, steering a run, the judge, verdicts, limits and pacing, the isolation check and the harness image describe all of it.
 
 ## Decisions
 
-- 2026-10-25, owner: v0.1.0's scope is frozen. The screens for keeping working move to goal [148](148-keep-working-on-screens.goal) in v0.1.4; the setting ships through the contract and the rule. This goal's pages are a must before the tag.
+- 2026-10-25, owner: v0.1.0's scope is frozen. The screens for keeping working move to goal [148](../148-keep-working-on-screens.goal) in v0.1.4; the setting ships through the contract and the rule. This goal's pages are a must before the tag.
 - 2026-10-25, owner: keeping working is a campaign's setting, off by default, and a run can turn it on and off. Ports happen in both modes. The plan above is the owner's, as explained back to them before any of it was built.
 - 2026-10-25: 3535335 made keeping working the default for every run; it was held back from the lab, and part 1 replaces it.
 - 2026-10-25, in the build: the build key keeps a guard the image's id gave, a new image never reusing builds made with other tools, by hashing the image's installed packages (`dpkg-query -W`) beside `cc` and `nvcc`; compilers alone would miss a tool such as gfortran added with apt. `THERMITE_TOOLCHAIN_ID` names a tool installed another way.
@@ -76,6 +76,8 @@ On changes written on an older champion: "we want to see the old submissions aga
 - 2026-10-25 04:54 UTC: part 5 built (branch `feat/135-judge-parallel`): `toolchainOf` in `builds.ts`; `THERMITE_IMAGE_ID` is the image's name only. Tests: `builds.test.ts`, `checks.test.ts`. Pages: Kit manifest (build cache), Extend the harness image, Push the images to your own registry, Harness image, Settings.
 - 2026-10-25 05:09 UTC: part 4 built: users `builder-1` … `builder-7` (uid and gid 10021 … 10027) in the image, the roles and the broker's process limits; `builderRole(i)` beside `runRole`; each judge executor builds as its card's builder, with no lock across executors; `BuildStore.ensure` makes a key once while it is under way (`building`), and the others wait for it. The selftest probes each card's builder and `build-work`, a build under way handed to `builder` that no other role may list; the multi-GPU acceptance checks `builder-1`. `serial()` is gone. Tests: `builds.test.ts` (two executors, one build), `lanes.test.ts`, `judge.test.ts`, `lease.test.ts`. Pages: Rig checks, Harness image, Isolation, Security model, Verdicts, Limits and pacing. Not run: the multi-GPU and rig image acceptances (an image build).
 - 2026-10-25 05:34 UTC: part 3 built: `judge/ports.ts` (`olderChampion`, `queuePort`, `portReplaced`, `parentScreened`); the judge's `parent_screen` job (an `evaluate` against the change's parent, with no verdict and no lifecycle steps), enqueued after a loss by a change written on an older champion; `syncChampionRef` queues the replaced champion's port after any promotion, the judge's or the owner's; events `parent_screened` and `port_queued`; the dashboard's words for both and for the job (`ui/judge-words.ts`, where `jobText` moved). `guardTotals` moved to `baseline.ts`. Tests: `ports.test.ts` (both cases, once each, never the champion's own change), `baseline.test.ts`. Pages: Verdicts (a change written on an older champion, the job kinds), How it fits together (events), Why agents never judge.
+- 2026-10-25 22:54 UTC: The pages were checked against items 1 to 5: the contract (`lanes.keep_working`), Steer a run (the `keep_working` and `trial_minutes` rules), Agents, lanes and the planner, Limits and pacing, Verdicts (a change written on an older champion, ports), How it fits together (`parent_screened`, `port_queued`), Isolation and Rig checks (`builder-<i>`, `build-work`), the harness image (the builder users) and the kit manifest (the build cache). In use on the lab: a run that keeps working, ports at the top of its queue, and builds as `builder-1` and on. Verified; the screens moved to goal 148, when the owner froze v0.1.0's scope.
+
 ---
 
-Run with `/goal Complete docs/plan/goals/135-lanes-and-judge-throughput.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/_completed/135-lanes-and-judge-throughput.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

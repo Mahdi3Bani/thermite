@@ -40,12 +40,12 @@ It has four parts, then the release itself. The parts can run at the same time. 
 
 Since 2026-10-25, only this list holds the tag:
 
-1. **Goal [135](goals/135-lanes-and-judge-throughput.goal)'s pages.** Lanes that keep working while the judge works are on `main`; the pages for the contract, steering a run, the judge, verdicts, limits and pacing, the isolation check and the harness image must describe them.
+1. **Goal 135's pages.** Done, 2026-10-25: they describe all of it, and goal [135](goals/_completed/135-lanes-and-judge-throughput.goal) is verified.
 2. **The CUDA 13 image out of the release.** It was never checked, so the tag doesn't publish it (goal [132](goals/132-cuda-images-per-gpu.goal) moves to v0.1.2). The pages and the known limits say that Blackwell and the DGX Spark come later.
 3. **Goal [117](goals/117-research-that-answers.goal)'s acceptance runs.** v0.1.0 doesn't ship until research mode is solid (the owner, 2026-10-24). One of the three runs passed; the second failed and was fixed; the second and third run again. They also check goals [112](goals/112-research-ends-when-answered.goal) and [047](goals/047-research-planner.goal).
 4. **Goal [026](goals/026-ship-v0.1.0.goal)'s steps:** the full checks and acceptance suites on `main`'s tip, the changelog's date, the tag (it closes goal [010](goals/010-published-images.goal)), the bundle on clean machines (it closes goal [011](goals/011-release-bundle.goal)), the release notes and the `v0.1.1` branch.
 
-**Ships as built, checked on the lab after the tag:** goals 103, 135 (but its screens), 136, 139, 140, 142, 143, 144 and 147. Their code is on `main`; each one's only open item is a check on the lab.
+**Ships as built, checked on the lab after the tag:** goals 103, 136, 139, 140, 142, 143, 144 and 147. Their code is on `main`; each one's only open item is a check on the lab.
 
 **Moved out:** goal [132](goals/132-cuda-images-per-gpu.goal) (CUDA 13 images) to v0.1.2; goal [141](goals/141-waiting-win-after-champion-moved.goal) (a waiting win the champion moved past) to v0.1.3; goal 135's screens to goal [148](goals/148-keep-working-on-screens.goal), v0.1.4.
 
