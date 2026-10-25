@@ -29,7 +29,7 @@ updated: 2026-10-25
    5. A port goes to the top of the queue, titled for what it carries and where (`Port a-… onto champion #3`), with the original diff and its measured effect in the worker's brief, so old plus change and new plus change can be compared.
    6. Ports happen whether lanes keep working or wait: with two lanes, one lane's win can land while the other's change waits for the judge.
 4. **The judge builds in parallel.** Each judge executor builds as a builder user of its own, in folders of its own, so two changes build at once; a commit being built is built once. The isolation check holds each builder user away from the other's builds.
-5. **Builds survive a roll that keeps the toolchain.** A build's cache key comes from the commit, the kit and the compilers' versions (`cc`, `nvcc`), not the image's id, so an update to new images that change no compiler keeps the run's builds.
+5. **Builds survive a roll that keeps the toolchain.** A build's cache key comes from the commit, the kit and the toolchain: a hash of the image's installed packages, the compilers' versions (`cc`, `nvcc`) and, for a tool installed without the package manager, `THERMITE_TOOLCHAIN_ID`. Not the image's id: an update to new images that changes no package keeps the run's builds.
 
 ## Why
 
@@ -52,13 +52,14 @@ On changes written on an older champion: "we want to see the old submissions aga
 - [x] A `trial_minutes` rule sets a running run's trial length.
 - [ ] A change written on an older champion is screened against the current one; a win becomes champion and queues a port of the champion it replaced; a loss that helped on its own parent queues its own port onto the champion; each port is judged against its new base.
 - [ ] Two judge executors build two changes at once, each as its own builder user, and the isolation check covers both.
-- [ ] A build cached before an update to images with the same compilers is used after it.
+- [x] A build cached before an update to images with the same packages and compilers is used after it.
 - [ ] The pages for the contract, steering a run, the judge, verdicts, limits and pacing, the isolation check and the harness image describe all of it.
 
 ## Decisions
 
 - 2026-10-25, owner: keeping working is a campaign's setting, off by default, and a run can turn it on and off. Ports happen in both modes. The plan above is the owner's, as explained back to them before any of it was built.
 - 2026-10-25: 3535335 made keeping working the default for every run; it was held back from the lab, and part 1 replaces it.
+- 2026-10-25, in the build: the build key keeps a guard the image's id gave, a new image never reusing builds made with other tools, by hashing the image's installed packages (`dpkg-query -W`) beside `cc` and `nvcc`; compilers alone would miss a tool such as gfortran added with apt. `THERMITE_TOOLCHAIN_ID` names a tool installed another way.
 
 ## Open questions
 
@@ -70,6 +71,7 @@ On changes written on an older champion: "we want to see the old submissions aga
 - 2026-10-25 04:27 UTC: Goal written from the owner's words. Built before it: the `trial_minutes` rule (6d53693, on main, not pushed), and lanes that always keep working (3535335, pushed, not rolled), which part 1 turns into the setting.
 
 - 2026-10-25 04:32 UTC: parts 1 and 2 built (branch `feat/lanes-dont-wait`). `lanes.keep_working` in the contract (optional, no default, so old contracts keep their hashes); the rule kinds `keep_working` (`on` or `off`) and `trial_minutes`, refused in words otherwise; `keepsWorking` and `limitsInForce` beside `rulesInForce` (`coordinator.ts`): the newest rule in force, else the contract. Waiting is the default again. The Planner tab names both rules. Tests: `scheduler.test.ts` (the lane waits, the rule turns it on, round 2 starts while three changes wait, off waits again until the judge is done; the contract's setting and the rule's precedence; a rule's trial length reaches the trial), `directions.test.ts`. Pages: Contract, Steer a run, Signed commands, Verdicts, Limits and pacing, Agents, lanes and the planner, MCP tools. Left in part 1: the New campaign setting and the run's switch, from mockups.
+- 2026-10-25 04:54 UTC: part 5 built (branch `feat/135-judge-parallel`): `toolchainOf` in `builds.ts`; `THERMITE_IMAGE_ID` is the image's name only. Tests: `builds.test.ts`, `checks.test.ts`. Pages: Kit manifest (build cache), Extend the harness image, Push the images to your own registry, Harness image, Settings.
 ---
 
 Run with `/goal Complete docs/plan/goals/135-lanes-and-judge-throughput.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

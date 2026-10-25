@@ -62,7 +62,7 @@ test("the rig image is held to the lab's rules: no Claude Code, socat, bubblewra
     `it reports THERMITE_COMMIT "feedface", not the release's commit ${COMMIT}`,
     "it carries Claude Code (/usr/local/bin/claude): a published image never does",
     "it sets THERMITE_SNAPSHOT_KEY in its environment: no key, token or password goes in an image",
-    "it does not report THERMITE_IMAGE_ID, which the harness puts in each build's key",
+    "it does not report THERMITE_IMAGE_ID, which the harness reports as its image",
     "it carries socat (/usr/bin/socat)",
     "it carries bubblewrap (/usr/bin/bwrap)",
     "it has set-id files: /usr/bin/su /usr/bin/passwd",
@@ -78,7 +78,7 @@ test("set-id files are every image's rule; socat and the image ID are the harnes
   };
   assert.deepEqual(imageProblems("control", COMMIT, facts), ["it has set-id files: /usr/bin/su"]);
   assert.deepEqual(imageProblems("harness", COMMIT, facts), [
-    "it does not report THERMITE_IMAGE_ID, which the harness puts in each build's key",
+    "it does not report THERMITE_IMAGE_ID, which the harness reports as its image",
     "it carries socat (/usr/bin/socat)",
     "it has set-id files: /usr/bin/su",
   ]);

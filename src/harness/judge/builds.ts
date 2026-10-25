@@ -43,6 +43,32 @@ export function sha256File(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+/**
+ * What compiles a build (goal 135): the image's installed packages, the compilers and, for tools
+ * installed another way, THERMITE_TOOLCHAIN_ID. A change to any of them never reuses old builds;
+ * new images that change none of them keep the builds made before. The image's name is not in it.
+ */
+export function toolchainOf(env: NodeJS.ProcessEnv): string {
+  const out = (cmd: string, args: string[]) => {
+    try {
+      const o = { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 2 ** 26 };
+      return (execFileSync(cmd, args, o as never) as unknown as string).trim();
+    } catch {
+      return undefined;
+    }
+  };
+  const lines = (s: string | undefined) => s?.split("\n").filter(Boolean) ?? [];
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: dpkg-query's format fields, not a template
+  const packages = out("dpkg-query", ["-W", "-f=${Package}=${Version}\n"]);
+  return canonicalJson({
+    packages: packages === undefined ? null : sha256Hex(lines(packages).sort().join("\n")),
+    cc: lines(out("cc", ["--version"]))[0] ?? null,
+    nvcc: lines(out("nvcc", ["--version"])).at(-1) ?? null,
+    // Empty counts as not set.
+    extra: env.THERMITE_TOOLCHAIN_ID || null,
+  });
+}
+
 export class BuildStore {
   readonly storeDir: string;
   private readonly workDir: string;
@@ -67,27 +93,8 @@ export class BuildStore {
     return sha256Hex(canonicalJson({ commit, kit_commit: kitCommit, build: kit.build, toolchain }));
   }
 
-  /** Image and compiler identity: a new image or compiler never reuses old builds. */
   private toolchainId(): string {
-    if (this.toolchain === undefined) {
-      const version = (cmd: string, args: string[]) => {
-        try {
-          return execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })
-            .trim()
-            .split("\n")
-            .filter(Boolean)
-            .at(-1);
-        } catch {
-          return undefined;
-        }
-      };
-      this.toolchain = canonicalJson({
-        // Empty, as in an image built from a checkout, counts as not set.
-        image: process.env.THERMITE_IMAGE_ID || null,
-        cc: version("cc", ["--version"]) ?? null,
-        nvcc: version("nvcc", ["--version"]) ?? null,
-      });
-    }
+    this.toolchain ??= toolchainOf(process.env);
     return this.toolchain;
   }
 

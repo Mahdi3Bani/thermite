@@ -27,7 +27,7 @@ RUN apt-get update \
 ENV THERMITE_IMAGE_ID=0.1.0-fortran-1
 ```
 
-The last line gives your image a name of its own. The harness puts `THERMITE_IMAGE_ID` in the key of every build it makes, so a rig on your image builds afresh, and never reuses a build made without your tools. Change it with each new build of your image.
+The last line gives your image a name of its own, which the rig's page shows as its image. The harness keys every build it makes on the image's installed packages and compilers ([Build cache](../../reference/kit-manifest.md#build-cache)), so a rig on your image builds afresh, and never reuses a build made without your tools. A tool you install without `apt-get`, such as a compiler unpacked into `/opt`, isn't in that list: set `THERMITE_TOOLCHAIN_ID` too, and change it with each new version of the tool.
 
 Keep these as they are, or the rig won't start or won't be safe to judge on:
 

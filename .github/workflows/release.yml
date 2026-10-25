@@ -226,8 +226,8 @@ jobs:
           platforms: ${{ matrix.platforms }}
           # Every image reports THERMITE_COMMIT with the version in package.json, and control
           # compares rigs' builds with its own. THERMITE_IMAGE_ID is the image's tag and commit:
-          # the harness reports it, and puts it in each build's key. Control's and the
-          # supervisor's files do not use it.
+          # the harness reports it as its image. Control's and the supervisor's files do not use
+          # it.
           build-args: |
             THERMITE_COMMIT=${{ github.sha }}
             THERMITE_IMAGE_ID=${{ needs.version.outputs.version }}${{ matrix.suffix }}+${{ needs.version.outputs.commit }}

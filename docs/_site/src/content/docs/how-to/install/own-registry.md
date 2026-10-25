@@ -67,7 +67,7 @@ The release workflow builds two published CUDA harnesses, each on a base pinned 
 | `CODEX_VERSION` | Harness, supervisor | `0.162.1` | The Codex CLI release the image carries, for [agents in Codex](../models/chatgpt-subscription.md#run-the-agents-in-codex). Empty: no Codex CLI, and an image about 400 MB smaller |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl control uses for clusters. It is checked against a pinned hash, so a different version fails the build |
 | `THERMITE_COMMIT` | All three | Empty: no commit | The source commit the image is built from, which the service reports with its version |
-| `THERMITE_IMAGE_ID` | Harness | Empty | A name for this build, which the harness reports as its image and puts in each build's key, for example `--build-arg THERMITE_IMAGE_ID=$tag` |
+| `THERMITE_IMAGE_ID` | Harness | Empty | A name for this build, which the harness reports as its image, for example `--build-arg THERMITE_IMAGE_ID=$tag` |
 
 Claude Code is not open source, so Thermite's images leave it out by default. **Never push an image built with Claude Code to a public registry.** Since rigs can't sign in to a registry yet, such an image reaches a remote rig only from a registry that is not public and still needs no sign-in, such as one that only your own network reaches. Let that registry take pushes only from someone signed in.
 

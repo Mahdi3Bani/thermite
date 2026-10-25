@@ -7,7 +7,7 @@ import { describe, test } from "node:test";
 import { LocalRunner } from "../broker/runner.ts";
 import { KitSchema } from "../kit.ts";
 import { Ledger } from "../ledger.ts";
-import { BuildStore } from "./builds.ts";
+import { BuildStore, toolchainOf } from "./builds.ts";
 import { outputProblems } from "./measure.ts";
 
 function setup(buildScript: string, outputs: string[], timeoutS = 30) {
@@ -58,6 +58,15 @@ function setup(buildScript: string, outputs: string[], timeoutS = 30) {
 }
 
 describe("build store", () => {
+  test("a build's toolchain is the image's packages and compilers, not its name (goal 135)", () => {
+    const a = toolchainOf({ THERMITE_IMAGE_ID: "0.1.0-cuda+1a2b3c4d5e6f" });
+    // A new image with the same packages and compilers keeps its builds.
+    assert.equal(toolchainOf({ THERMITE_IMAGE_ID: "0.1.1-cuda+0f0e0d0c0b0a" }), a);
+    // A tool installed another way, named, builds afresh; empty counts as not set.
+    assert.notEqual(toolchainOf({ THERMITE_TOOLCHAIN_ID: "fortran-14" }), a);
+    assert.equal(toolchainOf({ THERMITE_TOOLCHAIN_ID: "" }), a);
+  });
+
   test("a symlinked output is refused, never followed", async () => {
     const s = setup("mkdir -p out && ln -s /etc/hosts out/bench\n", ["out/bench"]);
     const r = await s.ensure();

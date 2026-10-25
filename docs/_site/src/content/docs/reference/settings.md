@@ -221,7 +221,8 @@ The Codex CLI speaks only OpenAI's Responses API, so `codex` goes only with `THE
 | `THERMITE_CHECKS_DIR` | path | `/opt/thermite/checks` in the image; outside it, the checkout | no | Where the [smoke check](rig-checks.md) finds its kits and projects |
 | `THERMITE_ALLOW_UNSEPARATED` | `1` | off | no | `1`: when the harness container does not run as root, the broker starts the harness anyway, with no separate users for the roles. Meant for development only. Without it, a broker that is not root stops with `fatal: not root, so roles cannot be separated` |
 | `THERMITE_FATAL_HOLD_SECONDS` | seconds | none | no | After a fatal error at start (`fatal: …` in the broker's log), how long the broker waits before it exits, at most 600. The [one-container rig image](harness-image.md#the-one-container-rig-image) sets 60: a host that starts a stopped container again at once, such as RunPod, then keeps the error in the [pod's log](rig-page.md#pod-log) |
-| `THERMITE_IMAGE_ID` | string | the image's: set in the published harness images, such as `0.1.0+1a2b3c4d5e6f`; empty in an image built from a checkout | no | Reported as the image in the rig's hardware report and in each build's toolchain record. Empty counts as not set. See [Published images](harness-image.md#published-images) |
+| `THERMITE_IMAGE_ID` | string | the image's: set in the published harness images, such as `0.1.0+1a2b3c4d5e6f`; empty in an image built from a checkout | no | Reported as the image in the rig's hardware report. Empty counts as not set. See [Published images](harness-image.md#published-images) |
+| `THERMITE_TOOLCHAIN_ID` | string | not set | no | Goes into every build's key beside the image's installed packages and compilers, for a tool the image has that its package list doesn't show, such as a compiler unpacked into `/opt`: change it, and the rig builds afresh. Empty counts as not set. See [Build cache](kit-manifest.md#build-cache) |
 
 ## Supervisor
 
