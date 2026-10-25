@@ -1082,7 +1082,6 @@ describe("research runs use the queue", () => {
     const none = {
       verified_claims: 0,
       by_question: [],
-      no_question: 0,
       new_domains: 0,
       domains: [],
       findings: 0,

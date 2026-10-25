@@ -546,7 +546,6 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
     const nothing = JSON.stringify({
       verified_claims: 0,
       by_question: [{ question: 1, verified_claims: 0, new_domain_claims: 0 }],
-      no_question: 0,
       new_domains: 0,
       domains: [],
       findings: 0,

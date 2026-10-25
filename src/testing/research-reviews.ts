@@ -281,7 +281,6 @@ export function researchRunEvents(): Ev[] {
     ...task("x-1", 0, "Question 1 (index 0): survey the guides", 2, {
       verified_claims: 3,
       by_question: [{ question: 0, verified_claims: 3, new_domain_claims: 2 }],
-      no_question: 0,
       new_domains: 2,
       domains: ["example.org"],
       findings: 1,
@@ -290,7 +289,6 @@ export function researchRunEvents(): Ev[] {
     ...task("x-2", 1, "Question 2 (index 1): find vendor documents", 2.5, {
       verified_claims: 0,
       by_question: [],
-      no_question: 0,
       new_domains: 0,
       domains: [],
       findings: 0,

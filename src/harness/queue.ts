@@ -62,8 +62,6 @@ function indexOf(pos: QueuePosition | undefined, others: number): number {
 export interface TaskYield {
   verified_claims: number;
   by_question: { question: number; verified_claims: number; new_domain_claims: number }[];
-  /** Verified claims that name no question of the run. */
-  no_question: number;
   new_domains: number;
   /** The first of the new registrable domains (at most 20). */
   domains: string[];

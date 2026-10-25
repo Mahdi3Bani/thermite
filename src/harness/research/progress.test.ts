@@ -59,7 +59,6 @@ async function scene(t: TestContext) {
           by_question: [
             { question, verified_claims: newDomainClaims, new_domain_claims: newDomainClaims },
           ],
-          no_question: 0,
           new_domains: newDomainClaims,
           domains: [],
           findings: 0,

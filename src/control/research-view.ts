@@ -99,7 +99,6 @@ export interface ProgressView {
 export interface TaskYieldView {
   verified_claims: number;
   by_question: { question: number; verified_claims: number; new_domain_claims: number }[];
-  no_question: number;
   new_domains: number;
   domains: string[];
   findings: number;
@@ -383,7 +382,6 @@ export function taskFields(x: ExperimentView, e: StoredEvent): void {
             ]
           : [];
       }),
-      no_question: Number(y.no_question) || 0,
       new_domains: Number(y.new_domains) || 0,
       domains: strs(y.domains, 20, 253),
       findings: Number(y.findings) || 0,

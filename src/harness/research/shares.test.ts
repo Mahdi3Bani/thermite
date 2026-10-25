@@ -113,7 +113,6 @@ async function scene(t: TestContext) {
       JSON.stringify({
         verified_claims: 2,
         by_question: [{ question: 4, verified_claims: 2, new_domain_claims: 0 }],
-        no_question: 0,
         new_domains: 0,
         domains: [],
         findings: 0,
@@ -276,7 +275,6 @@ describe("the gap-driven plan (goal 117)", () => {
             JSON.stringify({
               verified_claims: 0,
               by_question: [],
-              no_question: 0,
               new_domains: 0,
               domains: [],
               findings: 0,

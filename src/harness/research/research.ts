@@ -28,6 +28,7 @@ import {
 import { Fetcher, FetchRefused, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
 import { answerSections, checkLine, researchEnd } from "./review.ts";
+import { DRAFT_FINDING, KEPT_FINDING, noQuestion, repeatsWords } from "./worker-words.ts";
 
 /** The research service's operations a hill-climb or goal run takes (its code trials' tools). */
 const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n));
@@ -146,21 +147,6 @@ export const HypothesisRevision = z.object({
   question: z.number().int().nullable().optional(),
   supporting: ClaimIds.optional(),
 });
-
-/** Why a hypothesis is refused as a repeat of a live one: which, and what to do instead. */
-function repeatsWords(twin: Row): string {
-  const id = String(twin.id);
-  return String(twin.status) === "author"
-    ? `this hypothesis repeats ${id}, one of the author's: the review panel gives it a verdict already. Record claims for or against it instead of proposing it again`
-    : `this hypothesis repeats ${id}${twin.lane ? ` (proposed by ${String(twin.lane)})` : ""}: change that one with revise_hypothesis (id ${id}), its words, its question or its supporting claims, instead of proposing it again`;
-}
-
-/** What a worker is told of a finding it sends again once it is recorded, supported. */
-const KEPT_FINDING =
-  "this finding is already recorded, supported: record a finding only for a new conclusion";
-/** What a worker is told of a finding kept as a draft: how to fix it (goal 117). */
-const DRAFT_FINDING =
-  "recorded as a draft finding: fix these problems and send it again with the same words, which records it as supported";
 
 export const FindingInput = z.object({
   text: z.string().min(5).max(4000),
@@ -657,6 +643,12 @@ export class Research {
 
   addClaim(run: string, lane: string | null, input: unknown) {
     const c = ClaimInput.parse(input);
+    // A claim counts toward its question's answer: with one question, that one. A run of another
+    // mode has no questions.
+    const research = this.ledger.getRun(run)?.mode === "research";
+    const n = research ? this.contract(run).questions.length : 0;
+    if (c.question === undefined && n > 1) throw new LedgerError("invalid", noQuestion(n));
+    const question = research ? this.questionOf(run, c.question ?? 0) : null;
     const key = claimKey(c.text);
     const same = this.all(
       "select id, text, verified from claim where run = ? order by verified desc, created_at",
@@ -736,7 +728,7 @@ export class Research {
           id,
           run,
           lane,
-          c.question ?? null,
+          question,
           c.text,
           canonicalJson(quotes),
           verified ? 1 : 0,
@@ -815,7 +807,7 @@ export class Research {
     return { note: id };
   }
 
-  /** A question's index as a hypothesis takes it: one of the contract's, or a refusal in words. */
+  /** A question's index as a claim or a hypothesis takes it: one of the contract's, or a refusal. */
   private questionOf(run: string, q: number | null | undefined): number | null {
     if (q === undefined || q === null) return null;
     const n = this.contract(run).questions.length;
@@ -1154,7 +1146,6 @@ export class Research {
     }
     const by = new Map<number, { verified_claims: number; new_domain_claims: number }>();
     let total = 0;
-    let none = 0;
     for (const c of this.all(
       "select question, quotes from claim where run = ? and lane = ? and verified = 1 and created_at >= ? and created_at <= ? order by created_at, rowid",
       run,
@@ -1163,10 +1154,8 @@ export class Research {
       until,
     )) {
       total++;
-      if (c.question === null) {
-        none++;
-        continue;
-      }
+      // A claim from before claims named their question counts in the total only.
+      if (c.question === null) continue;
       const q = Number(c.question);
       const had = seen.get(q) ?? new Set<string>();
       const ds = domainsOf(c.quotes);
@@ -1209,7 +1198,6 @@ export class Research {
       by_question: [...by.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([question, r]) => ({ question, ...r })),
-      no_question: none,
       new_domains: fresh.length,
       domains: fresh.slice(0, 20),
       findings,

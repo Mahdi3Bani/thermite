@@ -204,7 +204,7 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 | `experiment_edited` | New text |
 | `experiment_dropped` | Dropped, with who dropped it and why |
 | `experiment_assigned` | Given to a lane's trial |
-| `experiment_finished` | Its trial ended, with the attempt or the reason there is none, and how the trial ended in words (`cause`). A research task's has its trial's `yield`: `{verified_claims, by_question: [{question, verified_claims, new_domain_claims}], no_question, new_domains, domains, findings, card_changes}` |
+| `experiment_finished` | Its trial ended, with the attempt or the reason there is none, and how the trial ended in words (`cause`). A research task's has its trial's `yield`: `{verified_claims, by_question: [{question, verified_claims, new_domain_claims}], new_domains, domains, findings, card_changes}` |
 | `experiment_returned` | Its trial never really tried it (interrupted, or the model provider's error): the same experiment back at the top, with the trial, its lane, the cause and how many times it came back (`returns`) |
 | `planner_handout` | One hand-out: which experiment went to which lane, and why |
 | `directive` | A rule for the plan: its kind, its direction, why and who set it. One the planner made from an owner's message names that message (`from_message`). One converted from an old rule in words names that rule and its words (`converted_from`) and keeps its author |

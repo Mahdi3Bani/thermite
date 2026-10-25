@@ -139,7 +139,6 @@ export async function researchScene(
       JSON.stringify({
         verified_claims: 1,
         by_question: [{ question: 4, verified_claims: 1, new_domain_claims: 0 }],
-        no_question: 0,
         new_domains: 0,
         domains: [],
         findings: 0,

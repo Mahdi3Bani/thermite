@@ -664,8 +664,17 @@ describe("a research task's question and yield (goal 117)", () => {
       true,
     );
     assert.equal(claim("Workers keep every recorded result.", "s-0000000000b1", 1).verified, true);
+    // The run has three questions: a claim names the one it answers, or it is not recorded.
+    assert.throws(
+      () => claim("The workers keep every result they recorded.", "s-0000000000b2"),
+      /give "question": the index of the campaign question this claim answers, from 0 to 2/,
+    );
+    assert.throws(
+      () => claim("The workers keep every result they recorded.", "s-0000000000b2", 3),
+      /no question 3/,
+    );
     assert.equal(
-      claim("The workers keep every result they recorded.", "s-0000000000b2").verified,
+      claim("The workers keep every result they recorded.", "s-0000000000b2", 1).verified,
       true,
     );
     assert.equal(claim("Workers keep 9 results.", "s-0000000000b2", 2).verified, false, "a draft");
@@ -682,9 +691,8 @@ describe("a research task's question and yield (goal 117)", () => {
       verified_claims: 3,
       by_question: [
         { question: 0, verified_claims: 1, new_domain_claims: 0 },
-        { question: 1, verified_claims: 1, new_domain_claims: 1 },
+        { question: 1, verified_claims: 2, new_domain_claims: 2 },
       ],
-      no_question: 1,
       new_domains: 1,
       domains: ["example.com"],
       findings: 1,
