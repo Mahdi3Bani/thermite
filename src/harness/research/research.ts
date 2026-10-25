@@ -16,6 +16,7 @@ import {
 import { CODE_RESEARCH_TOOLS, moreText, READ_MAX, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
+import { blockedSpans } from "./blocked.ts";
 import { answersSection } from "./cards.ts";
 import {
   checkCited,
@@ -1218,7 +1219,8 @@ export class Research {
   /**
    * Running time against the contract's durations. Paused time does not count, and neither does
    * time the agents could not run (goal 079): while they were stopped (no credits, a refused key,
-   * a failing model check) or waited for the provider's rate limit. The minimum is a floor, never
+   * a failing model check), waited for the provider's rate limit or for the run's MCP servers, or
+   * the rig drained (goal 136): `blockedSpans`. The minimum is a floor, never
    * a stop: after it, a run ends when the review panel finds every question answered (goal 112),
    * at its maximum, or when the owner closes it.
    */
@@ -1242,7 +1244,7 @@ export class Research {
       }
     }
     if (since !== null) running.push([since, now]);
-    const blocked = this.agentsBlocked(run, now);
+    const blocked = blockedSpans(this.ledger, run, now);
     let elapsedMs = 0;
     let waitedMs = 0;
     for (const [a, b] of running) {
@@ -1262,42 +1264,6 @@ export class Research {
       max_ms: maxMs,
       done: maxMs !== null && elapsedMs >= maxMs,
     };
-  }
-
-  /**
-   * When the run's agents could not run (goal 079), merged and in order: from each agents_stopped
-   * to the agents_resumed after it (or now), each wait for the provider's rate limit until the
-   * time it named, and each wait for the run's MCP servers (goal 068) from its start to its end.
-   */
-  private agentsBlocked(run: string, now: number): [number, number][] {
-    const spans: [number, number][] = [];
-    let stoppedAt: number | null = null;
-    for (const e of this.all(
-      "select kind, at, body from event where kind in ('agents_stopped', 'agents_resumed', 'agents_wait_for_limit', 'mcp_servers_wait') and subject = ? order by id",
-      run,
-    )) {
-      const at = Date.parse(String(e.at));
-      if (e.kind === "agents_stopped") stoppedAt ??= at;
-      else if (e.kind === "agents_resumed") {
-        if (stoppedAt !== null) spans.push([stoppedAt, at]);
-        stoppedAt = null;
-      } else if (e.kind === "mcp_servers_wait") {
-        const since = Date.parse(String((JSON.parse(String(e.body)) as { since?: string }).since));
-        if (!Number.isNaN(since) && since < at) spans.push([since, at]);
-      } else {
-        const until = Date.parse(String((JSON.parse(String(e.body)) as { until?: string }).until));
-        if (!Number.isNaN(until) && until > at) spans.push([at, Math.min(until, now)]);
-      }
-    }
-    if (stoppedAt !== null) spans.push([stoppedAt, now]);
-    spans.sort((x, y) => x[0] - y[0]);
-    const merged: [number, number][] = [];
-    for (const s of spans) {
-      const last = merged.at(-1);
-      if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
-      else merged.push([s[0], s[1]]);
-    }
-    return merged;
   }
 
   /**

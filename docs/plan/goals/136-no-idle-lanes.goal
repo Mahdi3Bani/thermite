@@ -20,7 +20,7 @@ A lane that can work must not sit idle. In a research run on the lab, 2026-10-24
 1. **A round waited for every lane's trials.** Each lane ran its trials of the round, then waited until every other lane's trials had ended and nothing ran. One long trial held every other lane. Now a round ends once every free lane has run its trials. A lane still on a trial joins the next round when its trial ends. Unless the run keeps working (goal [135](135-lanes-and-judge-throughput.goal)), a change waiting for the judge still holds the round, so the next plan has its verdict, and it holds its own lane's next trial in whatever round that is. An experiment the round gave a lane that never started in it stays up next. Code: `src/harness/agents/scheduler/rounds.ts`, used by the scheduler's tick for each mode.
 2. **A refused page was fetched again and again.** A worker asked for the same PDF, larger than the run's `fetch_policy.max_bytes`, every two minutes for hours, and each time it was downloaded again and got only `larger than 5000000 bytes`. Now a refusal for a reason that lasts (size, scope, `robots.txt`, a private address) is kept for the run: asked again, the URL is refused at once, with no download, and the answer says it was refused before, how many times it was asked for, and to look for the same text elsewhere. A failure that can pass, such as a timeout, is not kept. Code: `src/harness/research/refusals.ts`. The fetcher's size refusal also had a fault: when the last chunk crossed the limit, the refusal was thrown where nothing caught it, and the fetch returned a body cut short. It now refuses first and then closes the request.
 3. **A drain waits on a stuck trial, and nothing says which.** An image update drained the rig and waited 5¼ hours on the stuck trial, with no new trial on any lane. The rig's page should say which trials the drain waits for, on which lane, how long each has run and when it last did something, with a way to stop one.
-4. **The progress rule's clock counts time when no trial could run.** The run's time without an improvement grew through the drain. Time when the rig drained, or the run's agents were stopped, should not count toward the progress rule.
+4. **The progress rule's clock counted time when no trial could run.** The run's time without an improvement grew through the drain. Time when the run's agents were stopped already did not count (goal [079](_completed/079-thermite-overhead.goal)). Now the research clock stops while the rig drains too, from the `rig_drain` that starts the drain to the one that ends it, or to the first trial started after it (a draining rig starts none, and a harness older than this recorded no end at its restart). As it starts, the harness records the end of a drain that its restart ended (`rig_drain`, `drain: false`, `the harness started again`). Code: `src/harness/service/drain.ts`, and `src/harness/research/blocked.ts`, which the clock reads.
 5. **The progress meter reads like a countdown that ran out.** **Without an improvement** showed 5.6 h of 2.2 h, full and in the warning colour, while the rule could not apply (no question was saturated). The meter should show the rule's state: not in force until the open questions are saturated, and only then the time left.
 
 ## Why
@@ -39,13 +39,14 @@ The owner, 2026-10-25, on a lane that had run its trials and waited: "wtf explai
 - [x] Item 2: a lasting refusal is answered at once when asked again, with no download; the fetcher's size refusal is caught; a test (`src/harness/research/research.test.ts`).
 - [x] Items 1 and 2 rolled to the lab, and a research run there shows no lane idle behind another's trial.
 - [ ] Item 3, after the owner approved its mockup.
-- [ ] Item 4.
+- [x] Item 4, with tests that fail on the old code (`src/harness/service/drain.test.ts`, `src/harness/research/research.test.ts`).
 - [ ] Item 5, after the owner approved its mockup.
 - [ ] The pages match the code for each item.
 
 ## Decisions
 
 - 2026-10-25, owner: idle lanes are not acceptable. A round must not hold a free lane behind another lane's trial.
+- 2026-10-25, lead, within goal 079's rule that the research clock stops while the agents cannot run: a drain stops the whole clock, so the run's minimum and maximum durations leave it out too, not only the progress rule. A trial that runs during the drain still counts what it finds.
 
 ## Open questions
 
@@ -56,6 +57,8 @@ The owner, 2026-10-25, on a lane that had run its trials and waited: "wtf explai
 - 2026-10-25 05:23 UTC: Goal written. Items 1 and 2 built, with tests that fail on the old code, and pages updated: Agents, lanes and the planner; Campaign modes; Steer a run; Write a contract; the contract reference; the glossary; Limits and pacing. A side effect to watch on the lab: rounds can end more often than before, when one lane is much faster than another, so a run with the planner on makes more planner calls: at most one for each `trials_per_epoch` trials of its fastest lane, where it was one for each `trials_per_epoch` trials of every lane.
 
 - 2026-10-25 09:20 UTC: Items 1 and 2 are on the lab. In a research run there, one lane started its round-3 trial at 09:18:30; round 4 started at 09:18:55 while that trial ran, and the other lane began its round-4 task at once. The run's sixth question, which had no work for nine hours before, got the first task of round 4, and every question has tasks up next.
+
+- 2026-10-25 09:30 UTC: Item 4 built (branch `fix/136-progress-clock`). The clock's blocked time moved out of `research.ts` into `research/blocked.ts`, with each drain added; the drain's state and its end at start are in `service/drain.ts`. Pages: Campaign modes (the progress rule), Write a contract, Budget and stop time, the contract reference, Limits and pacing, Signed commands (`drain_rig`), Rig lifecycle, Troubleshoot, the roadmap, CHANGELOG. To check on the lab after the roll: a research run's `waited_ms` grows during a drain, and its time without an improvement does not.
 
 ---
 

@@ -99,6 +99,7 @@ import {
 } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { RunResearch } from "./run-research.ts";
+import { type Draining, drainAfter, endDrainAtStart } from "./service/drain.ts";
 import { ModelUsage } from "./usage.ts";
 import { checkV0, violationsOf } from "./v0.ts";
 
@@ -459,9 +460,9 @@ export class HarnessService {
   compactions?: Compactions | undefined;
   /**
    * The rig drains (goal 079): no new trial, plan or judge job starts, and those running end as
-   * they would. Kept in memory only: the restart it prepares for ends it.
+   * they would. Kept in memory only: the restart it prepares for ends it (`service/drain.ts`).
    */
-  draining: { since: string; reason: string; by: string } | undefined;
+  draining: Draining | undefined;
 
   /**
    * What still runs, for a drain's report: open trials and the judge's jobs under a lease still in
@@ -529,6 +530,7 @@ export class HarnessService {
     this.rig = input.rig;
     this.clock = input.clock ?? (() => new Date());
     this.ledger = input.ledger;
+    endDrainAtStart(this.ledger, "harness");
     this.paths = input.paths;
     this.controlPublicKeyPem = input.controlPublicKeyPem;
     this.messages = new OwnerMessages({
@@ -1037,13 +1039,7 @@ export class HarnessService {
         return this.startRigCheck(CommandPayloads.rig_check.parse(payload), by);
       case "drain_rig": {
         const p = CommandPayloads.drain_rig.parse(payload);
-        this.draining = p.drain
-          ? (this.draining ?? {
-              since: this.clock().toISOString(),
-              reason: p.reason ?? "its images are about to change",
-              by,
-            })
-          : undefined;
+        this.draining = drainAfter(this.draining, p, by, this.clock());
         this.ledger.appendEvent(by, "rig_drain", null, {
           drain: p.drain,
           ...(p.reason ? { reason: p.reason } : {}),

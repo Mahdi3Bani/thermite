@@ -65,7 +65,7 @@ Still to come in v0.1.0:
 
 - the first published images and their release bundle, which the release's tag publishes, each image checked before it gets its version's tag ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal), [goal 011](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/011-release-bundle.goal));
 - the last checks of the exports and of the research run's end, above;
-- lanes that never wait idle: a drain that says which trials it waits for, and a research run's progress rule that doesn't count the time when no trial could run ([goal 136](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/136-no-idle-lanes.goal));
+- lanes that never wait idle: a drain that says which trials it waits for, and a progress meter that shows whether the research run's progress rule applies yet ([goal 136](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/136-no-idle-lanes.goal));
 - GPU rig images for each GPU generation: CUDA 12 for Pascal and Volta GPUs such as the P100 and V100, and CUDA 13, also for arm64, for Blackwell GPUs and the DGX Spark, each rig set up from the one that fits its GPUs ([goal 132](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/132-cuda-images-per-gpu.goal));
 - the release itself: the checks on a clean machine, the changelog, the tag and the GitHub Release ([goal 026](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/026-ship-v0.1.0.goal)).
 
