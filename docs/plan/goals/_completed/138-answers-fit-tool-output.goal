@@ -1,7 +1,7 @@
 ---
 id: "138"
 title: "get_run, run_queue and rig_setup fit an agent's tool output"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["128"]
@@ -11,11 +11,11 @@ updated: 2026-10-25
 
 # 138 · get_run, run_queue and rig_setup fit an agent's tool output
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
-Goal [128](_completed/128-get-run-bounded.goal) kept `get_run`'s default answer under 100,000 characters by cutting each list to its newest entries. That is still more than an agent's tool can take. On the lab, 2026-10-25, `get_run` with `attempts: 10` for a hill climb of three attempts gave 75,689 characters, and Claude Code refused it as too large (its MCP tools give at most 25,000 tokens by default). Most of it was the queue: ten experiments, each with details of up to 4,000 characters. `rig_setup` gives every step since the rig was set up: about 90 for a rig a week old, nearly all of them image updates.
+Goal [128](128-get-run-bounded.goal) kept `get_run`'s default answer under 100,000 characters by cutting each list to its newest entries. That is still more than an agent's tool can take. On the lab, 2026-10-25, `get_run` with `attempts: 10` for a hill climb of three attempts gave 75,689 characters, and Claude Code refused it as too large (its MCP tools give at most 25,000 tokens by default). Most of it was the queue: ten experiments, each with details of up to 4,000 characters. `rig_setup` gives every step since the rig was set up: about 90 for a rig a week old, nearly all of them image updates.
 
 1. **`get_run` keeps to a budget.** Its default answer, as MCP sends it (indented JSON), stays under 40,000 characters. When the lists cut to their newest entries are still above it, the texts in their entries are cut, shorter each step (2,000, 1,000, 500, 250, 120 characters), until it fits; `cut` says how short, and `list` still gives one list's entries whole.
 2. **`rig_setup` gives its newest steps.** The newest 20 by default, oldest first as before, with `steps_total`; `steps` asks for more, up to 500.
@@ -46,7 +46,8 @@ The owner, 2026-10-24 (goal 128): gaps found while operating the lab become goal
 - 2026-10-25 08:27 UTC: Built (branch `feat/137-audit-sees-checks`). `DETAIL_CHARS` and `clipTexts` in `src/control/run-lists.ts`: the default answer is measured as MCP sends it, and the texts in the lists' entries (attempts included) are cut in steps until it fits, with a line in `cut`. `rig_setup`'s answer moved to `src/control/rig-setup-view.ts` (`rigSetupView`, `SETUP_STEPS`), which gives the newest steps and `steps_total`. Tests: `run-lists.test.ts`, `rig-setup-view.test.ts`. Pages: MCP tools (`get_run`, `rig_setup`), REST API, CHANGELOG. To verify on the lab: the same `get_run` call reads in full.
 - 2026-10-25 08:32 UTC: Found in the same answer: `promotion_waits` kept the reason of a change that had since become the champion ("the auditor asked for the owner"). The run's view now keeps a wait only while its change is pending (`views.ts`); the dashboard read only pending ones already. Test: `queue-view.test.ts`.
 - 2026-10-25 09:22 UTC: Item 3 built. `keepToBudget` in `run-lists.ts` keeps any answer to the budget, cutting the texts of its lists; `runDetail` and `runQueue` (run_queue's answer, moved there from `mcp.ts`) use it. Test: `run-lists.test.ts` (thirty research tasks, all kept in order). Pages: MCP tools (`run_queue`), CHANGELOG.
+- 2026-10-25 09:38 UTC: Verified on the lab, with control on a214cf3: `get_run` for the hill climb with `attempts: 10`, refused before at 75,689 characters, now reads in full, its texts cut to 120 characters and `cut` saying so; `run_queue` for the research run, refused before at 68,171 characters, reads in full with all 29 tasks up next; `rig_setup` gives 20 of a rig's 91 steps with `steps_total`. `promotion_waits` lists only the change still pending.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/138-answers-fit-tool-output.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/_completed/138-answers-fit-tool-output.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).
