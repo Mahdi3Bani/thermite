@@ -1,0 +1,49 @@
+---
+id: "134"
+title: "A run's resource use: the rig's CPUs, memory and GPUs over the run's time, and what held its lanes back"
+status: PROPOSED
+version: "0.1.2"
+part: "GPUs on demand, and work within a budget"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 134 · A run's resource use: the rig's CPUs, memory and GPUs over the run's time, and what held its lanes back
+
+**Status:** `PROPOSED` · **Version:** [v0.1.2](../roadmap.md#v012) · **Part:** GPUs on demand, and work within a budget
+
+## What
+
+A run's page shows how the rig's resources were used while the run worked, so the owner can see what holds it back:
+
+- **The rig's hardware over time:** CPU use, memory use and, for each GPU, its use and memory, sampled by the harness while the run works, with which role holds each card (the judge or a lane).
+- **What each part of the run did over time:** each lane working on a trial, waiting for the judge, waiting for a round, or held by a limit; the judge building, measuring or idle; the planner planning. Each wait says what it waited for.
+- **A summary of the bottleneck,** in words: for example, "the lanes waited for the judge 70% of the last 8 hours; the judge spent most of that building".
+
+## Why
+
+The owner, 2026-10-25: "Resource utilization relative to a run. I want to see the rigs resource utilization to understand if its bottlnecked."
+
+The same day, a hill climb on a GPU rig with a GPU for each of its two lanes and two for the judge had a lane at work for about 2 of 8 hours. Its lanes waited for the judge, whose builds take about 16 to 18 minutes each, run one at a time, and start from nothing after every image roll; a round waited for every lane's changes to be judged; and 4 of its 7 trials ended at their 60-minute limit without a change. Nothing on the run's page showed any of this: finding it took the rig's events, the run's trials and the scheduler's code.
+
+## Done when
+
+- [ ] The harness samples the rig's CPU, memory and each GPU's use and memory while a run works, and keeps the samples for the run's time with a bound on their size.
+- [ ] A run's page shows those samples over the run's time, with which role holds each card, and each lane's, the judge's and the planner's state over the same time, each wait with its cause.
+- [ ] A line in words names the run's main bottleneck over the last hours, and `get_run` gives the same figures.
+- [ ] The pages that describe a run's page, `get_run` and the rig's resources say what is shown and how it is measured.
+
+## Open questions
+
+- What the screen looks like: a mockup first, as for every screen decision.
+- How often the harness samples, and how long it keeps the samples.
+- Whether a rig's page shows the same view across all its runs.
+
+## Progress
+
+- 2026-10-25: Goal written from the owner's words and the hill climb above.
+
+---
+
+Run with `/goal Complete docs/plan/goals/134-run-resource-use.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
