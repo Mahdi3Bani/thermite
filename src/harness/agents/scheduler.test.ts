@@ -126,6 +126,89 @@ describe("agent scheduler", () => {
     await fake.close();
   });
 
+  test("a lane does not wait for the judge: its next trial, and the next round, start while its changes wait", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
+    await env.start();
+    const fake = await startFakeModel(({ messages, tools }) => {
+      if (tools.some((t) => t.function.name === "submit_plan")) {
+        return {
+          toolCalls: [
+            {
+              name: "submit_plan",
+              args: {
+                new_families: [{ id: "loops", description: "simplify the inner loop" }],
+                assignments: [
+                  { lane: "lane-1", family: "loops", focus: "remove waste", parent: "champion" },
+                ],
+              },
+            },
+          ],
+        };
+      }
+      // Each trial writes a change of its own, so none is a duplicate.
+      const content = `${FAST_KERNEL}\n// ${Math.random()}\n`;
+      const steps = [
+        { name: "write_file", args: { path: "src/kernel/work.mjs", content } },
+        { name: "submit", args: { hypothesis: "drop waste" } },
+      ];
+      const done = messages.filter((m) => m.role === "tool").length;
+      return steps[done] ? { toolCalls: [steps[done]] } : { text: "done" };
+    });
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const model = {
+      baseUrl: fake.url,
+      model: "m",
+      apiKey: "k",
+      contextWindow: 32000,
+      maxTokens: 2000,
+    };
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner,
+      model,
+      owner: "scheduler-test",
+      runTrial: (spec) =>
+        runTrial(spec, {
+          runner,
+          laneTool,
+          model,
+          submit: (req) => env.service.submitForTrial(String(spec.token), req) as never,
+          status: async (id) => env.service.attemptStatus(id),
+        }),
+    });
+    const lifecycles = () =>
+      env.ledger.db
+        .prepare(
+          "select a.lifecycle from trial t join attempt a on a.id = t.attempt order by t.rowid",
+        )
+        .all()
+        .map((r) => r.lifecycle);
+    assert.ok(await scheduler.tick()); // round 1 planned, trial 1 starts
+    await scheduler.idle();
+    assert.deepEqual(lifecycles(), ["queued"]);
+    // The judge has not taken trial 1's change, and trial 2 starts anyway.
+    assert.ok(await scheduler.tick());
+    await scheduler.idle();
+    assert.deepEqual(lifecycles(), ["queued", "queued"]);
+    await scheduler.tick(); // round 1 ends: its trials ended
+    await scheduler.tick(); // round 2 planned, its first trial starts
+    await scheduler.idle();
+    const epochs = env.ledger.db.prepare("select n from epoch order by n").all();
+    assert.deepEqual(
+      epochs.map((e) => e.n),
+      [1, 2],
+    );
+    assert.deepEqual(lifecycles(), ["queued", "queued", "queued"]);
+    // The judge then works through them.
+    await env.drain();
+    assert.ok(
+      lifecycles().every((l) => l !== "queued"),
+      String(lifecycles()),
+    );
+    await scheduler.idle();
+    await fake.close();
+  });
+
   test("a lane best is a win measured against the current champion, and is dropped when it moves", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
     await env.start();

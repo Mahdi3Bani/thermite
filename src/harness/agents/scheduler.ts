@@ -124,9 +124,10 @@ const SETUP_REASON_CHARS = 3000;
  * run's experiment queue, gives every lane an experiment; each lane then runs `trials_per_epoch`
  * trials, one at a time, each on an experiment of its own (the round's first, then the next in
  * the queue): a fresh workspace at the champion (or the lane's best), one worker invocation, at
- * most one submission, and the next trial only after that submission is judged. An epoch ends
- * when its lanes' trials are judged; it has no time cap (goal 079). Agents never judge: the
- * scheduler only reads verdicts.
+ * most one submission. A lane does not wait for the judge: its next trial starts when the last one
+ * ends, and an epoch ends when its lanes' trials end, while the judge works through their changes
+ * (at most the contract's max_open_attempts unjudged); it has no time cap (goal 079). Agents never
+ * judge: the scheduler only reads verdicts.
  *
  * The model provider decides when agents can work (goal 079): no trial or plan starts while the
  * workers' model check fails or after a trial found no credits, a refused key or an unserved
@@ -134,17 +135,6 @@ const SETUP_REASON_CHARS = 3000;
  * the provider's rate limit asked for a pause.
  */
 
-const SETTLED = new Set([
-  "judged",
-  "promoted",
-  "rejected_v0",
-  "duplicate",
-  "errored",
-  "awaiting_approval",
-  "awaiting_audit",
-  "audit_blocked",
-  "not_judged",
-]);
 const KEEP = new Set(["win_screened", "win_confirmed"]);
 
 /**
@@ -870,11 +860,6 @@ export class Scheduler {
     if (!inst?.agents) return undefined;
     if (inst.mode === "research" && !(this.o.research && this.o.runResearchTrial)) return undefined;
     return { id: inst.id, contract: this.o.service.contractFor(inst.id) };
-  }
-
-  private settled(attempt: string | null): boolean {
-    if (!attempt) return true;
-    return SETTLED.has(String(this.ledger.getAttempt(attempt)?.lifecycle));
   }
 
   /** The directives in force: the owner's first (rulesInForce). */
@@ -1806,13 +1791,9 @@ export class Scheduler {
     for (const a of epoch.assignments) {
       const trials = this.registry.trials(id, a.lane, epoch.n);
       const last = trials.at(-1);
-      const laneDone =
-        trials.length >= perEpoch &&
-        trials.every((t) => t.ended) &&
-        this.settled(last?.attempt ?? null);
-      if (!laneDone) complete = false;
+      if (trials.length < perEpoch || !trials.every((t) => t.ended)) complete = false;
       if (trials.length >= perEpoch || this.running.has(a.lane)) continue;
-      if (last && (!last.ended || !this.settled(last.attempt))) continue;
+      if (last && !last.ended) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.openAttempts(id) >= contract.budget.max_open_attempts) continue;
@@ -1828,7 +1809,7 @@ export class Scheduler {
       this.startTrial(id, contract, epoch.n, a, k, perEpoch, got);
       started = true;
     }
-    // No time cap on a round unless one is given (tests): it ends when its trials are judged.
+    // No time cap on a round unless one is given (tests): it ends when its trials end.
     const capped =
       this.o.epochCapMs !== undefined &&
       Date.now() - Date.parse(epoch.started_at) > this.o.epochCapMs;
