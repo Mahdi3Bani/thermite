@@ -46,6 +46,7 @@ The owner, 2026-10-16: Thermite runs itself, and its operator works through cont
 ## Progress
 
 - 2026-10-25 13:19 UTC: Goal written. The owner asked why a lane's trials ended without a submission, and the session lines were on control but not reachable over MCP.
+- 2026-10-25 13:45 UTC: Built and tested (`src/control/trial-session.ts`, registered from `src/control/mcp-rig-reads.ts`), and the lab's control runs it. Its last box waits for the operator's MCP client to reconnect: the client keeps the tool list it read when it connected (goal 130).
 
 ---
 
