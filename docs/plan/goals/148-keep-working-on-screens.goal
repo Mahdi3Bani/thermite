@@ -1,0 +1,45 @@
+---
+id: "148"
+title: "Keeping working, on New campaign and on a run's page"
+status: PROPOSED
+version: "0.1.4"
+depends_on: ["135"]
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 148 · Keeping working, on New campaign and on a run's page
+
+**Status:** `PROPOSED` · **Version:** [v0.1.4](../roadmap.md#v014) · **Depends on:** [135](135-lanes-and-judge-throughput.goal)
+
+## What
+
+Goal 135 lets a run's lanes keep working while the judge works. It is the contract's `lanes.keep_working`, off by default, and a `keep_working` rule turns it on or off for a running run. Both are set over MCP, REST or the command line. The screens don't have it yet.
+
+1. **New campaign** has the setting, with its info icon.
+2. **A run's page** shows whether its lanes keep working, and from where (the campaign's setting or a rule), with a switch that sets the rule.
+
+Each comes from a mockup the owner approves.
+
+## Why
+
+Moved out of goal 135 when the owner froze v0.1.0's scope, 2026-10-25: "we keep scope creeping for 2 weeks". The setting works without the screens.
+
+## Done when
+
+- [ ] Item 1 and item 2, each from a mockup the owner approved, with tests.
+- [ ] Pages: the New campaign page, steering a run, and the changelog.
+
+## Decisions
+
+- 2026-10-25, owner: after v0.1.0.
+
+## Open questions
+
+## Progress
+
+- 2026-10-25 22:50 UTC: Moved here from goal 135.
+
+---
+
+Run with `/goal Complete docs/plan/goals/148-keep-working-on-screens.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

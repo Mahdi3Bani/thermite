@@ -28,6 +28,8 @@ Since M5, control also sets rigs up by itself, on machines over SSH and on Kuber
 
 The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
+**Scope frozen, 2026-10-25.** v0.1.0 ships what is on `main`. Before the tag: goal 135's pages, goal 117's acceptance runs, the CUDA 13 image out of the release, and goal 026's steps. A goal here whose code is on `main` and whose only open item is a check on the lab doesn't hold the tag; its check goes on after the release. Anything new goes into a later version.
+
 ### Tester basics
 
 - [001](goals/_completed/001-plans-in-public.goal) Plans in public docs · `VERIFIED`
@@ -55,7 +57,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [016](goals/_completed/016-small-fixes.goal) Small fixes before the release · `VERIFIED`
 - [017](goals/_completed/017-legacy-names.goal) Remove the legacy model names · `VERIFIED`
 - [118](goals/_completed/118-cluster-rig-resources.goal) Change a cluster rig's GPUs, CPUs and memory from control · `VERIFIED`
-- [132](goals/132-cuda-images-per-gpu.goal) Rig images for each GPU generation: CUDA 12 for Pascal and Volta, CUDA 13 on amd64 and arm64 for Blackwell and DGX Spark · `PROPOSED`
 
 ### Running campaigns
 
@@ -90,7 +91,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [138](goals/_completed/138-answers-fit-tool-output.goal) `get_run`, `run_queue` and `rig_setup` fit an agent's tool output · `VERIFIED`
 - [139](goals/139-trial-session-over-mcp.goal) A trial's session, read over MCP · `IN_PROGRESS`
 - [140](goals/140-long-tool-call-no-stall.goal) A long tool call doesn't stall the process that streams it · `IN_PROGRESS`
-- [141](goals/141-waiting-win-after-champion-moved.goal) A waiting win the champion moved past: closed when a champion has it, an approval when none does · `PROPOSED`
 - [142](goals/142-champion-value-on-run-page.goal) A hill climb's champion value: measured right, and at the top of its run's page · `IN_PROGRESS`
 - [143](goals/143-stuck-and-looping-trials.goal) A stuck or looping trial shows itself, and an agent's refused request says why · `IN_PROGRESS`
 - [144](goals/144-trial-clock.goal) A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials · `IN_PROGRESS`
@@ -140,6 +140,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [114](goals/114-hill-climb-contract-gaps.goal) Hill-climb contracts: a check once per candidate, cheaper held-out cells, and goal mode's fields · `PROPOSED`
 - [095](goals/095-runpod-spend-on-providers.goal) Providers shows what Thermite spent on a GPU cloud, not only its test pods · `PROPOSED`
 - [134](goals/134-run-resource-use.goal) A run's resource use: the rig's CPUs, memory and GPUs over the run's time, and what held its lanes back · `PROPOSED`
+- [132](goals/132-cuda-images-per-gpu.goal) Rig images for each GPU generation: CUDA 12 for Pascal and Volta, CUDA 13 on amd64 and arm64 for Blackwell and DGX Spark · `IN_PROGRESS`
 
 ## v0.1.3
 
@@ -151,6 +152,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [130](goals/130-mcp-tools-after-update.goal) An MCP client sees control's new tools after control is updated · `PROPOSED`
 - [145](goals/145-drain-race.goal) A drain doesn't wait two hours for a trial that started seconds before it · `PROPOSED`
 - [146](goals/146-supervisor-alone.goal) Restart or update a rig's supervisor alone, while its harness goes on · `PROPOSED`
+- [141](goals/141-waiting-win-after-champion-moved.goal) A waiting win the champion moved past: closed when a champion has it, an approval when none does · `PROPOSED`
 
 ## v0.1.4
 
@@ -167,6 +169,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [110](goals/110-judge-only-runs-show-progress.goal) A judge-only run shows its progress · `PROPOSED`
 - [072](goals/072-why-nothing-at-work.goal) Say why a running run has nothing at work · `PROPOSED`
 - [089](goals/089-dashboard-performance.goal) Faster dashboard pages · `PROPOSED`
+- [148](goals/148-keep-working-on-screens.goal) Keeping working, on New campaign and on a run's page · `PROPOSED`
 
 ## v0.2.0
 

@@ -18,6 +18,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-20:** The docs site is served at usethermite.com by Cloudflare Pages, built from `main`. So the code moved to `main` early, at the development branch's state that day. Work stays on the development branch, and `main` follows it.
 - **2026-10-23:** The local rig uses what its machine has: every CPU and all the memory, and on Linux every NVIDIA GPU through NVIDIA's container toolkit. AMD GPUs and a Mac's Apple GPU are found and explained, not used yet (goal 037, moved from v0.3.0).
 - **2026-10-24:** A rig control set up on a Kubernetes cluster changes its GPUs, CPUs and memory from control, keeping its state (goal 118). The owner needs it for a slot that gained a GPU and a larger quota; an operator's token may make the change, and only the judge's share stays the owner's.
+- **2026-10-25:** The scope is frozen (the owner: "we keep scope creeping for 2 weeks"). v0.1.0 ships what is on `main`; anything new goes into a later version. See [What is left before the tag](#what-is-left-before-the-tag).
 - **2026-10-24:** The development branch `v1/build` is retired: the work, and this release, happen on `main`. After v0.1.0, each version is built on a branch named for it, such as `v0.1.1`, and `main` moves only when a version ships.
 
 ## What a tester gets
@@ -34,6 +35,19 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - A changelog, a known-limits page, a security policy and a contributor guide.
 
 **Later:** a code clean-up to the conventions (v0.1.1); GPUs on demand for the judge and the workers, with budgets in dollars and measurements that cost less (v0.1.2); follow-ups such as a kit bundle from the dashboard (v0.1.3); a UI clean-up and UX improvements, such as an Info tab for campaigns and runs, stuck rigs in Needs you and the model's reasoning on Live (v0.1.4); one Logs page and full API and MCP coverage (v0.2.0); safer managed rigs and lane network rules (v0.3.0); kit tools and clearer evidence (v0.4.0); multi-day runs (v0.5.0). Web search for research runs, planned for v0.5.0, is already built. 0.x versions make no upgrade promise.
+
+## What is left before the tag
+
+Since 2026-10-25, only this list holds the tag:
+
+1. **Goal [135](goals/135-lanes-and-judge-throughput.goal)'s pages.** Lanes that keep working while the judge works are on `main`; the pages for the contract, steering a run, the judge, verdicts, limits and pacing, the isolation check and the harness image must describe them.
+2. **The CUDA 13 image out of the release.** It was never checked, so the tag doesn't publish it (goal [132](goals/132-cuda-images-per-gpu.goal) moves to v0.1.2). The pages and the known limits say that Blackwell and the DGX Spark come later.
+3. **Goal [117](goals/117-research-that-answers.goal)'s acceptance runs.** v0.1.0 doesn't ship until research mode is solid (the owner, 2026-10-24). One of the three runs passed; the second failed and was fixed; the second and third run again. They also check goals [112](goals/112-research-ends-when-answered.goal) and [047](goals/047-research-planner.goal).
+4. **Goal [026](goals/026-ship-v0.1.0.goal)'s steps:** the full checks and acceptance suites on `main`'s tip, the changelog's date, the tag (it closes goal [010](goals/010-published-images.goal)), the bundle on clean machines (it closes goal [011](goals/011-release-bundle.goal)), the release notes and the `v0.1.1` branch.
+
+**Ships as built, checked on the lab after the tag:** goals 103, 135 (but its screens), 136, 139, 140, 142, 143, 144 and 147. Their code is on `main`; each one's only open item is a check on the lab.
+
+**Moved out:** goal [132](goals/132-cuda-images-per-gpu.goal) (CUDA 13 images) to v0.1.2; goal [141](goals/141-waiting-win-after-champion-moved.goal) (a waiting win the champion moved past) to v0.1.3; goal 135's screens to goal [148](goals/148-keep-working-on-screens.goal), v0.1.4.
 
 ## Goals
 
@@ -142,7 +156,7 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 
 1. Goal 002 first, so CI runs on every push from now on.
 2. The parts go on at the same time; in Running campaigns, 064 follows 063 and 065 follows 064. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
-3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the changelog, the tag and the GitHub Release, on `main`.
+3. When [the list above](#what-is-left-before-the-tag) is done, goal 026 ships the release: the clean-machine tests, the full checks, the changelog, the tag and the GitHub Release, on `main`.
 4. Fixes from tester reports, and the follow-ups the roadmap puts in v0.1.1 to v0.1.4, ship as 0.1.1, 0.1.2 and so on, each built on a branch named for it. Other new features go into v0.2.0.
 
 ## Decisions made from the open questions

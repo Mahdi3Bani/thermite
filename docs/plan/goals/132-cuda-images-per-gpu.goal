@@ -2,16 +2,16 @@
 id: "132"
 title: "Rig images for each GPU generation: CUDA 12 for Pascal and Volta, CUDA 13 on amd64 and arm64 for Blackwell and DGX Spark"
 status: IN_PROGRESS
-version: "0.1.0"
+version: "0.1.2"
 part: "Install from images"
 depends_on: ["010"]
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-25
 ---
 
 # 132 · Rig images for each GPU generation: CUDA 12 for Pascal and Volta, CUDA 13 on amd64 and arm64 for Blackwell and DGX Spark
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.2](../roadmap.md#v012) · **Depends on:** [010](010-published-images.goal)
 
 ## What
 
@@ -40,6 +40,8 @@ The owner, 2026-10-24: "we need a P100 image, a V100 image, and a DGX Spark imag
 - Whether the RunPod rig image needs a CUDA 13 variant too, for Blackwell pods, or the CUDA 12 image's PTX is enough there.
 
 ## Decisions
+
+- 2026-10-25, owner: v0.1.0's scope is frozen, and this goal moves to v0.1.2. Its CUDA 13 image has never been checked, so the v0.1.0 release doesn't publish it: v0.1.0 has the CUDA 12 image, for Pascal to Hopper.
 
 - 2026-10-24, owner: P100 and V100 may share one image; DGX Spark needs CUDA 13.
 - 2026-10-25, in the build: the CUDA 13 base is `nvidia/cuda:13.0.3-devel-ubuntu24.04` (amd64 and arm64), pinned by digest. 13.0 is the CUDA of NVIDIA's 580 drivers, which the lab's GPU hosts run, so the image needs no newer driver; later 13.x toolkits would. The tags: `-cuda` stays CUDA 12 (labs pin it), and `-cuda13` is new. The RunPod rig image stays on CUDA 12.

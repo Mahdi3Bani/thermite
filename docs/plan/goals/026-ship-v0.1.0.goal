@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "The release"
 depends_on: ["001", "002", "003", "004", "005", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "056", "060", "062", "063", "064", "065", "066", "067", "068"]
 created: 2026-10-19
-updated: 2026-10-21
+updated: 2026-10-25
 ---
 
 # 026 · Ship v0.1.0
@@ -15,7 +15,7 @@ updated: 2026-10-21
 
 ## What
 
-When every other v0.1.0 goal is verified:
+When the release plan's [list of what is left](../release-v0.1.0.md#what-is-left-before-the-tag) is done (the scope is frozen since 2026-10-25):
 
 1. Test the quick start on clean machines, from the release bundle and from source: Linux with Docker, macOS with Docker Desktop, and macOS with Podman.
 2. Run the full checks and the acceptance suites the release touches, once.
@@ -58,6 +58,7 @@ The owner commits the release's last changes on `main` and makes the tag (2026-1
 - 2026-10-20, owner: The code moved to `main` early, at the development branch's state that day, so the docs site can build from `main` (goal 060). Work stays on the development branch, and `main` follows it. The release is still this goal's pull request and tag.
 - 2026-10-23, owner: the project is ready for v0.1.0 once goal 115 (a hill climb's first job measures its starting point) is in: "if we get this fix in for baseline then I think buddy we ready for v0.1.0 release."
 - 2026-10-24, owner: the development branch `v1/build` is dropped. The work, and this release, happen on `main`, so there is no pull request into `main`; this replaces the 2026-10-20 decisions on a pull request and on `main` following the development branch. After v0.1.0, each version is built on a branch of its own, named for it, such as `v0.1.1`, and `main` moves only when a version ships.
+- 2026-10-25, owner: the scope is frozen ("we keep scope creeping for 2 weeks"). The release ships what is on `main`; the release plan lists what is left before the tag.
 
 ## Open questions
 
