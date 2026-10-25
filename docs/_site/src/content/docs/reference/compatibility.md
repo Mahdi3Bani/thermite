@@ -90,7 +90,7 @@ Without Landlock, and with device nodes that cannot be given their own groups, a
 | Control | amd64 and arm64. Its build stops on any other: `kubectl` is pinned for these two only | CI builds it on amd64 (GitHub's `ubuntu-24.04` runners). The release workflow builds it for amd64 and arm64 |
 | Harness, CPU | amd64 and arm64. It installs the arm64 package of OpenCode, Claude Code and the Codex CLI on arm64, and the x64 package on any other architecture | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
 | Harness, CUDA 12 | amd64 | The release workflow builds it for amd64 only |
-| Harness, CUDA 13 | amd64 and arm64, as its CUDA base is published | The release workflow builds it for amd64 and arm64, and its checks hold it to both |
+| Harness, CUDA 13 | amd64 and arm64, as its CUDA base is published | The release workflow builds it for amd64 and arm64, and its checks hold it to both. It has not yet run on a GPU ([Known limits](known-limits.md#the-cuda-13-harness-is-untested)) |
 | Supervisor | amd64 and arm64. Claude Code, when built in, comes as its arm64 or x64 package | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
 | One-container rig, CUDA | amd64, as the CUDA 12 harness it is built on | CI builds the rig image on the CPU harness, on amd64. The release workflow builds it on the CUDA 12 harness, for amd64 only |
 

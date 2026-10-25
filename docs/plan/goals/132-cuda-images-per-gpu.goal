@@ -41,7 +41,7 @@ The owner, 2026-10-24: "we need a P100 image, a V100 image, and a DGX Spark imag
 
 ## Decisions
 
-- 2026-10-25, owner: v0.1.0's scope is frozen, and this goal moves to v0.1.2. Its CUDA 13 image has never been checked, so the v0.1.0 release doesn't publish it: v0.1.0 has the CUDA 12 image, for Pascal to Hopper.
+- 2026-10-25, owner: v0.1.0's scope is frozen, and this goal moves to v0.1.2. Its CUDA 13 image has never run on a GPU. The owner chose to publish it with v0.1.0, labelled untested on the release's README, the harness image, compatibility and known-limits pages and the changelog, rather than take it out of the release tooling before the tag.
 
 - 2026-10-24, owner: P100 and V100 may share one image; DGX Spark needs CUDA 13.
 - 2026-10-25, in the build: the CUDA 13 base is `nvidia/cuda:13.0.3-devel-ubuntu24.04` (amd64 and arm64), pinned by digest. 13.0 is the CUDA of NVIDIA's 580 drivers, which the lab's GPU hosts run, so the image needs no newer driver; later 13.x toolkits would. The tags: `-cuda` stays CUDA 12 (labs pin it), and `-cuda13` is new. The RunPod rig image stays on CUDA 12.

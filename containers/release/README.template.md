@@ -64,10 +64,10 @@ The compose file pins each image by its digest. The same images also have the ta
 | Control | `@@CONTROL_IMAGE@@` | `@@CONTROL_TAG@@` |
 | Harness, CPU | `@@HARNESS_IMAGE@@` | `@@HARNESS_TAG@@` |
 | Harness, CUDA 12 (Pascal to Hopper) | `@@HARNESS_CUDA_IMAGE@@` | `@@HARNESS_CUDA_TAG@@` |
-| Harness, CUDA 13 (Turing to Blackwell, DGX Spark; amd64 and arm64) | `@@HARNESS_CUDA13_IMAGE@@` | `@@HARNESS_CUDA13_TAG@@` |
+| Harness, CUDA 13 (Turing to Blackwell, DGX Spark; amd64 and arm64). Untested: it has not yet run on a GPU | `@@HARNESS_CUDA13_IMAGE@@` | `@@HARNESS_CUDA13_TAG@@` |
 | Supervisor | `@@SUPERVISOR_IMAGE@@` | `@@SUPERVISOR_TAG@@` |
 | Rig for RunPod, CUDA | `@@RIG_CUDA_IMAGE@@` | `@@RIG_CUDA_TAG@@` |
 
-The compose file runs the CPU harness, or the CUDA 12 harness with `compose.gpu.yaml`. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA 12 harness (for GPU rigs) and the supervisor. For GPUs that CUDA 12.6 does not know, such as Blackwell and the DGX Spark, set `THERMITE_RIG_HARNESS_CUDA_IMAGE` to the CUDA 13 harness; CUDA 13 does not build for Pascal or Volta. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
+The compose file runs the CPU harness, or the CUDA 12 harness with `compose.gpu.yaml`. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA 12 harness (for GPU rigs) and the supervisor. For GPUs that CUDA 12.6 does not know, such as Blackwell and the DGX Spark, set `THERMITE_RIG_HARNESS_CUDA_IMAGE` to the CUDA 13 harness; CUDA 13 does not build for Pascal or Volta. The CUDA 13 harness is untested: the release builds and checks it, but it has not yet run on a GPU. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
 
 The source code is at <@@REPO_URL@@>, under the MIT license. The harness images also carry OpenCode (MIT) and the Codex CLI (Apache-2.0), and the control image carries kubectl (Apache-2.0), each with its license.

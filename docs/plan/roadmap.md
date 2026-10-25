@@ -28,7 +28,7 @@ Since M5, control also sets rigs up by itself, on machines over SSH and on Kuber
 
 The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
-**Scope frozen, 2026-10-25.** v0.1.0 ships what is on `main`. Before the tag: goal 117's acceptance runs, the CUDA 13 image out of the release, and goal 026's steps. A goal here whose code is on `main` and whose only open item is a check on the lab doesn't hold the tag; its check goes on after the release. Anything new goes into a later version.
+**Scope frozen, 2026-10-25.** v0.1.0 ships what is on `main`. Before the tag: goal 117's acceptance runs, the CUDA 13 image labelled untested, and goal 026's steps. A goal here whose code is on `main` and whose only open item is a check on the lab doesn't hold the tag; its check goes on after the release. Anything new goes into a later version.
 
 ### Tester basics
 

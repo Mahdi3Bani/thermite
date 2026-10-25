@@ -32,7 +32,7 @@ For each release, the release workflow (`.github/workflows/release.yml`) builds 
 | Control | `ghcr.io/iammrduncan/thermite-control` | The version, such as `0.1.0`, and the first 12 characters of the commit | amd64, arm64 |
 | Harness, CPU | `ghcr.io/iammrduncan/thermite-harness` | The same | amd64, arm64 |
 | Harness, CUDA 12 | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda` added: `0.1.0-cuda`. For Pascal to Hopper, the P100 and V100 included | amd64 |
-| Harness, CUDA 13 | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda13` added: `0.1.0-cuda13`. For Turing to Blackwell, the DGX Spark included | amd64, arm64 |
+| Harness, CUDA 13 | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda13` added: `0.1.0-cuda13`. For Turing to Blackwell, the DGX Spark included. Untested: see [Known limits](known-limits.md#the-cuda-13-harness-is-untested) | amd64, arm64 |
 | Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The version and the commit | amd64, arm64 |
 | One-container rig, CUDA | `ghcr.io/iammrduncan/thermite-rig` | The version and the commit, each with `-cuda` added: `0.1.0-cuda` | amd64 |
 
@@ -98,7 +98,7 @@ GPU rigs need the same image built on a CUDA development image, with `--build-ar
 | CUDA 12 (`-cuda`) | `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`: Ubuntu 22.04's apt packages; amd64 | Pascal (P100, compute capability 6.0) and Volta (V100, 7.0) to Hopper. CUDA 12.6 knows no GPU newer than Hopper: on Blackwell, kernels run only from their PTX, and `nvcc` cannot build for it |
 | CUDA 13 (`-cuda13`) | `docker.io/nvidia/cuda:13.0.3-devel-ubuntu24.04`: Ubuntu 24.04's apt packages; amd64 and arm64 | Turing (compute capability 7.5) to Blackwell, the DGX Spark's GB10 (12.1, on arm64) included. CUDA 13 builds for nothing older than Turing. 13.0 is the CUDA of NVIDIA's 580 drivers, so the image needs no newer driver |
 
-Control sets rigs up from the CUDA 12 image (`THERMITE_RIG_HARNESS_CUDA_IMAGE`). For a deployment whose GPUs are Blackwell or DGX Sparks, set that setting to the CUDA 13 image. RunPod pods run the rig image, which is built on the CUDA 12 image, and test pods ask for hosts with CUDA 12.6 or later.
+Control sets rigs up from the CUDA 12 image (`THERMITE_RIG_HARNESS_CUDA_IMAGE`). For a deployment whose GPUs are Blackwell or DGX Sparks, set that setting to the CUDA 13 image. The CUDA 13 image has not yet run on a GPU ([Known limits](known-limits.md#the-cuda-13-harness-is-untested)). RunPod pods run the rig image, which is built on the CUDA 12 image, and test pods ask for hosts with CUDA 12.6 or later.
 
 An agent's own commands under OpenCode, Claude Code or Codex get a fixed `PATH`, not the image's: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, with `/usr/local/cuda/bin` first where the image has it, so `nvcc` is found by name on a CUDA image. Pi's commands, and the judge's builds and timed runs, get the image's own `PATH`.
 

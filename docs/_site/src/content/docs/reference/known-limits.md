@@ -16,6 +16,7 @@ Thermite is at version 0.x. This page lists what to know before you run it: the 
 | [Timing on RunPod is noisier](#timing-on-runpod-is-noisier) | No goal: it comes with shared machines |
 | [Research mode searches the web only through an MCP server](#research-mode-searches-the-web-only-through-an-mcp-server) | No goal: give the campaign a search server |
 | [Runs of several days are not yet proven](#runs-of-several-days-are-not-yet-proven) | [Goal 049](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/049-multi-day-test-fire.goal), v0.5.0 |
+| [The CUDA 13 harness is untested](#the-cuda-13-harness-is-untested) | [Goal 132](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/132-cuda-images-per-gpu.goal), v0.1.2 |
 | [0.x versions make no upgrade promise](#0x-versions-make-no-upgrade-promise) | No goal yet: it holds until 1.0 |
 
 ## Agents run code that a model wrote, on your machine
@@ -64,6 +65,12 @@ Research workers have no search of their own: their `search` tool answers that t
 Thermite is built to run unattended for as long as a campaign takes, and to recover from crashes and restarts. Its own tests run campaigns for minutes to a few hours: the longest, `scripts/research-longrun.mjs`, runs a research campaign for about two hours by default and kills the harness's controller halfway. The test that proves runs of several days has not run yet: several campaigns in all three modes, for days, with crashes, restarts, a full disk and a lost model along the way.
 
 **Removed by:** [goal 049](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/049-multi-day-test-fire.goal), The multi-day test fire (v0.5.0). If a long run goes wrong for you, [report it](../project/getting-help.md).
+
+## The CUDA 13 harness is untested
+
+The release publishes two CUDA harnesses ([The CUDA harness](harness-image.md#the-cuda-harness)). The CUDA 12 one (`-cuda`) runs Thermite's GPU rigs, on P100 GPUs among others. The CUDA 13 one (`-cuda13`), for Turing to Blackwell and the DGX Spark, is built, and the release's checks hold it to its architectures, but it has not yet run on a GPU. Control sets GPU rigs up from the CUDA 12 image unless `THERMITE_RIG_HARNESS_CUDA_IMAGE` names another, and it doesn't yet choose the image from a rig's GPUs.
+
+**Removed by:** [goal 132](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/132-cuda-images-per-gpu.goal), Rig images for each GPU generation (v0.1.2). If you run it on a Blackwell GPU or a DGX Spark, [tell us how it went](../project/getting-help.md).
 
 ## 0.x versions make no upgrade promise
 

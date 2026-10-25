@@ -41,7 +41,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 Since 2026-10-25, only this list holds the tag:
 
 1. **Goal 135's pages.** Done, 2026-10-25: they describe all of it, and goal [135](goals/_completed/135-lanes-and-judge-throughput.goal) is verified.
-2. **The CUDA 13 image out of the release.** It was never checked, so the tag doesn't publish it (goal [132](goals/132-cuda-images-per-gpu.goal) moves to v0.1.2). The pages and the known limits say that Blackwell and the DGX Spark come later.
+2. **The CUDA 13 image, labelled untested.** It has never run on a GPU. The release publishes it, and its README, the pages and the known limits say it is untested (the owner, 2026-10-25). Goal [132](goals/132-cuda-images-per-gpu.goal) moves to v0.1.2.
 3. **Goal [117](goals/117-research-that-answers.goal)'s acceptance runs.** v0.1.0 doesn't ship until research mode is solid (the owner, 2026-10-24). One of the three runs passed; the second failed and was fixed; the second and third run again. They also check goals [112](goals/112-research-ends-when-answered.goal) and [047](goals/047-research-planner.goal).
 4. **Goal [026](goals/026-ship-v0.1.0.goal)'s steps:** the full checks and acceptance suites on `main`'s tip, the changelog's date, the tag (it closes goal [010](goals/010-published-images.goal)), the bundle on clean machines (it closes goal [011](goals/011-release-bundle.goal)), the release notes and the `v0.1.1` branch.
 
