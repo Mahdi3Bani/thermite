@@ -141,7 +141,9 @@ A [lane](glossary.md) is one worker's line of search. An epoch is one round of p
 | `lanes.limits` | object | none | What each lane may use. Every field is optional, and the defaults below apply to what is left out |
 | `lanes.queue_target` | integer, 0–1000 | none: 2 for each lane | **Ideas kept ready**: the experiments the run's queue keeps ready for the lanes' later trials in a round, counted after each round's hand-out. A target that drives ideas, never a cap: below it, the planner is asked to top the queue up, the lanes' distinct ideas go up next, and the teachers are asked for ideas at once. `0` asks for none. The lanes it counts are the round's, so a `lane_count` directive lowers the default too. Hill climb and goal only: a research run's research plan fills its queue. See [Keeping the queue at its target](../explanation/agents-lanes-planner.md#keeping-the-queue-at-its-target) |
 
-A contract without `lanes.queue_target` keeps its hash: the field has no default in the contract itself.
+| `lanes.keep_working` | boolean | none: `false` | **Keep working while the judge works** (hill climb and goal): a lane's next trial starts as soon as its last one ends, and a round ends when its trials end, while the judge works through their changes, at most `budget.max_open_attempts` of them. Off, a lane waits for the judge's verdict on its last change, and a round for its lanes' verdicts. A run's `keep_working` rule turns it on or off while it runs ([Steer a run](../how-to/campaigns/steer-a-run.md#steer-from-the-command-line)) |
+
+A contract without `lanes.queue_target` or `lanes.keep_working` keeps its hash: these fields have no default in the contract itself.
 
 `lanes.limits`:
 

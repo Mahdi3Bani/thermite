@@ -291,7 +291,7 @@ Each directive has only these fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count`, `trial_minutes` or `note` | `avoid`, `try` and `mandate` (**Always** on the dashboard) name a direction; `priority` ranks one; `lane_count` sets how many lanes work, up to the contract's count; `trial_minutes` sets how long one trial lasts, in minutes (`value`, a whole number from 1 to 1440), over the contract's and the rig's; `note` is text for the planner only |
+| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count`, `trial_minutes`, `keep_working` or `note` | `avoid`, `try` and `mandate` (**Always** on the dashboard) name a direction; `priority` ranks one; `lane_count` sets how many lanes work, up to the contract's count; `trial_minutes` sets how long one trial lasts, in minutes (`value`, a whole number from 1 to 1440), over the contract's and the rig's; `keep_working`, `on` or `off` (`value`), whether the run's lanes keep working while the judge works, over the contract's; `note` is text for the planner only |
 | `family` | letters, digits, spaces and dashes, plain or as `:name:`, that make a name of 2 to 41 characters | The direction it is about, when the kind needs one. Control signs it as the direction's name: its words in lowercase, joined by dashes, so `:Shared memory tiling:` becomes `shared-memory-tiling` |
 | `value` | text up to 1000 characters, or a number | The value, when the kind needs one. A research run's `try` or `mandate` may give a question's number here instead of a `family` |
 | `rationale` | text, 1 to 2000 characters | Why. The planner sees it; workers never do |

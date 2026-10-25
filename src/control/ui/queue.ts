@@ -241,6 +241,7 @@ function kindOf(kind: string): { chip: string; verb: string } {
   if (kind === "try") return { chip: "try", verb: "Try" };
   if (kind === "lane_count") return { chip: "lanes", verb: "Lanes" };
   if (kind === "trial_minutes") return { chip: "trial", verb: "Trials last" };
+  if (kind === "keep_working") return { chip: "lanes", verb: "Keep working while judged" };
   return { chip: kind, verb: kind };
 }
 
@@ -337,9 +338,11 @@ export function plannerTab(o: {
         ? `${what} lanes`
         : kind === "trial_minutes"
           ? `Trials last ${what} minutes`
-          : kind === "note"
-            ? what
-            : `${esc(k.verb)} ${what}`;
+          : kind === "keep_working"
+            ? `Lanes keep working while the judge works: ${what}`
+            : kind === "note"
+              ? what
+              : `${esc(k.verb)} ${what}`;
     const fromMsg =
       typeof x.body.from_message === "number"
         ? r.messages.find((m) => m.id === x.body.from_message)

@@ -92,6 +92,35 @@ export function rulesInForce(ledger: Ledger, run: string): { id: number; body: S
     .map((d) => ({ id: d.id, body: d.body }));
 }
 
+/** An attempt's lifecycles in which the judge is done with it, for now or for good. */
+const SETTLED = new Set([
+  "judged",
+  "promoted",
+  "rejected_v0",
+  "duplicate",
+  "errored",
+  "awaiting_approval",
+  "awaiting_audit",
+  "audit_blocked",
+  "not_judged",
+]);
+
+/** Whether the judge is done with an attempt (none: nothing to wait for). */
+export function attemptSettled(ledger: Ledger, attempt: string | null): boolean {
+  return !attempt || SETTLED.has(String(ledger.getAttempt(attempt)?.lifecycle));
+}
+
+/**
+ * Whether the run's lanes keep working while the judge works (goal 135): the newest keep_working
+ * rule in force, else the contract's lanes.keep_working, else not (they wait for its verdicts).
+ */
+export function keepsWorking(ledger: Ledger, run: string, contract: Contract): boolean {
+  const rule = rulesInForce(ledger, run)
+    .filter((d) => d.body.kind === "keep_working")
+    .at(-1);
+  return rule ? rule.body.value === "on" : contract.lanes.keep_working === true;
+}
+
 /** The run's lane limits: the contract's, with the trial length a trial_minutes rule sets. */
 export function limitsInForce(ledger: Ledger, run: string, contract: Contract): LaneLimitValues {
   const rule = rulesInForce(ledger, run)

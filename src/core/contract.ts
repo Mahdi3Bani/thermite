@@ -135,6 +135,13 @@ const Common = {
        * lane. Optional and without a default, so contracts written before it keep their hash.
        */
       queue_target: z.number().int().min(0).max(1000).optional(),
+      /**
+       * Keep working while the judge works (goal 135): a lane's next trial starts when its last
+       * one ends, and a round ends when its trials end. Unset or false: they wait for the judge's
+       * verdicts. A run's keep_working rule turns it on or off. Optional and without a default, so
+       * contracts written before it keep their hash.
+       */
+      keep_working: z.boolean().optional(),
     })
     .default({ count: 2, trials_per_epoch: 3 }),
   budget: z

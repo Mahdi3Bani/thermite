@@ -238,7 +238,7 @@ export function makeJudgeEnv(
     promotion?: PromotionPolicy;
     heldOut?: boolean;
     neverReady?: boolean;
-    lanes?: { count: number; trials_per_epoch: number };
+    lanes?: { count: number; trials_per_epoch: number; keep_working?: boolean };
     /** A goal-mode campaign instead of a hill climb. */
     goal?: { opsPerSecond: number } | undefined;
     /** False: assign as a judge-only run (no worker agents). */

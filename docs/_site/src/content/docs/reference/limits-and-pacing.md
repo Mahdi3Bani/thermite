@@ -143,7 +143,7 @@ The dashboard calls an epoch a **round**.
 
 | What | Default | Notes |
 | --- | --- | --- |
-| An epoch's end | When every lane's trials are done; their attempts may still wait for the judge. It has no time cap | |
+| An epoch's end | When every lane's trials are done and their attempts settled; in a run that keeps working, when its trials are done. It has no time cap | |
 | Fork rounds | Every 20 epochs (epochs 21, 41, …). With `budget.wall_hours`, at one third and two thirds of it | Every lane starts again from the champion |
 | Planner call | No time limit: it ends when the planner answers, or when its run is paused or closed. In Pi, a `submit_plan` its tool's schema refuses goes back to the planner with the reason; the same refused arguments a second time end the call (`invalid`) | A call that gives no plan, or an answer that code refuses, is tried once more; a refused answer goes back with its problems. After a second failure, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Each try's cause is recorded in the round's `epoch_started` event (`causes`) and in **History**: `timeout`, `text_only` (it answered in text without a plan), `cut_off` (its reply reached the output limit), `provider_error` (with the provider's kind and words), `cancelled`, or `invalid` (with each rule the plan broke). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue, and its rounds count as research rounds, never as fallbacks |
 | The fallback's directions | Mandated first, then tried; then, in a goal campaign, a direction that names a goal the champion does not meet yet; then the least explored. A direction whose goals the champion already meets all of (its name or description names their ids) is skipped; with none left, each goal not met yet becomes a direction | Fixed |
@@ -194,8 +194,7 @@ The dashboard calls an epoch a **round**.
 | What | Limit | Effect |
 | --- | --- | --- |
 | Open attempts | 4 (`budget.max_open_attempts` in the contract) | No new trial starts while this many of the run's attempts are `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` |
-| A lane's next trial | After its last trial ended; it does not wait for the judge's verdict | The lane waits for its trial, and for the open attempts above |
-| A round | Ends when its lanes' trials end; their changes may still wait for the judge | The next round is planned meanwhile |
+| A lane's next trial | After its last trial ended and that trial's attempt settled. In a run that keeps working (`lanes.keep_working`, or a `keep_working` rule), after its last trial ended | The lane waits for the judge, or for its trial and the open attempts above |
 | A goal run whose champion met every required goal | While the judge's second, confirming validation of that champion is queued or running | No new round or trial starts; a trial at work goes on. If the validation agrees, and the held-out cases of the goals met pass, the run closes; if not, or if it fails or is blocked after three lost leases, the lanes go on ([The goal report](verdicts.md#the-goal-report)) |
 | One running run for each rig | Assigning or resuming a run pauses the rig's others: `replaced by <run>` | The other runs wait, paused |
 | The judge | One job at a time on each judge device; builds one at a time on the rig | Jobs wait in a queue, by priority |

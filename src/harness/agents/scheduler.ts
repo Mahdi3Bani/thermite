@@ -3,11 +3,7 @@ import { join } from "node:path";
 import { log } from "../../common/env.ts";
 import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief.ts";
 import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
-import {
-  type Contract,
-  MAX_LANES,
-  type ResearchContract,
-} from "../../core/contract.ts";
+import { type Contract, MAX_LANES, type ResearchContract } from "../../core/contract.ts";
 import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
@@ -67,10 +63,12 @@ import { routeOf } from "../usage.ts";
 import { violationsOf, violationsText } from "../v0.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import {
+  attemptSettled,
   Coordinator,
   type Directive,
   focusOf,
   type Handout,
+  keepsWorking,
   limitsInForce,
   PLANNER,
   resultOf,
@@ -124,10 +122,10 @@ const SETUP_REASON_CHARS = 3000;
  * run's experiment queue, gives every lane an experiment; each lane then runs `trials_per_epoch`
  * trials, one at a time, each on an experiment of its own (the round's first, then the next in
  * the queue): a fresh workspace at the champion (or the lane's best), one worker invocation, at
- * most one submission. A lane does not wait for the judge: its next trial starts when the last one
- * ends, and an epoch ends when its lanes' trials end, while the judge works through their changes
- * (at most the contract's max_open_attempts unjudged); it has no time cap (goal 079). Agents never
- * judge: the scheduler only reads verdicts.
+ * most one submission, and the next trial only after that submission is judged. An epoch ends
+ * when its lanes' trials are judged; it has no time cap (goal 079). When its lanes keep working
+ * (goal 135), the next trial and the next epoch start while the judge works through their changes
+ * (at most max_open_attempts unjudged). Agents never judge: the scheduler only reads verdicts.
  *
  * The model provider decides when agents can work (goal 079): no trial or plan starts while the
  * workers' model check fails or after a trial found no credits, a refused key or an unserved
@@ -1788,12 +1786,14 @@ export class Scheduler {
 
     let started = false;
     let complete = true;
+    const keep = keepsWorking(this.ledger, id, contract);
     for (const a of epoch.assignments) {
       const trials = this.registry.trials(id, a.lane, epoch.n);
       const last = trials.at(-1);
-      if (trials.length < perEpoch || !trials.every((t) => t.ended)) complete = false;
+      const judged = keep || attemptSettled(this.ledger, last?.attempt ?? null);
+      if (trials.length < perEpoch || !trials.every((t) => t.ended) || !judged) complete = false;
       if (trials.length >= perEpoch || this.running.has(a.lane)) continue;
-      if (last && !last.ended) continue;
+      if (last && (!last.ended || !judged)) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.openAttempts(id) >= contract.budget.max_open_attempts) continue;
@@ -1809,7 +1809,7 @@ export class Scheduler {
       this.startTrial(id, contract, epoch.n, a, k, perEpoch, got);
       started = true;
     }
-    // No time cap on a round unless one is given (tests): it ends when its trials end.
+    // No time cap on a round unless one is given (tests): it ends when it is complete.
     const capped =
       this.o.epochCapMs !== undefined &&
       Date.now() - Date.parse(epoch.started_at) > this.o.epochCapMs;

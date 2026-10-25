@@ -47,9 +47,9 @@ On changes written on an older champion: "we want to see the old submissions aga
 
 ## Done when
 
-- [ ] `lanes.keep_working` in the contract, off by default; on, lanes and rounds go on while the judge works; a `keep_working` rule turns it on or off for a running run, and dropping it returns to the campaign's setting.
+- [x] `lanes.keep_working` in the contract, off by default; on, lanes and rounds go on while the judge works; a `keep_working` rule turns it on or off for a running run, and dropping it returns to the campaign's setting.
 - [ ] New campaign has the setting, and a run's page shows which is in force with a switch, each from a mockup the owner approved.
-- [ ] A `trial_minutes` rule sets a running run's trial length.
+- [x] A `trial_minutes` rule sets a running run's trial length.
 - [ ] A change written on an older champion is screened against the current one; a win becomes champion and queues a port of the champion it replaced; a loss that helped on its own parent queues its own port onto the champion; each port is judged against its new base.
 - [ ] Two judge executors build two changes at once, each as its own builder user, and the isolation check covers both.
 - [ ] A build cached before an update to images with the same compilers is used after it.
@@ -69,6 +69,7 @@ On changes written on an older champion: "we want to see the old submissions aga
 
 - 2026-10-25 04:27 UTC: Goal written from the owner's words. Built before it: the `trial_minutes` rule (6d53693, on main, not pushed), and lanes that always keep working (3535335, pushed, not rolled), which part 1 turns into the setting.
 
+- 2026-10-25 04:32 UTC: parts 1 and 2 built (branch `feat/lanes-dont-wait`). `lanes.keep_working` in the contract (optional, no default, so old contracts keep their hashes); the rule kinds `keep_working` (`on` or `off`) and `trial_minutes`, refused in words otherwise; `keepsWorking` and `limitsInForce` beside `rulesInForce` (`coordinator.ts`): the newest rule in force, else the contract. Waiting is the default again. The Planner tab names both rules. Tests: `scheduler.test.ts` (the lane waits, the rule turns it on, round 2 starts while three changes wait, off waits again until the judge is done; the contract's setting and the rule's precedence; a rule's trial length reaches the trial), `directions.test.ts`. Pages: Contract, Steer a run, Signed commands, Verdicts, Limits and pacing, Agents, lanes and the planner, MCP tools. Left in part 1: the New campaign setting and the run's switch, from mockups.
 ---
 
 Run with `/goal Complete docs/plan/goals/135-lanes-and-judge-throughput.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

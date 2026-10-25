@@ -166,7 +166,7 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | `errored` | Infrastructure failed twice, or its judge job was blocked. Not counted against the research | "failed in the judge" |
 | `not_judged` | Its run closed while it waited in the queue. A closed run is never resumed, so its job is cancelled and it gets no verdict | "not judged: its run closed first" |
 
-A lane's next trial starts once its last trial ends: it does not wait for the judge's verdict on that trial's attempt, and a round ends when its trials end. Attempts in `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` count as **open** against the contract's `budget.max_open_attempts`: while the run has that many, no trial starts.
+A lane's next trial starts only once its last attempt is **settled**: `judged`, `promoted`, `rejected_v0`, `duplicate`, `errored`, `not_judged`, `awaiting_approval`, `awaiting_audit` or `audit_blocked`. A run that keeps working while the judge works (the contract's `lanes.keep_working`, or a `keep_working` rule) starts it once its last trial ends instead, and ends a round when its trials end. Attempts in `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` count as **open** against the contract's `budget.max_open_attempts`: while the run has that many, no trial starts.
 
 ### Why a change was refused
 

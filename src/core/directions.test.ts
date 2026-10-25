@@ -113,6 +113,19 @@ describe("directions, written as plain words or :name: (goal 066)", () => {
       assert.ok(!bad.success, String(value));
       assert.match(bad.error.issues[0]?.message ?? "", /a trial_minutes rule gives value: minutes/);
     }
+    // A keep_working rule is on or off.
+    assert.equal(
+      StructuredDirective.parse({ kind: "keep_working", value: "on", rationale: "r" }).value,
+      "on",
+    );
+    for (const value of ["yes", 1, undefined]) {
+      const bad = StructuredDirective.safeParse({ kind: "keep_working", value, rationale: "r" });
+      assert.ok(!bad.success, String(value));
+      assert.match(
+        bad.error.issues[0]?.message ?? "",
+        /a keep_working rule gives value: on or off/,
+      );
+    }
     // An experiment's direction written :name: is kept without its colons.
     const add = CommandPayloads.queue_add.parse({ run: "r-1", title: "t", family: ":split k:" });
     assert.equal(add.family, "split k");

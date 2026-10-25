@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { startFakeModel } from "../../testing/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../../testing/judge-env.ts";
 import { LocalRunner } from "../broker/runner.ts";
+import { keepsWorking } from "./coordinator.ts";
 import { Scheduler } from "./scheduler.ts";
 import { runTrial } from "./worker.ts";
 
@@ -126,7 +127,7 @@ describe("agent scheduler", () => {
     await fake.close();
   });
 
-  test("a lane does not wait for the judge: its next trial, and the next round, start while its changes wait", async () => {
+  test("a lane waits for the judge unless its run keeps working; a keep_working rule turns it on and off (goal 135)", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
     await env.start();
     const fake = await startFakeModel(({ messages, tools }) => {
@@ -183,10 +184,20 @@ describe("agent scheduler", () => {
         )
         .all()
         .map((r) => r.lifecycle);
+    const rule = (value: "on" | "off") =>
+      env.ledger.addDirective("js-1", "control:owner", {
+        kind: "keep_working",
+        value,
+        rationale: "test",
+        citations: [],
+      });
     assert.ok(await scheduler.tick()); // round 1 planned, trial 1 starts
     await scheduler.idle();
     assert.deepEqual(lifecycles(), ["queued"]);
-    // The judge has not taken trial 1's change, and trial 2 starts anyway.
+    // By default the lane waits for the judge's verdict on trial 1's change.
+    assert.equal(await scheduler.tick(), false);
+    // Kept working, trial 2 starts while the judge has not taken it.
+    rule("on");
     assert.ok(await scheduler.tick());
     await scheduler.idle();
     assert.deepEqual(lifecycles(), ["queued", "queued"]);
@@ -199,14 +210,35 @@ describe("agent scheduler", () => {
       [1, 2],
     );
     assert.deepEqual(lifecycles(), ["queued", "queued", "queued"]);
-    // The judge then works through them.
+    // Turned off, the lane waits again, until the judge works through them.
+    rule("off");
+    assert.equal(await scheduler.tick(), false);
     await env.drain();
     assert.ok(
       lifecycles().every((l) => l !== "queued"),
       String(lifecycles()),
     );
+    assert.ok(await scheduler.tick());
     await scheduler.idle();
     await fake.close();
+  });
+
+  test("a campaign that keeps working sets it for its runs; a run's rule comes first (goal 135)", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1, keep_working: true } });
+    await env.start();
+    const contract = env.service.contractFor("js-1");
+    assert.equal(keepsWorking(env.ledger, "js-1", contract), true);
+    env.ledger.addDirective("js-1", "control:owner", {
+      kind: "keep_working",
+      value: "off",
+      rationale: "test",
+      citations: [],
+    });
+    assert.equal(keepsWorking(env.ledger, "js-1", contract), false);
+    // Without the setting or a rule, lanes wait for the judge.
+    const plain = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
+    await plain.start();
+    assert.equal(keepsWorking(plain.ledger, "js-1", plain.service.contractFor("js-1")), false);
   });
 
   test("a lane best is a win measured against the current champion, and is dropped when it moves", async () => {
