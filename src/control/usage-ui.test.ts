@@ -285,9 +285,9 @@ describe("model use on the screens (goal 075)", () => {
       unesc(line),
       /data-tip="Trials done, rounds, the run's time since it started .* 5 records do not report their time: not in the time in calls\."/,
     );
-    // A hill climb's three cards: its champion (goal 142), Cost, and the tokens with the speed.
-    // Each label has its info icon.
-    for (const label of ["Champion #1", "Cost", "Tokens in", "Tokens out", "Output speed"])
+    // A hill climb's three cards: its champion (goal 142), Cost, and the tokens in and out
+    // together with the speed. Each label has its info icon.
+    for (const label of ["Champion #1", "Cost", "Tokens", "Output speed"])
       assert.match(
         block,
         new RegExp(`<span class="lb">${label}<i class="ii" tabindex="0" data-tip="`),
@@ -353,11 +353,14 @@ describe("model use on the screens (goal 075)", () => {
       unesc(auditor),
       /7\.0k tokens in priced as not cached: OpenCode v2 does not report cached tokens\./,
     );
-    // The total says what its dollars leave out.
+    // The card stays brief: what its dollars leave out is on the Stats tab's table, not under them.
     const cost = from(block, "uf-cost", "uf-tok");
-    assert.match(cost, /tokens on a plan · 5\.5k no price · 3\.3k free/);
-    // Tokens in, split: cached, not cached, and not reported (with the harness).
-    assert.match(from(block, "uf-tok", "Tokens out"), /not reported by OpenCode v2/);
+    assert.doesNotMatch(cost, /<div class="s">|tokens on a plan/);
+    // Tokens in and out in one: the split of tokens in, cached, not cached, and not reported (with
+    // the harness).
+    const tokens = from(block, "uf-tok", "Output speed");
+    assert.match(tokens, /<span class="u"> in · <\/span>[^<]+<span class="u"> out<\/span>/);
+    assert.match(tokens, /not reported by OpenCode v2/);
     // On every tab.
     for (const view of ["history", "attempts", "planner"])
       assert.match(
@@ -446,6 +449,8 @@ describe("model use on the screens (goal 075)", () => {
       unesc(side),
       /10k of 2\.0M tokens in: not reported by OpenCode v2\. Of the rest, 30% was cached\./,
     );
+    // Its cost stays brief: the tokens with no dollars are on Metrics, which keeps them.
+    assert.doesNotMatch(from(side, "uside-cost", "umini"), /tokens on a plan/);
     assert.match(html, /<a href="\/ui\/metrics">By model, on Metrics ›<\/a>/);
     // The main column keeps the runs at work and the knowledge.
     assert.ok(html.indexOf("At work now") < html.indexOf('<div class="side">'));
@@ -466,6 +471,7 @@ describe("model use on the screens (goal 075)", () => {
     assert.match(html, /<a class="fchip on" href="\/ui\/metrics\?period=7d">7 days<\/a>/);
     assert.match(html, /every campaign and rig · times in UTC/);
     assert.match(html, /1 run · 1 campaign/);
+    assert.match(from(html, "uf-cost", "uf-in"), /tokens on a plan · 5\.5k no price · 3\.3k free/);
     const byModel = from(html, '<div class="u-h">By model</div>', "</table>");
     // One row for each provider's model, with every harness that ran it.
     assert.match(

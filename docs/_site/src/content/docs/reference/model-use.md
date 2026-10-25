@@ -29,7 +29,7 @@ A cost with an **i** before it leaves something out or adds something. Its **i**
 
 ## The six numbers
 
-**Metrics** starts with six tiles. A run's page shows four of them in two cards: **Cost**, and **Tokens in**, **Tokens out** and **Output speed** together. Its calls are on its **Stats** tab, and its time in calls is in its line.
+**Metrics** starts with six tiles. A run's page gives four of them, shorter, in two cards: **Cost**, and **Tokens** with **Output speed**. Its calls are on its **Stats** tab, and its time in calls is in its line.
 
 | Tile | What it shows |
 | --- | --- |
@@ -53,8 +53,8 @@ The line counts the run's trials and rounds, then gives its time and its time in
 Under the line:
 
 - **Champion #N**, on a hill climb: the champion's value of the main metric, with its unit, as the judge measured it when it confirmed the change (the cases' geometric mean), such as `14.6 tok/s`. Under it, its gain over the starting point, measured on this rig, and the starting point's value: `+88.0% over the start, 7.73 tok/s`. A champion whose verdict did not record its values (one judged by an older harness) shows an estimate from the starting point's value and the gain, marked `≈`: `≈14.5 tok/s`. Before any change is promoted, it shows the starting point's value and `the starting point: no change promoted yet`.
-- **Cost**, as on Metrics, with the pod's spend while this run was at work on a RunPod rig.
-- One card with **Tokens in** (and its split), **Tokens out** and **Output speed**, as on Metrics.
+- **Cost**: the dollars and their split, as on Metrics, with the pod's spend while this run was at work on a RunPod rig. The tokens with no dollars are not under it: the **Stats** tab gives each agent's and model's cost, in dollars or in [words](#the-words).
+- One card with **Tokens**, in and out together, such as `30.1M in · 995k out`, with the split of tokens in under it, as on Metrics; and **Output speed**. The reasoning tokens are on Metrics.
 
 ### The Stats tab
 
@@ -90,7 +90,7 @@ On a narrow screen the table keeps **Agent**, **In**, **Cached**, **Out**, **tok
 
 The campaign's sidebar has its own **Model use**, over all its runs on every rig. Its line on the right counts the runs with records or pod spend.
 
-- **Cost**, as on Metrics.
+- **Cost**: the dollars and their split, as on Metrics. The tokens with no dollars are on Metrics.
 - **Tokens in**, with the part that was cached under it. Where a harness does not report the cache, the part is of the tokens that were reported, and an **i** says how many were not.
 - **Tokens out**, with the reasoning tokens.
 - **Calls**, with the time in calls under it.

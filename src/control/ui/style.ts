@@ -1118,14 +1118,14 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 /* A run's top (the owner, 2026-10-21: keep it small): one line, then Cost and the tokens. */
 .u-clock { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 8px; font-size: 13px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .u-clock > .icon { width: 14px; height: 14px; flex: none; }
-.u-two { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; } .u-two.u-three { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 3fr); }
+.u-two { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; } .u-two.u-three { grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 2.5fr); }
 .u-two .fact, .u-calls.fact { padding: 10px 12px; min-width: 0; }
 .u-two .fact .v, .u-calls .v { font-size: 22px; letter-spacing: -.01em; }
 .u-two .fact .v .u { font-size: 12px; font-weight: 500; color: var(--muted-foreground); letter-spacing: 0; }
 .u-two .fact .s, .u-calls .s { font-variant-numeric: tabular-nums; }
 .u-two .nr, .u-calls .nr { font-size: 15px; font-weight: 500; font-style: italic; color: var(--muted-foreground); }
 .u-two .s .ii, .u-calls .s .ii { display: inline-grid; margin-right: 5px; vertical-align: -3px; }
-.utok { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px 18px; }
+.utok { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 10px 18px; }
 .utok > div + div { border-left: 1px solid var(--border); padding-left: 16px; }
 /* A run's Stats tab: its calls, with a bar for each round. */
 .u-calls { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 10px 24px; align-items: end; }
@@ -1140,10 +1140,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   .ufacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ufacts .uf-wide { grid-column: 1 / -1; }
   .u-two, .u-two.u-three, .u-calls { grid-template-columns: minmax(0, 1fr); }
-  .utok { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .utok > :first-child { grid-column: 1 / -1; }
+  .utok { grid-template-columns: minmax(0, 1fr); }
   .utok > div + div { border-left: 0; padding-left: 0; }
-  .utok > div:last-child { border-left: 1px solid var(--border); padding-left: 14px; }
 }
 @media (max-width: 600px) {
   .mp-t input { width: 46px; padding: 0 4px; }

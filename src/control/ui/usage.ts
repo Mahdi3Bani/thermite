@@ -59,6 +59,8 @@ const TIP = {
   use: "Every model call of the agents, counted by code at the call: the rig's harness for the work, the supervisor for the advisors. Agents can't change these numbers. “not reported”: the harness does not give that number. REST and MCP give the same numbers.",
   in: "Tokens sent to the model. Cached: the provider read them from its cache. Not cached: the provider read them again. Not reported: the harness does not say which.",
   out: "Tokens the model wrote, with its reasoning. Under it: the reasoning tokens, where the provider counts them.",
+  inOut:
+    "In: tokens sent to the model. Cached: the provider read them from its cache. Not cached: the provider read them again. Not reported: the harness does not say which. Out: tokens the model wrote, with its reasoning. Each model's are on the Stats tab.",
   speed:
     "Tokens out a second over each call's whole time, from the request to the last token. The big number is the median of the calls. p10–p90: 8 of 10 calls are in this range. Each model's own speed is in the table.",
   time: "All calls added together, from the request to the last token. Calls at the same time each count. Under it: the median time to the first token.",
@@ -183,8 +185,11 @@ export function costCell(c: UsageCost, guessBy: string[] = []): string {
   return kinds.length > 1 ? `${ii(notes.join(" "))}${word}` : word;
 }
 
-/** The cost tile's body: dollars, split into in, cached in, out and GPU time; then the tokens with no dollars. */
-function costParts(c: UsageCost, guessBy: string[]): string {
+/**
+ * The cost tile's body: dollars, split into in, cached in, out and GPU time; then the tokens with
+ * no dollars, except on a card that stays brief (the owner, 2026-10-25: the detail is on Stats).
+ */
+function costParts(c: UsageCost, guessBy: string[], brief = false): string {
   const { paid, shown } = paidOf(c);
   const pod = c.pod_usd ?? 0;
   const seg = (cls: string, v: number) =>
@@ -208,7 +213,7 @@ function costParts(c: UsageCost, guessBy: string[]): string {
     paid > 0
       ? `<div class="usplit">${seg("n", c.input_usd)}${seg("c", c.cached_input_usd)}${seg("o", c.output_usd)}${seg("g", pod)}</div><div class="ulg">${lg("n", c.input_usd, "in")}${lg("c", c.cached_input_usd, "cached in")}${lg("o", c.output_usd, "out")}${lg("g", pod, "GPU time on RunPod")}</div>`
       : ""
-  }${left || guess ? `<div class="s">${guess}${left}</div>` : ""}`;
+  }${!brief && (left || guess) ? `<div class="s">${guess}${left}</div>` : ""}`;
 }
 
 // ---------------------------------------------------------------- the six numbers
@@ -309,7 +314,7 @@ export interface RunUsage {
 /** Nothing to show yet: no record, and no pod spend. */
 const noUse = (t: UsageSums) => !t.records && t.cost.pod_usd === null;
 
-/** Tokens in (cached, not cached, not reported), tokens out and the output speed, in one card. */
+/** Tokens in (cached, not cached, not reported) and out together, and the output speed, in one card. */
 function tokensCard(t: UsageSums, unrepBy: string[], speedTip: string): string {
   const cached = t.cached_in ?? 0;
   const notCached = t.uncached_in ?? 0;
@@ -322,8 +327,7 @@ function tokensCard(t: UsageSums, unrepBy: string[], speedTip: string): string {
     v > 0 ? `<span><i class="${cls}"></i><b>${tok(v)}</b>${word}</span>` : "";
   const speed = t.out_per_s;
   return `<div class="fact uf-tok"><div class="utok">
-<div><div class="k">${infoLabel("Tokens in", TIP.in)}</div><div class="v">${tok(t.tokens_in)}</div><div class="usplit">${seg("c", cached)}${seg("n", notCached)}${seg("r", unrep)}</div><div class="ulg">${lg("c", cached, "cached")}${lg("n", notCached, "not cached")}${lg("r", unrep, `not reported${unrepBy.length ? ` by ${list(unrepBy)}` : ""}`)}</div></div>
-<div><div class="k">${infoLabel("Tokens out", TIP.out)}</div><div class="v">${tok(t.tokens_out)}</div><div class="s">${t.reasoning ? `${tok(t.reasoning)} reasoning` : "&nbsp;"}</div></div>
+<div><div class="k">${infoLabel("Tokens", TIP.inOut)}</div><div class="v">${tok(t.tokens_in)}<span class="u"> in · </span>${tok(t.tokens_out)}<span class="u"> out</span></div><div class="usplit">${seg("c", cached)}${seg("n", notCached)}${seg("r", unrep)}</div><div class="ulg">${lg("c", cached, "cached")}${lg("n", notCached, "not cached")}${lg("r", unrep, `not reported${unrepBy.length ? ` by ${list(unrepBy)}` : ""}`)}</div></div>
 <div><div class="k">${infoLabel("Output speed", speedTip)}</div><div class="v">${speed ? `${Math.round(speed.median)}<span class="u"> tok/s</span>` : NR}</div><div class="s">${speed ? `p10–p90 ${Math.round(speed.p10)}–${Math.round(speed.p90)}` : "&nbsp;"}</div></div>
 </div></div>`;
 }
@@ -358,7 +362,7 @@ export function runUsageTop(u: RunUsage): string {
     return `<div class="block" id="model-use">${line}${champ ? `<div class="u-two u-three">${champ}</div>` : ""}</div>`;
   const guessBy = harnessesWhere(lines, (s) => s.cost.priced_as_not_cached > 0);
   return `<div class="block" id="model-use">${line}
-<div class="u-two${champ ? " u-three" : ""}">${champ}<div class="fact uf-cost"><div class="k">${infoLabel("Cost", costTip("the pod's spend while this run was at work"))}</div>${costParts(t.cost, guessBy)}</div>
+<div class="u-two${champ ? " u-three" : ""}">${champ}<div class="fact uf-cost"><div class="k">${infoLabel("Cost", costTip("the pod's spend while this run was at work"))}</div>${costParts(t.cost, guessBy, true)}</div>
 ${tokensCard(
   t,
   harnessesWhere(lines, (s) => unreported(s) > 0),
@@ -459,7 +463,7 @@ export function campaignUsageBlock(u: CampaignUsage): string {
     return `<tr><td>${v ? `<a href="${esc(v.href)}"><b>${esc(x.run)}</b></a>` : `<b>${esc(x.run)}</b>`}<span class="us">${esc(v ? `${v.state} · ${x.rig}` : `on ${x.rig}`)}</span></td><td class="num">${tok(x.tokens_in)}</td><td class="num">${tok(x.tokens_out)}</td><td class="num">${costCell(x.cost, guessBy)}</td></tr>`;
   };
   return `<div class="block" id="camp-use">${head}
-<div class="card uside"><div class="uside-cost"><div class="k">${infoLabel("Cost", costTip("the pods' spend while its runs were at work"))}</div>${costParts(t.cost, guessBy)}</div>
+<div class="card uside"><div class="uside-cost"><div class="k">${infoLabel("Cost", costTip("the pods' spend while its runs were at work"))}</div>${costParts(t.cost, guessBy, true)}</div>
 <div class="umini">${mini("Tokens in", TIP.in, tok(t.tokens_in), `${cachedShareCell(t, unrepBy)} cached`)}${mini("Tokens out", TIP.out, tok(t.tokens_out), t.reasoning ? `${tok(t.reasoning)} reasoning` : "&nbsp;")}${mini("Calls", "Model calls by all agents of all its runs, on every rig. Under it: the time in calls, all added together.", t.records && t.calls_not_reported === t.records ? NR : int(t.calls), t.call_ms === null ? "&nbsp;" : `${dur(t.call_ms)} in calls`)}${mini("Output speed", TIP.speed, speed ? `${Math.round(speed.median)}<span class="u"> tok/s</span>` : NR, t.first_token_ms === null ? "&nbsp;" : `first token ${(t.first_token_ms / 1000).toFixed(1)} s`)}</div></div>
 <div class="card flat u-runs"><table class="ut"><thead><tr>${th("Run")}${th("In", TIP.tin, "num")}${th("Out", TIP.tout, "num")}${th("Cost", TIP.cost, "num")}</tr></thead><tbody>${runs.map(row).join("")}</tbody></table></div>
 <div class="u-more"><a href="/ui/metrics">By model, on Metrics ›</a></div>

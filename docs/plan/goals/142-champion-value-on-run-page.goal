@@ -34,19 +34,22 @@ The owner reads a run from the top of its page. The number that says how far the
 
 ## Done when
 
-- [ ] Item 1, with its test.
-- [ ] Item 2, with a test: the estimate, its mark, and the chart's label.
-- [ ] Item 3, with a mockup the owner approved, and a test of the card.
-- [ ] Pages: the run's page in the dashboard reference, and the changelog.
+- [x] Item 1, with its test.
+- [x] Item 2, with a test: the estimate, its mark, and the chart's label.
+- [x] Item 3, with a mockup the owner approved, and a test of the card.
+- [x] Pages: the run's page in the dashboard reference, and the changelog.
 - [ ] On the lab: the card and the chart give the champion's value; a verdict after the harness's roll has its values.
 
 ## Decisions
+
+- 2026-10-25, owner: the champion card is approved as shown on the demo ("Champion card looks good"), with two changes to its neighbours. **Tokens** gives tokens in and out in one column, to give the cards more room. **Cost** on the run's page loses the line of tokens with no dollars: "dashboard cards are supposed to remain high level"; the Stats tab has the detail. The campaign's sidebar Cost follows the same rule. Metrics keeps the line.
 
 ## Open questions
 
 ## Progress
 
 - 2026-10-25 15:47 UTC: Goal written from the owner's report. The cause was found in `metricValues`, which read the blocks with metric and case swapped.
+- 2026-10-25 19:36 UTC: Built and tested on the branch: the judge's values, the estimate, the card. The owner approved the card; Tokens in and out are now one column, and Cost on the run's page and the campaign's sidebar is brief. Left: the roll to the lab.
 
 ---
 
