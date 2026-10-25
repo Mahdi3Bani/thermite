@@ -3,6 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { parseContract } from "../../core/contract.ts";
+import { hillClimbFixture } from "../../testing/fixtures.ts";
 import { Ledger, MAX_LEASE_EXPIRIES } from "../ledger.ts";
 import { jobsAtStart, unblockAtStart, whileLeased } from "./lease.ts";
 
@@ -42,11 +44,39 @@ test("a long build keeps its job's lease: renewed while it runs, and no more onc
   );
 });
 
-test("a job blocked by lost leases gets one more try at the harness's start, and is blocked again by one more", () => {
+test("a job blocked by lost leases ends its attempt, and gets one more try at the harness's start", () => {
   let now = new Date("2026-10-25T00:00:00Z");
   const dir = mkdtempSync(join(tmpdir(), "thermite-lease-"));
   const ledger = Ledger.open(join(dir, "ledger.db"), () => now);
-  const job = ledger.enqueueJob({ kind: "evaluate", actor: "t" });
+  const parsed = parseContract(hillClimbFixture);
+  if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+  ledger.storeContract(parsed.contract, parsed.sha, "t");
+  const seed = "a".repeat(40);
+  ledger.createRun({
+    id: "r",
+    contract: parsed.contract,
+    contractSha: parsed.sha,
+    seedRepo: "s",
+    seedCommit: seed,
+    actor: "t",
+  });
+  ledger.recordAttempt(
+    {
+      id: "a-1",
+      run: "r",
+      parentRef: "seed",
+      parentCommit: seed,
+      baselineChampionSeq: 1,
+      commitSha: "b".repeat(40),
+      ref: "refs/thermite/attempts/a-1",
+      diffSha: "d",
+      normalizedDiffSha: "d",
+      lifecycle: "queued",
+    },
+    "t",
+  );
+  const job = ledger.enqueueJob({ attempt: "a-1", kind: "evaluate", actor: "t" });
+  const lifecycle = () => ledger.getAttempt("a-1")?.lifecycle;
   const lose = () => {
     assert.ok(ledger.leaseJob("executor-0", 1_000));
     now = new Date(now.getTime() + 2_000);
@@ -54,10 +84,13 @@ test("a job blocked by lost leases gets one more try at the harness's start, and
   };
   for (let i = 0; i < MAX_LEASE_EXPIRIES; i++) lose();
   assert.equal(ledger.jobById(job)?.state, "blocked");
+  // Its attempt is settled, so the lane's round can end without it.
+  assert.equal(lifecycle(), "errored");
   const said: string[] = [];
   jobsAtStart(ledger, ["executor-0"], (msg) => said.push(msg));
   assert.deepEqual(said, ["blocked jobs queued again at start"]);
   assert.equal(ledger.jobById(job)?.state, "queued");
+  assert.equal(lifecycle(), "queued");
   const event = ledger.db
     .prepare("select body from event where kind = 'job_unblocked' and subject = ?")
     .get(String(job)) as { body: string };
@@ -65,6 +98,7 @@ test("a job blocked by lost leases gets one more try at the harness's start, and
   // One more lost lease blocks it again; nothing is blocked, nothing is queued again.
   lose();
   assert.equal(ledger.jobById(job)?.state, "blocked");
+  assert.equal(lifecycle(), "errored");
   assert.deepEqual(unblockAtStart(ledger, "t"), [job]);
   assert.deepEqual(unblockAtStart(ledger, "t"), []);
   ledger.close();

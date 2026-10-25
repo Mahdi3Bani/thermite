@@ -32,7 +32,7 @@ flowchart LR
   X --> N
 ```
 
-The diagram leaves out three returns to `queued`: after one infrastructure failure, when the champion changed before confirmation, and when another change became the champion first. After a second infrastructure failure the attempt is `errored`. It also leaves out a hill climb in [setup](#setup), whose changes go from `building` and `screening` to `promoted` or `judged` by the judge's baseline job alone. When its run closes, an attempt still `queued` becomes `not_judged`, and the judge never takes its job. The owner can also decline an attempt in `awaiting_audit`. A patch that does not apply to its parent never becomes an attempt: the submission is refused and counted as a `submission_refused` event.
+The diagram leaves out three returns to `queued`: after one infrastructure failure, when the champion changed before confirmation, and when another change became the champion first. After a second infrastructure failure the attempt is `errored`, as it is when its judge job is blocked after three lost leases; a blocked job's attempt goes back to `queued` when the harness starts and queues the job once more. It also leaves out a hill climb in [setup](#setup), whose changes go from `building` and `screening` to `promoted` or `judged` by the judge's baseline job alone. When its run closes, an attempt still `queued` becomes `not_judged`, and the judge never takes its job. The owner can also decline an attempt in `awaiting_audit`. A patch that does not apply to its parent never becomes an attempt: the submission is refused and counted as a `submission_refused` event.
 
 ## Verdicts
 
@@ -163,7 +163,7 @@ The ledger also has two verdicts that nothing in this version records: `invalida
 | `audit_blocked` | The auditor blocked it. Only the owner can overrule | "blocked by the auditor" |
 | `promoted` | It became the champion | "became the champion" |
 | `declined` | The owner said no. It never becomes the champion | "declined by you" |
-| `errored` | Infrastructure failed twice. Not counted against the research | "failed in the judge" |
+| `errored` | Infrastructure failed twice, or its judge job was blocked. Not counted against the research | "failed in the judge" |
 | `not_judged` | Its run closed while it waited in the queue. A closed run is never resumed, so its job is cancelled and it gets no verdict | "not judged: its run closed first" |
 
 A lane's next trial starts only once its last attempt is **settled**: `judged`, `promoted`, `rejected_v0`, `duplicate`, `errored`, `not_judged`, `awaiting_approval`, `awaiting_audit` or `audit_blocked`. Attempts in `queued`, `building`, `screening`, `confirming`, `verifying`, `awaiting_audit` or `awaiting_approval` count as **open** against the contract's `budget.max_open_attempts`.
@@ -344,7 +344,7 @@ Beside the chips, two lists narrow the rows further: **Every direction** (the **
 | Thing | States | Meaning |
 | --- | --- | --- |
 | Trial ending | `submitted`, `no_submission`, `finished`, `interrupted`, `turns`, `wall`, `context`, `error` | Why a trial ended: it submitted; it stopped without submitting; a research trial ended on its own; a pause, reset or restart ended it; the turn cap; its time ran out; the model's context was full; an error |
-| Judge job | `queued`, `leased`, `done`, `failed`, `blocked`, `cancelled` | A job is `blocked` after three lease expiries or harness restarts. A lease lasts 15 minutes; the judge renews it as it measures, and every few minutes while it builds, also while it waits for another executor's build. When the harness starts, each blocked job is queued once more (`job_unblocked`), and one more lost lease blocks it again. A queued job is `cancelled` when its run closes, or when the harness starts and finds its run closed: it never runs |
+| Judge job | `queued`, `leased`, `done`, `failed`, `blocked`, `cancelled` | A job is `blocked` after three lease expiries or harness restarts. A lease lasts 15 minutes; the judge renews it as it measures, and every few minutes while it builds, also while it waits for another executor's build. A blocked job's attempt is `errored`, so its lane's round can end without it. When the harness starts, each blocked job is queued once more (`job_unblocked`), its attempt `queued` again, and one more lost lease blocks it again. A queued job is `cancelled` when its run closes, or when the harness starts and finds its run closed: it never runs |
 | Judge job kind | `baseline`, `validate`, `confirm`, `evaluate`, `calibrate` | Taken lowest priority number first: `baseline` 10, `validate` 40 (or 60 for a new champion), `confirm` 50, `evaluate` 100, `calibrate` 200. A hill climb's `baseline` measures its starting point, or a change in setup; until the run has its baseline, the judge takes no other job of it |
 | Goal check | `met`, `unmet`, `inconclusive`, `not_runnable` | One check of one goal. A threshold goal is `met` only when every case's interval is on the passing side |
 | Goal (on the champion) | `untouched`, `verified`, `unmet`, `attempted`, `not_runnable` | The champion's goals: not checked yet, met, unmet, unclear, cannot be checked. The dashboard shows each goal's latest check: "met", "unmet", "inconclusive", "not runnable" or "waiting on another goal" |

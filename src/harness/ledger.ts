@@ -909,14 +909,7 @@ export class Ledger {
 
   /** Re-queues jobs whose lease ran out, or blocks them after MAX_LEASE_EXPIRIES. */
   expireLeases(actor = "controller"): number[] {
-    return this.tx(() => {
-      const rows = this.all<Row>(
-        "select id, expiries, fence from job where state = 'leased' and lease_until < ?",
-        this.now(),
-      );
-      for (const r of rows) this.requeue(r, actor, "job_lease_expired");
-      return rows.map((r) => Number(r.id));
-    });
+    return this.requeue("lease_until < ?", this.now(), actor, "job_lease_expired");
   }
 
   /**
@@ -924,14 +917,7 @@ export class Ledger {
    * they are re-queued now (not after their lease runs out), each recorded once as crash_infra.
    */
   reclaimLeases(owner: string, actor = "controller"): number[] {
-    return this.tx(() => {
-      const rows = this.all<Row>(
-        "select id, expiries, fence from job where state = 'leased' and lease_owner = ?",
-        owner,
-      );
-      for (const r of rows) this.requeue(r, actor, "crash_infra");
-      return rows.map((r) => Number(r.id));
-    });
+    return this.requeue("lease_owner = ?", owner, actor, "crash_infra");
   }
 
   /**
@@ -961,17 +947,30 @@ export class Ledger {
     });
   }
 
-  private requeue(r: Row, actor: string, kind: string): void {
-    const expiries = Number(r.expiries) + 1;
-    const state = expiries >= MAX_LEASE_EXPIRIES ? "blocked" : "queued";
-    this.run(
-      "update job set state = ?, expiries = ?, lease_owner = null, lease_until = null, updated_at = ? where id = ?",
-      state,
-      expiries,
-      this.now(),
-      Number(r.id),
-    );
-    this.appendEvent(actor, kind, String(r.id), { fence: Number(r.fence), expiries, state });
+  /** The leased jobs `where` picks go back to the queue, or are blocked, each with a `kind` event. */
+  private requeue(where: string, arg: SQLInputValue, actor: string, kind: string): number[] {
+    return this.tx(() => {
+      const rows = this.all<Row>(
+        `select id, expiries, fence, attempt from job where state = 'leased' and ${where}`,
+        arg,
+      );
+      for (const r of rows) {
+        const expiries = Number(r.expiries) + 1;
+        const state = expiries >= MAX_LEASE_EXPIRIES ? "blocked" : "queued";
+        this.run(
+          "update job set state = ?, expiries = ?, lease_owner = null, lease_until = null, updated_at = ? where id = ?",
+          state,
+          expiries,
+          this.now(),
+          Number(r.id),
+        );
+        this.appendEvent(actor, kind, String(r.id), { fence: Number(r.fence), expiries, state });
+        // A blocked job's attempt ends, so its lane and round go on; a harness start queues it again.
+        if (state === "blocked" && r.attempt !== null)
+          this.setAttemptLifecycle(String(r.attempt), "errored", actor);
+      }
+      return rows.map((r) => Number(r.id));
+    });
   }
 
   // ---------------------------------------------------------------- measurements, receipts, verdicts

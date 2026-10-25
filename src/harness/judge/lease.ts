@@ -43,15 +43,16 @@ export async function whileLeased<T>(
 
 /**
  * At the harness's start, each job blocked by lost leases is queued once more, one lost lease
- * from blocked again, with a `job_unblocked` event: a lease lost to a judge that could not renew
- * it (an older harness, during a long build) gets its try on the new one, and a job that keeps
- * killing its judge is blocked again after one more try. Returns their ids.
+ * from blocked again, with a `job_unblocked` event, and its attempt, which ended when the job was
+ * blocked, waits for the judge again: a lease lost to a judge that could not renew it (an older
+ * harness, during a long build) gets its try on the new one, and a job that keeps killing its
+ * judge is blocked again after one more try. Returns their ids.
  */
 export function unblockAtStart(ledger: Ledger, actor: string): number[] {
   return ledger.tx(() => {
     const rows = ledger.db
-      .prepare("select id, expiries from job where state = 'blocked'")
-      .all() as { id: number; expiries: number }[];
+      .prepare("select id, expiries, attempt from job where state = 'blocked'")
+      .all() as { id: number; expiries: number; attempt: string | null }[];
     for (const r of rows) {
       ledger.db
         .prepare(
@@ -62,6 +63,7 @@ export function unblockAtStart(ledger: Ledger, actor: string): number[] {
         expiries: Number(r.expiries),
         reason: "queued again at the harness's start: one more lost lease blocks it again",
       });
+      if (r.attempt !== null) ledger.setAttemptLifecycle(r.attempt, "queued", actor);
     }
     return rows.map((r) => Number(r.id));
   });
