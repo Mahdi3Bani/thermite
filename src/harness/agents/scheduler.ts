@@ -63,7 +63,6 @@ import { routeOf } from "../usage.ts";
 import { violationsOf, violationsText } from "../v0.ts";
 import type { OnceKeeping } from "./cli-compaction.ts";
 import {
-  attemptSettled,
   Coordinator,
   type Directive,
   focusOf,
@@ -106,6 +105,7 @@ import {
   type ResearchPlanResult,
 } from "./research-planner.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
+import { lanesInRound, roundOver, waitsForJudge } from "./scheduler/rounds.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
 
@@ -1785,15 +1785,13 @@ export class Scheduler {
     );
 
     let started = false;
-    let complete = true;
     const keep = keepsWorking(this.ledger, id, contract);
     for (const a of epoch.assignments) {
       const trials = this.registry.trials(id, a.lane, epoch.n);
       const last = trials.at(-1);
-      const judged = keep || attemptSettled(this.ledger, last?.attempt ?? null);
-      if (trials.length < perEpoch || !trials.every((t) => t.ended) || !judged) complete = false;
       if (trials.length >= perEpoch || this.running.has(a.lane)) continue;
-      if (last && (!last.ended || !judged)) continue;
+      if (last?.ended === false || waitsForJudge(this.ledger, this.registry, id, a.lane, keep))
+        continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.openAttempts(id) >= contract.budget.max_open_attempts) continue;
@@ -1809,11 +1807,12 @@ export class Scheduler {
       this.startTrial(id, contract, epoch.n, a, k, perEpoch, got);
       started = true;
     }
-    // No time cap on a round unless one is given (tests): it ends when it is complete.
+    // Not waiting for other lanes' trials (goal 136); no time cap unless one is given (tests).
     const capped =
       this.o.epochCapMs !== undefined &&
       Date.now() - Date.parse(epoch.started_at) > this.o.epochCapMs;
-    if ((complete || capped) && !this.running.size)
+    const lanes = lanesInRound(this.ledger, this.registry, id, epoch, this.running, keep);
+    if (roundOver(lanes, perEpoch) || (capped && !this.running.size))
       this.registry.endEpoch(id, epoch.n, this.o.owner);
     return started;
   }
@@ -1872,11 +1871,8 @@ export class Scheduler {
       if (!epoch || epoch.ended_at || this.halted()) return false;
     }
     let started = false;
-    let complete = true;
     for (const a of epoch.assignments) {
       const trials = this.registry.trials(run, a.lane, epoch.n);
-      if (trials.length < contract.lanes.trials_per_epoch || this.running.has(a.lane))
-        complete = false;
       if (trials.length >= contract.lanes.trials_per_epoch || this.running.has(a.lane)) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
       if (this.o.workersOn && !this.o.workersOn()) continue;
@@ -1887,7 +1883,9 @@ export class Scheduler {
       this.startResearchTrial(run, contract, epoch.n, a, clock, got);
       started = true;
     }
-    if (complete && !this.running.size) this.registry.endEpoch(run, epoch.n, this.o.owner);
+    const lanes = lanesInRound(this.ledger, this.registry, run, epoch, this.running, true);
+    if (roundOver(lanes, contract.lanes.trials_per_epoch))
+      this.registry.endEpoch(run, epoch.n, this.o.owner);
     return started;
   }
 

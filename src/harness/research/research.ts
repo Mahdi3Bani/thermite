@@ -25,8 +25,9 @@ import {
   numbersIn,
   withoutNames,
 } from "./checks.ts";
-import { Fetcher, FetchRefused, htmlToText, registrableDomain } from "./fetcher.ts";
+import { Fetcher, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Papers } from "./paper.ts";
+import { Refusals } from "./refusals.ts";
 import { answerSections, checkLine, researchEnd } from "./review.ts";
 import { DRAFT_FINDING, KEPT_FINDING, noQuestion, repeatsWords } from "./worker-words.ts";
 
@@ -295,6 +296,7 @@ export class Research {
   private readonly ledger: Ledger;
   private readonly stateDir: string;
   private readonly fetchers = new Map<string, Fetcher>();
+  private readonly refusals: Refusals;
   private readonly allowPrivate: boolean;
   private readonly maxCorpusBytes: number;
   /** Told after each change to a run's research (the research folder follows it). */
@@ -310,6 +312,7 @@ export class Research {
     } = {},
   ) {
     this.ledger = ledger;
+    this.refusals = new Refusals(ledger);
     this.stateDir = stateDir;
     this.allowPrivate = opts.allowPrivate ?? false;
     // No cap on the corpus unless one is configured (the owner's direction, 2026-10-15).
@@ -395,6 +398,8 @@ export class Research {
     const key = archiveUrl(url) ?? url;
     const existing = this.get("select * from source where run = ? and url = ?", run, key);
     if (existing) return this.view(existing, "already archived");
+    const again = this.refusals.again(run, lane, url, key);
+    if (again) return again;
     const used = Number(
       this.get("select coalesce(sum(bytes), 0) as n from source where run = ?", run)?.n,
     );
@@ -405,15 +410,7 @@ export class Research {
     try {
       f = await this.fetcher(run).fetch(url);
     } catch (err) {
-      const reason =
-        err instanceof FetchRefused
-          ? err.message
-          : `fetch failed: ${err instanceof Error ? err.message : String(err)}`;
-      this.ledger.appendEvent(lane ?? "research", "fetch_refused", run, {
-        url: url.slice(0, 500),
-        reason,
-      });
-      return { refused: reason };
+      return this.refusals.refuse(run, lane, url, key, err);
     }
     const same = this.get("select * from source where run = ? and sha256 = ?", run, f.sha256);
     if (same) return this.view(same, "the same content is already archived under this id", f.links);
