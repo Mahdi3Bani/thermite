@@ -1,0 +1,59 @@
+---
+id: "141"
+title: "A waiting win the champion moved past: closed when a champion has it, an approval when none does"
+status: PROPOSED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 141 · A waiting win the champion moved past: closed when a champion has it, an approval when none does
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A confirmed win can wait for the owner: the run asks the owner about each change, or the auditor sends it to the owner. While it waits, the run goes on, and other changes can become the champion. On the lab, 2026-10-25, a hill climb's win was confirmed against champion #2 and waited for the owner for more than eight hours. Meanwhile champion #3 was promoted, written on that win's own commit, and then champion #4, which did the same thing in other code. Under **Needs you**, the card still asked "Make this change the new champion?", with **Make it the champion**.
+
+That button no longer did what it said. An approval of a win measured against an older champion does not promote it: the judge measures it again against the current champion. A change that loses there, but was written on an older champion, is measured again on that champion, and if it helped there, the judge queues a port of it onto the current champion at the top of the queue. When a champion already has the change, all of that is spent for nothing: two judge measurements and a lane's trial, to find that the change is in the code already.
+
+1. **A champion has it: closed by itself.** Each time a run's champion changes, every change of that run that waits for the owner or for an audit is checked against each champion promoted since its verdict. The change is in a champion when its commit is in that champion's history, or when its diff is already in that champion's code (the diff applies in reverse with no conflict). The harness then closes it: it no longer waits for anyone, its lifecycle is `declined`, and an event `promotion_superseded` says which champion has it and how it was found. It leaves **Needs you**, and its page says "Closed: its change is in champion #3". An approval or an audit decision for a closed change is refused in words.
+2. **No champion has it: an approval, not "Make it the champion".** When the champion moved past a waiting change that no champion has, the card asks whether to test it against the current champion, and its button reads **Approve**. Its words say what follows. The judge measures it against champion #N. If it wins, it becomes champion #N+1. If it loses, but helped on the champion it was written on, it is ported onto the current one, as a task at the top of the queue. **Reject it** stays as it is. The same goes for an audit that waits for the owner.
+3. **The record.** The check runs in the harness, in code, never in an agent. The run's history shows each closed change, the champion that has it, and how that was found.
+
+## Why
+
+The owner, 2026-10-25: "if its change is included in another champion, it should figure that out and go ahead and auto reject" and "if another change becomes a champion and its not including this one, then it should be an approval button not 'make it a champion'".
+
+Hands-off by default (goal 079): the owner is asked only what code cannot decide. Whether a champion's history or code has a change, code can decide.
+
+## Constraints
+
+- **Agents never judge.** The check is git's (ancestry, and a reverse apply on the champion's tree), in the harness. An auditor or a teacher can't close a change.
+- **Nothing promoted is undone.** The check only closes changes that wait. A champion keeps what it has.
+- **A UI decision by mockup.** The card for rule 2, its question, button and words, is shown to the owner as a mockup and approved before merge.
+
+## Done when
+
+- [ ] Rule 1, with a test: a waiting change whose commit a later champion was written on is closed when that champion is promoted, and so is one whose diff a later champion already has. A change no champion has stays waiting. An approval of a closed change is refused in words.
+- [ ] Rule 2, with a mockup the owner approved, and a test of the card's question, button and words, before and after the champion moves.
+- [ ] Pages: Decide what waits for you, the events reference (`promotion_superseded`), and the commands' answers.
+- [ ] On the lab, a waiting win that a later champion has is closed by itself.
+
+## Decisions
+
+- 2026-10-25, owner: a change a champion has is closed by itself; a change no champion has is asked as an approval.
+
+## Open questions
+
+- A later champion can do the same thing in other code: it was written on an older champion, so neither its history nor its code has the change's diff. Code can't tell that it is the same change, so rule 2 applies. Should the card say what the auditor or the teachers think of it?
+
+## Progress
+
+- 2026-10-25: Goal written at the owner's request, after a win waited for the owner while two later champions had its change.
+
+---
+
+Run with `/goal Complete docs/plan/goals/141-waiting-win-after-champion-moved.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
