@@ -1,7 +1,7 @@
 ---
 id: "143"
 title: "A stuck or looping trial shows itself, and an agent's refused request says why"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["136", "140"]
@@ -11,7 +11,7 @@ updated: 2026-10-25
 
 # 143 · A stuck or looping trial shows itself, and an agent's refused request says why
 
-**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -82,7 +82,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
   - A call with the same arguments and a changed answer gets its full answer.
   - After a compaction, the full answer comes back.
   - The streak gives one `trial_repeating` event.
-- [ ] Item 3, with tests: a short quote, a missing field and a wrong type each get an answer that names the field and the problem, through the API, `thermite-trial` and Pi's tool. The tool texts give the limits.
+- [x] Item 3, with tests: a short quote, a missing field and a wrong type each get an answer that names the field and the problem, through the API, `thermite-trial` and Pi's tool. The tool texts give the limits.
 - [ ] The owner approved the mockup of the **At work** row.
 - [ ] Pages:
   - Steer a run (At work, Stop this trial…)
@@ -100,6 +100,8 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 
 ## Decisions
 
+- 2026-10-25, owner: work on this goal starts now (the owner ran it as a task).
+
 ## Open questions
 
 - What held the lab's quiet trial?
@@ -111,6 +113,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 ## Progress
 
 - 2026-10-25 19:40 UTC: Goal written at the owner's request, from a research run on the lab. One lane was quiet for more than four hours. The other lane repeated tool calls for about 22 minutes. A worker got only "invalid request".
+- 2026-10-25 20:00 UTC: Item 3 built. The harness API names each refused field and the problem, from the body sent (`src/harness/api/refusal.ts`), at most 5 problems; its log has `request refused`. A claim's limits have one home, `CLAIM_LIMITS`, which the schema and `add_claim`'s text and usage read; `research help` gives them. Tests: `src/harness/api/refusal.test.ts`, through the API, `thermite-trial` and Pi's tool. Pages: Limits and pacing, Command line, Troubleshoot. Next: item 2. Still open for item 3: on the lab, whether the worker's "intermittent" refusals had another cause.
 
 ---
 

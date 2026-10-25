@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { apiCall } from "./api-call.ts";
-import { RESEARCH_TOOLS, researchOutput, researchTool } from "./research-tools.ts";
+import {
+  CLAIM_LIMITS_WORDS,
+  RESEARCH_TOOLS,
+  researchOutput,
+  researchTool,
+} from "./research-tools.ts";
 
 /**
  * `thermite-trial`: Thermite's tools for an agent that works through its own shell (the OpenCode
@@ -132,7 +137,8 @@ export function researchRequest(
 
 /** Every research command, with its use. */
 export function researchHelp(): string {
-  return `research tools:\n${RESEARCH_TOOLS.map((t) => `  ${t.usage.split("\n")[0]}`).join("\n")}`;
+  const list = RESEARCH_TOOLS.map((t) => `  ${t.usage.split("\n")[0]}`).join("\n");
+  return `research tools:\n${list}\n\nadd_claim: ${CLAIM_LIMITS_WORDS}`;
 }
 
 export async function trialCli(

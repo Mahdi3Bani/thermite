@@ -4,6 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { log } from "../common/env.ts";
 import { laneLimits } from "../core/contract.ts";
 import { McpConnection, McpUnavailable } from "../core/mcp.ts";
 import { AdvisorAgent, CallUsage, UsageHarness } from "../core/usage.ts";
@@ -11,6 +12,7 @@ import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { USAGE_BATCH } from "./agents/usage-meter.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
+import { refusalWords } from "./api/refusal.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { compactionOf, KEPT_MAX } from "./compactions.ts";
 import { SEARCH_MAX } from "./knowledge.ts";
@@ -125,9 +127,14 @@ export function createHarnessApi(
     }
   };
 
-  app.onError((err, c) => {
+  // A request the schema refused says which field and why (goal 143), from the body it sent.
+  app.onError(async (err, c) => {
     const status = statusFor(err);
-    return c.json({ error: err instanceof z.ZodError ? "invalid request" : err.message }, status);
+    if (!(err instanceof z.ZodError)) return c.json({ error: err.message }, status);
+    const body = await c.req.json().catch(() => undefined);
+    const why = refusalWords(err, body);
+    log("harness", "request refused", { method: c.req.method, path: c.req.path, why });
+    return c.json({ error: `invalid request: ${why}` }, status);
   });
 
   app.get("/v1/health", (c) => c.json({ ok: true, rig: service.rig }));

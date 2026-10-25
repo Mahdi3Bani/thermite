@@ -13,7 +13,13 @@ import {
   LIVE_HYPOTHESES,
   questionLabel,
 } from "../../core/research-check.ts";
-import { CODE_RESEARCH_TOOLS, moreText, READ_MAX, researchTool } from "../agents/research-tools.ts";
+import {
+  CLAIM_LIMITS,
+  CODE_RESEARCH_TOOLS,
+  moreText,
+  READ_MAX,
+  researchTool,
+} from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
 import { blockedSpans } from "./blocked.ts";
@@ -122,12 +128,18 @@ const EVENT_PROBLEMS = 20;
 /** A claim's identity for deduplication: its words, case and punctuation folded. */
 const claimKey = foldText;
 
+/** A claim as a worker sends it, within the limits add_claim's text gives (CLAIM_LIMITS). */
 export const ClaimInput = z.object({
-  text: z.string().min(5).max(4000),
+  text: z.string().min(CLAIM_LIMITS.text.min).max(CLAIM_LIMITS.text.max),
   quotes: z
-    .array(z.object({ source: z.string().min(1), quote: z.string().min(20).max(2000) }))
-    .min(1)
-    .max(10),
+    .array(
+      z.object({
+        source: z.string().min(1),
+        quote: z.string().min(CLAIM_LIMITS.quote.min).max(CLAIM_LIMITS.quote.max),
+      }),
+    )
+    .min(CLAIM_LIMITS.quotes.min)
+    .max(CLAIM_LIMITS.quotes.max),
   question: z.number().int().min(0).optional(),
   confidence: z.number().min(0).max(1).optional(),
 });

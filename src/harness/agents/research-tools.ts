@@ -88,6 +88,21 @@ export interface ResearchTool {
 export const SOURCE_PARAM =
   "The archived source's id, s-…, as fetch returned it. The page's URL is taken too, when that page was archived.";
 
+/**
+ * A claim's limits, in characters and quotes: the research service's schema checks them
+ * (ClaimInput), and add_claim's text gives them (goal 143).
+ */
+export const CLAIM_LIMITS = {
+  text: { min: 5, max: 4000 },
+  quotes: { min: 1, max: 10 },
+  quote: { min: 20, max: 2000 },
+} as const;
+
+const L = CLAIM_LIMITS;
+const n = (v: number) => v.toLocaleString("en-US");
+/** The limits in words, for add_claim's text. */
+export const CLAIM_LIMITS_WORDS = `The text has ${n(L.text.min)} to ${n(L.text.max)} characters. A claim has ${L.quotes.min} to ${L.quotes.max} quotes, and each quote has ${n(L.quote.min)} to ${n(L.quote.max)} characters: give a short phrase with the words around it.`;
+
 /** The most characters a research tool's answer gives the agent (Pi's tools and the commands). */
 export const OUTPUT_MAX = 14_000;
 
@@ -138,13 +153,12 @@ export const RESEARCH_TOOLS: ResearchTool[] = [
   {
     name: "add_claim",
     op: "claim",
-    description:
-      "Record a claim with exact quotes from archived sources. Unverified quotes leave it a draft.",
+    description: `Record a claim with exact quotes from archived sources. Unverified quotes leave it a draft. ${CLAIM_LIMITS_WORDS}`,
     args: { text: str("text"), question: num("question"), confidence: num("confidence") },
     usage: `thermite-trial research add_claim - <<'EOF'
 {"text": "the claim", "quotes": [{"source": "SOURCE", "quote": "exact words from it"}], "question": 0, "confidence": 0.8}
 EOF
-(SOURCE is the archived source's id, s-…, as fetch returned it; the page's URL is taken too, when that page was archived. "question" is the index of the campaign question it answers, from 0: give it there, not in "text", and put no heading or label in "text".)`,
+(SOURCE is the archived source's id, s-…, as fetch returned it; the page's URL is taken too, when that page was archived. "question" is the index of the campaign question it answers, from 0: give it there, not in "text", and put no heading or label in "text". ${CLAIM_LIMITS_WORDS})`,
   },
   {
     name: "add_note",
