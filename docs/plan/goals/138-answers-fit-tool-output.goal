@@ -31,15 +31,17 @@ The owner, 2026-10-24 (goal 128): gaps found while operating the lab become goal
 
 ## Done when
 
-- [ ] Item 1, with a test: a run like the lab's (ten queue entries of 4,000 characters, attempts with long hypotheses and declared flaws) gives a default answer under the budget, says so in `cut`, and `list` gives the entries whole.
-- [ ] Item 2, with a test.
-- [ ] The MCP and REST reference pages say the budget and `steps`.
+- [x] Item 1, with a test: a run like the lab's (ten queue entries of 4,000 characters, attempts with long hypotheses and declared flaws) gives a default answer under the budget, says so in `cut`, and `list` gives the entries whole.
+- [x] Item 2, with a test.
+- [x] The MCP and REST reference pages say the budget and `steps`.
 
 ## Decisions
 
 ## Open questions
 
 ## Progress
+
+- 2026-10-25 08:27 UTC: Built (branch `feat/137-audit-sees-checks`). `DETAIL_CHARS` and `clipTexts` in `src/control/run-lists.ts`: the default answer is measured as MCP sends it, and the texts in the lists' entries (attempts included) are cut in steps until it fits, with a line in `cut`. `rig_setup`'s answer moved to `src/control/rig-setup-view.ts` (`rigSetupView`, `SETUP_STEPS`), which gives the newest steps and `steps_total`. Tests: `run-lists.test.ts`, `rig-setup-view.test.ts`. Pages: MCP tools (`get_run`, `rig_setup`), REST API, CHANGELOG. To verify on the lab: the same `get_run` call reads in full.
 
 ---
 

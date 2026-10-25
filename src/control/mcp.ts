@@ -79,6 +79,7 @@ import {
   rigSettingsRead,
   setRigSettings,
 } from "./rig-settings.ts";
+import { rigSetupView, SETUP_STEPS } from "./rig-setup-view.ts";
 import { RUN_DETAIL_INPUT, RUN_DETAIL_WORDS, type RunDetailArgs, runDetail } from "./run-lists.ts";
 import { POD_LOG_MAX_TAIL, POD_LOG_TAIL } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -640,54 +641,20 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       {
         title: "How a rig was set up",
         description:
-          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, new GPUs, CPUs or memory, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). On a cluster, also its GPUs, the judge's share, its CPUs and memory, and the change of size it drains for. Use it after add_cluster_rig, update_rig_images, set_cluster_rig_resources or runpod_rig. Holds no keys or tokens.",
-        inputSchema: { rig: z.string().min(1) },
+          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and the newest steps of its setup and management (steps, 20 by default, up to 500; steps_total counts them all), oldest first (applied, pods running, first report, images updated, new GPUs, CPUs or memory, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). On a cluster, also its GPUs, the judge's share, its CPUs and memory, and the change of size it drains for. Use it after add_cluster_rig, update_rig_images, set_cluster_rig_resources or runpod_rig. Holds no keys or tokens.",
+        inputSchema: {
+          rig: z.string().min(1),
+          steps: z.number().int().min(1).max(500).default(SETUP_STEPS),
+        },
       },
-      audited("rig_setup", (a: { rig: string }) => {
-        const cluster = store.clusterRig(a.rig);
-        const machine = store.machineRig(a.rig);
-        const runpod = opts.runpodRigs?.view(a.rig);
-        if (!cluster && !machine && !runpod) throw new Error(`control did not set ${a.rig} up`);
-        return {
-          rig: a.rig,
-          ...(runpod
-            ? {
-                on: "runpod",
-                cloud: runpod.cloud,
-                pod: runpod.pod,
-                status: runpod.active ? runpod.status : "TERMINATED",
-                op: runpod.op,
-              }
-            : {}),
-          ...(cluster
-            ? {
-                on: "cluster",
-                cluster: cluster.cluster,
-                namespace: cluster.namespace,
-                placement: cluster.placement,
-                status: cluster.status,
-                images: cluster.spec.images,
-                gpus: cluster.spec.gpus,
-                judge_gpus: cluster.spec.judgeGpus ?? null,
-                cpus: cluster.spec.resources?.cpus ?? null,
-                memory_gib: cluster.spec.resources?.memoryGi ?? null,
-                // A change to its GPUs, CPUs or memory that waits for its drain.
-                pending: cluster.pending
-                  ? {
-                      gpus: cluster.pending.gpus,
-                      judge_gpus: cluster.pending.judgeGpus ?? null,
-                      cpus: cluster.pending.resources?.cpus ?? null,
-                      memory_gib: cluster.pending.resources?.memoryGi ?? null,
-                    }
-                  : null,
-              }
-            : {}),
-          ...(machine ? { on: "machine", machine: machine.machine, status: machine.status } : {}),
-          // A failed step's detail can name the cluster's API server or a host: owner and operator only.
-          steps: store
-            .rigSetupEvents(a.rig)
-            .map((x) => (role === "owner" || role === "operator" ? x : { ...x, detail: null })),
-        };
+      audited("rig_setup", (a: { rig: string; steps: number }) => {
+        return rigSetupView(
+          store,
+          opts.runpodRigs,
+          a.rig,
+          a.steps,
+          role === "owner" || role === "operator",
+        );
       }),
     );
 

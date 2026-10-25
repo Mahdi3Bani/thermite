@@ -13,6 +13,13 @@ import { z } from "zod";
 export const RUN_LIST_LIMIT = 10;
 /** Characters of the research report given by default. */
 export const REPORT_CHARS = 4000;
+/**
+ * Characters of the default answer as MCP sends it (indented JSON), well inside an agent's tool
+ * output (goal 138): Claude Code refused a 75,689-character answer. Above it, the texts in the
+ * lists' entries are cut, shorter each step, until it fits.
+ */
+export const DETAIL_CHARS = 40_000;
+const TEXT_STEPS = [2000, 1000, 500, 250, 120];
 
 /** The arguments, as MCP's schema; REST reads the same from its query. */
 export const RUN_DETAIL_INPUT = {
@@ -37,6 +44,19 @@ export interface RunDetailArgs {
 }
 
 const count = (n: number) => n.toLocaleString("en-US");
+
+/** Every text in `v` cut to `max` characters; `cut` counts the texts it cut. */
+function clipTexts(v: unknown, max: number, cut: { n: number }): unknown {
+  if (typeof v === "string") {
+    if (v.length <= max) return v;
+    cut.n++;
+    return `${v.slice(0, max)}…`;
+  }
+  if (Array.isArray(v)) return v.map((x) => clipTexts(x, max, cut));
+  if (v && typeof v === "object")
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clipTexts(x, max, cut)]));
+  return v;
+}
 
 /**
  * A run's view cut to a readable size, or one of its lists. Attempts, the newest first, are cut
@@ -83,6 +103,22 @@ export function runDetail(
     cut.push(
       `research.report: its first ${count(REPORT_CHARS)} of ${count(research.report.length)} characters (full_report: true gives it whole)`,
     );
+  }
+  const keys = ["attempts", ...lists];
+  const kept = keys.map((k) => out[k]);
+  for (const max of TEXT_STEPS) {
+    if (JSON.stringify(out, null, 2).length <= DETAIL_CHARS) break;
+    const clipped = { n: 0 };
+    keys.forEach((k, i) => {
+      out[k] = clipTexts(kept[i], max, clipped);
+    });
+    if (
+      clipped.n &&
+      (max === TEXT_STEPS.at(-1) || JSON.stringify(out, null, 2).length <= DETAIL_CHARS)
+    )
+      cut.push(
+        `texts in lists: ${count(clipped.n)} cut to their first ${count(max)} characters, to keep the answer under ${count(DETAIL_CHARS)} (list with a list's name gives its entries whole)`,
+      );
   }
   if (cut.length) out.cut = cut;
   return out;
