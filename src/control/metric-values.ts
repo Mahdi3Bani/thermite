@@ -63,13 +63,18 @@ export function valuesByCase(v: MetricValues, unit?: string | undefined): string
 }
 
 /**
- * The champion's measured value against the starting point's, on the run's own rig: the starting
- * point's from the run's baseline (goal 115), the champion's from its confirming verdict's values
- * (its own side). Each null when the run has none; null when it has neither.
+ * The champion's value against the starting point's, on the run's own rig: the starting point's
+ * from the run's baseline (goal 115), the champion's from its confirming verdict's values (its own
+ * side). A champion whose verdict has none (judged before goal 142, or by an older harness) is
+ * estimated from the starting point's value and its gain over it, and `estimated` says so; never
+ * the starting point's value in its place. Each null when not known; null when neither is.
  */
-export function championValues(
-  r: Pick<RunView, "baseline" | "champion" | "attempts">,
-): { start: number | null; champion: number | null; unit: string | null } | null {
+export function championValues(r: Pick<RunView, "baseline" | "champion" | "attempts">): {
+  start: number | null;
+  champion: number | null;
+  unit: string | null;
+  estimated: boolean;
+} | null {
   const metric = r.baseline?.primary?.metric;
   const starts = (r.baseline?.cells ?? []).flatMap((c) =>
     c.metrics.filter((m) => m.metric === metric).map((m) => m.median),
@@ -77,14 +82,17 @@ export function championValues(
   const step = r.champion.filter((c) => !c.reopened).at(-1);
   const values = step?.attempt ? r.attempts.find((a) => a.id === step.attempt)?.values : null;
   const start = starts.length ? mean(starts) : null;
+  const estimated = !values && Boolean(step?.attempt) && start !== null;
   const champion = values
     ? mean(values.cells.map((c) => c.candidate))
-    : step?.attempt
-      ? null
-      : start;
+    : !step?.attempt
+      ? start
+      : estimated
+        ? (start as number) * (step?.cumulative ?? 1)
+        : null;
   if (start === null && champion === null) return null;
   const unit = metric ? (r.baseline?.units[metric] ?? null) : null;
-  return { start, champion, unit };
+  return { start, champion, unit, estimated };
 }
 
 /** championValues in words: `412 → 614 tok/s`, or only the side known; empty with neither. */
@@ -96,7 +104,7 @@ export function championWords(r: Pick<RunView, "baseline" | "champion" | "attemp
 export function pairWords(v: ReturnType<typeof championValues>): string {
   if (!v) return "";
   const u = v.unit ? ` ${v.unit}` : "";
-  if (v.start !== null && v.champion !== null)
-    return `${figure(v.start)} → ${figure(v.champion)}${u}`;
-  return `${figure((v.champion ?? v.start) as number)}${u}`;
+  const champion = v.champion === null ? null : `${v.estimated ? "≈" : ""}${figure(v.champion)}`;
+  if (v.start !== null && champion !== null) return `${figure(v.start)} → ${champion}${u}`;
+  return `${champion ?? figure(v.start as number)}${u}`;
 }

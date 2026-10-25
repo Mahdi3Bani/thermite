@@ -1,4 +1,5 @@
 import {
+  championValues,
   championWords,
   figure,
   type MetricValues,
@@ -7,7 +8,7 @@ import {
   valuesWords,
 } from "../metric-values.ts";
 import type { RunView } from "../views.ts";
-import { esc } from "./components.ts";
+import { esc, infoLabel } from "./components.ts";
 import { signed } from "./words.ts";
 
 /**
@@ -73,4 +74,27 @@ export function bestGainWords(
 ) {
   const w = best ? championWords(best) : "";
   return w ? `best gain over its baseline: ${w}` : "best gain over its baseline";
+}
+
+const CHAMPION_TIP =
+  "The run's best change so far. The big number: its main metric, as the judge measured it when it confirmed the change (the cases' geometric mean). Under it: its gain over the starting point, measured on this rig, and the starting point's value. ≈: an estimate from the starting point's value and the gain, for a champion whose verdict did not record its values.";
+
+/**
+ * A hill climb's champion at the top of its run's page, left of Cost (goal 142): its main metric's
+ * value and its gain over the starting point. Empty for another mode, or with nothing to show.
+ */
+export function championCard(r: Pick<RunView, "mode" | "baseline" | "champion" | "attempts">) {
+  const step = r.champion.filter((c) => !c.reopened).at(-1);
+  if (r.mode !== "hill_climb" || !step) return "";
+  const v = championValues(r);
+  const u = v?.unit ? `<span class="u"> ${esc(v.unit)}</span>` : "";
+  const big =
+    v?.champion != null
+      ? `${v.estimated ? "≈" : ""}${esc(figure(v.champion))}${u}`
+      : `${esc(signed(step.cumulative - 1))}`;
+  const start = v?.start != null ? `${esc(figure(v.start))}${v.unit ? ` ${esc(v.unit)}` : ""}` : "";
+  const sub = !step.attempt
+    ? "the starting point: no change promoted yet"
+    : `<span class="chip ok"><b>${esc(signed(step.cumulative - 1))}</b></span> over the start${start ? `, ${start}` : ""}`;
+  return `<div class="fact uf-champ"><div class="k">${infoLabel(`Champion #${step.seq}`, CHAMPION_TIP)}</div><div class="v">${big}</div><div class="s">${sub}</div></div>`;
 }

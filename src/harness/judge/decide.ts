@@ -68,8 +68,9 @@ export function metricValues(
     const m = Math.floor(v.length / 2);
     return v.length % 2 ? (v[m] as number) : ((v[m - 1] as number) + (v[m] as number)) / 2;
   };
+  // A block holds its values by metric, then by case, as the judge fills it (goal 142).
   const side = (cell: string, k: "candidate" | "reference") =>
-    blocks.map((b) => b[k][cell]?.[metric]).filter((x): x is number => typeof x === "number");
+    blocks.map((b) => b[k][metric]?.[cell]).filter((x): x is number => typeof x === "number");
   return {
     metric,
     cells: cells.flatMap((cell) => {

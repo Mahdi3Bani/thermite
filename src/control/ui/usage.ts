@@ -302,6 +302,8 @@ export interface RunUsage {
   pod?: { perHour: number | null } | undefined;
   /** For the teachers' lines: "teacher 1" or "teacher 2", from the rig's settings; "" when not known. */
   teacher: (provider: string | null, model: string) => string;
+  /** A hill climb's champion card, left of Cost (goal 142); empty for another mode. */
+  champion?: string | undefined;
 }
 
 /** Nothing to show yet: no record, and no pod spend. */
@@ -328,7 +330,8 @@ function tokensCard(t: UsageSums, unrepBy: string[], speedTip: string): string {
 
 /**
  * The top of a run's page, above its tabs (the owner, 2026-10-21: keep it small): one line with
- * its trials, rounds, time and time in calls, then two cards, Cost and the tokens. The calls and
+ * its trials, rounds, time and time in calls, then two cards, Cost and the tokens; a hill climb's
+ * champion card comes first (goal 142). The calls and
  * the table by agent and model are on its Stats tab.
  */
 export function runUsageTop(u: RunUsage): string {
@@ -350,10 +353,12 @@ export function runUsageTop(u: RunUsage): string {
   ].filter(Boolean);
   const tip = `${TIP.clock}${t.call_ms !== null && t.not_reported.time ? ` ${int(t.not_reported.time)} records do not report their time: not in the time in calls.` : ""}`;
   const line = `<div class="u-clock">${icon.clock}<span>${parts.join(" · ")}</span>${ii(tip)}</div>`;
-  if (none) return `<div class="block" id="model-use">${line}</div>`;
+  const champ = u.champion ?? "";
+  if (none)
+    return `<div class="block" id="model-use">${line}${champ ? `<div class="u-two u-three">${champ}</div>` : ""}</div>`;
   const guessBy = harnessesWhere(lines, (s) => s.cost.priced_as_not_cached > 0);
   return `<div class="block" id="model-use">${line}
-<div class="u-two"><div class="fact uf-cost"><div class="k">${infoLabel("Cost", costTip("the pod's spend while this run was at work"))}</div>${costParts(t.cost, guessBy)}</div>
+<div class="u-two${champ ? " u-three" : ""}">${champ}<div class="fact uf-cost"><div class="k">${infoLabel("Cost", costTip("the pod's spend while this run was at work"))}</div>${costParts(t.cost, guessBy)}</div>
 ${tokensCard(
   t,
   harnessesWhere(lines, (s) => unreported(s) > 0),

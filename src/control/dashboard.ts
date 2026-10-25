@@ -285,7 +285,7 @@ import {
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
 import { EXPORT_WHERE, exportForm, exportMenu, exportsBody, exportsHref } from "./ui/exports.ts";
 import { FOLLOW_JS } from "./ui/follow-client.ts";
-import { bestGainWords, gainChip, startWords, valuesPairWords } from "./ui/gains.ts";
+import { bestGainWords, championCard, gainChip, startWords, valuesPairWords } from "./ui/gains.ts";
 import { type ChecksSource, howChecked, howCheckedDetails } from "./ui/goal-checks.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
@@ -773,8 +773,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       return undefined;
     const roles = store.roleModels(u.id);
     const launched = store.runpodRig(u.id);
-    const perHour = (launched?.state as { price_per_hr?: unknown } | null | undefined)
-      ?.price_per_hr;
+    const perHour = (launched?.state as { price_per_hr?: unknown } | null)?.price_per_hr;
     // The run's time: from its start to now, or to its last event once it is finished.
     const start = Date.parse(i.created_at ?? "");
     const end = i.status === "closed" ? Date.parse(i.timeline.at(-1)?.at ?? "") : now;
@@ -786,6 +785,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       rounds: i.agents.epochs,
       wallMs: Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null,
       rig: u.id,
+      champion: championCard(i),
       pod: launched
         ? { perHour: typeof perHour === "number" && perHour > 0 ? perHour : null }
         : undefined,

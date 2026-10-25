@@ -1,0 +1,53 @@
+---
+id: "142"
+title: "A hill climb's champion value: measured right, and at the top of its run's page"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 142 · A hill climb's champion value: measured right, and at the top of its run's page
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Goal 133 put the main metric's real values beside each gain: `7.73 → 14.5 tok/s`, not only `+88%`. On the lab, 2026-10-25, a hill climb at +88.0% over its start had a chart labelled `+87.97% · 7.73 tok/s`. That is the starting point's value, beside the champion's gain.
+
+The cause is in the judge. A measurement block holds its values by metric, then by case: `candidate[metric][case]`, as the judge fills it and as the gain reads it. `metricValues` (`src/harness/judge/decide.ts`) read them by case, then by metric, so it found none. Every verdict since goal 133 recorded `values` with no case. Goal 133's test built its blocks the same wrong way, so it passed. With no champion value, the chart's label gave the starting point's value alone.
+
+1. **The judge records the values.** `metricValues` reads a block as the judge fills it. Its test builds blocks as the judge does, and checks that the gain reads the same blocks.
+2. **A champion with no recorded values.** For a champion judged before the fix, or by an older harness, the value is estimated from the starting point's value and the champion's gain over it. It is marked as an estimate: `≈14.5 tok/s`. A page never gives the starting point's value as the champion's.
+3. **On top of the run's page.** A hill climb's page has a card left of **Cost**: the champion's value of the main metric, with its unit, and its gain over the starting point, with the starting point's value. The owner, 2026-10-25: "I'd like to see it up here … to the left of cost … It should show the latest metric # and % gain." The card is shown as a mockup and approved before merge.
+
+## Why
+
+The owner reads a run from the top of its page. The number that says how far the run got belongs there, and must be right.
+
+## Constraints
+
+- **Only what was measured, or said to be an estimate.** A measured value comes from the champion's confirming verdict. An estimate says so.
+- **Files over 800 lines don't grow.**
+
+## Done when
+
+- [ ] Item 1, with its test.
+- [ ] Item 2, with a test: the estimate, its mark, and the chart's label.
+- [ ] Item 3, with a mockup the owner approved, and a test of the card.
+- [ ] Pages: the run's page in the dashboard reference, and the changelog.
+- [ ] On the lab: the card and the chart give the champion's value; a verdict after the harness's roll has its values.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+- 2026-10-25 15:47 UTC: Goal written from the owner's report. The cause was found in `metricValues`, which read the blocks with metric and case swapped.
+
+---
+
+Run with `/goal Complete docs/plan/goals/142-champion-value-on-run-page.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

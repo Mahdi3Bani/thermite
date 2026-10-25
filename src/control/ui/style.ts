@@ -1118,7 +1118,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 /* A run's top (the owner, 2026-10-21: keep it small): one line, then Cost and the tokens. */
 .u-clock { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 8px; font-size: 13px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .u-clock > .icon { width: 14px; height: 14px; flex: none; }
-.u-two { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
+.u-two { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; } .u-two.u-three { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 3fr); }
 .u-two .fact, .u-calls.fact { padding: 10px 12px; min-width: 0; }
 .u-two .fact .v, .u-calls .v { font-size: 22px; letter-spacing: -.01em; }
 .u-two .fact .v .u { font-size: 12px; font-weight: 500; color: var(--muted-foreground); letter-spacing: 0; }
@@ -1139,7 +1139,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 700px) {
   .ufacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ufacts .uf-wide { grid-column: 1 / -1; }
-  .u-two, .u-calls { grid-template-columns: minmax(0, 1fr); }
+  .u-two, .u-two.u-three, .u-calls { grid-template-columns: minmax(0, 1fr); }
   .utok { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .utok > :first-child { grid-column: 1 / -1; }
   .utok > div + div { border-left: 0; padding-left: 0; }

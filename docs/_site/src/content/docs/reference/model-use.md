@@ -8,7 +8,7 @@ sidebar:
 
 The dashboard shows what the agents' model calls used and cost in four places:
 
-- **A run's page**: at the top, above its tabs, so on every tab, one line and two cards of the run's [model use](glossary.md); its **Stats** tab has the calls and the table by agent and model.
+- **A run's page**: at the top, above its tabs, so on every tab, one line and two cards of the run's [model use](glossary.md), after a hill climb's champion card; its **Stats** tab has the calls and the table by agent and model.
 - **A campaign's page**, in its sidebar: its model use, summed over all its runs on every rig, with each run.
 - **Metrics**, in the main navigation after **Rigs** (address `/ui/metrics`): the whole system's, by model and by campaign, for today, the last 7 days or all.
 - **Settings › Providers**, under the providers: **Model prices**, each model's price, which the cost uses.
@@ -42,16 +42,17 @@ A cost with an **i** before it leaves something out or adds something. Its **i**
 
 ## A run's page
 
-At the top of the run's page, above its tabs, so on every tab, are one line and two cards. A run with no agents and no pod spend on RunPod, such as a try of a kit, has neither, and no **Stats** tab.
+At the top of the run's page, above its tabs, so on every tab, are one line and two cards. A hill climb has a third card first, its champion. A run with no agents and no pod spend on RunPod, such as a try of a kit, has none of them, and no **Stats** tab.
 
 The line counts the run's trials and rounds, then gives its time and its time in calls: `48 trials · 16 rounds · 30 h 0 m · 6 h 34 m in calls`.
 
 - The run's time is from its start to now, or to its end once it is finished. A paused run's time goes on.
 - The time in calls adds all its calls together, from the request to the last token, so calls at the same time each count. Its **i** says how many records do not report their time, which are not in it. Where no record reports one, the line says `time in calls not reported`.
-- A run that has made no model call yet ends the line with `no model call yet`, and has no cards.
+- A run that has made no model call yet ends the line with `no model call yet`, and has no cards but a hill climb's champion.
 
 Under the line:
 
+- **Champion #N**, on a hill climb: the champion's value of the main metric, with its unit, as the judge measured it when it confirmed the change (the cases' geometric mean), such as `14.6 tok/s`. Under it, its gain over the starting point, measured on this rig, and the starting point's value: `+88.0% over the start, 7.73 tok/s`. A champion whose verdict did not record its values (one judged by an older harness) shows an estimate from the starting point's value and the gain, marked `≈`: `≈14.5 tok/s`. Before any change is promoted, it shows the starting point's value and `the starting point: no change promoted yet`.
 - **Cost**, as on Metrics, with the pod's spend while this run was at work on a RunPod rig.
 - One card with **Tokens in** (and its split), **Tokens out** and **Output speed**, as on Metrics.
 

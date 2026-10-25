@@ -221,7 +221,7 @@ Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest fi
 
 > Per campaign: each run's champion and its gain over its own baseline (measured on its own rig), and which other rigs' judges cross-verified it.
 
-No inputs. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, verified_by, values}]}`. `values` is `{start, champion, unit}`: the main metric's value at the starting point (from the run's baseline) and the champion's (from its confirming verdict), each null when the run has none, and null when it has neither.
+No inputs. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, verified_by, values}]}`. `values` is `{start, champion, unit, estimated}`: the main metric's value at the starting point (from the run's baseline) and the champion's (from its confirming verdict), each null when the run has none, and null when it has neither. When the champion's verdict has no values (judged by an older harness), `champion` is estimated from the starting point's value and the champion's gain over it, and `estimated` is true.
 
 ### model_usage
 

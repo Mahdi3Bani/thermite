@@ -279,19 +279,21 @@ describe("model use on the screens (goal 075)", () => {
     // One line: trials, rounds, the run's time (it started 6 hours ago) and the time in calls
     // (two of its seven records report theirs: 400 s and 200 s). Its i says what each part is, and
     // how many records leave their time out.
-    const line = from(block, '<div class="u-clock">', '<div class="u-two">');
+    const line = from(block, '<div class="u-clock">', '<div class="u-two');
     assert.match(line, /<span>0 trials · 3 rounds · 6 h 0 m · 10 m in calls<\/span>/);
     assert.match(
       unesc(line),
       /data-tip="Trials done, rounds, the run's time since it started .* 5 records do not report their time: not in the time in calls\."/,
     );
-    // Two cards: Cost, and the tokens with the speed. Each label has its info icon.
-    for (const label of ["Cost", "Tokens in", "Tokens out", "Output speed"])
+    // A hill climb's three cards: its champion (goal 142), Cost, and the tokens with the speed.
+    // Each label has its info icon.
+    for (const label of ["Champion #1", "Cost", "Tokens in", "Tokens out", "Output speed"])
       assert.match(
         block,
         new RegExp(`<span class="lb">${label}<i class="ii" tabindex="0" data-tip="`),
       );
-    assert.equal(block.match(/<div class="fact /g)?.length, 2);
+    assert.equal(block.match(/<div class="fact /g)?.length, 3);
+    assert.ok(block.indexOf("uf-champ") < block.indexOf("uf-cost"), "the champion is left of Cost");
     for (const gone of ["Calls", "Time in calls", "By agent and model", "<table"])
       assert.ok(!block.includes(gone), `${gone} is not at the top`);
     assert.match(unesc(block), /Each model's own speed is on the Stats tab\./);
