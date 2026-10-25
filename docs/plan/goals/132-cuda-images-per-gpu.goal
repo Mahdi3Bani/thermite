@@ -1,7 +1,7 @@
 ---
 id: "132"
 title: "Rig images for each GPU generation: CUDA 12 for Pascal and Volta, CUDA 13 on amd64 and arm64 for Blackwell and DGX Spark"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Install from images"
 depends_on: ["010"]
@@ -11,7 +11,7 @@ updated: 2026-10-24
 
 # 132 · Rig images for each GPU generation: CUDA 12 for Pascal and Volta, CUDA 13 on amd64 and arm64 for Blackwell and DGX Spark
 
-**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
 
 ## What
 
@@ -30,7 +30,7 @@ The owner, 2026-10-24: "we need a P100 image, a V100 image, and a DGX Spark imag
 
 ## Done when
 
-- [ ] The release builds, publishes and checks a CUDA 13 harness image for amd64 and arm64, beside the CUDA 12 one, with tags that say which is which.
+- [ ] The release builds, publishes and checks a CUDA 13 harness image for amd64 and arm64, beside the CUDA 12 one, with tags that say which is which. (Built: verified at the first publish.)
 - [ ] Control picks a GPU rig's CUDA image by its GPUs' compute capability, and Add a rig shows which image it will use and lets the owner choose the other.
 - [ ] The GPU smoke kit builds for each toolkit's architectures, and the rig check passes with the CUDA 12 image on a P100 or V100 rig and with the CUDA 13 image on a DGX Spark.
 - [ ] The release bundle and control's settings name both images; the pages for the images, the settings, Add a rig and the compatibility list say which GPU takes which.
@@ -38,15 +38,16 @@ The owner, 2026-10-24: "we need a P100 image, a V100 image, and a DGX Spark imag
 ## Open questions
 
 - Whether the RunPod rig image needs a CUDA 13 variant too, for Blackwell pods, or the CUDA 12 image's PTX is enough there.
-- The CUDA 13 base: its exact version and Ubuntu release (the lab's own builds used Ubuntu 24.04).
 
 ## Decisions
 
 - 2026-10-24, owner: P100 and V100 may share one image; DGX Spark needs CUDA 13.
+- 2026-10-25, in the build: the CUDA 13 base is `nvidia/cuda:13.0.3-devel-ubuntu24.04` (amd64 and arm64), pinned by digest. 13.0 is the CUDA of NVIDIA's 580 drivers, which the lab's GPU hosts run, so the image needs no newer driver; later 13.x toolkits would. The tags: `-cuda` stays CUDA 12 (labs pin it), and `-cuda13` is new. The RunPod rig image stays on CUDA 12.
 
 ## Progress
 
 - 2026-10-24: Goal written from the owner's words, with CUDA 13's dropped architectures and the GB10's compute capability checked against NVIDIA's pages.
+- 2026-10-25: part 1 (branch `feat/132-cuda13-image`): the release builds `harness-cuda13` from the same Containerfile on the CUDA 13 base, for amd64 and arm64 (`cuda_base` names each CUDA entry's base; only the CUDA 12 entry builds the rig image, `rig`), tags it `-cuda13` with the version, and lists it in the bundle's readme. The checks read each image's platforms from its index and hold it to those in `src/release/bundle.ts` (`it is not published for linux/arm64`). The smoke kit builds for its toolkit's architectures: CUDA 12, `sm_60` to `sm_90`; CUDA 13, `sm_75` to `sm_120` (its code runs on the GB10's `sm_121`), each with PTX. Placeholders may hold digits now (`@@HARNESS_CUDA13_IMAGE@@`). Pages: Harness image, Compatibility, Rig checks, Settings, Push the images to your own registry. Left: control picks the image by compute capability (part 2, with a mockup of Add a rig first), and the checks on real GPUs.
 
 ---
 

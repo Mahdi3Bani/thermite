@@ -45,14 +45,14 @@ For GPU rigs, build the harness again on a CUDA base:
 
 ```sh
 docker build -t $r/thermite-harness:$tag-cuda \
-  --build-arg BASE_IMAGE=<a CUDA 12 development image> \
+  --build-arg BASE_IMAGE=<a CUDA development image> \
   --build-arg THERMITE_COMMIT=$commit \
   -f containers/harness/Containerfile .
 ```
 
-The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by its digest in `.github/workflows/release.yml`. Use the same base, or another one that has what the Containerfile needs:
+The release workflow builds two published CUDA harnesses, each on a base pinned by its digest in `.github/workflows/release.yml`: `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04` for the `-cuda` image and `docker.io/nvidia/cuda:13.0.3-devel-ubuntu24.04` for the `-cuda13` image. Use the same bases, or others that have what the Containerfile needs:
 
-- **CUDA 12.** The Containerfile notes that CUDA 13 dropped older GPU architectures. RunPod test pods ask for hosts that run CUDA 12.6 or later.
+- **The CUDA your GPUs need.** CUDA 12 builds for Pascal (P100) and Volta (V100) to Hopper; CUDA 13 builds for Turing to Blackwell, the DGX Spark included, and for nothing older. RunPod test pods ask for hosts that run CUDA 12.6 or later. For a DGX Spark, build for arm64 (`--platform linux/arm64`): its CPU is Arm.
 - **A development image**, with `nvcc`: the GPU smoke check compiles CUDA code on the rig.
 - **Debian or Ubuntu based**, because the build installs its packages with `apt-get` from the base's own package lists: git, tini (the image's entry point), a C and C++ toolchain, CMake, Ninja, ccache, and Python 3 with numpy. Node.js, OpenCode and the Codex CLI are copied in, so the base needn't have them.
 

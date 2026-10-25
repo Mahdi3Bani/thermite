@@ -9,11 +9,31 @@ const clean = (env: string[] = []) => ({
   anonymous: true,
   env: [`THERMITE_COMMIT=${COMMIT}`, "THERMITE_IMAGE_ID=0.1.0-cuda+0123456789ab", ...env],
   probe: "claude=\nsocat=\nbwrap=\nsetid=\n",
+  platforms: ["linux/amd64", "linux/arm64"],
 });
 
 test("an image that holds has no problem", () => {
-  for (const key of ["control", "harness", "harness-cuda", "supervisor", "rig-cuda"] as const)
+  for (const key of [
+    "control",
+    "harness",
+    "harness-cuda",
+    "harness-cuda13",
+    "supervisor",
+    "rig-cuda",
+  ] as const)
     assert.deepEqual(imageProblems(key, COMMIT, clean()), [], key);
+});
+
+test("each image is published for its platforms: the CUDA 13 harness for arm64 too (goal 132)", () => {
+  const amd64 = { ...clean(), platforms: ["linux/amd64"] };
+  assert.deepEqual(imageProblems("harness-cuda", COMMIT, amd64), []);
+  assert.deepEqual(imageProblems("rig-cuda", COMMIT, amd64), []);
+  assert.deepEqual(imageProblems("harness-cuda13", COMMIT, amd64), [
+    "it is not published for linux/arm64",
+  ]);
+  assert.deepEqual(imageProblems("control", COMMIT, { ...clean(), platforms: [] }), [
+    "it is not published for linux/amd64 or linux/arm64",
+  ]);
 });
 
 test("one that does not pull without signing in says what to do, and nothing else", () => {
@@ -36,6 +56,7 @@ test("the rig image is held to the lab's rules: no Claude Code, socat, bubblewra
     ],
     probe:
       "claude=/usr/local/bin/claude \nsocat=/usr/bin/socat\nbwrap=/usr/bin/bwrap\nsetid=/usr/bin/su /usr/bin/passwd \n",
+    platforms: ["linux/amd64"],
   };
   assert.deepEqual(imageProblems("rig-cuda", COMMIT, facts), [
     `it reports THERMITE_COMMIT "feedface", not the release's commit ${COMMIT}`,

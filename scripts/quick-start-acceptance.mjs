@@ -345,6 +345,7 @@ async function buildImages(commit) {
   // The bundle names a CUDA harness for rigs on GPU machines, and a rig image for RunPod. This
   // test starts neither: control passes the rig image's name to RunPod only at a launch.
   digests["harness-cuda"] = digests.harness;
+  digests["harness-cuda13"] = digests.harness;
   digests["rig-cuda"] = digests.harness;
   return digests;
 }

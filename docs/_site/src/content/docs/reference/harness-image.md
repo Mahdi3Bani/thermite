@@ -31,15 +31,16 @@ For each release, the release workflow (`.github/workflows/release.yml`) builds 
 | --- | --- | --- | --- |
 | Control | `ghcr.io/iammrduncan/thermite-control` | The version, such as `0.1.0`, and the first 12 characters of the commit | amd64, arm64 |
 | Harness, CPU | `ghcr.io/iammrduncan/thermite-harness` | The same | amd64, arm64 |
-| Harness, CUDA | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda` added: `0.1.0-cuda` | amd64 |
+| Harness, CUDA 12 | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda` added: `0.1.0-cuda`. For Pascal to Hopper, the P100 and V100 included | amd64 |
+| Harness, CUDA 13 | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda13` added: `0.1.0-cuda13`. For Turing to Blackwell, the DGX Spark included | amd64, arm64 |
 | Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The version and the commit | amd64, arm64 |
 | One-container rig, CUDA | `ghcr.io/iammrduncan/thermite-rig` | The version and the commit, each with `-cuda` added: `0.1.0-cuda` | amd64 |
 
-Each image is pushed first with its commit's tag only. Then the workflow pulls each one by its digest, on a runner that never signed in, and checks it: it pulls without signing in, it reports the release's commit, it carries no Claude Code, it has no set-id file, and it sets no key, token or password in its environment. The harness images and the rig image also report their image ID and carry neither socat nor bubblewrap; the supervisor and the rig image name no STE checker, which is a deployment's own. Only an image that passes gets the version's tag, which names the same digest as the commit's. The run's step summary lists every image with its digest.
+Each image is pushed first with its commit's tag only. Then the workflow pulls each one by its digest, on a runner that never signed in, and checks it: it pulls without signing in, it is published for each architecture in the table, it reports the release's commit, it carries no Claude Code, it has no set-id file, and it sets no key, token or password in its environment. The harness images and the rig image also report their image ID and carry neither socat nor bubblewrap; the supervisor and the rig image name no STE checker, which is a deployment's own. Only an image that passes gets the version's tag, which names the same digest as the commit's. The run's step summary lists every image with its digest.
 
 Between releases, a maintainer can publish a build by hand: the same images and checks, with the commit's tag only and no release. A lab pins such a build by its digest, for example as control's RunPod rig image.
 
-The workflow builds the one-container rig image on the CUDA harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. The harness images and the supervisor image carry OpenCode and the Codex CLI, both open source, at their default versions. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
+The workflow builds the one-container rig image on the CUDA 12 harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. The harness images and the supervisor image carry OpenCode and the Codex CLI, both open source, at their default versions. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
 
 | Label | Value |
 | --- | --- |
@@ -49,20 +50,20 @@ The workflow builds the one-container rig image on the CUDA harness it built in 
 | `org.opencontainers.image.title`, `org.opencontainers.image.description` | The image's name and what it is |
 | `org.opencontainers.image.licenses` | `MIT AND Apache-2.0` for the harness images, the rig image and the supervisor image: they carry the Codex CLI, under the Apache License 2.0 with its `NOTICE`, and OpenCode, under MIT, beside Thermite. `MIT` for control. Control's image also carries kubectl, under the Apache License 2.0, with its license file; its label stays `MIT` |
 
-The workflow builds control, the harness images and the supervisor with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set. The rig image's build passes neither: it keeps the CUDA harness's values, such as `0.1.0-cuda+1a2b3c4d5e6f`, so a rig on RunPod reports the CUDA harness it is built on.
+The workflow builds control, the harness images and the supervisor with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f` or `0.1.0-cuda13+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set. The rig image's build passes neither: it keeps the CUDA harness's values, such as `0.1.0-cuda+1a2b3c4d5e6f`, so a rig on RunPod reports the CUDA harness it is built on.
 
 ## Build arguments
 
 | Argument | Images | Default | Effect |
 | --- | --- | --- | --- |
 | `NODE_IMAGE` | All three | `docker.io/library/node:22.23.4-bookworm-slim`, pinned by its sha256 digest | The Node.js image every stage starts from |
-| `BASE_IMAGE` | Harness | `NODE_IMAGE` | The harness's final base. GPU rigs set a CUDA 12.x development image: see [The CUDA harness](#the-cuda-harness) |
+| `BASE_IMAGE` | Harness | `NODE_IMAGE` | The harness's final base. GPU rigs set a CUDA 12 or CUDA 13 development image: see [The CUDA harness](#the-cuda-harness) |
 | `OPENCODE_VERSION` | Harness, supervisor | `2.1.4` | The OpenCode release installed |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | empty | A Claude Code release to install. Empty: Claude Code is not installed |
 | `CODEX_VERSION` | Harness, supervisor | `0.162.1` | The Codex CLI release installed. Empty: the Codex CLI is not installed |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl release installed. Its sha256 is pinned for amd64 and arm64 only |
 | `THERMITE_COMMIT` | All three | empty | The source commit the image is built from. The image sets the environment variable of the same name, and the service reports it with Thermite's version: see [Rig versions](rest-api.md#rig-versions) |
-| `HARNESS_IMAGE` | One-container rig | none: required | The harness image the rig image is built on. The release workflow names the CUDA harness it built, by its digest. See [The one-container rig image](#the-one-container-rig-image) |
+| `HARNESS_IMAGE` | One-container rig | none: required | The harness image the rig image is built on. The release workflow names the CUDA 12 harness it built, by its digest. See [The one-container rig image](#the-one-container-rig-image) |
 | `TARGETARCH` | All three | set by the builder | Chooses the arm64 or x64 package of OpenCode, Claude Code, the Codex CLI and kubectl |
 | `THERMITE_IMAGE_ID` | Harness | empty | The image's identity, kept as the variable of the same name, which the harness reports. The release workflow sets it to the tag and the short commit |
 
@@ -90,7 +91,14 @@ On the default base, the apt packages are Debian 12 ("bookworm") packages. The b
 
 ### The CUDA harness
 
-GPU rigs need the same image built on a CUDA 12.x development image, with `--build-arg BASE_IMAGE=<image>`. The image's comment says why 12.x: CUDA 13 dropped older GPU architectures. A development image is needed because the CUDA smoke kit builds with `nvcc`. The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by its digest, so its apt packages are Ubuntu 22.04's. RunPod test pods ask for hosts with CUDA 12.6 or later.
+GPU rigs need the same image built on a CUDA development image, with `--build-arg BASE_IMAGE=<image>`. A development image is needed because the CUDA smoke kit builds with `nvcc`. No one CUDA serves every GPU, so the release workflow builds two, each on a base pinned by its digest:
+
+| Image | Base | For |
+| --- | --- | --- |
+| CUDA 12 (`-cuda`) | `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`: Ubuntu 22.04's apt packages; amd64 | Pascal (P100, compute capability 6.0) and Volta (V100, 7.0) to Hopper. CUDA 12.6 knows no GPU newer than Hopper: on Blackwell, kernels run only from their PTX, and `nvcc` cannot build for it |
+| CUDA 13 (`-cuda13`) | `docker.io/nvidia/cuda:13.0.3-devel-ubuntu24.04`: Ubuntu 24.04's apt packages; amd64 and arm64 | Turing (compute capability 7.5) to Blackwell, the DGX Spark's GB10 (12.1, on arm64) included. CUDA 13 builds for nothing older than Turing. 13.0 is the CUDA of NVIDIA's 580 drivers, so the image needs no newer driver |
+
+Control sets rigs up from the CUDA 12 image (`THERMITE_RIG_HARNESS_CUDA_IMAGE`). For a deployment whose GPUs are Blackwell or DGX Sparks, set that setting to the CUDA 13 image. RunPod pods run the rig image, which is built on the CUDA 12 image, and test pods ask for hosts with CUDA 12.6 or later.
 
 An agent's own commands under OpenCode, Claude Code or Codex get a fixed `PATH`, not the image's: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, with `/usr/local/cuda/bin` first where the image has it, so `nvcc` is found by name on a CUDA image. Pi's commands, and the judge's builds and timed runs, get the image's own `PATH`.
 

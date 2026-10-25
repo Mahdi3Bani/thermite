@@ -441,6 +441,7 @@ services:
           control: digest("a"),
           harness: digest("b"),
           "harness-cuda": digest("c"),
+          "harness-cuda13": digest("f"),
           supervisor: digest("d"),
           "rig-cuda": digest("e"),
         },

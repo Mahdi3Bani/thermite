@@ -48,9 +48,12 @@ env:
   # builds and checks without pushing anything out.
   PUBLISH: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
   RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-  # The CUDA harness's base: CUDA 12 (CUDA 13 dropped older GPU architectures), a development
-  # image (the GPU smoke kit compiles with nvcc) on Ubuntu, pinned by its digest.
+  # The CUDA harnesses' bases (goal 132), development images (the GPU smoke kit compiles with
+  # nvcc) on Ubuntu, pinned by their digests. CUDA 12 for Pascal to Hopper, P100 and V100 included,
+  # on amd64; CUDA 13 dropped Maxwell, Pascal and Volta and knows Blackwell, on amd64 and arm64
+  # (the DGX Spark). 13.0 is the CUDA of the 580 drivers, so the image needs no newer driver.
   CUDA_BASE_IMAGE: docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04@sha256:d49bb8a4ff97fb5fe477947a3f02aa8c0a53eae77e11f00ec28618a0bcaa2ad1
+  CUDA13_BASE_IMAGE: docker.io/nvidia/cuda:13.0.3-devel-ubuntu24.04@sha256:b7ae301dea2c162444795462ce17a05f6a516e5a75944b57af5b88540a1a2266
   # A dry run's CUDA harness goes to the CUDA job's own registry (the service below), which ends
   # with the job, so the rig image is built on it by digest as in a release.
   DRY_RUN_REGISTRY: localhost:5000
@@ -129,15 +132,29 @@ jobs:
             cuda: false
             description: "Thermite's harness for CPU rigs: the judge, the broker and the agents."
             licenses: "MIT AND Apache-2.0"
-          # The CUDA harness: the same Containerfile on a CUDA base, in the same package as the
-          # CPU harness, with tags that end in -cuda. The same job then builds the rig image on it.
+          # The CUDA harnesses: the same Containerfile on a CUDA base (cuda_base names it), in the
+          # same package as the CPU harness. CUDA 12 under tags that end in -cuda, for Pascal to
+          # Hopper; the same job then builds the rig image on it (rig). CUDA 13 under tags that
+          # end in -cuda13, for Turing to Blackwell, on arm64 too (goal 132).
           - key: harness-cuda
             repository: thermite-harness
             containerfile: containers/harness/Containerfile
             platforms: linux/amd64
             suffix: "-cuda"
             cuda: true
-            description: "Thermite's harness for GPU rigs (CUDA 12.6): the judge, the broker and the agents."
+            cuda_base: CUDA_BASE_IMAGE
+            rig: true
+            description: "Thermite's harness for GPU rigs (CUDA 12.6: Pascal to Hopper): the judge, the broker and the agents."
+            licenses: "MIT AND Apache-2.0"
+          - key: harness-cuda13
+            repository: thermite-harness
+            containerfile: containers/harness/Containerfile
+            platforms: linux/amd64,linux/arm64
+            suffix: "-cuda13"
+            cuda: true
+            cuda_base: CUDA13_BASE_IMAGE
+            rig: false
+            description: "Thermite's harness for GPU rigs (CUDA 13.0: Turing to Blackwell, DGX Spark): the judge, the broker and the agents."
             licenses: "MIT AND Apache-2.0"
           # The supervisor carries OpenCode (MIT) and the Codex CLI (Apache-2.0, with its NOTICE)
           # for the advisors, as the harness images do.
@@ -179,7 +196,7 @@ jobs:
         env:
           DOCKER_METADATA_SHORT_SHA_LENGTH: "12"
           # A multi-platform image is an index, and the registry reads the index's annotations.
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: ${{ matrix.cuda && 'manifest' || 'manifest,index' }}
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: ${{ contains(matrix.platforms, ',') && 'manifest,index' || 'manifest' }}
         with:
           images: ${{ needs.version.outputs.registry }}/${{ matrix.repository }}
           flavor: |
@@ -214,11 +231,11 @@ jobs:
           build-args: |
             THERMITE_COMMIT=${{ github.sha }}
             THERMITE_IMAGE_ID=${{ needs.version.outputs.version }}${{ matrix.suffix }}+${{ needs.version.outputs.commit }}
-            ${{ matrix.cuda && format('BASE_IMAGE={0}', env.CUDA_BASE_IMAGE) || '' }}
+            ${{ matrix.cuda && format('BASE_IMAGE={0}', env[matrix.cuda_base]) || '' }}
           # A run that publishes pushes every image to GHCR. A dry run pushes none out: each stays in
-          # the builder, but for the CUDA harness, which goes to the job's own registry under a name
-          # of that registry alone, for the rig image below.
-          tags: ${{ (matrix.cuda && env.PUBLISH != 'true') && format('{0}/{1}:dry-run-cuda', env.DRY_RUN_REGISTRY, matrix.repository) || steps.meta.outputs.tags }}
+          # the builder, but for the CUDA harnesses, which go to the job's own registry under a name
+          # of that registry alone (the CUDA 12 one for the rig image below).
+          tags: ${{ (matrix.cuda && env.PUBLISH != 'true') && format('{0}/{1}:dry-run{2}', env.DRY_RUN_REGISTRY, matrix.repository, matrix.suffix) || steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           # An image either way, so the build reports its digest.
@@ -240,12 +257,12 @@ jobs:
           mkdir -p digests
           printf '%s\n' "$DIGEST" > "digests/${{ matrix.key }}"
           echo "${{ matrix.key }}: $DIGEST"
-      # The one-container rig image, which RunPod pods run (containers/rig/Containerfile): the CUDA
+      # The one-container rig image, which RunPod pods run (containers/rig/Containerfile): the CUDA 12
       # harness just built, named by its digest (on GHCR for a run that publishes, in the job's own
       # registry for a dry run), with the supervisor's parts added. It keeps the harness's THERMITE_COMMIT and
       # THERMITE_IMAGE_ID. Tags, labels and annotations as for the other images, under thermite-rig.
       - id: rig-meta
-        if: matrix.cuda
+        if: matrix.rig
         uses: docker/metadata-action@v5
         env:
           DOCKER_METADATA_SHORT_SHA_LENGTH: "12"
@@ -272,7 +289,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=${{ matrix.licenses }}
       - id: rig-build
-        if: matrix.cuda
+        if: matrix.rig
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -286,7 +303,7 @@ jobs:
           # An image either way, so the build reports its digest; pushed only by a run that publishes.
           outputs: type=image,push=${{ env.PUBLISH }}
       - name: Keep the rig image's digest for the bundle
-        if: matrix.cuda
+        if: matrix.rig
         env:
           DIGEST: ${{ steps.rig-build.outputs.digest }}
         run: |
@@ -296,7 +313,7 @@ jobs:
           esac
           printf '%s\n' "$DIGEST" > digests/rig-cuda
           echo "rig-cuda: $DIGEST"
-      # One file per image: the CUDA job's holds the rig image's too.
+      # One file per image: the CUDA 12 job's holds the rig image's too.
       - uses: actions/upload-artifact@v4
         with:
           name: digest-${{ matrix.key }}
@@ -370,6 +387,7 @@ jobs:
           tag control thermite-control ""
           tag harness thermite-harness ""
           tag harness-cuda thermite-harness -cuda
+          tag harness-cuda13 thermite-harness -cuda13
           tag supervisor thermite-supervisor ""
           tag rig-cuda thermite-rig -cuda
 

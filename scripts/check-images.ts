@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Checks each image the release workflow pushed (.github/workflows/release.yml), before it gets
 // its version's tag (goal 010): it pulls each one by digest with no sign-in, reads its
-// environment and runs a probe in it, then holds it to src/release/checks.ts:
+// environment and the platforms it is published for, and runs a probe in it, then holds it to
+// src/release/checks.ts:
 //
 //   node --experimental-strip-types scripts/check-images.ts --registry ghcr.io/owner \
 //     --commit SHA --digests DIR [--summary FILE]
 //
 // The --digests folder is the release bundle's: one file per image (control, harness,
-// harness-cuda, supervisor, rig-cuda), each with its digest. --summary appends a Markdown table of
+// harness-cuda, harness-cuda13, supervisor, rig-cuda), each with its digest. --summary appends a Markdown table of
 // each image, its digest and its result (the workflow's step summary). Docker only: pulls go
 // through an empty Docker configuration, so no stored sign-in is used. Exits 1 when any image
 // fails a check.
@@ -45,6 +46,28 @@ const docker = (args: string[]) =>
     maxBuffer: 16 * 1024 * 1024,
   });
 
+/**
+ * The platforms an image is published for: its index's, leaving out attestations (platform
+ * unknown); a single manifest's own, from the image pulled for linux/amd64.
+ */
+function platformsOf(ref: string): string[] {
+  const raw = docker(["buildx", "imagetools", "inspect", "--raw", ref]);
+  const index =
+    raw.status === 0
+      ? (JSON.parse(raw.stdout) as {
+          manifests?: { platform?: { os?: string; architecture?: string } }[];
+        })
+      : {};
+  if (index.manifests)
+    return index.manifests.flatMap((m) =>
+      m.platform?.os && m.platform.os !== "unknown"
+        ? [`${m.platform.os}/${m.platform.architecture}`]
+        : [],
+    );
+  const own = docker(["image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", ref]);
+  return own.status === 0 ? [own.stdout.trim()] : [];
+}
+
 const rows: string[] = [];
 let failed = 0;
 for (const key of IMAGE_KEYS) {
@@ -52,10 +75,11 @@ for (const key of IMAGE_KEYS) {
   if (!existsSync(file)) fail(`no digest for ${key} in ${digests}`);
   const ref = imageRef(registry, key as ImageKey, readFileSync(file, "utf8").trim());
   const pull = docker(["pull", "--quiet", "--platform", "linux/amd64", ref]);
-  const facts: ImageFacts = { anonymous: pull.status === 0, env: [], probe: "" };
+  const facts: ImageFacts = { anonymous: pull.status === 0, env: [], probe: "", platforms: [] };
   if (facts.anonymous) {
     const env = docker(["image", "inspect", "--format", "{{json .Config.Env}}", ref]);
     facts.env = env.status === 0 ? (JSON.parse(env.stdout.trim() || "[]") as string[]) : [];
+    facts.platforms = platformsOf(ref);
     const probe = docker([
       "run",
       "--rm",

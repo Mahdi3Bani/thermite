@@ -71,8 +71,8 @@ See [Add a rig on a Kubernetes cluster](../how-to/install/rig-on-a-cluster.md).
 | GPU vendor | NVIDIA only: `nvidia-smi`, `/dev/nvidia*` device nodes, CDI on machines, the device plugin or dynamic resource allocation on clusters | |
 | GPUs on one rig | Up to 8 for the judge and 8 for the agents, and 16 in a rig's GPU set (`THERMITE_GPUS`). Up to 16 on a rig control sets up on a machine or cluster, on a machine you join, and on the local stack's rig; 8 on a joined namespace; 1 to 8 in a RunPod pod | The multi-GPU acceptance, with four fake GPUs (plain files and a stand-in `nvidia-smi`) |
 | Several judge GPUs | They must be the same model. Otherwise only the first one judges, and the rig's hardware report says why | Not tested |
-| CUDA | A CUDA 12.x development image as the harness's base. The published CUDA harness is built on `nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by digest in the release workflow. CUDA 13 dropped older architectures. RunPod test pods ask for hosts with CUDA 12.6 or later | No test in the repository. A RunPod test pod checks one real GPU host: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
-| GPU architecture of the CUDA smoke kit | Native code for `sm_60`, `sm_70`, `sm_75`, `sm_80`, `sm_86`, `sm_89` and `sm_90`, and PTX for newer GPUs: a run on one of those generations does not compile the kernel at start ([The smoke kits](rig-checks.md#the-smoke-kits-and-contract)) | |
+| CUDA | Two published CUDA harnesses, each on a CUDA development image pinned by digest in the release workflow ([The CUDA harness](harness-image.md#the-cuda-harness)). CUDA 12 (`-cuda`, on `nvidia/cuda:12.6.3-devel-ubuntu22.04`): Pascal (P100) and Volta (V100) to Hopper. CUDA 13 (`-cuda13`, on `nvidia/cuda:13.0.3-devel-ubuntu24.04`): Turing to Blackwell, the DGX Spark included; CUDA 13 builds for nothing older than Turing. Control sets GPU rigs up from the one `THERMITE_RIG_HARNESS_CUDA_IMAGE` names, the CUDA 12 image unless it is set. RunPod test pods ask for hosts with CUDA 12.6 or later | No test in the repository. A RunPod test pod checks one real GPU host: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
+| GPU architecture of the CUDA smoke kit | With CUDA 12, native code for `sm_60`, `sm_70`, `sm_75`, `sm_80`, `sm_86`, `sm_89` and `sm_90`; with CUDA 13, for `sm_75`, `sm_80`, `sm_86`, `sm_89`, `sm_90`, `sm_100` and `sm_120`, whose code also runs on the DGX Spark's `sm_121`. Each with PTX for newer GPUs: a run on one of those generations does not compile the kernel at start ([The smoke kits](rig-checks.md#the-smoke-kits-and-contract)) | |
 | NVIDIA driver | No minimum is stated or checked. A machine's check reports the driver and CUDA versions | Not tested |
 | NVIDIA container toolkit | 1.20.1-1 when control installs it, with a CDI specification for Podman | Not tested: the machines acceptance installs only Podman |
 | Landlock (Linux kernel) | Used for the GPU fence when the kernel has it | Multi-GPU acceptance; the RunPod test's probe |
@@ -88,11 +88,12 @@ Without Landlock, and with device nodes that cannot be given their own groups, a
 | --- | --- | --- |
 | Control | amd64 and arm64. Its build stops on any other: `kubectl` is pinned for these two only | CI builds it on amd64 (GitHub's `ubuntu-24.04` runners). The release workflow builds it for amd64 and arm64 |
 | Harness, CPU | amd64 and arm64. It installs the arm64 package of OpenCode, Claude Code and the Codex CLI on arm64, and the x64 package on any other architecture | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
-| Harness, CUDA | amd64 | The release workflow builds it for amd64 only |
+| Harness, CUDA 12 | amd64 | The release workflow builds it for amd64 only |
+| Harness, CUDA 13 | amd64 and arm64, as its CUDA base is published | The release workflow builds it for amd64 and arm64, and its checks hold it to both |
 | Supervisor | amd64 and arm64. Claude Code, when built in, comes as its arm64 or x64 package | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
-| One-container rig, CUDA | amd64, as the CUDA harness it is built on | CI builds the rig image on the CPU harness, on amd64. The release workflow builds it on the CUDA harness, for amd64 only |
+| One-container rig, CUDA | amd64, as the CUDA 12 harness it is built on | CI builds the rig image on the CPU harness, on amd64. The release workflow builds it on the CUDA 12 harness, for amd64 only |
 
-The release workflow builds the arm64 images under emulation, on amd64 runners; no test runs them. Each published image of control, the CPU harness and the supervisor is one name for both architectures, and Docker or Podman pulls the one that fits the machine. [Push the images to your own registry](../how-to/install/own-registry.md) builds them yourself, and [Harness image](harness-image.md) lists what each contains.
+The release workflow builds the arm64 images under emulation, on amd64 runners; no test runs them. Each published image of control, the CPU harness, the CUDA 13 harness and the supervisor is one name for both architectures, and Docker or Podman pulls the one that fits the machine. [Push the images to your own registry](../how-to/install/own-registry.md) builds them yourself, and [Harness image](harness-image.md) lists what each contains.
 
 ## Control and rig versions
 

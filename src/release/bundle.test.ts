@@ -35,6 +35,7 @@ const input = (over: Partial<BundleInput> = {}): BundleInput => ({
     control: digest("a"),
     harness: digest("b"),
     "harness-cuda": digest("c"),
+    "harness-cuda13": digest("f"),
     supervisor: digest("d"),
     "rig-cuda": digest("e"),
   },
@@ -143,7 +144,9 @@ describe("the release bundle", () => {
         `https://github.com/example/thermite/releases/download/v${PACKAGE_VERSION}/compose.yaml`,
       ),
     );
-    assert.ok(readme.includes(`ghcr.io/example/thermite-harness:${PACKAGE_VERSION}-cuda`));
+    assert.ok(readme.includes(`ghcr.io/example/thermite-harness:${PACKAGE_VERSION}-cuda\``));
+    assert.ok(readme.includes(`ghcr.io/example/thermite-harness:${PACKAGE_VERSION}-cuda13\``));
+    assert.ok(readme.includes(`ghcr.io/example/thermite-harness@${digest("f")}`));
     assert.ok(readme.includes(`ghcr.io/example/thermite-control@${digest("a")}`));
     assert.ok(readme.includes(`ghcr.io/example/thermite-rig:${PACKAGE_VERSION}-cuda`));
     assert.ok(readme.includes(`ghcr.io/example/thermite-rig@${digest("e")}`));
@@ -208,11 +211,13 @@ describe("the release bundle", () => {
       serviceKey(compose, "control", "image"),
       `ghcr.io/example/thermite-control@${digest("1")}`,
     );
-    assert.ok(readFileSync(join(out, "README.md"), "utf8").includes(digest("4")));
-    // The fifth file is the rig image's: control's default for rigs on RunPod.
+    const nth = (key: (typeof IMAGE_KEYS)[number]) => digest(String(IMAGE_KEYS.indexOf(key) + 1));
+    assert.ok(readFileSync(join(out, "README.md"), "utf8").includes(nth("supervisor")));
+    assert.ok(readFileSync(join(out, "README.md"), "utf8").includes(nth("harness-cuda13")));
+    // The rig image's file: control's default for rigs on RunPod.
     assert.ok(
       compose.includes(
-        `THERMITE_RUNPOD_RIG_IMAGE: "\${THERMITE_RUNPOD_RIG_IMAGE:-ghcr.io/example/thermite-rig@${digest("5")}}"`,
+        `THERMITE_RUNPOD_RIG_IMAGE: "\${THERMITE_RUNPOD_RIG_IMAGE:-ghcr.io/example/thermite-rig@${nth("rig-cuda")}}"`,
       ),
     );
     writeFileSync(join(digests, "harness-cuda"), "");

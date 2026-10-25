@@ -262,7 +262,7 @@ Both kits multiply two square matrices of floats, many times over (`reps`), so t
 | Build limits | 120 s, 1024 MiB memory, 256 MiB disk | 300 s, 2048 MiB memory, 512 MiB disk |
 | Run limits | 60 s, 256 MiB memory, 32 MiB disk | 120 s, 2048 MiB memory, 64 MiB disk |
 | Check time limit | 60 s | 300 s |
-| Compiler | `cc` | `nvcc`, with native code for `sm_60`, `sm_70`, `sm_75`, `sm_80`, `sm_86`, `sm_89` and `sm_90`, and PTX for newer GPUs, so a run on one of those generations does not compile the kernel at start. Its build script, run by hand with `CUDA_ARCH` set, such as `sm_86`, builds for that architecture only; the judge's builds don't set it |
+| Compiler | `cc` | `nvcc`, with native code for each GPU generation its CUDA builds for, and PTX for newer GPUs, so a run on one of those generations does not compile the kernel at start: with CUDA 12, `sm_60`, `sm_70`, `sm_75`, `sm_80`, `sm_86`, `sm_89` and `sm_90`; with CUDA 13, `sm_75`, `sm_80`, `sm_86`, `sm_89`, `sm_90`, `sm_100` and `sm_120`, whose code also runs on the DGX Spark's `sm_121`. Its build script, run by hand with `CUDA_ARCH` set, such as `sm_86`, builds for that architecture only; the judge's builds don't set it |
 
 The contract measures `small` and `large`, keeps `held` for confirmation, and lets changes touch only `src/kernel/**`. It sets `min_effect` 0.1, `equivalence_band` 0.05 and `runs_per_cell` 3, because timing on a shared CPU is noisy. Its audit triggers are set to 1000, so no smoke candidate is audited. It forbids added lines that match `clock_gettime`, `gettimeofday`, `\brdtsc`, `\btimes\s*\(`, `__real_`, `__wrap_` and `thermite_ref_calls`.
 

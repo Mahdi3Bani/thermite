@@ -5,15 +5,23 @@
  * These functions do the filling and the checks, with no files or network of their own.
  */
 
-/** The published images: each one's repository under the registry, and its tag's suffix. */
+const BOTH = ["linux/amd64", "linux/arm64"] as const;
+const AMD64 = ["linux/amd64"] as const;
+
+/**
+ * The published images: each one's repository under the registry, its tag's suffix and the
+ * platforms it is published for (the release's checks hold it to them).
+ */
 export const IMAGES = {
-  control: { repository: "thermite-control", suffix: "" },
-  harness: { repository: "thermite-harness", suffix: "" },
-  // The CUDA harness is the same package as the CPU harness, under tags ending in -cuda.
-  "harness-cuda": { repository: "thermite-harness", suffix: "-cuda" },
-  supervisor: { repository: "thermite-supervisor", suffix: "" },
-  // The one-container rig image RunPod pods run, built on the CUDA harness. Control launches it.
-  "rig-cuda": { repository: "thermite-rig", suffix: "-cuda" },
+  control: { repository: "thermite-control", suffix: "", platforms: BOTH },
+  harness: { repository: "thermite-harness", suffix: "", platforms: BOTH },
+  // The CUDA harnesses are the same package as the CPU harness (goal 132): CUDA 12 under tags
+  // ending in -cuda (Pascal to Hopper), CUDA 13 under -cuda13 (Turing to Blackwell, DGX Spark).
+  "harness-cuda": { repository: "thermite-harness", suffix: "-cuda", platforms: AMD64 },
+  "harness-cuda13": { repository: "thermite-harness", suffix: "-cuda13", platforms: BOTH },
+  supervisor: { repository: "thermite-supervisor", suffix: "", platforms: BOTH },
+  // The one-container rig image RunPod pods run, built on the CUDA 12 harness. Control launches it.
+  "rig-cuda": { repository: "thermite-rig", suffix: "-cuda", platforms: AMD64 },
 } as const;
 
 export type ImageKey = keyof typeof IMAGES;
@@ -81,11 +89,13 @@ export function placeholders(input: BundleInput): Record<string, string> {
     CONTROL_IMAGE: ref("control"),
     HARNESS_IMAGE: ref("harness"),
     HARNESS_CUDA_IMAGE: ref("harness-cuda"),
+    HARNESS_CUDA13_IMAGE: ref("harness-cuda13"),
     SUPERVISOR_IMAGE: ref("supervisor"),
     RIG_CUDA_IMAGE: ref("rig-cuda"),
     CONTROL_TAG: tag("control"),
     HARNESS_TAG: tag("harness"),
     HARNESS_CUDA_TAG: tag("harness-cuda"),
+    HARNESS_CUDA13_TAG: tag("harness-cuda13"),
     SUPERVISOR_TAG: tag("supervisor"),
     RIG_CUDA_TAG: tag("rig-cuda"),
   };
@@ -98,7 +108,7 @@ export function placeholders(input: BundleInput): Record<string, string> {
  */
 export function render(template: string, values: Record<string, string>, only?: string[]) {
   const used = new Set<string>();
-  const out = template.replace(/@@([A-Z_]+)@@/g, (_, name: string) => {
+  const out = template.replace(/@@([A-Z0-9_]+)@@/g, (_, name: string) => {
     const value = values[name];
     if (value === undefined) throw new Error(`the template names @@${name}@@, which has no value`);
     used.add(name);
@@ -111,8 +121,9 @@ export function render(template: string, values: Record<string, string>, only?: 
 }
 
 /**
- * The placeholders each template must use: the compose file pins all five images (the CUDA
- * harness and the rig image as control's defaults for the rigs it sets up and launches).
+ * The placeholders each template must use: the compose file pins the images control and its rigs
+ * run (the CUDA 12 harness and the rig image as control's defaults for the rigs it sets up and
+ * launches); the readme lists every image, the CUDA 13 harness too.
  */
 export const COMPOSE_NEEDS = [
   "VERSION",
@@ -130,6 +141,7 @@ export const README_NEEDS = [
   "CONTROL_IMAGE",
   "HARNESS_IMAGE",
   "HARNESS_CUDA_IMAGE",
+  "HARNESS_CUDA13_IMAGE",
   "SUPERVISOR_IMAGE",
   "RIG_CUDA_IMAGE",
 ];
@@ -173,7 +185,7 @@ export function templateDrift(composeYaml: string, template: string): string[] {
   let end = start + 1;
   while (end < lines.length && /^ {4}/.test(lines[end] ?? "")) end++;
   const actual = [...lines.slice(0, start), ...lines.slice(end)].map((line) =>
-    line.replace(/:-@@[A-Z_]+@@\}/, ":-}"),
+    line.replace(/:-@@[A-Z0-9_]+@@\}/, ":-}"),
   );
   const problems: string[] = [];
   const n = Math.max(expected.length, actual.length);

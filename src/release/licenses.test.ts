@@ -23,18 +23,30 @@ test("the published images' licence labels name every licence they carry", () =>
   assert.match(entry("supervisor"), / {12}licenses: "MIT AND Apache-2\.0"\n/);
   assert.match(entry("harness"), / {12}licenses: "MIT AND Apache-2\.0"\n/);
   assert.match(entry("harness-cuda"), / {12}licenses: "MIT AND Apache-2\.0"\n/);
+  assert.match(entry("harness-cuda13"), / {12}licenses: "MIT AND Apache-2\.0"\n/);
   // Each image's labels and annotations take its entry's value. The rig image is built only in
-  // the CUDA harness's job, so it takes that entry's: it carries the same harness.
+  // the CUDA 12 harness's job, so it takes that entry's: it carries the same harness.
   const set = [...workflow.matchAll(/org\.opencontainers\.image\.licenses=([^\n]*)/g)].map(
     (m) => m[1],
   );
   // A GitHub Actions expression, not a template: written with its dollar sign apart.
   assert.deepEqual(set, Array(4).fill(`$${"{{ matrix.licenses }}"}`));
-  assert.match(workflow, /- id: rig-meta\n {8}if: matrix\.cuda\n/);
-  const cuda = ["control", "harness", "harness-cuda", "supervisor"].filter((k) =>
-    / {12}cuda: true\n/.test(entry(k)),
+  assert.match(workflow, /- id: rig-meta\n {8}if: matrix\.rig\n/);
+  const keys = ["control", "harness", "harness-cuda", "harness-cuda13", "supervisor"];
+  const cuda = keys.filter((k) => / {12}cuda: true\n/.test(entry(k)));
+  assert.deepEqual(cuda, ["harness-cuda", "harness-cuda13"]);
+  // Only the CUDA 12 harness's job builds the rig image; each CUDA entry names its base.
+  assert.deepEqual(
+    keys.filter((k) => / {12}rig: true\n/.test(entry(k))),
+    ["harness-cuda"],
   );
-  assert.deepEqual(cuda, ["harness-cuda"]);
+  assert.match(entry("harness-cuda"), / {12}cuda_base: CUDA_BASE_IMAGE\n/);
+  assert.match(entry("harness-cuda13"), / {12}cuda_base: CUDA13_BASE_IMAGE\n/);
+  assert.match(entry("harness-cuda13"), / {12}platforms: linux\/amd64,linux\/arm64\n/);
+  assert.match(
+    workflow,
+    /CUDA13_BASE_IMAGE: docker\.io\/nvidia\/cuda:13\.0\.\d+-devel-ubuntu24\.04@sha256:[0-9a-f]{64}\n/,
+  );
 });
 
 test("control's image carries kubectl's licence file, the Apache License 2.0, while its label stays MIT", () => {
