@@ -1,0 +1,52 @@
+---
+id: "139"
+title: "A trial's session, read over MCP"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 139 · A trial's session, read over MCP
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Each worker's session reaches control as it works: its thinking, its text, each tool call with its arguments, each result, and how the trial ended. Control keeps a rig's newest 20,000 lines. The dashboard's Live page shows them, and REST gives them at `GET /v1/rigs/{rig}/live`. MCP does not. On the lab, 2026-10-25, the owner asked why one lane's five trials in a row ended without a submission. The operator's assistant could see that each trial ended (`get_run`'s trials) and the newest dev runs (`recent_events`), but not what the agent did in its two hours.
+
+MCP gets a tool, `trial_session`:
+
+1. **The sessions.** With a rig and no trial: each worker trial whose lines control still has, newest first. For each: its trial, lane and run, when it started and its last line, what it was asked to do, its newest tool call and when, how it ended, and how many lines control has. `run` keeps one run's.
+2. **One session's lines.** With a trial: its lines, oldest first, from the first one control has, `limit` at a time. Each line has its id, time, kind and text. `after` (a line's id) pages forward; `next_after` gives the next page, null at the newest line.
+3. **The answer fits.** The answer keeps to the budget of `get_run` (goal 138). Above it, the texts of the lines are cut, shorter each step, and `cut` says so and how to read fewer lines whole.
+
+## Why
+
+The owner, 2026-10-16: Thermite runs itself, and its operator works through control. A question about what an agent did is one an operator asks often. The answer is in control already, but an assistant working over MCP could not read it.
+
+## Constraints
+
+- **Not for a campaign's agents.** A campaign's agent token does not get the tool: a session is another agent's work, not a result.
+- **The lines as the rig sent them.** The tool reads control's copy. It never asks the rig.
+- **Texts from agents are data.** The description says so, as the other tools that give agents' text do.
+
+## Done when
+
+- [ ] The tool, with a test (`src/control/trial-session.test.ts`): the sessions newest first, one run's, a session paged forward to its end, an answer kept to the budget, an unknown trial refused in words, and no tool for an agent's token.
+- [ ] The MCP tools page describes it.
+- [ ] Rolled to the lab's control, and the lane's trials read with it.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+- 2026-10-25 13:19 UTC: Goal written. The owner asked why a lane's trials ended without a submission, and the session lines were on control but not reachable over MCP.
+
+---
+
+Run with `/goal Complete docs/plan/goals/139-trial-session-over-mcp.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

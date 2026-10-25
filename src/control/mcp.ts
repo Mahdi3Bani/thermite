@@ -62,6 +62,7 @@ import {
   type DeploymentDriver,
   type RunpodDriver,
 } from "./lifecycle.ts";
+import { registerRigReads } from "./mcp-rig-reads.ts";
 import { redirectUriOf, ServerBody, serverJson } from "./mcp-server-routes.ts";
 import type { McpServers } from "./mcp-servers.ts";
 import { copiedFromRecords } from "./queue-copy.ts";
@@ -79,7 +80,6 @@ import {
   rigSettingsRead,
   setRigSettings,
 } from "./rig-settings.ts";
-import { rigSetupView, SETUP_STEPS } from "./rig-setup-view.ts";
 import {
   RUN_DETAIL_INPUT,
   RUN_DETAIL_WORDS,
@@ -623,27 +623,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
 
   // Control itself, for whoever runs it (not the agents of a campaign): its log and its providers.
   if (role !== "agent") {
-    server.registerTool(
-      "rig_setup",
-      {
-        title: "How a rig was set up",
-        description:
-          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and the newest steps of its setup and management (steps, 20 by default, up to 500; steps_total counts them all), oldest first (applied, pods running, first report, images updated, new GPUs, CPUs or memory, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). On a cluster, also its GPUs, the judge's share, its CPUs and memory, and the change of size it drains for. Use it after add_cluster_rig, update_rig_images, set_cluster_rig_resources or runpod_rig. Holds no keys or tokens.",
-        inputSchema: {
-          rig: z.string().min(1),
-          steps: z.number().int().min(1).max(500).default(SETUP_STEPS),
-        },
-      },
-      audited("rig_setup", (a: { rig: string; steps: number }) => {
-        return rigSetupView(
-          store,
-          opts.runpodRigs,
-          a.rig,
-          a.steps,
-          role === "owner" || role === "operator",
-        );
-      }),
-    );
+    registerRigReads(server, audited, store, opts.runpodRigs, role !== "reader");
 
     server.registerTool(
       "control_log",

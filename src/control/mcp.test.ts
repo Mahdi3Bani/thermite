@@ -87,7 +87,7 @@ describe("control over MCP", () => {
     const readerTools = (await reader.listTools()).tools.map((t) => t.name);
     assert.ok(!readerTools.includes("issue_command"));
     assert.ok(readerTools.includes("list_rigs"));
-    assert.ok(readerTools.includes("rig_setup"));
+    assert.ok(readerTools.includes("rig_setup") && readerTools.includes("trial_session"));
     // A reader sees a run's queue, its rules, hand-outs and messages (goal 064).
     const queue = text(
       await reader.callTool({ name: "run_queue", arguments: { rig: "rig-a", run: "js-1" } }),
@@ -407,7 +407,7 @@ describe("control over MCP", () => {
     assert.ok((await reader.listTools()).tools.some((t) => t.name === "control_log"));
     const agent = await connect(control, "agent-token-abcdef");
     const agentTools = (await agent.listTools()).tools.map((t) => t.name);
-    assert.ok(!agentTools.includes("control_log") && !agentTools.includes("providers"));
+    assert.ok(!["control_log", "providers", "trial_session"].some((t) => agentTools.includes(t)));
     await Promise.all([operator.close(), reader.close(), agent.close()]);
   });
 
