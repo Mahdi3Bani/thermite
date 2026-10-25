@@ -166,7 +166,7 @@ With the **Planner** switch off on **Edit rig**, when the planner's model can't 
 
 A lane prefers its last direction because that is where it has learned the most. Its worker's brief carries the lane's own recent attempts with the judge's reasons, and the lane may build on its own best result, so a next experiment in the same direction can use both. The lane reaches only a few places down the queue for it, so the queue's order mostly holds.
 
-The same rules give out work within a round. A lane's first trial takes the experiment the round gave it. Each later trial takes the next experiment by the fixed rules, as a hand-out of its own, and leaves alone the experiments given to other lanes that have not started on them yet.
+The same rules give out work within a round. A lane's first trial takes the experiment the round gave it. Each later trial takes the next experiment by the fixed rules, as a hand-out of its own, and leaves alone the experiments given to other lanes that have not started on them yet. In a research run, a task the round holds for a lane still on an earlier round's trial does not count toward its question's share of the round: that lane may not start in this round, so a free lane can take another task for the same question.
 
 The planner uses the workers' model unless it has a model of its own on **Edit rig**. When the **Planner** switch there is off, the lanes take the queue by the fixed rules every round, and a message to the planner is refused, because nothing would read it. The run's **Planner** tab then says so, with a link to **Edit rig**, in place of its message box.
 

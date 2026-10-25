@@ -48,6 +48,28 @@ export function lanesInRound(
 }
 
 /**
+ * The experiments a round gave other lanes that have not started in it: no other lane takes them
+ * (`held`). Only those of lanes free now count as given out, for a research run's share of each
+ * question (`counted`): a lane on an earlier round's trial may not start in this one, so its
+ * hand-out must not keep a free lane off that question.
+ */
+export function heldHandouts(
+  registry: Registry,
+  run: string,
+  round: { n: number; assignments: readonly { lane: string; experiment?: string | undefined }[] },
+  lane: string,
+  running: { has(lane: string): boolean },
+): { held: string[]; counted: string[] } {
+  const held = round.assignments.filter(
+    (b) => b.lane !== lane && b.experiment && registry.trials(run, b.lane, round.n).length === 0,
+  );
+  return {
+    held: held.map((b) => b.experiment as string),
+    counted: held.filter((b) => !running.has(b.lane)).map((b) => b.experiment as string),
+  };
+}
+
+/**
  * Whether a lane's next trial waits for the judge: the run waits for verdicts (`keep` off), and
  * the change from the lane's newest finished trial, of any round, is not settled.
  */

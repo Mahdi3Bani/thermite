@@ -53,6 +53,8 @@ export async function researchScene(
     adds?: boolean;
     /** A lane's trial waits for this before it does its work, to keep that lane busy. */
     hold?: (lane: string) => Promise<void> | undefined;
+    /** Trials of each lane in a round (1 by default). */
+    perRound?: number;
   } = {},
 ) {
   const env = makeHarnessEnv("rig-r");
@@ -60,7 +62,7 @@ export async function researchScene(
   const parsed = parseContract({
     ...researchFixture,
     questions: QUESTIONS,
-    lanes: { count: lanes, trials_per_epoch: 1 },
+    lanes: { count: lanes, trials_per_epoch: o.perRound ?? 1 },
     ...(o.hypotheses ? { hypotheses: o.hypotheses } : {}),
   });
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
@@ -426,6 +428,53 @@ describe("no lane waits behind another lane's trial (goal 136)", () => {
     const now = s.scheduler.registry.currentEpoch(RUN)?.n ?? 0;
     assert.ok(now >= 2, `round ${now}`);
     assert.equal(trials("lane-1")[1]?.epoch, now);
+    await s.scheduler.idle();
+  });
+
+  test("a hand-out held for a lane on an earlier round's trial stays its own, but leaves its question to the free lanes", async (t) => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    let holding = true;
+    const s = await researchScene(t, {
+      perRound: 2,
+      hold: (lane) => (lane === "lane-1" && holding ? held : undefined),
+    });
+    const trials = (lane: string) =>
+      s.db
+        .prepare("select id, epoch, ended_at from trial where run = ? and lane = ? order by rowid")
+        .all(RUN, lane) as { id: string; epoch: number; ended_at: string | null }[];
+    const until = async (ok: () => boolean) => {
+      for (let i = 0; i < 500 && !ok(); i++) {
+        await s.scheduler.tick();
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      assert.ok(ok(), "in time");
+    };
+    // Round 1: lane-1 stays on its first trial; lane-2 runs both of its own, so the round ends.
+    assert.ok(await s.scheduler.tick());
+    await until(() => trials("lane-2").filter((x) => Number(x.epoch) === 2).length === 2);
+    // Round 2 gave lane-1, still busy, a task; lane-2's second trial of round 2 took the next by
+    // the gap-driven rules, with lane-1's task held for it, not counted for its question.
+    const round2 = s.scheduler.registry.currentEpoch(RUN);
+    assert.equal(round2?.n, 2);
+    const mine = round2?.assignments.find((a) => a.lane === "lane-1")?.experiment;
+    assert.ok(mine, "round 2 gave lane-1 a task");
+    const heldTask = s.q.get(mine);
+    assert.equal(heldTask?.state, "queued", "the task stays lane-1's");
+    const second = s.q.forTrial(trials("lane-2")[3]?.id ?? "");
+    assert.notEqual(second?.id, mine);
+    assert.equal(
+      second?.question,
+      heldTask?.question,
+      "the free lane takes the busy lane's question: the hand-out held for it does not cover it",
+    );
+    // Lane-1's trial ends: its first trial of round 2 is the task the round gave it.
+    holding = false;
+    release();
+    await until(() => trials("lane-1").length === 2);
+    assert.equal(s.q.forTrial(trials("lane-1")[1]?.id ?? "")?.id, mine);
     await s.scheduler.idle();
   });
 });

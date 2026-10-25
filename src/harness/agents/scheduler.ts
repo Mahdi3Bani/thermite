@@ -105,7 +105,7 @@ import {
   type ResearchPlanResult,
 } from "./research-planner.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
-import { lanesInRound, roundOver, waitsForJudge } from "./scheduler/rounds.ts";
+import { heldHandouts, lanesInRound, roundOver, waitsForJudge } from "./scheduler/rounds.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
 
@@ -1657,16 +1657,7 @@ export class Scheduler {
     const mine = k === 1 && a.experiment ? queue.get(a.experiment) : undefined;
     if (mine && mine.run === run && (mine.state === "queued" || mine.state === "proposed"))
       return { x: mine, why: a.why ?? "the round's hand-out" };
-    const reserved = new Set(
-      epoch.assignments
-        .filter(
-          (b) =>
-            b.lane !== a.lane &&
-            b.experiment &&
-            this.registry.trials(run, b.lane, epoch.n).length === 0,
-        )
-        .map((b) => b.experiment as string),
-    );
+    const reserved = new Set(heldHandouts(this.registry, run, epoch, a.lane, this.running).held);
     const directives = this.directives(run);
     this.coordinator.ensureMandates(run, directives);
     let x = this.coordinator.pick(run, a.lane, {
@@ -2331,18 +2322,12 @@ export class Scheduler {
     const mine = k === 1 && a.experiment ? queue.get(a.experiment) : undefined;
     if (mine && mine.run === run && (mine.state === "queued" || mine.state === "proposed"))
       return { x: mine, why: a.why ?? "the round's hand-out" };
-    const reserved = epoch.assignments
-      .filter(
-        (b) =>
-          b.lane !== a.lane &&
-          b.experiment &&
-          this.registry.trials(run, b.lane, epoch.n).length === 0,
-      )
-      .map((b) => b.experiment as string);
+    // A busy lane's hand-out stays its own, but its question is not taken by it (goal 136).
+    const { held, counted } = heldHandouts(this.registry, run, epoch, a.lane, this.running);
     const state = researchState(this.ledger, run, contract, {
       lanes: this.laneCount(run, contract),
       epoch: epoch.n,
-      reserved,
+      reserved: counted,
     });
     const got = this.nextResearchTask(
       run,
@@ -2350,7 +2335,7 @@ export class Scheduler {
       epoch.n,
       a.lane,
       state,
-      new Set(reserved),
+      new Set(held),
       this.directives(run),
     );
     if (!got) return undefined;
