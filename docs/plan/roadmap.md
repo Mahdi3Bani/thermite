@@ -84,6 +84,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [115](goals/_completed/115-hill-climb-baseline.goal) A hill climb's first job measures its starting point, and its guards hold against it · `VERIFIED`
 - [128](goals/_completed/128-get-run-bounded.goal) `get_run` stays a size an agent can read, for a run of any length · `VERIFIED`
 - [133](goals/_completed/133-metric-values-beside-gains.goal) A hill climb shows its main metric's real values beside each gain · `VERIFIED`
+- [135](goals/135-lanes-and-judge-throughput.goal) Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion · `IN_PROGRESS`
 
 ### Research mode
 

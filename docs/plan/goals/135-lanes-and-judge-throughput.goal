@@ -1,0 +1,74 @@
+---
+id: "135"
+title: "Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 135 · Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+1. **Keep working while the judge works: a setting, off by default.**
+   - Off, the default: a lane's next trial waits for the judge's verdict on its last change, and a round ends when its lanes' changes are judged, as before.
+   - On: a lane's next trial starts as soon as its last one ends, and a round ends when its trials end, while the judge works through their changes. The contract's `budget.max_open_attempts` still bounds how many changes wait for the judge.
+   - A campaign sets it in its contract, `lanes.keep_working`, and New campaign has it beside the lanes' other settings.
+   - A run turns it on or off while it runs, with a `keep_working` rule (`on` or `off`) over `redirect` from the command line, REST or MCP; dropping the rule returns the run to its campaign's setting. The run's page says which is in force, with a switch.
+2. **A running run's trial length:** a `trial_minutes` rule comes before the contract's `lanes.limits.trial_minutes` and the rig's setting, from the next trial on.
+3. **Changes carried to a new champion.** Champion A is current; change X was written on an older champion P.
+   1. The judge screens P+X against A, as now.
+   2. If P+X beats A, it becomes champion B. B was built on P, so it lacks A's change: A's change is queued as a port, an experiment in which a worker gets A's original diff and implements it on B. The port is judged against B.
+   3. If P+X does not beat A, the judge also measures P+X against P: what X does on the champion it was written for. If X helped there, X is queued as a port onto A, judged against A.
+   4. One step only: from the last champion to the new one, never every combination.
+   5. A port goes to the top of the queue, titled for what it carries and where (`Port a-… onto champion #3`), with the original diff and its measured effect in the worker's brief, so old plus change and new plus change can be compared.
+   6. Ports happen whether lanes keep working or wait: with two lanes, one lane's win can land while the other's change waits for the judge.
+4. **The judge builds in parallel.** Each judge executor builds as a builder user of its own, in folders of its own, so two changes build at once; a commit being built is built once. The isolation check holds each builder user away from the other's builds.
+5. **Builds survive a roll that keeps the toolchain.** A build's cache key comes from the commit, the kit and the compilers' versions (`cc`, `nvcc`), not the image's id, so an update to new images that change no compiler keeps the run's builds.
+
+## Why
+
+The owner, 2026-10-25, on a GPU hill climb (two lanes with a GPU each, two judge GPUs) whose lanes worked about 2 of 8 hours: "Its so slow for something it should be burning through experiments left and right". Its lanes waited for the judge's verdicts, a round waited for every lane's, the judge built one change at a time for 16 to 18 minutes each, and every image roll emptied its build cache.
+
+Then, on the first fix, which made keeping working the default: "the lanes continuing after submission to next experiment should be a config of a campaign, not a default. Default should be waiting on judge. But judge should be doing things in parallel if possible." And: "this setting should be able to be turned on and off (so pn-speed-1 can be tested and turned off on this)."
+
+On changes written on an older champion: "we want to see the old submissions against the original champion and then redo them for the new champion. Maybe the old + change = higher than new + change... We can't play this game to all permuations but we can play it against last champion to new champion."
+
+## Constraints
+
+- Agents never judge: a port is an experiment a worker implements, and the judge judges it as any change.
+- No default caps: keeping working is bounded only by the contract's `max_open_attempts`, as before.
+- Two builds at once must not weaken the build isolation: a candidate's build, which runs code agents wrote, can't reach another build's folders or outputs.
+
+## Done when
+
+- [ ] `lanes.keep_working` in the contract, off by default; on, lanes and rounds go on while the judge works; a `keep_working` rule turns it on or off for a running run, and dropping it returns to the campaign's setting.
+- [ ] New campaign has the setting, and a run's page shows which is in force with a switch, each from a mockup the owner approved.
+- [ ] A `trial_minutes` rule sets a running run's trial length.
+- [ ] A change written on an older champion is screened against the current one; a win becomes champion and queues a port of the champion it replaced; a loss that helped on its own parent queues its own port onto the champion; each port is judged against its new base.
+- [ ] Two judge executors build two changes at once, each as its own builder user, and the isolation check covers both.
+- [ ] A build cached before an update to images with the same compilers is used after it.
+- [ ] The pages for the contract, steering a run, the judge, verdicts, limits and pacing, the isolation check and the harness image describe all of it.
+
+## Decisions
+
+- 2026-10-25, owner: keeping working is a campaign's setting, off by default, and a run can turn it on and off. Ports happen in both modes. The plan above is the owner's, as explained back to them before any of it was built.
+- 2026-10-25: 3535335 made keeping working the default for every run; it was held back from the lab, and part 1 replaces it.
+
+## Open questions
+
+- The screens: the New campaign setting and the run's switch, mockups first.
+- A port whose base build fails, or whose original change no longer makes sense on the new champion: the worker says so and submits nothing, as for any experiment.
+
+## Progress
+
+- 2026-10-25 04:27 UTC: Goal written from the owner's words. Built before it: the `trial_minutes` rule (6d53693, on main, not pushed), and lanes that always keep working (3535335, pushed, not rolled), which part 1 turns into the setting.
+
+---
+
+Run with `/goal Complete docs/plan/goals/135-lanes-and-judge-throughput.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
