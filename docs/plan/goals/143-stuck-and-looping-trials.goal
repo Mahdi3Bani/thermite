@@ -107,7 +107,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 - 2026-10-25, builder: **Stop this trial…** is in a stuck trial's card (and, as before, on a draining rig's page), not on every lane's row: the owner asked for less on the page. `stop_trial` over MCP and REST stops any running trial.
 - 2026-10-25, builder: the teachers' brief has each lane's trial now (`at_work`); the auditor's package does not. The auditor decides one change, and a lane's state says nothing about it.
 - 2026-10-25, builder: only a Pi worker gets short answers. OpenCode, Claude Code and Codex compact on their own, and the harness learns of it only afterwards, so a short answer to a `thermite-trial` command could point at an answer the program no longer holds. Their repeats show from their lines: the watch reads every harness's lines alike.
-- 2026-10-25, builder: a streak is said at its 10th repeated call in a row. It is a threshold for what the harness says, not a cap. A page the run refused, asked for again and again (goal 136's "repeats a refused request"), is a streak of the same call with the same answer, so it shows the same way.
+- 2026-10-25, builder: a streak is said at its 10th repeated call in a row. It is a threshold for what the harness says, not a cap. A page the run refused, asked for again and again (goal 136's "repeats a refused request"), is no such streak: its answer counts the asks. It shows the same way all the same: from its 10th ask in a trial, the trial is a **Repeats** card under **Needs you**, and its lane's chip reads "repeats a refused request", as a draining rig's row does.
 
 ## Open questions
 

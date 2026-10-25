@@ -69,23 +69,30 @@ export function workOf(summary: unknown): Work | undefined {
   return w.success ? w.data : undefined;
 }
 
-/** What a lane's trial is doing, as at_work gives it (goal 143); null where it doesn't say. */
+/**
+ * What a lane's trial is doing, as at_work gives it (goal 143): when it last sent a line, its open
+ * model call and a streak of the same calls, from a harness with goal 143 (absent from an older
+ * one); and a page the run refused that it asks for again (goal 136), from a harness with goal 136.
+ */
 export interface TrialDoing {
-  last_line_at: string | null;
-  reply: z.infer<typeof Reply> | null;
-  repeating: z.infer<typeof Repeating> | null;
+  last_line_at?: string | null;
+  reply?: z.infer<typeof Reply> | null;
+  repeating?: z.infer<typeof Repeating> | null;
+  refused_again?: OpenTrial["refused_again"];
 }
 
-/** Each open trial's doings, by trial; none from a harness older than goal 143. */
+/** Each open trial's doings, by trial, with what its harness reports. */
 export function doingsOf(summary: unknown): Map<string, TrialDoing> {
   const out = new Map<string, TrialDoing>();
   for (const t of workOf(summary)?.open ?? []) {
-    if (t.last_line_at === undefined) continue;
-    out.set(t.trial, {
-      last_line_at: t.last_line_at,
-      reply: t.reply ?? null,
-      repeating: t.repeating ?? null,
-    });
+    const d: TrialDoing = { refused_again: t.refused_again };
+    if (t.last_line_at !== undefined)
+      Object.assign(d, {
+        last_line_at: t.last_line_at,
+        reply: t.reply ?? null,
+        repeating: t.repeating ?? null,
+      });
+    out.set(t.trial, d);
   }
   return out;
 }

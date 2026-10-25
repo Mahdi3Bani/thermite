@@ -78,6 +78,7 @@ describe("what each lane's trial is doing, in at_work (goal 143)", () => {
       focus: "f2",
       since: run.at_work["lane-2"]?.since,
       ...QUIET,
+      refused_again: null,
     });
     assert.deepEqual(run.at_work["lane-1"]?.repeating, LOOP.repeating);
     const queue = (await c.mcp("run_queue", { rig: "rig-a", run: "s-1" })) as {
@@ -91,7 +92,8 @@ describe("what each lane's trial is doing, in at_work (goal 143)", () => {
       work: { trials: 1, judge_jobs: 0, draining: null, open: [open("t-1", "lane-1")] },
     };
     assert.equal(workOf(older)?.open?.length, 1);
-    assert.equal(doingsOf(older).size, 0);
+    // A harness from goal 136 says only a refused page asked for again.
+    assert.deepEqual(doingsOf(older).get("t-1"), { refused_again: null });
     assert.equal(workOf({ work: { trials: "two" } }), undefined);
     assert.equal(doingsOf(null).size, 0);
   });

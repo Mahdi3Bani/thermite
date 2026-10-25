@@ -4179,14 +4179,16 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     if (
       !RIG_ID.test(rig ?? "") ||
       !/^[A-Za-z0-9_-]{1,64}$/.test(trial ?? "") ||
-      (kind !== "quiet" && kind !== "repeating") ||
-      Number.isNaN(Date.parse(since ?? ""))
+      // A quiet or repeating spell is known by a time; a refused page's by its address.
+      !(kind === "refused"
+        ? (since ?? "").length >= 1 && (since ?? "").length <= 2000
+        : (kind === "quiet" || kind === "repeating") && !Number.isNaN(Date.parse(since ?? "")))
     )
       return c.text("refused: that is not a stuck trial's card", 400);
     store.leaveTrial({
       rig: String(rig),
       trial: String(trial),
-      kind,
+      kind: String(kind),
       since: String(since),
       by: "owner:ui",
     });

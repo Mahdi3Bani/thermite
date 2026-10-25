@@ -206,6 +206,63 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
   });
 });
 
+test("a trial that asks again and again for a refused page is stuck too (goals 136 and 143)", async () => {
+  const c = await stuckRun({});
+  const refused = (times: number) => ({
+    url: "https://vendor.example.org/guide/benchmarks.pdf",
+    reason: "larger than 5000000 bytes",
+    asked: 212,
+    at: ago(1),
+    times,
+  });
+  // Its answer counts the asks, so it is no streak of the same answer: goal 136's count says it.
+  const report = (times: number) =>
+    c.store.ingest({
+      rig: "rig-a",
+      ledger_id: "ledger-a",
+      cursor: 0,
+      next: 0,
+      events: [],
+      summary: {
+        settings: {},
+        work: {
+          trials: 1,
+          judge_jobs: 0,
+          draining: null,
+          open: [open("t-3", "lane-3", { refused_again: refused(times) })],
+        },
+      },
+    });
+  report(3);
+  assert.doesNotMatch(needsOf(await c.page(RUN)), /refused/);
+  report(12);
+  const page = await c.page(RUN);
+  const needs = needsOf(page);
+  assert.match(
+    needs,
+    /lane-3(&#39;|')s trial asks again and again for a page the run refused: 12 times/,
+  );
+  assert.match(
+    needs,
+    /This trial asked 12 times for a page the run refused before: <code>https:\/\/vendor\.example\.org\/guide\/benchmarks\.pdf<\/code>, larger than 5000000 bytes\. The run has asked for it 212 times/,
+  );
+  assert.match(
+    page,
+    /f3 <a class="chip warn" href="[^"]*#needs"[^>]*>repeats a refused request<\/a>/,
+  );
+  // Leave it running, for that page: the card stays away while it is the same page.
+  const left = await c.post("/ui/trials/leave", {
+    rig: "rig-a",
+    run: "s-1",
+    trial: "t-3",
+    kind: "refused",
+    since: refused(12).url,
+    back: RUN,
+  });
+  assert.equal(left.status, 303);
+  assert.doesNotMatch(needsOf(await c.page(RUN)), /refused/);
+});
+
 test("History says a streak of the same calls in words (goal 143)", async () => {
   const { sentence } = await import("./words.ts");
   const said = sentence(
