@@ -80,7 +80,8 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 /** "2 trials and the judge's job": what the drain waits for, in words; "" when nothing runs. */
 function waitsFor(d: RigDrain): string {
-  return [d.trials ? plural(d.trials, "trial") : "", d.judgeJobs ? "the judge's job" : ""]
+  const jobs = d.judgeJobs === 1 ? "the judge's job" : `the judge's ${d.judgeJobs} jobs`;
+  return [d.trials ? plural(d.trials, "trial") : "", d.judgeJobs ? jobs : ""]
     .filter(Boolean)
     .join(" and ");
 }

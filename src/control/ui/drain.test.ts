@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ev, part, researchControl, researchRunEvents } from "../../testing/research-reviews.ts";
-import { drainBanner, drainOf } from "./drain.ts";
+import { drainBanner, drainOf, drainSaid } from "./drain.ts";
 
 /**
  * A rig's drain on its page (goal 136, item 3): the card at the top, and each trial it waits for
@@ -232,6 +232,13 @@ describe("a drain on the rig's page (goal 136)", () => {
       /It waits for 2 trials and the judge's job\. Its harness is too old to say which trials, or to stop one: update it\./,
     );
     assert.doesNotMatch(oldCard, /under <b>At work<\/b>/);
+    // The judge builds several changes at once: the sentence gives how many of its jobs run.
+    const two = drainOf(old.store.rigs()[0] ?? { summary: {} });
+    assert.ok(two);
+    assert.match(
+      drainSaid("rig-a", { ...two, judgeJobs: 2 }),
+      /waits for 2 trials and the judge's 2 jobs to end\./,
+    );
 
     const none = await draining({ trials: 2, judge_jobs: 0, draining: null });
     const page = await none.page("/ui/rigs/rig-a");
