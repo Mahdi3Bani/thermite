@@ -39,7 +39,7 @@ A closed run is finished, and nothing in it waits for you: what waited in it whe
 | **Wipe** | Wipe this rig's state? | A full reset you started is ready for its last step | **Confirm the wipe**, **Cancel the reset** |
 | **Agents stopped** | The agents of this run cannot work | The model provider refused a trial (no credits, a refused key, a model it does not serve on the key), no model call worked for 30 minutes, or the workers' model check fails. No trial or plan starts until a check passes | **Check the model now**, **Edit rig** |
 | **Stuck?** | Stop lane-2's trial, or leave it running? | A trial has sent no line for longer than the rig's **Ask me after a quiet spell of (minutes)** on **Edit rig**. The setting is empty by default, and then this never asks | **Stop this trial…**, **Leave it running** |
-| **Repeats** | Stop lane-1's trial, or leave it running? | A trial made the same tool call with the same answer 10 times in a row | **Stop this trial…**, **Leave it running** |
+| **Repeats** | Stop lane-1's trial, or leave it running? | A trial made the same tool call with the same answer 10 times in a row, or asked 10 times for a page the run refused before for a reason that lasts | **Stop this trial…**, **Leave it running** |
 | **Not reporting** | This rig stopped reporting, or, for a rig that never reported, This rig has not reported yet | A rig has sent no report for a while. A new rig whose first key waits for you shows under **New key** instead. A rig on RunPod whose pod is stopped shows no card: it can't report while stopped | **Open the rig** |
 
 ### Choose what waits
@@ -117,12 +117,12 @@ By default the evidence ends the campaign: the run closes with `not possible: th
 A trial has no time limit unless someone set one, and nothing ends a trial because it is quiet or repeats itself. So a stuck trial asks you:
 
 - **Stuck?**: `lane-2's trial has sent nothing for 4 h 24 min`. Behind the card: how long it has run, what it last did in **Live**, and for a Pi worker its open model call: since when, and how many characters of text, thinking and tool-call arguments the model has sent so far. A reply that keeps streaming one very long tool call can hold a trial for hours.
-- **Repeats**: `lane-1's trial repeats the same tool calls: 812 since 19:04 UTC`. Behind the card: how many times, how many different calls, and the most repeated ones. A Pi worker gets a short answer for each copy, so its conversation stays small.
+- **Repeats**: `lane-1's trial repeats the same tool calls: 812 since 19:04 UTC`. Behind the card: how many times, how many different calls, and the most repeated ones. A Pi worker gets a short answer for each copy, so its conversation stays small. A trial that asks again and again for a page the run refused, such as a file larger than the run's `fetch_policy.max_bytes`, shows the same way from its 10th ask: `lane-3's trial asks again and again for a page the run refused: 12 times`, with the page, why it was refused and how many times the run asked for it. The harness answers each ask at once, with no download.
 
-Both show the trial's work so far. Its lane's row, on the run's page, the home page and the rig's page, has a chip that leads to the card: `quiet for 4 h 24 min` or `repeats the same calls`.
+Both show the trial's work so far. Its lane's row, on the run's page, the home page and the rig's page, has a chip that leads to the card: `quiet for 4 h 24 min`, `repeats the same calls` or `repeats a refused request`.
 
 - **Stop this trial…** opens the card. Its foot asks `Stop lane-2's trial now?`; **Stop the trial** sends [`stop_trial`](../../reference/signed-commands.md#stop_trial). The trial ends as interrupted, with its sources, claims and counters, and its task goes back to the top of the run's queue. The card leaves at once.
-- **Leave it running** hides the card. A quiet trial's card comes back if the trial sends a line and is then quiet again for as long; a repeating trial's comes back with a new streak.
+- **Leave it running** hides the card. A quiet trial's card comes back if the trial sends a line and is then quiet again for as long; a repeating trial's comes back with a new streak, or with asks for another refused page.
 
 To be asked about quiet trials, type the minutes in **Ask me after a quiet spell of (minutes)** on the rig's **Edit rig** page. Its ⓘ says: "When a trial sends no line for this long, its lane is marked quiet and the trial waits for you under Needs you. Empty: never. Nothing ends the trial." On a rig whose harness is too old to take it, the field is off and reads `update the rig first`.
 

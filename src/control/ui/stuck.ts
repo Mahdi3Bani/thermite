@@ -10,7 +10,9 @@ import { clip, span } from "./words.ts";
 
 /**
  * A stuck trial (goal 143): one quiet for longer than its rig's quiet setting (none by default),
- * or one that repeats the same tool calls. It asks the owner under Needs you, with its details
+ * one that repeats the same tool calls, or one that asks again and again for a page the run
+ * refused for a reason that lasts (goal 136; its answer counts the asks, so it is no streak of the
+ * same answer). It asks the owner under Needs you, with its details
  * behind the card and two choices, Stop this trial… and Leave it running; its lane's row gets
  * only a chip. The facts are the rig's report (at_work, work.open) and the trial's lines in Live.
  * Nothing here ends a trial: the owner decides.
@@ -19,13 +21,19 @@ import { clip, span } from "./words.ts";
 type AtWork = RunView["at_work"][string];
 
 export interface StuckTrial {
-  kind: "quiet" | "repeating";
+  kind: "quiet" | "repeating" | "refused";
   lane: string;
   trial: string;
-  /** Since when: the trial's last line (quiet), or the streak's start (repeating). */
+  /**
+   * What makes this stuck spell itself, for Leave it running: the trial's last line (quiet), the
+   * streak's start (repeating), or the refused page's address (refused).
+   */
   since: string;
   w: AtWork;
 }
+
+/** How many asks for a refused page make a trial stuck: a threshold for asking, not a cap. */
+export const REFUSED_ASKS = 10;
 
 /** A running run's stuck trials, lane by lane. */
 export function stuckTrials(u: Pick<RigView, "settings">, r: RunView, now: number): StuckTrial[] {
@@ -38,6 +46,8 @@ export function stuckTrials(u: Pick<RigView, "settings">, r: RunView, now: numbe
     const w = r.at_work[lane] as AtWork;
     if (w.repeating)
       out.push({ kind: "repeating", lane, trial: w.trial, since: w.repeating.since, w });
+    else if (w.refused_again && w.refused_again.times >= REFUSED_ASKS)
+      out.push({ kind: "refused", lane, trial: w.trial, since: w.refused_again.url, w });
     // An older harness says nothing (undefined). No line yet: quiet since the trial started.
     if (quiet === null || w.last_line_at === undefined) continue;
     const last = w.last_line_at ?? w.since;
@@ -49,7 +59,12 @@ export function stuckTrials(u: Pick<RigView, "settings">, r: RunView, now: numbe
 
 /** The chip on a stuck trial's lane: it leads to its card under Needs you on the run's page. */
 export function stuckChip(s: StuckTrial, u: Pick<RigView, "id">, r: RunView, now: number): string {
-  const said = s.kind === "quiet" ? `quiet for ${span(s.since, now)}` : "repeats the same calls";
+  const said =
+    s.kind === "quiet"
+      ? `quiet for ${span(s.since, now)}`
+      : s.kind === "refused"
+        ? "repeats a refused request"
+        : "repeats the same calls";
   return ` <a class="chip warn" href="${runHref(u.id, r)}#needs" title="Its card is under Needs you">${esc(said)}</a>`;
 }
 
@@ -107,6 +122,14 @@ export function stuckNeeds(
             ],
           ]
         : []),
+      ...(s.kind === "refused" && s.w.refused_again
+        ? [
+            [
+              "Same request",
+              `This trial asked ${fmtInt(s.w.refused_again.times)} times for a page the run refused before: <code>${esc(clip(s.w.refused_again.url, 160))}</code>, ${esc(s.w.refused_again.reason)}. The run has asked for it ${fmtInt(s.w.refused_again.asked)} times, the last ${esc(ago(s.w.refused_again.at, now))} ago. The harness answers each ask at once, with no download.`,
+            ],
+          ]
+        : []),
       ...(s.w.repeating
         ? [
             [
@@ -134,7 +157,28 @@ export function stuckNeeds(
     // In the row, Stop this trial… opens the card (a click in a row opens it); the card's foot asks
     // to confirm, with the form, so that nothing in the row's popover folds the card.
     const stopOpen = `<span class="btn sm danger">Stop this trial…</span>`;
-    const stopConfirm = `<div class="stuck-stop"><div class="small"><b>Stop ${lane}'s trial now?</b> It ends as interrupted. Its sources, claims and counters stay. Its task goes back to the top of the run's queue, so a lane takes it up again.</div>${f.cmd({ rig: u.id, kind: "stop_trial", fields: { run: r.id, trial: s.trial, reason: quiet ? "stopped from Needs you: it was quiet" : "stopped from Needs you: it repeated the same calls" }, label: "Stop the trial", cls: "danger sm", back })}</div>`;
+    const words = {
+      quiet: {
+        headline: `${lane}'s trial has sent nothing for ${esc(span(s.since, now))}`,
+        why: `Nothing ends a trial for that, so it waits for you.${reply ? ` Its model has been in one reply for ${esc(span(reply.since, now))}.` : ""}`,
+        reason: "stopped from Needs you: it was quiet",
+        leave:
+          "The card goes away. It comes back if the trial sends a line and is then quiet again for as long.",
+      },
+      repeating: {
+        headline: `${lane}'s trial repeats the same tool calls: ${fmtInt(s.w.repeating?.count ?? 0)} since ${esc(clockUtc(s.since))}`,
+        why: "It may be stuck. Nothing ends a trial for that, so it waits for you.",
+        reason: "stopped from Needs you: it repeated the same calls",
+        leave: "The card goes away. A new streak of the same calls brings it back.",
+      },
+      refused: {
+        headline: `${lane}'s trial asks again and again for a page the run refused: ${fmtInt(s.w.refused_again?.times ?? 0)} times`,
+        why: "The harness answers each ask at once, with no download, but the trial may be stuck on it. Nothing ends a trial for that, so it waits for you.",
+        reason: "stopped from Needs you: it asked again for a refused page",
+        leave: "The card goes away. Asks for another refused page bring it back.",
+      },
+    }[s.kind];
+    const stopConfirm = `<div class="stuck-stop"><div class="small"><b>Stop ${lane}'s trial now?</b> It ends as interrupted. Its sources, claims and counters stay. Its task goes back to the top of the run's queue, so a lane takes it up again.</div>${f.cmd({ rig: u.id, kind: "stop_trial", fields: { run: r.id, trial: s.trial, reason: words.reason }, label: "Stop the trial", cls: "danger sm", back })}</div>`;
     const hidden = (k: string, v: string) => `<input type="hidden" name="${k}" value="${esc(v)}">`;
     const leaveForm = `<form class="inline" method="post" action="/ui/trials/leave">${hidden("csrf", f.csrf)}${hidden("rig", u.id)}${hidden("run", r.id)}${hidden("trial", s.trial)}${hidden("kind", s.kind)}${hidden("since", s.since)}${hidden("back", back)}<button class="sm">Leave it running</button></form>`;
     const c = card({
@@ -142,15 +186,14 @@ export function stuckNeeds(
       ic: icon.warn,
       kind: quiet ? "Stuck?" : "Repeats",
       question: `Stop ${s.lane}'s trial, or leave it running?`,
-      headline: quiet
-        ? `${lane}'s trial has sent nothing for ${esc(span(s.since, now))}`
-        : `${lane}'s trial repeats the same tool calls: ${fmtInt(s.w.repeating?.count ?? 0)} since ${esc(clockUtc(s.since))}`,
-      why: `${quiet ? "" : "It may be stuck. "}Nothing ends a trial for that, so it waits for you.${quiet && reply ? ` Its model has been in one reply for ${esc(span(reply.since, now))}.` : ""}`,
+      headline: words.headline,
+      why: words.why,
       key: `stuck-${u.id}-${s.trial}-${s.kind}`,
       u,
       r,
       lane: s.lane,
-      since: s.since,
+      // A refused page's spell is known by its address: the card gives no age for it.
+      since: s.kind === "refused" ? undefined : s.since,
       now,
       facts,
       choices: [
@@ -162,14 +205,13 @@ export function stuckNeeds(
         {
           button: leaveForm,
           label: "Leave it running",
-          does: quiet
-            ? "The card goes away. It comes back if the trial sends a line and is then quiet again for as long."
-            : "The card goes away. A new streak of the same calls brings it back.",
+          does: words.leave,
         },
       ],
       more: stopConfirm,
       decided,
     });
-    return [{ kind: "stuck", rig: u.id, run: r.id, at: s.since, ...c }];
+    const at = s.kind === "refused" ? (s.w.refused_again?.at ?? s.w.since) : s.since;
+    return [{ kind: "stuck", rig: u.id, run: r.id, at, ...c }];
   });
 }
