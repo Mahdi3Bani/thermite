@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statfsSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { arch, cpus, totalmem } from "node:os";
+import { composeFinding } from "./doctor/compose.ts";
 import {
   CDI_GENERATE,
   CDI_SPECS,
@@ -191,62 +192,6 @@ function engineFinding(engines: Engine[], platform: NodeJS.Platform): Finding {
       silentText,
     ]
       .filter(Boolean)
-      .join(" "),
-  };
-}
-
-// ---------------------------------------------------------------- the compose tool
-
-async function composeFinding(p: Probes, engines: Engine[]): Promise<Finding> {
-  const title = "Compose tool";
-  const answering = engines.filter((e) => e.answers);
-  if (!answering.length)
-    return {
-      check: "compose",
-      title,
-      status: "skip",
-      said: "No container engine answers, so the compose tool was not checked.",
-    };
-  const found: string[] = [];
-  const missingFor: EngineName[] = [];
-  for (const e of answering) {
-    const before = found.length;
-    if (e.name === "docker") {
-      const plugin = await p.run("docker", ["compose", "version", "--short"]);
-      if (plugin.code === 0) found.push(`docker compose ${plugin.stdout.trim()} works.`);
-      else {
-        const standalone = await p.run("docker-compose", ["version", "--short"]);
-        if (standalone.code === 0)
-          found.push(
-            `docker-compose ${standalone.stdout.trim()} works. Write docker-compose where the docs say docker compose.`,
-          );
-      }
-    } else {
-      // podman compose hands the work to a compose program; it fails when there is none.
-      const handed = await p.run("podman", ["compose", "version"]);
-      if (handed.code === 0) found.push("podman compose works.");
-      else {
-        const pc = await p.run("podman-compose", ["version"]);
-        if (pc.code === 0)
-          found.push(
-            "podman-compose works. Write podman-compose where the docs say docker compose.",
-          );
-      }
-    }
-    if (found.length === before) missingFor.push(e.name);
-  }
-  if (found.length) return { check: "compose", title, status: "ok", said: found.join(" ") };
-  return {
-    check: "compose",
-    title,
-    status: "fail",
-    said: `No compose tool works with ${missingFor.map((n) => ENGINE_LABEL[n]).join(" or ")}.`,
-    fix: missingFor
-      .map((n) =>
-        n === "docker"
-          ? "Install the Docker Compose plugin. Docker Desktop has it."
-          : "Install podman-compose or docker-compose. podman compose hands its work to one of them.",
-      )
       .join(" "),
   };
 }

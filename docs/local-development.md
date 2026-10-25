@@ -7,7 +7,7 @@ Thermite runs the same images under docker-compose, podman-compose and Kubernete
 ## Requirements
 
 - Node.js 22.19 or later, for the checks and the command line (the agent libraries require it).
-- Docker with Compose, or Podman with `podman compose` or podman-compose.
+- Docker with Compose, or Podman with `podman compose` or podman-compose. Not `docker-compose` 1.x, the old Compose v1: it can't read `compose.yaml`, and `podman compose` uses it first when it is installed.
 
 ## Checks
 
