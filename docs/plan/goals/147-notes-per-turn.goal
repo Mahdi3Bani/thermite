@@ -1,0 +1,51 @@
+---
+id: "147"
+title: "An optional limit on the field notes a worker writes in one reply"
+status: PROPOSED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 147 · An optional limit on the field notes a worker writes in one reply
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A worker keeps field notes with its note tool (goal 065): an observation, a decision and why, a lesson. On the lab, 2026-10-25, one trial of a research run wrote 4,859 notes in about two minutes, from 14:41 UTC, up to 35 a second. Its trial made 5,030 tool calls in 50 replies, so a few replies each held thousands of note calls. Every note's text was different. The harness recorded them all, and the run's journal, its rig's ledger and control's copy of them grew with each.
+
+1. **The limit.** A contract may set `lanes.limits.notes_per_turn`, 1 to 10,000: the notes a Pi worker, of a code or a research trial, records from one model reply. There is no limit unless the contract sets one.
+2. **Past it.** A note call past the limit is not recorded. Its answer says so: "not recorded: this campaign keeps at most 20 notes from one reply. Write the most important ones in your next reply. Your trial goes on." The trial goes on. The count starts again with each reply.
+3. **Said once.** The trial's line in Live says how many notes of a reply were not recorded, once for each reply.
+
+## Why
+
+The owner, 2026-10-25: "optional limit on notes per turn, default is no limit." A flood of notes buries the useful ones for the teachers, the planner and the next trials, and every copy of the journal grows with it.
+
+## Constraints
+
+- **No default caps.** Without `notes_per_turn`, every note is recorded, as now.
+- **Pi only.** The harness sees a Pi worker's replies. It doesn't see where one reply of OpenCode, Claude Code or Codex ends, so their notes (`thermite-trial note`) are not limited.
+
+## Done when
+
+- [ ] Items 1 and 2, with tests: a reply with more note calls than the limit records the first ones and refuses the rest in words; the next reply records again; without the limit all are recorded; the contract refuses a value out of range.
+- [ ] Item 3, with a test.
+- [ ] Pages: the contract reference (`lanes.limits`), Limits and pacing, and the changelog.
+
+## Decisions
+
+- 2026-10-25, owner: an optional limit, with no limit by default.
+
+## Open questions
+
+## Progress
+
+- 2026-10-25 21:56 UTC: Goal written from the owner's decision, after a research trial on the lab wrote 4,859 notes in two minutes.
+
+---
+
+Run with `/goal Complete docs/plan/goals/147-notes-per-turn.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -32,7 +32,7 @@ One long tool call stopped a rig's supervisor for 75 minutes. During that time, 
 ## Constraints
 
 - **Change only what the profile showed.** The patch changes the one function, and only for long arguments.
-- **Report it upstream.** The fix belongs in pi-ai. Posting the issue is the owner's call.
+- **No report upstream.** Thermite patches what it needs itself (the owner, 2026-10-25).
 
 ## Done when
 
@@ -42,9 +42,11 @@ One long tool call stopped a rig's supervisor for 75 minutes. During that time, 
 
 ## Decisions
 
+- 2026-10-25, owner: "no reports, just patch ourselves if needed, but I doubt its needed. It is likely an issue on our implementation and usage not pi-ai itself". The patch stays as a guard. The cause to find is in Thermite's use of the models: what makes a reply carry a megabyte of tool-call arguments, or thousands of tool calls (goal 147's notes; goal 143's repeated calls).
+
 ## Open questions
 
-- Whether an advisor's model call should also have a cap on what it writes. A tool call of a megabyte is not a useful answer.
+- What in Thermite's use made the advisor's model write a megabyte of tool-call arguments? To look at: the output limit Thermite gives each model, the advisors' tools and their prompt, and the provider's answers. The supervisor's session from 12:14 UTC on 2026-10-25 holds the call. A tool call of a megabyte is not a useful answer.
 
 ## Progress
 

@@ -1,0 +1,55 @@
+---
+id: "145"
+title: "A drain doesn't wait two hours for a trial that started seconds before it"
+status: PROPOSED
+version: "0.1.3"
+depends_on: ["136"]
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 145 · A drain doesn't wait two hours for a trial that started seconds before it
+
+**Status:** `PROPOSED` · **Version:** [v0.1.3](../roadmap.md#v013)
+
+## What
+
+When control updates a rig's images, the rig drains first: it starts nothing new, and its pods restart once its trials and the judge's jobs end. Control decides to drain from what it knows. The rig hears of it a few seconds later, through its supervisor.
+
+On the lab, 2026-10-25, a lane finished its trial at 14:15:07 UTC and started the next one at 14:15:10. The drain reached the rig at 14:15:14, 4.6 seconds later. The new trial had a length of 120 minutes, so the update would have waited until about 16:15 for a trial that had done nothing yet. The operator restarted the rig at 14:47 without the wait, and the trial was lost.
+
+1. **A trial that has just started doesn't hold a drain.** When a drain starts, a trial that started a short time before it is stopped: the time the rig sets, 5 minutes unless set. Its experiment goes back to the top of the queue, as with `stop_trial` (goal 136). A trial that has run longer is waited for, as now.
+2. **The drain says what it stopped.** The `rig_drain` event, the rig's page and `rig_setup` name each trial the drain stopped and why: "started 5 seconds before the drain: its experiment goes back to the top of the queue".
+3. **No trial starts while a drain is on its way.** Where control can tell the rig sooner, it does: control's answer to the rig's next report says that a drain is asked, before the drain command arrives.
+
+## Why
+
+A drain exists so that an update loses no work. A trial seconds old has no work to lose, and waiting for it costs a lane's whole trial length, here two hours.
+
+## Constraints
+
+- **No default caps on research.** The time in item 1 only decides which trials a drain stops. It never ends a trial outside a drain.
+- **Nothing promoted or submitted is lost.** A trial that has submitted is never stopped by a drain.
+
+## Done when
+
+- [ ] Item 1, with a test: a trial that started a few seconds before a drain is stopped and its experiment goes back to the top of the queue; one that started earlier is waited for.
+- [ ] Item 2, with a test of the event and the page's words.
+- [ ] Item 3, or a decision that the stop of item 1 is enough.
+- [ ] Pages: the rig's page, rig lifecycle (an image update), the events reference, and the changelog.
+
+## Decisions
+
+- 2026-10-25, owner: this goal comes after the first release.
+
+## Open questions
+
+- Is 5 minutes the right default for "just started"? A trial with no length can run for hours, and its first minutes are usually reading.
+
+## Progress
+
+- 2026-10-25 21:56 UTC: Goal written at the owner's request, from the drain on the lab at 14:15 UTC.
+
+---
+
+Run with `/goal Complete docs/plan/goals/145-drain-race.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

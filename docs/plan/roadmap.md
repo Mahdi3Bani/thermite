@@ -93,7 +93,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [141](goals/141-waiting-win-after-champion-moved.goal) A waiting win the champion moved past: closed when a champion has it, an approval when none does · `PROPOSED`
 - [142](goals/142-champion-value-on-run-page.goal) A hill climb's champion value: measured right, and at the top of its run's page · `IN_PROGRESS`
 - [143](goals/143-stuck-and-looping-trials.goal) A stuck or looping trial shows itself, and an agent's refused request says why · `PROPOSED`
-- [144](goals/144-trial-clock.goal) A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials · `PROPOSED`
+- [144](goals/144-trial-clock.goal) A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials · `IN_PROGRESS`
+- [147](goals/147-notes-per-turn.goal) An optional limit on the field notes a worker writes in one reply · `PROPOSED`
 
 ### Research mode
 
@@ -148,6 +149,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [108](goals/108-gated-models-on-cloud-rigs.goal) Gated models on cloud rigs · `PROPOSED`
 - [129](goals/129-copy-takes-rubrics.goal) A research campaign's copy can take its own rubrics · `PROPOSED`
 - [130](goals/130-mcp-tools-after-update.goal) An MCP client sees control's new tools after control is updated · `PROPOSED`
+- [145](goals/145-drain-race.goal) A drain doesn't wait two hours for a trial that started seconds before it · `PROPOSED`
+- [146](goals/146-supervisor-alone.goal) Restart or update a rig's supervisor alone, while its harness goes on · `PROPOSED`
 
 ## v0.1.4
 
