@@ -344,3 +344,27 @@ export function baselineValue(xs: readonly number[]): BaselineValue {
   const m = median(xs);
   return { median: m, mad: median(xs.map((x) => Math.abs(x - m))), n: xs.length };
 }
+
+/**
+ * Sum of guard effects (log ratios) of the promoted steps since the run's starting point: the
+ * seed, or the champion a setup change became (goal 115).
+ */
+export function guardTotals(ledger: Ledger, run: string): Record<string, number> {
+  const totals: Record<string, number> = {};
+  const rows = ledger.db
+    .prepare(
+      "select attempt from champion where run = ? and reopened = 0 and attempt is not null and seq > ?",
+    )
+    .all(run, startingPoint(ledger, run).seq) as { attempt: string }[];
+  for (const r of rows) {
+    const v = ledger.db
+      .prepare(
+        "select guards from verdict where attempt = ? and verdict = 'win_confirmed' order by id desc limit 1",
+      )
+      .get(r.attempt) as { guards: string } | undefined;
+    for (const g of JSON.parse(v?.guards ?? "[]") as { metric: string; estimate: number }[]) {
+      totals[g.metric] = (totals[g.metric] ?? 0) + g.estimate;
+    }
+  }
+  return totals;
+}

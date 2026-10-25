@@ -1,7 +1,8 @@
 import { asToken } from "../../core/directions.ts";
 import { questionName, RESEARCH_REVIEW } from "../../core/research-check.ts";
 import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../harness/judge/held-out.ts";
-import type { AttemptView, JudgeJob, RigView, RunView, StoredEvent } from "../views.ts";
+import type { AttemptView, RigView, RunView, StoredEvent } from "../views.ts";
+import { jobText, portWords } from "./judge-words.ts";
 
 /**
  * Plain words for what the ledger records: verdicts, attempt states, judge jobs and events, so a
@@ -64,26 +65,7 @@ export function attemptState(a: Pick<AttemptView, "verdict" | "lifecycle" | "del
 export const signed = (x: number, digits = 1) =>
   `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
 
-/** What a judge job is doing, in words. */
-export function jobText(job: Pick<JudgeJob, "kind" | "attempt">, lane?: string | null): string {
-  const who = job.attempt ? `${job.attempt}${lane ? ` (${lane})` : ""}` : "";
-  switch (job.kind) {
-    case "baseline":
-      return job.attempt
-        ? `measuring setup change ${who} to see whether it can be the starting point`
-        : "measuring the starting point on every case (the run's baseline)";
-    case "evaluate":
-      return `screening ${who}: building it and measuring it against the champion`;
-    case "confirm":
-      return `confirming ${who} on fresh runs`;
-    case "validate":
-      return "checking which goals the champion meets";
-    case "calibrate":
-      return "measuring the rig's own noise (the champion against itself)";
-    default:
-      return `${job.kind.replace(/_/g, " ")} ${who}`.trim();
-  }
-}
+export { jobText };
 
 const COMMAND: Record<string, string> = {
   approve_promotion: "approve a promotion",
@@ -354,6 +336,9 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         b.decision === "block" ? "bad" : "ok",
         { attempt: String(e.subject), run: att(e.subject)?.run },
       );
+    case "parent_screened":
+    case "port_queued":
+      return s(portWords(e.kind, String(e.subject), b), "", { attempt: String(e.subject) });
     case "promotion_declined":
       return s(
         `You declined ${e.subject}: it will not become the champion.${b.note ? ` (${String(b.note)})` : ""}`,

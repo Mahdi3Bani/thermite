@@ -24,10 +24,10 @@ import {
   baselineOf,
   baselineState,
   baselineValue,
+  guardTotals,
   prepareBaselineDir,
   removeBaselineDir,
   sealBaselineDir,
-  startingPoint,
 } from "./baseline.ts";
 import { BuildStore } from "./builds.ts";
 import {
@@ -55,6 +55,7 @@ import {
 } from "./held-out.ts";
 import { whileLeased } from "./lease.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
+import { olderChampion, type PortFound, parentScreened, queuePort } from "./ports.ts";
 import { clipReason, REASONS_CHARS } from "./reasons.ts";
 
 /**
@@ -136,6 +137,8 @@ interface Finish {
       }
     | undefined;
   events?: { kind: string; subject: string; body: unknown }[] | undefined;
+  /** A port to queue once the job is recorded (goal 135). */
+  port?: PortFound | undefined;
   enqueue?: Parameters<Ledger["enqueueJob"]>[0] | undefined;
   lifecycle?: string | undefined;
   /** Close a run (a goal campaign whose success rule holds). */
@@ -243,7 +246,7 @@ export class Judge {
     const job = this.ledger.leaseJob(
       this.o.owner,
       this.o.leaseMs,
-      ["baseline", "evaluate", "confirm", "calibrate", "validate"],
+      ["baseline", "evaluate", "parent_screen", "confirm", "calibrate", "validate"],
       this.cards > 1 ? this.o.card?.uuid : undefined,
       waiting,
     );
@@ -256,7 +259,7 @@ export class Judge {
       fin =
         job.kind === "baseline"
           ? await this.baseline(job)
-          : job.kind === "evaluate"
+          : job.kind === "evaluate" || job.kind === "parent_screen"
             ? await this.evaluate(job)
             : job.kind === "confirm"
               ? await this.confirm(job)
@@ -277,6 +280,7 @@ export class Judge {
     try {
       const promoted = this.finish(job, fin);
       if (promoted) await this.o.service.syncChampionRef(promoted);
+      if (fin.port) await queuePort(this.o.service, fin.port);
     } catch (err) {
       // Lost the lease (another holder owns the outcome now) or the ledger refused the write.
       log("judge", "could not record the outcome", { job: job.id, error: String(err) });
@@ -410,7 +414,8 @@ export class Judge {
     try {
       this.ledger.tx(() => {
         this.ledger.completeJob(job.id, job.fence, "failed", { error: clipReason(reason) });
-        if (!job.attempt) return;
+        // A parent screen's failure is no verdict on its change and leaves it as it is (goal 135).
+        if (!job.attempt || job.kind === "parent_screen") return;
         const retries = Number(this.spec(job).retries ?? 0);
         this.ledger.recordVerdict({
           attempt: job.attempt,
@@ -794,15 +799,18 @@ export class Judge {
     if (this.o.service.contractFor(run).mode === "goal") return this.evaluateGoal(job);
     const contract = this.hillClimb(run);
     const champion = this.ledger.currentChampion(run);
+    // A parent screen (goal 135): against the older champion it was written on, with no verdict.
+    const parent = String(attempt.parent_commit);
+    const onParent = job.kind === "parent_screen";
     const step = (l: string) => {
       this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
-      this.ledger.setAttemptLifecycle(attemptId, l, this.o.owner);
+      if (!onParent) this.ledger.setAttemptLifecycle(attemptId, l, this.o.owner);
     };
 
     try {
       const k = await this.kitFor(contract);
       step("building");
-      const champ = await this.armFor("champion", run, champion.commit_sha, k);
+      const champ = await this.armFor("champion", run, onParent ? parent : champion.commit_sha, k);
       const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
       const ctx = this.context(k, job);
 
@@ -831,6 +839,9 @@ export class Judge {
       const d = decision as Decision<string>;
       const verdict = d.verdict ?? "inconclusive";
       const win = verdict === "win_screened";
+      const older = olderChampion(this.ledger, run, attemptId, champion.seq);
+      if (onParent)
+        return parentScreened(run, attemptId, older, verdict, toFraction(d.primary.estimate));
       return {
         result: { verdict, delta: toFraction(d.primary.estimate), baseline_seq: champion.seq },
         verdict: {
@@ -851,7 +862,16 @@ export class Judge {
                 actor: this.o.owner,
               },
             }
-          : {}),
+          : older !== undefined
+            ? {
+                enqueue: {
+                  attempt: attemptId,
+                  kind: "parent_screen",
+                  priority: 150,
+                  actor: this.o.owner,
+                },
+              }
+            : {}),
         lifecycle: win ? "confirming" : "judged",
       };
     } catch (err) {
@@ -861,30 +881,6 @@ export class Judge {
   }
 
   // ------------------------------------------------------------------ confirm and promote
-
-  /**
-   * Sum of guard effects (log ratios) of the promoted steps since the run's starting point: the
-   * seed, or the champion a setup change became (goal 115).
-   */
-  private guardTotals(run: string): Record<string, number> {
-    const totals: Record<string, number> = {};
-    const rows = this.ledger.db
-      .prepare(
-        "select attempt from champion where run = ? and reopened = 0 and attempt is not null and seq > ?",
-      )
-      .all(run, startingPoint(this.ledger, run).seq) as { attempt: string }[];
-    for (const r of rows) {
-      const v = this.ledger.db
-        .prepare(
-          "select guards from verdict where attempt = ? and verdict = 'win_confirmed' order by id desc limit 1",
-        )
-        .get(r.attempt) as { guards: string } | undefined;
-      for (const g of JSON.parse(v?.guards ?? "[]") as { metric: string; estimate: number }[]) {
-        totals[g.metric] = (totals[g.metric] ?? 0) + g.estimate;
-      }
-    }
-    return totals;
-  }
 
   private async confirm(job: JobRow): Promise<Finish> {
     const attemptId = job.attempt as string;
@@ -921,7 +917,13 @@ export class Judge {
       const ho = await this.heldOutPass(job, () => this.heldOut(job, ctx, cand, champ, contract));
       // The guards' total allowance holds against the starting point's values too (goal 115).
       const start: StartValues | undefined = baselineOf(this.ledger, run)?.cells;
-      const d = decideConfirm(contract, blocks, this.guardTotals(run), this.noiseFloor(run), start);
+      const d = decideConfirm(
+        contract,
+        blocks,
+        guardTotals(this.ledger, run),
+        this.noiseFloor(run),
+        start,
+      );
       let verdict: string = d.verdict ?? "not_confirmed";
       let reasons = d.reasons;
       // A held-out failure is named by its kind alone (goal 082): the reasons say that a held-out

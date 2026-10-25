@@ -67,6 +67,7 @@ import { importBundle, importFile } from "./imports.ts";
 import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
 import { BASELINE_PRIORITY, baselineState } from "./judge/baseline.ts";
 import { heldOutWords } from "./judge/held-out.ts";
+import { portReplaced } from "./judge/ports.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
@@ -2224,24 +2225,23 @@ export class HarnessService {
   }
 
   /**
-   * Points the run's champion ref at the effective champion. The ledger is the authority;
-   * the ref is for git consumers, so a failure here is recorded, never fatal.
+   * Points the run's champion ref at the effective champion, and queues the port a new champion
+   * needs (goal 135). The ledger is the authority; the ref is for git consumers, so a failure here
+   * is recorded, never fatal.
    */
   async syncChampionRef(run: string): Promise<void> {
     const inst = this.requireRun(run);
     const champ = this.ledger.currentChampion(run);
+    const ref = `refs/thermite/runs/${run}/champion`;
     try {
-      await updateRef(
-        this.mirrorFor(inst.seed_repo),
-        `refs/thermite/runs/${run}/champion`,
-        champ.commit_sha,
-      );
+      await updateRef(this.mirrorFor(inst.seed_repo), ref, champ.commit_sha);
     } catch (err) {
       this.ledger.appendEvent("judge", "champion_ref_failed", run, {
         seq: champ.seq,
         error: err instanceof Error ? err.message : String(err),
       });
     }
+    await portReplaced(this, run);
   }
 
   /**

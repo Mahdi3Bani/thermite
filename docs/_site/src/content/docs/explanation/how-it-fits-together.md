@@ -206,6 +206,8 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 | `experiment_assigned` | Given to a lane's trial |
 | `experiment_finished` | Its trial ended, with the attempt or the reason there is none, and how the trial ended in words (`cause`). A research task's has its trial's `yield`: `{verified_claims, by_question: [{question, verified_claims, new_domain_claims}], new_domains, domains, findings, card_changes}` |
 | `experiment_returned` | Its trial never really tried it (interrupted, or the model provider's error): the same experiment back at the top, with the trial, its lane, the cause and how many times it came back (`returns`) |
+| `parent_screened` | A change written on an older champion, measured against that champion by the judge's `parent_screen` job: its verdict there, its gain and the effect in words. No verdict of the change's own ([A change written on an older champion](../reference/verdicts.md#a-change-written-on-an-older-champion)) |
+| `port_queued` | A port queued at the top of the run's queue: the change it carries, the champion it goes onto (`onto_seq`), the experiment and why |
 | `planner_handout` | One hand-out: which experiment went to which lane, and why |
 | `directive` | A rule for the plan: its kind, its direction, why and who set it. One the planner made from an owner's message names that message (`from_message`). One converted from an old rule in words names that rule and its words (`converted_from`) and keeps its author |
 | `directives_superseded` | Rules replaced by their author's next set |
