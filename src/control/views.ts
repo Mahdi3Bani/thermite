@@ -1768,23 +1768,21 @@ export function rigView(
       }
       case "job_leased": {
         const j = jobs.get(String(e.subject));
-        if (j) {
-          j.started_at = e.at;
-          j.state = "running";
-        }
+        if (j) Object.assign(j, { started_at: e.at, state: "running" });
         break;
       }
       case "crash_infra":
-      case "job_lease_expired": {
-        // A job whose lease ran out too often is blocked: it will not run. A blocked validation
-        // leaves no completion to confirm, and the lanes go on (goal 086). Both requeue events
-        // (a crash, and a lease that ran out) can block one.
+      case "job_lease_expired":
+      case "job_unblocked": {
+        // Blocked after too many lost leases (a crash, a lease that ran out): it won't run until a
+        // harness start queues it again. A blocked validation leaves nothing to confirm (goal 086).
         const j = jobs.get(String(e.subject));
-        if (!j || b.state !== "blocked") break;
-        j.finished_at = e.at;
-        j.state = "blocked";
+        const again = e.kind === "job_unblocked";
+        if (!j || (b.state !== "blocked" && !again)) break;
+        j.finished_at = again ? null : e.at;
+        j.state = again ? "queued" : "blocked";
         const jr = j.run ? runs.get(j.run) : undefined;
-        if (jr && j.kind === "validate") jr.goals_confirming = false;
+        if (jr && j.kind === "validate") jr.goals_confirming = again;
         break;
       }
       case "job_finished": {

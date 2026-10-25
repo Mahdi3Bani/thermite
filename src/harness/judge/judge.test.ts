@@ -4,7 +4,8 @@ import { describe, test } from "node:test";
 import { CRASH_KERNEL, FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../../testing/judge-env.ts";
 import { LocalRunner } from "../broker/runner.ts";
 import { CpuDriver } from "../targets/cpu.ts";
-import { Judge, serial } from "./judge.ts";
+import { Judge } from "./judge.ts";
+import { serial } from "./lease.ts";
 import { clipReason, REASON_CHARS } from "./reasons.ts";
 
 /** Verdict history with reasons, for assertion messages. */

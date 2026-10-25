@@ -53,6 +53,7 @@ import {
   heldOutWords,
   meetsThreshold,
 } from "./held-out.ts";
+import { whileLeased } from "./lease.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
 import { clipReason, REASONS_CHARS } from "./reasons.ts";
 
@@ -113,16 +114,6 @@ export interface JudgeOptions {
   card?: { index: number; uuid: string; count: number } | undefined;
   /** Builds run one at a time across the rig's executors (they share the builder user). */
   buildLock?: (<T>(fn: () => Promise<T>) => Promise<T>) | undefined;
-}
-
-/** One at a time: each call waits for the ones before it. */
-export function serial(): <T>(fn: () => Promise<T>) => Promise<T> {
-  let tail: Promise<unknown> = Promise.resolve();
-  return <T>(fn: () => Promise<T>) => {
-    const next = tail.then(fn, fn);
-    tail = next.catch(() => undefined);
-    return next;
-  };
 }
 
 class InfraError extends Error {}
@@ -216,6 +207,8 @@ export class Judge {
   private readonly o: Required<JudgeOptions>;
   private readonly ledger: Ledger;
   private readonly store: BuildStore;
+  /** The job this judge holds: its lease is renewed while a build runs (lease.ts). */
+  private holding: JobRow | undefined;
 
   constructor(opts: JudgeOptions) {
     this.o = {
@@ -258,6 +251,7 @@ export class Judge {
       waiting,
     );
     if (!job) return false;
+    this.holding = job;
     const subject = job.attempt ?? this.jobRun(job) ?? "";
     this.note(`${job.kind} ${subject}: started`, this.jobRun(job));
     let fin: Finish;
@@ -482,7 +476,11 @@ export class Judge {
         kitCommit: k.commit,
         actor: this.o.owner,
       });
-    const b = await (this.o.buildLock ? this.o.buildLock(ensure) : ensure());
+    const h = this.holding;
+    const renew = () => h && this.ledger.heartbeat(h.id, h.fence, this.o.leaseMs);
+    const b = await whileLeased(renew, this.o.leaseMs / 3, () =>
+      this.o.buildLock ? this.o.buildLock(ensure) : ensure(),
+    );
     this.note(
       `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${clipReason(b.reason)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
       run,

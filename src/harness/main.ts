@@ -51,7 +51,8 @@ import {
 import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
 import { Compactions, compactionOf } from "./compactions.ts";
 import { collectHardware } from "./hardware.ts";
-import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
+import { Judge, type PromotionPolicy } from "./judge/judge.ts";
+import { jobsAtStart, serial } from "./judge/lease.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { ResearchFolder, SAVED_LANES_DIR } from "./research/folder.ts";
@@ -329,14 +330,7 @@ async function main(): Promise<void> {
 
   // One executor per judge card that judges (executor-0 is the first card's, as always).
   const executorIds = judging.map((_, i) => `executor-${i}`);
-  for (const id of executorIds) {
-    const reclaimed = ledger.reclaimLeases(id, "controller-start");
-    if (reclaimed.length)
-      log("harness", "reclaimed leases at start", { executor: id, jobs: reclaimed });
-  }
-  // After the reclaim, which can put a closed run's job back in the queue.
-  const cancelled = ledger.endClosedRunJobs("controller-start");
-  if (cancelled.length) log("harness", "cancelled closed runs' jobs at start", { jobs: cancelled });
+  jobsAtStart(ledger, executorIds, (msg, fields) => log("harness", msg, fields));
 
   const devRuns = new DevRuns({
     runner,
