@@ -160,7 +160,13 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
 
 - **You see:** on the page of a rig on a cluster, after **Update to these images**, the status `draining` and `Draining before its pods restart on control's images:` with the new images.
 - **Why:** the rig was at work. It starts no new trial, plan or judge job, and its pods restart once its running trials and the judge's job end. A trial has no time limit unless someone set one, so this can take a while. A research run's clock stops meanwhile, so the wait doesn't count toward its durations or its progress rule. A judge job whose lease ran out (its holder is gone) is not waited for: the rig takes it back, queued again, or `blocked` after its third lost lease. If the rig's harness started again during the drain, it forgot the drain and went back to work; after two reports without the drain, control sends it again, and the rig's history has the step `its harness started again and was not draining: asked again`.
-- **Do:** wait; or press **Update now, without waiting**: its pods restart at once, and the running trials are recorded as interrupted, their experiments back at the top of the queue; or press **Call the update off**, and the rig goes back to work on its images. See [Update to these images](rig-lifecycle.md).
+- **Do:** wait; or stop a trial the drain waits for, as below; or press **Update now, without waiting**: its pods restart at once, and the running trials are recorded as interrupted, their experiments back at the top of the queue; or press **Call the update off**, and the rig goes back to work on its images. See [Update to these images](rig-lifecycle.md).
+
+### A drain waits on a trial that may be stuck
+
+- **You see:** a rig's page has the card `Draining for 5 h 24 min, since 04:10 UTC.`, and under **At work** a lane's trial has `repeats a refused request`, or its row says it last did something long ago.
+- **Why:** a draining rig waits for every running trial to end, and a trial has no time limit unless someone set one. A trial that keeps asking for a page the run refused, such as a file larger than the run's `fetch_policy.max_bytes`, may never end by itself. The harness answers each such ask at once, so the trial costs model calls but no downloads.
+- **Do:** open the trial's row: **Same request** says which page and how many times. If it is stuck, press **Stop this trial…**, then **Stop the trial**. It ends as interrupted, with what it found, and its experiment goes back to the top of the queue for after the drain ([The trials it waits for](../../reference/rig-page.md#the-trials-it-waits-for)). From a script, send [`stop_trial`](../../reference/signed-commands.md#stop_trial). To give the run's agents more time instead, press **End the drain**.
 
 ### A rig on a cluster never reports
 

@@ -72,3 +72,14 @@ export function copiedFromRecords(
     };
   });
 }
+
+/**
+ * A run's copied experiments (assign_campaign.queue) are taken from the rigs' signed events, as
+ * copiedFromRecords says: never the caller's words, unless control has no record it may use.
+ */
+export function queueFromRecords(store: ControlStore, payload: unknown): unknown {
+  const p = payload as { queue?: unknown; contract?: { campaign?: unknown } };
+  if (!p || typeof p !== "object" || !Array.isArray(p.queue)) return payload;
+  const target = typeof p.contract?.campaign === "string" ? p.contract.campaign : "";
+  return { ...p, queue: copiedFromRecords(store, target, p.queue) };
+}

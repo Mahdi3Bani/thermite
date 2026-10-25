@@ -22,8 +22,8 @@ import {
   paperHref,
   researchCheckWords,
   runHref,
+  runLiveHref,
 } from "./components.ts";
-import { runLiveHref } from "./operator.ts";
 import type { CmdForm } from "./queue.ts";
 import { clip, decisionTone, decisionWords, itemName } from "./words.ts";
 

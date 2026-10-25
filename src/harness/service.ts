@@ -99,7 +99,14 @@ import {
 } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { RunResearch } from "./run-research.ts";
-import { type Draining, drainAfter, endDrainAtStart } from "./service/drain.ts";
+import {
+  askStop,
+  type Draining,
+  drainCommand,
+  endDrainAtStart,
+  type Work,
+  workNow,
+} from "./service/drain.ts";
 import { ModelUsage } from "./usage.ts";
 import { checkV0, violationsOf } from "./v0.ts";
 
@@ -155,6 +162,7 @@ const OWNER_ONLY = new Set([
   "queue_accept",
   "drop_directive",
   "hypothesis_status",
+  "stop_trial",
 ]);
 
 /** An advisor's additions and moves for a run's queue (the supervisor's /v1/queue). */
@@ -464,26 +472,9 @@ export class HarnessService {
    */
   draining: Draining | undefined;
 
-  /**
-   * What still runs, for a drain's report: open trials and the judge's jobs under a lease still in
-   * force (goal 079). A lease that ran out is no work: its holder is gone, the judge takes it back
-   * (while draining too), and a drain never waits on it.
-   */
-  work(): {
-    trials: number;
-    judge_jobs: number;
-    draining: { since: string; reason: string } | null;
-  } {
-    const n = (sql: string, ...params: string[]) =>
-      Number((this.ledger.db.prepare(sql).get(...params) as { n: number } | undefined)?.n ?? 0);
-    return {
-      trials: n("select count(*) as n from trial where ended_at is null"),
-      judge_jobs: n(
-        "select count(*) as n from job where state = 'leased' and lease_until > ?",
-        this.clock().toISOString(),
-      ),
-      draining: this.draining ? { since: this.draining.since, reason: this.draining.reason } : null,
-    };
+  /** What still runs, for the rig's report, and while it drains each open trial (workNow). */
+  work(): Work {
+    return workNow(this.ledger, this.clock(), this.draining);
   }
 
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
@@ -1037,16 +1028,10 @@ export class HarnessService {
         return this.assignCampaign(CommandPayloads.assign_campaign.parse(payload), by);
       case "rig_check":
         return this.startRigCheck(CommandPayloads.rig_check.parse(payload), by);
-      case "drain_rig": {
-        const p = CommandPayloads.drain_rig.parse(payload);
-        this.draining = drainAfter(this.draining, p, by, this.clock());
-        this.ledger.appendEvent(by, "rig_drain", null, {
-          drain: p.drain,
-          ...(p.reason ? { reason: p.reason } : {}),
-          ...this.work(),
-        });
-        return this.work();
-      }
+      case "drain_rig":
+        return drainCommand(this, CommandPayloads.drain_rig.parse(payload), by, this.clock());
+      case "stop_trial":
+        return askStop(this.ledger, CommandPayloads.stop_trial.parse(payload), by);
       case "pause_run": {
         const p = CommandPayloads.pause_run.parse(payload);
         // A closed run stays closed: a pause would let a resume open it again.

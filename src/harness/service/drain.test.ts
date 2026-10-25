@@ -3,10 +3,13 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { parseContract } from "../../core/contract.ts";
+import { researchFixture } from "../../testing/fixtures.ts";
+import { makeHarnessEnv } from "../../testing/harness-env.ts";
 import { makeJudgeEnv } from "../../testing/judge-env.ts";
 import { Ledger } from "../ledger.ts";
 import { HarnessService } from "../service.ts";
-import { drainSpans, endDrainAtStart, RESTARTED } from "./drain.ts";
+import { drainSpans, endDrainAtStart, RESTARTED, workNow } from "./drain.ts";
 
 const T0 = Date.parse("2026-10-25T00:00:00.000Z");
 const min = (m: number) => T0 + m * 60_000;
@@ -80,5 +83,118 @@ describe("when the rig drained (goal 136)", () => {
     // Started again with no drain open: nothing more is recorded.
     assert.equal(endDrainAtStart(env.ledger, "harness"), false);
     assert.equal(ends().length, 2);
+  });
+});
+
+describe("what a drain waits for (goal 136, item 3)", () => {
+  test("while it drains, the report lists each open trial: its task, counters, claims and a refused request it repeats", async () => {
+    const env = makeHarnessEnv("rig-d");
+    const parsed = parseContract({ ...researchFixture, lanes: { count: 2, trials_per_epoch: 1 } });
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    const out = await env.service.applyCommand(
+      env.sign("assign_campaign", {
+        run: "r-1",
+        contract: parsed.contract,
+        contract_sha: parsed.sha,
+        imports: [],
+      }),
+    );
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    const db = env.service.ledger.db;
+    const started = "2026-10-25T02:10:00.000Z";
+    const trial = (id: string, lane: string, ended: string | null) =>
+      db
+        .prepare(
+          "insert into trial (id, run, lane, epoch, parent_commit, turns, tool_calls, tokens_in, started_at, ended_at) values (?, 'r-1', ?, 1, 'c', 214, 196, 3100000, ?, ?)",
+        )
+        .run(id, lane, started, ended);
+    trial("t-1", "lane-1", null);
+    trial("t-0", "lane-2", "2026-10-25T03:00:00.000Z");
+    db.prepare(
+      "insert into experiment (id, run, title, added_by, state, question, trial, lane, created_at, updated_at) values ('x-1', 'r-1', 'Trace the benchmark guide to its source', 'planner', 'assigned', 0, 't-1', 'lane-1', ?, ?)",
+    ).run(started, started);
+    const claim = (id: string, lane: string, verified: number, at: string) =>
+      db
+        .prepare(
+          "insert into claim (id, run, lane, question, text, quotes, verified, created_at) values (?, 'r-1', ?, 0, 'c', '[]', ?, ?)",
+        )
+        .run(id, lane, verified, at);
+    claim("c-1", "lane-1", 1, "2026-10-25T02:30:00.000Z");
+    claim("c-2", "lane-1", 1, "2026-10-25T03:30:00.000Z");
+    claim("c-3", "lane-1", 0, "2026-10-25T03:40:00.000Z");
+    claim("c-4", "lane-1", 1, "2026-10-25T01:00:00.000Z");
+    claim("c-5", "lane-2", 1, "2026-10-25T02:40:00.000Z");
+    const refused = (lane: string, at: string, asked?: number) =>
+      db
+        .prepare(
+          "insert into event (at, actor, kind, subject, body) values (?, ?, 'fetch_refused', 'r-1', ?)",
+        )
+        .run(
+          at,
+          lane,
+          JSON.stringify({
+            url: "https://vendor.example.org/guide.pdf",
+            reason: "larger than 5000000 bytes",
+            ...(asked ? { asked } : {}),
+          }),
+        );
+    // A re-ask before the trial began is another trial's; this one asked twice.
+    refused("lane-1", "2026-10-25T01:00:00.000Z", 3);
+    refused("lane-1", "2026-10-25T02:20:00.000Z");
+    refused("lane-1", "2026-10-25T03:20:00.000Z", 211);
+    refused("lane-1", "2026-10-25T09:33:00.000Z", 212);
+    const at = new Date("2026-10-25T09:34:00.000Z");
+    assert.equal(
+      workNow(env.service.ledger, at, undefined).open,
+      undefined,
+      "listed only in a drain",
+    );
+    const w = workNow(env.service.ledger, at, {
+      since: "2026-10-25T04:10:00.000Z",
+      reason: "its images are about to change",
+      by: "control:owner:api",
+    });
+    assert.equal(w.trials, 1);
+    assert.deepEqual(w.draining, {
+      since: "2026-10-25T04:10:00.000Z",
+      reason: "its images are about to change",
+      by: "control:owner:api",
+    });
+    assert.deepEqual(w.open, [
+      {
+        trial: "t-1",
+        run: "r-1",
+        lane: "lane-1",
+        started_at: started,
+        task: "Trace the benchmark guide to its source",
+        question: 0,
+        turns: 214,
+        tool_calls: 196,
+        tokens_in: 3100000,
+        claims: 2,
+        refused_again: {
+          url: "https://vendor.example.org/guide.pdf",
+          reason: "larger than 5000000 bytes",
+          asked: 212,
+          at: "2026-10-25T09:33:00.000Z",
+          times: 2,
+        },
+      },
+    ]);
+  });
+
+  test("a drain_rig records who asked, and its event keeps to the counts", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const out = await env.service.applyCommand(env.sign("drain_rig", { drain: true }));
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    const r = out.result as Record<string, unknown>;
+    assert.deepEqual(Object.keys(r).sort(), ["draining", "judge_jobs", "trials"]);
+    assert.equal((r.draining as { by?: unknown }).by, "control:owner");
+    const e = env.ledger.db
+      .prepare("select body from event where kind = 'rig_drain' order by id desc")
+      .get() as { body: string };
+    assert.equal("open" in JSON.parse(e.body), false);
+    assert.ok(Array.isArray((env.service.work() as { open?: unknown }).open));
   });
 });

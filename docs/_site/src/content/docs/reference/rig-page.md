@@ -1,6 +1,6 @@
 ---
 title: "A rig's page"
-description: "Every part of a rig's page on the dashboard: its state and version banners, Update to control's version, Check again, its facts, and a RunPod rig's pod, limits, lifecycle, pod log and history."
+description: "Every part of a rig's page on the dashboard: its state and version banners, Update to control's version, Check again, a drain and the trials it waits for, its facts, and a RunPod rig's pod, limits, lifecycle, pod log and history."
 type: reference
 sidebar:
   order: 21
@@ -16,6 +16,7 @@ Other pages link to these places with the address and the anchor, for example `/
 | --- | --- | --- |
 | `#reporting` | The banner for a rig that does not report: stale or offline | The rig is stale or offline, is not a stopped RunPod rig, and control does not refuse it |
 | `#version` | The banner for the rig's version, or for its last update | Its version is behind or ahead of control's, control refuses it, or an update began in the last day |
+| `#drain` | The card for a drain: since when, who asked, why, and what it waits for | The rig's last report says it drains |
 | `#pod` | The pod: its cost, its limits and its lifecycle | The rig was launched on RunPod |
 | `#limits` | The form that changes the spend limit and the idle stop | The same, while the pod exists |
 | `#results` | The results that must leave the pod before it ends | The same, while the pod exists |
@@ -45,7 +46,7 @@ The buttons at the right:
 
 A button that needs typed words stays off until the words are typed exactly. Control checks them again when the form arrives.
 
-The first lines under the title say, in a few sentences: for a RunPod rig, its pod and what it has cost; whether it reports; what runs on it; what its judge does; a check that failed; a key that waits for you; for a RunPod rig, a connection to its pod that failed.
+The first lines under the title say, in a few sentences: for a RunPod rig, its pod and what it has cost; whether it reports; that it drains, and what for, such as `rig-1 drains: it starts nothing new, and waits for 2 trials to end.`; what runs on it; what its judge does; a check that failed; a key that waits for you; for a RunPod rig, a connection to its pod that failed.
 
 A card after an action says what happened: its words in green, or **Not done.** and the reason. A button that sends a command to the rig, such as **Export**, **Run it** or **Pause**, says at once that the click took, and the page follows the command to its outcome with no refresh: see [Signed commands](signed-commands.md#on-the-dashboard). After **Save changes** on **Edit rig**, the green line here goes on with how the settings' command stands, such as `rig-1 took it at 03:41 UTC. This page shows the change when the rig next reports.`
 
@@ -102,11 +103,36 @@ When the update can't come from control, the banner says how to do it:
 
 The rig's volumes, tokens, key, ledger, runs and results stay. A trial in progress stops, and its experiment goes back to the top of the queue. On a machine the update writes only the two container units: the rig's secrets, keys, volumes and networks stay as they were. If a step fails, the banner shows **The update stopped**, and its steps say why.
 
+## The drain card
+
+A rig drains before its images change, or before control gives it a new number of GPUs, CPUs or memory: it starts no new trial, plan or judge job, and the work under way ends as it would ([`drain_rig`](signed-commands.md#drain_rig)). While its last report says it drains, a card comes after the banners:
+
+- **The title:** how long it has drained and since when, such as `Draining for 5 h 24 min, since 04:10 UTC.`
+- **Who asked, and why**, from what the rig recorded: `The owner asked for it over REST: its images are about to change.` The dashboard's buttons say `on the dashboard`, an operator's token `An operator asked for it over MCP`, and control's own ask after the rig's harness started again `Control asked for it again, after the rig's harness started again`. A harness older than goal 136 records no one: `It was asked for`.
+- **What it waits for:** `It waits for 2 trials and the judge's job.`, or, once nothing runs, `Nothing runs any more: it is ready for what the drain is for.` A rig control set up on a cluster adds `Control restarts its pods once nothing runs.` A harness older than goal 136 says how many trials run but not which: `Its harness is too old to say which trials, or to stop one: update it.`
+- **Trials stopped during the drain**, once they ended: `stopped lane-1's trial, stopped at 09:40 UTC: it ended as interrupted, with its counters, and its task went back to the top of the run's queue.` A stop the rig did not take says why.
+- **End the drain** sends `drain_rig` with `drain: false` and the reason `the owner ended the drain`: the rig goes back to work on its images. On a rig control set up on a cluster, it is **Call the update off** (or **Call the change off**): the change the rig drains for does not happen. Whoever asked for the drain then moves the rig without one, or asks again.
+
+### The trials it waits for
+
+Under **At work**, each trial the drain waits for has a row under its lane's: `The drain waits for it · last did something 1m ago`, or `· nothing in Live from it yet`. Open it for:
+
+| Fact | What it says |
+| --- | --- |
+| **Running for** | How long the trial has run, and since when: `7 h 33 min, since 02:10 UTC`. A trial has no time limit unless one is set |
+| **Last did something** | Its newest tool call in **Live**, how long ago, and the harness's answer: `1m ago: fetch https://…/guide.pdf, answered: refused: larger than 5000000 bytes`, and `the model wrote since` when its newest line is the model's. Live keeps a trial's lines while control and the harness run |
+| **Same request** | Only for a trial that asked again for a page the run refused before for a reason that lasts, such as its size ([Research](../explanation/campaign-modes.md#research)): how many times this trial asked, the page and why it was refused, how many times the run asked for it, and when it last did. The harness answers each such ask at once, with no download |
+| **Work so far** | Its turns, tool calls and tokens in, as its worker last reported them, and, in a research run, the verified claims it recorded: `214 turns · 196 tool calls · 3.1M tokens in · 4 verified claims` |
+
+A trial that asked again for a refused page has `repeats a refused request` beside its focus, and its row comes open: it may be stuck on that page. Nothing ends a trial for it: you decide.
+
+**Stop this trial…** asks first: `Stop lane-1's trial now? It ends as interrupted. Its sources, claims and counters stay. Its task goes back to the top of the run's queue, so a lane takes it up again after the drain.`, then what the drain still waits for, such as `The drain then waits only for 1 trial.` **Stop the trial** sends [`stop_trial`](signed-commands.md#stop_trial). The row then says how the stop stands, such as `Stop sent at 09:40 UTC. Sent to rig-1 at 09:40 UTC. Waiting for the rig to take it.` and `rig-1 took your stop at 09:40 UTC: the trial ends as interrupted within seconds.` Once the trial has ended, the rig's next report no longer lists it, and the card says it was stopped.
+
 ## Blocks
 
 A key that waits for you has a card under the banners, with its fingerprint and **Accept this key**: see [Accept a rig's key](../how-to/operate/accept-a-rig-key.md).
 
-**At work** lists the runs at work now. **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**, and its state: **not run yet**, **sent**, **running** with the time so far, **passed** or **failed**, or why the rig did not run it ([Where results show](rig-checks.md#where-results-show)); for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs. A rig on RunPod has **Pod log** under it ([Pod log](#pod-log)).
+**At work** lists the runs at work now; while the rig drains, each trial it waits for has its facts and **Stop this trial…** under its lane ([The trials it waits for](#the-trials-it-waits-for)). **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**, and its state: **not run yet**, **sent**, **running** with the time so far, **passed** or **failed**, or why the rig did not run it ([Where results show](rig-checks.md#where-results-show)); for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs. A rig on RunPod has **Pod log** under it ([Pod log](#pod-log)).
 
 **What it runs on** shows the rig's hardware, from its signed report.
 
