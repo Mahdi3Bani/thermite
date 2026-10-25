@@ -51,6 +51,8 @@ export async function researchScene(
     hypotheses?: string[];
     /** Each trial records a verified claim from a site new to its task's question (default). */
     adds?: boolean;
+    /** A lane's trial waits for this before it does its work, to keep that lane busy. */
+    hold?: (lane: string) => Promise<void> | undefined;
   } = {},
 ) {
   const env = makeHarnessEnv("rig-r");
@@ -196,6 +198,7 @@ export async function researchScene(
     backoffMaxMs: 0,
     runTrial: async () => ({ stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 }),
     runResearchTrial: async (spec) => {
+      await o.hold?.(spec.lane);
       briefs.push(spec.brief);
       const x = env.service.queue.forTrial(spec.trialId);
       if (o.adds !== false && typeof x?.question === "number") {
@@ -380,6 +383,50 @@ describe("the gap-driven plan gives out a research run's work (goal 117)", () =>
       );
     assert.ok(later.length > 0);
     assert.ok(!s.given().some((x) => x.question === 3), "never the decided question");
+  });
+});
+
+describe("no lane waits behind another lane's trial (goal 136)", () => {
+  test("a round ends once its free lanes have run their trials; a lane on a long trial joins the round in force when it ends", async (t) => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    let holding = true;
+    const s = await researchScene(t, {
+      hold: (lane) => (lane === "lane-1" && holding ? held : undefined),
+    });
+    const trials = (lane: string) =>
+      (
+        s.db
+          .prepare("select epoch, ended_at from trial where run = ? and lane = ? order by rowid")
+          .all(RUN, lane) as { epoch: number; ended_at: string | null }[]
+      ).map((x) => ({ epoch: Number(x.epoch), ended_at: x.ended_at }));
+    const until = async (ok: () => boolean) => {
+      for (let i = 0; i < 500 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
+      assert.ok(ok(), "in time");
+    };
+    assert.ok(await s.scheduler.tick(), "round 1: both lanes start");
+    await until(() => trials("lane-2")[0]?.ended_at !== null && trials("lane-2").length === 1);
+    // Lane-2 has run its trial of round 1, and lane-1 is still on its own: the round ends.
+    await s.scheduler.tick();
+    assert.notEqual(s.scheduler.registry.currentEpoch(RUN)?.ended_at, null);
+    // Lane-2 goes on in round 2 at once, while lane-1's trial of round 1 still runs.
+    assert.ok(await s.scheduler.tick(), "round 2: lane-2 starts");
+    assert.deepEqual(
+      trials("lane-2").map((x) => x.epoch),
+      [1, 2],
+    );
+    assert.deepEqual(trials("lane-1"), [{ epoch: 1, ended_at: null }]);
+    // Its trial over, lane-1 takes a trial of the round in force, whichever round that is.
+    holding = false;
+    release();
+    await until(() => trials("lane-1")[0]?.ended_at !== null);
+    for (let i = 0; i < 20 && trials("lane-1").length < 2; i++) await s.scheduler.tick();
+    const now = s.scheduler.registry.currentEpoch(RUN)?.n ?? 0;
+    assert.ok(now >= 2, `round ${now}`);
+    assert.equal(trials("lane-1")[1]?.epoch, now);
+    await s.scheduler.idle();
   });
 });
 

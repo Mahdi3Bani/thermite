@@ -30,7 +30,10 @@ async function web() {
     "/private/x.html": "<p>secret</p>",
   };
   let count = 0;
+  /** Every path asked for, in order. */
+  const asked: string[] = [];
   const server = createServer((req, res) => {
+    asked.push(req.url ?? "");
     // A page that moved, and one whose text changes on every fetch.
     if (req.url === "/old-b.html") return void res.writeHead(301, { location: "/b.html" }).end();
     if (req.url === "/old-n.html") return void res.writeHead(302, { location: "/n.html" }).end();
@@ -46,7 +49,7 @@ async function web() {
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { base, close: () => new Promise<void>((r) => server.close(() => r())) };
+  return { base, asked, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
 
 async function researchEnv(over: Record<string, unknown> = {}, allowPrivate = true) {
@@ -126,6 +129,39 @@ describe("research service", () => {
     };
     assert.match(local.refused, /private or local address/);
     await w.close();
+  });
+
+  test("a URL refused for a reason that lasts is answered at once when asked again, with no new download (goal 136)", async () => {
+    const w = await web();
+    const { research, env } = await researchEnv({ fetch_policy: { max_bytes: 100 } });
+    const url = `${w.base}/a.html`;
+    const first = (await research.fetch("r-1", "lane-1", url)) as { refused: string };
+    assert.equal(
+      first.refused,
+      "larger than 100 bytes. Asking again gives the same answer. Look for the same text elsewhere: an HTML page of the document, a part of it, or another source.",
+    );
+    const again = (await research.fetch("r-1", "lane-1", `${url}#part-2`)) as { refused: string };
+    assert.match(
+      again.refused,
+      /^larger than 100 bytes\. Refused before: this run has asked for this URL 2 times, and the answer will not change\./,
+    );
+    assert.equal(w.asked.filter((p) => p === "/a.html").length, 1, "downloaded once");
+    const refusals = env.service.ledger
+      .eventsAfter(0, 1000)
+      .events.filter((e) => e.kind === "fetch_refused")
+      .map((e) => e.body as { reason: string; asked?: number });
+    assert.deepEqual(refusals, [
+      { url, reason: "larger than 100 bytes" },
+      { url: `${url}#part-2`, reason: "larger than 100 bytes", asked: 2 },
+    ]);
+    // A failure that can pass is not kept: the next ask fetches again.
+    await w.close();
+    const down = (await research.fetch("r-1", "lane-1", `${w.base}/b.html`)) as { refused: string };
+    const downAgain = (await research.fetch("r-1", "lane-1", `${w.base}/b.html`)) as {
+      refused: string;
+    };
+    assert.match(down.refused, /^fetch failed: /);
+    assert.match(downAgain.refused, /^fetch failed: /);
   });
 
   test("a claim is verified only when its quotes are in the archived source; reports flag unsupported numbers", async () => {

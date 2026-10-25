@@ -13,7 +13,7 @@ This guide sets Thermite up to stay on one computer: control and one rig run as 
 ## Before you start
 
 - A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and disk space for the images (about 2.5 GB) and for what your projects build.
-- **Docker** with Docker Compose, or **Podman** with `podman compose` or podman-compose. On a Mac, start Podman's virtual machine first (`podman machine start`).
+- **Docker** with Docker Compose, or **Podman** with `podman compose` or podman-compose. `docker-compose` 1.x, the old Compose v1, can't read Thermite's compose file, and `podman compose` uses it first when it is installed: [remove it](../operate/troubleshoot.md#compose-wont-start-name-does-not-match-any-of-the-regexes). On a Mac, start Podman's virtual machine first (`podman machine start`).
 - `curl`, and access to `github.com` and `ghcr.io`, where the release and its images are.
 - For the rig to use NVIDIA GPUs: Linux, NVIDIA's driver and NVIDIA's container toolkit. See [Use the machine's NVIDIA GPUs](#use-the-machines-nvidia-gpus).
 

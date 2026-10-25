@@ -7,7 +7,7 @@ Thermite runs the same images under docker-compose, podman-compose and Kubernete
 ## Requirements
 
 - Node.js 22.19 or later, for the checks and the command line (the agent libraries require it).
-- Docker with Compose, or Podman with `podman compose` or podman-compose.
+- Docker with Compose, or Podman with `podman compose` or podman-compose. Not `docker-compose` 1.x, the old Compose v1: it can't read `compose.yaml`, and `podman compose` uses it first when it is installed. [Troubleshoot](_site/src/content/docs/how-to/operate/troubleshoot.md#compose-wont-start-name-does-not-match-any-of-the-regexes) says how to replace it.
 
 ## Checks
 
@@ -36,6 +36,7 @@ docker compose up -d --build     # or: podman compose up -d --build
 ```
 
 - `npm run dev:init` needs only Node.js, not `npm ci`. It writes the same `.dev/` folder as a release's `init` service (`thermite local init`), and keeps every file that exists. A unit test (`src/cli/local-init.test.ts`) checks that both make the same files and modes.
+- If `up` stops with `'name' does not match any of the regexes: '^x-'`, the compose program is the old Compose v1: [replace it](_site/src/content/docs/how-to/operate/troubleshoot.md#compose-wont-start-name-does-not-match-any-of-the-regexes).
 - The first build takes 20 minutes or more; later starts take seconds. After `git pull`, run `npm run dev:init` and `docker compose up -d --build` again.
 - `THERMITE_COMMIT=$(git rev-parse HEAD) docker compose build` gives the images their commit, which each service reports.
 - On a Linux machine with NVIDIA GPUs and NVIDIA's container toolkit, `npx thermite local init .dev` (after `npm run build`) also writes `compose.gpu.yaml`, which builds the harness on the CUDA base as `thermite-harness:local-cuda` and gives it every GPU. Name it in every `up --build`: `docker compose -f compose.yaml -f compose.gpu.yaml up -d --build`. The CUDA base is a large download. `npm run dev:init` doesn't write it ([What the rig gets](_site/src/content/docs/how-to/install/one-machine.md#what-the-rig-gets)).

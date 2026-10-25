@@ -30,7 +30,7 @@ A contract is frozen: to change anything, you write a new version. The [contract
 
 Optional, in every mode:
 
-- `lanes`: `count`, how many [lanes](../../reference/glossary.md) the planner plans (2 when `lanes` is left out), and `trials_per_epoch`, [trials](../../reference/glossary.md) per lane per round (3). How many trials run at the same time is the rig's **Workers at a time**, not `count`: see [Start a campaign from the dashboard](start-from-dashboard.md#5-where-it-runs). If you write `lanes`, write `count` in it. `lanes.limits` raises a lane's memory, disk, time and process limits; `count` is 16 at most.
+- `lanes`: `count`, how many [lanes](../../reference/glossary.md) the planner plans (2 when `lanes` is left out), and `trials_per_epoch`, [trials](../../reference/glossary.md) per lane per round, at most (3). How many trials run at the same time is the rig's **Workers at a time**, not `count`: see [Start a campaign from the dashboard](start-from-dashboard.md#5-where-it-runs). If you write `lanes`, write `count` in it. `lanes.limits` raises a lane's memory, disk, time and process limits; `count` is 16 at most.
 - `budget`: `wall_hours`, `device_hours` and `llm_usd`. None is set unless you set it. See [Set a budget or a stop time](budget-and-stop-time.md).
 - `notes`: the campaign's additional information, in Markdown: background, links, what was tried, limits, and what good looks like. The workers and the advisors read it in every mode, and the planner in a hill climb or goal campaign.
 - `hypotheses`: what you think is true, one entry each, for the agents to test. A research run starts with them as its hypotheses.

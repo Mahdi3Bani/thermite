@@ -432,8 +432,11 @@ export class Fetcher {
           let size = 0;
           res.on("data", (chunk: Buffer) => {
             size += chunk.byteLength;
+            // Refused first, then closed: destroying with the error after the last chunk throws it
+            // where nothing catches it, and lets "end" resolve a body cut short (goal 136).
             if (size > maxBytes) {
-              req.destroy(new FetchRefused(`larger than ${maxBytes} bytes`));
+              reject(new FetchRefused(`larger than ${maxBytes} bytes`));
+              req.destroy();
               return;
             }
             chunks.push(chunk);

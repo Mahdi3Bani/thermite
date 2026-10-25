@@ -219,7 +219,7 @@ describe("thermite doctor", () => {
             code: 1,
             stderr: "docker: 'compose' is not a docker command.\n",
           },
-          "docker-compose version --short": { stdout: "1.29.2\n" },
+          "docker-compose version --short": { stdout: "2.26.1\n" },
         },
       },
       "compose",
@@ -227,7 +227,7 @@ describe("thermite doctor", () => {
     assert.equal(standalone.status, "ok");
     assert.match(
       standalone.said,
-      /docker-compose 1\.29\.2 works\. Write docker-compose where the docs say docker compose\./,
+      /docker-compose 2\.26\.1 works\. Write docker-compose where the docs say docker compose\./,
     );
     const noProvider = {
       ...podmanMac,
@@ -239,7 +239,10 @@ describe("thermite doctor", () => {
     const none = await check({ platform: "darwin", cmds: noProvider }, "compose");
     assert.equal(none.status, "fail");
     assert.equal(none.said, "No compose tool works with Podman.");
-    assert.match(none.fix ?? "", /^Install podman-compose or docker-compose\./);
+    assert.equal(
+      none.fix,
+      "Install podman-compose, for example with pipx install podman-compose, or Docker Compose 2 or later. podman compose hands its work to one of them.",
+    );
     const pc = await check(
       {
         platform: "darwin",
@@ -249,6 +252,80 @@ describe("thermite doctor", () => {
     );
     assert.equal(pc.status, "ok");
     assert.match(pc.said, /Write podman-compose where the docs say docker compose/);
+  });
+
+  test("compose tool: docker-compose 1.x can't read Thermite's compose file, so it doesn't count", async () => {
+    // Podman on Linux, where podman compose finds the system's docker-compose 1.x first.
+    const handedToV1 = {
+      ...podmanMac,
+      "podman compose version": {
+        stdout:
+          "docker-compose version 1.29.2, build unknown\ndocker-py version: 5.0.3\nCPython version: 3.12.3\n",
+        stderr:
+          '>>>> Executing external compose provider "/usr/bin/docker-compose". Please refer to the documentation for details. <<<<\n',
+      },
+    };
+    const v1 = await check({ cmds: handedToV1 }, "compose");
+    assert.equal(v1.status, "fail");
+    assert.equal(
+      v1.said,
+      "No compose tool works with Podman. podman compose hands its work to /usr/bin/docker-compose, which is docker-compose 1.29.2. That is Compose v1. It can't read Thermite's compose file.",
+    );
+    assert.equal(
+      v1.fix,
+      "Remove docker-compose 1.x, for example with sudo apt remove docker-compose. Then install podman-compose, for example with pipx install podman-compose, or Docker Compose 2 or later. podman compose uses docker-compose first when it is installed.",
+    );
+
+    // podman-compose works when it is called by name, but podman compose still picks the 1.x.
+    const both = await check(
+      { cmds: { ...handedToV1, "podman-compose version": { stdout: "1.5.0\n" } } },
+      "compose",
+    );
+    assert.equal(both.status, "warn");
+    assert.match(
+      both.said,
+      /^podman-compose works\. Write podman-compose where the docs say docker compose\. podman compose hands its work to \/usr\/bin\/docker-compose, which is docker-compose 1\.29\.2\./,
+    );
+    assert.equal(
+      both.fix,
+      "Remove docker-compose 1.x, for example with sudo apt remove docker-compose. Then podman compose uses podman-compose. podman compose uses docker-compose first when it is installed.",
+    );
+
+    // Docker without its plugin, and only the old standalone program.
+    const dockerV1 = await check(
+      {
+        cmds: {
+          ...dockerLinux,
+          "docker compose version --short": {
+            code: 1,
+            stderr: "docker: 'compose' is not a docker command.\n",
+          },
+          "docker-compose version --short": { stdout: "1.29.2\n" },
+        },
+      },
+      "compose",
+    );
+    assert.equal(dockerV1.status, "fail");
+    assert.equal(
+      dockerV1.said,
+      "No compose tool works with Docker. docker-compose 1.29.2 is installed. That is Compose v1. It can't read Thermite's compose file.",
+    );
+    assert.match(
+      dockerV1.fix ?? "",
+      /^Remove docker-compose 1\.x.*Then install the Docker Compose plugin\./,
+    );
+
+    // Docker Compose 2 or later behind podman compose is fine.
+    const handedToV2 = await check(
+      {
+        cmds: {
+          ...podmanMac,
+          "podman compose version": { stdout: "Docker Compose version v5.1.0\n" },
+        },
+      },
+      "compose",
+    );
+    assert.deepEqual([handedToV2.status, handedToV2.said], ["ok", "podman compose works."]);
   });
 
   test("control's port: free, held by control, or taken by another program", async () => {
