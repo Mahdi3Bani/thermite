@@ -87,7 +87,7 @@ describe("when the rig drained (goal 136)", () => {
 });
 
 describe("what a drain waits for (goal 136, item 3)", () => {
-  test("while it drains, the report lists each open trial: its task, counters, claims and a refused request it repeats", async () => {
+  test("the report lists each open trial: its task, counters, claims and a refused request it repeats", async () => {
     const env = makeHarnessEnv("rig-d");
     const parsed = parseContract({ ...researchFixture, lanes: { count: 2, trials_per_epoch: 1 } });
     if (!parsed.ok) throw new Error(parsed.errors.join("; "));
@@ -144,11 +144,8 @@ describe("what a drain waits for (goal 136, item 3)", () => {
     refused("lane-1", "2026-10-25T03:20:00.000Z", 211);
     refused("lane-1", "2026-10-25T09:33:00.000Z", 212);
     const at = new Date("2026-10-25T09:34:00.000Z");
-    assert.equal(
-      workNow(env.service.ledger, at, undefined).open,
-      undefined,
-      "listed only in a drain",
-    );
+    // Listed whether or not the rig drains (goal 143); while it drains, the trials it waits for.
+    const open = workNow(env.service.ledger, at, undefined).open;
     const w = workNow(env.service.ledger, at, {
       since: "2026-10-25T04:10:00.000Z",
       reason: "its images are about to change",
@@ -179,8 +176,13 @@ describe("what a drain waits for (goal 136, item 3)", () => {
           at: "2026-10-25T09:33:00.000Z",
           times: 2,
         },
+        // What the harness's watch knows of it (goal 143): nothing outside the service.
+        last_line_at: null,
+        reply: null,
+        repeating: null,
       },
     ]);
+    assert.deepEqual(open, w.open);
   });
 
   test("a drain_rig records who asked, and its event keeps to the counts", async () => {

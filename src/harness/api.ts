@@ -688,6 +688,19 @@ export function createHarnessApi(
             tokens_out: z.number().int().min(0),
           })
           .optional(),
+        /**
+         * Its open model call, as a Pi worker reports it every 30 seconds: since when, and the
+         * characters of text, thinking and tool-call arguments so far; null: it ended (goal 143).
+         */
+        reply: z
+          .object({
+            since: z.iso.datetime(),
+            text: z.number().int().min(0),
+            thinking: z.number().int().min(0),
+            tool_args: z.number().int().min(0),
+          })
+          .nullable()
+          .optional(),
         /** The trial waits for its provider, then goes on in the same conversation (goal 079). */
         wait: z
           .object({

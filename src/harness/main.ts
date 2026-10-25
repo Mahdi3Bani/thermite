@@ -362,7 +362,15 @@ async function main(): Promise<void> {
   // A research run's paper, once accepted, is its folder's paper.md at once (goal 112).
   service.researchChanged = (run) => void researchFolder.sync(run);
   // Each compaction's conversation, kept in the run's research folder, and its record (goal 070).
-  service.compactions = new Compactions({ ledger, live: service.live, folder: researchFolder });
+  service.compactions = new Compactions({
+    ledger,
+    live: service.live,
+    folder: researchFolder,
+    // A compaction ends what counts as a repeat: the agent may ask again for what it lost.
+    recorded: (of) => {
+      if (of.trial) service.watch.compacted(of.trial);
+    },
+  });
 
   // The route control sets for this rig: kept in the state directory, root only.
   const routeFile = join(paths.stateDir, "model-route.json");

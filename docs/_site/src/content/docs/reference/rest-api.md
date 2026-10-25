@@ -88,7 +88,7 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 | `GET /v1/rigs/<rig>/exports/<name>/archive` | Owner | Downloads a complete export on control as one archive, as **Download** on the dashboard's **Exports** page does | None | `<rig>-<name>.tar.gz`, as `application/gzip` with `content-disposition: attachment`: a folder `<rig>-<name>/` with the export's `manifest.json` and every file at its path ([Download an export](exports.md#download-an-export)). 404 `{"error":"no such export"}`, `the export is still arriving: not every file reached control`, `control keeps no exports: it has no folder for them`, `<path> is gone from control's folder` or `<path> on control has <n> bytes, not <size>` |
 | `GET /v1/rigs/<rig>/results-left` | Owner | Whether all of the rig's results have left it: in its results repository, or on control | `?export=<name>`: also that export. Optional | `{left, why, to, waiting, champions_waiting, reported_at}`. [Have all results left the rig?](exports.md#have-all-results-left-the-rig) explains each field and answer |
 
-A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status` or `log`. Control keeps the newest 20,000 live lines of each rig. [Take the result](../how-to/campaigns/take-the-result.md) uses the patch route.
+A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status` or `log`. Control keeps the newest 20,000 live lines of each rig, and each open trial's newest 400 past them. [Take the result](../how-to/campaigns/take-the-result.md) uses the patch route.
 
 ### Model usage
 

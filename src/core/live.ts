@@ -68,10 +68,13 @@ export class LiveLog {
   private seq = 0;
   private readonly max: number;
   private readonly clock: () => Date;
+  /** Told of each line kept, after it is kept: the harness's watch of its trials (goal 143). */
+  private readonly onAppend: ((e: LiveEntry) => void) | undefined;
 
-  constructor(opts: { max?: number; clock?: () => Date } = {}) {
+  constructor(opts: { max?: number; clock?: () => Date; onAppend?: (e: LiveEntry) => void } = {}) {
     this.max = opts.max ?? 5000;
     this.clock = opts.clock ?? (() => new Date());
+    this.onAppend = opts.onAppend;
   }
 
   append(line: LiveLine): void {
@@ -88,6 +91,7 @@ export class LiveLog {
     if (!LiveEntry.safeParse(e).success) return;
     this.entries.push(e);
     if (this.entries.length > this.max) this.entries.splice(0, this.entries.length - this.max);
+    this.onAppend?.(e);
   }
 
   /** Lines after `after`, oldest first, at most `limit`. */

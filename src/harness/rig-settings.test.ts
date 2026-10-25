@@ -116,7 +116,13 @@ describe("the rig's own settings (Edit rig)", () => {
       .run(env.seed, new Date().toISOString());
     const work = () =>
       (env.service.snapshot(0, 10) as { summary: { work: Record<string, unknown> } }).summary.work;
-    assert.deepEqual(work(), { trials: 1, judge_jobs: 0, draining: null });
+    // Its open trials are listed too, with what each is doing (goal 143).
+    const { open, ...counts } = work() as { open: { trial: string }[] };
+    assert.deepEqual(counts, { trials: 1, judge_jobs: 0, draining: null });
+    assert.deepEqual(
+      open.map((t) => t.trial),
+      ["t-1"],
+    );
     const on = await env.service.applyCommand(
       env.sign("drain_rig", { drain: true, reason: "its images are about to change" }),
     );

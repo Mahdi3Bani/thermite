@@ -30,6 +30,7 @@ import {
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
+import { doingsOf, type TrialDoing } from "./views/work.ts";
 
 /**
  * Control's read model: what the dashboard, the API and MCP show. It is computed from the
@@ -525,10 +526,19 @@ export interface RunView {
     error: string | null;
     at: string;
   }[];
-  /** Each lane's trial in progress: its direction, its focus and when it started. */
+  /**
+   * Each lane's trial in progress: its direction, its focus and when it started; with a harness
+   * from goal 143, what it is doing (when it last sent a line, its open model call, a streak of
+   * the same calls), from the rig's last report.
+   */
   at_work: Record<
     string,
-    { trial: string; family: string | null; focus: string | null; since: string }
+    {
+      trial: string;
+      family: string | null;
+      focus: string | null;
+      since: string;
+    } & Partial<TrialDoing>
   >;
   /** The run's events, oldest first (at most the latest 400): the timeline's source. */
   timeline: StoredEvent[];
@@ -1828,6 +1838,10 @@ export function rigView(
     for (const id of Object.keys(v.promotion_waits))
       if (!v.pending_promotions.includes(id)) delete v.promotion_waits[id];
   }
+  // What each lane's trial is doing, from the rig's last report (goal 143).
+  const doings = doingsOf(u.summary);
+  for (const v of runs.values())
+    for (const w of Object.values(v.at_work)) Object.assign(w, doings.get(w.trial) ?? {});
   const summary = u.summary as
     | {
         jobs?: Record<string, number>;

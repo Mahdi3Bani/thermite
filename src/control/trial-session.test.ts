@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { LiveEntry } from "../core/live.ts";
 import { DETAIL_CHARS } from "./run-lists.ts";
-import { ControlStore } from "./store.ts";
+import { ControlStore, OPEN_TRIAL_LINES } from "./store.ts";
 import { SESSION_LINES, trialSession } from "./trial-session.ts";
 
 const at = (i: number) => new Date(Date.UTC(2026, 9, 25, 8, 0, i)).toISOString();
@@ -132,4 +132,60 @@ test("a long session's answer keeps to the budget and says how to read its lines
     () => trialSession(store, { ...base, trial: "t-nope" }),
     /^Error: control has no lines of trial t-nope on rig-a: it keeps a rig's newest 20,000 lines, and trial_session with no trial lists the sessions it has$/,
   );
+});
+
+test("a trial that writes many lines leaves another open trial's newest lines in control (goal 143)", () => {
+  const store = new ControlStore(":memory:");
+  // The rig's report lists t-quiet as open: it wrote 3 lines, then nothing.
+  store.ingest({
+    rig: "rig-a",
+    ledger_id: "l-1",
+    cursor: 0,
+    next: 0,
+    events: [],
+    summary: {
+      work: {
+        trials: 2,
+        judge_jobs: 0,
+        draining: null,
+        open: [{ trial: "t-quiet" }, { trial: "t-loop" }],
+      },
+    },
+  });
+  const line = (seq: number, source: string, text: string): LiveEntry => ({
+    seq,
+    at: at(seq % 3600),
+    source,
+    kind: "tool",
+    text,
+    lane: source === "trial:t-quiet" ? "lane-2" : "lane-1",
+    run: "r-1",
+  });
+  const quiet = [1, 2, 3].map((i) => line(i, "trial:t-quiet", `read_source s-${i}`));
+  store.addLive("rig-a", "log-1", quiet, true, 100);
+  // Then the other trial floods the window, past the lines an open trial keeps, in batches.
+  for (let b = 0; b < 8; b++)
+    store.addLive(
+      "rig-a",
+      "log-1",
+      Array.from({ length: 60 }, (_, i) =>
+        line(10 + b * 60 + i, "trial:t-loop", "search_files {}"),
+      ),
+      true,
+      100,
+    );
+  const kept = (source: string) => store.liveTail("rig-a", 10_000, source).length;
+  assert.equal(kept("trial:t-quiet"), 3, "the quiet trial's lines stay");
+  assert.equal(kept("trial:t-loop"), OPEN_TRIAL_LINES, "an open trial keeps its newest lines");
+  // A trial the report no longer lists is not kept past the window.
+  store.ingest({
+    rig: "rig-a",
+    ledger_id: "l-1",
+    cursor: 0,
+    next: 0,
+    events: [],
+    summary: { work: { trials: 1, judge_jobs: 0, draining: null, open: [{ trial: "t-loop" }] } },
+  });
+  store.addLive("rig-a", "log-1", [line(900, "trial:t-loop", "search_files {}")], true, 100);
+  assert.equal(kept("trial:t-quiet"), 0);
 });

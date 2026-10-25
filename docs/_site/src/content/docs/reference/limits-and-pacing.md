@@ -237,6 +237,9 @@ Memory is the sum over all the processes the build or run started, sampled every
 | A Pi worker process | 2 GiB of memory; with a trial length, that length plus 2 minutes | Fixed |
 | A submission, its patch included | 32 MiB | Fixed |
 | A submission | One for each trial: `trial <id> has already submitted` | Fixed |
+| A repeated tool call of a Pi worker | None: the call runs. When its tool, its arguments and its answer are the same as a call's already in the conversation, the worker gets a short answer instead of the full one again: `Same call and same answer as at <time> UTC (call <n>). Its answer is above. Change what you ask, or go on.` The worker remembers the newest 2,000 answers it gave in full, and forgets them all at a compaction | Fixed |
+| A streak of the same calls, in any harness | None: it ends nothing. At its 10th repeated call in a row (the same call with the same answer, or a Pi worker's short answer), the harness records a `trial_repeating` event, writes `repeats the same calls: …` in the trial's **Live**, and the trial's `at_work` and the teachers' brief show it. A new call, or a changed answer, ends the streak: `stopped repeating the same calls after <n>.` The harness remembers each trial's newest 2,000 different calls, and forgets them at a compaction | Fixed |
+| A Pi worker's open model call | Reported every 30 s from a turn's start until its reply ends: since when, and the characters of text, thinking and tool-call arguments so far. A shorter call is never reported. It shows in the trial's `at_work` (`reply`) | Fixed |
 
 ### Checks and research
 
@@ -341,7 +344,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | An install on a machine | 30 minutes |
 | SSH connections | 15 s to connect |
 | `kubectl` requests | 30 s |
-| The live view | The newest 20,000 lines of each rig |
+| The live view | The newest 20,000 lines of each rig, and each open trial's newest 400 past them (the trials the rig's last report lists), so a trial that writes many lines can't push out another's |
 | A daily report | 200,000 characters |
 | A kit uploaded on the **New campaign** page | 64 MB and 2,000 files |
 | A kit's git bundle given to control | 64 MiB over REST and `thermite kit add`; over MCP's `kit_add`, 4,000,000 characters of base64, a bundle of at most 3,000,000 bytes, as an MCP request is at most 4 MiB |

@@ -4,7 +4,7 @@ import type { McpToolInfo } from "../../core/mcp.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import { KEPT_MAX } from "../compactions.ts";
 import { apiCall } from "./api-call.ts";
-import type { TrialProgress } from "./live-session.ts";
+import type { ReplyNow, TrialProgress } from "./live-session.ts";
 import { modelConfigFromEnv } from "./model.ts";
 import { runResearchTrial } from "./research-worker.ts";
 import type { AnyTrial } from "./spawn.ts";
@@ -76,6 +76,7 @@ async function main(): Promise<void> {
       ).messages,
     read: (ids: number[]) => call("POST", "/v1/trial/messages/read", { ids }),
     progress: (p: TrialProgress) => call("POST", "/v1/trial/live", { entries: [], progress: p }),
+    reply: (r: ReplyNow | null) => call("POST", "/v1/trial/live", { entries: [], reply: r }),
   };
   // Each wait for the provider (goal 079): a line in the trial's session, and a rate limit's
   // wait for the scheduler and the research clock. Best effort: the trial waits either way.

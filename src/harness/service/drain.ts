@@ -1,13 +1,14 @@
 import { MAX_LANES } from "../../core/contract.ts";
 import type { Ledger } from "../ledger.ts";
+import type { TrialFacts } from "./watch.ts";
 
 /**
  * The rig's drain before its images change (goal 079): no new trial, plan or judge job starts,
  * and those running end as they would. The harness keeps it in memory only, and the restart it
  * prepares ends it. The ledger keeps each change as `rig_drain`, and the harness records the end
  * of a drain that a restart ended when it starts again (goal 136), so a research run's clock can
- * leave the drain out. While it drains, the rig's report lists each trial it waits for, and the
- * owner can stop one (`stop_trial`).
+ * leave the drain out. The rig's report lists each open trial, and the owner can stop one
+ * (`stop_trial`): while it drains, those are the trials it waits for.
  */
 
 export interface Draining {
@@ -73,8 +74,12 @@ export function drainSpans(ledger: Ledger, now: number): [number, number][] {
   return spans;
 }
 
-/** A trial the drain waits for, as the rig's report gives it (goal 136, item 3). */
-export interface OpenTrial {
+/**
+ * An open trial, as the rig's report gives it (goal 136, item 3): while the rig drains, one it
+ * waits for. With what it is doing (goal 143): when it last sent a line, its open model call and
+ * a streak of the same calls.
+ */
+export interface OpenTrial extends TrialFacts {
   trial: string;
   run: string;
   lane: string;
@@ -96,13 +101,17 @@ export interface OpenTrial {
   refused_again: { url: string; reason: string; asked: number; at: string; times: number } | null;
 }
 
-/** What still runs, for the rig's report (goal 079), and while it drains, each open trial. */
+/** What still runs, for the rig's report (goal 079), with each open trial (goal 143). */
 export interface Work {
   trials: number;
   judge_jobs: number;
   draining: Draining | null;
   open?: OpenTrial[];
 }
+
+/** What the harness's watch knows of a trial; none outside the service (a drain's own event). */
+type FactsOf = (trial: string) => TrialFacts;
+const NO_FACTS: FactsOf = () => ({ last_line_at: null, reply: null, repeating: null });
 
 /**
  * The open trials a report lists: a rig runs one trial on each lane, and at most `MAX_LANES`
@@ -113,9 +122,14 @@ const OPEN_MAX = MAX_LANES;
 /**
  * What still runs: open trials and the judge's jobs under a lease still in force. A lease that
  * ran out is no work: its holder is gone, the judge takes it back (while draining too), and a
- * drain never waits on it. While the rig drains, the report lists the open trials too.
+ * drain never waits on it. The report lists the open trials too, with what each is doing.
  */
-export function workNow(ledger: Ledger, at: Date, draining: Draining | undefined): Work {
+export function workNow(
+  ledger: Ledger,
+  at: Date,
+  draining: Draining | undefined,
+  facts: FactsOf = NO_FACTS,
+): Work {
   const n = (sql: string, ...params: string[]) =>
     Number((ledger.db.prepare(sql).get(...params) as { n: number } | undefined)?.n ?? 0);
   return {
@@ -125,12 +139,15 @@ export function workNow(ledger: Ledger, at: Date, draining: Draining | undefined
       at.toISOString(),
     ),
     draining: draining ? { ...draining } : null,
-    ...(draining ? { open: openTrials(ledger) } : {}),
+    open: openTrials(ledger, facts),
   };
 }
 
-/** Each open trial, oldest first, with its task, its counters and a request it repeats. */
-export function openTrials(ledger: Ledger): OpenTrial[] {
+/**
+ * Each open trial, oldest first, with its task, its counters, a refused request it repeats, and
+ * what the harness's watch knows of it.
+ */
+export function openTrials(ledger: Ledger, facts: FactsOf = NO_FACTS): OpenTrial[] {
   const rows = ledger.db
     .prepare(
       `select t.id, t.run, t.lane, t.started_at, t.turns, t.tool_calls, t.tokens_in,
@@ -174,6 +191,7 @@ export function openTrials(ledger: Ledger): OpenTrial[] {
           )
         : null,
     refused_again: refusedAgain(ledger, t),
+    ...facts(t.id),
   }));
 }
 

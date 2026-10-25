@@ -73,14 +73,19 @@ export class Compactions {
     compactionsDir(run: string): string;
   };
 
+  /** Told of each compaction recorded: the harness's watch of its trials (goal 143). */
+  private readonly recorded: ((of: CompactionOf) => void) | undefined;
+
   constructor(o: {
     ledger: Ledger;
     live: LiveLog;
     folder: Compactions["folder"];
+    recorded?: (of: CompactionOf) => void;
   }) {
     this.ledger = o.ledger;
     this.live = o.live;
     this.folder = o.folder;
+    this.recorded = o.recorded;
   }
 
   /** The kept file's path in the run's folder, for compaction `n`. */
@@ -147,6 +152,7 @@ export class Compactions {
       summary: summary ? summary.slice(0, 4000) : null,
       error: error ? error.slice(0, 500) : null,
     });
+    this.recorded?.(of);
     const tokens =
       r.tokensBefore !== null
         ? ` at about ${words(r.tokensBefore)} tokens${r.tokensAfter !== null ? `, down to about ${words(r.tokensAfter)}` : ""}`

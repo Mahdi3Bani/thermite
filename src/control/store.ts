@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
+import { MAX_LANES } from "../core/contract.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
 import { PodConfig } from "../core/tunnel.ts";
@@ -1132,6 +1133,9 @@ export interface RigRefusal {
 /** A rig's name: what the lifecycle drivers accept (a Kubernetes namespace part, a compose name). */
 export const RIG_ID = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
 
+/** How many of each open trial's newest live lines control keeps past the rig's window. */
+export const OPEN_TRIAL_LINES = 400;
+
 export class ControlStore {
   readonly db: DatabaseSync;
   private configuredRigs = new Set<string>();
@@ -1286,7 +1290,9 @@ export class ControlStore {
 
   /**
    * Stores live-log lines (duplicates by log id and sequence are ignored) and keeps only the
-   * newest `keep` lines of the rig.
+   * newest `keep` lines of the rig, and each open trial's newest OPEN_TRIAL_LINES: a trial that
+   * writes many lines can't push out another's (goal 143). The open trials are those the rig's
+   * last report lists.
    */
   addLive(
     rig: string,
@@ -1322,9 +1328,38 @@ export class ControlStore {
       const cut = this.db
         .prepare("select id from rig_live where rig = ? order by id desc limit 1 offset ?")
         .get(rig, keep) as { id: number } | undefined;
-      if (cut) this.db.prepare("delete from rig_live where rig = ? and id <= ?").run(rig, cut.id);
+      if (!cut) return added;
+      // Each open trial's newest lines stay, from the oldest of them on.
+      const kept = this.openTrialSources(rig).map((source) => {
+        const oldest = this.db
+          .prepare(
+            "select id from rig_live where rig = ? and source = ? order by id desc limit 1 offset ?",
+          )
+          .get(rig, source, OPEN_TRIAL_LINES - 1) as { id: number } | undefined;
+        return { source, from: oldest?.id ?? 0 };
+      });
+      this.db
+        .prepare(
+          `delete from rig_live where rig = ? and id <= ?${kept.map(() => " and not (source = ? and id >= ?)").join("")}`,
+        )
+        .run(rig, cut.id, ...kept.flatMap((k) => [k.source, k.from]));
       return added;
     });
+  }
+
+  /** The live sources of the trials the rig's last report lists as open (at most MAX_LANES). */
+  private openTrialSources(rig: string): string[] {
+    const r = this.db.prepare("select summary from rig where id = ?").get(rig) as Row | undefined;
+    if (!r) return [];
+    const open = (JSON.parse(String(r.summary)) as { work?: { open?: unknown } }).work?.open;
+    if (!Array.isArray(open)) return [];
+    return open
+      .slice(0, MAX_LANES)
+      .flatMap((t) =>
+        typeof (t as { trial?: unknown }).trial === "string"
+          ? [`trial:${(t as { trial: string }).trial}`]
+          : [],
+      );
   }
 
   /** Live lines of a rig after `after` (control's own ids), oldest first; one source if given. */

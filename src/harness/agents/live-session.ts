@@ -18,7 +18,25 @@ export interface SessionLink {
   read?: ((ids: number[]) => Promise<unknown>) | undefined;
   /** The session's counters so far, after each turn: kept by the harness if the trial dies. */
   progress?: ((p: TrialProgress) => Promise<unknown>) | undefined;
+  /** Its open model call, every REPLY_REPORT_MS while one is open; null once it ends (goal 143). */
+  reply?: ((r: ReplyNow | null) => Promise<unknown>) | undefined;
 }
+
+/**
+ * A model call that is open (goal 143): since when the turn waits or streams, and how many
+ * characters of text, thinking and tool-call arguments the model has sent so far. On the lab a
+ * trial sent nothing for more than four hours; this says whether it waits, or streams one long
+ * reply.
+ */
+export interface ReplyNow {
+  since: string;
+  text: number;
+  thinking: number;
+  tool_args: number;
+}
+
+/** How often an open model call is reported. A shorter call is never reported. */
+export const REPLY_REPORT_MS = 30_000;
 
 /** The owner's messages for a running trial, as an in-process harness adapter reads them. */
 export interface MessageInbox {
@@ -63,11 +81,21 @@ export function linkSession(agent: Agent, link: SessionLink): void {
     link.live([{ kind, text }]).catch(() => undefined);
   };
   const counted: TrialProgress = { turns: 0, tool_calls: 0, tokens_in: 0, tokens_out: 0 };
+  const reply = replyReports(link);
   /** Owner messages steered into the session, by the turn that carries them. */
   const steered = new Map<object, number>();
   const offered = new Set<number>();
   agent.subscribe(async (event, signal) => {
     switch (event.type) {
+      case "turn_start":
+        reply.open();
+        break;
+      case "message_update":
+        reply.grew(event.assistantMessageEvent);
+        break;
+      case "agent_end":
+        reply.close();
+        break;
       case "message_end": {
         // A steered owner message enters the conversation for the next model call: it is read
         // now, unless the session is being stopped (then that call never happens).
@@ -85,6 +113,7 @@ export function linkSession(agent: Agent, link: SessionLink): void {
           usage?: { input?: number; output?: number };
         };
         if (m.role !== "assistant") break;
+        reply.close();
         counted.tokens_in += m.usage?.input ?? 0;
         counted.tokens_out += m.usage?.output ?? 0;
         const thinking = textOf(m.content, "thinking");
@@ -138,4 +167,43 @@ export function linkSession(agent: Agent, link: SessionLink): void {
       }
     }
   });
+}
+
+/**
+ * The open model call's reports: one every REPLY_REPORT_MS from the turn's start until its reply
+ * ends, and null at its end when any was sent. Best effort, as every report of the link.
+ */
+function replyReports(link: SessionLink) {
+  let now: ReplyNow | null = null;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let sent = false;
+  const send = (r: ReplyNow | null) => {
+    link.reply?.(r ? { ...r } : null).catch(() => undefined);
+  };
+  return {
+    open(): void {
+      if (!link.reply) return;
+      this.close();
+      now = { since: new Date().toISOString(), text: 0, thinking: 0, tool_args: 0 };
+      timer = setInterval(() => {
+        if (!now) return;
+        sent = true;
+        send(now);
+      }, REPLY_REPORT_MS);
+      timer.unref?.();
+    },
+    grew(e: { type: string; delta?: string }): void {
+      if (!now || typeof e.delta !== "string") return;
+      if (e.type === "text_delta") now.text += e.delta.length;
+      else if (e.type === "thinking_delta") now.thinking += e.delta.length;
+      else if (e.type === "toolcall_delta") now.tool_args += e.delta.length;
+    },
+    close(): void {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+      if (now && sent) send(null);
+      now = null;
+      sent = false;
+    },
+  };
 }

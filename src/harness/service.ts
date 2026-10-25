@@ -107,6 +107,7 @@ import {
   type Work,
   workNow,
 } from "./service/drain.ts";
+import { type ReplyNow, TrialWatch, tellStreak } from "./service/watch.ts";
 import { ModelUsage } from "./usage.ts";
 import { checkV0, violationsOf } from "./v0.ts";
 
@@ -323,8 +324,12 @@ export class HarnessService {
   readonly rig: string;
   readonly ledger: Ledger;
   readonly paths: HarnessPaths;
+  /** What each open trial is doing (goal 143): fed by every trial line the live log keeps. */
+  readonly watch = new TrialWatch();
   /** What the agents and the judge are doing now, for control's live view (never judged). */
-  readonly live = new LiveLog();
+  readonly live = new LiveLog({
+    onAppend: (e) => tellStreak(this.watch.saw(e), e, this.ledger, this.live),
+  });
   private readonly controlPublicKeyPem: string;
   private readonly clock: () => Date;
   private readonly rigKeys: KeyPairPem | undefined;
@@ -472,9 +477,9 @@ export class HarnessService {
    */
   draining: Draining | undefined;
 
-  /** What still runs, for the rig's report, and while it drains each open trial (workNow). */
+  /** What still runs, for the rig's report, with each open trial and what it is doing (workNow). */
   work(): Work {
-    return workNow(this.ledger, this.clock(), this.draining);
+    return workNow(this.ledger, this.clock(), this.draining, (t) => this.watch.facts(t));
   }
 
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
@@ -2171,6 +2176,19 @@ export class HarnessService {
       // held-out failure's kind (goal 082), and the judge's public reasons (goal 081); the
       // teachers read each in full with their tools.
       evidence: recentAttempts(this.ledger, run, { limit: 20, reasonChars: 400 }),
+      // Each lane's trial now (goal 143): when it last sent a line, its open model call, and a
+      // streak of the same calls. A trial quiet for long, or repeating, is worth a note.
+      at_work: (this.work().open ?? [])
+        .filter((t) => t.run === run)
+        .map(({ lane, trial, task, started_at, last_line_at, reply, repeating }) => ({
+          lane,
+          trial,
+          task,
+          started_at,
+          last_line_at,
+          reply,
+          repeating,
+        })),
       epochs,
       // A teachers' rule that freezes the queue or pins an experiment, set before code refused
       // them, is marked: it no longer reaches the planner (goal 081).
@@ -2779,6 +2797,7 @@ export class HarnessService {
   trialEnded(id: string, atWork: boolean): void {
     if (atWork) this.trialAtWork(id);
     this.briefMessages.delete(id);
+    this.watch.forget(id);
   }
 
   /** A trial's own session lines and counters, as its harness reports them. */
@@ -2789,8 +2808,11 @@ export class HarnessService {
       progress?:
         | { turns: number; tool_calls: number; tokens_in: number; tokens_out: number }
         | undefined;
+      /** A Pi worker's open model call; null: it ended (goal 143). */
+      reply?: ReplyNow | null | undefined;
     },
   ): void {
+    if (r.reply !== undefined) this.watch.reply(trial.id, r.reply, this.clock().toISOString());
     if (r.progress) {
       this.trialProgress.set(trial.id, r.progress);
       // Kept in the trial's record too, so a restart that interrupts it keeps its counters

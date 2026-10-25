@@ -4,11 +4,13 @@ import type { LaneLimitValues } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import { Compactor, summarizer } from "./compaction.ts";
+import { IDEA_TOOL, type IdeaInput, proposeIdea } from "./idea-tool.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, NoteLimit, type NoteRequest } from "./notes-tool.ts";
 import { type FailureCount, failingOf, ProviderWatch } from "./provider-errors.ts";
+import { guardRepeats } from "./repeats.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import {
@@ -21,14 +23,8 @@ import {
 } from "./research-tools.ts";
 import { TrialClock } from "./trial-clock.ts";
 import { PiMeter } from "./usage-meter.ts";
-import type {
-  CompactionLink,
-  IdeaInput,
-  McpForAgent,
-  ProviderWait,
-  TrialResult,
-} from "./worker.ts";
-import { IDEA_TOOL, keepGoing, proposeIdea, watchedStream, withoutPastThinking } from "./worker.ts";
+import type { CompactionLink, McpForAgent, ProviderWait, TrialResult } from "./worker.ts";
+import { keepGoing, watchedStream, withoutPastThinking } from "./worker.ts";
 
 /**
  * A research trial in Pi: a fresh agent session with the research tools and file tools over its
@@ -166,7 +162,7 @@ export async function runResearchTrial(
           : RESEARCH_SYSTEM
       }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
       model,
-      tools: clock.wrap(tools),
+      tools: clock.wrap(guardRepeats(tools, () => compactor.count)),
       thinkingLevel,
     },
     streamFn: watchedStream(models, watch, meter),

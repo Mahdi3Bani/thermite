@@ -40,8 +40,9 @@ Goal 136 already gives part of this, but only while a rig drains. The rig's page
    - While a model call is open, the harness also knows since when it streams, and how many characters it has received of the text, the thinking and a tool call's arguments.
    - For Pi, these facts come from the worker's stream. For OpenCode, Claude Code and Codex, they come from the last event in their event files.
    - `get_run`, `run_queue` and the rig's report give these facts with each lane's trial in `at_work`.
-   - On the run's page, under **At work**, each lane's row shows them. For example: "quiet for 4 h 24 m", or "in one reply for 52 m: 1.2 MB of a tool call's arguments so far". The same row has **Stop this trial…** for any running trial, as on a draining rig's page. A mockup comes first.
-   - The package of the teachers and the auditor names a quiet trial, so their notes can say so.
+   - A trial is quiet after a time set on **Edit rig** ("Ask me after a quiet spell of (minutes)"), with none by default.
+   - A quiet or repeating trial is a card under **Needs you**, on the run's page and the home page: for example, "lane-2's trial has sent nothing for 4 h 24 min". Its details are behind the card: how long it has run, what it last did, its open model call, the calls it repeats, its work so far. Its buttons are **Stop this trial…** and **Leave it running**. Its lane's row, on the run's page, the home page and the rig's page, gets only a chip. The owner approved this mockup.
+   - The teachers' brief names each lane's trial with these facts, so their notes can say so.
    - Control keeps the newest lines of each open trial. A trial that writes many lines can't push out the lines of another trial.
    - Nothing ends a trial by itself. The owner, or an operator, stops it.
 2. **A trial that repeats the same calls is caught.**
@@ -49,9 +50,8 @@ Goal 136 already gives part of this, but only while a rig drains. The rig's page
    - A repeated call gets a short answer, not the full answer again. For example: "Same call and same answer as at 19:04:13 (call 214). Its answer is above. Change what you ask, or go on."
    - After a compaction, the earlier answer can be gone from the conversation. A call whose earlier answer is gone gets its full answer.
    - The trial goes on. This isn't a cap.
-   - The trial's line in Live and its row under **At work** say "repeats the same calls", with how many. A `trial_repeating` event, once for each streak, says which calls. The teachers see it.
-   - The check covers Pi workers (code and research trials) and the harness's own tools in every harness: the `thermite-trial` commands and the research tools.
-   - The check can't reach the built-in tools of OpenCode, Claude Code and Codex. For them, a repeat shows from their event stream only.
+   - The trial's line in Live and its card under **Needs you** say "repeats the same calls", with how many. A `trial_repeating` event, once for each streak, says which calls. The teachers see it.
+   - The short answer is for Pi workers (code and research trials), whose tools the harness runs. In OpenCode, Claude Code and Codex, a repeat shows from the program's lines only (see Decisions).
    - Check how this fits with goal 136's "repeats a refused request". Show both in one way.
 3. **A refused request says why.**
    - When the harness API's schema refuses a request, the answer names each field and the problem, in plain words. For example: `invalid request: quotes[0].quote has 9 characters; it needs 20 to 2,000`.
@@ -67,28 +67,29 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 
 - **No default caps.** Nothing here ends or cuts a trial. A quiet or repeating trial is shown. To stop a trial stays the owner's decision, or an operator's, with `stop_trial`.
 - **Agents never judge.** The checks are code in the harness. An advisor can only read them.
-- **A mockup first.** The new words of the **At work** row and its **Stop this trial…** are shown to the owner as a mockup. The owner approves them before they are built.
-- **Plain words.** The row's words and the refusals are in Simplified Technical English.
+- **A mockup first.** The new card, chip and setting are shown to the owner as a mockup. The owner approves them before they are built.
+- **Plain words.** The card's words and the refusals are in Simplified Technical English.
 
 ## Done when
 
 - [ ] Item 1, with tests:
-  - A trial with no line for some time shows as quiet in `at_work`, in the rig's report and on the run's page.
+  - A trial with no line for some time shows in `at_work` and in the rig's report; past the rig's quiet setting, it is a card under **Needs you** and its lane has a chip.
   - A Pi trial in one long reply shows since when it streams and how much it has received.
-  - **Stop this trial…** on the run's page sends `stop_trial`.
+  - **Stop this trial…** in the card sends `stop_trial`; **Leave it running** hides the card until the trial is stuck again.
+  - The quiet setting on **Edit rig**, over MCP and REST: none by default.
   - When one trial writes many lines, control keeps the lines of another open trial.
-- [ ] Item 2, with tests that replay the lab's case:
+- [x] Item 2, with tests that replay the lab's case:
   - 74 copies of 13 calls in one reply give a full answer for each of the 11 different calls and a short answer for each copy.
   - A call with the same arguments and a changed answer gets its full answer.
   - After a compaction, the full answer comes back.
   - The streak gives one `trial_repeating` event.
 - [x] Item 3, with tests: a short quote, a missing field and a wrong type each get an answer that names the field and the problem, through the API, `thermite-trial` and Pi's tool. The tool texts give the limits.
-- [ ] The owner approved the mockup of the **At work** row.
+- [x] The owner approved the mockup (version 2: the card under **Needs you**, the chip, the setting).
 - [ ] Pages:
-  - Steer a run (At work, Stop this trial…)
-  - A rig's page
+  - Steer a run and Decide what waits for you (the card, Stop this trial…, Leave it running)
+  - A rig's page, and Edit rig's settings (the quiet setting, over MCP and REST too)
   - MCP tools (the new fields of `at_work`)
-  - Signed commands (`stop_trial` from the run's page)
+  - Signed commands (`stop_trial` from the card)
   - Troubleshoot (a quiet trial, a trial that repeats calls, a refused claim)
   - Command line (`thermite-trial research help`)
   - Limits and pacing
@@ -101,19 +102,23 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 ## Decisions
 
 - 2026-10-25, owner: work on this goal starts now (the owner ran it as a task).
+- 2026-10-25, owner, on the first mockup: "Too much detail and junk on the page. Highlight an issue, bring it to "needs you" and keep details behind view more details or something." When a trial is quiet is a setting on **Edit rig**, none by default, and a stuck trial also asks under **Needs you**. The owner approved the second mockup as it is.
+- 2026-10-25, builder: **Stop this trial…** is in a stuck trial's card (and, as before, on a draining rig's page), not on every lane's row: the owner asked for less on the page. `stop_trial` over MCP and REST stops any running trial.
+- 2026-10-25, builder: the teachers' brief has each lane's trial now (`at_work`); the auditor's package does not. The auditor decides one change, and a lane's state says nothing about it.
+- 2026-10-25, builder: only a Pi worker gets short answers. OpenCode, Claude Code and Codex compact on their own, and the harness learns of it only afterwards, so a short answer to a `thermite-trial` command could point at an answer the program no longer holds. Their repeats show from their lines: the watch reads every harness's lines alike.
+- 2026-10-25, builder: a streak is said at its 10th repeated call in a row. It is a threshold for what the harness says, not a cap. A page the run refused, asked for again and again (goal 136's "repeats a refused request"), is a streak of the same call with the same answer, so it shows the same way.
 
 ## Open questions
 
 - What held the lab's quiet trial?
   - Its rig ran an image without goal 140's patch. Pi's parse of a tool call's arguments grows with the square of their length. One reply that kept on streaming a very long tool call fits what was seen.
   - This isn't shown: nothing in control can see a worker's process. Item 1's view of an open model call would show it next time.
-- Should a quiet or repeating trial also go to the owner under **Needs you**, or only to the run's page and the advisors?
-- How long without a line makes a trial "quiet"? The row could always give the time since the last line. It could mark the trial only after a time the rig sets, with no time set by default.
 
 ## Progress
 
 - 2026-10-25 19:40 UTC: Goal written at the owner's request, from a research run on the lab. One lane was quiet for more than four hours. The other lane repeated tool calls for about 22 minutes. A worker got only "invalid request".
 - 2026-10-25 20:00 UTC: Item 3 built. The harness API names each refused field and the problem, from the body sent (`src/harness/api/refusal.ts`), at most 5 problems; its log has `request refused`. A claim's limits have one home, `CLAIM_LIMITS`, which the schema and `add_claim`'s text and usage read; `research help` gives them. Tests: `src/harness/api/refusal.test.ts`, through the API, `thermite-trial` and Pi's tool. Pages: Limits and pacing, Command line, Troubleshoot. Next: item 2. Still open for item 3: on the lab, whether the worker's "intermittent" refusals had another cause.
+- 2026-10-25 22:08 UTC: Item 2 built, and item 1's data. A Pi worker's repeated call gets a short answer (`src/harness/agents/repeats.ts`, inside goal 144's clock in both workers; the guard forgets at each compaction, from the Compactor's count). The harness's watch (`src/harness/service/watch.ts`) reads every trial line the live log keeps, for every harness: when the trial last sent a line, a Pi worker's open model call (reported every 30 s, `live-session.ts`), and streaks of the same calls, with a `trial_repeating` event and lines in Live. The rig's report lists each open trial with these facts (`work.open`, always now), control merges them into `get_run`'s and `run_queue`'s `at_work` (`src/control/views/work.ts`), and the teachers' brief has `at_work`. Control keeps each open trial's newest 400 live lines past the rig's window. The idea tool moved to `idea-tool.ts`, which keeps `worker.ts` from growing. Tests: `repeats.test.ts`, `watch.test.ts`, `views/work.test.ts`, `trial-session.test.ts`. Pages: Limits and pacing, MCP tools, REST API, Advisors file, Supervision, Troubleshoot. Next: item 1's card, chip and quiet setting, from the approved mockup.
 
 ---
 

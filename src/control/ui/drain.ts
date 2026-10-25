@@ -1,6 +1,6 @@
-import { z } from "zod";
 import { clockUtc, commandProgress } from "../command-progress.ts";
 import type { CommandRow, ControlStore } from "../store.ts";
+import { type OpenTrial, workOf } from "../views/work.ts";
 import type { RigView } from "../views.ts";
 import { ago, esc, fmtInt, icon, infoLabel } from "./components.ts";
 import { clip, span } from "./words.ts";
@@ -13,42 +13,6 @@ import { clip, span } from "./words.ts";
  * come from the rig's report (`work`, which lists the open trials while the rig drains) and from
  * the trial's lines in Live.
  */
-
-const OpenTrial = z.object({
-  trial: z.string().max(64),
-  run: z.string().max(80),
-  lane: z.string().max(32),
-  started_at: z.string().max(40),
-  task: z.string().max(4000).nullable(),
-  question: z.number().int().nullable(),
-  turns: z.number(),
-  tool_calls: z.number(),
-  tokens_in: z.number(),
-  claims: z.number().nullable(),
-  refused_again: z
-    .object({
-      url: z.string().max(1000),
-      reason: z.string().max(1000),
-      asked: z.number(),
-      at: z.string().max(40),
-      times: z.number(),
-    })
-    .nullable(),
-});
-type OpenTrial = z.infer<typeof OpenTrial>;
-
-const Work = z.object({
-  trials: z.number(),
-  judge_jobs: z.number(),
-  draining: z
-    .object({
-      since: z.string().max(40),
-      reason: z.string().max(1000),
-      by: z.string().max(200).optional(),
-    })
-    .nullable(),
-  open: z.array(OpenTrial).max(64).optional(),
-});
 
 /** A rig's drain, from its last report; null when it doesn't drain. */
 export interface RigDrain {
@@ -63,16 +27,16 @@ export interface RigDrain {
 }
 
 export function drainOf(u: Pick<RigView, "summary">): RigDrain | null {
-  const w = Work.safeParse((u.summary as { work?: unknown } | null | undefined)?.work);
-  if (!w.success || !w.data.draining) return null;
-  const d = w.data.draining;
+  const w = workOf(u.summary);
+  if (!w?.draining) return null;
+  const d = w.draining;
   return {
     since: d.since,
     reason: d.reason,
     by: d.by ?? null,
-    trials: w.data.trials,
-    judgeJobs: w.data.judge_jobs,
-    open: w.data.open ?? null,
+    trials: w.trials,
+    judgeJobs: w.judge_jobs,
+    open: w.open ?? null,
   };
 }
 
