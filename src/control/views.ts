@@ -692,6 +692,8 @@ export interface RigSettingsView {
   /** A trial's length when its contract sets none; null: none (goal 079). */
   trial_minutes: number | null;
   max_turns: number | null;
+  /** After how many minutes without a line a trial asks the owner (goal 143); null: never. */
+  quiet_minutes: number | null;
   promotion: "auto" | "owner_approval";
   /** The judge's share of a rig's GPU set, if set on the rig; null: its default. */
   judge_gpus: number | null;
@@ -712,6 +714,7 @@ function readSettings(v: unknown): RigSettingsView | null {
     exports: b("exports"),
     trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : null,
     max_turns: typeof o.max_turns === "number" ? o.max_turns : null,
+    quiet_minutes: typeof o.quiet_minutes === "number" ? o.quiet_minutes : null,
     promotion: o.promotion === "auto" ? "auto" : "owner_approval",
     judge_gpus: typeof o.judge_gpus === "number" ? o.judge_gpus : null,
   };

@@ -26,6 +26,8 @@ import {
 } from "./components.ts";
 import type { LaneExtra } from "./drain.ts";
 import { gainChip, measuredWords } from "./gains.ts";
+import { card } from "./need-card.ts";
+import { stuckChip, stuckNeeds, stuckTrials } from "./stuck.ts";
 import {
   attemptState,
   auditReason,
@@ -72,7 +74,8 @@ export interface Need {
     | "agents"
     | "review"
     | "conclusion"
-    | "stale";
+    | "stale"
+    | "stuck";
   rig: string;
   run?: string | undefined;
   attempt?: string | undefined;
@@ -173,55 +176,6 @@ function changeFacts(u: RigView, r: RunView, a: AttemptView | undefined, id: str
       ? ""
       : `<dt>The run</dt><dd>This run is <b>${esc(runStatusText(r))}</b>. A new champion changes this run only. The other runs of the campaign do not change.</dd>`
   }`;
-}
-
-/**
- * A decision as one row that reads at a glance: what it is about, why it waits for the owner,
- * the facts that decide it and its buttons. Opened, it shows the question, the full evidence and
- * what each choice does. It keeps its open state across the page's refresh (data-k).
- */
-function card(o: {
-  tone: "warn" | "bad" | "violet";
-  ic: string;
-  /** One or two words for the kind of decision: "Promote", "Blocked". */
-  kind: string;
-  question: string;
-  /** What it is about (HTML, escaped): a change in its author's words, a rig, a goal. */
-  headline: string;
-  /** Why it waits for the owner, in one clause (HTML, escaped). */
-  why: string;
-  chips?: string | undefined;
-  key: string;
-  u: RigView;
-  r?: RunView | undefined;
-  lane?: string | null | undefined;
-  since?: string | undefined;
-  now: number;
-  facts: string;
-  /** Each choice; those with a button show it on the row. */
-  choices: { button?: string | undefined; label: string; does: string }[];
-  more?: string | undefined;
-  /** The owner's choice already sent for this item, and the rig's answer (see decidedState). */
-  decided?: { sent: boolean; html: string } | undefined;
-}): { html: string; box: string; decided: boolean } {
-  const where = o.r
-    ? `<a href="${runHref(o.u.id, o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> · ${esc(o.u.id)}${o.lane ? ` · ${esc(o.lane)}` : ""}`
-    : `rig <a href="/ui/rigs/${encodeURIComponent(o.u.id)}">${esc(o.u.id)}</a>`;
-  // Once the owner has chosen, the row says so instead of offering the buttons again; a choice
-  // the rig refused says why, and the buttons come back.
-  const buttons = o.decided?.sent
-    ? `<span class="dq-sent">${o.decided.html}</span>`
-    : o.choices.flatMap((c) => (c.button ? [c.button] : [])).join("");
-  if (o.decided && !o.decided.sent) o.why = `${o.why}<br>${o.decided.html}`;
-  const choices = o.choices.map((c) => `<dt>${esc(c.label)}</dt><dd>${c.does}</dd>`).join("");
-  const box = `<div class="decide decide-${o.tone}"><div class="decide-q"><span class="dq-kind">${o.ic}${esc(o.kind)}</span><b>${esc(o.question)}</b><span class="dq-age">${o.since ? `waiting ${esc(span(o.since, o.now))}` : ""}</span></div><div class="decide-why">${o.why}</div><div class="dq-btns">${buttons}</div><dl class="dq-choices">${choices}</dl></div>`;
-  const html = `<details class="dq dq-${o.tone}" data-k="need-${esc(o.key)}"><summary>
-<span class="dq-kind">${o.ic}${esc(o.kind)}</span>
-<span class="dq-main"><span class="dq-head">${o.headline}</span><span class="dq-why">${o.why}</span><span class="dq-sub"><span class="dq-where">${where}</span>${o.chips ?? ""}</span></span>
-<span class="dq-side">${o.since ? `<span class="dq-age">waiting ${esc(span(o.since, o.now))}</span>` : ""}<span class="dq-btns">${buttons}</span></span>
-</summary><div class="dq-body"><p class="dq-q">${esc(o.question)}</p><dl class="dc-facts">${o.facts}</dl>
-<dl class="dq-choices">${choices}</dl>${o.more ? `<div class="dq-foot">${o.more}</div>` : ""}</div></details>`;
-  return { html, box, decided: o.decided?.sent === true };
 }
 
 /**
@@ -693,6 +647,8 @@ export function needs(
           }),
         });
       }
+      // A trial quiet past the rig's setting, or one that repeats the same calls (goal 143).
+      out.push(...stuckNeeds(store, u, r, f, now, back));
       // The run's agents stopped on the provider's refusal, model calls that kept failing for 30
       // minutes, or a failing model check (goal 079): a real failure, not a decision; it ends by
       // itself once a model check passes.
@@ -1093,6 +1049,8 @@ export function runBrief(
       ...trials.map((t) => t.lane).filter((l): l is string => !!l),
     ]),
   ].sort();
+  // A stuck trial's lane gets a chip that leads to its card under Needs you (goal 143).
+  const stuck = stuckTrials(u, r, now);
   for (const lane of lanes) {
     const extra = opts.lane?.(lane);
     const t = trials.find((x) => x.lane === lane);
@@ -1116,7 +1074,12 @@ export function runBrief(
           : "";
       row(
         lane,
-        `${esc(clip(what, 200))}${extra?.mark ?? ""}${t ? ` <a class="small" href="${runLiveHref(u.id, r.id, `&w=${encodeURIComponent(lane)}`)}">watch</a>` : ""}${last}`,
+        `${esc(clip(what, 200))}${extra?.mark ?? ""}${stuck
+          .filter((s) => s.lane === lane)
+          .map((s) => stuckChip(s, u, r, now))
+          .join(
+            "",
+          )}${t ? ` <a class="small" href="${runLiveHref(u.id, r.id, `&w=${encodeURIComponent(lane)}`)}">watch</a>` : ""}${last}`,
         esc(span(work?.since ?? t?.started_at ?? null, now)),
       );
     } else {

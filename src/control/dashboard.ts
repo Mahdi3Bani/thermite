@@ -185,6 +185,7 @@ import {
   rigModelShapeRefusal,
 } from "./rig-model.ts";
 import {
+  QUIET_TIP,
   type RigPart,
   type RigSettingsChange,
   rigSettingsChange,
@@ -227,6 +228,7 @@ import {
   type MachineRig,
   type ModelProvider,
   type ProviderType,
+  RIG_ID,
   type TunnelRig,
 } from "./store.ts";
 import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
@@ -4165,6 +4167,30 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
     }
     return c.redirect("/ui/reports", 303);
+  });
+
+  // A stuck trial the owner leaves running (goal 143): its card stays away until it is stuck again.
+  app.post("/ui/trials/leave", async (c) => {
+    const f = await c.req.parseBody();
+    const [rig, trial, kind, since] = ["rig", "trial", "kind", "since"].map((k) =>
+      String(f[k] ?? ""),
+    );
+    if (
+      !RIG_ID.test(rig ?? "") ||
+      !/^[A-Za-z0-9_-]{1,64}$/.test(trial ?? "") ||
+      (kind !== "quiet" && kind !== "repeating") ||
+      Number.isNaN(Date.parse(since ?? ""))
+    )
+      return c.text("refused: that is not a stuck trial's card", 400);
+    store.leaveTrial({
+      rig: String(rig),
+      trial: String(trial),
+      kind,
+      since: String(since),
+      by: "owner:ui",
+    });
+    store.audit("owner:ui", "trial_left", { rig, run: String(f.run ?? ""), trial, kind, since });
+    return c.redirect(backTo(f, "/ui"), 303);
   });
 
   app.post("/ui/propagate", async (c) => {
@@ -8523,6 +8549,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <div class="g3" style="margin-top:14px">
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit. Empty: no limit; a trial lasts until the worker submits or stops.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
+<label class="fd">${infoLabel("Ask me after a quiet spell of (minutes)", QUIET_TIP)}<input name="quiet_minutes" type="number" min="1" max="1440" value="${s?.quiet_minutes ?? ""}" placeholder="never" data-empty="never" data-unit=" minutes"${s ? "" : " disabled"}></label>
 </div></div>
 <div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
 <label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion with no step of yours. When the campaign calls for an audit and this rig has an auditor, the auditor's clear comes first; its block stops the change. A run can still ask you about some changes (Ask me first, when you start it).</span></span></label>
@@ -8727,6 +8754,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         // Empty: no limit (goal 079).
         trial_minutes: num("trial_minutes"),
         max_turns: num("max_turns"),
+        quiet_minutes: num("quiet_minutes"),
         promotion: String(f.promotion ?? s.promotion),
         // The field shows only on a rig with a GPU set. With a new number of GPUs, it goes with
         // the change to them.

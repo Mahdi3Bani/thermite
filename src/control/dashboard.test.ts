@@ -1205,7 +1205,18 @@ describe("control dashboard", () => {
     // The form as the page sends it: every switch on but the planner, two workers at a time.
     const form: Record<string, string> = { csrf: s.csrfFrom(page), choice: "", harness: "pi" };
     for (const k of ["judge", "workers", "auditor", "teachers", "review", "exports"]) form[k] = "1";
-    Object.assign(form, { lanes: "2", trial_minutes: "20", max_turns: "", promotion: "auto" });
+    // A trial quiet for 30 minutes asks the owner (goal 143); empty, the default, is never.
+    assert.match(
+      page,
+      /<input name="quiet_minutes" type="number" min="1" max="1440" value="" placeholder="never"/,
+    );
+    Object.assign(form, {
+      lanes: "2",
+      trial_minutes: "20",
+      max_turns: "",
+      quiet_minutes: "30",
+      promotion: "auto",
+    });
     const r = await s.post("/ui/rigs/rig-a/edit", form);
     assert.match(
       decodeURIComponent(String(r.headers.get("location"))),
@@ -1213,14 +1224,15 @@ describe("control dashboard", () => {
     );
     const cmd = s.store.listCommands(5).find((c) => c.kind === "rig_settings");
     assert.ok(cmd);
+    assert.equal(s.store.latestCommands("rig-a", "rig_settings", 1)[0]?.payload.quiet_minutes, 30);
     await s.relay();
     assert.equal(s.env.service.settings.get().planner, false);
     assert.equal(s.env.service.settings.get().lanes, 2);
+    assert.equal(s.env.service.settings.get().quiet_minutes, 30);
     await s.relay();
-    assert.match(
-      await (await s.get("/ui/rigs/rig-a/edit")).text(),
-      /name="planner" value="1" data-part data-name="Planner">/,
-    );
+    const after = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    assert.match(after, /name="planner" value="1" data-part data-name="Planner">/);
+    assert.match(after, /name="quiet_minutes" type="number" min="1" max="1440" value="30"/);
   });
 
   test("Edit rig: a rig with a GPU set shows the judge's share, and a new one is sent signed", async () => {

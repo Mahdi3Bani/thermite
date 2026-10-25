@@ -82,6 +82,7 @@ When you want a limit, you set it. Each one does exactly what it says, and nothi
 | Hours of judging on the device | `budget.device_hours` in the contract | The same |
 | Money spent on the agents' model | `budget.llm_usd` in the contract, with the model's prices set on the rig (`THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT`). It counts the workers' calls only, not the planner's, and rigs that control sets up can't be given the prices yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)) | The same |
 | Turns in one trial | **Turns per trial** on the rig's **Edit rig** page | That one trial ends at the limit; the next one starts |
+| A quiet trial | **Ask me after a quiet spell of (minutes)** on the rig's **Edit rig** page | Nothing ends: the trial asks you under **Needs you**, and you stop it or leave it running |
 | A lane command's time | `lanes.limits.run_timeout_s` in the contract | That one command ends |
 | Advisors' spending per day | `max_usd_per_day` in the advisors file | The advisors skip their work until the next day ([Supervision](supervision.md)) |
 | Size of a run's archive of fetched pages, in any mode | `THERMITE_RESEARCH_MAX_MB` on the rig | Further fetches are refused |

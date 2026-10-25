@@ -41,6 +41,7 @@ const DEFAULTS = {
   exports: true,
   trial_minutes: 20,
   max_turns: null,
+  quiet_minutes: null,
   promotion: "owner_approval",
   judge_gpus: null,
 } as const;
@@ -121,6 +122,7 @@ const FIELDS: [string, unknown][] = [
   ["exports", false],
   ["trial_minutes", 45],
   ["max_turns", 120],
+  ["quiet_minutes", 30],
   ["promotion", "auto"],
   ["judge_gpus", 3],
 ];

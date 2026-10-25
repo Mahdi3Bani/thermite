@@ -38,6 +38,8 @@ A closed run is finished, and nothing in it waits for you: what waited in it whe
 | **New key** | Accept this rig's new report key? | A rig reports with a key control has not pinned | **Accept this key** |
 | **Wipe** | Wipe this rig's state? | A full reset you started is ready for its last step | **Confirm the wipe**, **Cancel the reset** |
 | **Agents stopped** | The agents of this run cannot work | The model provider refused a trial (no credits, a refused key, a model it does not serve on the key), no model call worked for 30 minutes, or the workers' model check fails. No trial or plan starts until a check passes | **Check the model now**, **Edit rig** |
+| **Stuck?** | Stop lane-2's trial, or leave it running? | A trial has sent no line for longer than the rig's **Ask me after a quiet spell of (minutes)** on **Edit rig**. The setting is empty by default, and then this never asks | **Stop this trial…**, **Leave it running** |
+| **Repeats** | Stop lane-1's trial, or leave it running? | A trial made the same tool call with the same answer 10 times in a row | **Stop this trial…**, **Leave it running** |
 | **Not reporting** | This rig stopped reporting, or, for a rig that never reported, This rig has not reported yet | A rig has sent no report for a while. A new rig whose first key waits for you shows under **New key** instead. A rig on RunPod whose pod is stopped shows no card: it can't report while stopped | **Open the rig** |
 
 ### Choose what waits
@@ -109,6 +111,20 @@ By default the evidence ends the campaign: the run closes with `not possible: th
 - **Wipe**: check that the export it names is in the results repository, then press **Confirm the wipe**, which deletes the rig's ledger, builds and workspaces for good. **Cancel the reset** wipes nothing; the rig stays paused until you resume its run. Only a rig with a results repository can be fully reset, and rigs that control sets up have none yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). See [Stop, restart, remove and fully reset a rig](../operate/rig-lifecycle.md).
 - **Not reporting**: **Open the rig** shows its last known state and what you can do.
 - **Agents stopped**: the card shows the provider's own words and what to check: credits at the provider, the key in **Settings › Providers**, whether the provider is up (`The model's calls keep failing`), or the model. Fix the cause, then press **Check the model now**; or give the rig another model on **Edit rig**. Thermite also checks the model again by itself, after a minute and then less often (at most every 30 minutes). Once a check passes, or the rig has another model, the agents go on and the card goes away. See [The agents stopped: the provider refuses](../operate/troubleshoot.md#the-agents-stopped-the-provider-refuses).
+
+### Stuck trials
+
+A trial has no time limit unless someone set one, and nothing ends a trial because it is quiet or repeats itself. So a stuck trial asks you:
+
+- **Stuck?**: `lane-2's trial has sent nothing for 4 h 24 min`. Behind the card: how long it has run, what it last did in **Live**, and for a Pi worker its open model call: since when, and how many characters of text, thinking and tool-call arguments the model has sent so far. A reply that keeps streaming one very long tool call can hold a trial for hours.
+- **Repeats**: `lane-1's trial repeats the same tool calls: 812 since 19:04 UTC`. Behind the card: how many times, how many different calls, and the most repeated ones. A Pi worker gets a short answer for each copy, so its conversation stays small.
+
+Both show the trial's work so far. Its lane's row, on the run's page, the home page and the rig's page, has a chip that leads to the card: `quiet for 4 h 24 min` or `repeats the same calls`.
+
+- **Stop this trial…** opens the card. Its foot asks `Stop lane-2's trial now?`; **Stop the trial** sends [`stop_trial`](../../reference/signed-commands.md#stop_trial). The trial ends as interrupted, with its sources, claims and counters, and its task goes back to the top of the run's queue. The card leaves at once.
+- **Leave it running** hides the card. A quiet trial's card comes back if the trial sends a line and is then quiet again for as long; a repeating trial's comes back with a new streak.
+
+To be asked about quiet trials, type the minutes in **Ask me after a quiet spell of (minutes)** on the rig's **Edit rig** page. Its ⓘ says: "When a trial sends no line for this long, its lane is marked quiet and the trial waits for you under Needs you. Empty: never. Nothing ends the trial."
 
 ## Decide without the dashboard
 

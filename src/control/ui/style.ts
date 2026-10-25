@@ -387,6 +387,8 @@ details.rv-who > table { margin: 6px 0 4px; }
 dl.dc-facts, dl.facts { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 13px; }
 dl.dc-facts dt, dl.facts dt { color: var(--muted-foreground); font-size: 12px; font-weight: 600; padding-top: 1px; }
 dl.dc-facts dd, dl.facts dd { margin: 0; min-width: 0; word-break: break-word; }
+ul.stuck-calls { margin: 4px 0 0; padding-left: 18px; } ul.stuck-calls code { word-break: break-all; }
+.stuck-stop { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--error-foreground); border-radius: var(--control-radius); background: var(--error-surface); color: var(--foreground); }
 .side dl.facts { grid-template-columns: 90px minmax(0, 1fr); }
 .quote { border-left: 2px solid var(--border); padding: 1px 0 1px 10px; font-size: 14px; }
 .quote.inline { border: 0; padding: 0; font-style: italic; }

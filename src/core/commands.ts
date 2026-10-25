@@ -455,6 +455,8 @@ export const CommandPayloads = {
     /** A trial's length when its contract sets none; null: none (goal 079). */
     trial_minutes: z.number().int().min(1).max(1440).nullable().optional(),
     max_turns: z.number().int().min(1).max(100_000).nullable().optional(),
+    /** After how many minutes without a line a trial asks the owner (goal 143); null: never. */
+    quiet_minutes: z.number().int().min(1).max(1440).nullable().optional(),
     promotion: z.enum(["auto", "owner_approval"]).optional(),
     /** How many of the rig's GPUs are the judge's (a rig configured with its GPU set). */
     judge_gpus: z.number().int().min(1).max(8).nullable().optional(),

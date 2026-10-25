@@ -519,6 +519,7 @@ export class HarnessService {
         exports: true,
         trial_minutes: null,
         max_turns: null,
+        quiet_minutes: null,
         // Hands-off by default (goal 079).
         promotion: input.promotion ?? "auto",
         judge_gpus: null,

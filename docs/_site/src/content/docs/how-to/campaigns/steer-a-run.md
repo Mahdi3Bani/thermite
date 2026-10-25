@@ -37,6 +37,8 @@ A trial is one worker's session in a [lane](../../reference/glossary.md): it end
 
 With **why (optional)** left empty, the reason is `paused from the dashboard`. The reason also shows in the run's **Now** block, and under **Why it stopped** in the campaign's **Earlier runs**.
 
+To stop one trial, not the whole run: a trial that repeats the same calls, or one quiet for longer than the rig's **Ask me after a quiet spell of (minutes)**, asks you under **Needs you**, and its lane under **Now** has a chip that leads to the card. Press **Stop this trial…**, then **Stop the trial** in the card's foot. See [Stuck trials](decide-what-waits.md#stuck-trials). Over MCP or REST, [`stop_trial`](../../reference/signed-commands.md#stop_trial) stops any running trial.
+
 ## Close a run
 
 Close a run you no longer want, such as a paused run whose work another run finished. A closed run ends for good, as a goal run that met its goals does: it can't be resumed. To stop it for a while, pause it instead.

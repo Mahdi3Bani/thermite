@@ -72,7 +72,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 
 ## Done when
 
-- [ ] Item 1, with tests:
+- [x] Item 1, with tests:
   - A trial with no line for some time shows in `at_work` and in the rig's report; past the rig's quiet setting, it is a card under **Needs you** and its lane has a chip.
   - A Pi trial in one long reply shows since when it streams and how much it has received.
   - **Stop this trial…** in the card sends `stop_trial`; **Leave it running** hides the card until the trial is stuck again.
@@ -85,7 +85,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
   - The streak gives one `trial_repeating` event.
 - [x] Item 3, with tests: a short quote, a missing field and a wrong type each get an answer that names the field and the problem, through the API, `thermite-trial` and Pi's tool. The tool texts give the limits.
 - [x] The owner approved the mockup (version 2: the card under **Needs you**, the chip, the setting).
-- [ ] Pages:
+- [x] Pages:
   - Steer a run and Decide what waits for you (the card, Stop this trial…, Leave it running)
   - A rig's page, and Edit rig's settings (the quiet setting, over MCP and REST too)
   - MCP tools (the new fields of `at_work`)
@@ -93,7 +93,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
   - Troubleshoot (a quiet trial, a trial that repeats calls, a refused claim)
   - Command line (`thermite-trial research help`)
   - Limits and pacing
-  - every page that lists the events (`trial_repeating`)
+  - every page that names the events (`trial_repeating`: Troubleshoot, Limits and pacing; no page lists every event)
 - [ ] On the lab:
   - A quiet trial shows on its run's page, and the owner stops it from there.
   - A repeating trial shows as such.
@@ -119,6 +119,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 - 2026-10-25 19:40 UTC: Goal written at the owner's request, from a research run on the lab. One lane was quiet for more than four hours. The other lane repeated tool calls for about 22 minutes. A worker got only "invalid request".
 - 2026-10-25 20:00 UTC: Item 3 built. The harness API names each refused field and the problem, from the body sent (`src/harness/api/refusal.ts`), at most 5 problems; its log has `request refused`. A claim's limits have one home, `CLAIM_LIMITS`, which the schema and `add_claim`'s text and usage read; `research help` gives them. Tests: `src/harness/api/refusal.test.ts`, through the API, `thermite-trial` and Pi's tool. Pages: Limits and pacing, Command line, Troubleshoot. Next: item 2. Still open for item 3: on the lab, whether the worker's "intermittent" refusals had another cause.
 - 2026-10-25 22:08 UTC: Item 2 built, and item 1's data. A Pi worker's repeated call gets a short answer (`src/harness/agents/repeats.ts`, inside goal 144's clock in both workers; the guard forgets at each compaction, from the Compactor's count). The harness's watch (`src/harness/service/watch.ts`) reads every trial line the live log keeps, for every harness: when the trial last sent a line, a Pi worker's open model call (reported every 30 s, `live-session.ts`), and streaks of the same calls, with a `trial_repeating` event and lines in Live. The rig's report lists each open trial with these facts (`work.open`, always now), control merges them into `get_run`'s and `run_queue`'s `at_work` (`src/control/views/work.ts`), and the teachers' brief has `at_work`. Control keeps each open trial's newest 400 live lines past the rig's window. The idea tool moved to `idea-tool.ts`, which keeps `worker.ts` from growing. Tests: `repeats.test.ts`, `watch.test.ts`, `views/work.test.ts`, `trial-session.test.ts`. Pages: Limits and pacing, MCP tools, REST API, Advisors file, Supervision, Troubleshoot. Next: item 1's card, chip and quiet setting, from the approved mockup.
+- 2026-10-25 22:24 UTC: Item 1 built from the approved mockup. A stuck trial is a card under **Needs you** (`src/control/ui/stuck.ts`): **Repeats** for a streak of the same calls, **Stuck?** for a trial quiet past the rig's new setting `quiet_minutes` (**Ask me after a quiet spell of (minutes)** on **Edit rig**, `set_rig_settings`, `POST /v1/rigs/<rig>/settings`; none by default). Its details are behind the card; **Stop this trial…** opens it, and its foot sends `stop_trial`; **Leave it running** is kept by control (`trial_left`) until the trial is stuck since another time. The lane's row gets a chip that leads to the card. The card builder moved to `src/control/ui/need-card.ts`. Tests: `src/control/ui/stuck.test.ts`, Edit rig's in `dashboard.test.ts`, `rig-settings.test.ts`. Pages: Decide what waits for you, Steer a run, A rig's page, Signed commands, REST API, MCP tools, Limits and pacing, When a run is done, Troubleshoot; CHANGELOG. Next: the full checks, the merge and the roll, then the lab's checks.
 
 ---
 

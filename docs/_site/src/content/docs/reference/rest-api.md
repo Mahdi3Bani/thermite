@@ -218,7 +218,7 @@ The rest of **Edit rig**: the rig's parts, workers at a time, its limits, its pr
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
 | `GET /v1/rigs/<rig>/settings` | Owner | The settings the rig reports, and its GPU split, as its **Edit rig** page shows them | None | `{rig, settings, gpu_split}`, as MCP's [`rig_settings`](mcp-tools.md#rig_settings) returns it. `settings` is `null` for a rig whose harness is older and reports none; `gpu_split` is `{set, judge}`, or `null` for a rig with no GPU set to split. 404 `{"error":"no rig <rig>"}` |
-| `POST /v1/rigs/<rig>/settings` | Owner | Changes the rig's settings as **Save changes** on **Edit rig** does, through the same checks: only the fields that differ from what the rig reports go to the rig, as one [`rig_settings`](signed-commands.md#rig_settings) command issued by `owner:api` | Any of `{judge, workers, planner, teachers, auditor, review, exports, lanes, trial_minutes, max_turns, promotion, judge_gpus}`, below | `{rig, id, sent, restarts, said}`, below. 400, 404 or 409 `{"error":"<why>"}`, below |
+| `POST /v1/rigs/<rig>/settings` | Owner | Changes the rig's settings as **Save changes** on **Edit rig** does, through the same checks: only the fields that differ from what the rig reports go to the rig, as one [`rig_settings`](signed-commands.md#rig_settings) command issued by `owner:api` | Any of `{judge, workers, planner, teachers, auditor, review, exports, lanes, trial_minutes, max_turns, quiet_minutes, promotion, judge_gpus}`, below | `{rig, id, sent, restarts, said}`, below. 400, 404 or 409 `{"error":"<why>"}`, below |
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -226,6 +226,7 @@ The rest of **Edit rig**: the rig's parts, workers at a time, its limits, its pr
 | `lanes` | whole number, 1 to 16 | **Workers at a time** |
 | `trial_minutes` | whole number, 1 to 1440, or `null` | **One trial lasts (minutes)**, for a campaign whose contract sets no `trial_minutes`. `null`: no limit; a trial lasts until its worker submits or stops |
 | `max_turns` | whole number, 1 to 100000, or `null` | **Turns per trial**. `null`: no limit |
+| `quiet_minutes` | whole number, 1 to 1440, or `null` | **Ask me after a quiet spell of (minutes)**: a trial with no line for this long asks the owner under **Needs you**. `null`: never |
 | `promotion` | `auto` or `owner_approval` | **3 · When a change becomes the champion**: **Automatically** or **Ask me for each change**. A campaign's own rule comes first for its runs |
 | `judge_gpus` | whole number, or `null` | **GPUs for the judge**, on a rig set up with its set of GPUs: from 1 to the lower of 8 and one less than the set, with at most 8 left for the agents. `null`: the rig's default split. A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again |
 

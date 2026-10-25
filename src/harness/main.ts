@@ -234,6 +234,7 @@ async function main(): Promise<void> {
       // No trial length unless one is set (goal 079).
       trial_minutes: trialMinutesFromEnv(env.THERMITE_TRIAL_MINUTES),
       max_turns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : null,
+      quiet_minutes: null,
       promotion,
       judge_gpus: null,
     },

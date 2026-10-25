@@ -131,7 +131,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export** in the header of a rig's page or a run's page, with **What changed** (`full: false`) or **Full export** (`full: true`), or, on a run's page, **This run** (`run`) | Yes | Yes | Yes | Yes | |
 | `drain_rig` | **Update to these images**, **Try the update again** and **Give it control's new address** on the page of a rig at work set up on a cluster, and **Call the update off**; **Save changes** on **Edit rig** with a new number of GPUs, CPUs or memory for such a rig, and **Call the change off**; control issues it as the caller. **End the drain** in the [drain card](rig-page.md#the-drain-card) of a draining rig's page | Yes (`POST /v1/commands`): the rig drains, but its page shows no update waiting, and it stays drained until `drain: false` or a restart; `POST /v1/rigs/<rig>/cluster/resources` | `update_rig_images`, `set_cluster_rig_resources` | `update_rig_images`, `set_cluster_rig_resources` | No | |
-| `stop_trial` | **Stop this trial…**, then **Stop the trial**, under a trial a draining rig waits for, on the rig's page ([The trials it waits for](rig-page.md#the-trials-it-waits-for)) | Yes | Yes | Yes | No | Yes |
+| `stop_trial` | **Stop this trial…**, then **Stop the trial**, in a stuck trial's card under **Needs you** ([Stuck trials](../how-to/campaigns/decide-what-waits.md#stuck-trials)), and under a trial a draining rig waits for, on the rig's page ([The trials it waits for](rig-page.md#the-trials-it-waits-for)) | Yes | Yes | Yes | No | Yes |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
 | `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
@@ -623,6 +623,7 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 | `exports` | boolean | Hourly exports for the supervisor to push |
 | `trial_minutes` | 1 to 1440, or `null` | A trial's length when its contract sets none. `null`: none |
 | `max_turns` | 1 to 100000, or `null` | A limit on each trial's model turns. `null`: no limit |
+| `quiet_minutes` | 1 to 1440, or `null` | After how many minutes without a line a trial asks the owner under **Needs you**. `null`: never. Nothing ends the trial |
 | `promotion` | `auto` or `owner_approval` | The rig's promotion rule, for runs that set none |
 | `judge_gpus` | 1 to 8, or `null` | On a rig given its set of GPUs, how many are the judge's. `null`: the rig's default. A change restarts the harness to regroup the cards |
 

@@ -127,8 +127,14 @@ ${stopped}${listed.length ? `<p class="small muted" style="margin:0 0 10px;color
 <div class="act">${end}<span class="muted xs">${endWords} ${infoLabel("", "Sends drain_rig with drain false: the rig starts new work again. Whoever asked for the drain then moves the rig without one, or asks again.")}</span></div></div>`;
 }
 
-/** What a trial last did, from its lines in Live: its newest line, and its newest tool call. */
-function lastDone(o: DrainPage, t: OpenTrial): { at: string | null; html: string } {
+/**
+ * What a trial last did, from its lines in Live: its newest line, and its newest tool call. A
+ * stuck trial's card says it too (stuck.ts).
+ */
+export function lastDone(
+  o: { store: ControlStore; rig: string; now: number },
+  t: { trial: string },
+): { at: string | null; html: string } {
   const lines = o.store.liveTail(o.rig, 12, `trial:${t.trial}`);
   const newest = lines.at(-1);
   if (!newest) return { at: null, html: "" };

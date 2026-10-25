@@ -508,6 +508,17 @@ create index if not exists model_call_campaign on model_call (campaign, at);
 create index if not exists model_call_at on model_call (at);
 create index if not exists rig_live_rig on rig_live (rig, id);
 create index if not exists rig_live_source on rig_live (rig, source, id);
+-- A stuck trial the owner left running from its Needs you card (goal 143): by trial and kind
+-- (quiet or repeating), since when it was stuck then. A new quiet spell or streak asks again.
+create table if not exists trial_left (
+  rig text not null,
+  trial text not null,
+  kind text not null,
+  since text not null,
+  at text not null,
+  by text not null,
+  primary key (rig, trial, kind)
+);
 `;
 
 /**
@@ -1136,6 +1147,9 @@ export const RIG_ID = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
 /** How many of each open trial's newest live lines control keeps past the rig's window. */
 export const OPEN_TRIAL_LINES = 400;
 
+/** How many stuck trials left running control remembers (goal 143); a trial ends in hours. */
+const TRIALS_LEFT_MAX = 1000;
+
 export class ControlStore {
   readonly db: DatabaseSync;
   private configuredRigs = new Set<string>();
@@ -1345,6 +1359,34 @@ export class ControlStore {
         .run(rig, cut.id, ...kept.flatMap((k) => [k.source, k.from]));
       return added;
     });
+  }
+
+  /**
+   * The owner leaves a stuck trial running (goal 143): its card stays away while it is stuck
+   * since the same time. Keeps the newest TRIALS_LEFT_MAX of them.
+   */
+  leaveTrial(o: { rig: string; trial: string; kind: string; since: string; by: string }): void {
+    this.tx(() => {
+      this.db
+        .prepare(
+          `insert into trial_left (rig, trial, kind, since, at, by) values (?, ?, ?, ?, ?, ?)
+           on conflict (rig, trial, kind) do update set since = excluded.since, at = excluded.at, by = excluded.by`,
+        )
+        .run(o.rig, o.trial, o.kind, o.since, new Date().toISOString(), o.by);
+      this.db
+        .prepare(
+          "delete from trial_left where rowid not in (select rowid from trial_left order by at desc limit ?)",
+        )
+        .run(TRIALS_LEFT_MAX);
+    });
+  }
+
+  /** Since when the trial was stuck when the owner left it running; null: never left. */
+  trialLeft(rig: string, trial: string, kind: string): string | null {
+    const r = this.db
+      .prepare("select since from trial_left where rig = ? and trial = ? and kind = ?")
+      .get(rig, trial, kind) as Row | undefined;
+    return r ? String(r.since) : null;
   }
 
   /** The live sources of the trials the rig's last report lists as open (at most MAX_LANES). */

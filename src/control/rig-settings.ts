@@ -47,10 +47,16 @@ export type RigSettingsWanted = { [P in RigPart]?: boolean | undefined } & {
   trial_minutes?: number | null | undefined;
   /** null: no limit. */
   max_turns?: number | null | undefined;
+  /** null: a quiet trial never asks the owner (goal 143). */
+  quiet_minutes?: number | null | undefined;
   promotion?: string | undefined;
   /** null: the rig's default split. */
   judge_gpus?: number | null | undefined;
 };
+
+/** Edit rig's description of the quiet setting (goal 143), beside its field. */
+export const QUIET_TIP =
+  "When a trial sends no line for this long, its lane is marked quiet and the trial waits for you under Needs you. Empty: never. Nothing ends the trial.";
 
 /** Edit rig's words when a new GPU split is sent, as its page says them under the field. */
 export const SPLIT_RESTARTS =
@@ -78,6 +84,8 @@ export function rigSettingsChange(
     change.trial_minutes = want.trial_minutes;
   if (want.max_turns !== undefined && want.max_turns !== now.max_turns)
     change.max_turns = want.max_turns;
+  if (want.quiet_minutes !== undefined && want.quiet_minutes !== now.quiet_minutes)
+    change.quiet_minutes = want.quiet_minutes;
   if (want.promotion !== undefined && want.promotion !== now.promotion)
     change.promotion = want.promotion;
   const judge = want.judge_gpus;
@@ -245,6 +253,14 @@ export const rigSettingsFields = {
     .optional()
     .describe(
       "Turns per trial: model turns a worker may take in one trial (1 to 100000); null: no limit",
+    ),
+  quiet_minutes: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe(
+      "After how many minutes without a line a trial asks the owner under Needs you (1 to 1440); null: never. It only shows: nothing ends the trial",
     ),
   promotion: z
     .enum(["auto", "owner_approval"])

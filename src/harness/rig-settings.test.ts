@@ -18,6 +18,7 @@ const defaults: RigSettings = {
   exports: true,
   trial_minutes: 20,
   max_turns: null,
+  quiet_minutes: null,
   promotion: "owner_approval",
   judge_gpus: null,
 };

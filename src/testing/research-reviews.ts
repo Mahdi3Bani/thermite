@@ -85,7 +85,16 @@ export async function researchControl() {
     });
     return { status: r.status, answer: JSON.parse(await r.text()) as Record<string, unknown> };
   };
-  return { store, page, mcp, ingest, send };
+  /** A form posted as the browser posts it, without the page's script: the answer as it comes. */
+  const post = async (path: string, form: Record<string, string>) => {
+    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page(RUN))?.[1] ?? "";
+    return api.request(path, {
+      method: "POST",
+      body: new URLSearchParams({ csrf, ...form }),
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    });
+  };
+  return { store, page, mcp, ingest, send, post };
 }
 
 export const ev = (

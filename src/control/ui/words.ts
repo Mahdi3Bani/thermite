@@ -879,6 +879,10 @@ function settingsText(change: Record<string, unknown>): string {
       if (k === "lanes") return `${n} lane${n === 1 ? "" : "s"}`;
       if (k === "trial_minutes") return `trials of ${n} min`;
       if (k === "max_turns") return v === null ? "no turn limit" : `at most ${n} turns a trial`;
+      if (k === "quiet_minutes")
+        return v === null
+          ? "a quiet trial asks you nothing"
+          : `a trial quiet for ${n} min asks you`;
       if (k === "promotion")
         return v === "auto" ? "confirmed wins kept at once" : "confirmed wins wait for you";
       if (k === "judge_gpus")

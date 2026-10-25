@@ -59,6 +59,11 @@ export interface RigSettings {
   trial_minutes: number | null;
   /** A cap on each trial's turns; null: none. */
   max_turns: number | null;
+  /**
+   * After how many minutes without a line a trial is quiet, and asks the owner under Needs you
+   * (goal 143); null: never. It only shows: nothing ends a trial for it.
+   */
+  quiet_minutes: number | null;
   promotion: "auto" | "owner_approval";
   /**
    * On a rig configured with its GPU set (THERMITE_GPUS): how many cards are the judge's; the
