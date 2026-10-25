@@ -82,7 +82,7 @@ Control hands a rig a server only when a run it assigned that rig names it. The 
 
 ## The judge
 
-- **Runs** inside the harness's controller, as `thermite`. It builds each change as `builder` and times it as `run`, with a timing user of its own for each further judge GPU, each under limits on time, memory, disk and processes ([Per-process and per-trial limits](../reference/limits-and-pacing.md#per-process-and-per-trial-limits)).
+- **Runs** inside the harness's controller, as `thermite`. It builds each change as `builder` and times it as `run`, with a builder and a timing user of its own for each further judge GPU, each under limits on time, memory, disk and processes ([Per-process and per-trial limits](../reference/limits-and-pacing.md#per-process-and-per-trial-limits)).
 - **Reaches** the network through the harness container, as the lanes do: builds and timed runs have no network of their own.
 - **Trusts** the kit and its own clock. The broker times every measured run from outside, so a number that a change prints about itself is only a cross-check. Build outputs are hashed, made read-only, and checked again before each timed run.
 - **Runs the kit as trusted code.** A kit's check runs as the judge itself, in the kit's own folder. A kit reaches a rig only by its commit, in a command that control signed, and no agent ever sees it. So use kits that you wrote or read ([Why the benchmark lives in a kit](kits.md)).

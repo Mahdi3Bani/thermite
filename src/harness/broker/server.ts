@@ -34,7 +34,17 @@ const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
   `agent-${i + 1}`,
 ]).flat();
 const RUN_ROLES: Role[] = ["run", ...Array.from({ length: 7 }, (_, i) => `run-${i + 1}` as Role)];
-export const ALL_ROLES: Role[] = ["builder", ...RUN_ROLES, "planner", "model-check", ...LANE_ROLES];
+const BUILDER_ROLES: Role[] = [
+  "builder",
+  ...Array.from({ length: 7 }, (_, i) => `builder-${i + 1}` as Role),
+];
+export const ALL_ROLES: Role[] = [
+  ...BUILDER_ROLES,
+  ...RUN_ROLES,
+  "planner",
+  "model-check",
+  ...LANE_ROLES,
+];
 
 /** Runs of the timing users (run, run-1, ...) at work now: the judge may be timing one. */
 let timedAtWork = 0;
@@ -64,7 +74,7 @@ function clearSetIdBits(dir: string): void {
 }
 
 /** Per-role process limits (RLIMIT_NPROC): builds may run parallel compilers. */
-const NPROC: Record<string, number> = { builder: 512 };
+const NPROC: Record<string, number> = Object.fromEntries(BUILDER_ROLES.map((r) => [r, 512]));
 
 /**
  * A run's process limit: what the controller asked for (a lane's, from its contract), else the

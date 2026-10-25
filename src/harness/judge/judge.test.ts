@@ -5,7 +5,6 @@ import { CRASH_KERNEL, FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../../tes
 import { LocalRunner } from "../broker/runner.ts";
 import { CpuDriver } from "../targets/cpu.ts";
 import { Judge } from "./judge.ts";
-import { serial } from "./lease.ts";
 import { clipReason, REASON_CHARS } from "./reasons.ts";
 
 /** Verdict history with reasons, for assertion messages. */
@@ -63,7 +62,6 @@ describe("judge pipeline (local runner, Node test kit)", () => {
 
   test("two judge cards: each calibrates itself, and a win screened on one is confirmed on the other", async () => {
     const env = await setup();
-    const buildLock = serial();
     const card = (index: number) =>
       new Judge({
         service: env.service,
@@ -73,7 +71,6 @@ describe("judge pipeline (local runner, Node test kit)", () => {
         promotion: "auto",
         readyRetries: 0,
         calibrationBlocks: 2,
-        buildLock,
         card: { index, uuid: `GPU-${"ab"[index]}`, count: 2 },
       });
     const [a, b] = [card(0), card(1)];

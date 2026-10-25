@@ -1,23 +1,13 @@
 import { type Ledger, MAX_LEASE_EXPIRIES } from "../ledger.ts";
 
 /**
- * The judge's jobs and their leases around builds and restarts. Builds run one at a time across
- * the rig's executors (serial), and a build of a large project, with the wait for the lock, can
- * take longer than the lease (15 minutes): without renewal the lease ran out mid-build, the job
- * went back to the queue, and after MAX_LEASE_EXPIRIES it was blocked, its attempt never judged.
+ * The judge's jobs and their leases around builds and restarts. A build of a large project, or
+ * the wait for another executor's build of the same key, can take longer than the lease (15
+ * minutes): without renewal the lease ran out mid-build, the job went back to the queue, and after
+ * MAX_LEASE_EXPIRIES it was blocked, its attempt never judged.
  * A build has its own time limit (the kit's), so renewing the lease while it runs can't hold a
  * job forever.
  */
-
-/** One at a time: each call waits for the ones before it. */
-export function serial(): <T>(fn: () => Promise<T>) => Promise<T> {
-  let tail: Promise<unknown> = Promise.resolve();
-  return <T>(fn: () => Promise<T>) => {
-    const next = tail.then(fn, fn);
-    tail = next.catch(() => undefined);
-    return next;
-  };
-}
 
 /** Runs `work`, calling `renew` every `everyMs` until it ends; a renewal that throws stops them. */
 export async function whileLeased<T>(

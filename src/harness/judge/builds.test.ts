@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { linkSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -53,6 +60,7 @@ function setup(buildScript: string, outputs: string[], timeoutS = 30) {
       kitDir: root,
       kitCommit: "k".repeat(40),
       actor: "t",
+      role: "builder",
     });
   return { root, store, ensure };
 }
@@ -65,6 +73,17 @@ describe("build store", () => {
     // A tool installed another way, named, builds afresh; empty counts as not set.
     assert.notEqual(toolchainOf({ THERMITE_TOOLCHAIN_ID: "fortran-14" }), a);
     assert.equal(toolchainOf({ THERMITE_TOOLCHAIN_ID: "" }), a);
+  });
+
+  test("one key is built once: an executor that needs a build under way waits for it (goal 135)", async () => {
+    const count = join(mkdtempSync(join(tmpdir(), "thermite-builds-count-")), "builds");
+    const s = setup(`echo built >> ${count}\nsleep 1\nmkdir -p out && echo a > out/x\n`, ["out/x"]);
+    const [a, b] = await Promise.all([s.ensure(), s.ensure()]);
+    assert.ok(a.ok && b.ok);
+    assert.equal(readFileSync(count, "utf8"), "built\n");
+    // Afterwards it is served from the store.
+    const c = await s.ensure();
+    assert.ok(c.ok && c.cached);
   });
 
   test("a symlinked output is refused, never followed", async () => {

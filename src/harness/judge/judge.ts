@@ -4,7 +4,7 @@ import { log } from "../../common/env.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
 import { Audits, auditTrigger } from "../audits.ts";
-import { runRole } from "../broker/devices.ts";
+import { builderRole, runRole } from "../broker/devices.ts";
 import type { Runner } from "../broker/runner.ts";
 import { Conclusions } from "../conclusions.ts";
 import { exportTree, patchBetween } from "../git.ts";
@@ -112,8 +112,6 @@ export interface JudgeOptions {
    * card than its screen's, and runs are timed by the card's own user.
    */
   card?: { index: number; uuid: string; count: number } | undefined;
-  /** Builds run one at a time across the rig's executors (they share the builder user). */
-  buildLock?: (<T>(fn: () => Promise<T>) => Promise<T>) | undefined;
 }
 
 class InfraError extends Error {}
@@ -220,7 +218,6 @@ export class Judge {
       deviceGate: undefined,
       baselineBlocks: BASELINE_BLOCKS,
       card: undefined,
-      buildLock: undefined,
       ...opts,
     } as Required<JudgeOptions>;
     this.ledger = opts.service.ledger;
@@ -475,12 +472,11 @@ export class Judge {
         kitDir: k.dir,
         kitCommit: k.commit,
         actor: this.o.owner,
+        role: builderRole(this.o.card?.index ?? 0),
       });
     const h = this.holding;
     const renew = () => h && this.ledger.heartbeat(h.id, h.fence, this.o.leaseMs);
-    const b = await whileLeased(renew, this.o.leaseMs / 3, () =>
-      this.o.buildLock ? this.o.buildLock(ensure) : ensure(),
-    );
+    const b = await whileLeased(renew, this.o.leaseMs / 3, ensure);
     this.note(
       `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${clipReason(b.reason)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
       run,

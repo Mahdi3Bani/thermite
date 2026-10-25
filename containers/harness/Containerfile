@@ -92,10 +92,15 @@ RUN gcc -O2 -Wall -Wextra -Werror -o /usr/local/bin/thermite-devfence /tmp/devfe
 # number; the development users' entry here is `gpudev`, so a plain `runuser` never reaches the
 # judge's card. A rig with more cards uses gpu-j1..gpu-j7 for further judge cards (timed by run-1
 # to run-7) and gpu-d1..gpu-d7 for further development cards. Planner calls and model checks under
-# OpenCode, Claude Code or Codex run as `planner` and `model-check`, users no lane shares.
+# OpenCode, Claude Code or Codex run as `planner` and `model-check`, users no lane shares. Judge
+# card 0 builds as `builder`, cards 1 to 7 as builder-1..builder-7, so builds run apart at once.
 RUN groupadd -g 10500 gpu && groupadd -g 10501 gpudev && groupadd -g 10502 gpuctl \
  && groupadd -g 10010 thermite && useradd -u 10010 -g thermite -M -d /nonexistent -s /usr/sbin/nologin thermite \
  && groupadd -g 10020 builder && useradd -u 10020 -g builder -M -d /nonexistent -s /usr/sbin/nologin builder \
+ && for i in $(seq 1 7); do \
+      groupadd -g $((10020 + i)) builder-$i \
+      && useradd -u $((10020 + i)) -g builder-$i -M -d /nonexistent -s /usr/sbin/nologin builder-$i; \
+    done \
  && groupadd -g 10040 planner && useradd -u 10040 -g planner -M -d /nonexistent -s /usr/sbin/nologin planner \
  && groupadd -g 10041 model-check && useradd -u 10041 -g model-check -M -d /nonexistent -s /usr/sbin/nologin model-check \
  && useradd -u 10030 -g gpu -M -d /nonexistent -s /usr/sbin/nologin run \

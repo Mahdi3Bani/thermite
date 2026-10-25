@@ -98,7 +98,8 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 
 | Role | Who it is |
 | --- | --- |
-| `builder` | The user that builds kits and candidates |
+| `builder` | The user that builds kits and candidates on the first (or only) judge device |
+| `builder-<i>` | The builder of each further judge GPU, on a rig with dedicated GPUs: each card builds as its own user, at the same time as the others |
 | `run` | The user that runs timed runs on the first (or only) judge device |
 | `run-<i>` | The user of each further judge GPU, on a rig with dedicated GPUs |
 | `planner` | The user of planner calls under OpenCode, Claude Code or Codex |
@@ -127,6 +128,7 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `kit-by-path` | Read | A checked-out `kit.json`, reached by its full path. Skipped before any kit is checked out |
 | `secret:<file>` | Read | Each secret file: the supervisor token, the proposer token and the model key files. The rig check also tries the stored model route. Where the harness shares its container with a supervisor in [pull mode](../explanation/trust.md#rigs-in-pull-mode) (`THERMITE_TUNNEL_DIR` set), also the pod's own keys, `keys.json` |
 | `build-overwrite` | Write | A file of a stored build. Skipped before any build exists |
+| `build-work` | List | A build under way, handed to `builder` as the judge hands one over. Every role but `builder` must be refused, the other cards' builders among them |
 | `baseline-by-path` | Read | A file a kit's check kept with a baseline, reached by its full path. Skipped before any baseline kept a file |
 | `run-kit-write`, `run-kit-create` | Write, create a file | A run's read-only copy of kit files, made the way the judge makes it |
 | `research-write`, `research-create` | Write, create a file | A claim's file in a run's [research folder](../explanation/campaign-modes.md#research), and its `claims/` folder, written the way the harness writes them |

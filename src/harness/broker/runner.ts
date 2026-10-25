@@ -18,6 +18,7 @@ export const IDS = {
    * (containers/rig/Containerfile) the broker starts it under this user, beside the roles.
    */
   supervisor: { uid: 10001, gid: 10001 },
+  /** Judge card 0's builds; card i's build as builder-i (uid and gid 10020 + i, goal 135). */
   builder: { uid: 10020, gid: 10020 },
   /** Candidate execution: primary group `gpu`, the group that owns the device nodes. */
   run: { uid: 10030, gid: 10500 },
@@ -52,13 +53,16 @@ export const IDS = {
 export const RoleSchema = z
   .string()
   .regex(
-    /^(builder|run|run-[1-7]|planner|model-check|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev|agent-([1-9]|1[0-6]))$/,
+    /^(builder|builder-[1-7]|run|run-[1-7]|planner|model-check|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev|agent-([1-9]|1[0-6]))$/,
     "unknown role",
   );
 export type Role = z.infer<typeof RoleSchema>;
 
 export function roleIds(role: Role): { uid: number; gid: number } {
   if (role === "builder") return IDS.builder;
+  const build = /^builder-([1-7])$/.exec(role);
+  if (build)
+    return { uid: IDS.builder.uid + Number(build[1]), gid: IDS.builder.gid + Number(build[1]) };
   if (role === "run") return IDS.run;
   if (role === "planner") return IDS.planner;
   if (role === "model-check") return IDS.modelCheck;

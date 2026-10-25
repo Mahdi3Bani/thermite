@@ -41,6 +41,8 @@ export const judgeGroup = (i: number) => (i === 0 ? IDS.gpuGroup : IDS.gpuJudgeB
 export const devGroup = (k: number) => (k === 0 ? IDS.gpuDevGroup : IDS.gpuDevBase + k);
 /** The user who times runs on judge card i. */
 export const runRole = (i: number): Role => (i === 0 ? "run" : (`run-${i}` as Role));
+/** The user judge card i builds as: each card's builds run apart, at the same time (goal 135). */
+export const builderRole = (i: number): Role => (i === 0 ? "builder" : (`builder-${i}` as Role));
 /** Which judge card a timing role uses, or undefined for any other role. */
 export const judgeCardOf = (role: Role): number | undefined =>
   role === "run" ? 0 : /^run-([1-7])$/.test(role) ? Number(role.slice(4)) : undefined;

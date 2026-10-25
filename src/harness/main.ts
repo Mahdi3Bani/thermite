@@ -52,7 +52,7 @@ import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
 import { Compactions, compactionOf } from "./compactions.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
-import { jobsAtStart, serial } from "./judge/lease.ts";
+import { jobsAtStart } from "./judge/lease.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { ResearchFolder, SAVED_LANES_DIR } from "./research/folder.ts";
@@ -427,7 +427,6 @@ async function main(): Promise<void> {
     build: service.build,
   });
 
-  const buildLock = serial();
   const executors = judging.map(
     (d, i) =>
       new Judge({
@@ -438,7 +437,6 @@ async function main(): Promise<void> {
         promotion,
         calibrationBlocks: Number(env.THERMITE_CALIBRATION_BLOCKS ?? "6"),
         deviceGate: devRuns,
-        buildLock,
         ...(judging.length > 1
           ? {
               card: {

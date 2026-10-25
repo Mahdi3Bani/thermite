@@ -198,6 +198,12 @@ try {
     "the second judge card's timing user",
     run1,
   );
+  const builder1 = sh(["exec", a, "id", "builder-1"]).trim();
+  check(
+    /uid=10021\(builder-1\) gid=10021\(builder-1\)/.test(builder1),
+    "the second judge card's builder",
+    builder1,
+  );
   const ready = await waitFor(a, "judge ready");
   check(ready.judge_cards === 2, "two judge executors", JSON.stringify(ready));
   const hw = logLine(a, "hardware");
@@ -225,6 +231,12 @@ try {
       roles["run-1"]?.["visible-gpus"] === "sees GPU-00000000-0000-0000-0000-000000000001",
     "run-1 reaches only judge card 2",
     JSON.stringify(roles["run-1"]),
+  );
+  check(
+    roles["builder-1"]?.["build-work"]?.startsWith("EACCES") &&
+      roles["builder-1"]?.["builds-list"]?.startsWith("EACCES"),
+    "the second card's builder can't reach the first card's build under way",
+    JSON.stringify(roles["builder-1"]),
   );
   check(
     roles["lane-1+gpu@2"]?.["device:nvidia3"] === "reachable" &&

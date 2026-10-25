@@ -111,7 +111,8 @@ The broker runs each kind of work as its own user. The numbers are fixed in the 
 | User | uid | Group in the image (gid) | Runs |
 | --- | --- | --- | --- |
 | `thermite` | 10010 | `thermite` (10010) | The harness's controller: ledger, judge, scheduler, API |
-| `builder` | 10020 | `builder` (10020) | Kit builds of candidates and champions |
+| `builder` | 10020 | `builder` (10020) | Kit builds of candidates and champions on the first judge device |
+| `builder-1` … `builder-7` | 10021 … 10027 | `builder-1` … `builder-7` (10021 … 10027) | Kit builds on judge GPUs 2 to 8, at the same time as the first's |
 | `run` | 10030 | `gpu` (10500) | Timed runs on the first judge device |
 | `run-1` … `run-7` | 10031 … 10037 | `gpu-j1` … `gpu-j7` (10511 … 10517) | Timed runs on judge GPUs 2 to 8 |
 | `planner` | 10040 | `planner` (10040) | Planner calls under OpenCode, Claude Code or Codex |

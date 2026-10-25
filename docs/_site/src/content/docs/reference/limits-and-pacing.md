@@ -197,7 +197,7 @@ The dashboard calls an epoch a **round**.
 | A lane's next trial | After its last trial ended and that trial's attempt settled. In a run that keeps working (`lanes.keep_working`, or a `keep_working` rule), after its last trial ended | The lane waits for the judge, or for its trial and the open attempts above |
 | A goal run whose champion met every required goal | While the judge's second, confirming validation of that champion is queued or running | No new round or trial starts; a trial at work goes on. If the validation agrees, and the held-out cases of the goals met pass, the run closes; if not, or if it fails or is blocked after three lost leases, the lanes go on ([The goal report](verdicts.md#the-goal-report)) |
 | One running run for each rig | Assigning or resuming a run pauses the rig's others: `replaced by <run>` | The other runs wait, paused |
-| The judge | One job at a time on each judge device; builds one at a time on the rig | Jobs wait in a queue, by priority |
+| The judge | One job at a time on each judge device. Each judge device builds as its own builder, so builds run at once; a change two devices need is built once, and the second waits for it | Jobs wait in a queue, by priority |
 | Development runs on a shared device | A development run waits while the judge has any job queued or running, then holds the device | It waits until the judge is done or its trial ends: no time limit of its own |
 | A development run behind another lane's | It waits for a free device | Until one is free, or its trial ends: `the trial ended before a device was free` |
 | One development run for each lane | A lane's next development run waits for its last | |

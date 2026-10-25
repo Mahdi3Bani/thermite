@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { canonicalJson, sha256Hex } from "../../core/canonical.ts";
-import type { Runner } from "../broker/runner.ts";
+import type { Role, Runner } from "../broker/runner.ts";
 import { exportTree } from "../git.ts";
 import type { Kit } from "../kit.ts";
 import type { Ledger } from "../ledger.ts";
@@ -69,6 +69,21 @@ export function toolchainOf(env: NodeJS.ProcessEnv): string {
   });
 }
 
+/** What a build is made from, and the builder user it is made as. */
+export interface BuildInput {
+  repo: string;
+  mirror: string;
+  commit: string;
+  kit: Kit;
+  kitDir: string;
+  kitCommit: string;
+  actor: string;
+  role: Role;
+}
+
+/** Builds under way in this process, by their store path: one key is never built twice at once. */
+const building = new Map<string, Promise<BuildResult>>();
+
 export class BuildStore {
   readonly storeDir: string;
   private readonly workDir: string;
@@ -108,16 +123,22 @@ export class BuildStore {
     return bad;
   }
 
-  async ensure(input: {
-    repo: string;
-    mirror: string;
-    commit: string;
-    kit: Kit;
-    kitDir: string;
-    kitCommit: string;
-    actor: string;
-  }): Promise<BuildResult> {
+  /**
+   * A commit's build with a kit, made once for each key: from the store, or built as `role` (the
+   * judge card's builder). While one executor builds a key, another that needs it waits for that
+   * build instead of making it again (goal 135).
+   */
+  ensure(input: BuildInput): Promise<BuildResult> {
     const key = BuildStore.keyFor(input.commit, input.kitCommit, input.kit, this.toolchainId());
+    const at = join(this.storeDir, key);
+    const going = building.get(at);
+    if (going) return going;
+    const made = this.make(input, key).finally(() => building.delete(at));
+    building.set(at, made);
+    return made;
+  }
+
+  private async make(input: BuildInput, key: string): Promise<BuildResult> {
     const dir = join(this.storeDir, key);
     const known = this.ledger.getBuild(key);
     if (known?.ok && existsSync(dir)) {
@@ -140,10 +161,10 @@ export class BuildStore {
       for (const rel of input.kit.build.copy) {
         cpSync(join(input.kitDir, rel), join(src, ".kit", rel), { recursive: true });
       }
-      await this.runner.handOver(work, "builder");
+      await this.runner.handOver(work, input.role);
       const started = Date.now();
       const r = await this.runner.run({
-        role: "builder",
+        role: input.role,
         argv: input.kit.build.command,
         cwd: src,
         env: {},

@@ -84,6 +84,26 @@ describe("the most lanes a rig runs", () => {
     for (const role of [PLANNER_ROLE, CHECK_ROLE]) assert.ok(probedRoles().includes(role), role);
   });
 
+  test("each judge card builds as a builder of its own, in the image and probed by the selftest (goal 135)", () => {
+    const file = readFileSync(
+      new URL("../../containers/harness/Containerfile", import.meta.url),
+      "utf8",
+    );
+    assert.match(file, /groupadd -g \$\(\(10020 \+ i\)\) builder-\$i/);
+    for (let i = 1; i <= 7; i++) {
+      const role = `builder-${i}`;
+      assert.ok(RoleSchema.safeParse(role).success, role);
+      assert.deepEqual(roleIds(role), { uid: IDS.builder.uid + i, gid: IDS.builder.gid + i });
+      assert.ok(ALL_ROLES.includes(role), role);
+      assert.equal(nprocFor({ role }), 512, role);
+    }
+    assert.ok(!RoleSchema.safeParse("builder-8").success);
+    assert.deepEqual(
+      probedRoles(2).filter((r) => r.startsWith("builder") || r.startsWith("run")),
+      ["builder", "builder-1", "run", "run-1"],
+    );
+  });
+
   test("the broker's roles and the owner's message recipients stop at the same lane", () => {
     for (const role of [`lane-${MAX_LANES}`, `lane-${MAX_LANES}-dev`, `agent-${MAX_LANES}`])
       assert.ok(RoleSchema.safeParse(role).success, role);

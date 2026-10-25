@@ -17,6 +17,7 @@ import { DatabaseSync } from "node:sqlite";
 import { keySha256 } from "../core/tunnel.ts";
 import { BrokerClient } from "./broker/client.ts";
 import {
+  builderRole,
   cardsOf,
   type GpuLayout,
   judgeCardOf,
@@ -776,15 +777,17 @@ export function isolationBusy(
 }
 
 /**
- * The roles probed by default: the builder, each judge card's timing user, the planner's and the
+ * The roles probed by default: each judge card's builder and timing user, the planner's and the
  * model check's users, and lane 1's users (every lane's are made the same way).
  */
 export function probedRoles(judgeCards = 1): Role[] {
+  const more = Array.from({ length: Math.max(0, judgeCards - 1) }, (_, i) => i + 1);
   return [
     "builder",
+    // Each further judge card's builder (goal 135) and timing user.
+    ...more.map(builderRole),
     "run",
-    // Each further judge card's timing user.
-    ...Array.from({ length: Math.max(0, judgeCards - 1) }, (_, i) => runRole(i + 1)),
+    ...more.map(runRole),
     "planner",
     "model-check",
     "lane-1",
@@ -920,6 +923,12 @@ export async function isolationSelftest(opts: {
           : "shared";
 
   const client = new BrokerClient(opts.socketPath);
+  // A build under way, handed to the first card's builder as the judge hands one over: no other
+  // role may list it, another card's builder among them, as two cards build at once (goal 135).
+  const buildWork = join(opts.scratchDir, "thermite", "selftest-build");
+  removeOwnTree(buildWork);
+  mkdirSync(join(buildWork, "src"), { recursive: true });
+  await client.handOver(buildWork, "builder");
   const roles = opts.roles ?? probedRoles(cards?.judges.length ?? 1);
   // A lane's development run is the lane's user with the device group: probed as itself too,
   // once on each development card.
@@ -956,6 +965,7 @@ export async function isolationSelftest(opts: {
         mine.push({ name: "run-kit-read", op: "readable", path: driver });
       if (readsResearch(role))
         mine.push({ name: "research-read", op: "readable", path: research.claim });
+      if (role !== "builder") mine.push({ name: "build-work", op: "list", path: buildWork });
       const r = await client.run({
         role,
         argv: [process.execPath, "-e", PROBE, JSON.stringify(mine)],
@@ -974,6 +984,7 @@ export async function isolationSelftest(opts: {
       if (Object.values(results).some(isFailure)) report.ok = false;
     }
   } finally {
+    await client.remove(buildWork).catch(() => {});
     client.close();
     removeOwnTree(runKit);
     removeOwnTree(researchDir);

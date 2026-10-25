@@ -17,7 +17,7 @@ Inside the harness, every kind of work runs as its own Unix user. These are **ro
 | Role | What runs as it |
 | --- | --- |
 | `thermite` | The controller: the ledger, the judge, the planner and scheduler, and the harness API |
-| `builder` | The judge's builds of each change, under the kit's limits |
+| `builder` | The judge's builds of each change, under the kit's limits. On a rig with several judge GPUs, each further card builds as a builder of its own, so builds run at once and none can reach another's |
 | `run` | The judge's timed runs of a change. On a rig with several judge GPUs, each further card has a timing user of its own |
 | `planner` | The planner's calls, when it runs in OpenCode, Claude Code or Codex |
 | `model-check` | The model check, when it runs in OpenCode, Claude Code or Codex |
