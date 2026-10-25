@@ -87,7 +87,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [135](goals/135-lanes-and-judge-throughput.goal) Lanes that keep working while the judge works, a judge that builds in parallel, and changes carried to a new champion · `IN_PROGRESS`
 - [136](goals/136-no-idle-lanes.goal) No idle lanes: a round doesn't wait for another lane's trial, and a refused page isn't fetched again and again · `IN_PROGRESS`
 - [137](goals/137-auditor-sees-checks.goal) The auditor sees what the judge checked · `IN_PROGRESS`
-- [138](goals/138-answers-fit-tool-output.goal) `get_run` and `rig_setup` fit an agent's tool output · `IN_PROGRESS`
+- [138](goals/138-answers-fit-tool-output.goal) `get_run`, `run_queue` and `rig_setup` fit an agent's tool output · `IN_PROGRESS`
 
 ### Research mode
 

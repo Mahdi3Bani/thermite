@@ -1,6 +1,6 @@
 ---
 id: "138"
-title: "get_run and rig_setup fit an agent's tool output"
+title: "get_run, run_queue and rig_setup fit an agent's tool output"
 status: IN_PROGRESS
 version: "0.1.0"
 part: "Running campaigns"
@@ -9,7 +9,7 @@ created: 2026-10-25
 updated: 2026-10-25
 ---
 
-# 138 · get_run and rig_setup fit an agent's tool output
+# 138 · get_run, run_queue and rig_setup fit an agent's tool output
 
 **Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
@@ -19,6 +19,7 @@ Goal [128](_completed/128-get-run-bounded.goal) kept `get_run`'s default answer 
 
 1. **`get_run` keeps to a budget.** Its default answer, as MCP sends it (indented JSON), stays under 40,000 characters. When the lists cut to their newest entries are still above it, the texts in their entries are cut, shorter each step (2,000, 1,000, 500, 250, 120 characters), until it fits; `cut` says how short, and `list` still gives one list's entries whole.
 2. **`rig_setup` gives its newest steps.** The newest 20 by default, oldest first as before, with `steps_total`; `steps` asks for more, up to 500.
+3. **`run_queue` keeps to the same budget.** For a research run on the lab it gave 68,171 characters with `tried: 0`: thirty tasks up next, each with its question and details. Above the budget, the texts in its lists are cut the same way, with `cut`; `get_run` with `list: "queue"` gives the queue whole.
 
 ## Why
 
@@ -34,6 +35,7 @@ The owner, 2026-10-24 (goal 128): gaps found while operating the lab become goal
 - [x] Item 1, with a test: a run like the lab's (ten queue entries of 4,000 characters, attempts with long hypotheses and declared flaws) gives a default answer under the budget, says so in `cut`, and `list` gives the entries whole.
 - [x] Item 2, with a test.
 - [x] The MCP and REST reference pages say the budget and `steps`.
+- [ ] Item 3, with a test, and the MCP reference page.
 
 ## Decisions
 
