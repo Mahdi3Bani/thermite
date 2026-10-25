@@ -14,6 +14,7 @@ import { runResearchTrial } from "../agents/research-worker.ts";
 import { Scheduler } from "../agents/scheduler.ts";
 import { createHarnessApi } from "../api.ts";
 import { LocalRunner } from "../broker/runner.ts";
+import { endDrainAtStart } from "../service/drain.ts";
 import { blockedAddress, htmlToText, registrableDomain } from "./fetcher.ts";
 import { Research } from "./research.ts";
 
@@ -772,6 +773,26 @@ describe("research integrity", () => {
     const { research: r2 } = await researchEnv({ min_duration: "1s", max_duration: "2s" });
     assert.equal(r2.clock("r-1").done, false);
     assert.equal(r2.clock("r-1").max_ms, 2000);
+  });
+
+  test("time the rig drained does not count, nor in the progress rule's time since (goal 136)", async () => {
+    const { env, research } = await researchEnv({ min_duration: "1s", max_duration: undefined });
+    const ledger = env.service.ledger;
+    await new Promise((r) => setTimeout(r, 300));
+    const before = Date.now();
+    const c0 = research.clock("r-1");
+    // The rig drains for an image update: no trial or plan starts, so the clock stops.
+    ledger.appendEvent("owner", "rig_drain", null, { drain: true, reason: "new images" });
+    await new Promise((r) => setTimeout(r, 300));
+    const drained = research.clock("r-1");
+    assert.ok(drained.elapsed_ms - c0.elapsed_ms < 150, "the clock stopped while it drained");
+    assert.ok(drained.waited_ms >= 250, String(drained.waited_ms));
+    // The progress rule's time since a moment is the clock's difference: the drain is not in it.
+    assert.ok(drained.elapsed_ms - research.clock("r-1", before).elapsed_ms < 150);
+    // The harness starts again, which ends the drain: the clock runs again.
+    endDrainAtStart(ledger, "harness");
+    await new Promise((r) => setTimeout(r, 200));
+    assert.ok(research.clock("r-1").elapsed_ms - drained.elapsed_ms >= 150, "it runs again");
   });
 });
 
