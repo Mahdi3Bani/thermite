@@ -3010,7 +3010,7 @@ export class Scheduler {
       "Read the relevant code, make one focused change in the editable paths, build and test it with run, then call submit once. The judge measures it on the real target; your own timings never count.",
       // Lanes propose (goal 081): the planner queues the distinct ideas.
       "Before you submit (submitting ends your trial), or before you stop without submitting, propose each distinct follow-up experiment your work suggests as an idea for the run's queue (the idea tool, or thermite-trial idea), each with why: what you saw that makes it worth trying. The planner queues the distinct ones for the lanes. Propose none that repeats your own assignment.",
-      "Your lane keeps a cache directory between trials, $THERMITE_LANE_CACHE (ccache uses it as CCACHE_DIR): use it for build caches so a fresh workspace does not rebuild everything.",
+      "Your lane keeps a cache directory between trials, $THERMITE_LANE_CACHE (ccache uses it as CCACHE_DIR, with CCACHE_BASEDIR set to your lane's folder): use it for build caches, and build in the same folder of your checkout in each trial (such as build/), so that ccache finds what earlier trials compiled and a fresh workspace does not rebuild everything.",
     ]
       .filter((l) => l !== "")
       .join("\n");

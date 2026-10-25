@@ -95,7 +95,7 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 
 ### A lane's cache
 
-Each lane keeps a cache folder for its builds, `/scratch/thermite/lanes/<lane>/cache` (`$THERMITE_LANE_CACHE` and `CCACHE_DIR` in its commands, at most 8 GB). Its trials share it, so a fresh workspace does not rebuild everything; the judge builds without it. It outlives a restart of the harness, an image update and a restart of the rig wherever `/scratch` is on a volume that outlives the container:
+Each lane keeps a cache folder for its builds, `/scratch/thermite/lanes/<lane>/cache` (`$THERMITE_LANE_CACHE` and `CCACHE_DIR` in its commands, at most 8 GB). Its trials share it, so a fresh workspace does not rebuild everything; the judge builds without it. Each trial's checkout is a new folder, `/scratch/thermite/lanes/<lane>/<id>/repo`, so ccache gets `CCACHE_BASEDIR`, the lane's folder, and `CCACHE_NOHASHDIR=1`: it keys each compile on paths relative to the build folder. A build in the same folder of the checkout in each trial, such as `build/`, then hits what earlier trials compiled. The worker's brief says so. It outlives a restart of the harness, an image update and a restart of the rig wherever `/scratch` is on a volume that outlives the container:
 
 | Where the rig runs | `/scratch` is | Its lane caches after a restart |
 | --- | --- | --- |

@@ -149,12 +149,12 @@ A contract without `lanes.queue_target` or `lanes.keep_working` keeps its hash: 
 
 | Field | Range | Default | Meaning |
 | --- | --- | --- | --- |
-| `run_timeout_s` | 10–7200 | none | Time limit, in seconds, for one command a worker runs. Without it, a command runs until it ends or the trial ends |
+| `run_timeout_s` | 10–7200 | none | Time limit, in seconds, for one command a worker runs. Without it, a command runs until it ends or the trial ends. On a trial with a length, a Pi worker's command also stops 3 minutes before the trial's end ([Lanes and agents](limits-and-pacing.md#lanes-and-agents)) |
 | `run_rss_mib` | 256–16384 | 2048 | Memory, in MiB, for everything a lane runs at once, OpenCode, Claude Code or Codex included when the lane uses one |
 | `workspace_mib` | 256–65536 | 2048 | Disk, in MiB, for the trial's workspace, build trees included. Each development run gets the same amount |
-| `dev_run_timeout_s` | 10–3600 | none on a development device of its own; 300 on a device the judge shares | Time limit, in seconds, for one development run |
+| `dev_run_timeout_s` | 10–3600 | none on a development device of its own; 300 on a device the judge shares | Time limit, in seconds, for one development run. On a trial with a length, a Pi worker's development run also stops 3 minutes before the trial's end |
 | `dev_run_rss_mib` | 256–16384 | 4096 | Memory, in MiB, for one development run |
-| `trial_minutes` | 1–1440 | the rig's trial length, which is none unless someone sets it | One trial's length, in minutes. Without one, a trial lasts until its worker submits, or stops and answers a nudge without any work. A `trial_minutes` rule on a run comes before it ([Steer a run](../how-to/campaigns/steer-a-run.md#steer-from-the-command-line)) |
+| `trial_minutes` | 1–1440 | the rig's trial length, which is none unless someone sets it | One trial's length, in minutes. The worker's brief gives the time it ends, in UTC. Without one, a trial lasts until its worker submits, or stops and answers a nudge without any work. A `trial_minutes` rule on a run comes before it ([Steer a run](../how-to/campaigns/steer-a-run.md#steer-from-the-command-line)) |
 | `failures_in_a_row` | 1–10000 | none | A trial ends after this many failed model calls in a row: a provider's 5xx, a broken connection, a stream that went silent, or a request it refused. A rate limit's waits never count. Without it, the worker waits a growing pause after each failure and goes on. Once no model call has worked for 30 minutes, the trial ends and the run's agents stop until a model check passes ([Limits and pacing](limits-and-pacing.md#the-model-provider)) |
 | `cutoffs_in_a_row` | 1–10000 | none | A trial ends after this many replies in a row cut off at the output limit without a tool call (Pi). Without it, the worker is told to think less and goes on |
 | `nudges` | 0–10000 | none | How many times a worker that stops without submitting is told to go on; then its trial ends. `0`: never. Without it, it is told for as long as it keeps working, and a nudge it answers without any work ends the trial |

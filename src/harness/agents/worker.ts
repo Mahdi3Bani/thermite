@@ -22,6 +22,7 @@ import {
 } from "./provider-errors.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { CODE_RESEARCH_TOOLS, codeResearchNote } from "./research-tools.ts";
+import { TrialClock, trialBudget } from "./trial-clock.ts";
 import { PiMeter } from "./usage-meter.ts";
 
 /**
@@ -291,6 +292,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
 
   // Without the contract's limits: the defaults (the server enforces the contract's own).
   const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
+  const clock = new TrialClock(spec.wallMs); // the trial's length, when it has one (goal 144)
   const tools: AgentTool[] = [
     tool(
       "list_files",
@@ -354,11 +356,12 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       } What it starts in the background keeps running until your trial ends: send its output to a file (cmd > log 2>&1 &) and read the file. Memory: ${limits.runRssMib} MiB for everything your lane runs at once. Disk: ${limits.workspaceMib} MiB for the workspace.`,
       Type.Object({ command: Type.String(), timeout_s: Type.Optional(Type.Number()) }),
       async (p) => {
+        const time = clock.commandTime(p.timeout_s, limits.runTimeoutS);
         const r = await deps.runner.run({
           role: spec.lane,
           argv: ["sh", "-c", String(p.command)],
           cwd: spec.workspace,
-          ...timeLimit(p.timeout_s, limits.runTimeoutS),
+          ...(time.timeoutMs !== undefined ? { timeoutMs: time.timeoutMs } : {}),
           rssLimitBytes: limits.runRssMib * 1024 * 1024,
           disk: {
             path: spec.workspaceRoot ?? spec.workspace,
@@ -370,7 +373,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           ? `\n(your background processes were killed earlier: ${r.backgroundKilled} limit)`
           : "";
         return text(
-          `exit ${r.exitCode ?? r.signal}${r.killedFor ? ` (killed: ${r.killedFor})` : ""}${earlier}\n--- stdout\n${r.stdout.slice(-6_000)}\n--- stderr\n${r.stderr.slice(-3_000)}\n(output trimmed to its end: pipe through grep, head or tail to see other parts)`,
+          `exit ${r.exitCode ?? r.signal}${r.killedFor ? ` (killed: ${r.killedFor})` : ""}${earlier}${clock.stoppedWords(r.killedFor, time)}\n--- stdout\n${r.stdout.slice(-6_000)}\n--- stderr\n${r.stderr.slice(-3_000)}\n(output trimmed to its end: pipe through grep, head or tail to see other parts)`,
         );
       },
     ),
@@ -384,12 +387,14 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       Type.Object({ command: Type.String(), timeout_s: Type.Optional(Type.Number()) }),
       async (p) => {
         if (!deps.devRun) return text("dev_run is not available for this campaign; use run.");
+        const time = clock.commandTime(p.timeout_s); // the campaign's own limit is the harness's
         const r = await deps.devRun({
           lane: spec.lane,
           command: String(p.command),
-          ...(Number(p.timeout_s) > 0 ? { timeoutS: Math.trunc(Number(p.timeout_s)) } : {}),
+          ...(time.timeoutMs !== undefined ? { timeoutS: Math.ceil(time.timeoutMs / 1000) } : {}),
         });
-        return text(JSON.stringify(r).slice(0, 16_000));
+        const killed = (r as { killed?: unknown } | null)?.killed;
+        return text(`${JSON.stringify(r).slice(0, 16_000)}${clock.stoppedWords(killed, time)}`);
       },
     ),
     tool(
@@ -515,7 +520,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     initialState: {
       systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
       model,
-      tools,
+      tools: clock.wrap(tools),
       thinkingLevel,
     },
     streamFn: watchedStream(models, watch, meter),
@@ -554,8 +559,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   // A budget the campaign or the rig set is stated up front, and the worker is told once when it
   // is nearly spent, so a trial ends with its best change submitted rather than cut off with
   // nothing. Without one, a trial lasts until it submits or stops (goal 079).
-  const started = Date.now();
-  const wallMs = spec.wallMs;
+  const { started, wallMs } = clock;
   const minutes = wallMs !== undefined ? Math.round(wallMs / 60_000) : undefined;
   let warned = false;
   const warn = (why: string) => {
@@ -608,7 +612,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const failures: FailureCount = { failures: 0, rateWaits: 0 };
   try {
     await agent.prompt(
-      `${spec.brief}\n\n${trialBudget(minutes, maxTurns, "each model reply is one")}`,
+      `${spec.brief}\n\n${trialBudget(minutes, maxTurns, "each model reply is one", wallMs === undefined ? undefined : started + wallMs)}`,
     );
     // A model that stops of its own accord without submitting is told to go on (goal 079): for
     // as long as it keeps working (a tool call since the last nudge), with no number unless the
@@ -704,24 +708,6 @@ export function stopNudging(
   if (owner) return false;
   if (nudges > 0 && !worked) return true;
   return limit !== undefined && nudges >= limit;
-}
-
-/**
- * What a trial's prompt says of its length and turns (goal 079): only the limits someone set, and
- * without either, to submit once the change works.
- */
-export function trialBudget(
-  minutes: number | undefined,
-  maxTurns: number | undefined,
-  turn: string,
-): string {
-  const parts = [
-    minutes !== undefined ? `${minutes} minutes` : "",
-    maxTurns !== undefined ? `at most ${maxTurns} turns (${turn})` : "",
-  ].filter(Boolean);
-  return parts.length
-    ? `This trial lasts ${parts.join(" and ")}. Submit before it ends.`
-    : "Submit once your change works.";
 }
 
 const NUDGE =
@@ -916,11 +902,4 @@ function lastAssistant(
       };
   }
   return undefined;
-}
-
-/** A command's time limit: the one asked for (seconds), within the campaign's if it sets one. */
-function timeLimit(askedS: unknown, limitS: number | undefined): { timeoutMs?: number } {
-  const asked = Number(askedS) > 0 ? Math.ceil(Number(askedS)) : undefined;
-  const s = asked === undefined ? limitS : limitS === undefined ? asked : Math.min(asked, limitS);
-  return s !== undefined ? { timeoutMs: s * 1000 } : {};
 }

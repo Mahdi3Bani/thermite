@@ -1,7 +1,7 @@
 ---
 id: "144"
 title: "A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-25
 
 # 144 · A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials
 
-**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -51,22 +51,30 @@ A trial that ends with no result costs a lane's whole trial: up to two hours of 
 
 ## Done when
 
-- [ ] Item 1, with tests: the brief's end time, and the line on a tool result from 75%.
-- [ ] Item 2, with a test: a command with a `timeout_s` past the trial's end stops 3 minutes before it, and its result says why.
-- [ ] Item 3, with a test: a trial whose command still runs at its end ends as `wall`, with its notes, in seconds, not as "gave no result".
-- [ ] Item 4, with a test of the lane's environment, and a test with ccache, where it is installed: a second checkout in another folder hits the cache.
-- [ ] Pages: Limits and pacing, the worker's tools, and the changelog.
+- [x] Item 1, with tests: the brief's end time, and the line on a tool result from 75%.
+- [x] Item 2, with a test: a command with a `timeout_s` past the trial's end stops 3 minutes before it, and its result says why.
+- [x] Item 3, with a test: a trial whose command still runs at its end ends as `wall`, with its notes, in seconds, not as "gave no result".
+- [x] Item 4, with a test of the lane's environment, and a test with ccache, where it is installed: a second checkout in another folder hits the cache.
+- [x] Pages: Limits and pacing, the contract (`run_timeout_s`, `dev_run_timeout_s`, `trial_minutes`), Ports, volumes and secrets (A lane's cache), and the changelog.
 - [ ] On the lab: a trial whose command runs at its end ends as `wall`; a lane's second trial after the roll shows ccache hits.
 
 ## Decisions
 
+- 2026-10-25: nearer the trial's end than the 3-minute margin, a command gets 1 minute at most, and never past the end, so a short one (`git diff`) still runs before a submission.
+- 2026-10-25: a Pi research worker gets item 1's line and item 3's stop too: its tools are requests to the harness, and its trial can have a length.
+- 2026-10-25: a submission is always waited for, at the end too: it changes the run's record.
+- 2026-10-25, with the session that builds goal 143: its check for repeated calls wraps the tools inside the clock's wrap, so it compares the answers before the time-left line is added.
+
 ## Open questions
+
+- `stop_trial` (goal 136) kills the worker at once: the trial ends as interrupted, with the counters of its last progress report and without its own notes. It could ask the worker to stop first, as the wall now does, and kill it only after a few seconds. The stop belongs in `scheduler/stops.ts`.
 
 - Should a lane's checkout have the same path in each trial, in place of item 4's environment? It would also serve caches that only key on absolute paths. Two trials of one lane never run at the same time, but a drain or a crash can leave the old folder.
 
 ## Progress
 
 - 2026-10-25 19:55 UTC: Goal written from lane-2's trial sessions, read over MCP (`trial_session`). The operator sent both lanes the build commands, the cache settings and the clock rules as a message kept in force (command 237a32b5), for the campaign's part.
+- 2026-10-25 20:25 UTC: Built (`src/harness/agents/trial-clock.ts`, its test, and the brief, tools and cache settings). A trial whose dev run never comes back now ends as `wall` in 2 seconds; without the change, the test waits until it times out. In the harness image (ccache 4.9.1), a second checkout in another folder hit the cache with the new settings and missed without them. Left: the roll and the lab check.
 
 ---
 

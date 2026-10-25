@@ -22,10 +22,21 @@ export function laneCacheDir(scratchDir: string, lane: string): string {
   return join(scratchDir, "lanes", lane, "cache");
 }
 
-/** The environment that points a lane's commands at its cache. */
+/**
+ * The environment that points a lane's commands at its cache. Each trial's workspace is a new
+ * folder in the lane's, so ccache rewrites the paths under the lane's folder relative to the
+ * build folder and leaves that folder out of its hash: a build in the same place of the checkout
+ * then hits what an earlier trial compiled (goal 144).
+ */
 export function laneCacheEnv(scratchDir: string, lane: string): Record<string, string> {
   const dir = laneCacheDir(scratchDir, lane);
-  return { THERMITE_LANE_CACHE: dir, CCACHE_DIR: dir, CCACHE_MAXSIZE: "8G" };
+  return {
+    THERMITE_LANE_CACHE: dir,
+    CCACHE_DIR: dir,
+    CCACHE_MAXSIZE: "8G",
+    CCACHE_BASEDIR: join(scratchDir, "lanes", lane),
+    CCACHE_NOHASHDIR: "1",
+  };
 }
 
 export async function prepareWorkspace(input: {

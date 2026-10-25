@@ -38,6 +38,7 @@ import {
 } from "./research-tools.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import { NOTE_USAGE } from "./trial-cli.ts";
+import { trialBudget } from "./trial-clock.ts";
 import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } from "./worker.ts";
 
 /**
@@ -639,11 +640,10 @@ export async function runOpencodeTrial(
     on: deps.compacted,
     own: opencodeOwn({ root: area, drops: [OPENCODE_DROPS], title }),
   });
-  const started = Date.now();
-  // A trial's length only when the campaign or the rig sets one (goal 079).
+  const started = Date.now(); // the trial's length only when one is set (goal 079)
   const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
   const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
-  let message = `${SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${minutes !== undefined ? `This trial lasts ${minutes} minutes. Submit before it ends.` : "Submit once your change works."}`;
+  let message = `${SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, undefined, "", deadline)}`;
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
   let offset = 0;

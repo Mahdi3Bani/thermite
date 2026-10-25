@@ -40,13 +40,8 @@ import {
   failingOf,
   type ProviderLink,
 } from "./provider-errors.ts";
-import {
-  type SubmitOutcome,
-  stopNudging,
-  type TrialResult,
-  type TrialSpec,
-  trialBudget,
-} from "./worker.ts";
+import { trialBudget } from "./trial-clock.ts";
+import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } from "./worker.ts";
 
 /**
  * Trials, model checks and planner calls in Claude Code, for a Claude subscription. Anthropic
@@ -668,7 +663,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
   const maxTurns = spec.maxTurns;
-  let message = `${CLAUDE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one")}`;
+  let message = `${CLAUDE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one", deadline)}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {

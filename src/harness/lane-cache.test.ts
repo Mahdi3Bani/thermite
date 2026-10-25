@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -108,6 +109,48 @@ describe("a lane's cache folder survives a restart (goal 079)", () => {
       laneCacheEnv("/scratch/thermite", "lane-2").CCACHE_DIR,
       "/scratch/thermite/lanes/lane-2/cache",
     );
+  });
+
+  test("ccache rewrites paths under the lane's folder and leaves the build folder out of its hash (goal 144)", () => {
+    const env = laneCacheEnv("/scratch/thermite", "lane-2");
+    // Each trial's checkout is /scratch/thermite/lanes/lane-2/<random id>/repo.
+    assert.equal(env.CCACHE_BASEDIR, "/scratch/thermite/lanes/lane-2");
+    assert.equal(env.CCACHE_NOHASHDIR, "1");
+  });
+
+  const ccache = spawnSync("ccache", ["--version"]).status === 0;
+  test("with it, a second trial's checkout in another folder hits what the first compiled", {
+    skip: ccache ? false : "ccache is not installed here",
+  }, () => {
+    const scratch = mkdtempSync(join(tmpdir(), "thermite-ccache-"));
+    try {
+      const env = { ...process.env, ...laneCacheEnv(scratch, "lane-1") };
+      const build = (trial: string) => {
+        const repoDir = join(scratch, "lanes", "lane-1", trial, "repo");
+        mkdirSync(join(repoDir, "src"), { recursive: true });
+        mkdirSync(join(repoDir, "build"), { recursive: true });
+        writeFileSync(join(repoDir, "src", "k.c"), "int k(int x) { return x * 3 + 1; }\n");
+        // Absolute paths, as cmake writes them, from the same build folder of the checkout.
+        const r = spawnSync(
+          "ccache",
+          ["cc", "-c", join(repoDir, "src", "k.c"), "-I", join(repoDir, "src"), "-o", "k.o"],
+          { cwd: join(repoDir, "build"), env },
+        );
+        assert.equal(r.status, 0, String(r.stderr));
+      };
+      // ccache's counters, one "name<TAB>value" a line.
+      const hits = () => {
+        const out = spawnSync("ccache", ["--print-stats"], { env, encoding: "utf8" }).stdout;
+        const n = (k: string) => Number(out.match(new RegExp(`^${k}\t(\\d+)$`, "m"))?.[1] ?? 0);
+        return n("direct_cache_hit") + n("preprocessed_cache_hit");
+      };
+      build("a1b2c3");
+      assert.equal(hits(), 0);
+      build("d4e5f6");
+      assert.equal(hits(), 1);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   for (const file of ["compose.yaml", "containers/release/compose.template.yaml"])

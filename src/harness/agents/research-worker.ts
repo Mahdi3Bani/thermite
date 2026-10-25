@@ -19,6 +19,7 @@ import {
   researchFolderNote,
   researchOutput,
 } from "./research-tools.ts";
+import { TrialClock } from "./trial-clock.ts";
 import { PiMeter } from "./usage-meter.ts";
 import type {
   CompactionLink,
@@ -94,6 +95,8 @@ export async function runResearchTrial(
     tokensIn: 0,
     tokensOut: 0,
   };
+  // Near a set length's end, each tool result says the time left, and the end stops a tool (goal 144).
+  const clock = new TrialClock(spec.wallMs);
   const tools: AgentTool[] = [
     ...researchAgentTools(
       RESEARCH_TOOLS.map((t) => t.name),
@@ -162,7 +165,7 @@ export async function runResearchTrial(
           : RESEARCH_SYSTEM
       }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
       model,
-      tools,
+      tools: clock.wrap(tools),
       thinkingLevel,
     },
     streamFn: watchedStream(models, watch, meter),

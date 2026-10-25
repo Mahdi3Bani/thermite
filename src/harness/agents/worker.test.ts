@@ -249,7 +249,7 @@ describe("worker trial", () => {
     // The call the limit aborted ends as one more turn.
     assert.ok(r.turns >= 14 && r.turns <= 15, String(r.turns));
     assert.equal(r.error, "the trial reached its limit of 14 turns before a submission");
-    assert.match(seen[0] ?? "", /lasts 10 minutes and at most 14 turns/);
+    assert.match(seen[0] ?? "", /lasts 10 minutes, to \d\d:\d\d UTC, and at most 14 turns/);
     const warnedAt = seen.findIndex((u) => u.includes("turns are left in this trial"));
     assert.equal(warnedAt, 4, "warned once, after turn 4 (10 turns before the limit)");
     assert.equal(seen.at(-1)?.split("turns are left").length, 2, "only once");
@@ -315,7 +315,7 @@ describe("worker trial", () => {
     await long.close();
     assert.equal(r.stopped, "submitted", JSON.stringify(r));
     assert.ok(r.turns > 70, String(r.turns));
-    assert.match(first, /This trial lasts 10 minutes\. Submit before it ends/);
+    assert.match(first, /This trial lasts 10 minutes, to \d\d:\d\d UTC\. Submit before it ends/);
     assert.doesNotMatch(first, /turns/);
   });
 
