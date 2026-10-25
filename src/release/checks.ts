@@ -84,9 +84,7 @@ export function imageProblems(key: ImageKey, commit: string, facts: ImageFacts):
   }
   if (ROLE_IMAGES.includes(key)) {
     if (!envValue(facts.env, "THERMITE_IMAGE_ID"))
-      problems.push(
-        "it does not report THERMITE_IMAGE_ID, which the harness reports as its image",
-      );
+      problems.push("it does not report THERMITE_IMAGE_ID, which the harness reports as its image");
     if (said.socat) problems.push(`it carries socat (${said.socat})`);
     if (said.bwrap) problems.push(`it carries bubblewrap (${said.bwrap})`);
   }
