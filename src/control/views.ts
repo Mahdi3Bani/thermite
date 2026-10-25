@@ -330,10 +330,7 @@ export interface RunView {
   baseline: BaselineView | null;
   /** A hill climb in setup (goal 115): its starting point can't be measured yet. */
   setup: SetupView | null;
-  /**
-   * A hill climb waits for the judge's baseline of its starting point (goal 115): no round is
-   * planned and no trial starts until it has one.
-   */
+  /** A hill climb waits for its baseline (goal 115): no round or trial starts until it has one. */
   baseline_waiting: boolean;
   /** Agents (M4): planner quality, duplicates, effort. */
   agents: {
@@ -1827,6 +1824,9 @@ export function rigView(
     // A closed run waits for no one (goal 087; the owner, 2026-10-22): the rig refuses approvals
     // of its changes, so none is pending. Each attempt keeps its own lifecycle.
     if (v.status === "closed") v.pending_promotions = [];
+    // A promoted, declined or withdrawn change waits no more: only pending ones keep their why.
+    for (const id of Object.keys(v.promotion_waits))
+      if (!v.pending_promotions.includes(id)) delete v.promotion_waits[id];
   }
   const summary = u.summary as
     | {

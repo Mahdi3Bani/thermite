@@ -573,3 +573,43 @@ test("an old rule in words the planner converted shows as a normal rule, with th
     "Added “wider loads” to the queue",
   ]);
 });
+
+test("a change that became the champion no longer waits: only pending promotions keep their why", () => {
+  const store = new ControlStore(":memory:");
+  const events: [string, string, string, Record<string, unknown>][] = [
+    ["harness", "run_created", "r-1", { campaign: "c", mode: "hill_climb", version: 1 }],
+    [
+      "harness",
+      "promotion_pending",
+      "a-1",
+      { run: "r-1", expected_seq: 1, reason: "the auditor asked for the owner" },
+    ],
+    [
+      "harness",
+      "promotion_pending",
+      "a-2",
+      { run: "r-1", expected_seq: 2, reason: "the auditor asked for the owner" },
+    ],
+    ["control:owner:ui", "champion_promoted", "r-1", { seq: 2, attempt: "a-1", commit: "c1" }],
+  ];
+  store.ingest({
+    rig: "rig-a",
+    ledger_id: "ledger-a",
+    cursor: 0,
+    next: events.length,
+    generated_at: new Date().toISOString(),
+    events: events.map(([actor, kind, subject, body], i) => ({
+      id: i + 1,
+      at: new Date(Date.parse("2026-10-20T01:00:00Z") + i * 60_000).toISOString(),
+      actor,
+      kind,
+      subject,
+      body,
+    })),
+    summary: {},
+  });
+  const r = rigView(store, "rig-a", { staleAfterMs: 600_000 })?.runs.find((x) => x.id === "r-1");
+  assert.ok(r);
+  assert.deepEqual(r.pending_promotions, ["a-2"]);
+  assert.deepEqual(Object.keys(r.promotion_waits), ["a-2"]);
+});
