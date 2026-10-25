@@ -1,0 +1,46 @@
+---
+id: "138"
+title: "get_run and rig_setup fit an agent's tool output"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["128"]
+created: 2026-10-25
+updated: 2026-10-25
+---
+
+# 138 · get_run and rig_setup fit an agent's tool output
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Goal [128](_completed/128-get-run-bounded.goal) kept `get_run`'s default answer under 100,000 characters by cutting each list to its newest entries. That is still more than an agent's tool can take. On the lab, 2026-10-25, `get_run` with `attempts: 10` for a hill climb of three attempts gave 75,689 characters, and Claude Code refused it as too large (its MCP tools give at most 25,000 tokens by default). Most of it was the queue: ten experiments, each with details of up to 4,000 characters. `rig_setup` gives every step since the rig was set up: about 90 for a rig a week old, nearly all of them image updates.
+
+1. **`get_run` keeps to a budget.** Its default answer, as MCP sends it (indented JSON), stays under 40,000 characters. When the lists cut to their newest entries are still above it, the texts in their entries are cut, shorter each step (2,000, 1,000, 500, 250, 120 characters), until it fits; `cut` says how short, and `list` still gives one list's entries whole.
+2. **`rig_setup` gives its newest steps.** The newest 20 by default, oldest first as before, with `steps_total`; `steps` asks for more, up to 500.
+
+## Why
+
+The owner, 2026-10-24 (goal 128): gaps found while operating the lab become goals. An operator that cannot read a run's detail or a rig's state works blind, or reads a file the tool saved instead.
+
+## Constraints
+
+- **Nothing cut without a word**, as in goal 128.
+- **The short lists stay whole.** Only a default answer above the budget is cut.
+
+## Done when
+
+- [ ] Item 1, with a test: a run like the lab's (ten queue entries of 4,000 characters, attempts with long hypotheses and declared flaws) gives a default answer under the budget, says so in `cut`, and `list` gives the entries whole.
+- [ ] Item 2, with a test.
+- [ ] The MCP and REST reference pages say the budget and `steps`.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+---
+
+Run with `/goal Complete docs/plan/goals/138-answers-fit-tool-output.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
