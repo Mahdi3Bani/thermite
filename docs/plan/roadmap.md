@@ -153,6 +153,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [145](goals/145-drain-race.goal) A drain doesn't wait two hours for a trial that started seconds before it · `PROPOSED`
 - [146](goals/146-supervisor-alone.goal) Restart or update a rig's supervisor alone, while its harness goes on · `PROPOSED`
 - [141](goals/141-waiting-win-after-champion-moved.goal) A waiting win the champion moved past: closed when a champion has it, an approval when none does · `PROPOSED`
+- [149](goals/149-output-cut-notice.goal) A command's result says its output was cut only when it was · `PROPOSED`
 
 ## v0.1.4
 

@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
 created: 2026-10-25
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 
 # 142 · A hill climb's champion value: measured right, and at the top of its run's page
@@ -50,6 +50,7 @@ The owner reads a run from the top of its page. The number that says how far the
 
 - 2026-10-25 15:47 UTC: Goal written from the owner's report. The cause was found in `metricValues`, which read the blocks with metric and case swapped.
 - 2026-10-25 19:36 UTC: Built and tested on the branch: the judge's values, the estimate, the card. The owner approved the card; Tokens in and out are now one column, and Cost on the run's page and the campaign's sidebar is brief. Left: the roll to the lab.
+- 2026-10-26 02:42 UTC: On the lab, the first win judged after the roll has its values: the hill climb's new champion, at 00:01 UTC, records decode speed for each case, 18.07 tok/s against its parent's 17.49. Left: the card and the chart on the run's page show it.
 
 ---
 

@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
 created: 2026-10-25
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 
 # 144 · A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials
@@ -75,6 +75,7 @@ A trial that ends with no result costs a lane's whole trial: up to two hours of 
 
 - 2026-10-25 19:55 UTC: Goal written from lane-2's trial sessions, read over MCP (`trial_session`). The operator sent both lanes the build commands, the cache settings and the clock rules as a message kept in force (command 237a32b5), for the campaign's part.
 - 2026-10-25 20:25 UTC: Built (`src/harness/agents/trial-clock.ts`, its test, and the brief, tools and cache settings). A trial whose dev run never comes back now ends as `wall` in 2 seconds; without the change, the test waits until it times out. In the harness image (ccache 4.9.1), a second checkout in another folder hit the cache with the new settings and missed without them. Left: the roll and the lab check.
+- 2026-10-26 02:42 UTC: On the lab, after the roll. From 75% of a trial, each tool result ends with the time left ("About 28 minutes are left in this trial."), and the agents planned by it. Two trials ended as `wall` at their 120-minute mark, each within a second of it, with no "gave no result". A lane's second trial built the engine in a new checkout folder in about 4 minutes, against about 14 for a lane's first build after the roll. That points to cache hits; ccache's own count is not yet seen. Not yet seen: a trial with a command still running at its end.
 
 ---
 
