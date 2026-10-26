@@ -3,6 +3,7 @@
 This guide is for the clean-up of v0.1.1, goal [125](goals/125-code-to-the-conventions.goal). It is the result of goal [127](goals/_completed/127-clean-up-pre-audit.goal), the pre-audit, which was done as part of the v0.1.1 audit, goal [160](goals/_completed/160-v010-audit.goal).
 
 - **What it describes:** the code as v0.1.0 shipped it (tag `v0.1.0`), with the tests already moved to `tests/` by goal 160.
+- **Part 2:** on the same evening, five more reviewers looked at the agents' definitions, every channel between the parts, NATS JetStream as a message bus, agents in their own terminal, and the hierarchy of Thermite's things. [Section 8](#8-part-2-lanes-9-to-13-goals-166-to-171) says what they change here.
 - **Where it comes from:** eight reviewers, each with one area, read the code and its history on 2026-10-26: control; the harness; the supervisor, core, the command line and the scripts; what crosses the parts; data, storage and the infrastructure; knowledge; tests, folders and dead code; operations. Their reports, with every count and line number, are kept in `.internal/reviews/v0.1.1-audit/`. Those reports are private because they also hold the security findings, which are handled as [SECURITY.md](../../SECURITY.md) says and are never written here.
 - **What it is not:** a diff. It names each change, where it goes and what to check. Goal 125 audits one area at a time against it, makes the changes and corrects this guide where the code differs.
 
@@ -456,3 +457,31 @@ The owner answered these on 2026-10-26. Every recommendation below is accepted, 
     - **Recommended:** keep writing the events, and also call the scheduler directly through a small interface (`onStopAsked`, `onReset`).
     - **Why:** the events stay the record, and the flow of one feature stays in one place instead of crossing files by an event name in a string.
     - **Instead:** keep the polling. It also keeps the service from depending on the scheduler.
+
+## 8. Part 2: lanes 9 to 13 (goals 166 to 171)
+
+After the owner answered section 7, they asked for four more things, and then for the hierarchy to be checked. Five more reviewers looked at them; their reports are in `.internal/reviews/v0.1.1-audit/` (lanes 9 to 13), and each public goal holds what its review found, the design it proposes and the owner's questions.
+
+| Goal | What | What it changes in this guide |
+| --- | --- | --- |
+| [166](goals/166-agent-definitions.goal) | One definition for each agent role in `src/agents/roles/`, with a pure `render` for a run's prompt, a table of tools, and every prompt sent recorded | T7 grows: the table of agent programs sits beside the roles and the tools. T1 gains the role names. |
+| [167](goals/_completed/167-how-the-parts-talk.goal) | A review of every channel: 45 channels, 35 polling loops, the delay each adds | Its explanation page, [How the parts talk](../_site/src/content/docs/explanation/how-the-parts-talk.md), is written. Its findings feed T2 and goal 168. |
+| [168](goals/168-message-bus.goal) | The message bus. The review recommends a first part over HTTP (the link's contract in `core/link/`, one client for the supervisor, a change feed for each rig, Server-Sent Events, views kept up to date), then a decision on NATS with its numbers | T2 becomes this first part. T12's views kept up to date are its step 4. |
+| [169](goals/169-agents-in-their-terminal.goal) | Workers in their program's own terminal UI, session logs as events, steering inside a turn | Comes after goal 166 and T7's one trial loop; its terminal mode is a field of each program's entry. |
+| [170](goals/170-one-hierarchy.goal) | One hierarchy: run IDs unique across rigs, a run registry on control, views and addresses by run (`/ui/runs/<run>/attempts/<attempt>`), the run on every event | A new theme, T15. Its rule of shape: a thing is addressed through what owns it; where it ran is an attribute. |
+| [171](goals/171-bugs-on-the-wire.goal) | Bugs on the wire: a lost long reply, a command sent again in full, a live view stopped by one line, a prompt too long for one argument | Joins goals 161 to 165 in step 2 of the order of work. |
+
+**The order of work, with part 2:**
+
+1. The size check and the rules of shape, with T15's rule.
+2. The bugs: goals 161 to 165, 171, and goal 170's run IDs and a run's export with its verdicts.
+3. The shared homes: T1 (with the role names and `core/ids.ts`), T3 and T4.
+4. The test scaffolding (T10), and golden tests of every role's prompt (goal 166).
+5. The link's contract and the supervisor's client (goal 168's first part, which is T2), the domain modules out of the dashboard (T5), the ledger's owners (T6), the run on every event and the run registry (goal 170), and the table of agent programs with the roles and tools (T7, goal 166).
+6. The splits (T8), with views by run and kept up to date (goals 168 and 170) when `control/views.ts` splits.
+7. The folder moves (T9), and run-scoped addresses (goal 170).
+8. The change feed and Server-Sent Events (goal 168), the record of prompts and their surfaces (goal 166), and the terminals (goal 169).
+9. Knowledge (T11, with the knowledge base keyed by run), growth (T12), dead code (T13), containers and CI (T14).
+10. The NATS decision (goal 168), with the numbers from its step 0.
+
+The owner's questions for part 2 are in each goal; until they are answered, the goals keep the reviewers' recommendations as proposals.

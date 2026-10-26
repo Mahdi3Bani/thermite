@@ -10,13 +10,13 @@ updated: 2026-10-26
 
 # 168 · One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [167](167-how-the-parts-talk.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [167](_completed/167-how-the-parts-talk.goal)
 
 ## What
 
 NATS with JetStream becomes the channel between Thermite's systems, in place of today's many HTTP polling loops: events, commands and their answers, reports, live views, past research and the dashboard's live updates.
 
-1. **A design first,** from the review of goal [167](167-how-the-parts-talk.goal): subjects and streams for each channel, what stays in SQLite, the accounts and permissions of each part, how rigs reach it (on one machine, over SSH, on a cluster, and on RunPod, where a rig dials out), and the order of the move.
+1. **A design first,** from the review of goal [167](_completed/167-how-the-parts-talk.goal): subjects and streams for each channel, what stays in SQLite, the accounts and permissions of each part, how rigs reach it (on one machine, over SSH, on a cluster, and on RunPod, where a rig dials out), and the order of the move.
 2. **NATS in every deployment,** starting with the one-machine compose file: its image, its storage, its health check, and what a user configures.
 3. **The channels move to it,** one at a time, with the system working at every step.
 4. **Storage and retrieval made fast:** control's pages read views kept up to date as events arrive, instead of folding every event of a rig on every request.
@@ -88,6 +88,16 @@ Each with the review's recommendation.
 6. **Push to the dashboard.** Recommended: Server-Sent Events from control, with no new dependency.
 7. **RunPod's pull mode.** Recommended: keep the tunnel; control's adapter feeds the same handlers.
 8. **What JetStream may hold, if NATS is chosen.** Recommended: nothing at first, then at most a key-value store of revisions that hold no secret; "the bus holds no record" goes in [decisions.md](../decisions.md).
+
+From the review of how the parts talk (goal [167](_completed/167-how-the-parts-talk.goal)):
+
+9. **A report soon after each command:** now (2 files), or with the bus? Recommended: now. It removes the largest delay the owner meets.
+10. **Should the auditor and the review panel get their own loop?** Recommended: yes, so a promotion never waits for a teacher's round.
+11. **One configuration document for each rig,** sent when it changes, in place of three polls? Recommended: yes.
+12. **Push to the browser:** Server-Sent Events from control, or keep polling? Recommended: Server-Sent Events, for the live transcript and "rig reported", which fit server-rendered pages with small scripts.
+13. **Should every reader of a signed batch keep what it knows and count the rest?** Recommended: yes, written once in `core` as the rule for every channel and every future subject.
+14. **A longer life for an assignment whose models take long to download?** Recommended: test it first (goal [171](171-bugs-on-the-wire.goal), item 5); if confirmed, a "staging" state holds the expiry.
+15. **Counters for each channel in the supervisor's figures?** Recommended: yes; they are cheap and show on the rig's page without a log store.
 
 ## Progress
 

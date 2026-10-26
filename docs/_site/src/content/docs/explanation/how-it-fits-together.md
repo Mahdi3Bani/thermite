@@ -119,6 +119,8 @@ sequenceDiagram
 
 To set up and manage a rig, control does connect to the machine over SSH, or to the cluster's API. That reaches the machine or the cluster, never the rig's containers.
 
+[How the parts talk](how-the-parts-talk.md) follows every channel between the parts: what travels on each, which side starts it, how often, and how long a change takes to show.
+
 ## The owner's messages
 
 The owner can write to a run's agents and advisors while they work. The message box is under the run's stream in **Live**, and the **Message** button on a run opens it; the run's **Planner** tab has a box for the planner alone, while the planner is on. Each message is a signed command, `message_agent`, that only the owner may issue. An operator's token, which the owner gives an agent that runs campaigns for them, may send one in the owner's name. No worker, planner or advisor can send one. The judge takes no messages: it is code, and no message can change a measurement.
