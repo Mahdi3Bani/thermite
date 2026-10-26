@@ -10,11 +10,11 @@ updated: 2026-10-26
 
 # 125 · Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](_completed/026-ship-v0.1.0.goal), [127](127-clean-up-pre-audit.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](_completed/026-ship-v0.1.0.goal), [127](_completed/127-clean-up-pre-audit.goal)
 
 ## What
 
-The clean-up of v0.1.1, worked on after v0.1.0 ships and after the pre-audit, goal [127](127-clean-up-pre-audit.goal). It brings all of Thermite's code to [CONVENTIONS.md](../../../CONVENTIONS.md), so that later changes are easier to make, to review and to trust. The conventions got their engineering rules on 2026-10-24; the code was written before them.
+The clean-up of v0.1.1, worked on after v0.1.0 ships and after the pre-audit, goal [127](_completed/127-clean-up-pre-audit.goal). It brings all of Thermite's code to [CONVENTIONS.md](../../../CONVENTIONS.md), so that later changes are easier to make, to review and to trust. The conventions got their engineering rules on 2026-10-24; the code was written before them.
 
 It is the second half of a double audit. Goal 127 looks at the whole code, read-only, and writes a guide: the map of the code, the themes of change that cross areas, the rules of shape, the order of work and what to leave. This goal works from that guide, audits one area at a time, checks the guide's findings against what it finds there, and makes the changes.
 
@@ -26,7 +26,7 @@ Each rule of CONVENTIONS.md, in particular:
 
 1. **File size and structure.** A file over 500 lines gets a cohesion review. A file over 800 lines is split by responsibility into a folder named for it (`store/runs.ts`, never `store-runs.ts` beside it).
 2. **Folders, not names.** Files whose names share a word at the start or the end become a folder named for that word, with an `index.ts` that is its interface, and the code outside imports from it.
-3. **Tests in `tests/`.** Goal [160](160-v010-audit.goal) moved every test there, in folders that mirror `src/`. A split or a move of a source file moves its tests to the matching folder in the same commit.
+3. **Tests in `tests/`.** Goal [160](_completed/160-v010-audit.goal) moved every test there, in folders that mirror `src/`. A split or a move of a source file moves its tests to the matching folder in the same commit.
 4. **Duplication.** Knowledge kept in more than one place: a rule, a limit, a schema, a status word, a name, a route, a message. Code repeated a third time. Two ways of doing the same job. One thing with more than one name.
 5. **Module design.** Shallow modules, and layers that only pass things through. Complexity pushed onto callers. Implementation details that leak through an interface. Two modules that share knowledge of one design decision. Related code spread over many files.
 6. **Interfaces and errors.** Errors that the interface could define away. Silent catches, and errors without a type.
@@ -77,7 +77,7 @@ Then: "not only file sizes and restructure stuff, but also looking for DRY, etc 
 
 ## Audit
 
-Filled in as the work goes, one heading for each area. It starts from goal [127](127-clean-up-pre-audit.goal)'s guide, `docs/plan/code-clean-up-guide.md`.
+Filled in as the work goes, one heading for each area. It starts from goal [127](_completed/127-clean-up-pre-audit.goal)'s guide, `docs/plan/code-clean-up-guide.md`.
 
 Known at the start, 2026-10-24:
 
@@ -95,7 +95,7 @@ Known at the start, 2026-10-24:
 
   In `scripts/`, 2 files are over 800 lines.
 - **Names in place of folders.** 32 groups of files, 96 files in all, share a word at the start or the end of their names, such as the 16 `scripts/*-acceptance.mjs`, the 9 `src/control/ui/*-client.ts` and the 6 `src/control/runpod-*.ts`.
-- **Tests beside the code.** All 206 test files sit in `src/`, beside the code they test. `scripts/test.mjs` lists them from `src/` (`readdirSync("src")`), and runs those that match `^src/harness/(judge|broker)/` alone, one at a time: both change when the tests move. New test helpers go in `src/testing/` until then. Goal [160](160-v010-audit.goal) moved them all on 2026-10-26: the tests to `tests/`, the helpers to `tests/helpers/`.
+- **Tests beside the code.** All 206 test files sit in `src/`, beside the code they test. `scripts/test.mjs` lists them from `src/` (`readdirSync("src")`), and runs those that match `^src/harness/(judge|broker)/` alone, one at a time: both change when the tests move. New test helpers go in `src/testing/` until then. Goal [160](_completed/160-v010-audit.goal) moved them all on 2026-10-26: the tests to `tests/`, the helpers to `tests/helpers/`.
 - **CI picks its heavy jobs by path.** The compose-smoke, rig-image, RunPod and quick-start jobs in `.github/workflows/ci.yml` run on a push or a pull request only when the change touches their paths, which name files in `src/`, such as `^src/(control|harness)/api\.ts$` and `^src/harness/broker(\.ts|/)`. Each move, split and rename updates these lists in the same commit, or a heavy check stops running when it should.
 - **Logging.** No log level can be changed while a program runs.
 
@@ -104,21 +104,50 @@ Known at the start, 2026-10-24:
 - 2026-10-24, owner: the file-size rule goes in CONVENTIONS.md, and its large files need a better handle.
 - 2026-10-24, owner: v0.1.1 is the code clean-up, to the engineering rules and the new conventions.
 - 2026-10-24, owner: one goal for all of it, to run with `/goal` after v0.1.0 ships: file sizes, the code's structure, duplication and every other rule that CONVENTIONS.md checks. Goal [124](124-file-sizes.goal) is merged into it, and CONVENTIONS.md gets rules on duplication and dead code.
-- 2026-10-24, owner: a read-only pre-audit, goal [127](127-clean-up-pre-audit.goal), comes first and writes the guide this goal works from: a double audit.
+- 2026-10-24, owner: a read-only pre-audit, goal [127](_completed/127-clean-up-pre-audit.goal), comes first and writes the guide this goal works from: a double audit.
 - 2026-10-24, owner: tests live in a `tests/` folder, not beside the code ("It makes reading code and finding actual code faster"); and folders and modules with proper imports, not files named `<name>-<part>.ts` side by side ("we just made tons of files putting hierarchy flat and hard to follow").
 
-- 2026-10-26: the tests' move is done by goal [160](160-v010-audit.goal), so it leaves this goal's scope.
+- 2026-10-26: the tests' move is done by goal [160](_completed/160-v010-audit.goal), so it leaves this goal's scope.
+- 2026-10-26, owner: v0.1.1 breaks compatibility with v0.1.0 ([decisions](../decisions.md#releases-and-planning)): "its ok to say v0.1.0 things don't work in v0.1.1". The code for older data and older parts goes, and names change to the public ones everywhere, the stored and wire names included ("Do what is needed"). A ledger or database that v0.1.1 can't read is kept, never deleted, and the changelog says what an upgrade needs.
+- 2026-10-26, owner: the guide's 26 questions are answered ([the guide, section 7](../code-clean-up-guide.md#7-the-owners-questions)). Every recommendation is accepted, except questions 7 and 11, answered as above. In short:
+  1. The shared agent runtimes become a part of their own, `src/agents/`.
+  2. The contract words (the kit schema, held-out words, goal values, research words and limits, model-route names, the rig settings schema) move to `core`.
+  3. The import rule is a script in `npm run check` that fails, with today's exceptions listed by file.
+  4. `core` does no I/O: the read of `package.json` moves to `common`.
+  5. Event schemas are checked at compile time first, at control's intake later.
+  6. The names from before v0.1.0 (`THERMITE_UNIT_ID`, `THERMITE_CONTROL_UNIT_TOKENS_FILE`, `--instance`, `--unit`, `--direction`, the reader for commands signed before 2026-10-15) go in v0.1.1.
+  7. No compatibility with v0.1.0's data or parts (above).
+  8. REST, MCP and the dashboard call domain modules directly; `ControlActions` goes.
+  9. Control's store becomes sub-stores.
+  10. The dashboard's browser scripts stay strings, with a lint, a parse test and constants injected with `JSON.stringify`.
+  11. The public names everywhere in v0.1.1, stored and wire names included (above).
+  12. Control shows the space each kind uses first, then prunes what it only copies or derives by settings that are off until set; the rigs' ledgers and the results repository are never pruned. The daily ledger copy stays daily, compressed, and pushed apart from the attempts. The judge may remove old builds, keeping the champions' and the newest few for each lane (a setting).
+  13. A copy of the ledger and of `control.db` before every migration, by default, and `thermite backup` and `restore` for control's state, with a page.
+  14. A remove is refused until the rig's results have left; a typed `discard <rig>` goes on, recorded in the audit log.
+  15. Health routes check what each part needs, with a probe in every deployment; `/metrics` and Needs you are the alerts in v0.1.x.
+  16. Logs at `info` by default; a rig's parts change level by a signed command, control by a setting; logs go to a table in `control.db` with FTS5 (goal 028).
+  17. The images move to Node 24 in v0.1.2.
+  18. Tests that wire several parts go to `tests/system/`; feature tests of control's pages to `tests/control/dashboard/`.
+  19. The stand-ins move to `tests/stand-ins/<name>/`; the acceptance scripts get `// @ts-check`, and each an npm script `acceptance:<name>`.
+  20. CI runs the judge's adversarial set and every acceptance check it can run on each version tag.
+  21. One Containerfile, with a target for each image.
+  22. Code comments give the reason in words, and a goal number only where the sentence needs it.
+  23. The words of the guide's question 23 are taken; the paper, each answer card and the review panel's decisions become knowledge-base items.
+  24. The research `search` tool and the contract's `search_policy` go; the advisors file's `kb` gives way to MCP servers that a kit names.
+  25. `Ledger.invalidate()` is wired to an owner's command, in a goal of its own.
+  26. Stops and resets reach the scheduler by a direct call too, and the events are still written.
 
 ## Open questions
 
 - Whether the size check counts test files.
 - Where a recorded reason lives: a comment at the top of the file, or a list beside the check's starting sizes.
-- Whether log levels are a setting for each part (control, harness, supervisor), and where the owner changes them.
+- The name for the knowledge base's folders: a shelf or a collection (the guide's question 23 leaves it to the owner).
 
 ## Progress
 
 - 2026-10-24: Goal written from the owner's words; goal 124 merged into it.
-- 2026-10-26: The v0.1.1 audit (goal [160](160-v010-audit.goal)) wrote the [guide](../code-clean-up-guide.md) and moved the tests to `tests/`. The scope no longer holds the tests' move, and the order of work is the guide's. Its counts, from 2026-10-26, replace the ones under Audit where they differ: 33 production files over 800 lines, `control/dashboard.ts` at 8,875 lines.
+- 2026-10-26: The v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) wrote the [guide](../code-clean-up-guide.md) and moved the tests to `tests/`. The scope no longer holds the tests' move, and the order of work is the guide's. Its counts, from 2026-10-26, replace the ones under Audit where they differ: 33 production files over 800 lines, `control/dashboard.ts` at 8,875 lines.
+- 2026-10-26 20:41 UTC: The owner answered the guide's questions; the answers are under Decisions. v0.1.1 breaks compatibility with v0.1.0.
 
 ---
 

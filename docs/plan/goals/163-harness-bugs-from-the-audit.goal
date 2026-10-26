@@ -10,11 +10,11 @@ updated: 2026-10-26
 
 # 163 · Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
-The harness and operations reviewers of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found these bugs by reading the code; none was reproduced by a run. Each fix comes with a regression test that fails without it.
+The harness and operations reviewers of the v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) found these bugs by reading the code; none was reproduced by a run. Each fix comes with a regression test that fails without it.
 
 1. **Promotion is written three times, and two are not atomic.** The judge promotes in one transaction (`src/harness/judge/judge.ts` `finish`). The auditor's clear (`promoteOrAsk`) and the owner's approval (`approvePromotion`) in `src/harness/service.ts` set `flaws_cleared_by`, promote and clear it again in separate writes around an `await`. A throw after the champion moves leaves the attempt's lifecycle and its `flaws_accepted` event out of step with the champion. One `ledger.promote` sets the flaws, the champion, the event and the lifecycle in one transaction; the git ref and the port follow from the ledger.
 2. **OpenCode code trials ignore Turns per trial.** `src/harness/agents/opencode.ts` reads `spec.maxTurns` only in its research loop. Claude Code, Codex and OpenCode's research trials end at the cap, as [Limits and pacing](../../_site/src/content/docs/reference/limits-and-pacing.md) says.
@@ -37,6 +37,8 @@ Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": 
 - [ ] The fast checks pass, and the judge, agents and steering acceptance checks.
 
 ## Decisions
+
+- 2026-10-26, owner: v0.1.1 breaks compatibility with v0.1.0 ([decisions](../decisions.md#releases-and-planning)). Where goal 125 has already removed the old event names, an item here that reads them is done by that removal.
 
 ## Open questions
 

@@ -1,6 +1,6 @@
 # The code clean-up guide
 
-This guide is for the clean-up of v0.1.1, goal [125](goals/125-code-to-the-conventions.goal). It is the result of goal [127](goals/127-clean-up-pre-audit.goal), the pre-audit, which was done as part of the v0.1.1 audit, goal [160](goals/160-v010-audit.goal).
+This guide is for the clean-up of v0.1.1, goal [125](goals/125-code-to-the-conventions.goal). It is the result of goal [127](goals/_completed/127-clean-up-pre-audit.goal), the pre-audit, which was done as part of the v0.1.1 audit, goal [160](goals/_completed/160-v010-audit.goal).
 
 - **What it describes:** the code as v0.1.0 shipped it (tag `v0.1.0`), with the tests already moved to `tests/` by goal 160.
 - **Where it comes from:** eight reviewers, each with one area, read the code and its history on 2026-10-26: control; the harness; the supervisor, core, the command line and the scripts; what crosses the parts; data, storage and the infrastructure; knowledge; tests, folders and dead code; operations. Their reports, with every count and line number, are kept in `.internal/reviews/v0.1.1-audit/`. Those reports are private because they also hold the security findings, which are handled as [SECURITY.md](../../SECURITY.md) says and are never written here.
@@ -63,7 +63,7 @@ Each theme is a set of changes across the code. Sizes are in files. The checks a
 - **Shape.** `core/events/` (one constant and one schema for each kind; `appendEvent` takes them typed), `core/verdicts.ts`, `core/agents.ts`, the issuer table beside `CommandPayloads` in `core/commands.ts`, and `core/names.ts` as the one map from old or wire names to public names. Control's facts become functions on its views (`currentChampion`, `campaignOf`, `judgeShareOf`, `rigHref`).
 - **Size.** About 60 files read these words. Each word set is a change of its own.
 - **Depends on.** Nothing. Most other themes use it.
-- **Risks.** A changed wire value breaks older rigs or an older control. Keep the values; move only the code that maps them (see [What to leave](#5-what-to-leave)).
+- **Risks.** v0.1.1 breaks compatibility with v0.1.0 (the owner's answers to [Q7 and Q11](#7-the-owners-questions)), so stored and wire values take the public names. A change of a wire value changes every side in one commit, and the changelog says so.
 - **Check.** The fast checks, and the steering and control acceptance checks when a word crosses the wire.
 
 ### T2. One home for each wire contract, and typed clients
@@ -242,7 +242,7 @@ Apply these the same way in every step. The ones marked **new** are proposed add
 
 1. **New: the parts and the way they import.** `core` holds contracts: schemas, words, limits, signing and protocols, and does no I/O beyond `node:crypto`. `common` holds runtime tools: settings, logs, errors, files, git, subprocesses, HTTP. The parts (`harness`, `supervisor`, `control`, `cli`, `release`) import `core` and `common`, never each other; code two parts need goes to `core`, to `common`, or to a shared folder named for what it is. Domain modules never import page code (`control/ui/`). Tests and scripts may import any part; production code never imports them. A check in `npm run check` enforces it, with today's exceptions named until they are gone.
 2. **New: a wire contract has one home.** Every body that crosses a process boundary (a route, a signed command, an event, a file one container hands to another, an environment variable) has one schema in `core`. Route paths and limits are named constants beside it.
-3. **New: event kinds are constants with schemas.** A new kind is added to `core/events/` with its body's schema, and `appendEvent` takes it typed. A rename keeps the old name readable through `core/names.ts`.
+3. **New: event kinds are constants with schemas.** A new kind is added to `core/events/` with its body's schema, and `appendEvent` takes it typed. A rename that must keep older data readable maps the old name in `core/names.ts`; v0.1.1 keeps none for v0.1.0's data ([Q7](#7-the-owners-questions)).
 4. **New: one name map.** Where a public name differs from a stored or wire name, the mapping lives in `core/names.ts` or in the module that owns the word, never in a caller.
 5. **New: shared tools live in `common`.** Use its helper for error text, atomic writes, git, subprocesses, HTTP, secret comparison and loops that repeat. A program that must import nothing of Thermite's says so in its header, and only it keeps its own copy.
 6. **New: errors.** A small set of typed errors in `common/errors.ts`. Each API maps errors to statuses in one function. A refused input is answered in the same words by REST, MCP and the command line.
@@ -286,7 +286,7 @@ The busy files (`harness/service.ts`, the scheduler, `control/store.ts`, `harnes
 
 These look wrong, but have a reason. Keep them.
 
-- **The old names in ledgers and on the wire.** Ledgers are append-only, so old event kinds and keys stay, read through `core/names.ts`. The wire names goal 074 kept (`combiner` and `panel` in the supervisor's report keys, the harness's role names, event kinds, note writers) stay as they are; only the code that maps them moves to one place.
+- **Old ledgers and databases are kept, never deleted** (invariant 3), even when v0.1.1 can no longer read them ([Q7](#7-the-owners-questions)). The names that goal 074 kept on the wire for v0.1.0 (`combiner` and `panel`) change to the public ones in v0.1.1 ([Q11](#7-the-owners-questions)).
 - **Two checks of every signed command,** in control and in the harness. The harness must check commands itself. Share the table, keep both checks.
 - **Pull mode's allow-list of rig routes** (`control/tunnel.ts`). It repeats the routes on purpose: what it does not list, it refuses. Add a test that the two agree.
 - **Programs that import nothing of Thermite's:** `harness/agents/opencode-plugin.ts` and the compaction hook (they run inside another program, alone), the two smoke kits' `check.mjs` (a kit is a repository of its own), and the stand-ins in `containers/test-*` (they run inside images).
@@ -300,7 +300,7 @@ These look wrong, but have a reason. Keep them.
 - **The knowledge base is built only from the rigs' signed events,** and the research folder is a projection of the ledger. Change where bulk text is stored, not where it comes from.
 - **Lane files and kept conversations have a saved copy and a shown copy:** one lane must not change what another lane sees.
 - **The brief windows** (10, 5 and 20 notes) are display windows, not limits on writing.
-- **Signed and hashed fields keep their names** (the run's `direction`, the contract's `notes`) until a version bump: renaming them changes old commands and contracts.
+- **Signed and hashed fields** (the run's `direction`, the contract's `notes`) change their names only with a version that breaks compatibility, since a rename changes old commands and contracts. v0.1.1 is one ([Q7, Q11](#7-the-owners-questions)).
 - **New optional contract fields get no default,** so older contracts keep their hash.
 - **The release bundle's copy of `compose.yaml`,** checked against it by `templateDrift()`. It is the model for other generated copies.
 - **`src/release/` with thin scripts:** the logic is in tested modules, and `scripts/release-bundle.ts` and `check-images.ts` only call it. The acceptance scripts should take this shape.
@@ -333,7 +333,7 @@ A reviewer checks each step of goal 125 for these:
 
 ## 7. The owner's questions
 
-Each question has one recommendation, the reason for it, and the other choices. To take a recommendation, say "yes" to its number; to choose otherwise, name the choice. Goal 125 records each answer as a decision, and asks the questions you defer when their theme comes up. The reports hold more questions, about details inside one area.
+The owner answered these on 2026-10-26. Every recommendation below is accepted, except those of questions 7 and 11, where the owner's answer is given. Goal 125 records the answers as decisions. The reports hold more questions, about details inside one area.
 
 **Where code lives**
 
@@ -365,9 +365,9 @@ Each question has one recommendation, the reason for it, and the other choices. 
    - **Why:** no public release used them. Every command signed before 2026-10-15 expired by 2026-10-22.
    - **Instead:** keep them until v0.2.0.
 7. **How long older data and older parts are supported.** This decides which of these can go: control's migrations of databases from before v0.1.0 (about 260 lines), the harness's 32 branches for older ledgers and supervisors, and the supervisor's paths for an older harness.
-   - **Recommended:** read data written by v0.1.0 or later, and work with parts of the release before, as the [Compatibility](../_site/src/content/docs/reference/compatibility.md) page already promises. Remove the code for anything older, once your own databases have passed those migrations. A rig's harness and supervisor always move to new images together, so the supervisor's paths for an older harness go too. Old event names in ledgers stay readable through `core/names.ts`: ledgers are never rewritten.
-   - **Why:** each compatibility branch is code to test and to read, and nothing outside your own deployment runs data from before v0.1.0.
-   - **Instead:** keep everything until v0.2.0.
+   - **Owner's answer:** break compatibility. v0.1.1 doesn't have to read data that v0.1.0 wrote, or work with v0.1.0's parts, so all of the code above can go, the reading of old names in `core/names.ts` included. A ledger or database that v0.1.1 can't read is kept, never deleted (invariant 3), and the changelog says what an upgrade needs.
+   - **Why:** v0.1.1 is a large refactor, and its breaking changes are expected. In the owner's words: "its ok to say v0.1.0 things don't work in v0.1.1".
+   - **Recommended, not taken:** read data from v0.1.0 on, and work with parts of the release before.
 8. **`ControlActions`.** May REST, MCP and the dashboard all call domain modules directly?
    - **Recommended:** yes.
    - **Why:** the business logic leaves the HTML layer, no caller has to handle a missing slot, and it is the first step of the dashboard's split. It reverses the design written in `control/actions.ts`.
@@ -381,9 +381,9 @@ Each question has one recommendation, the reason for it, and the other choices. 
     - **Why:** no build step is added, and the dashboard stays HTML from the server with small client scripts, as CONVENTIONS.md asks.
     - **Instead:** real `.js` files, which Biome and the typecheck read as they are, copied by the build.
 11. **Internal names that differ from public ones** (`family` and `direction`, `combiner` and `merged_by`, `panel` and `review_panel`).
-    - **Recommended:** move every map between them to `core/names.ts` now. The APIs answer with the public names in v0.1.1 (the usage API answers `merged_by` and `review_panel`) and take the old names as input until v0.2.0. Stored and wire names stay as they are.
-    - **Why:** one thing has one name in the code, the API and the docs. Stored and wire names can't change without breaking older ledgers and rigs.
-    - **Instead:** rename everywhere, with a protocol version; or only move the maps.
+    - **Owner's answer:** rename to the public names everywhere, in v0.1.1: the code, the APIs, the stored names and the wire names. The APIs take only the new names. No wait for v0.2.0.
+    - **Why:** one thing has one name, and v0.1.1 breaks compatibility anyway (question 7). In the owner's words: "Do what is needed."
+    - **Recommended, not taken:** public names in the APIs only, with the stored and wire names kept and mapped.
 
 **Data and operations**
 
@@ -440,7 +440,7 @@ Each question has one recommendation, the reason for it, and the other choices. 
 **Knowledge and research**
 
 23. **One word for each meaning,** and more kinds in the knowledge base.
-    - **Recommended words:** a field note stays a "field note", and its kind `note` becomes `other`; a research note becomes a "source note"; the directive kind `note` becomes `planner_note`; "knowledge base" names the store and "past research" what a run receives; "document" (kind `doc`) for every lane file; "direction" in place of "family". The KB's folders get another name (a "shelf" or a "collection", your choice), so they don't share a name with the dashboard's campaign folders. The contract's `notes` and the signed `direction` field keep their names until a version bump.
+    - **Recommended words:** a field note stays a "field note", and its kind `note` becomes `other`; a research note becomes a "source note"; the directive kind `note` becomes `planner_note`; "knowledge base" names the store and "past research" what a run receives; "document" (kind `doc`) for every lane file; "direction" in place of "family". The KB's folders get another name (a "shelf" or a "collection", your choice), so they don't share a name with the dashboard's campaign folders. The contract's `notes` and the signed `direction` field take their new names in v0.1.1 too (question 11).
     - **Recommended kinds:** the paper and each answer card become items of their own, and the review panel's decisions. Rules, directions and refuted approaches later.
     - **Why:** one thing has one name. The paper and the answer cards are what a research run makes, and today the knowledge base keeps the paper's first 20,000 characters and nothing after them.
     - **Instead:** choose other words; or keep the kinds as they are, with a note where text is cut.

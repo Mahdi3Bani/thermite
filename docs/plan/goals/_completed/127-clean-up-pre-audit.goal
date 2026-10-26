@@ -1,7 +1,7 @@
 ---
 id: "127"
 title: "Pre-audit for the code clean-up: a read-only look at the whole code, and a guide that sets up goal 125"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.1"
 depends_on: ["026"]
 created: 2026-10-24
@@ -10,11 +10,11 @@ updated: 2026-10-26
 
 # 127 · Pre-audit for the code clean-up: a read-only look at the whole code, and a guide that sets up goal 125
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](_completed/026-ship-v0.1.0.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.1](../../roadmap.md#v011) · **Depends on:** [026](026-ship-v0.1.0.goal)
 
 ## What
 
-The first goal of v0.1.1, before the clean-up itself, goal [125](125-code-to-the-conventions.goal). It looks at all of Thermite's code at once, against [CONVENTIONS.md](../../../CONVENTIONS.md), and writes a guide that goal 125 works from.
+The first goal of v0.1.1, before the clean-up itself, goal [125](../125-code-to-the-conventions.goal). It looks at all of Thermite's code at once, against [CONVENTIONS.md](../../../../CONVENTIONS.md), and writes a guide that goal 125 works from.
 
 The two goals make a double audit:
 
@@ -51,14 +51,14 @@ Across all the code in goal 125's scope (`src/`, `scripts/`, and the scripts in 
 A corpus of the changes to make, not a diff. It names the change, the files or areas, and one or two examples of each pattern. It has no patches, and no lists line by line. It is short enough to read at one sitting. It lives at `docs/plan/code-clean-up-guide.md`, and holds:
 
 1. **The map** of the code as it is now.
-2. **The themes,** each one a set of changes across the code. For each theme: what to change and which rule asks for it; where, by area and the main files; the shape to reach, such as a folder layout or one shared module; how many files it touches; what it depends on, and what depends on it; its risks; and how to check it (the tests and the acceptance checks of [AGENTS.md](../../../AGENTS.md#checks)). It gives no estimate of time.
+2. **The themes,** each one a set of changes across the code. For each theme: what to change and which rule asks for it; where, by area and the main files; the shape to reach, such as a folder layout or one shared module; how many files it touches; what it depends on, and what depends on it; its risks; and how to check it (the tests and the acceptance checks of [AGENTS.md](../../../../AGENTS.md#checks)). It gives no estimate of time.
 3. **The rules of shape** to apply the same way everywhere, and the proposed additions to CONVENTIONS.md.
 4. **The order of work** for goal 125: which themes go first, such as the size check, then the shared modules, so that the splits use them, then the splits, the largest first. It also notes which areas are quiet and which change often.
 5. **What to leave,** with the reason for each.
 6. **The review guide:** what a reviewer checks in each step of goal 125. Behaviour stays the same unless the fix is the point; no test is weakened; the conventions hold; the docs follow.
 7. **The owner's questions:** choices that the guide can't make alone.
 
-**Security findings stay out of the guide.** They are handled as [SECURITY.md](../../../SECURITY.md) says: kept in `.internal/`, which Git ignores, and never written in a tracked file. The guide's other parts name no host, address, account or secret, as for every public file.
+**Security findings stay out of the guide.** They are handled as [SECURITY.md](../../../../SECURITY.md) says: kept in `.internal/`, which Git ignores, and never written in a tracked file. The guide's other parts name no host, address, account or secret, as for every public file.
 
 ## Why
 
@@ -79,10 +79,11 @@ Then: "This will give us double audit.. the one in the goal you ran where it aud
 - [x] Every area in goal 125's scope is covered by the map. Each file over 800 lines, and each group of files named in place of a folder, has the folder it should become. The move of the tests to `tests/` is planned. (The guide names the main files and groups; the reviewers' reports in `.internal/reviews/v0.1.1-audit/` give a split plan for every one. Goal 160 made the move.)
 - [x] Security findings, if any, are in `.internal/` and in no tracked file.
 - [x] `git status` shows no change apart from the guide and this goal. The public check (`npm run check:public`) passes. (Goal 160 also changes the roadmap, goal 125, five new bug goals and the plan's index, in the same commit as the guide.)
-- [ ] The owner has read the guide, and answered or deferred its questions.
+- [x] The owner has read the guide, and answered or deferred its questions. (2026-10-26: every question answered; goal 125 records the answers.)
 
 ## Decisions
 
+- 2026-10-26, owner: the guide's questions are answered. Every recommendation is accepted, except questions 7 and 11: v0.1.1 breaks compatibility with v0.1.0, and names change to the public ones everywhere. Goal 125 records each answer.
 - 2026-10-26, owner: this goal is done as part of goal [160](160-v010-audit.goal), the v0.1.1 audit, by specialized reviewers.
 - 2026-10-24, owner: a read-only pre-audit in v0.1.1, before goal 125, that looks at the whole code and writes a guide for goal 125, not a diff.
 - 2026-10-24, owner: two rules of shape to plan for: tests in a `tests/` folder, not beside the code, and folders and modules with proper imports, not files named `<name>-<part>.ts` side by side. Both are in CONVENTIONS.md.
@@ -94,8 +95,9 @@ None yet.
 ## Progress
 
 - 2026-10-24: Goal written from the owner's words.
-- 2026-10-26 06:47 UTC: Done by goal 160's eight reviewers, read-only. The guide is at [code-clean-up-guide.md](../code-clean-up-guide.md), with its seven parts; the reviewers' reports, with every count, line number and the security findings, are in `.internal/reviews/v0.1.1-audit/`. The bugs they found are goals 161 to 165. Waiting for the owner to read the guide and answer or defer its questions.
+- 2026-10-26 06:47 UTC: Done by goal 160's eight reviewers, read-only. The guide is at [code-clean-up-guide.md](../../code-clean-up-guide.md), with its seven parts; the reviewers' reports, with every count, line number and the security findings, are in `.internal/reviews/v0.1.1-audit/`. The bugs they found are goals 161 to 165. Waiting for the owner to read the guide and answer or defer its questions.
+- 2026-10-26 20:41 UTC: The owner answered the guide's questions. Verified.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/127-clean-up-pre-audit.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/127-clean-up-pre-audit.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

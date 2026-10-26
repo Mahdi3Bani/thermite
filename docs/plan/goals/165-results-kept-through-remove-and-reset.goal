@@ -10,11 +10,11 @@ updated: 2026-10-26
 
 # 165 · Results kept through remove, reset and update: the remove guard on every placement, two reset bugs, an update that survives a restart
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
-The operations reviewer of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found these by reading the code; none was reproduced by a run. Each fix comes with a regression test.
+The operations reviewer of the v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) found these by reading the code; none was reproduced by a run. Each fix comes with a regression test.
 
 1. **Removing a machine or cluster rig doesn't check that its results left.** The machine path (`src/control/dashboard.ts:6955-7000`, then `src/control/machines/deploy.ts:323-330`) removes the rig's volumes and folder; the cluster path (`dashboard.ts:6832-6895`) deletes the namespace, or in a slot the rig's volume claim. Both check only the typed confirmation. A RunPod terminate (`src/control/runpod-lifecycle.ts:435-436`) and a full reset (`src/control/lifecycle.ts:393-413`) already refuse until `resultsLeft` says every export and champion left the rig. Remove does the same on every placement, with one check in one place, and says how to get the results out.
 2. **A full reset stalls on queued judge jobs.** The reset's `quiescing` step (`src/control/lifecycle.ts:363-373`) waits until no job is queued or leased. The reset pauses the runs first, and the judge never leases a paused run's queued jobs (`src/harness/ledger.ts:817-823`, since 73ec10c, three days after the reset's rule). So a reset of a rig with any queued job times out after an hour and leaves the runs paused. `quiescing` waits only for leased jobs and for queued jobs of runs that still run.
@@ -34,9 +34,9 @@ Design invariant 3, "Nothing is destroyed", and invariant 5, "Nothing stops sile
 
 ## Decisions
 
-## Open questions
+- 2026-10-26, owner (the [guide](../code-clean-up-guide.md#7-the-owners-questions)'s question 14): a remove is refused until the rig's results have left. A typed `discard <rig>` goes on for a rig whose results can't leave, such as one with a broken supervisor, and the audit log records it.
 
-- Item 1: may a typed "discard" go on with a remove whose results can't leave, such as a rig with a broken supervisor (the guide's question 14)?
+## Open questions
 
 ## Progress
 

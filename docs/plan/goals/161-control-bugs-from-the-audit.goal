@@ -10,11 +10,11 @@ updated: 2026-10-26
 
 # 161 · Control's bugs found by the v0.1.1 audit: wrong states on the pages, refusals answered as server errors, errors that vanish
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
-The control reviewer of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found these bugs by reading the code. Each was checked against the code, but none was reproduced by a run. Each fix comes with a regression test that fails without it.
+The control reviewer of the v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) found these bugs by reading the code. Each was checked against the code, but none was reproduced by a run. Each fix comes with a regression test that fails without it.
 
 1. **An errored attempt shows "Judging".** `src/control/ui/operator.ts:1186-1221`. It shows its error state.
 2. **A cancelled command shows a red "failed" chip.** `cancelCommand` (`src/control/store.ts:2573`) writes the status `failed` with `cancelled_by` in the outcome. The commands table (`src/control/dashboard.ts:3983`) looks for a status `cancelled`, which is never written. A cancelled command shows as cancelled, in a neutral chip.
