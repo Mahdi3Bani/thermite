@@ -69,7 +69,7 @@ Compose starts control again with the new setting. From now on, name every overr
 Give the token file to whoever will use it:
 
 - Operator and agent tokens work only over MCP. See [Let an agent run Thermite over MCP](../automate/agent-over-mcp.md).
-- A reader's token works over MCP, and on two REST routes: `/metrics` and a rig's live log. To see that it works:
+- A reader's token works over MCP, and on six read-only REST routes: `/metrics`, `GET /v1/usage`, `GET /v1/model-prices`, `GET /v1/kits`, `GET /v1/kits/<name>` and a rig's live log (`GET /v1/rigs/<rig>/live`). To see that it works:
 
   ```sh
   curl -sS -H "Authorization: Bearer $(cat ~/thermite-read-token)" http://127.0.0.1:8800/metrics | head -3

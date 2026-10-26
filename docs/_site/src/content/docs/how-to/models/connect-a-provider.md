@@ -21,7 +21,7 @@ This guide covers providers reached with an API key, or with no key for OpenCode
 
 1. Press the cog icon, **Settings**, at the foot of the sidebar.
 
-   The **Providers** page opens. It has three blocks: **Providers**, **Add a provider**, and **Harness and model for each rig**.
+   The **Providers** page opens. Its blocks, in order: **Providers**, **Model prices**, **Add a provider**, **MCP servers**, **Add an MCP server** and **Harness and model for each rig**.
 
 2. In **Add a provider**, choose the **Type**. The group **Models by API key** has three types:
 
@@ -215,7 +215,7 @@ If the rig has a model from control, choose **its own settings** for it in **Har
 
 If you change only the key file, restart the harness so that it reads the file again: `docker compose restart harness`.
 
-The local `compose.yaml` passes only the first six settings to the rig ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). To set `THERMITE_MODEL_API` or `THERMITE_AGENT_HARNESS` on the local stack, put them on the harness container in an override file next to `compose.yaml`. For example, to run the workers in OpenCode v2:
+The local `compose.yaml` passes `THERMITE_MODEL_BASE_URL`, `THERMITE_MODEL`, `THERMITE_MODEL_API_KEY_FILE`, `THERMITE_MODEL_CONTEXT_WINDOW`, `THERMITE_MODEL_MAX_TOKENS` and `THERMITE_MODEL_REASONING_EFFORT` to the rig ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). To set `THERMITE_MODEL_COMPACT_AT`, `THERMITE_MODEL_API` or `THERMITE_AGENT_HARNESS` on the local stack, put them on the harness container in an override file next to `compose.yaml`. For example, to run the workers in OpenCode v2:
 
 ```yaml title="compose.model.yaml"
 services:

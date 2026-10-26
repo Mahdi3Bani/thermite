@@ -249,7 +249,7 @@ Two causes are common on a laptop:
 ### The isolation check failed
 
 - **You see:** **Isolation** shows **failed**, with `isolation does NOT hold (devices: …):` and up to 12 items such as `agent-1 ledger: ALLOWED`.
-- **Why:** each item is a role and a probe. `ALLOWED`: the role's user reached something it must not, such as the judge's files or a secret. `UNREADABLE`, `UNREACHABLE` or `WRONG GPUS`: a role was refused something it needs, or saw other GPUs than its own. `the device setup failed`: the rig's GPUs could not be split between the judge and the agents; the `devices:` part says why.
+- **Why:** each item is a role and a probe. `ALLOWED`: the role's user reached something it must not, such as the judge's files or a secret. `UNREADABLE`, `UNREACHABLE` or `WRONG GPUS`: a role was refused something it needs, or saw other GPUs than its own. `FOUND`: a role could read something that must stay hidden, such as RunPod's variables or the snapshot key. `OPENED` or `MISSING`: a problem with the supervisor's container, such as a GPU node it opened or a process or key that is missing. The [rig checks reference](../../reference/rig-checks.md#isolation-check) explains each. `the device setup failed`: the rig's GPUs could not be split between the judge and the agents; the `devices:` part says why.
 - **Do:**
   1. Pause the rig's runs, and start none on it until the check passes.
   2. Look up each probe in the [rig checks reference](../../reference/rig-checks.md#isolation-check). [Isolation inside a rig](../../explanation/isolation.md) explains what keeps each role apart.
@@ -277,7 +277,7 @@ Two causes are common on a laptop:
 | `Git access <name>: control answered 404` | Control has no Git access of that name for this rig. Check the name in **Settings** (the cog at the foot of the sidebar) |
 | `… has no commit …` | The commit is not in that repository, or the rig can't read it. For a private repository, see [Use a private repository](../campaigns/private-repository.md#5-check-that-the-rig-fetched-it) |
 | `Command failed: git …` and git's message, such as `Host key verification failed` or `Permission denied (publickey)` | The rig can't read the repository. Give the campaign a [Git access](../campaigns/private-repository.md), or check the address |
-| `<url>: HTTP <status>`, or `<url>: sha256 …, not …` | A model's address answered with an error, or its file is not the one the contract names |
+| `<url>: HTTP <status>`, or `model <name> from <url> refused: its SHA-256 is …, not the signed …` | A model's address answered with an error, or its file is not the one the contract names |
 
 ### A campaign doesn't start: the kit does not fit the contract
 
@@ -362,7 +362,7 @@ The dashboard refuses to start a research run with agents in the last case. A ru
   - when the rig refused it, the line says `rig-1 refused it:` and the rig's reason, within seconds and with no refresh, and a strip above the box says **Not sent.** `The rig refused your last message:` and the reason. On **Commands**, the message's **message agent** row is **failed**, with the rig's reason in **Outcome**.
 
   The rig's refusal stays until a later message to the run goes through, and shows also for a message sent over MCP, the REST API or the command line. A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box.
-- **Why:** a message that nothing would read is refused. Control refuses, before signing it, a message with no words (`Write a message first.`), and one to a recipient that **Live** greys out, with the same words: everyone working, a lane or the planner of a run without agents, such as a try; a part that is off on **Edit rig**, such as `The planner is off on this rig (Edit rig), so nothing would read it.`; an advisor the rig's supervisor hasn't set up, such as `This rig's supervisor has no auditor set up, so nothing would read it.`; the planner or the auditor of a research run; or the review panel of a run with no goal it reviews, such as a hill climb (a research run's review panel reads messages). The rig refuses what control can't check, such as a lane the run doesn't have. [Steer a run](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive) lists control's reasons, and [`message_agent`](../../reference/signed-commands.md#message_agent) the rig's.
+- **Why:** a message that nothing would read is refused. Control refuses, before signing it, a message with no words (`Write a message first.`), and one to a recipient that **Live** greys out, with the same words: everyone working, a lane or the planner of a run without agents, such as a try; a part that is off on **Edit rig**, such as `The planner is off on this rig (Edit rig), so nothing would read it.`; an advisor the rig's supervisor hasn't set up, such as `This rig's supervisor has no auditor set up, so nothing would read it.`; the auditor of a research run (`A research run has no attempts to audit.`); or the review panel of a run with no goal it reviews, such as a hill climb (a research run's review panel reads messages). The rig refuses what control can't check, such as a lane the run doesn't have. [Steer a run](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive) lists control's reasons, and [`message_agent`](../../reference/signed-commands.md#message_agent) the rig's.
 - **Do:** write to a recipient that the **To** list in **Live** doesn't grey out, switch the part on, on **Edit rig**, or give the advisor a model. Control's refusals are in the **Audit log**, as `refused` entries, from the dashboard, MCP and the REST API alike.
 
 ### A message shows, but nobody reads it
@@ -411,7 +411,7 @@ A reason about one experiment names its state, then the rule: `only queued exper
 ### A research run doesn't end
 
 - **You see:** a research run goes on long after its **Run for at least** time. On its **Overview**, under **Research questions**, the **Answer check** line says what it waits for.
-- **Why:** after its minimum duration, a research run ends only when the rig's review panel finds every question answered, or when its `max_duration` is over, if the contract sets one ([When a research run ends](../../explanation/campaign-modes.md#when-a-research-run-ends)). **Answer check** says, for example:
+- **Why:** after its minimum duration, a research run ends when the rig's review panel finds every question answered, when its research stops adding (the progress rule: every open question is saturated and no item improved for a quarter of the run's time), or when its `max_duration` is over, if the contract sets one ([When a research run ends](../../explanation/campaign-modes.md#when-a-research-run-ends)). A run that keeps adding evidence without answering goes on. **Answer check** says, for example:
   - `Waiting for a verified claim on question 2.`, or `Waiting for verified claims: 12 of the 40 the campaign asks for.`: the review panel is asked only once every question has a verified claim and the run has the campaign's floor of verified claims;
   - `The check waits for a review panel: this rig's supervisor has no review panel set up. The run keeps researching.`, or `… the review panel is off on this rig (Edit rig). …`;
   - `Not yet: review 3 found gaps: …`: a reviewer found a question not answered, or an answer did not pass code's check of its claims and numbers. What each reviewer found missing is in the run's **Journal**, by `panel:` and the reviewer's name, and in the workers' next briefs. The review panel is asked again only on new evidence;
@@ -473,7 +473,7 @@ Thermite says why it refuses something. Where you see it depends on how you aske
 - **MCP** tools answer `{"error":"…"}` with the reason, and control's audit log has it as a `refused` entry, with the tool's name. A command kind that the token may not issue, such as `queue_add` with an agent's token, fails the tool's own input check with `Input validation error` instead, and leaves no audit entry.
 - **A rig** that refuses a command marks it `rejected` or `failed` on **Commands**, with the reason in **Outcome**. For example, `not now: …` for a busy rig, or `<kind> is the owner's to issue, not …'s` for a command only the owner may give.
 
-Control writes the dashboard's `Not done.`, `Not started.` and `refused:` answers, its own `Not sent.` refusals of a message, the MCP tools' refusals, and failed requests, to its audit log as well. To list them over MCP, call `control_log` with `action: "refused"` or `action: "failed"`.
+Control writes the dashboard's `Not done.`, `Not started.` and `refused:` answers, its own `Not sent:` refusals of a message, the MCP tools' refusals, and failed requests, to its audit log as well. To list them over MCP, call `control_log` with `action: "refused"` or `action: "failed"`.
 
 ## Still stuck?
 

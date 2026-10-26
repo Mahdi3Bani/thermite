@@ -128,7 +128,7 @@ To be asked about quiet trials, type the minutes in **Ask me after a quiet spell
 
 ## Decide without the dashboard
 
-All of these take the owner's token. The examples use the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead.
+All of these take the owner's token, except `rig_check`, which every token but the reader's may send. The examples use the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead.
 
 | Decision | REST API | MCP |
 | --- | --- | --- |
@@ -147,4 +147,4 @@ npx thermite command --control http://127.0.0.1:8800 --token-file .dev/secrets/c
   --rig local-1 --kind approve_promotion --payload '{"run":"sort-speed-1","attempt":"a-0123456789abcdef"}'
 ```
 
-The operator's and agent's MCP tokens can't issue any of these kinds.
+The operator's and agent's MCP tokens can't issue any of these kinds except `rig_check`, which every token but the reader's may send.

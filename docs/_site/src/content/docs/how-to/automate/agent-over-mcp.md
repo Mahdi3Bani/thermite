@@ -26,7 +26,7 @@ The reader's token reads control's log, providers, MCP servers, how rigs were se
 
 Give the agent the token with the least it needs: it acts with that token's rights, and nothing more. Don't give an agent the owner's token. The owner's token also approves and declines promotions over MCP, closes runs for good (`close_run`), retires rigs, works on the whole REST API and signs in to the dashboard.
 
-Some things no token can do over MCP: approving a goal the review panel passed, ending a campaign as not possible, changing a rig's settings (apart from its agents' model), accepting a rig's key and wiping a rig. Adding, changing or deleting an [MCP server](../operate/mcp-servers.md) is for the owner's token alone. A model is never the last word on what counts as a result; see [Why agents never judge](../../explanation/why-agents-never-judge.md). Approving and declining promotions is the owner's alone.
+Some things no token can do over MCP: approving a goal the review panel passed, ending a campaign as not possible, accepting a rig's key and wiping a rig. Adding, changing or deleting an [MCP server](../operate/mcp-servers.md) is for the owner's token alone. A model is never the last word on what counts as a result; see [Why agents never judge](../../explanation/why-agents-never-judge.md). Approving and declining promotions is the owner's alone.
 
 On the local stack, an operator's token is ready in `.dev/secrets/control-operator-token`, unless you replaced it with one of your own. For an agent's or a reader's token, see [Make and change tokens](../operate/tokens.md).
 
