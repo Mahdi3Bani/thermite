@@ -1,7 +1,7 @@
 ---
 id: "026"
 title: "Ship v0.1.0"
-status: READY
+status: VERIFIED
 version: "0.1.0"
 part: "The release"
 depends_on: ["001", "002", "003", "004", "005", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "056", "060", "062", "063", "064", "065", "066", "067", "068"]
@@ -11,11 +11,11 @@ updated: 2026-10-26
 
 # 026 · Ship v0.1.0
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** The release · **Depends on:** [001](_completed/001-plans-in-public.goal), [002](_completed/002-ci-and-repository-settings.goal), [003](_completed/003-advisors-no-default-cap.goal), [004](_completed/004-secret-scan.goal), [005](_completed/005-sample-project.goal), [007](_completed/007-known-limits.goal), [008](_completed/008-community-files.goal), [009](_completed/009-subscription-sign-in-tests.goal), [010](010-published-images.goal), [011](011-release-bundle.goal), [012](_completed/012-version-checks.goal), [013](_completed/013-thermite-doctor.goal), [014](_completed/014-quick-start-in-ci.goal), [015](_completed/015-log-paging.goal), [016](_completed/016-small-fixes.goal), [017](_completed/017-legacy-names.goal), [018](_completed/018-runpod-spike.goal), [019](_completed/019-rig-only-entry.goal), [020](_completed/020-runpod-rig-image.goal), [021](_completed/021-enrollment-codes.goal), [022](_completed/022-runpod-launch.goal), [023](_completed/023-runpod-lifecycle.goal), [024](_completed/024-runpod-models-and-results.goal), [025](_completed/025-runpod-tests-and-docs.goal), [056](_completed/056-codex-harness.goal), [060](_completed/060-docs-site.goal), [062](_completed/062-research-folder.goal), [063](_completed/063-scan-and-steer.goal), [064](_completed/064-experiment-queue.goal), [065](_completed/065-journals-and-corpus.goal), [066](_completed/066-direction-rules.goal), [067](_completed/067-assign-queue-from.goal), [068](_completed/068-mcp-servers-for-agents.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** The release · **Depends on:** [001](001-plans-in-public.goal), [002](002-ci-and-repository-settings.goal), [003](003-advisors-no-default-cap.goal), [004](004-secret-scan.goal), [005](005-sample-project.goal), [007](007-known-limits.goal), [008](008-community-files.goal), [009](009-subscription-sign-in-tests.goal), [010](../010-published-images.goal), [011](../011-release-bundle.goal), [012](012-version-checks.goal), [013](013-thermite-doctor.goal), [014](014-quick-start-in-ci.goal), [015](015-log-paging.goal), [016](016-small-fixes.goal), [017](017-legacy-names.goal), [018](018-runpod-spike.goal), [019](019-rig-only-entry.goal), [020](020-runpod-rig-image.goal), [021](021-enrollment-codes.goal), [022](022-runpod-launch.goal), [023](023-runpod-lifecycle.goal), [024](024-runpod-models-and-results.goal), [025](025-runpod-tests-and-docs.goal), [056](056-codex-harness.goal), [060](060-docs-site.goal), [062](062-research-folder.goal), [063](063-scan-and-steer.goal), [064](064-experiment-queue.goal), [065](065-journals-and-corpus.goal), [066](066-direction-rules.goal), [067](067-assign-queue-from.goal), [068](068-mcp-servers-for-agents.goal)
 
 ## What
 
-When the release plan's [list of what is left](../release-v0.1.0.md#what-is-left-before-the-tag) is done (the scope is frozen since 2026-10-25):
+When the release plan's [list of what is left](../../release-v0.1.0.md#what-is-left-before-the-tag) is done (the scope is frozen since 2026-10-25):
 
 1. Test the quick start on clean machines, from the release bundle and from source: Linux with Docker, macOS with Docker Desktop, and macOS with Podman.
 2. Run the full checks and the acceptance suites the release touches, once.
@@ -37,14 +37,14 @@ The owner commits the release's last changes on `main` and makes the tag (2026-1
 3. **Tag.** On `main`: `git tag -a v0.1.0 -m "Thermite v0.1.0"` and `git push origin v0.1.0`. The release workflow builds and publishes the images (control, the CPU and CUDA harnesses, the supervisor and the rig image), writes the release bundle (`compose.yaml` pinned by digest, and its README as the notes) and attaches it to a draft release.
 4. **Check the packages.** Each image must pull without signing in: `docker pull` each `ghcr.io/…:0.1.0` from a machine that is signed out. A package that was never public before (control's, the supervisor's) may need its visibility set to public once, in the repository's packages.
 5. **Publish.** Read the draft release's notes (what is in the release, the known limits, how to report a problem, the images), change what needs it, and publish it.
-6. **Test from the release.** On a clean machine, follow [Your first run](../../_site/src/content/docs/tutorials/first-run.md) from the published bundle.
+6. **Test from the release.** On a clean machine, follow [Your first run](../../../_site/src/content/docs/tutorials/first-run.md) from the published bundle.
 7. **Start the next version's branch.** `git switch -c v0.1.1 main`, then `git push origin v0.1.1`. The work for v0.1.1 merges there, and `main`, with the docs site, stays at v0.1.0 until v0.1.1 ships. Then set Dependabot's `target-branch` to `v0.1.1` (`.github/dependabot.yml`), and say in CONTRIBUTING.md and on the site's Contributing page that pull requests go to `v0.1.1`. When v0.1.1 ships, it merges into `main`, and its branch is deleted before the tag `v0.1.1` is made, so that a branch and a tag never share a name.
 
 ## Done when
 
-- [ ] `main` holds the release, and the tag and the images exist.
-- [ ] The release notes are published.
-- [ ] The `v0.1.1` branch exists, and pull requests and Dependabot's updates go to it.
+- [x] `main` holds the release, and the tag and the images exist.
+- [x] The release notes are published.
+- [x] The `v0.1.1` branch exists, and pull requests and Dependabot's updates go to it.
 
 ## Decisions
 
@@ -78,7 +78,8 @@ None.
 - 2026-10-26 00:12 UTC: Step 2 on `main` at a35d1d3, on a maintainer's Mac, 22:56 to 00:08 UTC. `npm run check` passed: 1,412 tests side by side and 142 alone; one skipped, the ccache test of goal 144, as ccache isn't installed there. Each acceptance the release touches passed: the compose smoke with `podman compose` and with `docker compose`, the judge (M2), control (M3), the agents (M4), steering (M5, with the lifecycle driver), the quick start (9.7 min), the one-container rig image, RunPod with the fake API, multi-GPU (with the second judge card's builder, which no run had checked before), Claude Code and Codex. Not run: the smoke with `podman-compose` (not installed there), and the suites for what the release doesn't change (machines, clusters, rig deploy, new campaign, the real Claude Code). After a35d1d3, `main` changed only its docs, its plan and the release README's template (d856cf6, the CUDA 13 harness labelled untested), whose tests pass. At the tag, run only what changes after this.
 - 2026-10-26 04:18 UTC: Step 2 again for what changed after a35d1d3, on 61c7f82: the tests that run alone (142 pass), control acceptance and the Claude Code acceptance pass under podman compose; the parallel tests passed on f8a9274 (1,422, one skipped where ccache isn't installed) and the research tests on 61c7f82 (111). Then every page was read against the code (the quick starts and install pages, the contributor docs, the how-to, reference and explanation pages, the READMEs and the release readme) and corrected in 1e289a5, 7a5d1f6, c476063 and 0ab188b. The quick-start acceptance passes on c476063 (9.1 minutes), and the live site serves 0ab188b. The statements that change at the tag (the status lines, AGENTS.md's stage, the changelog's date, the roadmap page) are ready as one commit for the tag.
 - 2026-10-26 04:54 UTC: The tutorials no test follows, followed by hand on a stack built as a release (the quick-start acceptance with KEEP=1): First goal campaign, every command and quoted line, to `Completed` and `1/1 goals met`; Your own project, with OpenCode's own free model (its model check passed in 4.3 s), from the kit's try to a change the owner approved, the patch applied and the run paused. One line differed, a try's `judge only`, fixed in de10702. The project was served by git daemon in place of a public repository, so step 2 and **Look it up** were not followed. The documentation's screenshots were taken again from the demo (0665804).
+- 2026-10-26 05:26 UTC: Shipped. `main` at 28b9446 holds the release, with the statements that change at the tag; v0.1.0 tagged there and pushed at 05:03:12 UTC. CI's full run on the tag passed every job (the fast checks and judge tests on Node 22 and 24, the docs site, the secret scan, compose smoke, RunPod, quick start and the rig image), and the release workflow passed: six images built, each checked pulled by digest with no sign-in, then tagged 0.1.0, 0.1.0-cuda, 0.1.0-cuda13; each version tag also resolves anonymously from here. The release, with its notes and the bundle (compose.yaml and README.md), was published at 05:25:53 UTC. The branch v0.1.1 exists at the same commit, and Dependabot's updates go to it. Left for later, in their own goals: the bundle on clean machines (goal 011) and a fresh machine's pull with the CUDA harness's isolation self-test (goal 010).
 
 ---
 
-Run with `/goal Complete docs/plan/goals/026-ship-v0.1.0.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/_completed/026-ship-v0.1.0.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

@@ -120,7 +120,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ### The release
 
-- [026](goals/026-ship-v0.1.0.goal) Ship v0.1.0 · `READY`
+- [026](goals/_completed/026-ship-v0.1.0.goal) Ship v0.1.0 · `VERIFIED`
 
 ## v0.1.1
 

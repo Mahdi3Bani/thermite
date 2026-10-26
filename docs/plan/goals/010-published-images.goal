@@ -25,7 +25,7 @@ Rigs on machines, on clusters and on RunPod pull images. Building from source ta
 
 ## Done when
 
-- [ ] A tag publishes every image with its labels.
+- [x] A tag publishes every image with its labels.
 - [ ] A fresh machine pulls them, and the CUDA harness passes the isolation self-test.
 - [x] The images are public.
 - [x] The release checks each published image, pulled by digest with no sign-in, before it gets the version's tag: every image reports the release's commit, carries no Claude Code, has no set-id file and sets no key in its environment; the harnesses and the rig image report their image ID and carry neither socat nor bubblewrap; the supervisor and the rig image name no STE checker.
@@ -59,7 +59,8 @@ Rigs on machines, on clusters and on RunPod pull images. Building from source ta
 
 - 2026-10-24: Every image has no set-id file now, not only the rig image, at the owner's word: the control, harness and supervisor Containerfiles clear set-id bits last in their final stage, as the rig's does, and the build fails if one is left (`src/release/checks.test.ts` checks all four Containerfiles). The release's check holds every image to it. The command was tried inside local builds of the three images: it clears every bit, and Node still runs. Not built here: the images, which CI's compose and rig image jobs build on the push.
 - 2026-10-24: The first publish by hand passed (run 40129571334, `ac86629`, with the owner's go). The first try stopped at the CPU harness's push (`denied: permission_denied: write_package`): the `thermite-harness` package had been first pushed by hand, outside the workflow, so the repository had no write access to it; the owner gave it access in the package's settings, and the failed jobs ran again. Then all five images were pushed with the commit's tag and passed the checks, each pulled by digest with no sign-in: `thermite-control`, `thermite-harness` (CPU and `-cuda`), `thermite-supervisor` and `thermite-rig` (`ac866290ddeb-cuda`, `sha256:9a7672f08d449c3c447b6d1267d8d11216c1eb0a29b4e3731d1bebfd6ea4403e`). All four packages are public and linked to the repository. Left: the lab's control pins the rig image, the first tag, and a fresh machine's pull with the CUDA harness's isolation self-test.
-- 2026-10-24: The lab's control now pins the published rig image by digest for both RunPod settings, at the owner's word, in place of the images the lab built; its infrastructure assistant checked the image the same way first, pulled with no sign-in. One difference it noted: the release's CUDA base is Ubuntu 22.04 (pinned in the workflow), where the lab's own builds used Ubuntu 24.04. Left: the first tag, and a fresh machine's pull with the CUDA harness's isolation self-test.
+- 2026-10-24: The lab's control now pins the published rig image by digest for both RunPod settings, at the owner's word, in place of the images the lab built; its infrastructure assistant checked the image the same way first, pulled with no sign-in. One difference it noted: the release's CUDA base is Ubuntu 22.04 (pinned in the workflow), where the lab's own builds used Ubuntu 24.04. Left: the first tag, and a fresh machine's pull with the CUDA harness's isolation self-test.- 2026-10-26 05:26 UTC: The v0.1.0 tag published every image with its labels (release workflow, every job passed); each version tag resolves with no sign-in. Left: a fresh machine's pull, with the CUDA harness's isolation self-test.
+
 ---
 
 Run with `/goal Complete docs/plan/goals/010-published-images.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
