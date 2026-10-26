@@ -13,13 +13,18 @@ import {
   RESEARCH_PLANNER_PI_SYSTEM as RESEARCH_PLANNER_SYSTEM,
   RESEARCH_PLANNER_TASK,
 } from "../../src/agents/roles/research-planner.ts";
-import { RESEARCH_SYSTEM as RESEARCH_WORKER_SYSTEM } from "../../src/agents/tools/research.ts";
-import { CLAUDE_SYSTEM } from "../../src/harness/agents/claude-code.ts";
-import { CODEX_SYSTEM } from "../../src/harness/agents/codex.ts";
+import {
+  RESEARCH_WORKER_NOTES,
+  RESEARCH_WORKER_SYSTEM,
+} from "../../src/agents/roles/research-worker.ts";
+import {
+  WORKER_CLAUDE_CODE_SYSTEM,
+  WORKER_CODEX_SYSTEM,
+  WORKER_OPENCODE_SYSTEM,
+  WORKER_PI_NOTES,
+  WORKER_PI_SYSTEM,
+} from "../../src/agents/roles/worker.ts";
 import { SUMMARY_SYSTEM } from "../../src/harness/agents/compaction.ts";
-import { SYSTEM as OPENCODE_SYSTEM } from "../../src/harness/agents/opencode.ts";
-import { RESEARCH_NOTES } from "../../src/harness/agents/research-worker.ts";
-import { NOTES_AND_SOURCES, SYSTEM as WORKER_SYSTEM } from "../../src/harness/agents/worker.ts";
 import {
   ADVISOR_NOTES,
   AT_WORK_GUIDE,
@@ -44,13 +49,13 @@ import {
  * `UPDATE_GOLDEN=1 node scripts/test.mjs tests/agents/role-texts.test.ts`, then read the diff.
  */
 const TEXTS: Record<string, string> = {
-  "worker.pi.system": WORKER_SYSTEM,
-  "worker.pi.notes-and-sources": NOTES_AND_SOURCES,
-  "worker.opencode.system": OPENCODE_SYSTEM,
-  "worker.claude-code.system": CLAUDE_SYSTEM,
-  "worker.codex.system": CODEX_SYSTEM,
+  "worker.pi.system": WORKER_PI_SYSTEM,
+  "worker.pi.notes-and-sources": WORKER_PI_NOTES,
+  "worker.opencode.system": WORKER_OPENCODE_SYSTEM,
+  "worker.claude-code.system": WORKER_CLAUDE_CODE_SYSTEM,
+  "worker.codex.system": WORKER_CODEX_SYSTEM,
   "research-worker.system": RESEARCH_WORKER_SYSTEM,
-  "research-worker.notes": RESEARCH_NOTES,
+  "research-worker.notes": RESEARCH_WORKER_NOTES,
   "planner.task": PLANNER_TASK,
   "planner.limits": PLAN_LIMITS_TEXT,
   "planner.pi.system": PLANNER_SYSTEM,

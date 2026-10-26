@@ -3,9 +3,9 @@ import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { WORKER_CODEX_SYSTEM } from "../../../src/agents/roles/worker.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
 import {
-  CODEX_SYSTEM,
   codexArgs,
   codexConfig,
   codexExitWords,
@@ -220,9 +220,9 @@ describe("the Codex CLI", () => {
     );
     assert.ok(!`${a.join(" ")}${c}`.includes(ACCESS), "the access token is in neither");
     assert.equal(tomlString('a"b\\c\nd\u007f'), '"a\\"b\\\\c\\u000ad\\u007f"');
-    assert.doesNotMatch(CODEX_SYSTEM, /set timeout to 0/);
-    assert.match(CODEX_SYSTEM, /thermite-trial submit --hypothesis/);
-    assert.match(CODEX_SYSTEM, /keep field notes with "thermite-trial note --kind KIND/);
+    assert.doesNotMatch(WORKER_CODEX_SYSTEM, /set timeout to 0/);
+    assert.match(WORKER_CODEX_SYSTEM, /thermite-trial submit --hypothesis/);
+    assert.match(WORKER_CODEX_SYSTEM, /keep field notes with "thermite-trial note --kind KIND/);
     const limits = codexLimitsNote(laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }));
     assert.match(limits, /Codex itself included\./);
     assert.doesNotMatch(limits, /OpenCode|500 MiB/);

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { WORKER_CODEX_SYSTEM } from "../../agents/roles/worker.ts";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import { type CallUsage, callUsage } from "../../core/usage.ts";
@@ -31,7 +32,6 @@ import {
   type OpencodeOnceDeps,
   ownerLines,
   readNew,
-  SYSTEM,
   takeUsage,
 } from "./opencode.ts";
 import {
@@ -464,15 +464,6 @@ export function codexEnv(o: {
   };
 }
 
-const SHELL_NOTE =
-  "Give a long build or test the time it needs to finish. What a command starts in the background runs until the trial ends.";
-
-/** The trial's opening instructions for Codex (its shell tool's limits differ from OpenCode's). */
-export const CODEX_SYSTEM = SYSTEM.replace(
-  /\n\nYour shell tool stops[\s\S]*$/,
-  `\n\n${SHELL_NOTE}`,
-);
-
 /** The lane's limits as the agent must know them: Codex and its commands share them. */
 export const codexLimitsNote = (limits: LaneLimitValues) =>
   limitsNote(limits)
@@ -591,7 +582,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
   const maxTurns = spec.maxTurns;
-  let message = `${CODEX_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${codexLimitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each message or tool call is one", deadline)}`;
+  let message = `${WORKER_CODEX_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${codexLimitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each message or tool call is one", deadline)}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {

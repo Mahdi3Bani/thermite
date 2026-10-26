@@ -1,9 +1,9 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
-import { CODE_RESEARCH_TOOLS, codeResearchNote } from "../../agents/tools/research.ts";
+import { WORKER_PI_NOTES, WORKER_PI_SYSTEM } from "../../agents/roles/worker.ts";
+import { CODE_RESEARCH_TOOLS } from "../../agents/tools/research.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
-import { notesInstruction } from "../../core/journal.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
@@ -163,21 +163,6 @@ export interface TrialResult {
    */
   failing?: TrialFailing | undefined;
 }
-
-export const SYSTEM = `You are a research worker in an automated research harness. You get one assignment and
-one trial. Work in the repository in your current directory: read the code, make a focused change
-that follows your assignment, build and test it with the run tool, then call submit exactly once
-with a short hypothesis. A separate judge you cannot see or change will measure your change; your
-own timings are only for your guidance and never count. Keep changes inside the editable paths you
-are given. If you find a flaw in your own change, list it in known_flaws: hiding it is worse than
-a smaller result. If you cannot make a useful change, explain why in your final message without
-submitting. If you see another experiment worth trying that is not your assignment, propose it
-with the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on.`;
-
-/** Field notes, and sources, claims and notes from the web, for a code trial (goal 065). */
-export const NOTES_AND_SOURCES = `${notesInstruction("with the note tool")}
-
-${codeResearchNote("with the fetch tool")}`;
 
 function text(t: string) {
   return { content: [{ type: "text" as const, text: t }], details: {} };
@@ -461,7 +446,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const watch = new ProviderWatch();
   const agent = new Agent({
     initialState: {
-      systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
+      systemPrompt: `${WORKER_PI_SYSTEM}\n\n${WORKER_PI_NOTES}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
       model,
       tools: clock.wrap(guardRepeats(tools, () => compactor.count)),
       thinkingLevel,

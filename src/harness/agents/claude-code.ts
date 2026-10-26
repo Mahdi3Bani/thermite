@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { WORKER_CLAUDE_CODE_SYSTEM } from "../../agents/roles/worker.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
@@ -31,7 +32,6 @@ import {
   NUDGE,
   ownerLines,
   readNew,
-  SYSTEM,
   takeUsage,
 } from "./opencode.ts";
 import { type PlanWindows, type RateLimitInfo, windowsOf } from "./plan-windows.ts";
@@ -518,15 +518,6 @@ export function claudeArgs(
   ];
 }
 
-const SHELL_NOTE =
-  "Your Bash tool stops a command after two minutes unless you set its timeout (in milliseconds): for a long build or test, set a longer one. What a command starts in the background runs until the trial ends.";
-
-/** The trial's opening instructions for Claude Code (its shell tool's limits differ from OpenCode's). */
-export const CLAUDE_SYSTEM = SYSTEM.replace(
-  /\n\nYour shell tool stops[\s\S]*$/,
-  `\n\n${SHELL_NOTE}`,
-);
-
 export interface ClaudeTrialDeps extends ProviderLink {
   runner: Runner;
   model: ModelConfig;
@@ -646,7 +637,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
   const maxTurns = spec.maxTurns;
-  let message = `${CLAUDE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one", deadline)}`;
+  let message = `${WORKER_CLAUDE_CODE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, maxTurns, "each model reply is one", deadline)}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {

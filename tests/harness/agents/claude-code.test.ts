@@ -4,10 +4,10 @@ import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../src/agents/roles/worker.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
 import type { CallUsage } from "../../../src/core/usage.ts";
 import {
-  CLAUDE_SYSTEM,
   claudeArgs,
   claudeExitWords,
   claudeModelCheck,
@@ -209,10 +209,13 @@ describe("Claude Code", () => {
     assert.equal(a[a.indexOf("--tools") + 1], "");
     assert.equal(a[a.indexOf("--model") + 1], "claude-opus-5-5");
     assert.ok(!a.join(" ").includes("sk-ant"), "the token is never an argument");
-    assert.match(CLAUDE_SYSTEM, /Bash tool stops a command after two minutes/);
-    assert.doesNotMatch(CLAUDE_SYSTEM, /set timeout to 0/);
+    assert.match(WORKER_CLAUDE_CODE_SYSTEM, /Bash tool stops a command after two minutes/);
+    assert.doesNotMatch(WORKER_CLAUDE_CODE_SYSTEM, /set timeout to 0/);
     // Claude Code keeps field notes with the same command as OpenCode.
-    assert.match(CLAUDE_SYSTEM, /keep field notes with "thermite-trial note --kind KIND/);
+    assert.match(
+      WORKER_CLAUDE_CODE_SYSTEM,
+      /keep field notes with "thermite-trial note --kind KIND/,
+    );
   });
 
   const spec = (area: string, workspace: string, over: Partial<TrialSpec> = {}): TrialSpec => ({

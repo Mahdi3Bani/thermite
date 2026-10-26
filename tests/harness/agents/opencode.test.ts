@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { RESEARCH_SYSTEM } from "../../../src/agents/tools/research.ts";
+import { RESEARCH_WORKER_SYSTEM } from "../../../src/agents/roles/research-worker.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
 import type { CallUsage } from "../../../src/core/usage.ts";
 import { claudeEnv } from "../../../src/harness/agents/claude-code.ts";
@@ -632,7 +632,7 @@ describe("the OpenCode harness", () => {
     assert.equal(run.env?.THERMITE_WORKSPACE, undefined, "nothing to submit");
     assert.ok(run.argv.includes("opencode/glm-5.3-flash-free"));
     const prompt = String(run.argv.at(-1));
-    assert.ok(prompt.startsWith(RESEARCH_SYSTEM));
+    assert.ok(prompt.startsWith(RESEARCH_WORKER_SYSTEM));
     assert.match(prompt, /thermite-trial research add_claim - <<'EOF'/);
     assert.match(prompt, /only archived sources can verify a claim/);
     assert.match(prompt, /research folder, .*folder\. Start with INDEX\.md/);

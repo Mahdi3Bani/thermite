@@ -2,11 +2,10 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { RESEARCH_WORKER_SYSTEM } from "../../agents/roles/research-worker.ts";
+import { WORKER_OPENCODE_SYSTEM } from "../../agents/roles/worker.ts";
 import { NOTE_USAGE } from "../../agents/tools/names.ts";
 import {
-  CODE_RESEARCH_TOOLS,
-  codeResearchNote,
-  RESEARCH_SYSTEM,
   type ResearchFolderPaths,
   researchCommands,
   researchFolderNote,
@@ -341,31 +340,6 @@ export function readNew(path: string, from: number): { lines: string[]; next: nu
   }
 }
 
-export const SYSTEM = `You are a research worker in an automated research harness, working in a git repository
-in your current directory. You get one assignment and one trial. Read the code, make a focused
-change that follows your assignment, build and test it, then submit it exactly once:
-
-  thermite-trial submit --hypothesis "what you changed and why it should help" [--claim "what you expect the judge to find"] [--flaw "anything wrong or limited"]...
-
-A separate judge you cannot see or change measures your change; your own timings only guide you.
-Keep your change inside the editable paths. If you find a flaw in your own change, list it with
---flaw: hiding it is worse than a smaller result. Submitting ends the trial.
-
-Other commands: "thermite-trial dev-run [--timeout SECONDS] -- COMMAND" runs a command on the
-measurement device (for example a GPU) when the judge is not using it; "thermite-trial status
-ATTEMPT" shows how the judge decided an attempt; "thermite-trial idea TITLE [--why TEXT]
-[--family TEXT]" proposes another experiment worth trying for the run's queue (the planner
-decides whether it is queued; your trial goes on).
-
-${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: run, experiment, attempt, source, claim, finding, round, trial or message; no --about: the run)`)}
-
-${codeResearchNote('with "thermite-trial research fetch URL"')} The research commands:
-
-${researchCommands(CODE_RESEARCH_TOOLS)}
-
-Your shell tool stops a command after two minutes unless you set its timeout: for a long build or
-test, set timeout to 0. What a command starts in the background runs until the trial ends.`;
-
 /** The lane's limits, as the agent must know them: OpenCode and its commands share them. */
 export function limitsNote(limits: LaneLimitValues): string {
   return `Memory: ${limits.runRssMib} MiB for everything your lane runs at once, OpenCode itself included (it uses about 500 MiB). A command that takes it over the limit is killed (your shell tool reports "Killed by SIGKILL"): run it again with less parallelism (for example make -j2) or a smaller input, or as a development run, which has its own limit. Disk: ${limits.workspaceMib} MiB, and at most 50,000 files, for this trial's directory, OpenCode's own files included; going over ends the trial.`;
@@ -643,7 +617,7 @@ export async function runOpencodeTrial(
   const started = Date.now(); // the trial's length only when one is set (goal 079)
   const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
   const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
-  let message = `${SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, undefined, "", deadline)}`;
+  let message = `${WORKER_OPENCODE_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, undefined, "", deadline)}`;
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
   let offset = 0;
@@ -807,7 +781,7 @@ export function researchPrompt(
   minutes: number | undefined,
   folder: ResearchFolderPaths,
 ): string {
-  return `${RESEARCH_SYSTEM}
+  return `${RESEARCH_WORKER_SYSTEM}
 
 Your research tools are commands you run with your shell tool:
 

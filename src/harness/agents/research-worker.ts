@@ -1,15 +1,17 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import {
+  RESEARCH_WORKER_NOTES,
+  RESEARCH_WORKER_SYSTEM,
+} from "../../agents/roles/research-worker.ts";
+import {
   READ_MAX,
-  RESEARCH_SYSTEM,
   RESEARCH_TOOLS,
   type ResearchFolderPaths,
   researchFolderNote,
   researchOutput,
 } from "../../agents/tools/research.ts";
 import type { LaneLimitValues } from "../../core/contract.ts";
-import { notesInstruction } from "../../core/journal.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import { Compactor, summarizer } from "./compaction.ts";
 import { IDEA_TOOL, type IdeaInput, proposeIdea } from "./idea-tool.ts";
@@ -71,9 +73,6 @@ export interface ResearchDeps {
   /** Told of each wait for the provider (a rate limit, a failed call) before it (goal 079). */
   waiting?: ((w: ProviderWait) => void) | undefined;
 }
-
-/** A research worker's field notes, told apart from its research notes. */
-export const RESEARCH_NOTES = `${notesInstruction("with the note tool")} Field notes are not research notes (add_note), which record what sources say for the report.`;
 
 const out = (value: unknown) => ({
   content: [{ type: "text" as const, text: researchOutput(value) }],
@@ -158,8 +157,8 @@ export async function runResearchTrial(
     initialState: {
       systemPrompt: `${
         spec.folder
-          ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
-          : RESEARCH_SYSTEM
+          ? `${RESEARCH_WORKER_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
+          : RESEARCH_WORKER_SYSTEM
       }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
       model,
       tools: clock.wrap(guardRepeats(tools, () => compactor.count)),
@@ -222,7 +221,7 @@ export async function runResearchTrial(
   try {
     // With the note tool, the brief says how to keep field notes, and how they differ from
     // research notes.
-    await agent.prompt(deps.note ? `${spec.brief}\n\n${RESEARCH_NOTES}` : spec.brief);
+    await agent.prompt(deps.note ? `${spec.brief}\n\n${RESEARCH_WORKER_NOTES}` : spec.brief);
     // A cut-off reply, a failed call or a full context (compacted) does not end a research trial
     // before its time; only a conversation that does not fit even compacted does, and failures
     // that stop the run's agents.
