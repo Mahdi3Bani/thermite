@@ -42,11 +42,44 @@ The owner, 2026-10-26: "I also want all agents that ran to use native TUI of the
 - [ ] The token use of Claude Code's TUI and `-p` mode is measured on the same work, and the result is recorded here.
 - [ ] The docs describe the live view, steering and what each program records; the fast checks, the docs checks and the agents, Claude Code, real Claude Code and Codex acceptance checks pass.
 
+## What the review found
+
+The audit's lane 12 (`.internal/reviews/v0.1.1-audit/12-native-tui.md`) reviewed each program's terminal UI, its session log and the terminal plumbing on 2026-10-26, from the programs' documentation and source and from Thermite's code. It ran and installed nothing.
+
+- **Each program can run its TUI with nothing to answer,** given the right flags and seeded settings: Claude Code in bypass-permissions mode with onboarding and the trust dialog marked done; Codex with its bypass flags and the workspace marked trusted (its yolo flag no longer skips the trust prompt); OpenCode as a server with its TUI attached. Each needs checking on the pinned versions.
+- **Each program writes a session log** that can become Thermite's events, and has hooks or a plugin that can signal the end of a turn. The log formats are not promised stable, so each adapter counts records it does not know, and a check catches a new version's change. Claude Code's transcript is readable by its own user only, so the lane keeps a mirror.
+- **Steering can arrive inside a turn,** through Claude Code's and Codex's hooks and OpenCode's session API. That works in headless mode too, and ends today's wait for the next turn.
+- **The token claim:** the review found no source for a difference in tokens. An open report on Claude Code's tracker (github.com/anthropics/claude-code/issues/97074) measures `-p` using about 1.8 times as much of a subscription's 5-hour window per token as the TUI (1.3 to 3 times in comments), with the same tokens in both modes. So the gain is plan quota, on a Claude subscription only, and only if the TUI's own extra model calls (titles, a classifier, compaction when idle) are turned off. Thermite measures it itself (question 10).
+- **What can go wrong:** a popup that blocks the TUI; typing that races the program's input box; a session-log format that changes with a release; a turn that ends with no signal, leaving a trial idle.
+
+## Design (proposed by the review)
+
+- **A terminal host for each trial,** a small Thermite program running as the lane's user inside the broker, under the lane's limits, its GPU fence and its network rules. It holds the program's TUI in a pseudo-terminal (`node-pty`) with a headless terminal emulator (`@xterm/headless`) that keeps the screen.
+- **Decisions read the session log and the hooks, never the screen.** The screen is only shown.
+- **The live view:** the terminal's frames, sent only for trials someone is watching and kept in memory; the transcript stays beside it. A byte stream waits for goal [168](168-message-bus.goal)'s decision.
+- **Steering:** Thermite's own messages go in through the hooks or the program's API; typing is for the owner's console (text, slash commands, skills, MCP reconnects), each input a signed command, recorded with its outcome.
+- **Which roles:** code and research workers in Claude Code, Codex and OpenCode run their TUI. The planner, the model check and the advisors stay headless; Pi stays in-process (question 2).
+- **The steps:** goal [166](166-agent-definitions.goal) and the table of agent programs first; a spike of each program's TUI in the harness image, with recorded session logs; the session-log adapters, beside today's stream readers; hook signals and steering inside a turn, in headless mode; the terminal host; the terminal mode in the one trial loop; the steering command; the live view; usage from the TUI; stand-ins, acceptance checks and a version check; the docs and credits. About 55 to 65 files, a third of them tests.
+
 ## Decisions
 
-- 2026-10-26: the audit's lane 12 reviews how each program runs its TUI and writes its session log, and proposes the design, in `.internal/reviews/v0.1.1-audit/12-native-tui.md`.
+- 2026-10-26: the audit's lane 12 reviewed the programs and the terminal plumbing, and proposed the design above.
 
 ## Open questions
+
+Each with the review's recommendation.
+
+1. **Which roles run in a TUI?** Recommended: code and research workers in Claude Code, Codex and OpenCode; the planner, the model check and the advisors stay headless, since each makes one structured call that code checks.
+2. **Pi.** Recommended: Pi workers stay in-process, with no TUI; moving them to the `pi` command's TUI changes their isolation and tools, a design change of its own.
+3. **Keep headless mode?** Recommended: yes, as a choice for each rig ("Agents run in: their terminal, or headless"), with the terminal as the default once the acceptance checks pass, so a rig can go back without a new image.
+4. **Who may type into an agent's terminal, and how?** Recommended: the owner only; text, slash commands and a fixed list of named keys; each input a signed command, recorded word for word with its outcome. No free stream of keys until goal 168 allows a signed grant for one session.
+5. **The pseudo-terminal and emulator.** Recommended: `node-pty` built in the image, and `@xterm/headless` with its serialize addon, all MIT. Instead: `script`, tmux, or Python's `pty`.
+6. **The browser's terminal.** Recommended: xterm.js, kept in the repository, read-only, at the agent's size.
+7. **Keep terminal recordings?** Recommended: no. The session log and the events are the record; the screen is a view, kept only as its last frame while the trial runs.
+8. **Relabelling Claude Code's entrypoint to get the TUI's weighting in headless mode.** Recommended: never; it misreports the program to Anthropic on the owner's account.
+9. **A full Claude usage window during a TUI trial.** Recommended: the TUI waits and goes on by itself, recorded as a provider wait (no new trial starts, the research clock stops).
+10. **Measure the token claim on the owner's subscription?** Recommended: yes. First offline, with the stand-in for Anthropic's API recording each request's label and size (no cost); then at least three short paired runs in a quiet period, with the owner's yes for the plan quota they use.
+11. **Skills for agents.** Recommended: a kit may carry agent skills, reviewed with the kit, which Thermite copies into each trial's home.
 
 ## Progress
 
