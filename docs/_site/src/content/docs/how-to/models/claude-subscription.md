@@ -102,7 +102,7 @@ Control gives a rig the token only while one of its agents uses the subscription
 
 ## Watch the usage windows
 
-A Claude plan has a 5-hour window and a weekly window. Open the subscription's row on **Providers** to see them: "5-hour window" and "Weekly window", each with how much is used and when it resets, as Claude Code on a rig last reported it. Before any agent uses the subscription, the row says "No usage reported yet".
+A Claude plan has a 5-hour window and a weekly window. The subscription's row on **Providers** shows them on its closed line, such as `5-hour 42%` and `Weekly 81%`; a window at 80% or more is marked. Open the row to see "5-hour window" and "Weekly window", each with how much is used and when it resets, as Claude Code on a rig last reported it: Claude Code reports a window with each answer that changes it, and the rig keeps the other window from earlier answers. Control makes no call to Anthropic with the token, so before any agent uses the subscription, the row says "No usage reported yet". The MCP tool [`providers`](../../reference/mcp-tools.md#providers) gives the same windows.
 
 When a window is full, the trial (one worker's session) that hit it ends, and the rig's agents wait until the window resets. No new trial or plan starts on that rig until then. **Live** in the sidebar, the dashboard's view of the agents at work ([glossary](../../reference/glossary.md)), shows "agents wait for the subscription's usage window to reset at" and the time. Nothing pays for more: the agents simply continue after the reset.
 

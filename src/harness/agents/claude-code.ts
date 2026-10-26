@@ -34,6 +34,7 @@ import {
   SYSTEM,
   takeUsage,
 } from "./opencode.ts";
+import { type PlanWindows, type RateLimitInfo, windowsOf } from "./plan-windows.ts";
 import {
   afterProgramFailure,
   type FailureCount,
@@ -125,13 +126,8 @@ export function claudeExe(): string | undefined {
   return undefined;
 }
 
-/** A subscription's usage window, as Claude Code reports it. */
-export interface UsageWindow {
-  /** 0 to 1. */
-  utilization: number;
-  /** When it resets (ISO). */
-  resets_at: string;
-}
+export type { UsageWindow } from "./plan-windows.ts";
+export { mergeUsage } from "./plan-windows.ts";
 
 /** What Claude Code's stream-json output has said so far. */
 export interface ClaudeTally {
@@ -147,7 +143,7 @@ export interface ClaudeTally {
   /** Its last lines that were not JSON. */
   notes: string[];
   /** The subscription's windows, from its latest rate-limit event. */
-  usage?: { five_hour?: UsageWindow; seven_day?: UsageWindow } | undefined;
+  usage?: PlanWindows | undefined;
   /** Set when a window is full: when it resets (ISO). */
   limitedUntil?: string | undefined;
   /** The final result's text, when the run ended with one. */
@@ -202,12 +198,7 @@ type Event = {
   subtype?: string;
   session_id?: string;
   message?: { id?: string; content?: Block[] | string; usage?: Usage };
-  rate_limit_info?: {
-    status?: string;
-    resetsAt?: number;
-    rateLimitType?: string;
-    unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }>;
-  };
+  rate_limit_info?: RateLimitInfo;
   is_error?: boolean;
   result?: string;
   num_turns?: number;
@@ -369,15 +360,7 @@ export function readClaudeEvents(
       }
       case "rate_limit_event": {
         const r = e.rate_limit_info ?? {};
-        const w = r.unifiedWindows ?? {};
-        const win = (k: string): UsageWindow | undefined => {
-          const x = w[k];
-          const at = iso(x?.resetsAt);
-          return x && typeof x.utilization === "number" && at
-            ? { utilization: x.utilization, resets_at: at }
-            : undefined;
-        };
-        t.usage = { five_hour: win("five_hour"), seven_day: win("seven_day") };
+        t.usage = windowsOf(r, t.usage);
         if (r.status && r.status !== "allowed" && r.status !== "allowed_warning") {
           t.limitedUntil = iso(r.resetsAt);
           const which = r.rateLimitType === "seven_day" ? "weekly" : "5-hour";

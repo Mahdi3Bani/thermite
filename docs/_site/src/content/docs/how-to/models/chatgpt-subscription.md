@@ -72,9 +72,13 @@ If the login ends, for example because you disconnected Thermite in ChatGPT, the
 2. Sign in, copy the address the tab goes to, and paste it into **The address the tab went to** in the same row.
 3. Press **Finish the sign-in**. You gave your consent the first time, so there is no box to tick.
 
-## When the plan is full
+## Watch the plan's usage
 
-OpenAI does not tell apps how much of a plan is used. See it in ChatGPT, under **Settings › Usage**.
+A ChatGPT plan has usage windows, such as 5 hours and a week. The subscription's row on **Providers** shows them on its closed line, such as `5-hour 42%` and `Weekly 81%`; a window at 80% or more is marked. Open the row to see each window with how much is used and when it resets, the plan's name, and how long ago OpenAI answered.
+
+Control asks ChatGPT's usage endpoint for them, the one the Codex CLI reads for its own sign-in, with the subscription's access token. It asks when you open **Providers**, or when the MCP tool [`providers`](../../reference/mcp-tools.md#providers) is called, at most once in 5 minutes, and sends the token nowhere else. That endpoint is not documented for apps. If OpenAI refuses it, the row says so, for example `No usage from OpenAI: ChatGPT's usage endpoint refused this sign-in: HTTP 403`, and links to ChatGPT's own page, **Settings › Usage**. If OpenAI is slow to answer, the row says `OpenAI has not answered yet`: reload the page a moment later.
+
+## When the plan is full
 
 When the plan is full, the agents on the subscription wait and try again every 15 minutes. No new trial (a worker's session) or plan starts on that rig while they wait. Nothing pays for more.
 

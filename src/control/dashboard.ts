@@ -158,6 +158,7 @@ import {
 import { campaignMcpServers, McpServers } from "./mcp-servers.ts";
 import { mcpSettingsBlocks, mountMcpUi } from "./mcp-ui.ts";
 import { askOwnerFrom, type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
+import { PlanUsageReader, usageBlock, usageChips } from "./plan-usage.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
@@ -485,6 +486,9 @@ export interface RigImages {
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
   const app = new Hono();
   const chatgpt = opts.chatgpt ?? new ChatGPTLogins(store, opts.secrets, opts.providerFetch);
+  // Subscriptions' usage windows (goal 151), on Providers and over MCP.
+  const planUsage = new PlanUsageReader(store, (p) => chatgpt.usage(p));
+  if (opts.actions) opts.actions.planUsage = (p) => planUsage.of(p);
   const mcpServers = opts.mcpServers ?? new McpServers(store, opts.secrets);
   // Control's own build, which each rig's is compared with, and the window after which a rig
   // that does not report is offline.
@@ -4367,11 +4371,14 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
   const typeSelect = (sel?: ProviderType) =>
     `<select name="type">${KEY_TYPES.map((t) => `<option value="${t}"${t === sel ? " selected" : ""}>${t === "opencode" ? "OpenCode (its own models)" : TYPES[t]}</option>`).join("")}</select>`;
 
-  app.get("/ui/settings", (c) => {
+  app.get("/ui/settings", async (c) => {
     const now = Date.now();
     const vs = views();
     const t = csrf(c);
     const providers = store.providers();
+    const usage = new Map(
+      await Promise.all(providers.map(async (p) => [p.name, await planUsage.of(p)] as const)),
+    );
     const gitCount =
       store.gitAccessList().length +
       store.machines().length +
@@ -4416,32 +4423,13 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       : ok
         ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(ok)}</b></div>`
         : "";
-    /** A subscription's latest usage windows, as its rigs' runtime reported them. */
-    const usageOf = (name: string) => {
-      type W = { utilization: number; resets_at: string };
-      let best: { five_hour?: W; seven_day?: W; at: string; rig: string } | undefined;
-      for (const u of vs) {
-        const r = (u.summary as { subscription_usage?: { provider?: string; at?: string } } | null)
-          ?.subscription_usage;
-        if (r?.provider === name && r.at && (!best || r.at > best.at))
-          best = { ...(r as { five_hour?: W; seven_day?: W; at: string }), rig: u.id };
-      }
-      return best;
-    };
-    const bar = (label: string, w: { utilization: number; resets_at: string } | undefined) =>
-      w
-        ? `<div><div class="small"><b>${esc(label)}</b> · ${Math.round(w.utilization * 100)}% used · resets ${esc(w.resets_at.slice(0, 16).replace("T", " "))} UTC</div><div class="ubar${w.utilization >= 0.8 ? " warn" : ""}"><div style="width:${Math.min(100, Math.round(w.utilization * 100))}%"></div></div></div>`
-        : "";
     /** A Claude subscription: its token's hint, its models, what its rigs report of its usage. */
     const claudeRow = (p: (typeof providers)[number], rigs: string[]) => {
       const pName = encodeURIComponent(p.name);
-      const use = usageOf(p.name);
-      const windows = use
-        ? `<div class="use">${bar("5-hour window", use.five_hour)}${bar("Weekly window", use.seven_day)}</div><div class="muted small" style="margin-top:4px">As Claude Code on ${esc(use.rig)} reported it ${esc(ago(use.at, now))} ago. When a window is full, the agents on this subscription wait for its reset; nothing pays for more.</div>`
-        : `<div class="muted small">No usage reported yet: Claude Code on a rig reports the 5-hour and weekly windows once an agent uses this subscription.</div>`;
+      const windows = usageBlock("claude", usage.get(p.name), now);
       return `<details class="dq" data-k="provider-${esc(p.name)}"><summary>
 <span class="dq-kind"><span class="kind m">Subscription</span></span>
-<span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· Claude subscription</span></span><span class="dq-why">${p.models.length} models · runs only in Claude Code, Anthropic's own program</span><span class="dq-sub"><span class="chip">token ${esc(p.key_hint)}</span><span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+<span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· Claude subscription</span></span><span class="dq-why">${p.models.length} models · runs only in Claude Code, Anthropic's own program</span><span class="dq-sub"><span class="chip">token ${esc(p.key_hint)}</span>${usageChips(usage.get(p.name))}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 </summary><div class="dq-body">${windows}${PLAN_LINE}
 <div class="chips" style="margin:12px 0">${p.models.map((m) => `<span class="chip">claude-code:${esc(m.id)}</span>`).join("")}</div>
 <form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}"><input type="hidden" name="type" value="claude">
@@ -4461,9 +4449,9 @@ ${
         : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"} · runs in Pi, OpenCode v2 or Codex · control renews the login</span>`;
       return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
 <span class="dq-kind"><span class="kind m">Subscription</span></span>
-<span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ChatGPT subscription</span></span>${status}<span class="dq-sub"><span class="chip">sign-in ${esc(p.key_hint)}</span><span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+<span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ChatGPT subscription</span></span>${status}<span class="dq-sub"><span class="chip">sign-in ${esc(p.key_hint)}</span>${usageChips(usage.get(p.name))}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 <span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
-</summary><div class="dq-body"><div class="muted small">OpenAI does not tell apps how much of the plan is used: see it in ChatGPT, Settings › Usage. When the plan is full, the agents on this subscription wait and try again every 15 minutes; nothing pays for more.</div>${PLAN_LINE}
+</summary><div class="dq-body">${usageBlock("chatgpt", usage.get(p.name), now)}${PLAN_LINE}
 <div class="chips" style="margin:12px 0">${p.models.map((m) => `<span class="chip">chatgpt:${esc(m.id)}</span>`).join("")}</div>
 <form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}"><input type="hidden" name="type" value="chatgpt"><input type="hidden" name="chatgpt_consent" value="1">
 <div style="grid-column:1/-1" class="small">To sign in again (for example after the login ended): <a href="/ui/settings/chatgpt/start?name=${pName}" target="_blank" rel="noopener">Sign in with ChatGPT ↗</a>, then paste the address the tab goes to.</div>

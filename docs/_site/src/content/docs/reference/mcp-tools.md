@@ -479,13 +479,13 @@ The cursors keep to `action` and `include_mcp`: give the same ones on every page
 
 **Providers.** Owner, operator and reader.
 
-> What control holds in Settings › Providers: model providers, Git access, machines, Kubernetes clusters and GPU clouds, each with what control last read and its last error. Never a key, token, password or kubeconfig.
+> What control holds in Settings › Providers: model providers, Git access, machines, Kubernetes clusters and GPU clouds, each with what control last read and its last error. A subscription's usage: its windows (id, label, minutes, used_percent from 0 to 100, resets_at), source (claude-code: as Claude Code on rig last reported them; openai: as ChatGPT's usage endpoint answered control, asked at most every 5 minutes), plan, at, and error in words when there are none; null for another provider, or a Claude subscription no rig reported yet. Never a key, token, password or kubeconfig.
 
 No inputs. Returns:
 
 | Field | Each entry |
 | --- | --- |
-| `model_providers` | `{name, type, base_url, models, models_at, models_error}`. `models` is the model ids; `base_url` has any credentials removed |
+| `model_providers` | `{name, type, base_url, models, models_at, models_error, usage}`. `models` is the model ids; `base_url` has any credentials removed. `usage`, for a Claude or ChatGPT subscription: `{source, windows, rig, plan, at, error}`, each window `{id, label, minutes, used_percent, resets_at}` ([Use a ChatGPT subscription](../how-to/models/chatgpt-subscription.md#watch-the-plans-usage)); `null` for another provider, or a Claude subscription no rig reported yet |
 | `model_prices` | `{provider, model, price, source}`: each price [`model_usage`](#model_usage) costs calls at, as [`GET /v1/model-prices`](rest-api.md#model-usage) gives it |
 | `git_access` | `{name, kind, fingerprint, username}` |
 | `machines` | `{name, address, port, user, host_key_trusted, facts, checked_at, check_error}` |

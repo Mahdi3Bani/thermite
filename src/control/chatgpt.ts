@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { CHATGPT_USAGE_URL, chatgptWindows, type PlanUsage } from "./plan-usage.ts";
 import type { SecretBox } from "./secrets.ts";
 import type { ControlStore, ModelProvider, ProviderModel } from "./store.ts";
 
@@ -276,6 +277,40 @@ export class ChatGPTLogins {
       .filter((id): id is string => typeof id === "string" && /^[\w.:/@+-]{1,200}$/.test(id))
       .filter((id) => !seen.has(id) && seen.add(id))
       .map((id) => ({ id }));
+  }
+
+  /**
+   * How much of the plan is used (goal 151), as ChatGPT's usage endpoint answers for the access
+   * token, with the account its token names. The token goes to OpenAI only; a refusal is in words.
+   */
+  async usage(p: ModelProvider): Promise<PlanUsage> {
+    const at = new Date().toISOString();
+    const none = (error: string): PlanUsage => ({ source: "openai", windows: [], at, error });
+    const access = await this.access(p);
+    if (typeof access !== "string") return none(access.error);
+    let account: unknown;
+    try {
+      const claims = JSON.parse(Buffer.from(access.split(".")[1] ?? "", "base64url").toString());
+      account = claims?.["https://api.openai.com/auth"]?.chatgpt_account_id;
+    } catch {
+      // Not a token with claims: asked without the account.
+    }
+    let res: Response;
+    try {
+      res = await this.fetchImpl(CHATGPT_USAGE_URL, {
+        headers: {
+          authorization: `Bearer ${access}`,
+          accept: "application/json",
+          ...(typeof account === "string" ? { "chatgpt-account-id": account } : {}),
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      return none("could not reach ChatGPT's usage endpoint");
+    }
+    if (!res.ok) return none(`ChatGPT's usage endpoint refused this sign-in: HTTP ${res.status}`);
+    const got = chatgptWindows(await res.json().catch(() => undefined));
+    return got ? { source: "openai", ...got, at } : none("its answer was not in a known shape");
   }
 
   /** Ends the login at OpenAI (sign-out); false when OpenAI did not confirm it. */

@@ -65,6 +65,7 @@ import {
 import { registerRigReads } from "./mcp-rig-reads.ts";
 import { redirectUriOf, ServerBody, serverJson } from "./mcp-server-routes.ts";
 import type { McpServers } from "./mcp-servers.ts";
+import { providersWithUsage } from "./plan-usage.ts";
 import { queueFromRecords } from "./queue-copy.ts";
 import {
   type RigModelBody,
@@ -671,18 +672,11 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       {
         title: "Providers",
         description:
-          "What control holds in Settings › Providers: model providers, Git access, machines, Kubernetes clusters and GPU clouds, each with what control last read and its last error. Never a key, token, password or kubeconfig.",
+          "What control holds in Settings › Providers: model providers, Git access, machines, Kubernetes clusters and GPU clouds, each with what control last read and its last error. A subscription's usage: its windows (id, label, minutes, used_percent from 0 to 100, resets_at), source (claude-code: as Claude Code on rig last reported them; openai: as ChatGPT's usage endpoint answered control, asked at most every 5 minutes), plan, at, and error in words when there are none; null for another provider, or a Claude subscription no rig reported yet. Never a key, token, password or kubeconfig.",
         inputSchema: {},
       },
-      audited("providers", () => ({
-        model_providers: store.providers().map((p) => ({
-          name: p.name,
-          type: p.type,
-          base_url: redact(p.base_url),
-          models: p.models.map((m) => m.id),
-          models_at: p.models_at,
-          models_error: p.models_error,
-        })),
+      audited("providers", async () => ({
+        model_providers: await providersWithUsage(store, opts.actions?.planUsage),
         // The prices model usage costs calls at: the providers' listed ones and the owner's.
         model_prices: modelPrices(store),
         git_access: store.gitAccessList().map((g) => ({

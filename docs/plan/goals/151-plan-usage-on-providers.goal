@@ -1,0 +1,61 @@
+---
+id: "151"
+title: "A subscription's usage on Providers: Claude's and ChatGPT's windows, how much is used and when each resets"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 151 · A subscription's usage on Providers: Claude's and ChatGPT's windows, how much is used and when each resets
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A Claude subscription and a ChatGPT subscription each have usage windows: 5 hours and a week. When a window is full, the agents on that subscription wait for its reset. The owner wants to see on Providers how much of each window is used and when it resets, without opening ChatGPT or Claude.
+
+Today, a Claude subscription's row has its windows only as Claude Code on a rig reported them, and only when the row is open. Claude Code reports one window in each `rate_limit_event` (`rateLimitType`, `utilization`, `resetsAt`, as the Claude Agent SDK types it). The harness read a `unifiedWindows` field instead, which that type doesn't have, so it may keep no window at all. A ChatGPT subscription's row says nothing of its usage.
+
+1. **Claude: each event's window.** The harness keeps the window each `rate_limit_event` names, and keeps the other window from earlier events, so the rig's report has both.
+2. **ChatGPT: control asks.** Control asks ChatGPT's usage endpoint (`https://chatgpt.com/backend-api/wham/usage`, which the Codex CLI reads for its own sign-in) with the subscription's access token. It asks when Providers or the `providers` tool is read, at most once in 5 minutes per subscription, and sends the token nowhere else. When OpenAI answers, the row gives the plan and each window: its length, % used and when it resets. When OpenAI refuses, the row says so in words, with OpenAI's HTTP status, and links to ChatGPT's own page, Settings › Usage.
+3. **At a glance.** Each subscription's row gives its windows on its closed line, such as "5-hour 42% · weekly 61%", and in full when it is open, with where they come from and how old they are. A window at 80% or more is marked.
+4. **MCP.** The `providers` tool gives each subscription's `usage`: its windows (`id`, `label`, `minutes`, `used_percent`, `resets_at`), where they come from (a rig's Claude Code, or OpenAI), when, and an error in words when there is none.
+
+## Why
+
+The owner, 2026-10-26: "allows me to see usage limits and remaining stuff for claude and codex on their signed in providers". The owner pointed to a sibling project of theirs that tracks both. It reads Claude Code's events and its `get_usage` request, and, for Codex, the Codex CLI's own rate limits, which come from the same endpoint as item 2.
+
+## Constraints
+
+- **A Claude subscription is used only by Claude Code.** Control never calls Anthropic with its token. The windows come from Claude Code on a rig.
+- **No key in the open.** Control sends the ChatGPT token only to OpenAI. The page, the tool and the logs give percentages and times, never a token.
+- **Never in the way.** OpenAI's endpoint is not documented for apps and may refuse or change. A refusal or an answer in a new shape leaves the row as it was, with the reason, and never fails the page.
+
+## Done when
+
+- [x] Item 1, with a test: events for `five_hour` and then `seven_day` leave both windows; an older `unifiedWindows` event still reads.
+- [x] Item 2, with tests against a fake endpoint: an answer gives both windows; a refusal gives its words; a second read within 5 minutes asks nothing.
+- [x] Items 3 and 4, with tests of the row and the tool.
+- [x] Pages: Use your ChatGPT plan and Use your Claude subscription (their usage), the MCP tools (`providers`), and the changelog.
+- [ ] On the lab: a ChatGPT subscription's row shows its windows, or OpenAI's refusal in words.
+
+## Decisions
+
+- 2026-10-26, owner: control tries ChatGPT's usage endpoint with the subscription's sign-in ("Try it"); a refusal shows in words with a link to ChatGPT's own page.
+- 2026-10-26, owner: asked for this on control now, after v0.1.0's scope was frozen. It ships with v0.1.0, being on `main`.
+
+## Open questions
+
+- Does OpenAI's usage endpoint accept the token of a sign-in for open-source apps? The lab answers it.
+
+## Progress
+
+- 2026-10-26 03:04 UTC: Goal written at the owner's request. The cause of the empty Claude windows was found by comparing the harness's reader with the Claude Agent SDK's type for the event.
+- 2026-10-26 03:22 UTC: Built and tested: `src/harness/agents/plan-windows.ts` (each event's window, kept with the other), `src/control/plan-usage.ts` (the windows, the ChatGPT reader kept 5 minutes, the row's chips and block, the tool's list) and `ChatGPTLogins.usage`. The owner approved the rows from screenshots of a demo. Left: the roll, and on the lab, whether OpenAI answers for this sign-in.
+
+---
+
+Run with `/goal Complete docs/plan/goals/151-plan-usage-on-providers.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

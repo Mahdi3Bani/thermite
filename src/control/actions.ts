@@ -1,7 +1,9 @@
 import type { ClusterResourcesRequest, ResizeRefusal } from "./cluster-resources.ts";
 import type { CopyCampaignOutcome, CopyCampaignRequest } from "./copy-campaign.ts";
+import type { PlanUsage } from "./plan-usage.ts";
 import type { AgentModels, RigModelOutcome, RigModelRequest } from "./rig-model.ts";
 import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
+import type { ModelProvider } from "./store.ts";
 
 /**
  * Actions the dashboard carries out that MCP offers too, so an agent can do what the owner does
@@ -30,6 +32,8 @@ export interface ClusterRigRequest {
 }
 
 export interface ControlActions {
+  /** A subscription's usage windows (goal 151); undefined for another provider. */
+  planUsage?: (p: ModelProvider) => Promise<PlanUsage | undefined>;
   addClusterRig?: (
     r: ClusterRigRequest,
     by: string,

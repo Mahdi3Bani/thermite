@@ -19,7 +19,7 @@ import {
   waitForFile,
 } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
-import { claudeModelCheck, claudeOnce, runClaudeTrial } from "./agents/claude-code.ts";
+import { claudeModelCheck, claudeOnce, mergeUsage, runClaudeTrial } from "./agents/claude-code.ts";
 import type { CliCompacted } from "./agents/cli-compaction.ts";
 import { codexModelCheck, codexOnce, runCodexTrial } from "./agents/codex.ts";
 import { DevRuns } from "./agents/devrun.ts";
@@ -597,7 +597,7 @@ async function main(): Promise<void> {
           messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
           // The subscription's windows, as Claude Code reports them: in the rig's report.
           usage: (u) => {
-            service.subscriptionUsage = { ...u, at: new Date().toISOString() };
+            service.subscriptionUsage = mergeUsage(service.subscriptionUsage, u);
           },
           compacted: compactedIn(spec, "claude-code"),
           keptAt: keptAtFor(spec),
@@ -661,7 +661,7 @@ async function main(): Promise<void> {
         compaction: o?.compaction,
       });
       takeUsage(t, o?.usage);
-      if (t.usage) service.subscriptionUsage = { ...t.usage, at: new Date().toISOString() };
+      if (t.usage) service.subscriptionUsage = mergeUsage(service.subscriptionUsage, t.usage);
       const answer = t.result ?? t.lastText;
       if (!answer) throw new Error(t.errors.at(-1) ?? "Claude Code gave no answer");
       return answer;
