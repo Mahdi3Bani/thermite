@@ -16,7 +16,7 @@ Thermite is open-source **autoresearch**: AI agents that run experiments in a lo
 
 > **Status:** work is toward v0.1.0, the first public release. The judge, control, agents and supervision are built and pass their acceptance tests. See the [roadmap](https://usethermite.com/project/roadmap/) and, for every detail, the [release plan](docs/plan/release-v0.1.0.md).
 
-![The dashboard's page for one run: its model use, cost and tokens at the top, where the run started, the champion's gains over time, what each lane works on now, and the run's champion and promotion rule](docs/_site/src/assets/screenshots/run.webp)
+![The dashboard's page for one run: its champion's value, its cost and its tokens at the top, where the run started, the champion's gains over time, what each lane works on now, and the run's champion and promotion rule](docs/_site/src/assets/screenshots/run.webp)
 
 ## The idea
 
