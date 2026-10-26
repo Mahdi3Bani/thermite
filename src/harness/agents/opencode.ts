@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { modelCheckProgramPrompt } from "../../agents/roles/model-check.ts";
 import { RESEARCH_WORKER_SYSTEM } from "../../agents/roles/research-worker.ts";
 import { WORKER_OPENCODE_SYSTEM } from "../../agents/roles/worker.ts";
 import { NOTE_USAGE } from "../../agents/tools/names.ts";
@@ -1179,12 +1180,10 @@ export async function opencodeModelCheck(
 ): Promise<RigCheckReport> {
   const word = `thermite-${Math.random().toString(36).slice(2, 8)}`;
   const started = Date.now();
-  const t = await opencodeOnce(
-    model,
-    `Use your shell tool to run exactly this command: echo ${word}\nThen reply with only the word it printed.`,
-    deps,
-    { role: CHECK_ROLE, timeoutMs },
-  );
+  const t = await opencodeOnce(model, modelCheckProgramPrompt(word), deps, {
+    role: CHECK_ROLE,
+    timeoutMs,
+  });
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const called = t.tools.some((x) => x.ok && x.output.includes(word));
   const detail = {

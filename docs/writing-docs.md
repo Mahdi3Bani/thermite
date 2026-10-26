@@ -12,6 +12,7 @@ npm run docs:dev       # a live preview at http://localhost:4321/
 npm run docs:build     # the site, in .dev/site/
 npm run docs:check     # what the build cannot check; run it after docs:build
 npm run docs:credits   # writes the Credits page from CREDITS.md
+npm run docs:agents    # writes the Agent roles page from src/agents/roles/
 ```
 
 The site's dependencies are pinned to exact versions and kept apart from Thermite's own, so the images and the core never change because of the docs. Starlight is still 0.x: upgrade it on purpose, one version at a time, and rebuild.
@@ -27,7 +28,8 @@ The site's dependencies are pinned to exact versions and kept apart from Thermit
 - a placeholder in angle brackets, such as `<campaign>`, outside a code span: the site reads it as an HTML tag and hides it, so write it in backticks;
 - a page missing from `llms.txt` or `llms-full.txt`, or without its Markdown copy;
 - a page that is still a stub;
-- a Credits page that is not CREDITS.md as `npm run docs:credits` writes it.
+- a Credits page that is not CREDITS.md as `npm run docs:credits` writes it;
+- an Agent roles page that is not `src/agents/roles/` as `npm run docs:agents` writes it.
 
 ## Where the site is served
 
@@ -103,6 +105,10 @@ The built site has `/llms.txt`, which lists every page with its description, and
 ## The Credits page
 
 [CREDITS.md](../CREDITS.md), at the repository's root, lists every outside work Thermite draws on, runs or ships, with its licence. It is the one copy: the site's Credits page (`project/credits.md`) is written from it by `npm run docs:credits`, and `npm run docs:check` fails when they differ. So change CREDITS.md, never the page, and link only to full addresses in it, which work on GitHub and on the site alike. Add a work in the same commit as the research, the dependency or the program it informed.
+
+## The Agent roles page
+
+Every agent role's fixed texts live in `src/agents/roles/`, one module for each role, and `src/agents/roles/index.ts` is the table of roles. The site's [Agent roles](_site/src/content/docs/reference/agent-roles.md) page is written from that table by `npm run docs:agents`, and `npm run docs:check` fails when they differ. So a change to a role's text is made in its module; then run `npm run docs:agents` and commit both. `tests/agents/role-texts.test.ts` holds every text byte for byte against its file in `tests/agents/golden/`: rewrite the files with `UPDATE_GOLDEN=1 node scripts/test.mjs tests/agents/role-texts.test.ts`, and read the diff.
 
 ## Pages a test follows
 

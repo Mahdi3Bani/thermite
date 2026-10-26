@@ -1,5 +1,6 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { MODEL_CHECK_PI_SYSTEM, modelCheckPiPrompt } from "../../agents/roles/model-check.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 
 /** What a rig check found: whether it passed, in a sentence, and the details behind it. */
@@ -32,8 +33,7 @@ export async function checkModel(cfg: ModelConfig, timeoutMs = 120_000): Promise
   let echoed: string | undefined;
   const agent = new Agent({
     initialState: {
-      systemPrompt:
-        "You are checking a tool-calling route. Answer only by calling the echo tool, once.",
+      systemPrompt: MODEL_CHECK_PI_SYSTEM,
       model,
       thinkingLevel,
       tools: [
@@ -59,7 +59,7 @@ export async function checkModel(cfg: ModelConfig, timeoutMs = 120_000): Promise
   }, timeoutMs);
   let thrown: string | undefined;
   try {
-    await agent.prompt(`Call echo with the word ${word}.`);
+    await agent.prompt(modelCheckPiPrompt(word));
   } catch (err) {
     thrown = err instanceof Error ? err.message : String(err);
   } finally {

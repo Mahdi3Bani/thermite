@@ -9,6 +9,7 @@
 //   - no page names an agent by an old name (goal 074): "teacher pair", "combiner", "panelist",
 //     "the supervisor's advisors", or "panel" alone for the review panel, outside code;
 //   - the Credits page is CREDITS.md, as `npm run docs:credits` writes it;
+//   - the Agent roles page is src/agents/roles/, as `npm run docs:agents` writes it;
 //   - after `npm run docs:build`: llms.txt lists every page, llms-full.txt holds every page, and
 //     every page has its Markdown copy.
 // Usage: node --experimental-strip-types scripts/docs-check.mjs [--allow-stubs] [--no-build]
@@ -16,6 +17,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { agentsPage, agentsPageFile } from "./agents-page.mjs";
 import { creditsFile, creditsPage, creditsPageFile } from "./credits-page.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -410,6 +412,26 @@ else {
       have === null
         ? "missing: run `npm run docs:credits` to write it from CREDITS.md"
         : "does not match CREDITS.md: run `npm run docs:credits`, and change CREDITS.md, not the page",
+    );
+}
+
+// --- The Agent roles page --------------------------------------------------------------------
+
+// src/agents/roles/ is the one copy: the site's page is written from its table of roles.
+{
+  let want;
+  try {
+    want = await agentsPage();
+  } catch (err) {
+    problem(agentsPageFile, err instanceof Error ? err.message : String(err));
+  }
+  const have = existsSync(agentsPageFile) ? readFileSync(agentsPageFile, "utf8") : null;
+  if (want !== undefined && have !== want)
+    problem(
+      agentsPageFile,
+      have === null
+        ? "missing: run `npm run docs:agents` to write it from src/agents/roles/"
+        : "does not match src/agents/roles/: run `npm run docs:agents`, and change the role's module, not the page",
     );
 }
 

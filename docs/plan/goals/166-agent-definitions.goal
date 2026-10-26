@@ -86,6 +86,7 @@ src/harness/prompts/   what a run adds, read from the ledger, with no side effec
 ## Progress
 
 - 2026-10-26 21:03 UTC: Goal written from the owner's words. Lane 9 of the audit reviews the roles.
+- 2026-10-26 23:21 UTC: Every role's fixed texts are in `src/agents/roles/`, one module for each role, with `index.ts` as the table of the 15 roles (what each does, where it runs, its model and programs, whether the owner's messages reach it, and its texts). The tools' names and the research tools are in `src/agents/tools/`, and the paper's parts in `core`. A golden test holds every text byte for byte, written before the move and unchanged by it; a second test fails when a role module exports a text the table leaves out. The site's [Agent roles](../../_site/src/content/docs/reference/agent-roles.md) page is written from the table (`npm run docs:agents`), and the docs check holds them equal. Still to do: each role's assembly for a run as one function with no side effects, the record of every prompt sent, and the dashboard, REST, MCP and command line.
 
 ---
 

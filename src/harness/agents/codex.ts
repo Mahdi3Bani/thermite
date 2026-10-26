@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { modelCheckProgramPrompt } from "../../agents/roles/model-check.ts";
 import { WORKER_CODEX_SYSTEM } from "../../agents/roles/worker.ts";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
@@ -872,12 +873,10 @@ export async function codexModelCheck(
 ): Promise<RigCheckReport> {
   const word = `thermite-${Math.random().toString(36).slice(2, 8)}`;
   const started = Date.now();
-  const t = await codexOnce(
-    model,
-    `Use your shell tool to run exactly this command: echo ${word}\nThen reply with only the word it printed.`,
-    deps,
-    { role: CHECK_ROLE, timeoutMs },
-  );
+  const t = await codexOnce(model, modelCheckProgramPrompt(word), deps, {
+    role: CHECK_ROLE,
+    timeoutMs,
+  });
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const called = t.tools.some((x) => x.ok && x.output.includes(word));
   const detail = {

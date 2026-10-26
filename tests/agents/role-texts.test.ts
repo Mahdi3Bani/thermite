@@ -6,6 +6,11 @@ import { COMPACTION_SYSTEM } from "../../src/agents/roles/compaction.ts";
 import { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "../../src/agents/roles/final-writer.ts";
 import { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM } from "../../src/agents/roles/merged-by.ts";
 import {
+  MODEL_CHECK_PI_SYSTEM,
+  modelCheckPiPrompt,
+  modelCheckProgramPrompt,
+} from "../../src/agents/roles/model-check.ts";
+import {
   PLAN_LIMITS_TEXT,
   PLANNER_ASK_SYSTEM,
   PLANNER_PI_SYSTEM as PLANNER_SYSTEM,
@@ -76,6 +81,10 @@ const TEXTS: Record<string, string> = {
   "final-writer.ste-short-rules": STE_SHORT_RULES,
   "synthesizer.system": SYNTHESIZER_SYSTEM,
   "compaction.system": COMPACTION_SYSTEM,
+  "model-check.pi.system": MODEL_CHECK_PI_SYSTEM,
+  "model-check.pi.prompt": modelCheckPiPrompt("WORD"),
+  "model-check.program.prompt": modelCheckProgramPrompt("WORD"),
+  "model-check.claude-code.prompt": modelCheckProgramPrompt("WORD", "Bash tool"),
 };
 
 const golden = (name: string) => new URL(`golden/${name}.txt`, import.meta.url);

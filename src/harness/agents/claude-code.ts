@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { modelCheckProgramPrompt } from "../../agents/roles/model-check.ts";
 import { WORKER_CLAUDE_CODE_SYSTEM } from "../../agents/roles/worker.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { laneLimits } from "../../core/contract.ts";
@@ -960,12 +961,11 @@ export async function claudeModelCheck(
 ): Promise<RigCheckReport> {
   const word = `thermite-${Math.random().toString(36).slice(2, 8)}`;
   const started = Date.now();
-  const t = await claudeOnce(
-    model,
-    `Use your Bash tool to run exactly this command: echo ${word}\nThen reply with only the word it printed.`,
-    deps,
-    { tools: "Bash", timeoutMs, role: CHECK_ROLE },
-  );
+  const t = await claudeOnce(model, modelCheckProgramPrompt(word, "Bash tool"), deps, {
+    tools: "Bash",
+    timeoutMs,
+    role: CHECK_ROLE,
+  });
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const called = t.tools.some((x) => x.ok && x.output.includes(word));
   const detail = {

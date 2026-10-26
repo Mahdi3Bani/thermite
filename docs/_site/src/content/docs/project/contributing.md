@@ -177,6 +177,8 @@ A change to what Thermite does also updates the pages that describe it, in the s
 
 A change that draws on outside work, such as a paper, a system you studied, or a new dependency or bundled program, also adds it to `CREDITS.md`, at the repository's root, with its licence. Then run `npm run docs:credits`: the [Credits](credits.md) page is written from that file, and `npm run docs:check` fails when the two differ.
 
+A change to an agent role's instructions is made in its module in `src/agents/roles/`. Then run `npm run docs:agents`: the [Agent roles](../reference/agent-roles.md) page is written from those modules, and `npm run docs:check` fails when they differ. The role's golden text in `tests/agents/golden/` changes in the same commit (`UPDATE_GOLDEN=1 node scripts/test.mjs tests/agents/role-texts.test.ts`).
+
 ## Plans and ideas
 
 Every planned change is a goal in [docs/plan/](https://github.com/iammrduncan/thermite/blob/main/docs/plan/README.md). That page says how goals are written and how an idea becomes one. A change that settles a design question records the decision in its goal.
