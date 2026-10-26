@@ -1,0 +1,48 @@
+---
+id: "161"
+title: "Control's bugs found by the v0.1.1 audit: wrong states on the pages, refusals answered as server errors, errors that vanish"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 161 · Control's bugs found by the v0.1.1 audit: wrong states on the pages, refusals answered as server errors, errors that vanish
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
+
+## What
+
+The control reviewer of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found these bugs by reading the code. Each was checked against the code, but none was reproduced by a run. Each fix comes with a regression test that fails without it.
+
+1. **An errored attempt shows "Judging".** `src/control/ui/operator.ts:1186-1221`. It shows its error state.
+2. **A cancelled command shows a red "failed" chip.** `cancelCommand` (`src/control/store.ts:2573`) writes the status `failed` with `cancelled_by` in the outcome. The commands table (`src/control/dashboard.ts:3983`) looks for a status `cancelled`, which is never written. A cancelled command shows as cancelled, in a neutral chip.
+3. **The MCP-server form refuses `http://[::1]`.** The character class `[[]::1[]]` in `src/control/ui/providers-client.ts:107` never matches. The form takes the same local addresses as the server's own check.
+4. **Refusals on several REST routes answer HTTP 500.** Malformed JSON and ordinary refusals on `/v1/propagate`, a reset's confirm and cancel, and a second reset (`src/control/api.ts:453-458`). Each answers 400 or 409 with the refusal's words.
+5. **An image update reports success when kubectl's answer can't be read.** `src/control/dashboard.ts:6130`. It reports the update as failed, with the reason.
+6. **`POST /ui/rigs/add` takes the GPU list `0,0`.** `src/control/dashboard.ts:5818`. A GPU listed twice is refused, as the other rig forms refuse it.
+7. **The add-rig preview lacks the limit of 8 judge GPUs** that `src/control/machines/deploy.ts:40` states. The preview refuses what the deploy refuses.
+8. **Background deploys and updates drop their errors.** Seven `void …().catch(() => {})` in `src/control/dashboard.ts` (5862, 5994, 6204, 6424, 6533, 6827, 6901). A rig can stay "updating" for good. Each failure is logged, recorded in the rig's history and ends the state it started.
+
+## Why
+
+CONVENTIONS.md: "Every bug that is found gets a regression test", "Nothing stops silently", and errors answered as what they are. The audit's guide, [the code clean-up guide](../code-clean-up-guide.md), puts these fixes before goal [125](125-code-to-the-conventions.goal)'s splits, so that each split is a pure move.
+
+## Done when
+
+- [ ] Each of the eight bugs is fixed, with a regression test that fails without the fix.
+- [ ] The pages that describe a changed state or answer follow, in the same commit.
+- [ ] The fast checks pass, and the control acceptance check for items 4 to 8.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+- 2026-10-26: Goal written from the v0.1.1 audit's control report.
+
+---
+
+Run with `/goal Complete docs/plan/goals/161-control-bugs-from-the-audit.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

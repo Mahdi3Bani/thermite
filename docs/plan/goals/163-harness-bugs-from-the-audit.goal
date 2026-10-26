@@ -1,0 +1,52 @@
+---
+id: "163"
+title: "Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 163 · Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
+
+## What
+
+The harness and operations reviewers of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found these bugs by reading the code; none was reproduced by a run. Each fix comes with a regression test that fails without it.
+
+1. **Promotion is written three times, and two are not atomic.** The judge promotes in one transaction (`src/harness/judge/judge.ts` `finish`). The auditor's clear (`promoteOrAsk`) and the owner's approval (`approvePromotion`) in `src/harness/service.ts` set `flaws_cleared_by`, promote and clear it again in separate writes around an `await`. A throw after the champion moves leaves the attempt's lifecycle and its `flaws_accepted` event out of step with the champion. One `ledger.promote` sets the flaws, the champion, the event and the lifecycle in one transaction; the git ref and the port follow from the ledger.
+2. **OpenCode code trials ignore Turns per trial.** `src/harness/agents/opencode.ts` reads `spec.maxTurns` only in its research loop. Claude Code, Codex and OpenCode's research trials end at the cap, as [Limits and pacing](../../_site/src/content/docs/reference/limits-and-pacing.md) says.
+3. **Hand-written event queries miss renamed kinds.** `maybeRecheck` (`src/harness/agents/scheduler.ts:750`) and `src/harness/judge/baseline.ts:234` read `run_status` only, not the old `instance_status`; `src/harness/research/research.ts:1246` keeps its own copy of the rename. They read through `core/names.ts`.
+4. **The ledger's `tx()` loses its depth when a commit fails.** `src/harness/ledger.ts:228-242` lowers the depth before the commit and again in the `catch`. After a failed commit (a full disk, an I/O error) every nested transaction throws until the process restarts, and a failed rollback hides the first error.
+5. **A job that kills the controller is retried for ever.** `jobsAtStart` (`src/harness/judge/lease.ts:67-80`) reclaims leases, which blocks a job at its third loss, and then unblocks every blocked job in the same start. Unblock first, then reclaim, as the comment at `lease.ts:36-40` intends.
+6. **The held-out mask falls back to empty on an error.** `context()` in `src/harness/judge/judge.ts:531-535` catches a failed contract read and goes on with no held-out set. The job stops as an infrastructure failure instead.
+7. **The judge's failure paths are quiet or mislabelled.** `infraFailure` treats every error as a lost lease; `tick()` logs "could not record the outcome" when only the ref sync or the port failed; a lost lease renewal stops with no log (`judge/lease.ts:21`); `apps()` in `src/harness/targets/cuda.ts:186` returns no processes when `nvidia-smi` fails, against the file's own rule that anything unreadable is not fine.
+8. **`check` hard constraints are accepted and never checked.** `src/harness/judge/decide.ts:138` skips them with a comment that says they are decided elsewhere; nothing decides them. The contract reference says "accepted, not used yet". The comment is fixed now; then they are refused at validation or implemented, as the owner decides.
+9. **Small fixes the reviewers verified:** `runImport` reads `this.paths.inboxDir` where it should use its `inboxDir` parameter (`service.ts:1308`); `command_rejected` has no command id, so control can't match it (`service.ts:976-993`); `kitFor` uses one temporary folder per process for every judge card (`judge.ts:450-456`), so two cards that first need the same kit at once can collide (a guess, not reproduced).
+
+## Why
+
+Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": corrections are new records, and the record stays consistent) and 5 ("Nothing stops silently"). CONVENTIONS.md: "Every bug that is found gets a regression test", and recovery tests for process death at each persistence boundary.
+
+## Done when
+
+- [ ] Each bug is fixed, with a regression test that fails without the fix. Item 1's test throws after the champion moves and checks the attempt's lifecycle and events.
+- [ ] Item 8 is decided by the owner and done, and the contract reference says what holds.
+- [ ] The fast checks pass, and the judge, agents and steering acceptance checks.
+
+## Decisions
+
+## Open questions
+
+- Item 8: refuse `check` hard constraints at validation, or implement them as named kit checks?
+- A build killed for time or memory is `crash_candidate` today (`judge.ts:504`), while a kit check that times out is `invalid`. Retry a transient kill once as `crash_infra` before it counts against the change?
+
+## Progress
+
+- 2026-10-26: Goal written from the v0.1.1 audit's harness and operations reports.
+
+---
+
+Run with `/goal Complete docs/plan/goals/163-harness-bugs-from-the-audit.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

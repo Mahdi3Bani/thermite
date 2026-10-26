@@ -128,6 +128,11 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 - [160](goals/160-v010-audit.goal) The v0.1.1 audit: code, data and operations, by specialized reviewers, with the tests moved to tests/ · `IN_PROGRESS`
 - [127](goals/127-clean-up-pre-audit.goal) Pre-audit for the code clean-up: a read-only look at the whole code, and a guide that sets up goal 125 · `PROPOSED`
+- [161](goals/161-control-bugs-from-the-audit.goal) Control's bugs found by the v0.1.1 audit: wrong states on the pages, refusals answered as server errors, errors that vanish · `PROPOSED`
+- [162](goals/162-research-and-knowledge-bugs.goal) Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base · `PROPOSED`
+- [163](goals/163-harness-bugs-from-the-audit.goal) Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures · `PROPOSED`
+- [164](goals/164-settings-that-fail-loudly.goal) Settings that fail loudly: a bad value stops the part at start, and no failure passes as success · `PROPOSED`
+- [165](goals/165-results-kept-through-remove-and-reset.goal) Results kept through remove, reset and update: the remove guard on every placement, two reset bugs, an update that survives a restart · `PROPOSED`
 - [125](goals/125-code-to-the-conventions.goal) Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication · `PROPOSED`
 - [124](goals/124-file-sizes.goal) Files of a size you can review · `DROPPED`, merged into 125
 

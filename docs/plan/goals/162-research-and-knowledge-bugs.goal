@@ -1,0 +1,54 @@
+---
+id: "162"
+title: "Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 162 · Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
+
+## What
+
+The harness and knowledge reviewers of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found these bugs in research runs and in the knowledge base. Each fix comes with a regression test that fails without it.
+
+1. **Error pages become sources.** No code checks the HTTP status of a fetch (`src/harness/research/fetcher.ts` `request` and `get`; `src/harness/research/research.ts` `fetch`). A 403 challenge page, a 404, a 429 or a 503 is archived as a source, and a claim that quotes it passes the verbatim check. A URL whose first fetch got a 429 or 503 is then "already archived" for the rest of the run. The fix: refuse a non-2xx answer before it is archived; 404 and 410 are lasting refusals, 429 and 5xx refusals that can pass. The campaign modes page states the rule.
+2. **Answer cards count hosts, not registrable domains.** `claimFor` in `src/harness/research/cards.ts` counts `source.domain`. The review package, the report and the teachers' reads count registrable domains since 94ebe1b; the cards came later the same day and missed it.
+3. **The knowledge base cuts agent text.** `src/core/kb-index.ts:398` and `:440` strip old `Result:`, `Dropped:` and `Verdict:` lines with unanchored patterns. An experiment whose details contain `Result: ` loses everything after it when its result arrives; an attempt whose hypothesis contains `Verdict: ` loses its hypothesis. Later runs, From past research and every export's `knowledge.jsonl` read the cut text. The ledger keeps the words, so the record is whole and the projection is wrong. The fix keeps an item's state in structured fields, not in lines of prose, and rebuilds the items once from control's events.
+4. **A queue edit never reaches the knowledge base.** `experiment_edited` is not in `KB_EVENT_KINDS` (`src/core/kb-index.ts`). An edited experiment keeps its first words there, and From past research seeds new runs with them.
+5. **Control and the harness read old event names differently.** `src/control/kb.ts` (`catchUp`, `readAgain`) does not read the kinds renamed on 2026-10-15, where `src/harness/kb-part.ts` does. `indexEvent` reads them, for every caller.
+6. **Two documents can share one file in `knowledge/`.** `part()` and `itemPath()` in `src/harness/knowledge.ts` map `lane-1/a-b.md` and `lane-1/a/b.md` to one file, and cut names at 100 characters; the second overwrites the first. A short hash of the full reference keeps them apart.
+7. **A briefing can lose an item without a word.** `byOrigin` (`src/control/kb.ts:625-632`) finds nothing when two rigs used the same run name in one campaign, and the item is left out of the briefing.
+8. **The final report reaches the knowledge base cut.** The report's event keeps its first 60,000 characters with no cut note (`src/harness/research/research.ts:1528`), and the item its first 20,000. The paper comes first, so the answer cards and the panel's decisions after it are lost to later runs. A cut is always said; the paper and each answer card become items of their own if the owner agrees (the guide's question on more kinds).
+9. **A message to `all` can wait for lanes that never run.** `readersOf` (`src/harness/messages.ts`) takes the last lane count, where the scheduler puts the owner's first. With the owner's 2 lanes and a teacher's 4, the message's receipts never complete. One `lanesAtWork` in `src/harness/agents/coordinator.ts` for both.
+
+## Why
+
+Experiment integrity: a claim counts only when its quotes are in the archived text of a source, and an error page is not one. The knowledge base is what later runs read, so its items must say what the record says. CONVENTIONS.md: "Every bug that is found gets a regression test".
+
+## Done when
+
+- [ ] Each of the nine bugs is fixed, with a regression test that fails without the fix.
+- [ ] Control's knowledge items written before the fix of item 3 are rebuilt, and the rebuild is tested.
+- [ ] The campaign modes page and the knowledge base reference say what changed.
+- [ ] The fast checks pass, and the steering acceptance check.
+
+## Decisions
+
+## Open questions
+
+- Item 8: the paper and the answer cards as knowledge-base items of their own (the guide's question 23), or only a cut note.
+- The number rule's exemptions: a paper may restate a number from the run's own questions and hypotheses, while a card or a reviewer's answer may not (`src/harness/research/paper.ts:476-489`, `cards.ts:287`, `review.ts:770`). No reason was found for the difference. One set for all three?
+- The submission limit for a hypothesis or a claim: 2,000 characters (what the clients cut to) or 4,000 (what the server takes)?
+
+## Progress
+
+- 2026-10-26: Goal written from the v0.1.1 audit's harness and knowledge reports.
+
+---
+
+Run with `/goal Complete docs/plan/goals/162-research-and-knowledge-bugs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

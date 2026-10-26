@@ -58,13 +58,14 @@ The owner, 2026-10-26, who wrote this goal's brief:
 
 ## Done when
 
-- [ ] Each reviewer's report is in `.internal/reviews/v0.1.1-audit/`, with an index and a synthesis.
+- [x] Each reviewer's report is in `.internal/reviews/v0.1.1-audit/`, with an index and a synthesis.
 - [ ] Goal 127 is verified: its guide is at `docs/plan/code-clean-up-guide.md`, with its seven parts.
-- [ ] The tests are in `tests/`, mirroring `src/`, and `npm test`, the typecheck, the lint, CI and the pages find them there. The full `npm run check` and the docs build and check pass.
-- [ ] Goal 125 is updated from the audit: its scope without the tests' move, and its order from the guide.
+- [x] The tests are in `tests/`, mirroring `src/`, and `npm test`, the typecheck, the lint, CI and the pages find them there. The full `npm run check` and the docs build and check pass.
+- [x] Goal 125 is updated from the audit: its scope without the tests' move, and its order from the guide.
 
 ## Decisions
 
+- 2026-10-26: the bugs the reviewers found become goals [161](161-control-bugs-from-the-audit.goal) to [165](165-results-kept-through-remove-and-reset.goal), each fixed with a regression test before goal 125's splits. Findings that need the owner's choice first (backups, health checks, retention, Node 24) are questions in the guide, not goals yet. The security findings stay in `.internal/`.
 - 2026-10-26, owner: the audit is done by specialized subagents, and all their output is kept in `.internal/reviews/v0.1.1-audit/`.
 
 ## Open questions
@@ -73,6 +74,7 @@ The owner, 2026-10-26, who wrote this goal's brief:
 
 - 2026-10-26 05:52 UTC: Goal written from the owner's brief, in the format of every goal.
 - 2026-10-26 06:35 UTC: The eight reviewers' reports are in `.internal/reviews/v0.1.1-audit/`. Item 7 is done: 245 files moved with `git mv` (228 tests to `tests/`, the quick-start test to `tests/docs/`, the 15 helpers and their data to `tests/helpers/`), with their imports rewritten. `scripts/test.mjs` reads `tests/` and stops on a test file in `src/`; the typecheck, Biome, CI's path lists, the secret scan's allowlist, the ignore files and the pages follow. The typecheck sees the same 229 tests, Biome the same 563 files, and the build writes the same 564 files.
+- 2026-10-26 06:48 UTC: The move is committed with its checks: `npm test` gives the baseline's totals (1,422 side by side with 1 skipped; 142 alone, run with the machine to itself), the public check, the docs build (93 pages) and the docs check pass, and the secret scan finds nothing in the branch's history. The [guide](../code-clean-up-guide.md) is written from the eight reports, with its seven parts; goals 161 to 165 hold the bugs; goal 125 takes the guide's order. Goal 127 waits for the owner to read the guide and answer or defer its questions.
 
 ---
 
