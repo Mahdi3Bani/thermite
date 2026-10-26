@@ -333,45 +333,126 @@ A reviewer checks each step of goal 125 for these:
 
 ## 7. The owner's questions
 
-Each has the reviewers' recommendation first. The reports hold the rest of their questions, about details inside one area.
+Each question has one recommendation, the reason for it, and the other choices. To take a recommendation, say "yes" to its number; to choose otherwise, name the choice. Goal 125 records each answer as a decision, and asks the questions you defer when their theme comes up. The reports hold more questions, about details inside one area.
 
 **Where code lives**
 
-1. **The shared agent runtimes:** a part of their own, `src/agents/` (recommended); or `src/common/agents/`; or kept in the harness, with an `index.ts` the supervisor may import.
-2. **The contract words to `core`:** the kit schema, the held-out words, goal values, the research vocabulary and limits, the model-route names and the rig settings schema. Recommended: yes.
-3. **The import rule:** enforced by a short script in `npm run check` that fails, with today's exceptions named (recommended); or a Biome rule; or a warning first.
-4. **May `core` read files?** `core/version.ts` reads `package.json`. Keep it as the one exception, or move build information to `common`.
-5. **Event schemas:** checked at compile time only (recommended to start), or also when control takes in a rig's events.
+1. **The shared agent runtimes.** The workers and the supervisor's advisors share the code in `harness/agents/` (the CLI adapters, the model client, the MCP tools). Where does it live?
+   - **Recommended:** a part of its own, `src/agents/`, that the harness and the supervisor both import.
+   - **Why:** the supervisor then imports code that is meant to be shared, not the harness's internals, and the import rule (question 3) has no exception.
+   - **Instead:** `src/common/agents/`; or keep it in the harness, with an `index.ts` that the supervisor may import as a named exception.
+2. **The contract words.** Move the kit schema, the held-out words, the goal values, the research words and limits, the model-route names and the rig settings schema from the harness to `core`?
+   - **Recommended:** yes.
+   - **Why:** control and the supervisor already import them from the harness. In `core`, each has one home that every part imports.
+   - **Instead:** leave them in the harness, and accept the imports from control and the supervisor.
+3. **How the import rule is enforced.**
+   - **Recommended:** a short script in `npm run check` that fails, with today's exceptions listed by file until each one is gone.
+   - **Why:** it needs no new dependency, a new exception fails at once, and the list shows what is left to move.
+   - **Instead:** a Biome `noRestrictedImports` rule; or a warning first and a failure later.
+4. **May `core` read files?** `core/version.ts` reads `package.json`; nothing else in `core` does I/O.
+   - **Recommended:** no. The read of `package.json` moves to `common`, and `core` keeps the version comparison.
+   - **Why:** a rule with no exception is easier to keep, and `core` stays safe to import anywhere.
+   - **Instead:** keep `core/version.ts` as the one named exception.
+5. **Event schemas.** Check the typed event bodies only when the code compiles, or also when control takes in a rig's events?
+   - **Recommended:** at compile time first. Check at control's intake later, once every rig in use writes the typed bodies.
+   - **Why:** types cost nothing at run time and change no behaviour. A check at intake could refuse an older rig's events.
+   - **Instead:** check at intake from the start, with the old bodies allowed.
 
 **Old names and old data**
 
-6. **Transition names from before v0.1.0:** remove `THERMITE_UNIT_ID`, `THERMITE_CONTROL_UNIT_TOKENS_FILE`, the CLI flags `--instance`, `--unit` and `--direction`, and the reader for commands signed before 2026-10-15 in v0.1.1? No public release used them. Recommended: yes.
-7. **How long older data and peers are read:** control's migrations from before v0.1.0 (about 260 lines), the harness's 32 branches for older ledgers and supervisors, and the supervisor's paths for an older harness. Can a rig's harness and supervisor ever run different versions?
-8. **`ControlActions`:** may REST and MCP call domain modules directly, with the dashboard as one more caller? It reverses a written design (`control/actions.ts`). Recommended: yes.
-9. **Control's store:** sub-stores (`store.machines.get(...)`, recommended) or one class that hands each call on.
-10. **Browser scripts:** strings with a lint and a parse test (recommended), or real `.js` files copied by the build.
-11. **Internal names:** rename to the public ones (`family` to `direction`, `combiner` to `merged_by`), with old names read through `core/names.ts`; or only move the maps to one place. Should the usage API answer `merged_by` and `review_panel` in place of `combiner` and `panel`?
+6. **Names from before v0.1.0.** Remove `THERMITE_UNIT_ID`, `THERMITE_CONTROL_UNIT_TOKENS_FILE`, the CLI flags `--instance`, `--unit` and `--direction`, and the reader for commands signed before 2026-10-15?
+   - **Recommended:** yes, in v0.1.1, with a line in the changelog. First check that none of your own rigs still sets them.
+   - **Why:** no public release used them. Every command signed before 2026-10-15 expired by 2026-10-22.
+   - **Instead:** keep them until v0.2.0.
+7. **How long older data and older parts are supported.** This decides which of these can go: control's migrations of databases from before v0.1.0 (about 260 lines), the harness's 32 branches for older ledgers and supervisors, and the supervisor's paths for an older harness.
+   - **Recommended:** read data written by v0.1.0 or later, and work with parts of the release before, as the [Compatibility](../_site/src/content/docs/reference/compatibility.md) page already promises. Remove the code for anything older, once your own databases have passed those migrations. A rig's harness and supervisor always move to new images together, so the supervisor's paths for an older harness go too. Old event names in ledgers stay readable through `core/names.ts`: ledgers are never rewritten.
+   - **Why:** each compatibility branch is code to test and to read, and nothing outside your own deployment runs data from before v0.1.0.
+   - **Instead:** keep everything until v0.2.0.
+8. **`ControlActions`.** May REST, MCP and the dashboard all call domain modules directly?
+   - **Recommended:** yes.
+   - **Why:** the business logic leaves the HTML layer, no caller has to handle a missing slot, and it is the first step of the dashboard's split. It reverses the design written in `control/actions.ts`.
+   - **Instead:** keep `ControlActions`, filled by a composition root in place of the dashboard.
+9. **Control's store.** Split it into sub-stores (`store.machines.get(...)`) or keep one class that hands each call on to a module?
+   - **Recommended:** sub-stores.
+   - **Why:** each domain gets a module with its own interface. One class that only hands calls on is a pass-through layer, which CONVENTIONS.md warns against. The cost is many call sites (54 production importers), each a mechanical change.
+   - **Instead:** one class that delegates, with fewer call sites changed.
+10. **The dashboard's browser scripts.**
+    - **Recommended:** keep them as strings in the page modules. Add a lint and a parse test, and inject server constants with `JSON.stringify`.
+    - **Why:** no build step is added, and the dashboard stays HTML from the server with small client scripts, as CONVENTIONS.md asks.
+    - **Instead:** real `.js` files, which Biome and the typecheck read as they are, copied by the build.
+11. **Internal names that differ from public ones** (`family` and `direction`, `combiner` and `merged_by`, `panel` and `review_panel`).
+    - **Recommended:** move every map between them to `core/names.ts` now. The APIs answer with the public names in v0.1.1 (the usage API answers `merged_by` and `review_panel`) and take the old names as input until v0.2.0. Stored and wire names stay as they are.
+    - **Why:** one thing has one name in the code, the API and the docs. Stored and wire names can't change without breaking older ledgers and rigs.
+    - **Instead:** rename everywhere, with a protocol version; or only move the maps.
 
 **Data and operations**
 
-12. **Retention:** may control prune what it only copies or derives (the second copy of `model_call` bodies, old MCP audit rows, complete exports older than a set age), or keep everything and show the space used? Is a full ledger copy in the results repository each day needed, or weekly, or compressed? May the judge evict old builds, keeping the champions'?
-13. **Backups:** a supported backup and restore of control's state and the rigs' ledgers (a command and a page), and a copy of each database before every migration (recommended; it costs the disk of one copy).
-14. **Remove:** refuse to remove a rig until its results have left (recommended), or go on after a typed "discard".
-15. **Health and alerts:** health routes that check the parts and a probe in every deployment (recommended); and whether `/metrics` with Needs you is enough, or control should push alerts.
-16. **Log levels:** the default level, and how it changes while a part runs: a file in the state folder, an owner-only route, a signal or a signed command. Logs go to a table in `control.db` first (recommended for goal 028), an OpenTelemetry collector later if asked.
-17. **Node 24:** in which version the images move, before Node 22's maintenance ends on 2027-04-30. CI already tests 24.
+12. **Retention on control.** Control keeps everything it copies or derives (each `model_call` body twice, an audit row for every MCP read, every export with its daily ledger copies).
+    - **Recommended:** first show the space each kind uses, on a page and in `/metrics`. Then add pruning of what control only copies or derives, as settings that are off until you set them. The rigs' ledgers and the results repository are never pruned.
+    - **Why:** nothing is destroyed by default, and you see the growth before you choose a limit.
+    - **Instead:** keep everything and only show the space; or prune by default.
+    - **The daily ledger copy in the results repository.** Recommended: keep it daily, compressed, and pushed apart from the attempts, so a large file can't block the push of attempts. Instead: weekly, or only with a full export.
+    - **The judge's build store.** Recommended: let the judge remove old builds, keeping the champions' and the newest few for each lane, with the number as a setting. Each candidate's commit is kept, so any build can be made again. Instead: keep every build.
+13. **Backups.**
+    - **Recommended:** a copy of the ledger and of `control.db` before every migration, by default. A `thermite backup` and `restore` for control's state, with a page that says how to back up a rig.
+    - **Why:** today an update that migrates can't be undone. The copy costs the disk of one database.
+    - **Instead:** a page with the container engine's own commands, and no copy before a migration.
+14. **Removing a rig whose results have not left.**
+    - **Recommended:** refuse the remove until the results have left, as a RunPod terminate does. A typed `discard <rig>` goes on for a rig whose results can't leave, such as one with a broken supervisor, and the audit log records it.
+    - **Why:** design invariant 3, "Nothing is destroyed". The override covers the rig that can't send.
+    - **Instead:** keep the typed confirmation only, with a warning.
+15. **Health checks and alerts.**
+    - **Recommended:** health routes that check what each part needs (its database, its peer, the age of its last report) and a probe in every deployment (compose, the release bundle, Quadlet, Kubernetes). For alerts, `/metrics` and Needs you are enough in v0.1.x.
+    - **Why:** a probe lets the container engine restart a stuck part. A researcher already watches Needs you.
+    - **Instead:** also push alerts from control, by a webhook or e-mail through a provider you give.
+16. **Log levels.**
+    - **Recommended:** `info` by default. A rig's parts change level by a signed command from control, and control by a setting on its own Settings page. Logs go to a table in `control.db`, searched with SQLite's FTS5 (goal [028](goals/028-log-store.goal)); an OpenTelemetry collector later, if asked.
+    - **Why:** Thermite is run through control, so the level changes there like everything else. SQLite already has FTS5, so logs need no new service.
+    - **Instead:** a file in each part's state folder that the part reads again, or a signal.
+17. **Node.js 24.**
+    - **Recommended:** move the images to Node 24 in v0.1.2.
+    - **Why:** CI already tests 24, and Node 22's maintenance ends on 2027-04-30. After the clean-up, a failure from the move isn't mixed with the refactoring.
+    - **Instead:** in v0.1.1, with the clean-up.
 
 **Tests, scripts and builds**
 
-18. **Tests that wire several parts** (58 of 229 test files): `tests/system/` (recommended), or under the part each mostly tests. Feature tests of control's pages: `tests/control/dashboard/`.
-19. **The container stand-ins:** to `tests/stand-ins/` (the testing rule) or `containers/test/<name>/` (the folder rule). The acceptance scripts: TypeScript, or `// @ts-check`; an npm alias for every one, or none.
-20. **Acceptance checks on tags:** run the judge's adversarial set and the other suites that CI can run on each version tag, at the cost of runner time.
-21. **One Containerfile** with targets for control, the harness and the supervisor, or four files with a check that their pinned versions match.
-22. **Goal numbers in code comments** (185 in the supervisor, 70 in core): keep them for tracing, or keep the reason in words and the number only where the sentence needs it.
+18. **Tests that wire several parts** (58 of 229 test files).
+    - **Recommended:** `tests/system/`. Tests of control's pages that are named for a feature go to `tests/control/dashboard/`.
+    - **Why:** under "mirror `src/`", a test of two parts lands under one of them by chance. In one folder, a reader finds them all.
+    - **Instead:** each under the part it mostly tests.
+19. **The container stand-ins and the acceptance scripts.**
+    - **Recommended:** the stand-ins move to `tests/stand-ins/<name>/`. The acceptance scripts get `// @ts-check` now and become TypeScript when each is split. Each acceptance check gets an npm script, `acceptance:<name>`.
+    - **Why:** CONVENTIONS.md puts stand-ins in `tests/`. `// @ts-check` brings the typecheck with no rename. With one npm script for each, `npm run` lists them all, where today 2 of 17 have one.
+    - **Instead:** stand-ins to `containers/test/<name>/`; TypeScript at once; no npm scripts.
+20. **Acceptance checks on version tags.**
+    - **Recommended:** CI runs the judge's adversarial set and every acceptance check its runners can run on each version tag.
+    - **Why:** 13 of the 17 never run in CI, so a release rests on runs by hand. Tags are rare, so the runner time is small.
+    - **Instead:** keep them by hand, recorded in the release goal.
+21. **The Containerfiles.**
+    - **Recommended:** one Containerfile, with a target for each image (`control`, `harness`, `supervisor`, `rig`), shared build and program stages, and each pinned version given once.
+    - **Why:** it removes the copies instead of checking them.
+    - **Instead:** keep four files, and add a check that their pinned versions match.
+22. **Goal numbers in code comments** (185 in the supervisor, 70 in `core`).
+    - **Recommended:** keep the reason in words. Keep a goal number only where the sentence needs it, as in "decided in goal 074".
+    - **Why:** a number alone doesn't tell the reader why, and the commits already name their goals.
+    - **Instead:** keep every number, for tracing.
 
 **Knowledge and research**
 
-23. **One word for each meaning:** note (nine meanings), folder, kb or knowledge or past research, document or file, directive or rule, family or direction. More kinds in the knowledge base: answer cards, the review panel's decisions, rules, directions, refuted approaches, and the paper as an item of its own?
-24. **Two ways to do one job:** remove the research `search` tool that always refuses (and the contract's `search_policy` at the next contract version)? Retire the advisors file's `kb` in favour of MCP servers that a kit names?
-25. **`Ledger.invalidate()`:** wire it to an owner's command ("invalidate this evidence"), or remove it with the states nothing sets (goal 061).
-26. **Signals through the event table:** keep the scheduler polling events for stops and resets, or deliver them by a direct call and still write the events.
+23. **One word for each meaning,** and more kinds in the knowledge base.
+    - **Recommended words:** a field note stays a "field note", and its kind `note` becomes `other`; a research note becomes a "source note"; the directive kind `note` becomes `planner_note`; "knowledge base" names the store and "past research" what a run receives; "document" (kind `doc`) for every lane file; "direction" in place of "family". The KB's folders get another name (a "shelf" or a "collection", your choice), so they don't share a name with the dashboard's campaign folders. The contract's `notes` and the signed `direction` field keep their names until a version bump.
+    - **Recommended kinds:** the paper and each answer card become items of their own, and the review panel's decisions. Rules, directions and refuted approaches later.
+    - **Why:** one thing has one name. The paper and the answer cards are what a research run makes, and today the knowledge base keeps the paper's first 20,000 characters and nothing after them.
+    - **Instead:** choose other words; or keep the kinds as they are, with a note where text is cut.
+24. **Two ways to do one job.**
+    - **Recommended:** remove the research `search` tool, which always refuses, and drop the contract's `search_policy` at the next contract version. Retire the advisors file's `kb` in favour of MCP servers that a kit names.
+    - **Why:** web search comes from MCP servers (goal 046), and an outside knowledge base reaches the agents through MCP servers too (goal 068).
+    - **Instead:** keep both, with the tool's refusal saying where search is.
+25. **`Ledger.invalidate()`.**
+    - **Recommended:** wire it to an owner's command, "invalidate this evidence", with its propagation, in a goal of its own.
+    - **Why:** design invariant 3 says bad evidence is invalidated, never deleted. The code exists and is tested; only a way to start it is missing.
+    - **Instead:** remove it, with the states nothing sets (goal 061).
+26. **Signals through the event table.** The service asks the scheduler to stop a trial or reset a run by writing an event, which the scheduler polls every second.
+    - **Recommended:** keep writing the events, and also call the scheduler directly through a small interface (`onStopAsked`, `onReset`).
+    - **Why:** the events stay the record, and the flow of one feature stays in one place instead of crossing files by an event name in a string.
+    - **Instead:** keep the polling. It also keeps the service from depending on the scheduler.
