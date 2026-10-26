@@ -1,0 +1,49 @@
+---
+id: "167"
+title: "How the parts talk: a review of every interface between control, rigs, kits, campaigns, runs and agents"
+status: IN_PROGRESS
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 167 · How the parts talk: a review of every interface between control, rigs, kits, campaigns, runs and agents
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+
+## What
+
+A review of every way two of Thermite's parts exchange data: control, a rig's supervisor, harness, broker and judge, kits, campaigns and runs, and the agents.
+
+1. **A catalogue of every channel:** its two ends, its transport, who starts it, each message type, where the message's schema lives, how it is authenticated, how often it runs and how large its messages are, what each end logs, and what happens when one end is down.
+2. **Performance:** the polling loops in every process, the delay they add end to end (an agent's step to the live view, a command from the dashboard to a rig, an event from the harness to control's pages), and the work each poll does.
+3. **Findings,** with evidence, in the audit's folder. Bugs become goals; the rest feeds goal [168](168-message-bus.goal), the message bus, and goal [125](125-code-to-the-conventions.goal)'s contracts.
+4. **A public page** that explains how the parts talk, as Thermite's design. It names no deployment, host or address.
+
+## Why
+
+The owner, 2026-10-26: "I want a review of all cross communication between control<>rigs<>kits<>campaigns<>runs<>agents. Interfaces, message types, logs, performance etc."
+
+## Constraints
+
+- **Read-only,** apart from the page. Security findings stay in `.internal/`, as [SECURITY.md](../../../SECURITY.md) says.
+- **Evidence,** and no time estimates, as for the audit of goal [160](_completed/160-v010-audit.goal).
+
+## Done when
+
+- [ ] The review and its catalogue are in `.internal/reviews/v0.1.1-audit/` (lane 10), with an entry in the audit's index.
+- [ ] Each bug it finds is in a goal, and its other findings are in goal 168 or goal 125.
+- [ ] The explanation page on how the parts talk is on the docs site, and the docs build and check pass.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+- 2026-10-26 21:03 UTC: Goal written from the owner's words. Lane 10 of the audit makes the review.
+
+---
+
+Run with `/goal Complete docs/plan/goals/167-how-the-parts-talk.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

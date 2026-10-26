@@ -1,0 +1,60 @@
+---
+id: "168"
+title: "One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval"
+status: IN_PROGRESS
+version: "0.1.1"
+depends_on: ["167"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 168 · One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [167](167-how-the-parts-talk.goal)
+
+## What
+
+NATS with JetStream becomes the channel between Thermite's systems, in place of today's many HTTP polling loops: events, commands and their answers, reports, live views, past research and the dashboard's live updates.
+
+1. **A design first,** from the review of goal [167](167-how-the-parts-talk.goal): subjects and streams for each channel, what stays in SQLite, the accounts and permissions of each part, how rigs reach it (on one machine, over SSH, on a cluster, and on RunPod, where a rig dials out), and the order of the move.
+2. **NATS in every deployment,** starting with the one-machine compose file: its image, its storage, its health check, and what a user configures.
+3. **The channels move to it,** one at a time, with the system working at every step.
+4. **Storage and retrieval made fast:** control's pages read views kept up to date as events arrive, instead of folding every event of a rig on every request.
+5. **API and MCP coverage:** the state of the bus (streams, consumers and their lag, each rig's connection) through REST, MCP and the command line, and on the dashboard.
+
+## Why
+
+The owner, 2026-10-26: "I want us to optimize the data storage and retrieval and message bus between systems. We have so many moving parts here its probably time to throw in nats.io jetstream and have that as part of single machine podman compose, and using it as the communication channel between all our systems. With solid API and MCP coverage."
+
+The audit found the cost this removes: control rebuilds each rig's view from every event on every request (about 0.55 s for each rig at 100,000 events), and the parts talk through polling loops with no shared contract ([the clean-up guide](../code-clean-up-guide.md), themes T2 and T12).
+
+## Constraints
+
+- **The design invariants hold.** The ledger stays the record ("Nothing is destroyed"); commands stay signed and checked by the harness; agents never reach the judge's state.
+- **The network rules** in [decisions.md](../decisions.md) change only by the owner's decision, recorded there.
+- **New dependencies and downloads** (the NATS server's image, the client libraries) come with the owner's yes, and each is credited in [CREDITS.md](../../../CREDITS.md).
+- **v0.1.1 may break compatibility with v0.1.0** (owner, 2026-10-26).
+- **Docs follow the code,** in the same commit.
+
+## Done when
+
+- [ ] The design is in this goal, with the owner's decisions.
+- [ ] NATS runs in the compose stack and in every other deployment, with a health check, and the docs say how to run it.
+- [ ] Every channel the design moves runs over NATS, and the polling it replaces is gone.
+- [ ] Control's pages read views kept up to date as events arrive, measured before and after at 100,000 events.
+- [ ] REST, MCP, the command line and the dashboard show the bus's state; the reference pages list them.
+- [ ] The fast checks, the docs checks and the acceptance checks for every changed part pass.
+
+## Decisions
+
+- 2026-10-26: the audit's lane 11 evaluates NATS JetStream and proposes the design, in `.internal/reviews/v0.1.1-audit/11-message-bus.md`.
+
+## Open questions
+
+## Progress
+
+- 2026-10-26 21:03 UTC: Goal written from the owner's words. Lanes 10 and 11 of the audit review the channels and the bus.
+
+---
+
+Run with `/goal Complete docs/plan/goals/168-message-bus.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

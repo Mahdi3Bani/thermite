@@ -124,7 +124,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ## v0.1.1
 
-**Code clean-up.** The code follows the [conventions](../../CONVENTIONS.md): files of a size you can review, in folders, no duplicated knowledge or dead code, and the engineering rules for design, errors, limits, logging, security and tests, so that later changes are easier. Worked on after v0.1.0 ships: first a read-only look at the whole code that writes a guide, then the clean-up, area by area. Proposed.
+**Code clean-up.** The code follows the [conventions](../../CONVENTIONS.md): files of a size you can review, in folders, no duplicated knowledge or dead code, and the engineering rules for design, errors, limits, logging, security and tests, so that later changes are easier. Worked on after v0.1.0 ships: first a read-only look at the whole code that writes a guide, then the clean-up, area by area. Proposed. With it (owner, 2026-10-26): agent definitions in code, a review of how the parts talk, one message bus on NATS JetStream, and agents in their own terminal. v0.1.1 breaks compatibility with v0.1.0.
 
 - [160](goals/_completed/160-v010-audit.goal) The v0.1.1 audit: code, data and operations, by specialized reviewers, with the tests moved to tests/ · `VERIFIED`
 - [127](goals/_completed/127-clean-up-pre-audit.goal) Pre-audit for the code clean-up: a read-only look at the whole code, and a guide that sets up goal 125 · `VERIFIED`
@@ -133,6 +133,10 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [163](goals/163-harness-bugs-from-the-audit.goal) Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures · `PROPOSED`
 - [164](goals/164-settings-that-fail-loudly.goal) Settings that fail loudly: a bad value stops the part at start, and no failure passes as success · `PROPOSED`
 - [165](goals/165-results-kept-through-remove-and-reset.goal) Results kept through remove, reset and update: the remove guard on every placement, two reset bugs, an update that survives a restart · `PROPOSED`
+- [167](goals/167-how-the-parts-talk.goal) How the parts talk: a review of every interface between control, rigs, kits, campaigns, runs and agents · `IN_PROGRESS`
+- [166](goals/166-agent-definitions.goal) Agent definitions you can read and change: one definition for each role in code, and the prompt each run gives it · `IN_PROGRESS`
+- [168](goals/168-message-bus.goal) One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval · `IN_PROGRESS`
+- [169](goals/169-agents-in-their-terminal.goal) Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events · `IN_PROGRESS`
 - [125](goals/125-code-to-the-conventions.goal) Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication · `PROPOSED`
 - [124](goals/124-file-sizes.goal) Files of a size you can review · `DROPPED`, merged into 125
 

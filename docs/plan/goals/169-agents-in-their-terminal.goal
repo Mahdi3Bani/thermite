@@ -1,0 +1,57 @@
+---
+id: "169"
+title: "Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events"
+status: IN_PROGRESS
+version: "0.1.1"
+depends_on: ["166"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 169 · Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [166](166-agent-definitions.goal)
+
+## What
+
+Each agent runs in its program's own terminal UI (Claude Code, Codex, OpenCode or Pi), not in the program's headless mode.
+
+1. **The TUI, with nothing to answer.** Each program runs in its most permissive mode, with every permission prompt, trust dialog, onboarding screen and other popup turned off, inside the same sandbox as today.
+2. **The live view is the terminal.** Control's live view shows the agent's terminal as it is, as herdr does and as the Hermes agent's dashboard does.
+3. **Steering types into it.** A message from the owner goes into the TUI's input and is submitted there, so the owner can also call the program's skills and slash commands and reconnect its MCP servers. Each input is recorded.
+4. **Session logs become events.** The harness reads each program's own session log, not its screen or a headless stream, and records tool calls, messages, usage, turns and the end of each turn as events.
+5. **Fewer tokens.** The owner reports that Claude Code's `-p` mode uses about 1.7 times the tokens of its TUI. Thermite measures both on its own runs and records the result here.
+
+## Why
+
+The owner, 2026-10-26: "I also want all agents that ran to use native TUI of the harness it is running in in yolo mode with waiting/prompt popups disabled etc so that our live view of the agents then can just display that terminal. Similar to how herdr does it or hermes dashboard when it shows terminal hermes on the web ui. THis means when we steer it goes directly into the TUI input and submission, allows us to call skills, reconnect MCPs, etc. We then need to attach on the back end to session logs to record those as events and latest actions etc vs watching the json stream or headless stream of the system. (This will reduce our token usage on claude code as well as its -p usage is 1.7x higher than its TUI usage."
+
+## Constraints
+
+- **Isolation holds.** The TUI runs as the lane's user, with the lane's devices and network rules; agents never reach the judge's state.
+- **No default caps.** A trial ends by its configured limits and its own end, as today; the TUI adds none.
+- **Every input is recorded:** who typed what, when, into which agent.
+- **New dependencies and downloads** (a terminal library, a browser terminal) come with the owner's yes, and each is credited in [CREDITS.md](../../../CREDITS.md).
+- **Docs follow the code,** in the same commit.
+
+## Done when
+
+- [ ] Each of the four programs runs its TUI in a trial, with no prompt or popup that waits, and the trial ends by its limits or its own end.
+- [ ] The dashboard's live view shows the terminal, and steering from the dashboard, REST and MCP types into it.
+- [ ] One adapter for each program turns its session log into events, with tests on recorded logs.
+- [ ] The token use of Claude Code's TUI and `-p` mode is measured on the same work, and the result is recorded here.
+- [ ] The docs describe the live view, steering and what each program records; the fast checks, the docs checks and the agents, Claude Code, real Claude Code and Codex acceptance checks pass.
+
+## Decisions
+
+- 2026-10-26: the audit's lane 12 reviews how each program runs its TUI and writes its session log, and proposes the design, in `.internal/reviews/v0.1.1-audit/12-native-tui.md`.
+
+## Open questions
+
+## Progress
+
+- 2026-10-26 21:03 UTC: Goal written from the owner's words. Lane 12 of the audit reviews the programs and the terminal plumbing.
+
+---
+
+Run with `/goal Complete docs/plan/goals/169-agents-in-their-terminal.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

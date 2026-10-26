@@ -1,0 +1,56 @@
+---
+id: "166"
+title: "Agent definitions you can read and change: one definition for each role in code, and the prompt each run gives it"
+status: IN_PROGRESS
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 166 · Agent definitions you can read and change: one definition for each role in code, and the prompt each run gives it
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+
+## What
+
+Every agent role Thermite runs has one definition in code, in one folder, that a person can read and change: the workers, the research workers, the planners, the auditors, the teachers and the review panel, and every other role that sends a prompt to a model.
+
+1. **One definition for each role.** It holds the role's instructions, its tools, the shape of its answer, which model slot and agent program it uses, and its limits. Text that several roles share is written once.
+2. **How a run changes it.** One function for each role assembles what a given run adds: the brief, the contract, the campaign, the kit, directives, rules, field notes, past research, the queue and the owner's messages. It can render the exact prompt for any run, without calling a model.
+3. **Shown everywhere.** The dashboard, REST, MCP and the command line show each role's definition, and the prompt a chosen run gives it (for example `thermite agents show <role> --run <run>`). A docs page lists the roles and what each one does.
+
+## Why
+
+The owner, 2026-10-26: "Agent definitions. I want to be able to see these in code and modify them (workers, researchers, auditors, teachers, etc) and how they are modified for a given brief etc..."
+
+## Constraints
+
+- **Agents propose; code judges.** The definitions live in code the agents cannot write. A role's text never decides a measurement, a verdict, completion or promotion.
+- **No default caps.** A definition holds only the limits that exist today; it adds none.
+- **One fact, one home.** A definition is the only place a role's text or tool list is kept; the adapters for Pi, OpenCode, Claude Code and Codex read it.
+- **Docs follow the code,** in the same commit.
+
+## Done when
+
+- [ ] Every role has one definition in one folder, and every prompt Thermite sends comes from one of them. A test fails when a prompt is built outside a definition.
+- [ ] Each role's assembly for a run is one function, and a golden test holds the rendered prompt of each role for a sample run.
+- [ ] The dashboard, REST, MCP and the command line show each definition and a run's rendered prompt.
+- [ ] A docs page lists the roles, and the reference pages name the new routes, tools and command.
+- [ ] The fast checks, the docs build and check, and the agents, steering, Claude Code and Codex acceptance checks pass.
+
+## Decisions
+
+- 2026-10-26: the audit's lane 9 maps every role and proposes the shape, in `.internal/reviews/v0.1.1-audit/09-agent-definitions.md`. This goal records the design from it.
+
+## Open questions
+
+- Can the owner change a role's text for one campaign or one kit without a code change, and if so where is that kept and audited?
+
+## Progress
+
+- 2026-10-26 21:03 UTC: Goal written from the owner's words. Lane 9 of the audit reviews the roles.
+
+---
+
+Run with `/goal Complete docs/plan/goals/166-agent-definitions.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
