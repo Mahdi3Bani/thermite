@@ -13,7 +13,7 @@ Control holds no credential for the place, and can't reach it afterwards. Stoppi
 :::note[What these rigs don't have yet]
 Rigs that control sets up, on a machine, on a cluster or with a join command, get only the few settings listed in [Rigs that control sets up](../../reference/settings.md#rigs-that-control-sets-up). Compared with the local stack, they have:
 
-- **no results repository:** their exports stay in the rig's own volume, so removing the rig deletes them (control keeps the rig's events and its champions' patches). A [full reset](../operate/rig-lifecycle.md#fully-reset-a-rig) stops with "the rig has no results repository", and champions can't be [sent between rigs](../campaigns/several-rigs.md);
+- **no results repository:** their exports go to control instead ([Get a rig's results from control](../operate/exports-on-control.md)), and a [full reset](../operate/rig-lifecycle.md#fully-reset-a-rig) waits until control holds the rig's full export. Champions can't be [sent between rigs](../campaigns/several-rigs.md);
 - **no advisors file:** advisors come only from [Edit rig](../operate/advisors.md#on-edit-rig);
 - **no model prices,** so a contract's money budget (`budget.llm_usd`) counts nothing ([token prices](../campaigns/budget-and-stop-time.md#set-the-token-prices-for-model-spend));
 - **no proposer token,** so you can't [submit changes by hand](../campaigns/test-a-kit.md).
@@ -157,7 +157,7 @@ kubectl delete deployment,service,persistentvolumeclaim,secret,networkpolicy,res
   -n <namespace> -l app.kubernetes.io/instance=rig-1 --ignore-not-found                    # remove
 ```
 
-**Remove** deletes the rig's units, files and volumes, or its objects in the namespace, and with them its results; control keeps only the rig's events, its champions' patches and what its runs added to Thermite's [knowledge base](../../explanation/journals-and-knowledge.md), so [take the result](../campaigns/take-the-result.md) you need first.
+**Remove** deletes the rig's units, files and volumes, or its objects in the namespace, and with them the results it has not exported yet; control keeps the rig's exports, its events, its champions' patches and what its runs added to Thermite's [knowledge base](../../explanation/journals-and-knowledge.md), so [export](../operate/exports-on-control.md) or [take the result](../campaigns/take-the-result.md) you need first.
 
 **Retire it** (type `retire rig-1`, then **Retire the rig**) ends the rig's token at once, so it can't report or take commands, and ends any join command. Its files stay where they are until you run **Remove** there. The rig stays in **Rigs**, **Stale** and then **Offline**. To take it off the rig lists too, use the other **Retire it**, at the top of the rig's page: type `retire rig-1` and press **Retire it**.
 

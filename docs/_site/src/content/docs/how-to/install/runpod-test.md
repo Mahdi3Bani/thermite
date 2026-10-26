@@ -18,7 +18,7 @@ A test pod is no rig: it runs no campaign. To run one there, see [Run a rig on R
 
 - **A RunPod API key** from RunPod's console (Settings, API Keys) that may write. A read-only key reads the account, but starting a pod fails with "RunPod refused the key for this: a read-only key can't start or stop pods".
 - **Thermite's CUDA harness image, or the one-container rig image, in a registry RunPod can pull from without a login.** Each release publishes both on `ghcr.io`, such as `ghcr.io/iammrduncan/thermite-harness:0.1.0-cuda` ([Published images](../../reference/harness-image.md#published-images)). Control passes RunPod no registry credentials. To build your own, see [Push the images to your own registry](own-registry.md). RunPod places the pod only on hosts whose driver runs CUDA 12.6 or later.
-- Optional: `THERMITE_RUNPOD_TEST_IMAGE` on control, which fills in the image for you. `compose.yaml` does not pass it to control, so with the compose stack you type the image into the form, or set it in an [override file](one-machine.md#settings-and-override-files).
+- Optional: `THERMITE_RUNPOD_TEST_IMAGE` on control, which fills in the image for you. A release's `compose.yaml` sets it to the release's rig image, so the form is filled in; set it in `.env` for another image.
 - Control needs no public address for a test, only a way to the internet: it reads the pod's report itself, through RunPod's HTTP proxy. The local compose stack is enough.
 
 ## 1. Add the RunPod account

@@ -6,7 +6,7 @@ The bundle has two files: `compose.yaml` and this readme.
 
 ## What you need
 
-- Linux or macOS, with a few CPU cores, a few gigabytes of free memory and about 3 GB of free disk for the images. With Podman on a Mac, that space must be free in Podman's virtual machine.
+- Linux or macOS, with a few CPU cores, a few gigabytes of free memory and about 3 GB of free disk for the images, which take about 2.5 GB. With Podman on a Mac, that space must be free in Podman's virtual machine.
 - Docker with Docker Compose, or Podman with `podman compose`.
 
 ## Start Thermite
@@ -34,7 +34,7 @@ The commands are for Docker. With Podman, write `podman compose` in place of `do
 
 4. Open <http://127.0.0.1:8800/ui>. Paste the token from `.dev/secrets/control-admin-token` into **Admin token**, then press **Sign in**.
 
-The rig gets every CPU and all the memory that Docker or Podman has: on a Mac, its virtual machine's. On Linux with NVIDIA GPUs and NVIDIA's container toolkit, step 2 also writes `compose.gpu.yaml`, which puts the rig on the CUDA harness and every GPU. Start Thermite with both files: `docker compose -f compose.yaml -f compose.gpu.yaml up -d`. [What the rig gets](@@REPO_URL@@/blob/@@TAG@@/docs/_site/src/content/docs/how-to/install/one-machine.md#what-the-rig-gets) says what each kind of machine gets.
+The rig gets every CPU and all the memory that Docker or Podman has: on a Mac, its virtual machine's. On Linux with NVIDIA GPUs, step 2 also writes `compose.gpu.yaml`, which puts the rig on the CUDA harness and every GPU. It needs NVIDIA's container toolkit, which `init` can't check from its container. Start Thermite with both files: `docker compose -f compose.yaml -f compose.gpu.yaml up -d`. [What the rig gets](@@REPO_URL@@/blob/@@TAG@@/docs/_site/src/content/docs/how-to/install/one-machine.md#what-the-rig-gets) says what each kind of machine gets.
 
 Keep the folder: it holds your tokens. To stop Thermite, run `docker compose down` in the folder. Do not add `-v`: `down -v` deletes the volumes, and all that Thermite recorded with them.
 

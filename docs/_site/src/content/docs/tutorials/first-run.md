@@ -1,6 +1,6 @@
 ---
 title: "Your first run"
-description: "Start Thermite on your own computer and watch its judge check a rig, in about half an hour."
+description: "Start Thermite on your own computer and watch its judge check a rig, in about twenty minutes."
 type: tutorial
 sidebar:
   order: 1

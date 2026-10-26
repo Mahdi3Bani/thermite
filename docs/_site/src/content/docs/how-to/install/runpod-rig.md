@@ -19,7 +19,7 @@ A [rig](../../reference/glossary.md) on RunPod runs on a GPU you rent by the hou
 - **The owner's sign-in.** Only the owner may launch, stop, start or terminate a rig on RunPod. The dashboard signs in with the owner's token. For the command line, keep the token in a file: on the local compose stack it is `.dev/secrets/control-admin-token`.
 - **A way out to the internet for control.** Control needs no public address: it connects to the pod, and the pod never connects to control ([Rigs in pull mode](../../explanation/trust.md#rigs-in-pull-mode)). The local compose stack is enough.
 
-The command-line examples use the local stack's address and token file. Put yours in their place.
+The command-line examples run [the command line](one-machine.md#the-command-line) in your `thermite-source` folder, with the local stack's address and token file. Put yours in their place.
 
 ```sh
 c="--control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token"
@@ -59,10 +59,10 @@ The pod's settings, which RunPod's console shows, hold only what the pod needs t
 The same launch from the command line has no idle stop unless you give `--idle-stop`; this one stops after 60 minutes with no run at work:
 
 ```sh
-thermite runpod launch runpod --gpu "RTX A4000" --gpus 2 --spend-limit 20 --idle-stop 60 $c
+npx thermite runpod launch runpod --gpu "RTX A4000" --gpus 2 --spend-limit 20 --idle-stop 60 $c
 ```
 
-`runpod` is the account's name in **Providers**. It prints the rig on one line, then `Launched: RunPod bills the pod from now. Control enrolls it once it runs; follow it with thermite runpod list.` [`thermite runpod launch`](../../reference/command-line.md#runpod-launch) lists every option, such as `--setting THERMITE_JUDGE_GPUS=1` and `--image`. Over the REST API, or with the MCP tool [`runpod_launch`](../../reference/mcp-tools.md#runpod_launch):
+`runpod` is the account's name in **Providers**. It prints the rig on one line, then `Launched: RunPod bills the pod from now. Control enrolls it once it runs; follow it with npx thermite runpod list.` [`npx thermite runpod launch`](../../reference/command-line.md#runpod-launch) lists every option, such as `--setting THERMITE_JUDGE_GPUS=1` and `--image`. Over the REST API, or with the MCP tool [`runpod_launch`](../../reference/mcp-tools.md#runpod_launch):
 
 ```sh
 curl -sS -X POST http://127.0.0.1:8800/v1/gpu-clouds/runpod/rigs \
@@ -75,9 +75,9 @@ curl -sS -X POST http://127.0.0.1:8800/v1/gpu-clouds/runpod/rigs \
 
 The rig's page shows **Getting it ready**, with each step as it happens: the pod pulls the image and runs, which takes a few minutes; control enrolls it through RunPod's proxy with its one-time code and pins its keys; the rig's first report reaches control. Press **refresh** in the status bar to follow it. **The pod** under it shows RunPod's status and the cost, and **Pull mode** shows control's last connection to the pod.
 
-Meanwhile **Rigs** lists it as **Getting ready**, with its price under **Per hour**: the pod costs money from its launch. Once the rig reports, it shows **Live** there, and its page is a normal rig page, with **The pod** at the top. Check that its **Isolation** check at start passed ([Check a rig](../operate/check-a-rig.md)). `thermite runpod list $c` shows the same: the line ends with `enrolled`, and the status is `RUNNING`.
+Meanwhile **Rigs** lists it as **Getting ready**, with its price under **Per hour**: the pod costs money from its launch. Once the rig reports, it shows **Live** there, and its page is a normal rig page, with **The pod** at the top. Check that its **Isolation** check at start passed ([Check a rig](../operate/check-a-rig.md)). `npx thermite runpod list $c` shows the same: the line ends with `enrolled`, and the status is `RUNNING`.
 
-If it never enrolls, **Pull mode** shows the last error, and `thermite runpod list` shows `last error:` for control's last read of the pod.
+If it never enrolls, **Pull mode** shows the last error, and `npx thermite runpod list` shows `last error:` for control's last read of the pod.
 
 ### A pod that runs but never enrolls: read its log
 
@@ -98,7 +98,7 @@ When its pod is stopped, starting or resuming a run on it starts the pod first: 
 To change them, open **Change the spend limit or the idle stop**, fill in or clear the fields, and press **Save**. The page says, for example, `Saved. No spend limit. It stops after 30 minutes with no run at work.` An empty field clears that limit. From the command line:
 
 ```sh
-thermite runpod limits rp-1a2b3c4d --spend-limit 40 --idle-stop off $c
+npx thermite runpod limits rp-1a2b3c4d --spend-limit 40 --idle-stop off $c
 ```
 
 A number sets a limit, `off` clears it, and a limit you leave out stays.
@@ -121,7 +121,7 @@ Press **Start the pod** to start it again. RunPod gives a stopped pod's GPU to w
 
 **Restart the pod** stops the pod and starts it again, with no export: the snapshot it takes as it stops keeps the rig's state. It does not pause the runs. A trial in progress stops: the harness records it as interrupted, and its experiment goes back to the top of the queue. A restart can meet the same lack of a free GPU.
 
-From the command line: `thermite runpod stop rp-1a2b3c4d $c`, `thermite runpod start …` and `thermite runpod restart …`.
+From the command line: `npx thermite runpod stop rp-1a2b3c4d $c`, `npx thermite runpod start …` and `npx thermite runpod restart …`.
 
 ## 7. Get its results
 
@@ -133,11 +133,11 @@ Terminating removes the pod and its volume at RunPod. Control does it only once 
 
 In the **Terminate** box, type `terminate rp-1a2b3c4d` and press **Terminate**. The page says `Terminating: its runs are paused, and the pod is removed only once every result has left it.` Control pauses the runs, waits until no judge job and no command waits on the rig, asks for a full export, and waits until it, and everything else that waits on the pod, has reached control. Then RunPod removes the pod, and control retires the rig: it leaves the rig lists, and its records and exports stay on control. Its page then says what the pod cost in all.
 
-If a result can't leave, the terminate is refused, and the pod keeps running with its runs paused. The page shows `Not terminated: …` with the reason, such as a supervisor that has nowhere to send its exports, and `thermite runpod list` shows it as `last error:`. It stays there until you stop, start, restart or terminate the pod, or reset it. Fix the cause, then terminate again, or resume the runs.
+If a result can't leave, the terminate is refused, and the pod keeps running with its runs paused. The page shows `Not terminated: …` with the reason, such as a supervisor that has nowhere to send its exports, and `npx thermite runpod list` shows it as `last error:`. It stays there until you stop, start, restart or terminate the pod, or reset it. Fix the cause, then terminate again, or resume the runs.
 
 A stopped pod is terminated at once when its last stop sent every result out. Otherwise the terminate is refused: start the pod, so its results can leave, then terminate it.
 
-From the command line: `thermite runpod terminate rp-1a2b3c4d $c`.
+From the command line: `npx thermite runpod terminate rp-1a2b3c4d $c`.
 
 To check that nothing is left at RunPod, press **Read again** on the account's row in **Providers**: **Pods** no longer lists `thermite-rp-1a2b3c4d`.
 
@@ -146,11 +146,11 @@ To check that nothing is left at RunPod, press **Read again** on the account's r
 A full reset wipes the rig's state and keeps the pod and its GPU. Every result leaves the pod first, then you check the export and confirm the wipe. In the **Full reset** box, type `reset rp-1a2b3c4d` and press **Start the full reset**, then go on as [Fully reset a rig](../operate/rig-lifecycle.md#fully-reset-a-rig) says. From the command line:
 
 ```sh
-thermite runpod reset rp-1a2b3c4d $c
-thermite runpod confirm-wipe rp-1a2b3c4d $c
+npx thermite runpod reset rp-1a2b3c4d $c
+npx thermite runpod confirm-wipe rp-1a2b3c4d $c
 ```
 
-Run the second only after you have checked the export on control. `thermite runpod cancel-reset` cancels it before the wipe. The reset needs the pod running: a stopped pod's results can't leave it.
+Run the second only after you have checked the export on control. `npx thermite runpod cancel-reset` cancels it before the wipe. The reset needs the pod running: a stopped pod's results can't leave it.
 
 ## Every change is in the rig's history
 

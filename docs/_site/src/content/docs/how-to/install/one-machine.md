@@ -225,9 +225,9 @@ Put settings in a file named `.env` next to `compose.yaml` (git ignores it), the
 
 | Container | The settings `.env` reaches |
 | --- | --- |
-| `control` | `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_RUNPOD_RIG_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS`, `THERMITE_CONTROL_STALE_SECONDS`, `THERMITE_CONTROL_OFFLINE_SECONDS`, `THERMITE_LIFECYCLE` |
+| `control` | `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_RUNPOD_RIG_IMAGE`, `THERMITE_RUNPOD_TEST_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS`, `THERMITE_CONTROL_STALE_SECONDS`, `THERMITE_CONTROL_OFFLINE_SECONDS`, `THERMITE_LIFECYCLE` |
 | `harness` | `THERMITE_PROMOTION`, `THERMITE_CALIBRATION_BLOCKS`, `THERMITE_MODEL_BASE_URL`, `THERMITE_MODEL`, `THERMITE_MODEL_CONTEXT_WINDOW`, `THERMITE_MODEL_MAX_TOKENS`, `THERMITE_MODEL_REASONING_EFFORT`, `THERMITE_MAX_TRIALS`, `THERMITE_TRIAL_MINUTES`, `THERMITE_MAX_TURNS`, `THERMITE_RESEARCH_MAX_MB`, `THERMITE_LLM_USD_PER_MTOK_IN`, `THERMITE_LLM_USD_PER_MTOK_OUT`, `THERMITE_EXPORT_MINUTES` |
-| `supervisor` | `THERMITE_POLL_SECONDS`, `THERMITE_COMMAND_POLL_SECONDS`, `THERMITE_MODEL_ROUTE_POLL_SECONDS`, `THERMITE_LIVE_INTERVAL_MS`, `THERMITE_RESULTS_REMOTE`, `THERMITE_ADVISORS_FILE` |
+| `supervisor` | `THERMITE_POLL_SECONDS`, `THERMITE_COMMAND_POLL_SECONDS`, `THERMITE_MODEL_ROUTE_POLL_SECONDS`, `THERMITE_LIVE_INTERVAL_MS`, `THERMITE_RESULTS_REMOTE`, `THERMITE_ADVISORS_FILE`, `THERMITE_KB_SYNC_SECONDS` |
 | Compose itself | `THERMITE_CONTROL_PORT`, `THERMITE_COMMIT` for the images' builds, and `THERMITE_ENGINE_SOCKET_HOST` for `compose.lifecycle.yaml` |
 
 The [settings reference](../../reference/settings.md#the-compose-file) gives their defaults, and the few that the second rig of `two-rigs` leaves out.
@@ -244,13 +244,13 @@ Any other setting needs an **override file**: a second compose file next to `com
 | `compose.results.yaml` | [Set up the results repository](../operate/results-repository.md#3-give-the-supervisor-the-three-settings) | The results repository's key files |
 | `compose.lifecycle.yaml` | In the repository, beside the source code's own `compose.yaml`: see [Give control a deployment driver](../operate/rig-lifecycle.md#give-control-a-deployment-driver) | Rig restarts by control, for development |
 
-For a setting that no guide covers, such as `THERMITE_RUNPOD_TEST_IMAGE` on control, write a file of your own the same way:
+For a setting that no guide covers, such as a [reader's token](../../reference/tokens.md) on control, write a file of your own the same way:
 
 ```yaml title="compose.local.yaml"
 services:
   control:
     environment:
-      THERMITE_RUNPOD_TEST_IMAGE: registry.example.com/thermite/thermite-harness:1a2b3c4d5e6f-cuda
+      THERMITE_CONTROL_READ_TOKEN_SHA256: <the token's sha256, 64 hexadecimal characters>
 ```
 
 **Name every override file you use in every later `up`,** each with `-f`, after `-f compose.yaml`. That includes the `up` after an update. Compose reads only the files it is given, so a start that leaves one out drops what that file adds. For example, with all of them:

@@ -60,7 +60,7 @@ Adding an OAuth server, or signing in again, answers with the address of the ser
 
 ```sh
 printf 'Bearer %s' "$BRAIN_TOKEN" > brain.secret
-thermite mcp add gbrain --url https://brain.example.com/mcp --auth key \
+npx thermite mcp add gbrain --url https://brain.example.com/mcp --auth key \
   --secret-file brain.secret --control https://control.example.com --token-file owner.token
 ```
 

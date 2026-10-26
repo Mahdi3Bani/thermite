@@ -84,10 +84,10 @@ docker compose up -d
 With Podman, write `podman compose` in place of `docker compose`. The first start downloads the images. To check the machine before the first `up`, run `npx thermite doctor` from the [command line](https://usethermite.com/how-to/install/one-machine/#the-command-line), built from the source with Node.js and git: it checks Docker or Podman, compose, the port, disk and the clock, and says how to fix each problem ([Troubleshoot](https://usethermite.com/how-to/operate/troubleshoot/#check-the-machine)). Then:
 
 1. Open <http://127.0.0.1:8800/ui> and sign in with the token in `.dev/secrets/control-admin-token`.
-2. Go to **Rigs › local-1 › Checks** and run **smoke**. The rig builds a small benchmark and submits known changes to its judge: a real speed-up, a no-op, broken builds and attempts to cheat. Each one gets its expected verdict in about ten minutes on a CPU.
+2. Open **Rigs › local-1**, and under **Checks** press **Run it** beside **Judge smoke**. The rig builds a small benchmark and submits known changes to its judge: a real speed-up, a no-op, broken builds and attempts to cheat. Each one gets its expected verdict within a few minutes on a CPU.
 3. Add a model under **Settings › Providers** (any OpenAI-compatible endpoint with tool calling, Anthropic, or OpenCode), then start a campaign from **Campaigns › New campaign**: on the sample project in [`examples/matmul-cpu`](examples/matmul-cpu/README.md), a folder of this repository, or on your own project.
 
-The [quick start](https://usethermite.com/tutorials/first-run/) walks through every step, including taking the winning patch back to your project. To build Thermite from its source code instead, see [Contributing](https://usethermite.com/project/contributing/#set-up).
+The [tutorials](https://usethermite.com/tutorials/first-run/) walk through every step, up to taking the winning patch back to your project ([Your own project](https://usethermite.com/tutorials/your-own-project/)). To build Thermite from its source code instead, see [Contributing](https://usethermite.com/project/contributing/#set-up).
 
 **Just want to look around?** `npm ci && node --experimental-strip-types scripts/dashboard-demo.ts` serves the dashboard with synthetic campaigns and rigs at <http://127.0.0.1:8810/ui>, with no containers. It prints the token to sign in with.
 
@@ -121,7 +121,7 @@ More in [architecture](https://usethermite.com/explanation/how-it-fits-together/
 
 | Read this | To |
 | --- | --- |
-| [Quick start](https://usethermite.com/tutorials/first-run/) | Go from a clean clone to a campaign on your own project |
+| [Quick start](https://usethermite.com/tutorials/first-run/) | Go from the release's compose file to a first verdict, then to agents on your own project |
 | [Write a kit](https://usethermite.com/how-to/campaigns/write-a-kit/) | Teach the judge how to build, run and check your project |
 | [Judging and integrity](https://usethermite.com/explanation/why-agents-never-judge/) | See how results are accepted without trusting the agents |
 | [Known limits](https://usethermite.com/reference/known-limits/) | Know the risks and what is not built yet, before you run it |

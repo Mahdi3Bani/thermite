@@ -24,7 +24,7 @@ In every mode, code decides when a campaign is done, never an agent. [Choose a c
 
 - A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and several gigabytes of free disk. Thermite's three images take about 2.5 GB.
 - Docker or Podman, which run Thermite's containers. You download Thermite's images ready-made, and build nothing.
-- For the command line, from the second tutorial on: Node.js 22.19 or later, and git.
+- git, from the second tutorial on, and for the command line, from the third: Node.js 22.19 or later.
 - About twenty minutes for the first run.
 
 A GPU is optional, and so is a paid AI model: you can start with a free one.

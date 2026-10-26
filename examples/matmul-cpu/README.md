@@ -19,8 +19,8 @@ The tutorial [Hand the work to agents](../../docs/_site/src/content/docs/tutoria
    tar -czf matmul-cpu-kit.tar.gz -C examples/matmul-cpu kit
    ```
 
-2. On the dashboard's **New campaign** page, under **2 Project**, give this repository's address, `https://github.com/iammrduncan/thermite.git`, start from the same release (**Start from**: `v0.1.0`), and set **Folder in the repository** to `examples/matmul-cpu/project`. The files the agents may change are `src/kernel/**`. Under **Advanced**, the **Lines never allowed** are `__real_`, `__wrap_` and `thermite_ref_calls`: a change that adds one could hide a call to the reference from the kit's check.
-3. Under **3 How to measure**, choose **Upload a kit** and upload `matmul-cpu-kit.tar.gz`. Measure `small` and `large`, and keep `held` as a hidden test.
+2. On the dashboard's **New campaign** page, under **3 Project**, give this repository's address, `https://github.com/iammrduncan/thermite.git`, start from the same release (**Start from**: `v0.1.0`), and set **Folder in the repository** to `examples/matmul-cpu/project`. The files the agents may change are `src/kernel/**`. Under **Advanced**, the **Lines never allowed** are `__real_`, `__wrap_` and `thermite_ref_calls`: a change that adds one could hide a call to the reference from the kit's check.
+3. Under **4 How to measure**, choose **Upload a kit** and upload `matmul-cpu-kit.tar.gz`. Measure `small` and `large`, and keep `held` as a hidden test.
 
 The rig fetches the whole repository, and the run starts from the project folder: the agents get only its files.
 

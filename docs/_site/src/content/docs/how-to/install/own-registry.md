@@ -91,7 +91,7 @@ Push the control image too if control runs from it elsewhere. The compose stack 
 
 ## 3. Tell control
 
-Set these on control, then restart it. With the compose stack, put the first four in `.env` and run `docker compose up -d`, with your `-f` options if you use [override files](one-machine.md#settings-and-override-files).
+Set these on control, then restart it. With the compose stack, put them in `.env` and run `docker compose up -d`, with your `-f` options if you use [override files](one-machine.md#settings-and-override-files).
 
 | Setting | Image |
 | --- | --- |
@@ -99,7 +99,7 @@ Set these on control, then restart it. With the compose stack, put the first fou
 | `THERMITE_RIG_SUPERVISOR_IMAGE` | The supervisor. Control needs both of these to set rigs up |
 | `THERMITE_RIG_HARNESS_CUDA_IMAGE` | The CUDA harness, for GPU rigs |
 | `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image, for rigs on RunPod |
-| `THERMITE_RUNPOD_TEST_IMAGE` | The CUDA harness or the one-container rig image, as RunPod test pods' default. `compose.yaml` does not pass this one to control: with the compose stack, set it in an override file ([example](one-machine.md#settings-and-override-files)) or type the image into the test form |
+| `THERMITE_RUNPOD_TEST_IMAGE` | The CUDA harness or the one-container rig image, as RunPod test pods' default. A release's `compose.yaml` sets it to the release's rig image. Without it, type the image into the test form |
 
 ```sh title=".env (part)"
 THERMITE_RIG_HARNESS_IMAGE=registry.example.com/thermite/thermite-harness:1a2b3c4d5e6f

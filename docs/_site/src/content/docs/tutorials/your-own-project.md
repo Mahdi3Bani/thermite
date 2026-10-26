@@ -249,7 +249,7 @@ git commit -am "Count primes faster, as Thermite's judge confirmed"
 
 ## 12. Pause the campaign
 
-The agent keeps looking for more speed until you stop it. At the top of the run's page, on the right, press **Pause**, between **Message** and **⋯**. A small menu opens. In its field **why (optional)**, type `result taken home`, then press **Pause the run**.
+The agent keeps looking for more speed until you stop it. At the top of the run's page, on the right, press **Pause**, just right of **Message**. A small menu opens. In its field **why (optional)**, type `result taken home`, then press **Pause the run**.
 
 The menu closes, a line at the top of the page says `Sent to local-1 at`, the time, and `Waiting for the rig to take it.`, and the agent's current trial stops too. Within a minute, with no refresh, the line says `Done.`, the button says **Resume**, and the **Now** block says `This run is paused: result taken home. Nothing new starts until it is resumed.` The top line ends **Paused**, even while a change waits for you: it stays under **Needs you**.
 
