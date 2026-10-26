@@ -1,23 +1,23 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
+import {
+  PLAN_LIMITS_TEXT,
+  PLANNER_ASK_SYSTEM,
+  PLANNER_PI_SYSTEM as PLANNER_SYSTEM,
+  PLANNER_TASK,
+} from "../../src/agents/roles/planner.ts";
+import {
+  RESEARCH_PLAN_LIMITS_TEXT,
+  RESEARCH_PLANNER_ASK_SYSTEM,
+  RESEARCH_PLANNER_PI_SYSTEM as RESEARCH_PLANNER_SYSTEM,
+  RESEARCH_PLANNER_TASK,
+} from "../../src/agents/roles/research-planner.ts";
 import { RESEARCH_SYSTEM as RESEARCH_WORKER_SYSTEM } from "../../src/agents/tools/research.ts";
 import { CLAUDE_SYSTEM } from "../../src/harness/agents/claude-code.ts";
 import { CODEX_SYSTEM } from "../../src/harness/agents/codex.ts";
 import { SUMMARY_SYSTEM } from "../../src/harness/agents/compaction.ts";
 import { SYSTEM as OPENCODE_SYSTEM } from "../../src/harness/agents/opencode.ts";
-import {
-  PLAN_LIMITS_TEXT,
-  ASK_SYSTEM as PLANNER_ASK_SYSTEM,
-  SYSTEM as PLANNER_SYSTEM,
-  TASK as PLANNER_TASK,
-} from "../../src/harness/agents/planner.ts";
-import {
-  LIMITS_TEXT as RESEARCH_PLAN_LIMITS_TEXT,
-  RESEARCH_ASK_SYSTEM as RESEARCH_PLANNER_ASK_SYSTEM,
-  RESEARCH_SYSTEM as RESEARCH_PLANNER_SYSTEM,
-  RESEARCH_TASK as RESEARCH_PLANNER_TASK,
-} from "../../src/harness/agents/research-planner.ts";
 import { RESEARCH_NOTES } from "../../src/harness/agents/research-worker.ts";
 import { NOTES_AND_SOURCES, SYSTEM as WORKER_SYSTEM } from "../../src/harness/agents/worker.ts";
 import {

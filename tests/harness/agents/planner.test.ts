@@ -413,9 +413,7 @@ describe("planner", () => {
   });
 
   test("every limit the plan is held to is in the tool's schema and in the prompt (goal 079)", async () => {
-    const { PLAN_LIMITS, PLAN_LIMITS_TEXT } = await import(
-      "../../../src/harness/agents/planner.ts"
-    );
+    const { PLAN_LIMITS, PLAN_LIMITS_TEXT } = await import("../../../src/agents/roles/planner.ts");
     let tool: Record<string, unknown> | undefined;
     let system = "";
     const fake = await startFakeModel(({ messages, tools }) => {
