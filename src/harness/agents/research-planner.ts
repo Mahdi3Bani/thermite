@@ -332,7 +332,7 @@ export function validateResearchPlan(
     if (s.weight > 0) return undefined;
     if (s.decided)
       return `${who}: ${s.label} is decided (${s.decision?.decision}${s.decision?.certainty ? ` at ${s.decision.certainty}` : ""}, review ${s.decision?.review}): its decision stands until its card changes, so give the lane a question still open`;
-    return `${who}: ${s.label} is saturated (its last ${SATURATION_TASKS} tasks added no verified claim from a new site, and its card did not change): give the lane a question still open, unless every open question is saturated`;
+    return `${who}: ${s.label} is saturated (its last ${SATURATION_TASKS} tasks added no verified claim from a new site, and its card's certainty did not rise): give the lane a question still open, unless every open question is saturated`;
   };
   const tasks: ResearchTask[] = [];
   const checkTask = (

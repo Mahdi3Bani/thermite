@@ -250,7 +250,7 @@ describe("the research planner's answer, checked in code (goals 047 and 117)", (
       "lane-1: Question 4 (index 3) is decided (answered at moderate, review 7): its decision stands until its card changes, so give the lane a question still open",
       "lane-2: task x-teach000003: Question 4 (index 3) is decided (answered at moderate, review 7): its decision stands until its card changes, so give the lane a question still open",
       "lane-3: task x-noq00000000 names no question: add a task for it with its question and gap instead",
-      "add a: Question 5 (index 4) is saturated (its last 4 tasks added no verified claim from a new site, and its card did not change): give the lane a question still open, unless every open question is saturated",
+      "add a: Question 5 (index 4) is saturated (its last 4 tasks added no verified claim from a new site, and its card's certainty did not rise): give the lane a question still open, unless every open question is saturated",
       "add b: question 9 is not one of the run's questions (an index from 0 to 5)",
       'add c: its gap asks for a measurement ("Time the"), and a research run measures nothing: that is a next experiment for a goal or hill-climb run, not a task; name a gap a source could close',
       'add d: it asks for a measurement ("run a benchmark"), and a research run measures nothing: give it only work that sources can answer',

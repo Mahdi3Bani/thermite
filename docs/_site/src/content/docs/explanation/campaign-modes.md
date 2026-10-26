@@ -113,7 +113,7 @@ On the run's **Overview** tab, the block **Research questions** shows where each
 Then each question, as **Question 1**, **Question 2** and so on, with its words (two lines at most, the full words on hover):
 
 - a mark and a chip for the review panel's decision that stands: ✓ `answered · high` (or `moderate`, `low`), ≈ `best available, insufficient`, `open`, `no decision yet`, or `to review again` when its card changed after the decision; a chip counts the reviewers who dissent, with their verdicts on hover;
-- `saturated`, while it is open and its last 4 tasks added no verified claim from a new site and left its card alone: the plan gives it no more tasks;
+- `saturated`, while it is open and its last 4 tasks added no verified claim from a new site and its card's certainty did not rise: the plan gives it no more tasks;
 - its answer card's answer, cut to a few lines with **more** to read it whole, after its version, certainty, the claims it cites, who wrote it and when; or `No answer card yet.`;
 - **Open gaps in the evidence**, which the next tasks look for, and **Next experiments**, the gaps only a measurement can settle, for a goal or hill-climb run;
 - the synthesizer's newest refused card, if one came after the card, with its first problem;
@@ -236,7 +236,7 @@ Each review's decisions go in the run's journal, from the harness: `Review 3 dec
 
 **The progress rule.** A run can also end when research has stopped adding. At each digest after the minimum, the harness checks two things:
 
-- every question still open is **saturated**: its last 4 finished tasks added no verified claim from a site new to the question, and its card did not change while they ran;
+- every question still open is **saturated**: its last 4 finished tasks added no verified claim from a site new to the question, and its card's certainty did not rise while they ran. A card rewritten in other words at the same certainty, as the synthesizer does each round its claims change, is no progress;
 - no item improved for a quarter of the run's running time, and for at least a quarter of its minimum: no decision ranked above the item's decision before it (for a question: open, then insufficient, then answered at low, moderate and high certainty; for a hypothesis: undecided, then supported or refuted), and no card more certain than the question's card before it. For an 8-hour run, that is 2 hours. Running time here is the run's clock, which leaves out the time while the run was paused, its agents could not work, or its rig drained before an image update: the time without an improvement leaves it out too.
 
 When both hold, no review waits, and some item is still open, the run ends with its open items stated in its journal (`Research stopped adding: every open question is saturated, and no item improved for 6.0 h (the rule needs 2.5 h, a quarter of the running time). The run ends with these items open: Question 2. …`) and in Live: no new trial starts, the final writer writes its paper, which says what stays open and why, and the run closes with the reason `research stopped adding: its open questions are saturated`. This is not a time cap: the rule holds only once research has stopped adding, and a run that keeps adding goes on. A run whose items all have ends never ends by this rule: it waits for the review panel's pass, or for your word on it.

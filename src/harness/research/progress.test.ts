@@ -83,14 +83,20 @@ describe("a research run's progress (goal 117)", () => {
     assert.equal(now.get("hypothesis:h-1")?.decision, "supported");
   });
 
-  test(`a question is saturated after ${SATURATION_TASKS} tasks that added nothing new and left its card alone`, async (t) => {
+  test(`a question is saturated after ${SATURATION_TASKS} tasks that added nothing new and left its card's certainty where it was`, async (t) => {
     const s = await scene(t);
+    s.card(1, 1, "low", 50);
     for (let k = 0; k < SATURATION_TASKS - 1; k++) s.task(1, 0, 100 + k * 10);
     assert.equal(questionSaturated(s.ledger, RUN, 1), false, "too few tasks");
     s.task(1, 0, 140);
     assert.equal(questionSaturated(s.ledger, RUN, 1), true);
-    // A new card while they ran: not saturated.
-    s.ledger.appendEvent("s", "card_written", RUN, { question: 1, version: 3 });
+    // Its card rewritten at the same certainty while they ran (each round's synthesis): still
+    // saturated, or a run whose cards keep changing in words could never end.
+    s.card(1, 2, "low", 120);
+    s.card(1, 3, "low", 130);
+    assert.equal(questionSaturated(s.ledger, RUN, 1), true);
+    // A card whose certainty rose while they ran: not saturated.
+    s.card(1, 4, "moderate", 135);
     assert.equal(questionSaturated(s.ledger, RUN, 1), false);
     // A question whose newest task found a new domain: not saturated.
     for (let k = 0; k < SATURATION_TASKS - 1; k++) s.task(0, 0, 100 + k * 10);

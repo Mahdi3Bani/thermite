@@ -103,7 +103,7 @@ async function scene(t: TestContext) {
   db.prepare(
     "insert into item_decision (run, kind, key, review, card_version, decision, certainty, decided_at) values (?, 'question', '3', ?, 1, 'answered', 'moderate', ?)",
   ).run(RUN, review, at(210));
-  // Q5 (index 4): its last four tasks added no claim from a new site, and its card did not change.
+  // Q5 (index 4): its last four tasks added no claim from a new site, and its card's certainty did not rise.
   for (let i = 0; i < 4; i++)
     db.prepare(
       "insert into experiment (id, run, title, added_by, state, question, yield, created_at, updated_at) values (?, ?, 't', 'planner', 'done', 4, ?, ?, ?)",

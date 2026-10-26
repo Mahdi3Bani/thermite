@@ -42,10 +42,10 @@ Since 2026-10-25, only this list holds the tag:
 
 1. **Goal 135's pages.** Done, 2026-10-25: they describe all of it, and goal [135](goals/_completed/135-lanes-and-judge-throughput.goal) is verified.
 2. **The CUDA 13 image, labelled untested.** It has never run on a GPU. The release publishes it, and its README, the pages and the known limits say it is untested (the owner, 2026-10-25). Goal [132](goals/132-cuda-images-per-gpu.goal) moves to v0.1.2.
-3. **Goal [117](goals/117-research-that-answers.goal)'s acceptance runs.** v0.1.0 doesn't ship until research mode is solid (the owner, 2026-10-24). One of the three runs passed; the second failed and was fixed; the second and third run again. They also check goals [112](goals/112-research-ends-when-answered.goal) and [047](goals/047-research-planner.goal).
+3. **Goal [117](goals/117-research-that-answers.goal)'s acceptance runs.** v0.1.0 doesn't ship until research mode is solid (the owner, 2026-10-24). One of the three runs passed; the second failed and was fixed; the second and third run again. On 2026-10-26 the chunking test started again, and the rerun of the 35-hour brief, which could not end because any rewrite of a card kept its question from saturating, waits for that fix on its rig to close and write its paper. They also check goals [112](goals/112-research-ends-when-answered.goal) and [047](goals/047-research-planner.goal).
 4. **Goal [026](goals/026-ship-v0.1.0.goal)'s steps:** the full checks and acceptance suites on `main`'s tip, the changelog's date, the tag (it closes goal [010](goals/010-published-images.goal)), the bundle on clean machines (it closes goal [011](goals/011-release-bundle.goal)), the release notes and the `v0.1.1` branch.
 
-**Ships as built, checked on the lab after the tag:** goals 103, 136, 139, 140, 142, 144 and 147. Their code is on `main`; each one's only open item is a check on the lab. Goal [143](goals/_completed/143-stuck-and-looping-trials.goal) is verified on the lab, 2026-10-26.
+**Ships as built, checked on the lab after the tag:** goals 103, 136, 139, 140, 142, 144, 147 and 151. Their code is on `main`; each one's only open item is a check on the lab. Goal [143](goals/_completed/143-stuck-and-looping-trials.goal) is verified on the lab, 2026-10-26.
 
 **Moved out:** goal [132](goals/132-cuda-images-per-gpu.goal) (CUDA 13 images) to v0.1.2; goal [141](goals/141-waiting-win-after-champion-moved.goal) (a waiting win the champion moved past) to v0.1.3; goal 135's screens to goal [148](goals/148-keep-working-on-screens.goal), v0.1.4.
 

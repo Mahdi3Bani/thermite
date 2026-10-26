@@ -107,8 +107,11 @@ export function questionEnded(d: StandingDecision | undefined): boolean {
 
 /**
  * Whether a question is saturated: its last SATURATION_TASKS finished tasks added no verified
- * claim from a new registrable domain, and its card did not change while they ran. Fewer tasks
- * than that: not saturated.
+ * claim from a new registrable domain, and its card's certainty did not rise while they ran. A
+ * card rewritten at the same certainty is no progress, as for the last improvement: the
+ * synthesizer rewrites a card each round its claims change, so a card that only changed would
+ * keep a question from saturating, and its run from ending, for good. Fewer tasks than that:
+ * not saturated.
  */
 export function questionSaturated(ledger: Ledger, run: string, question: number): boolean {
   const tasks = ledger.db
@@ -133,13 +136,18 @@ export function questionSaturated(ledger: Ledger, run: string, question: number)
     (a, t) => (t.created_at < a ? t.created_at : a),
     tasks[0]?.created_at ?? "",
   );
-  const changed = ledger.db
+  const cards = ledger.db
     .prepare(
-      `select 1 from event where kind = 'card_written' and subject = ? and at >= ?
-         and json_extract(body, '$.question') = ? limit 1`,
+      "select certainty, created_at from question_card where run = ? and question = ? order by version",
     )
-    .get(run, since, question);
-  return !changed;
+    .all(run, question) as { certainty: string; created_at: string }[];
+  let before = 0;
+  for (const c of cards) {
+    const rank = certaintyRank(c.certainty);
+    if (c.created_at >= since && rank > before) return false;
+    before = rank;
+  }
+  return true;
 }
 
 /**
