@@ -1,0 +1,50 @@
+---
+id: "170"
+title: "One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs"
+status: IN_PROGRESS
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 170 · One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+
+## What
+
+Thermite's things form one hierarchy: machines host rigs; campaigns, with their kits, have runs; a run has lanes, trials, experiments, attempts, verdicts, reviews, hypotheses, claims, notes and reports. Today some of them are identified or addressed through the wrong parent. An attempt's page, for example, is at `/ui/rigs/<rig>/attempts/<attempt>`: it hangs from the rig, not from its run.
+
+1. **A review of the hierarchy,** designed and as built: each thing's ID, who mints it, how far it is unique, where it is stored, and how every interface addresses it (dashboard URLs, REST routes, MCP tools, the command line, events, signed commands, knowledge-base references, exports and git refs).
+2. **One rule:** each thing has an ID that is unique where it is used, and is addressed through what owns it. The rig a trial or an attempt ran on is a fact about it, not its parent.
+3. **The changes,** so that a run's history stays whole if the run moves to another rig, or a new run starts from another rig's champion (goal [085](085-move-a-campaign-to-another-rig.goal)): the IDs, the URLs and routes, the stored keys, and the names of the message bus's subjects (goal [168](168-message-bus.goal)).
+
+## Why
+
+The owner, 2026-10-26, about an attempt's page on control: "This is the url seems to say an attempt is tied to the rig, not the run itself... So if the run shifts to a new rig (pause, migrate, start) in the futuer the attempt hierarchy would be broken. Lets double check in our audit the hierarchy of elements and data elements like this and machine>rig>campaigns|kits>runs>experiments|reviews|attempts|etc..."
+
+## Constraints
+
+- **Nothing is destroyed.** The ledger stays the record; a move never rewrites a run's past.
+- **v0.1.1 may break compatibility with v0.1.0** (owner, 2026-10-26): IDs, URLs and routes may change; old ledgers are kept, never deleted.
+- **Docs follow the code,** in the same commit: the glossary, the REST and MCP references and the pages that show URLs.
+
+## Done when
+
+- [ ] The review is in `.internal/reviews/v0.1.1-audit/` (lane 13), and the rule and its design are recorded here.
+- [ ] Every thing is identified and addressed by the rule, in the dashboard, REST, MCP, the command line, events, exports and the knowledge base; a test fails when a route addresses a thing through a parent that does not own it.
+- [ ] A run's pages, links and records stay whole when the run continues on another rig, shown by a test.
+- [ ] The fast checks, the docs checks and the control, steering and RunPod acceptance checks pass.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+- 2026-10-26 21:08 UTC: Goal written from the owner's words. Lane 13 of the audit reviews the hierarchy.
+
+---
+
+Run with `/goal Complete docs/plan/goals/170-one-hierarchy.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

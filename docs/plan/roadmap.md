@@ -134,6 +134,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [164](goals/164-settings-that-fail-loudly.goal) Settings that fail loudly: a bad value stops the part at start, and no failure passes as success · `PROPOSED`
 - [165](goals/165-results-kept-through-remove-and-reset.goal) Results kept through remove, reset and update: the remove guard on every placement, two reset bugs, an update that survives a restart · `PROPOSED`
 - [167](goals/167-how-the-parts-talk.goal) How the parts talk: a review of every interface between control, rigs, kits, campaigns, runs and agents · `IN_PROGRESS`
+- [170](goals/170-one-hierarchy.goal) One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs · `IN_PROGRESS`
 - [166](goals/166-agent-definitions.goal) Agent definitions you can read and change: one definition for each role in code, and the prompt each run gives it · `IN_PROGRESS`
 - [168](goals/168-message-bus.goal) One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval · `IN_PROGRESS`
 - [169](goals/169-agents-in-their-terminal.goal) Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events · `IN_PROGRESS`
