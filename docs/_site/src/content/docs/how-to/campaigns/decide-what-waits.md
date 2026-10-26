@@ -121,7 +121,7 @@ A trial has no time limit unless someone set one, and nothing ends a trial becau
 
 Both show the trial's work so far. Its lane's row, on the run's page, the home page and the rig's page, has a chip that leads to the card: `quiet for 4 h 24 min`, `repeats the same calls` or `repeats a refused request`.
 
-- **Stop this trial…** opens the card. Its foot asks `Stop lane-2's trial now?`; **Stop the trial** sends [`stop_trial`](../../reference/signed-commands.md#stop_trial). The trial ends as interrupted, with its sources, claims and counters, and its task goes back to the top of the run's queue. The card leaves at once.
+- **Stop this trial…** opens the card. Its foot asks `Stop lane-2's trial now?`; **Stop the trial** sends [`stop_trial`](../../reference/signed-commands.md#stop_trial). The trial ends as interrupted, with its sources, claims and counters, and its task goes back to the top of the run's queue. The stop records why, such as `stopped from Needs you: it was quiet`. The card leaves at once.
 - **Leave it running** hides the card. A quiet trial's card comes back if the trial sends a line and is then quiet again for as long; a repeating trial's comes back with a new streak, or with asks for another refused page.
 
 To be asked about quiet trials, type the minutes in **Ask me after a quiet spell of (minutes)** on the rig's **Edit rig** page. Its ⓘ says: "When a trial sends no line for this long, its lane is marked quiet and the trial waits for you under Needs you. Empty: never. Nothing ends the trial." On a rig whose harness is too old to take it, the field is off and reads `update the rig first`.

@@ -63,8 +63,13 @@ export function formPayload(kind: CommandKind, f: Record<string, unknown>): unkn
     drop_directive: { run, id: Number(f.id) },
     unkeep_message: { run, message: Number(f.message) },
     // A drain's card and its trials under At work (goal 136): End the drain, and Stop the trial.
+    // A stuck trial's card (goal 143) gives why, and the trial's stop records it.
     drain_rig: { drain: false, reason: "the owner ended the drain" },
-    stop_trial: { run, trial: String(f.trial ?? "") },
+    stop_trial: {
+      run,
+      trial: String(f.trial ?? ""),
+      ...(String(f.reason ?? "").trim() ? { reason: String(f.reason).trim() } : {}),
+    },
   };
   return payloads[kind];
 }

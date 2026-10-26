@@ -1,17 +1,17 @@
 ---
 id: "143"
 title: "A stuck or looping trial shows itself, and an agent's refused request says why"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["136", "140"]
 created: 2026-10-25
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 
 # 143 · A stuck or looping trial shows itself, and an agent's refused request says why
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -94,7 +94,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
   - Command line (`thermite-trial research help`)
   - Limits and pacing
   - every page that names the events (`trial_repeating`: Troubleshoot, Limits and pacing; no page lists every event)
-- [ ] On the lab:
+- [x] On the lab:
   - A quiet trial shows on its run's page, and the owner stops it from there.
   - A repeating trial shows as such.
   - A refused claim says why.
@@ -107,6 +107,7 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 - 2026-10-25, builder: **Stop this trial…** is in a stuck trial's card (and, as before, on a draining rig's page), not on every lane's row: the owner asked for less on the page. `stop_trial` over MCP and REST stops any running trial.
 - 2026-10-25, builder: the teachers' brief has each lane's trial now (`at_work`); the auditor's package does not. The auditor decides one change, and a lane's state says nothing about it.
 - 2026-10-25, builder: only a Pi worker gets short answers. OpenCode, Claude Code and Codex compact on their own, and the harness learns of it only afterwards, so a short answer to a `thermite-trial` command could point at an answer the program no longer holds. Their repeats show from their lines: the watch reads every harness's lines alike.
+- 2026-10-26, owner: after the lab check, the rig keeps its quiet setting, at 20 minutes ("Keep a longer time"), and is not cleared.
 - 2026-10-25, builder: a streak is said at its 10th repeated call in a row. It is a threshold for what the harness says, not a cap. A page the run refused, asked for again and again (goal 136's "repeats a refused request"), is no such streak: its answer counts the asks. It shows the same way all the same: from its 10th ask in a trial, the trial is a **Repeats** card under **Needs you**, and its lane's chip reads "repeats a refused request", as a draining rig's row does.
 
 ## Open questions
@@ -121,7 +122,9 @@ A lane that does nothing for four hours costs half of the run's work. The owner 
 - 2026-10-25 20:00 UTC: Item 3 built. The harness API names each refused field and the problem, from the body sent (`src/harness/api/refusal.ts`), at most 5 problems; its log has `request refused`. A claim's limits have one home, `CLAIM_LIMITS`, which the schema and `add_claim`'s text and usage read; `research help` gives them. Tests: `src/harness/api/refusal.test.ts`, through the API, `thermite-trial` and Pi's tool. Pages: Limits and pacing, Command line, Troubleshoot. Next: item 2. Still open for item 3: on the lab, whether the worker's "intermittent" refusals had another cause.
 - 2026-10-25 22:08 UTC: Item 2 built, and item 1's data. A Pi worker's repeated call gets a short answer (`src/harness/agents/repeats.ts`, inside goal 144's clock in both workers; the guard forgets at each compaction, from the Compactor's count). The harness's watch (`src/harness/service/watch.ts`) reads every trial line the live log keeps, for every harness: when the trial last sent a line, a Pi worker's open model call (reported every 30 s, `live-session.ts`), and streaks of the same calls, with a `trial_repeating` event and lines in Live. The rig's report lists each open trial with these facts (`work.open`, always now), control merges them into `get_run`'s and `run_queue`'s `at_work` (`src/control/views/work.ts`), and the teachers' brief has `at_work`. Control keeps each open trial's newest 400 live lines past the rig's window. The idea tool moved to `idea-tool.ts`, which keeps `worker.ts` from growing. Tests: `repeats.test.ts`, `watch.test.ts`, `views/work.test.ts`, `trial-session.test.ts`. Pages: Limits and pacing, MCP tools, REST API, Advisors file, Supervision, Troubleshoot. Next: item 1's card, chip and quiet setting, from the approved mockup.
 - 2026-10-25 22:24 UTC: Item 1 built from the approved mockup. A stuck trial is a card under **Needs you** (`src/control/ui/stuck.ts`): **Repeats** for a streak of the same calls, **Stuck?** for a trial quiet past the rig's new setting `quiet_minutes` (**Ask me after a quiet spell of (minutes)** on **Edit rig**, `set_rig_settings`, `POST /v1/rigs/<rig>/settings`; none by default). Its details are behind the card; **Stop this trial…** opens it, and its foot sends `stop_trial`; **Leave it running** is kept by control (`trial_left`) until the trial is stuck since another time. The lane's row gets a chip that leads to the card. The card builder moved to `src/control/ui/need-card.ts`. Tests: `src/control/ui/stuck.test.ts`, Edit rig's in `dashboard.test.ts`, `rig-settings.test.ts`. Pages: Decide what waits for you, Steer a run, A rig's page, Signed commands, REST API, MCP tools, Limits and pacing, When a run is done, Troubleshoot; CHANGELOG. Next: the full checks, the merge and the roll, then the lab's checks.
+- 2026-10-25 22:51 UTC: Merged and pushed: da20631, then 49fcb84 and 66ce59e from a review of my own diff. History gave no words for `trial_repeating`, so the event never showed there; it does now. Edit rig offered the quiet field on a rig whose harness can't take it; there it is off now ("update the rig first"). A page the run refused, asked for again, is no streak of the same answer (goal 136's answer counts the asks), so control shows it from its 10th ask as a **Repeats** card, with the chip "repeats a refused request". With the owner's go, 49fcb84 rolls to the lab's control and its two research rigs. Next: the lab checks.
+- 2026-10-26 02:46 UTC: Verified on the lab, on control and the two research rigs that run 49fcb84. Trials that repeated the same calls showed as **Repeats** cards under **Needs you**, with `trial_repeating` in History; the owner saw them and left them running. On the rig with a quiet setting, two quiet trials showed as **Stuck?** cards. The owner stopped both from their cards at 02:37 and 02:39 UTC (`stop_trial` by `owner:ui`), and each ended as interrupted. A claim with a short quote got `invalid request: quotes[4].quote has 16 characters; it needs at least 20`, and the worker's next `add_claim` was taken. Item 3's "intermittent" refusals: the only refusal seen since the roll was a quote shorter than 20 characters, so no other cause showed. One gap found and fixed: the card's stop gave its reason, but control's form dropped it, so History said only `stopped by control:owner:ui`; the reason now goes with the stop (`command-forms.ts`, test in `stuck.test.ts`, page Decide what waits for you).
 
 ---
 
-Run with `/goal Complete docs/plan/goals/143-stuck-and-looping-trials.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/_completed/143-stuck-and-looping-trials.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

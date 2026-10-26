@@ -177,10 +177,27 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
     assert.equal(bad.status, 400);
   });
 
-  test("Stop this trial: once sent, the card leaves", async () => {
+  test("Stop this trial: the card's form sends why, and once sent, the card leaves", async () => {
     const c = await stuckRun();
-    const r = await c.send({ rig: "rig-a", kind: "stop_trial", run: "s-1", trial: "t-1" });
+    // The card's own form, as the page has it.
+    const form =
+      /<form[^>]*action="\/ui\/commands">(?:(?!<\/form>)[\s\S])*?name="trial" value="t-1">(?:(?!<\/form>)[\s\S])*?<\/form>/.exec(
+        needsOf(await c.page(RUN)),
+      )?.[0] ?? "";
+    const fields = Object.fromEntries(
+      [...form.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [
+        m[1] as string,
+        (m[2] as string).replaceAll("&#39;", "'"),
+      ]),
+    );
+    assert.equal(fields.kind, "stop_trial");
+    const r = await c.send(fields);
     assert.ok(r.status < 400, JSON.stringify(r.answer));
+    assert.deepEqual(c.store.latestCommands("rig-a", "stop_trial", 1)[0]?.payload, {
+      run: "s-1",
+      trial: "t-1",
+      reason: "stopped from Needs you: it repeated the same calls",
+    });
     const needs = needsOf(await c.page(RUN));
     assert.doesNotMatch(needs, /repeats the same tool calls/);
     assert.match(needs, /sent nothing/, "the other card stays");
