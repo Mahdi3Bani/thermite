@@ -37,9 +37,41 @@ The owner, 2026-10-26, about an attempt's page on control: "This is the url seem
 - [ ] A run's pages, links and records stay whole when the run continues on another rig, shown by a test.
 - [ ] The fast checks, the docs checks and the control, steering and RunPod acceptance checks pass.
 
+## What the review found
+
+The audit's lane 13 (`.internal/reviews/v0.1.1-audit/13-hierarchy.md`) reviewed the hierarchy on 2026-10-26.
+
+- **A run's history is already lost on control after a full reset or a retire,** with no move at all. Control builds every run, attempt and Live view from the rig's current ledger, and lists only rigs that are not retired; every RunPod terminate retires its rig. So the old runs' pages, attempt pages, champion downloads, `get_run` and "copy the queue from this run" stop working, while control still holds every event. An old Live link shows another run.
+- **Control has no run of its own.** What it shows is built as Rig ▸ Run ▸ Attempt; the designed Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt is only in the breadcrumbs.
+- **Run names are unique per rig only,** and two rigs with the same run name is the documented normal case. Usage asked for by run name alone adds up two different runs, and a briefing item is dropped when two rigs used the name.
+- **A run name can come back on the same rig after a full reset** (the command line takes any name), and then the results repository and control keep the old run's champion patch: the owner's download serves the wrong champion.
+- **A run has nine address shapes, and an attempt eight,** across the dashboard, REST, MCP, the command line, commands, the knowledge base and git. Control has no REST or MCP read of one attempt.
+- **Ten event kinds about an attempt or a judge's job don't name their run,** `verdict` among them, so a run's export leaves out its verdicts.
+- **Attempt, trial and experiment IDs are already random and unique in practice.** The problem is how things are addressed, not how they are minted.
+
+## Design (proposed by the review)
+
+- **Two trees that meet at the run.** What is done: control ▸ campaign ▸ run ▸ lane ▸ trial ▸ attempt ▸ verdict. Where it is done: control ▸ place (machine, cluster slot, cloud pod) ▸ rig ▸ devices. A run's rig, and the rig each attempt, trial and job ran on, are attributes.
+- **Run IDs minted once, by control,** unique across all rigs and ledgers: the readable `<campaign>-<n>`, refused when already used, on every path.
+- **One address for each thing:** `/ui/runs/<run>`, `/ui/runs/<run>/attempts/<attempt>`, `/v1/runs/<run>/…`, MCP `{run}` (with a new `get_attempt`), and the same in commands and the knowledge base. Rig-level things (checks, settings, the judge's queue, builds, exports, resets) keep the rig's address.
+- **A run registry on control,** written when control signs an assignment, and **views built by run,** across old ledgers and retired rigs.
+- **Every run-scoped event names its run.**
+- **A move is a new run that continues the old one** (goal [085](085-move-a-campaign-to-another-rig.goal)), shown on both pages.
+- **The bus's subjects follow it** (goal [168](168-message-bus.goal)): `thermite.run.<run>.attempt.<attempt>.<kind>`, with the rig and the ledger in headers.
+- **The steps,** in goal 125's order: the rule of shape; run IDs unique per control and the right champion patch; a run's export with its verdicts; `core/ids.ts`; the run on every event; the registry; views by run; run-scoped addresses; the knowledge base keyed by run; the subjects; the move (goal 085).
+
 ## Decisions
 
 ## Open questions
+
+Each with the review's recommendation.
+
+1. **When a run's work moves to another rig, is it the same run, or a new run that continues it?** Recommended: a new run that continues it, with "continues X" and "continued as Y" on both pages. A run's baseline, noise and gains are measured on one rig's devices, and it keeps the decision that a run is one campaign on one rig.
+2. **How are run IDs made unique?** Recommended: keep the readable `<campaign>-<n>`, numbered across all rigs and ledgers on control, and refuse a used name on every path.
+3. **Dots in campaign and run names.** Recommended: v0.1.1 allows `[a-z0-9_-]` in campaign and run names, with no dot, since a dot splits a bus subject; repositories and kits keep theirs.
+4. **The dashboard's address for a run.** Recommended: `/ui/runs/<run>`, `/ui/runs/<run>/<tab>`, `/ui/runs/<run>/attempts/<attempt>`, with the breadcrumbs Campaigns › campaign › run › attempt.
+5. **Runs of a retired rig, or from before a full reset.** Recommended: under the campaign's Earlier runs, each marked "on <rig>, retired" or "before <rig>'s full reset", and openable like any run.
+6. **Old links after the change.** Recommended: no redirects in v0.1.1, which breaks compatibility by decision.
 
 ## Progress
 

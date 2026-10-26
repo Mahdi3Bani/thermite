@@ -1,0 +1,45 @@
+---
+id: "171"
+title: "Bugs on the wire: lost long replies, commands sent again in full, a live view stopped by one line, prompts too long for one argument"
+status: PROPOSED
+version: "0.1.1"
+depends_on: ["167"]
+created: 2026-10-26
+updated: 2026-10-26
+---
+
+# 171 · Bugs on the wire: lost long replies, commands sent again in full, a live view stopped by one line, prompts too long for one argument
+
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [167](167-how-the-parts-talk.goal)
+
+## What
+
+The review of how the parts talk (goal [167](167-how-the-parts-talk.goal)) and the review of the agents' definitions (goal [166](166-agent-definitions.goal)) found these bugs by reading the code. Each fix comes with a regression test that fails without it.
+
+1. **A Pi worker's long reply is lost from Live.** `harness/agents/live-session.ts:121` sends a reply uncut; the trial API refuses any entry over 8,000 characters (`harness/api.ts:676`), and `live-session.ts:81` drops the refusal. The line is cut and marked, as `core/live.ts:86` already does for other lines, and a refusal is logged.
+2. **A waiting command is sent again in full every 5 seconds.** `pendingCommands` (`control/store.ts:2549-2570`) returns every pending command whole, with no limit, and the supervisor fetches them all on each poll while an assignment's sources are still being fetched (`supervisor/relay.ts:171-183`, `supervisor/staging.ts:155-206`). The largest command is about 3.5 MiB. The supervisor fetches a command's content once.
+3. **One unknown live line stops a rig's live view.** Control parses the whole batch and refuses it if one line has a kind or source it does not know (`core/live.ts:25-42`, `control/api.ts:602-631`). The supervisor keeps its cursor and sends the same batch every 3 seconds, for good (`supervisor/live.ts:62-64`), and control writes an audit row each time. Control keeps the lines it knows and counts the rest, as the knowledge base's sync already does (`core/kb.ts:108-112`).
+4. **A prompt can be too long for one argument.** OpenCode and Claude Code get the whole prompt as one command-line argument, for worker trials, research trials and planner calls (`harness/agents/opencode.ts:677-688`, `harness/agents/claude-code.ts:681-686`). Linux allows at most 131,072 bytes in one argument, and neither a brief nor the planner's context has a size limit, so a busy run's prompt could stop the program from starting. The prompt goes in by standard input or a file, as Codex and the advisors already do.
+5. **To check: a long model download may expire its assignment.** Commands live 60 minutes by default (`control/issue.ts:360`); an assignment waits while its model downloads (`supervisor/staging.ts:155-206`), and expires at the next fetch after that (`control/store.ts:2558-2565`). A test shows whether it happens; if it does, the assignment's life is held while it stages.
+
+## Why
+
+CONVENTIONS.md: "Every bug that is found gets a regression test", and "Nothing stops silently". The reviews are in `.internal/reviews/v0.1.1-audit/` (lanes 9 and 10).
+
+## Done when
+
+- [ ] Items 1 to 4 are fixed, each with a regression test that fails without the fix.
+- [ ] Item 5 is tested, and fixed if the test shows it.
+- [ ] The fast checks pass, and the agents, Claude Code and steering acceptance checks.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+- 2026-10-26: Goal written from the audit's lanes 9 and 10.
+
+---
+
+Run with `/goal Complete docs/plan/goals/171-bugs-on-the-wire.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

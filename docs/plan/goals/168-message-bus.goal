@@ -45,11 +45,49 @@ The audit found the cost this removes: control rebuilds each rig's view from eve
 - [ ] REST, MCP, the command line and the dashboard show the bus's state; the reference pages list them.
 - [ ] The fast checks, the docs checks and the acceptance checks for every changed part pass.
 
+## What the review found
+
+The audit's lane 11 (`.internal/reviews/v0.1.1-audit/11-message-bus.md`) evaluated NATS JetStream for this goal on 2026-10-26, from NATS's own documentation and measurements of Thermite's code. It installed and ran nothing.
+
+- **Its recommendation:** build the first part below over HTTP now, and decide NATS afterwards, with that part's numbers and goal [169](169-agents-in-their-terminal.goal)'s needs. If NATS is chosen, use core NATS with nothing in it that is not also in SQLite or the ledger, so it needs no backup of its own.
+- **The measured cost is not the transport.** Control takes in about 52,000 events a second; a page of 1,000 events is about 0.5 MB and takes 3.3 ms to sign and 2.8 ms to verify. The cost is the refold of every event for each view, which a bus does not change. What polling costs is delay: up to 5 s for commands, 60 s for reports, 30 s for model routes and 180 s for past research.
+- **One channel can't be reached.** Kits travel as git over HTTP, large files stay on HTTP, and the harness stays off any shared service. A RunPod rig does not dial out: control connects to the pod through RunPod's proxy, which is why pull mode exists, so a bus there needs control exposed or a listener in the pod. NATS would be a second channel beside HTTPS.
+- **JetStream would keep a second copy** of reports and commands, with its own retention and backups, which can drift from the records.
+- **More to secure and to test:** a server, its ports and a second way to authenticate; the Node library for NATS's auth callout is a pre-release; every acceptance check would start a NATS server.
+
+## Design (proposed by the review)
+
+**First part, over HTTP, needed with or without NATS** (each step green on its own, in goal [125](125-code-to-the-conventions.goal)'s order):
+
+0. Measure the link: delivery times, calls per rig, view times, as `/metrics` series.
+1. The link's contract in `core/link/`: one module for each message type, with its name (later its subject), direction, schema, byte limit, who signs it and how it is delivered.
+2. One client for the supervisor's calls to control, with a named timeout and typed errors.
+3. Pages bounded by bytes.
+4. Views kept up to date as events arrive, not refolded.
+5. One long-poll change feed for each rig, in place of the supervisor's command, route, MCP and past-research loops.
+6. Reports and live lines sent as they happen.
+7. Server-Sent Events for the dashboard.
+8. The link's state in REST, MCP and `/metrics`.
+9. Each secret the link carries sealed to the rig's own key.
+
+**Second part, if the owner chooses NATS:** a spike behind `core/link` with a `nats` transport beside `http` and the `nats` service in compose, measured against the first part's numbers; then each rig's identity (a key made by the supervisor and registered over HTTPS); the release bundle; the docs; the acceptance checks; then machines and clusters move to it. Pull mode, kits, exports, the harness, the broker, git and the dashboard stay as they are.
+
 ## Decisions
 
-- 2026-10-26: the audit's lane 11 evaluates NATS JetStream and proposes the design, in `.internal/reviews/v0.1.1-audit/11-message-bus.md`.
+- 2026-10-26: the audit's lane 11 evaluated NATS JetStream and proposed the design above.
 
 ## Open questions
+
+Each with the review's recommendation.
+
+1. **NATS now, or after the first part?** Recommended: the first part over HTTP in v0.1.1, then decide NATS with its numbers and goal 169's needs. Instead: core NATS for rigs that dial out in v0.1.1, after the first part's steps 1 to 3; or NATS with JetStream as first asked, with a second copy of reports and commands.
+2. **Will the owner type into an agent's terminal from the dashboard (goal 169)?** Recommended: decide this first; it decides whether the link needs a lasting two-way stream, the one load polling serves badly. Each line typed is steering, so it is a signed command.
+3. **How remote rigs reach the bus, if NATS is chosen.** Recommended: WebSocket over TLS through the operator's existing HTTPS reverse proxy: one name, one port, the TLS already set up.
+4. **Rig identities on the bus.** Recommended: a key made by each supervisor, registered over today's HTTPS call; control writes the server's users file and reloads it. The secret never leaves the rig.
+5. **How secrets travel on the link.** Recommended: sealed to each rig's own key on every rig, and sent only when they change.
+6. **Push to the dashboard.** Recommended: Server-Sent Events from control, with no new dependency.
+7. **RunPod's pull mode.** Recommended: keep the tunnel; control's adapter feeds the same handlers.
+8. **What JetStream may hold, if NATS is chosen.** Recommended: nothing at first, then at most a key-value store of revisions that hold no secret; "the bus holds no record" goes in [decisions.md](../decisions.md).
 
 ## Progress
 
