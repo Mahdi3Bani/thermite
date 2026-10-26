@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The quick start, followed on this machine as a tester follows it: from the release bundle to
 // the sample campaign's first verdict. The steps come from the pages themselves
-// (src/testing/quick-start.ts reads them): each shell block runs as the page writes it, in a new
+// (tests/helpers/quick-start.ts reads them): each shell block runs as the page writes it, in a new
 // folder, and the values typed, the buttons pressed and the words checked are the pages' own. So
 // a change to a page that breaks the quick start fails this test.
 //
@@ -56,7 +56,7 @@ import {
   pageText,
   quickStartPlan,
   rewrite,
-} from "../src/testing/quick-start.ts";
+} from "../tests/helpers/quick-start.ts";
 import { hostName, scriptedModel } from "./lib/scripted-model.mjs";
 import { latestVerdicts, lifecycles, until } from "./lib/smoke-env.mjs";
 

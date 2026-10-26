@@ -29,6 +29,7 @@ on:
       - containers/**
       - scripts/release-bundle.ts
       - src/release/**
+      - tests/release/**
   workflow_dispatch:
     inputs:
       publish:

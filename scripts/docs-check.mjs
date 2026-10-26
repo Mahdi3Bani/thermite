@@ -282,11 +282,7 @@ function checkCommandLine(page, text) {
 }
 
 // Settings: names the code reads, and name patterns it builds (THERMITE_CONTROL_${role}_...).
-const codeFiles = [
-  ...walk(join(root, "src"), /\.ts$/).filter(
-    (f) => !f.endsWith(".test.ts") && !f.includes(`${sep}testing${sep}`),
-  ),
-];
+const codeFiles = walk(join(root, "src"), /\.ts$/);
 const otherFiles = [
   ...walk(join(root, "containers"), /.*/),
   ...walk(join(root, "scripts"), /\.(mjs|ts|sh)$/),

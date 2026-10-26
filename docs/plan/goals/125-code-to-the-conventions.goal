@@ -5,7 +5,7 @@ status: PROPOSED
 version: "0.1.1"
 depends_on: ["026", "127"]
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-26
 ---
 
 # 125 · Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication
@@ -18,7 +18,7 @@ The clean-up of v0.1.1, worked on after v0.1.0 ships and after the pre-audit, go
 
 It is the second half of a double audit. Goal 127 looks at the whole code, read-only, and writes a guide: the map of the code, the themes of change that cross areas, the rules of shape, the order of work and what to leave. This goal works from that guide, audits one area at a time, checks the guide's findings against what it finds there, and makes the changes.
 
-**In scope:** every handwritten file that Thermite builds or runs: `src/` (production code and tests), `scripts/`, and the scripts in `containers/` and `kits/`. **Not in scope:** `.agents/`, `.claude/`, `skills-lock.json`, generated files, vendored code and `node_modules/`.
+**In scope:** every handwritten file that Thermite builds or runs: `src/`, `tests/`, `scripts/`, and the scripts in `containers/` and `kits/`. **Not in scope:** `.agents/`, `.claude/`, `skills-lock.json`, generated files, vendored code and `node_modules/`.
 
 ### What the audit checks
 
@@ -26,7 +26,7 @@ Each rule of CONVENTIONS.md, in particular:
 
 1. **File size and structure.** A file over 500 lines gets a cohesion review. A file over 800 lines is split by responsibility into a folder named for it (`store/runs.ts`, never `store-runs.ts` beside it).
 2. **Folders, not names.** Files whose names share a word at the start or the end become a folder named for that word, with an `index.ts` that is its interface, and the code outside imports from it.
-3. **Tests in `tests/`.** Every test moves out of `src/` into `tests/`, in folders that mirror `src/`, with its helpers, fakes and stand-ins.
+3. **Tests in `tests/`.** Goal [160](160-v010-audit.goal) moved every test there, in folders that mirror `src/`. A split or a move of a source file moves its tests to the matching folder in the same commit.
 4. **Duplication.** Knowledge kept in more than one place: a rule, a limit, a schema, a status word, a name, a route, a message. Code repeated a third time. Two ways of doing the same job. One thing with more than one name.
 5. **Module design.** Shallow modules, and layers that only pass things through. Complexity pushed onto callers. Implementation details that leak through an interface. Two modules that share knowledge of one design decision. Related code spread over many files.
 6. **Interfaces and errors.** Errors that the interface could define away. Silent catches, and errors without a type.
@@ -43,7 +43,7 @@ Each rule of CONVENTIONS.md, in particular:
 
 1. Read CONVENTIONS.md, [AGENTS.md](../../../AGENTS.md), this goal, and goal 127's guide, `docs/plan/code-clean-up-guide.md`. Set the status to `IN_PROGRESS`, with a dated line under Progress.
 2. **Build the size check first,** so that nothing gets worse while the rest goes on. `npm run check` and CI run it. It lists each file in scope over 500 and over 800 lines. It fails when a file over 800 lines gets bigger, or a new file is over 800 lines, unless a reason is recorded for that file. The sizes it starts from are recorded in the repository, and each split lowers them.
-3. **Audit one area at a time:** `src/control/`, `src/harness/` (the judge in `src/harness/judge/` on its own), `src/supervisor/`, `src/cli/`, `src/core/`, `src/testing/`, then `scripts/`, `containers/` and `kits/`. Start from the guide's themes for the area, and its order of work. Record each finding under [Audit](#audit) as you go: the file, the rule, and what to change. Where the area differs from the guide, record that too, and correct the guide. The engineering and anti-slop skills in `.agents/skills/` can help to find candidates. Treat what they report as evidence, and check it against CONVENTIONS.md.
+3. **Audit one area at a time:** `src/control/`, `src/harness/` (the judge in `src/harness/judge/` on its own), `src/supervisor/`, `src/cli/`, `src/core/`, `tests/`, then `scripts/`, `containers/` and `kits/`. Start from the guide's themes for the area, and its order of work. Record each finding under [Audit](#audit) as you go: the file, the rule, and what to change. Where the area differs from the guide, record that too, and correct the guide. The engineering and anti-slop skills in `.agents/skills/` can help to find candidates. Treat what they report as evidence, and check it against CONVENTIONS.md.
 4. **Fix in small, safe steps:** one finding, or one part of a file, in each commit. Behaviour stays the same unless the fix is the point. The tests and checks that the change needs pass after each step, and a test is never weakened to let a refactor through. Split the largest files first.
 5. **Docs follow the code.** A fix that changes what Thermite does, such as a new setting for log levels or a changed message, updates the pages that describe it in the same commit.
 6. **Close each finding:** tick it when it is fixed, with the commit, or record why it stays.
@@ -70,7 +70,6 @@ Then: "not only file sizes and restructure stuff, but also looking for DRY, etc 
 - [ ] The audit covers every area in scope, recorded below.
 - [ ] Every file in scope over 800 lines is split into a folder named for it, or has a recorded reason to stay.
 - [ ] No group of files is named in place of a folder, unless it has a recorded reason.
-- [ ] Every test is in `tests/`. `npm test`, the typecheck, the lint, CI and the pages that name test paths ([AGENTS.md](../../../AGENTS.md), [docs/writing-docs.md](../../writing-docs.md), [docs/local-development.md](../../local-development.md) and the site's Contributing page) point there.
 - [ ] Every finding is fixed, or has a recorded reason to stay.
 - [ ] Every theme of goal 127's guide is done, or has a recorded reason to stay.
 - [ ] `npm run check`, the docs checks and the acceptance checks that the changes need pass, and the goal records which ran.
@@ -96,7 +95,7 @@ Known at the start, 2026-10-24:
 
   In `scripts/`, 2 files are over 800 lines.
 - **Names in place of folders.** 32 groups of files, 96 files in all, share a word at the start or the end of their names, such as the 16 `scripts/*-acceptance.mjs`, the 9 `src/control/ui/*-client.ts` and the 6 `src/control/runpod-*.ts`.
-- **Tests beside the code.** All 206 test files sit in `src/`, beside the code they test. `scripts/test.mjs` lists them from `src/` (`readdirSync("src")`), and runs those that match `^src/harness/(judge|broker)/` alone, one at a time: both change when the tests move. New test helpers go in `src/testing/` until then.
+- **Tests beside the code.** All 206 test files sit in `src/`, beside the code they test. `scripts/test.mjs` lists them from `src/` (`readdirSync("src")`), and runs those that match `^src/harness/(judge|broker)/` alone, one at a time: both change when the tests move. New test helpers go in `src/testing/` until then. Goal [160](160-v010-audit.goal) moved them all on 2026-10-26: the tests to `tests/`, the helpers to `tests/helpers/`.
 - **CI picks its heavy jobs by path.** The compose-smoke, rig-image, RunPod and quick-start jobs in `.github/workflows/ci.yml` run on a push or a pull request only when the change touches their paths, which name files in `src/`, such as `^src/(control|harness)/api\.ts$` and `^src/harness/broker(\.ts|/)`. Each move, split and rename updates these lists in the same commit, or a heavy check stops running when it should.
 - **Logging.** No log level can be changed while a program runs.
 
@@ -107,6 +106,8 @@ Known at the start, 2026-10-24:
 - 2026-10-24, owner: one goal for all of it, to run with `/goal` after v0.1.0 ships: file sizes, the code's structure, duplication and every other rule that CONVENTIONS.md checks. Goal [124](124-file-sizes.goal) is merged into it, and CONVENTIONS.md gets rules on duplication and dead code.
 - 2026-10-24, owner: a read-only pre-audit, goal [127](127-clean-up-pre-audit.goal), comes first and writes the guide this goal works from: a double audit.
 - 2026-10-24, owner: tests live in a `tests/` folder, not beside the code ("It makes reading code and finding actual code faster"); and folders and modules with proper imports, not files named `<name>-<part>.ts` side by side ("we just made tons of files putting hierarchy flat and hard to follow").
+
+- 2026-10-26: the tests' move is done by goal [160](160-v010-audit.goal), so it leaves this goal's scope.
 
 ## Open questions
 

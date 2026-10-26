@@ -72,6 +72,7 @@ The owner, 2026-10-26, who wrote this goal's brief:
 ## Progress
 
 - 2026-10-26 05:52 UTC: Goal written from the owner's brief, in the format of every goal.
+- 2026-10-26 06:35 UTC: The eight reviewers' reports are in `.internal/reviews/v0.1.1-audit/`. Item 7 is done: 245 files moved with `git mv` (228 tests to `tests/`, the quick-start test to `tests/docs/`, the 15 helpers and their data to `tests/helpers/`), with their imports rewritten. `scripts/test.mjs` reads `tests/` and stops on a test file in `src/`; the typecheck, Biome, CI's path lists, the secret scan's allowlist, the ignore files and the pages follow. The typecheck sees the same 229 tests, Biome the same 563 files, and the build writes the same 564 files.
 
 ---
 

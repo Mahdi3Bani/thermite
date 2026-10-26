@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rigs on RunPod from end to end, with no RunPod and nothing paid. Control runs in this process,
 // with its REST API, pull mode and the RunPod rigs' loop, against the fake RunPod API
-// (src/testing/fake-runpod.ts). Each pod the fake makes is a container of the one-container rig
+// (tests/helpers/fake-runpod.ts). Each pod the fake makes is a container of the one-container rig
 // image on this machine: the launch's environment, RunPod's variables (made up), a volume at
 // /workspace that a stop keeps, and the pull mode port, which the fake's stand-in for RunPod's
 // proxy reaches. A stop removes the container and keeps the volume, as RunPod empties a stopped
@@ -38,7 +38,7 @@ const { SecretBox } = await import("../src/control/secrets.ts");
 const { ControlStore } = await import("../src/control/store.ts");
 const { ControlTunnels } = await import("../src/control/tunnel.ts");
 const { generateSigningKeys } = await import("../src/core/commands.ts");
-const { FAKE_RUNPOD_KEY, fakeRunpod } = await import("../src/testing/fake-runpod.ts");
+const { FAKE_RUNPOD_KEY, fakeRunpod } = await import("../tests/helpers/fake-runpod.ts");
 
 const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const harnessImage = "localhost/thermite-harness:runpod-check";

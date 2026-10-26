@@ -112,7 +112,7 @@ A test follows the quick start as a tester would: [Your first run](_site/src/con
 - keep the steps numbered (`## 4. Sign in`): the test finds them by number;
 - quote what the screen shows exactly, in a code span.
 
-`node scripts/test.mjs src/testing/quick-start.test.ts` reads the pages as the test does, in a second. The whole test is `scripts/quick-start-acceptance.mjs`: see [the contributor guide](local-development.md#the-quick-start-test).
+`node scripts/test.mjs tests/docs/quick-start.test.ts` reads the pages as the test does, in a second. The whole test is `scripts/quick-start-acceptance.mjs`: see [the contributor guide](local-development.md#the-quick-start-test).
 
 ## When Thermite changes
 

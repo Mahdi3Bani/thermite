@@ -174,7 +174,7 @@ The design invariants and the [rules for every goal](docs/plan/README.md#rules-f
 
 ## Testing
 
-- **Tests live in `tests/`,** never beside the code, so that the code is quick to read and to find. Its folders mirror `src/`: the tests of `src/control/store.ts` are in `tests/control/store.test.ts`. Test helpers, fakes and stand-ins live in `tests/` too. Goal [125](docs/plan/goals/125-code-to-the-conventions.goal) moves the existing tests and points `npm test`, the typecheck and the docs at `tests/`. Until it does, `npm test` finds tests only beside the code, so a new test goes there too.
+- **Tests live in `tests/`,** never beside the code, so that the code is quick to read and to find. Its folders mirror `src/`: the tests of `src/control/store.ts` are in `tests/control/store.test.ts`. Test helpers, fakes and stand-ins live in `tests/helpers/`, and a test of the docs' own steps in `tests/docs/`. `npm test` runs every `tests/**/*.test.ts`, and stops if it finds a test file in `src/`.
 - Test observable behaviour and important failure transitions. Tests must be able to fail.
 - Tests at the system's cut-points and on the users' critical paths give the most value, and they survive refactoring. Keep fine-grained unit tests for what needs exact reference values, such as the statistics and state machines below.
 - Mock only at system boundaries, with stand-ins such as the fake RunPod API, the scripted model and the stand-in agent programs.

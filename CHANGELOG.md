@@ -2,6 +2,12 @@
 
 Each release of Thermite, newest first. Versions 0.x make no upgrade promise: read [Known limits](docs/_site/src/content/docs/reference/known-limits.md) before you upgrade.
 
+## [Unreleased]: v0.1.1
+
+### Operate
+
+- The tests are in `tests/`, in folders that mirror `src/`, with their helpers, fakes and stand-ins in `tests/helpers/` (goal 160). `npm test` stops if it finds a test file in `src/`.
+
 ## [0.1.0] 2026-10-26: the first public release
 
 ### Install and run

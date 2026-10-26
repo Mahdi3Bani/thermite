@@ -248,6 +248,6 @@ Thermite's repository holds no code, text or data copied from another project, e
 
 - the licence texts it ships with programs in its images: `containers/control/kubectl/LICENSE` (Apache-2.0, from Kubernetes), `containers/harness/opencode/LICENSE` (MIT, © 2025 opencode), and `containers/harness/codex/LICENSE` and `NOTICE` (Apache-2.0, © 2025 OpenAI, with the Ratatui notice above);
 - the dashboard's colour tokens, from T3 Code through Magnesium, above;
-- the statistics tests' reference values, numbers computed with SciPy (`src/testing/data/stats-reference.json`).
+- the statistics tests' reference values, numbers computed with SciPy (`tests/helpers/data/stats-reference.json`).
 
 The maintainers' own tooling in `.agents/` carries its own notices, such as [Matt Pocock's skills](https://github.com/mattpocock/skills) (MIT).

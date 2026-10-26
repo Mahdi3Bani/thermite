@@ -208,6 +208,7 @@ jobs:
             ^containers/(rig|harness)/
             ^package(-lock)?\.json$
             ^src/harness/broker(\.ts|/)
+            ^tests/harness/broker/
             ^src/harness/selftest\.ts$
             ^src/(core|control)/tunnel\.ts$
             ^scripts/rig-image-acceptance\.mjs$
@@ -216,10 +217,11 @@ jobs:
           # Rigs on RunPod, pull mode, results sent to control, and the rig image.
           RUNPOD: |
             ^src/control/runpod
+            ^tests/control/runpod
             ^src/control/(tunnel|exports)\.ts$
             ^src/core/tunnel\.ts$
             ^src/supervisor/(export-upload|relay)\.ts$
-            ^src/testing/fake-runpod\.ts$
+            ^tests/helpers/fake-runpod\.ts$
             ^containers/rig/
             ^scripts/runpod-acceptance\.mjs$
             ^scripts/lib/
@@ -231,6 +233,7 @@ jobs:
             ^compose[^/]*\.yaml$
             ^scripts/release-bundle\.ts$
             ^src/release/
+            ^tests/release/
             ^docs/_site/src/content/docs/tutorials/(first-run|agents-with-a-free-model)\.md$
             ^docs/_site/src/content/docs/how-to/install/one-machine\.md$
             ^docs/_site/src/content/docs/how-to/operate/troubleshoot\.md$
@@ -238,7 +241,8 @@ jobs:
             ^kits/smoke-cpu/
             ^scripts/quick-start-acceptance\.mjs$
             ^scripts/lib/
-            ^src/testing/quick-start\.ts$
+            ^tests/helpers/quick-start\.ts$
+            ^tests/docs/quick-start\.test\.ts$
             ^\.github/workflows/ci\.yml$
         run: |
           all=
