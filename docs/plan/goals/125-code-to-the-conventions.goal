@@ -10,7 +10,7 @@ updated: 2026-10-24
 
 # 125 · Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](026-ship-v0.1.0.goal), [127](127-clean-up-pre-audit.goal)
+**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](_completed/026-ship-v0.1.0.goal), [127](127-clean-up-pre-audit.goal)
 
 ## What
 
@@ -57,7 +57,7 @@ Then: "not only file sizes and restructure stuff, but also looking for DRY, etc 
 
 ## Constraints
 
-- **After v0.1.0.** Work starts once goal [026](026-ship-v0.1.0.goal) ships the release.
+- **After v0.1.0.** Work starts once goal [026](_completed/026-ship-v0.1.0.goal) ships the release.
 - **Behaviour stays the same,** except where a fix is meant to change it.
 - **Small steps,** each one reviewable on its own.
 - **Other work goes on.** Change a file when no other open branch is changing it, to avoid long merges.
