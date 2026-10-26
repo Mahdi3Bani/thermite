@@ -238,7 +238,7 @@ Goal 160 moved them, so goal 125 does not. `tests/<part>/` mirrors `src/<part>/`
 
 ## 3. The rules of shape
 
-Apply these the same way in every step. The ones marked **new** are proposed additions to CONVENTIONS.md, for the owner to accept; goal 125 adds each one that is accepted.
+Apply these the same way in every step. The ones marked **new** are additions to CONVENTIONS.md. The owner accepted them on 2026-10-26 ("these look mostly good"). Goal 125 adds them first, in a commit the owner reviews, so every later step follows them.
 
 1. **New: the parts and the way they import.** `core` holds contracts: schemas, words, limits, signing and protocols, and does no I/O beyond `node:crypto`. `common` holds runtime tools: settings, logs, errors, files, git, subprocesses, HTTP. The parts (`harness`, `supervisor`, `control`, `cli`, `release`) import `core` and `common`, never each other; code two parts need goes to `core`, to `common`, or to a shared folder named for what it is. Domain modules never import page code (`control/ui/`). Tests and scripts may import any part; production code never imports them. A check in `npm run check` enforces it, with today's exceptions named until they are gone.
 2. **New: a wire contract has one home.** Every body that crosses a process boundary (a route, a signed command, an event, a file one container hands to another, an environment variable) has one schema in `core`. Route paths and limits are named constants beside it.
@@ -271,7 +271,7 @@ A move or a split updates each of these in the same commit:
 
 Each line is a set of small steps, each one green on its own.
 
-1. **The size check,** as goal 125's step 2 asks, so nothing gets worse while the rest goes on.
+1. **The size check and the rules of shape:** the size check, as goal 125's step 2 asks, so nothing gets worse while the rest goes on; and the accepted rules of shape added to CONVENTIONS.md, so every later step follows them.
 2. **The bugs, each with a regression test,** so the splits after them are pure moves: goals [161](goals/161-control-bugs-from-the-audit.goal), [162](goals/162-research-and-knowledge-bugs.goal), [163](goals/163-harness-bugs-from-the-audit.goal), [164](goals/164-settings-that-fail-loudly.goal) and [165](goals/165-results-kept-through-remove-and-reset.goal).
 3. **The shared homes, small and with little churn:** T1's words, T3's toolkit, then T4's settings, errors and logger.
 4. **The test scaffolding** (T10), before control's splits.
@@ -310,7 +310,7 @@ These look wrong, but have a reason. Keep them.
 - **The broker's process runner** apart from `common/exec`: it enforces the isolation limits, a different job from running git.
 - **The broker restarting the controller and the supervisor** with a backoff, and the 60-second hold before a fatal exit in the one-container image (it keeps the error in the pod's log).
 - **`scripts/patch-pi-ai.mjs`:** it patches one pinned version and stops the install on any other.
-- **A release builds every layer with no cache,** on bases pinned by digest, so that system packages get their fixes.
+- **A release builds every layer with no cache,** on bases pinned by digest. With the upgrade of the base's system packages that each image makes when it is built (goal 125), every package gets its distribution's fixes.
 - **The time bounds on set-up waits** (10 and 60 minutes), `FAILING_STOP_MS`, the progress rule and `MCP_WAIT_MS`: product rules and pacing, not caps on research.
 - **Paths from tests to the repository's root:** they stayed right after the move, because a test sits at the same depth as its code did.
 - **The judge's and the broker's tests run alone,** by folder. Some of them time nothing, but a rule by folder is simple.
@@ -440,7 +440,7 @@ The owner answered these on 2026-10-26. Every recommendation below is accepted, 
 **Knowledge and research**
 
 23. **One word for each meaning,** and more kinds in the knowledge base.
-    - **Recommended words:** a field note stays a "field note", and its kind `note` becomes `other`; a research note becomes a "source note"; the directive kind `note` becomes `planner_note`; "knowledge base" names the store and "past research" what a run receives; "document" (kind `doc`) for every lane file; "direction" in place of "family". The KB's folders get another name (a "shelf" or a "collection", your choice), so they don't share a name with the dashboard's campaign folders. The contract's `notes` and the signed `direction` field take their new names in v0.1.1 too (question 11).
+    - **Recommended words:** a field note stays a "field note", and its kind `note` becomes `other`; a research note becomes a "source note"; the directive kind `note` becomes `planner_note`; "knowledge base" names the store and "past research" what a run receives; "document" (kind `doc`) for every lane file; "direction" in place of "family". The KB's folders become "collections" (the owner's choice), so they don't share a name with the dashboard's campaign folders. The contract's `notes` and the signed `direction` field take their new names in v0.1.1 too (question 11).
     - **Recommended kinds:** the paper and each answer card become items of their own, and the review panel's decisions. Rules, directions and refuted approaches later.
     - **Why:** one thing has one name. The paper and the answer cards are what a research run makes, and today the knowledge base keeps the paper's first 20,000 characters and nothing after them.
     - **Instead:** choose other words; or keep the kinds as they are, with a note where text is cut.
