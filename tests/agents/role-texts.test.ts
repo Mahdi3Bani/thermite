@@ -39,6 +39,7 @@ import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "../../src/agents/roles/
 import {
   WORKER_CLAUDE_CODE_SYSTEM,
   WORKER_CODEX_SYSTEM,
+  WORKER_HOW_TO_WORK,
   WORKER_OPENCODE_SYSTEM,
   WORKER_PI_NOTES,
   WORKER_PI_SYSTEM,
@@ -55,6 +56,7 @@ const TEXTS: Record<string, string> = {
   "worker.opencode.system": WORKER_OPENCODE_SYSTEM,
   "worker.claude-code.system": WORKER_CLAUDE_CODE_SYSTEM,
   "worker.codex.system": WORKER_CODEX_SYSTEM,
+  "worker.how-to-work": WORKER_HOW_TO_WORK.join("\n"),
   "research-worker.system": RESEARCH_WORKER_SYSTEM,
   "research-worker.notes": RESEARCH_WORKER_NOTES,
   "planner.task": PLANNER_TASK,

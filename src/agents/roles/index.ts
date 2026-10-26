@@ -20,6 +20,7 @@ import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "./teacher.ts";
 import {
   WORKER_CLAUDE_CODE_SYSTEM,
   WORKER_CODEX_SYSTEM,
+  WORKER_HOW_TO_WORK,
   WORKER_OPENCODE_SYSTEM,
   WORKER_PI_NOTES,
   WORKER_PI_SYSTEM,
@@ -80,6 +81,11 @@ export const ROLES: readonly RoleDefinition[] = [
         text: WORKER_CLAUDE_CODE_SYSTEM,
       },
       { id: "codex", what: "its instructions in Codex", text: WORKER_CODEX_SYSTEM },
+      {
+        id: "how-to-work",
+        what: "how it works, at the end of its brief",
+        text: WORKER_HOW_TO_WORK.join("\n"),
+      },
     ],
   },
   {
