@@ -2,7 +2,7 @@
 
 Each release of Thermite, newest first. Versions 0.x make no upgrade promise: read [Known limits](docs/_site/src/content/docs/reference/known-limits.md) before you upgrade.
 
-## [Unreleased]: v0.1.0, the first public release
+## [0.1.0] 2026-10-26: the first public release
 
 ### Install and run
 

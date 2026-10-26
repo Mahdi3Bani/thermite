@@ -8,9 +8,9 @@ sidebar:
 
 Thermite's plans are public. This page sums them up; the plan files in the repository hold every detail.
 
-## Now: v0.1.0, the first public release
+## v0.1.0, the first public release
 
-Thermite has not had a release yet. The work now is toward **v0.1.0**, its first public release. With it, a tester can:
+**v0.1.0** is Thermite's first public release. With it, a tester can:
 
 - install Thermite from published images;
 - run agents on a sample project, with a free model or their own key;
@@ -64,12 +64,7 @@ Also built:
 - web search for research runs, through an MCP server the campaign names, done ahead of v0.5.0 ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/_completed/046-web-search.goal); [Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md));
 - sign-in with a real Claude or ChatGPT subscription, each tested from start to end: sign in, give a rig the model, pass its model check, and run a trial whose change the judge confirmed ([goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/_completed/009-subscription-sign-in-tests.goal); [Use a Claude subscription](../how-to/models/claude-subscription.md), [Use a ChatGPT subscription](../how-to/models/chatgpt-subscription.md)).
 
-Still to come in v0.1.0, whose scope is frozen:
-
-- the acceptance runs of research that answers its questions, above, which also check the research run's end ([goal 117](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/117-research-that-answers.goal));
-- the CUDA 13 harness image, for Turing to Blackwell GPUs and the DGX Spark, on amd64 and arm64: published with the release and labelled untested, because it has not run on a GPU yet ([Known limits](../reference/known-limits.md#the-cuda-13-harness-is-untested));
-- the first published images and their release bundle, which the release's tag publishes, each image checked before it gets its version's tag ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal), [goal 011](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/011-release-bundle.goal));
-- the release itself: the checks on a clean machine, the changelog, the tag and the GitHub Release ([goal 026](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/026-ship-v0.1.0.goal)).
+The release publishes the images and their bundle, each image checked before it got its version's tag, with the CUDA 13 harness image labelled untested because it has not run on a GPU yet ([Known limits](../reference/known-limits.md#the-cuda-13-harness-is-untested)).
 
 These ship as built, and each one's last check runs on a deployment after the release: exports from the dashboard, above ([goal 103](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/103-export-and-download.goal)); no idle lanes, with a drain that says which trials it waits for ([goal 136](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/136-no-idle-lanes.goal)); a trial's session read over MCP ([goal 139](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/139-trial-session-over-mcp.goal)); a long tool call that doesn't stall the process that streams it ([goal 140](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/140-long-tool-call-no-stall.goal)); a hill climb's champion value at the top of its run's page ([goal 142](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/142-champion-value-on-run-page.goal)); a trial's clock, with the time left and a lane's build cache that works across its trials ([goal 144](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/144-trial-clock.goal)); and an optional limit on the field notes a worker writes in one reply ([goal 147](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/147-notes-per-turn.goal)).
 
@@ -98,7 +93,7 @@ After v0.1.0, version numbers count up by the middle number: 0.2.0, 0.3.0 and so
 | File | What it holds |
 | --- | --- |
 | [Roadmap](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md) | Every goal, by version, in priority order, one line each |
-| [Release plan for v0.1.0](https://github.com/iammrduncan/thermite/blob/main/docs/plan/release-v0.1.0.md) | The next release: its scope, its goals and the steps to ship it |
+| [Release plan for v0.1.0](https://github.com/iammrduncan/thermite/blob/main/docs/plan/release-v0.1.0.md) | The first release: its scope, its goals and the steps that shipped it |
 | [Settled decisions](https://github.com/iammrduncan/thermite/blob/main/docs/plan/decisions.md) | Decisions that shape the whole product, with their dates |
 | [How Thermite is planned](https://github.com/iammrduncan/thermite/blob/main/docs/plan/README.md) | What a goal is, what each status means, and how an idea becomes a goal |
 

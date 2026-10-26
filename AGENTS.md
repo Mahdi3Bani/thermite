@@ -12,7 +12,7 @@ Read [CONVENTIONS.md](CONVENTIONS.md) before changing this repository. The publi
 
 ## Current stage
 
-- Work is toward v0.1.0, the first public release.
+- v0.1.0, the first public release, is out. Work goes on toward v0.1.1, on its branch `v0.1.1`.
 - The plans are public, in [docs/plan/](docs/plan/README.md): the [roadmap](docs/plan/roadmap.md), the [release plan](docs/plan/release-v0.1.0.md), the [settled decisions](docs/plan/decisions.md) and one goal for each roadmap item.
 
 ## Settled decisions (summary)
@@ -49,7 +49,7 @@ The full list, with dates, is in [docs/plan/decisions.md](docs/plan/decisions.md
 ## Git
 
 - Work on a branch and commit in reviewable steps with clear messages.
-- Until v0.1.0 ships, work merges into `main`. After it, each version is built on a branch named for it, such as `v0.1.1`, and `main` moves only when a version ships ([decisions](docs/plan/decisions.md#releases-and-planning)).
+- Each version is built on a branch named for it, such as `v0.1.1`: work merges there, and `main` moves only when a version ships ([decisions](docs/plan/decisions.md#releases-and-planning)).
 - Do not rewrite history that has been pushed.
 - `.agents/`, `.claude/` and `skills-lock.json` belong to the maintainers' tooling. Leave them alone unless asked.
 

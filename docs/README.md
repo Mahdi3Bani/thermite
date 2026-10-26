@@ -2,7 +2,7 @@
 
 Thermite is an autoresearch harness. Agents propose changes, and code they cannot touch measures, judges and keeps the best results. Many research campaigns run at once across a fleet of machines, and one control service shows and steers all of them.
 
-**Status:** work is toward v0.1.0, the first public release. The [plan](plan/README.md) says what comes next.
+**Status:** v0.1.0, the first public release, is out. Work goes on toward v0.1.1; the [plan](plan/README.md) says what comes next.
 
 ## The documentation site
 
