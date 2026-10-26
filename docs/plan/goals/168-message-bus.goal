@@ -64,7 +64,7 @@ The owner chose this design on 2026-10-26, from a drawing of it: JetStream as th
 - **Control** runs the NATS server, with JetStream.
 - **A rig on a machine or a cluster:** its supervisor connects to control's server over TLS, with its rig's own key, as it reaches control today.
 - **A rig on RunPod:** a small NATS server in the pod accepts one connection only: control's own server, which dials it as a leaf node over TLS, with keys checked both ways. Control mints the keys at launch and learns the pod's address from RunPod's API, so control never needs to be public. It replaces pull mode's tunnel.
-- **The dashboard** reads its views through control (question 5).
+- **The dashboard** reads its views through control (question 4).
 
 **Off the bus, on purpose**
 
@@ -106,19 +106,19 @@ Control's own SQLite copies of the rigs' events and of its commands go: JetStrea
 
 - 2026-10-26: the audit's lane 11 evaluated NATS JetStream; it recommended a first part over HTTP and a decision on NATS after it.
 - 2026-10-26, owner, after a drawing of the design above: "for jetstream direction, this looks great". JetStream is the event log, the delivery and the queues between control, the rigs' supervisors and the dashboard, with the harness and the agents off the bus at first, bridged by the supervisor ([decisions.md](../decisions.md#the-product)). This answers the review's questions on when to add NATS (now, as designed), on RunPod (a leaf node in the pod, dialed by control, in place of the tunnel), on what JetStream holds (records, the commands queue, the live view and key-value buckets, with control's own copies gone), on a report soon after each command (events now arrive as they happen) and on one configuration document for each rig (the config bucket).
+- 2026-10-26, owner: input typed into an agent's terminal is signed, owner only: text, slash commands, skills and a fixed list of named keys, each a signed command recorded word for word with its outcome. Input travels as a command on the rig's commands stream.
 
 ## Open questions
 
 Each with the reviews' recommendation.
 
-1. **Will the owner type into an agent's terminal from the dashboard (goal [169](169-agents-in-their-terminal.goal))?** Recommended: signed inputs, owner only (text, slash commands, a fixed list of named keys), each recorded; no free stream of keys until a signed grant for one session exists.
-2. **How a rig on a machine or a cluster reaches control's server.** Recommended: WebSocket over TLS through the operator's existing HTTPS reverse proxy: one name, one port, the TLS already set up.
-3. **Rig identities on the bus.** Recommended: a key made by each supervisor, registered over today's HTTPS call; control writes the server's users file and reloads it. The secret never leaves the rig.
-4. **How secrets travel to a rig.** Recommended: sealed to each rig's own key on every rig, and sent only when they change.
-5. **The dashboard's push.** Recommended: Server-Sent Events from control first, which needs no credential in the browser; a read-only NATS credential for each session later, if wanted.
-6. **Should the auditor and the review panel get their own loop?** Recommended: yes, so a promotion never waits for a teacher's round.
-7. **Should every reader of a signed batch keep what it knows and count the rest?** Recommended: yes, written once in `core` as the rule for every subject.
-8. **Counters for each channel and subject in the supervisor's figures?** Recommended: yes; they are cheap and show on the rig's page without a log store.
+1. **How a rig on a machine or a cluster reaches control's server.** Recommended: WebSocket over TLS through the operator's existing HTTPS reverse proxy: one name, one port, the TLS already set up.
+2. **Rig identities on the bus.** Recommended: a key made by each supervisor, registered over today's HTTPS call; control writes the server's users file and reloads it. The secret never leaves the rig.
+3. **How secrets travel to a rig.** Recommended: sealed to each rig's own key on every rig, and sent only when they change.
+4. **The dashboard's push.** Recommended: Server-Sent Events from control first, which needs no credential in the browser; a read-only NATS credential for each session later, if wanted.
+5. **Should the auditor and the review panel get their own loop?** Recommended: yes, so a promotion never waits for a teacher's round.
+6. **Should every reader of a signed batch keep what it knows and count the rest?** Recommended: yes, written once in `core` as the rule for every subject.
+7. **Counters for each channel and subject in the supervisor's figures?** Recommended: yes; they are cheap and show on the rig's page without a log store.
 
 The question of an assignment that expires while its models download is goal [171](171-bugs-on-the-wire.goal)'s item 5.
 
