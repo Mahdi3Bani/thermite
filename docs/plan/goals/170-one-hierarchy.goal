@@ -53,7 +53,7 @@ The audit's lane 13 (`.internal/reviews/v0.1.1-audit/13-hierarchy.md`) reviewed 
 
 - **Two trees that meet at the run.** What is done: control ▸ campaign ▸ run ▸ lane ▸ trial ▸ attempt ▸ verdict. Where it is done: control ▸ place (machine, cluster slot, cloud pod) ▸ rig ▸ devices. A run's rig, and the rig each attempt, trial and job ran on, are attributes.
 - **Run IDs minted once, by control,** unique across all rigs and ledgers: the readable `<campaign>-<n>`, refused when already used, on every path.
-- **One address for each thing:** `/ui/runs/<run>`, `/ui/runs/<run>/attempts/<attempt>`, `/v1/runs/<run>/…`, MCP `{run}` (with a new `get_attempt`), and the same in commands and the knowledge base. Rig-level things (checks, settings, the judge's queue, builds, exports, resets) keep the rig's address.
+- **One address for each thing:** on the dashboard under its campaign, `/ui/campaigns/<campaign>/runs/<run>` and `/ui/campaigns/<campaign>/runs/<run>/attempts/<attempt>` (the owner's choice); `/v1/runs/<run>/…` and MCP `{run}` (with a new `get_attempt`), since a run's ID is unique; and the same in commands and the knowledge base. Rig-level things (checks, settings, the judge's queue, builds, exports, resets) keep the rig's address.
 - **A run registry on control,** written when control signs an assignment, and **views built by run,** across old ledgers and retired rigs.
 - **Every run-scoped event names its run.**
 - **A move is a new run that continues the old one** (goal [085](085-move-a-campaign-to-another-rig.goal)), shown on both pages.
@@ -62,16 +62,15 @@ The audit's lane 13 (`.internal/reviews/v0.1.1-audit/13-hierarchy.md`) reviewed 
 
 ## Decisions
 
+- 2026-10-26, owner: the review's recommendations are taken, with one change:
+  - **A run that moves** to another rig is a new run that continues the old one, shown on both pages.
+  - **Run IDs** keep the readable `<campaign>-<n>`, numbered across all rigs and ledgers on control, and a used name is refused on every path.
+  - **Campaign and run names** allow `[a-z0-9_-]`, with no dot.
+  - **The dashboard's addresses follow the campaign** (the owner's change: "/ui/<campaigns>/runs/<run> ... etc..."): `/ui/campaigns/<campaign>/runs/<run>`, `/ui/campaigns/<campaign>/runs/<run>/<tab>`, `/ui/campaigns/<campaign>/runs/<run>/attempts/<attempt>`, with the breadcrumbs Campaigns › campaign › run › attempt.
+  - **Runs of a retired rig, or from before a full reset,** are under the campaign's Earlier runs, marked, and open like any run.
+  - **No redirects** for old links in v0.1.1.
+
 ## Open questions
-
-Each with the review's recommendation.
-
-1. **When a run's work moves to another rig, is it the same run, or a new run that continues it?** Recommended: a new run that continues it, with "continues X" and "continued as Y" on both pages. A run's baseline, noise and gains are measured on one rig's devices, and it keeps the decision that a run is one campaign on one rig.
-2. **How are run IDs made unique?** Recommended: keep the readable `<campaign>-<n>`, numbered across all rigs and ledgers on control, and refuse a used name on every path.
-3. **Dots in campaign and run names.** Recommended: v0.1.1 allows `[a-z0-9_-]` in campaign and run names, with no dot, since a dot splits a bus subject; repositories and kits keep theirs.
-4. **The dashboard's address for a run.** Recommended: `/ui/runs/<run>`, `/ui/runs/<run>/<tab>`, `/ui/runs/<run>/attempts/<attempt>`, with the breadcrumbs Campaigns › campaign › run › attempt.
-5. **Runs of a retired rig, or from before a full reset.** Recommended: under the campaign's Earlier runs, each marked "on <rig>, retired" or "before <rig>'s full reset", and openable like any run.
-6. **Old links after the change.** Recommended: no redirects in v0.1.1, which breaks compatibility by decision.
 
 ## Progress
 

@@ -58,28 +58,23 @@ The audit's lane 12 (`.internal/reviews/v0.1.1-audit/12-native-tui.md`) reviewed
 - **Decisions read the session log and the hooks, never the screen.** The screen is only shown.
 - **The live view:** the terminal's frames, sent only for trials someone is watching and kept in memory; the transcript stays beside it. A byte stream waits for goal [168](168-message-bus.goal)'s decision.
 - **Steering:** Thermite's own messages go in through the hooks or the program's API; typing is for the owner's console (text, slash commands, skills, MCP reconnects), each input a signed command, recorded with its outcome.
-- **Which roles:** code and research workers in Claude Code, Codex and OpenCode run their TUI. The planner, the model check and the advisors stay headless; Pi stays in-process (question 2).
+- **Which roles** (the owner, 2026-10-26): every role the owner's messages can reach runs in its program's TUI: the workers, the planner, the teachers, the auditor and the review panel's reviewers. The advisors run in the supervisor, so their terminals are held there. The roles that take no message (the model check, the teachers' merged-by model, the synthesizer, the final writer and compaction) stay headless, with a view-only live feed. Pi is studied for a minimal TUI (question 1).
 - **The steps:** goal [166](166-agent-definitions.goal) and the table of agent programs first; a spike of each program's TUI in the harness image, with recorded session logs; the session-log adapters, beside today's stream readers; hook signals and steering inside a turn, in headless mode; the terminal host; the terminal mode in the one trial loop; the steering command; the live view; usage from the TUI; stand-ins, acceptance checks and a version check; the docs and credits. About 55 to 65 files, a third of them tests.
 
 ## Decisions
 
 - 2026-10-26: the audit's lane 12 reviewed the programs and the terminal plumbing, and proposed the design above.
 - 2026-10-26, owner: input typed into an agent's terminal is signed, owner only: text, slash commands, skills and a fixed list of named keys, each a signed command recorded word for word with its outcome.
+- 2026-10-26, owner, in comments on the review's questions:
+  - **Which roles run in a TUI:** "workers, teachers, planner, any bit that can recieve a live message. Others should be view only live feeds." So the workers, the planner, the teachers, the auditor and the review panel's reviewers run in their program's TUI; the model check, the teachers' merged-by model, the synthesizer, the final writer and compaction stay headless, each with a view-only live feed.
+  - **Headless mode** is "only ... an advanced rig option, hidden away under toggles, default is TUI where it can."
+  - **Claude Code's entrypoint is never relabelled:** "we just use the TUI natively and send keys to it".
+  - **Taken as recommended:** `node-pty` built in the image with `@xterm/headless` and its serialize addon; xterm.js in the browser, kept in the repository, read-only at the agent's size; no terminal recordings (the session log and the events are the record); the token claim measured offline first, then in at least three short paired runs with the owner's yes for the plan quota; a kit may carry agent skills, reviewed with the kit, copied into each trial's home.
 
 ## Open questions
 
-Each with the review's recommendation.
-
-1. **Which roles run in a TUI?** Recommended: code and research workers in Claude Code, Codex and OpenCode; the planner, the model check and the advisors stay headless, since each makes one structured call that code checks.
-2. **Pi.** Recommended: Pi workers stay in-process, with no TUI; moving them to the `pi` command's TUI changes their isolation and tools, a design change of its own.
-3. **Keep headless mode?** Recommended: yes, as a choice for each rig ("Agents run in: their terminal, or headless"), with the terminal as the default once the acceptance checks pass, so a rig can go back without a new image.
-4. **The pseudo-terminal and emulator.** Recommended: `node-pty` built in the image, and `@xterm/headless` with its serialize addon, all MIT. Instead: `script`, tmux, or Python's `pty`.
-5. **The browser's terminal.** Recommended: xterm.js, kept in the repository, read-only, at the agent's size.
-6. **Keep terminal recordings?** Recommended: no. The session log and the events are the record; the screen is a view, kept only as its last frame while the trial runs.
-7. **Relabelling Claude Code's entrypoint to get the TUI's weighting in headless mode.** Recommended: never; it misreports the program to Anthropic on the owner's account.
-8. **A full Claude usage window during a TUI trial.** Recommended: the TUI waits and goes on by itself, recorded as a provider wait (no new trial starts, the research clock stops).
-9. **Measure the token claim on the owner's subscription?** Recommended: yes. First offline, with the stand-in for Anthropic's API recording each request's label and size (no cost); then at least three short paired runs in a quiet period, with the owner's yes for the plan quota they use.
-10. **Skills for agents.** Recommended: a kit may carry agent skills, reviewed with the kit, which Thermite copies into each trial's home.
+1. **A minimal TUI for Pi.** The owner: "the idea of the TUI is to allow owner steering direclty into the TUI and optimize experience. Investigate further on minimal pi TUI to show." To study: the `pi` command's own interactive mode, or a small terminal view around Pi's in-process session, and what each changes in Pi's isolation and tools.
+2. **A full Claude usage window during a TUI trial.** The owner: "herdr can react to this, think more on how we approach it." To study: how herdr sees a program blocked or waiting and acts on it, and what Thermite records and does (a provider wait, a resume, a switch of model).
 
 ## Progress
 
