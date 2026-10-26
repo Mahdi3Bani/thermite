@@ -62,7 +62,7 @@ Each campaign is one of three kinds, called **modes**:
   <Card title="Find out: a research campaign" icon="magnifier">
     Ask a question. Agents read the web and record claims with quotes, and code checks every quote,
     word for word, against the page it came from. It ends once a review panel finds every question
-    answered, with a report built on checked sources.
+    answered, or once its research stops adding, with a report built on checked sources.
     *For example: which papers improve 2-bit decoding?*
   </Card>
   <Card title="Or combine them" icon="puzzle">
@@ -101,7 +101,7 @@ Each campaign is one of three kinds, called **modes**:
 <CardGrid>
   <Card title="It keeps going" icon="clock">
     Nothing stops a campaign by default: no limit on turns, attempts, failures or time. A goal
-    campaign ends when its goals are met, and a research campaign when its questions are answered.
+    campaign ends when its goals are met, and a research campaign when its questions are answered or its research stops adding.
     Set a
     [budget or a stop time](how-to/campaigns/budget-and-stop-time.md) when you want one.
   </Card>
@@ -139,7 +139,7 @@ Thermite has two kinds of part. **Control** is the one place you watch and steer
 8. **Everything is recorded, and reaches you.** The rig's **ledger** keeps every experiment, attempt, measurement and verdict. The supervisor sends it all to control, where you follow the run on **Live** and its page, and steer it with signed commands: pause it, message its agents, add experiments. It pushes the results to git, and control files each campaign's records in its folder of the knowledge base, for later runs to read.
 9. **Round after round,** until the goals are met, a budget or stop time you set runs out, or you stop it. Nothing stops a campaign by default.
 
-The third mode, **research**, has no project to change and no kit. Its workers read sources through the rig's archiving fetcher and record claims with exact quotes. Code finds every quote, word for word, in the archived page before a claim counts. Once the review panel finds every question answered, or its time is up, the run ends with its final report.
+The third mode, **research**, has no project to change and no kit. Its workers read sources through the rig's archiving fetcher and record claims with exact quotes. Code finds every quote, word for word, in the archived page before a claim counts. Once the review panel finds every question answered, its research stops adding, or its maximum duration is up, the run ends with its final report, led by a research paper that code checks.
 
 [How the parts fit together](explanation/how-it-fits-together.md) explains each part, [Agents, lanes and the planner](explanation/agents-lanes-planner.md) a trial, [Why agents never judge](explanation/why-agents-never-judge.md) the judge, and [Supervision](explanation/supervision.md) the advisors.
 

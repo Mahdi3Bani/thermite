@@ -141,6 +141,7 @@ Results recorded after the rig's last export are in no export yet. To include th
 | `why` | Meaning |
 | --- | --- |
 | `the rig's supervisor has not reported yet` | No report |
+| `the rig's supervisor has not reported its exports yet` | A report without its exports |
 | `the rig has no results repository, and its supervisor does not send exports to control (an older version)` | A supervisor from before exports went to control |
 | `the rig's supervisor does not say what waits to leave (an older version)` | The report has no `waiting` |
 | `<n> exports wait on the rig to go to control` | Not yet sent. Also for the results repository |

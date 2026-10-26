@@ -4,6 +4,8 @@ Thermite's documentation is a website built with [Astro Starlight](https://starl
 
 ## Build and check
 
+The site needs Node.js 22.22 or later (Astro requires it); the rest of Thermite needs 22.19.
+
 ```sh
 npm run docs:install   # once: the site's own dependencies, from docs/_site/package-lock.json
 npm run docs:dev       # a live preview at http://localhost:4321/
@@ -29,7 +31,7 @@ The site's dependencies are pinned to exact versions and kept apart from Thermit
 
 ## Where the site is served
 
-The site is at [usethermite.com](https://usethermite.com), on Cloudflare Pages. Cloudflare builds it from `main` on every push: in `docs/_site/`, with `npm run build -- --outDir dist` on Node.js 22, and it serves `dist/`. Other branches and pull requests get no preview.
+The site is at [usethermite.com](https://usethermite.com), on Cloudflare Pages. Cloudflare builds it from `main` on every push: in `docs/_site/`, with `npm run build -- --outDir dist` on Node.js 22.22 or later, and it serves `dist/`. Other branches and pull requests get no preview.
 
 - `docs/_site/public/_headers` sets the response headers, among them the Content Security Policy. A page that loads a script, style, image or font from another host needs that host added there, or the browser blocks it.
 - The site's icon is Thermite's flame, a small character with a face, in `docs/_site/public/favicon.svg`. The SVG holds two faces: drawn at 24 pixels or less, as in a browser tab, its own media query shows a plain face whose eyes and mouth sit on the 16-pixel grid; larger, it shows the full face. Beside it are `favicon.ico` (16, 32 and 48 pixels, for browsers that take no SVG, such as Safari) and `apple-touch-icon.png` (180 pixels, on a dark square, for a page saved on iOS). The header's logo (`src/assets/logo.svg`) and the home page's picture (`src/assets/hero.svg`, the flame waving) are the same character with a finer line.

@@ -331,7 +331,7 @@ An **experiment** is one thing for a lane to try, in a run's [experiment queue](
 | `<attempt>: not judged yet` | Its trial submitted an attempt that control has no record of yet |
 | `no attempt` | The worker stopped without submitting |
 | `no attempt: <reason>` | Its trial ended without an attempt: `interrupted`, `error`, `wall` (its time ran out), `turns` (the turn cap) or `context` (the model's context was full) |
-| `finished: its research is in the run's notes` | A research task whose trial ended on its own. Its sources, claims and findings are its result |
+| `finished: <yield>` | A research task whose trial ended on its own, with what it added, such as `finished: 3 verified claims, 2 from sites new to its question, 1 finding`; `finished: its research is in the run's notes` when it recorded no yield |
 | `dropped by <who>: <why>` | Someone dropped it: `you` (the owner, or an operator for the owner) or the `planner`. An idea dropped with its **Drop** button under **Ideas from the lanes** has the why `the owner dropped this idea` |
 
 The filter chips above the table each show a count, and group the results by the attempt's [outcome word](#outcome-words-on-the-dashboard):
@@ -343,7 +343,7 @@ The filter chips above the table each show a count, and group the results by the
 | **Not better** | `Lost`: not better than the champion. A `regress` verdict (slower, or a goal lost) reads `Lost`, so it is here |
 | **Broken or blocked** | `Broken` or `Blocked` |
 | **Other results** | `Unclear`, `Declined`, `Duplicate`, `Run closed` and `Judging` |
-| **Research finished** | `finished: its research is in the run's notes`. Shown only when there are some |
+| **Research finished** | `finished: <yield>`, or `finished: its research is in the run's notes`. Shown only when there are some |
 | **No attempt or dropped** | `no attempt`, `no attempt: <reason>`, `<attempt>: not judged yet` and `dropped by <who>: <why>` |
 
 Beside the chips, two lists narrow the rows further: **Every direction** (the **Direction** column) and **Anyone added it** (the **Added by** column). Each offers only the values in the table. The chip and both lists apply together.

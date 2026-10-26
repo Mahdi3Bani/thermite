@@ -18,7 +18,7 @@ Thank you for helping. Fixes, documentation, kits, bug reports and ideas are all
 ## Send a change
 
 1. Fork the repository, and make a branch in your fork.
-2. Set up your copy. You need Node.js 22.19 or later, git, and Docker or Podman:
+2. Set up your copy. You need Node.js 22.19 or later (22.22 or later to build the documentation site), git, and Docker or Podman:
 
    ```sh
    npm ci

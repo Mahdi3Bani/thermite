@@ -72,9 +72,9 @@ The full list, with dates, is in [docs/plan/decisions.md](docs/plan/decisions.md
 
 ## Checks
 
-Run from the repository root, and report which ran and which didn't. Before each commit: typecheck, lint, the public check, and the test files the change touches (`node scripts/test.mjs <files>`), plus `npm run docs:build` and `npm run docs:check` when the commit touches `docs/_site/` or anything a page describes. A roll to a lab needs the pushed commit's CI green; CI runs the heavy jobs (compose, rig image, RunPod, quick start) only for a change that touches what they test. Before each version tag or release: the full `npm run check`, the compose checks the changes need, and CI's full run on the tag, which runs every job.
+Run from the repository root, and report which ran and which didn't. Before each commit: typecheck, lint, the public check, and the test files the change touches (`node scripts/test.mjs <files>`), plus `npm run docs:build` and `npm run docs:check` when the commit touches `docs/_site/` or anything a page describes. A roll to a lab follows these local checks and does not wait for CI; CI runs the heavy jobs (compose, rig image, RunPod, quick start) only for a change that touches what they test, and they gate version tags and releases. Before each version tag or release: the full `npm run check`, the compose checks the changes need, and CI's full run on the tag, which runs every job.
 
-- Install: `npm ci` (Node.js 22.19 or later; the agent libraries require it).
+- Install: `npm ci` (Node.js 22.19 or later; the agent libraries require it. The documentation site needs 22.22 or later.)
 - All the fast checks: `npm run check`. It runs, in order:
   - `npm run typecheck`
   - `npm run lint` (Biome; `npm run format` applies fixes)
@@ -96,7 +96,7 @@ Run from the repository root, and report which ran and which didn't. Before each
   - `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs`
 - Machines acceptance, after changes to machines over SSH, their checks or install recipes. A local container with an SSH server stands in for the machine (never a real host); control reaches it from its own image, the host key must match, and Podman is installed only after the maintainers' yes (it downloads packages):
   - `COMPOSE="podman compose" node scripts/machine-acceptance.mjs`
-- Cluster acceptance, after changes to rigs on Kubernetes (cluster checks, the manifests, Add a rig on a cluster, Update to these images) or to control's image. A local kind cluster on Podman stands in for the cluster (never a real cluster); a rig is set up in a namespace control creates and in a pre-made slot with a namespaced role, and each must report; then the slot rig moves onto new images and must report again with its volume and tokens kept. Podman and kind:
+- Cluster acceptance, after changes to rigs on Kubernetes (cluster checks, the manifests, Add a rig on a cluster, Update to these images, a rig's size) or to control's image. A local kind cluster on Podman stands in for the cluster (never a real cluster); a rig is set up in a namespace control creates and in a pre-made slot with a namespaced role, and each must report; then the slot rig moves onto new images and must report again with its volume and tokens kept; then the slot gets a quota and the rig moves onto a new size within it, and a size above the quota is refused in words. Podman and kind:
   - `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs`
 - Rig deploy acceptance, after changes to setting rigs up on machines (Rigs › Add a rig, the deploy and management scripts, the Quadlet units) or to the rig images. A privileged local container with systemd, sshd and rootless Podman stands in for the machine (never a real host); control sets a CPU rig up there over SSH, the rig must report, and it is stopped, started and removed. Podman only; it loads the rig images into the stand-in, so check the Podman VM's free disk first:
   - `COMPOSE="podman compose" node scripts/rig-deploy-acceptance.mjs`

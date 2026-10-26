@@ -110,7 +110,7 @@ The agent's token reads another description: its held-out part says `a confirmat
 | `run` | string | | The run's id |
 | `attempts` | whole number, 1 to 500 | 50 | How many of the newest attempts to return |
 | `limit` | whole number, 1 to 500 | 10 | How many of the newest entries of each other list to return |
-| `list` | string | | One list's name, such as `journal` or `timeline`: the answer is that list alone, `{id, list, total, from, to, entries}`, `entries` oldest first |
+| `list` | string, optional | | One list's name, such as `journal` or `timeline`: the answer is that list alone, `{id, list, total, from, to, entries}`, `entries` oldest first. A name the run doesn't have is refused: `the run has no list <list>: its lists are …` |
 | `offset` | whole number from 0 | 0 | With `list`: how many of the newest entries to skip, to page back through the list |
 | `full_report` | boolean | false | The research report whole, in place of its first 4,000 characters |
 
@@ -222,7 +222,7 @@ Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest fi
 
 > Per campaign: each run's champion and its gain over its own baseline (measured on its own rig), and which other rigs' judges cross-verified it.
 
-No inputs. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, verified_by, values}]}`. `values` is `{start, champion, unit, estimated}`: the main metric's value at the starting point (from the run's baseline) and the champion's (from its confirming verdict), each null when the run has none, and null when it has neither. When the champion's verdict has no values (judged by an older harness), `champion` is estimated from the starting point's value and the champion's gain over it, and `estimated` is true.
+No inputs. Hill-climb runs only, each campaign's runs best gain first: goal and research runs are not listed, and `get_run` gives their results. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, verified_by, values}]}`. `values` is `{start, champion, unit, estimated}`: the main metric's value at the starting point (from the run's baseline) and the champion's (from its confirming verdict), each null when the run has none, and null when it has neither. When the champion's verdict has no values (judged by an older harness), `champion` is estimated from the starting point's value and the champion's gain over it, and `estimated` is true.
 
 ### model_usage
 
@@ -269,9 +269,9 @@ Returns `[{id, rig, kind, issued_by, issued_at, status, acked_at, outcome}]`, ne
 
 **Issue a signed command.** Owner, operator and agent.
 
-> Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: `<kinds>`. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid\|try\|mandate\|priority\|lane_count\|trial_minutes\|keep_working\|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value? (lane_count: lanes; trial_minutes: one trial's length in minutes, 1 to 1440, over the contract's; keep_working: on or off, whether lanes keep working while the judge works, over the contract's), rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; close_run {run, reason} (the owner's token only: the run ends for good, nothing more starts and it can't be resumed; its results stay); hypothesis_status {run, id, status: promoted\|pool\|retired, reason} (the owner's token only: a research run's hypothesis promoted, so the review panel must give it a verdict, back to the pool, or retired; get_run lists them); message_agent {run, to: all\|lane-N\|trial:ID\|planner\|advisors\|teachers\|auditor\|review_panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top\|end\|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. `thermite assign --print` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.
+> Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: `<kinds>`. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid\|try\|mandate\|priority\|lane_count\|trial_minutes\|keep_working\|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value? (lane_count: lanes; trial_minutes: one trial's length in minutes, 1 to 1440, over the contract's; keep_working: on or off, whether lanes keep working while the judge works, over the contract's), rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; close_run {run, reason} (the owner's token only: the run ends for good, nothing more starts and it can't be resumed; its results stay); hypothesis_status {run, id, status: promoted\|pool\|retired, reason} (the owner's token only: a research run's hypothesis promoted, so the review panel must give it a verdict, back to the pool, or retired; get_run lists them); message_agent {run, to: all\|lane-N\|trial:ID\|planner\|advisors\|teachers\|auditor\|review_panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top\|end\|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); stop_trial {run, trial, reason?} (one running trial ends as interrupted, and its experiment goes back to the top of the queue; run_queue's at_work gives each lane's trial); assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. `thermite assign --print` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.
 
-That is the description the owner sees. `<kinds>` is the caller's kinds, comma-separated, as in [Command kinds for each role](#command-kinds-for-each-role). The operator's description leaves out the `close_run` and `hypothesis_status` examples, which only the owner's token issues. The agent's leaves out those two and the examples for `message_agent`, `unkeep_message` and the six queue kinds, which it can't issue: after `approve_promotion {run, attempt};` it goes straight on with `assign_campaign {run, contract, contract_sha, seed, imports}, …`.
+That is the description the owner sees. `<kinds>` is the caller's kinds, comma-separated, as in [Command kinds for each role](#command-kinds-for-each-role). The operator's description leaves out the `close_run` and `hypothesis_status` examples, which only the owner's token issues. The agent's leaves out those two and the examples for `message_agent`, `unkeep_message`, the six queue kinds and `stop_trial`, which it can't issue: after `approve_promotion {run, attempt};` it goes straight on with `assign_campaign {run, contract, contract_sha, seed, imports}, …`.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -357,7 +357,7 @@ Returns items `{id, seq, campaign, rig, run, kind, ref, title, body, by, url, su
 | `rig` | string, optional | every rig | One rig's exports only |
 | `limit` | whole number, 1 to 500 | 50 | How many exports |
 
-Returns `[{rig, name, full, from_event, through_event, files, files_kept, bytes, bytes_received, created_at, complete_at}]`, newest first, with `bytes_received` always `null`. [Exports](exports.md#download-an-export) says what each holds and how to download one.
+Returns `[{rig, name, run, full, from_event, through_event, files, files_kept, bytes, bytes_received, created_at, complete_at}]`, newest first (`run`: the run a run's export holds, or `null` for the rig's own), with `bytes_received` always `null`. [Exports](exports.md#download-an-export) says what each holds and how to download one.
 
 ### kb_grant
 
@@ -438,8 +438,8 @@ A cluster rig's `status` is `deploying`, `starting`, `running`, `updating`, `sto
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | The rig |
-| `trial` | string | | A trial's id, such as `t-0a1b2c3d4e5f6071` (`trial:t-0a1b2c3d4e5f6071` also works). Left out: the list of sessions |
-| `run` | string | | With no `trial`: only this run's sessions |
+| `trial` | string, optional | | A trial's id, such as `t-0a1b2c3d4e5f6071` (`trial:t-0a1b2c3d4e5f6071` also works). Left out: the list of sessions |
+| `run` | string, optional | | With no `trial`: only this run's sessions |
 | `after` | whole number | 0 | With `trial`: the lines after this line's id |
 | `limit` | whole number, 1 to 2000 | 200 | How many sessions, or lines, to return |
 
@@ -743,9 +743,9 @@ Its REST twin is [`POST /v1/rigs/<rig>/settings`](rest-api.md#a-rigs-settings). 
 | --- | --- | --- | --- |
 | `provider` | string | | The provider's name in **Settings › Providers** |
 | `model` | string | | The model's id, as the provider lists it or as it was added |
-| `input` | number, 0 to 1,000,000 | | US dollars per million input tokens not read from the cache |
+| `input` | number, 0 to 1,000,000; needed unless `clear` | | US dollars per million input tokens not read from the cache |
 | `cached_input` | number, 0 to 1,000,000, or null, optional | null | US dollars per million input tokens read from the cache; null: the input price |
-| `output` | number, 0 to 1,000,000 | | US dollars per million output tokens, the reasoning included |
+| `output` | number, 0 to 1,000,000; needed unless `clear` | | US dollars per million output tokens, the reasoning included |
 | `clear` | `true`, optional | | Removes the owner's price: the model's calls have no price again |
 
 Returns `{provider, model, price, said}`, as [`POST /v1/model-prices`](rest-api.md#model-usage) does, with its refusals as errors.

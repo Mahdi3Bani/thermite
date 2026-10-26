@@ -5,7 +5,8 @@
 # commit and roll to lab"): the compose smoke test (control and one rig built from this commit, a
 # campaign assigned through control, a candidate judged), the one-container rig image's
 # acceptance, rigs on RunPod against the fake RunPod API, and the quick start as a tester follows
-# it. On a version tag, and when run by hand, every job runs. No job waits for another.
+# it. On a version tag, and when run by hand, every job runs. The heavy jobs wait only for the
+# short job that decides which of them run (heavy); the other jobs start at once.
 name: ci
 
 on:

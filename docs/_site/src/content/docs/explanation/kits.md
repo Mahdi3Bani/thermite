@@ -84,7 +84,7 @@ In a goal campaign, a goal's status comes from its visible cells, and its hidden
 The contract names the kit by its repository and its commit. The kit can come from three places:
 
 - a git repository you name, public or private (control gives the rig access to a private one);
-- a kit that control keeps itself, because you described it or uploaded it on the **New campaign** page;
+- a kit that control keeps itself, because you described it or uploaded it on the **New campaign** page, or gave it as a git bundle (`thermite kit add`, or the MCP tool `kit_add`);
 - a git bundle file that you put in the rig's inbox yourself.
 
 When a run is assigned, control sends the rig a signed command that names the kit's commit. If the rig does not have that commit yet, the command also names a file in the rig's inbox for the kit and, unless you put the file there yourself, where to fetch it from. The supervisor then fetches the commit and writes it into the inbox as a git bundle. The harness accepts the bundle only if it holds that exact commit, and only if the file's hash matches when the command gives one. So neither the supervisor nor the network can swap the kit.

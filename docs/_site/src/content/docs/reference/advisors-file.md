@@ -448,7 +448,7 @@ Each advisor's instructions end with what a field note is, and: "Put yours in jo
 | `journal` | list | Optional. The advisor's field notes |
 | `journal[].kind` | `"observation"`, `"decision"`, `"surprise"`, `"question"`, `"lesson"` or `"note"` | The note's kind |
 | `journal[].text` | text, up to 2000 characters | The note. It is trimmed, and a longer one is cut to 2000 |
-| `journal[].about` | `{type, id}` | Optional. What it is about: `experiment`, `attempt`, `source`, `claim`, `finding`, `round`, `trial` or `message`, with its id |
+| `journal[].about` | `{type, id}` | Optional. What it is about: the `run` itself, or an `experiment`, `attempt`, `source`, `claim`, `finding`, `round`, `trial` or `message`, with its id |
 
 `journal` is lenient, like `answers`: a note that does not fit is left out, and nothing limits how many there are. [Field notes](knowledge-base.md#field-notes) says who reads them.
 

@@ -34,7 +34,7 @@ A new screen, or a real change to one, needs a mockup that the maintainers agree
 
 ## Set up
 
-You need Node.js 22.19 or later, git, and Docker or Podman.
+You need Node.js 22.19 or later (22.22 or later to build this documentation site), git, and Docker or Podman.
 
 ```sh
 git clone https://github.com/iammrduncan/thermite.git
@@ -89,7 +89,7 @@ One test is run by hand only, with the owner's OK, because it spends money: `scr
 
 ## What CI runs
 
-Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, on every push to `main` and to a version's branch (such as `v0.1.1`), and on every version tag (`v…`); it can also be run by hand from the **Actions** tab. Its jobs run at once, none waiting for another. The heavy jobs, **compose-smoke**, **rig image**, **runpod** and **quick-start**, run on a pull request or a push only when the change touches what they test, so a small change gets its answer in minutes. On a version tag, and when run by hand, every job runs:
+Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, on every push to `main` and to a version's branch (such as `v0.1.1`), and on every version tag (`v…`); it can also be run by hand from the **Actions** tab. Its fast jobs run at once. The heavy jobs, **compose-smoke**, **rig image**, **runpod** and **quick-start**, wait only for a short job, **heavy checks, needed?**, that decides which of them run: on a pull request or a push, only those whose paths the change touches, so a small change gets its answer in minutes. On a version tag, when run by hand, and on a new branch or a rewritten history, every job runs:
 
 | Job | What it runs |
 | --- | --- |
@@ -105,7 +105,7 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or to a version's branch gets a whole run of its own.
 
-A second workflow, `.github/workflows/release.yml`, runs on a tag that starts with `v`. It builds the control, harness (CPU and CUDA) and supervisor images, and the one-container rig image for RunPod on the CUDA harness, and pushes them to `ghcr.io` with the commit's tag. Then it checks each one, pulled by digest with no sign-in (`scripts/check-images.ts`): its commit, no Claude Code, no set-id file and no key in its environment. Only images that pass get the version's tag, and then it attaches the release bundle (`compose.yaml` and `README.md`, made by `scripts/release-bundle.ts`) to a draft GitHub Release. Run by hand from the **Actions** tab with **publish** ticked, it publishes and checks a build with the commit's tag only and makes no release; without it, it builds the same images and bundle but pushes nothing. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#releases) describes each step.
+A second workflow, `.github/workflows/release.yml`, runs on a tag that starts with `v`. It builds the control, harness (CPU, CUDA 12, and CUDA 13 on amd64 and arm64, the last labelled untested) and supervisor images, and the one-container rig image for RunPod on the CUDA 12 harness, and pushes them to `ghcr.io` with the commit's tag. Then it checks each one, pulled by digest with no sign-in (`scripts/check-images.ts`): its commit, no Claude Code, no set-id file and no key in its environment. Only images that pass get the version's tag, and then it attaches the release bundle (`compose.yaml` and `README.md`, made by `scripts/release-bundle.ts`) to a draft GitHub Release. Run by hand from the **Actions** tab with **publish** ticked, it publishes and checks a build with the commit's tag only and makes no release; without it, it builds the same images and bundle but pushes nothing. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#releases) describes each step.
 
 `.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x. `@types/node` gets no major update: its major is the Node.js version Thermite supports, 22, and a newer one's types would let code use what Node.js 22 does not have. The pull requests go to `main`, where the work happens until v0.1.0 ships.
 

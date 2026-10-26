@@ -5,6 +5,7 @@
 import {
   assign,
   candidatePatch,
+  control,
   dc,
   events,
   latestVerdicts,
@@ -18,7 +19,7 @@ const env = prepare();
 console.log("compose: build and start");
 dc(composeEnv, "up", "-d", "--build");
 try {
-  await until("control health", async () => (await fetch("http://127.0.0.1:8800/v1/health")).ok);
+  await until("control health", async () => (await fetch(`${control}/v1/health`)).ok);
   await assign(env, "smoke-1");
   console.log("assign_campaign delivered and accepted");
   const a = submit(

@@ -140,13 +140,12 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `queue_drop` | **Drop**, then **Drop it**, on an experiment under **Up next**; **Drop** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `queue_accept` | **Queue it** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `drop_directive` | **Remove** on a rule on a run's **Planner** tab | Yes | Yes | Yes | No | Yes |
-| `hypothesis_status` | None | Yes | No | No | No | Yes |
 | `propagate` | **Send champion #&lt;n&gt;** on a run's **Planner** tab, under **Other rigs** | `POST /v1/propagate`, or `POST /v1/commands` | `propagate_champion` | `propagate_champion` | `propagate_champion` | |
 | `approve_promotion` | **Needs you**: **Make it the champion**, **Overrule the auditor** | Yes | Yes | No | No | Yes |
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
 | `accept_review` | **Needs you**: **Accept**, **Reject** | Yes | No | No | No | Yes |
 | `conclude` | **Needs you**: **End it: not possible**, **Keep going** | Yes | No | No | No | Yes |
-| `hypothesis_status` | **Promote**, **Return to pool** or **Retire**, then its button, on a hypothesis on a research run's **Hypotheses** tab | Yes | Yes | No | No | |
+| `hypothesis_status` | **Promote**, **Return to pool** or **Retire**, then its button, on a hypothesis on a research run's **Hypotheses** tab | Yes | Yes | No | No | Yes |
 | `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | `POST /v1/rigs/<rig>/settings`, or `POST /v1/commands`; `POST /v1/rigs/<rig>/cluster/resources` with a new number of GPUs | `set_rig_settings`; `start_run` with `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs | `set_rig_settings`, but not `promotion` or `judge_gpus`; `set_cluster_rig_resources` with a new number of GPUs, which sends the new default share only | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
@@ -524,6 +523,8 @@ Changes the status of one of a research run's hypotheses. The author's hypothese
 
 Control refuses a run its rig reports as not a research run, before it signs anything: `Run <run> is not a research run: only a research run has hypotheses to promote or retire.` The harness refuses: `no run <run>`, a closed run (`run <run> is closed: its queue and rules no longer change`), the same for a run that is not a research run (`run <run> is not a research run: only a research run has hypotheses to promote or retire`), `no hypothesis <id> in run <run>`, one of the author's (`hypothesis <id> is one of the author's: it needs a verdict already, and only the campaign's brief changes it`), a merged one (`hypothesis <id> was merged into <other>: change <other> instead`), and a retired one whose words now repeat a live hypothesis of the run (`hypothesis <id>'s words repeat <other> (in the pool): change <other> instead`).
 
+On the dashboard, control refuses a change with no reason before it signs it: `write why you change the hypothesis first`.
+
 Result: `{"run", "hypothesis", "status", "from", "changed"}`, where `from` is the status it had. The same status again changes nothing: `changed` is `false`, with a `note` such as `hypothesis <id> is in the pool already: nothing changed`, and no event. Each change is the event `hypothesis_status`, `{hypothesis, status, from, by, reason, question, text}`, with `by` the issuer, such as `control:owner:api`; the run's research folder, its next workers' briefs, its next review package and the campaign's folder in the [knowledge base](knowledge-base.md) follow it.
 
 ### `propagate`
@@ -656,19 +657,6 @@ The owner's answer to the harness's proposal that a goal campaign's goals cannot
 | `note` | text up to 2000 characters | Optional |
 
 A closed run is refused, whichever the answer: `run <run> is closed: it can't end as not possible or go on`.
-
-### `hypothesis_status`
-
-Which of a research run's hypotheses need a verdict from the review panel ([goal 117](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/117-research-that-answers.goal)): the author's always do; a worker's goes to the run's pool, and needs one only once it is promoted.
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `run` | lowercase id | The research run |
-| `id` | text, 1 to 64 characters | The hypothesis, such as `h-3f2a9c41d0b7` |
-| `status` | `promoted`, `pool` or `retired` | `promoted`: the review panel must give it a verdict; `pool`: back in the pool, where no review waits on it; `retired`: no review waits on it and workers no longer work on it |
-| `reason` | text, 1 to 2000 characters | Why. The run keeps it with the change |
-
-The rig records the change as the event `hypothesis_status`, `{hypothesis, status, by, reason}`, which the run's **Hypotheses** tab and **History** show. On the dashboard, control refuses a change with no reason before it signs it: `write why you change the hypothesis first`.
 
 ## Imports
 

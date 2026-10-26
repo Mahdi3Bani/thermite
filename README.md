@@ -32,7 +32,7 @@ Each campaign is one of three kinds, called **modes**:
 | --- | --- | --- | --- |
 | **Hill climb** | Push one number, such as speed, size or accuracy, as far as it goes, with guards so that nothing else gets worse | You stop it | Make a matmul kernel faster without breaking its tests |
 | **Goal** | Meet a list of checks: it builds, it loads the model, its answers match | Every required goal is met, or the evidence shows that they cannot be | Port a library to a new platform: it builds, matches its goldens and meets a speed target |
-| **Research** | Answer a question from sources. Code checks every quote, word for word, against the page it came from | A review panel finds every question answered, or its longest time is up | How do modern memory allocators keep tail latency low? |
+| **Research** | Answer a question from sources. Code checks every quote, word for word, against the page it came from | A review panel finds every question answered, its research stops adding, or its longest time is up | How do modern memory allocators keep tail latency low? |
 
 The modes combine: a hill climb or a goal campaign can read what a research campaign found. [Choose a campaign mode](https://usethermite.com/how-to/campaigns/choose-a-mode/) helps you pick, [campaign modes](https://usethermite.com/explanation/campaign-modes/) explains each, and the [contract reference](https://usethermite.com/reference/contract/) has every field.
 
@@ -63,7 +63,7 @@ flowchart LR
 
 ## What you get
 
-- **It keeps going.** There are no default caps on turns, submissions, failures or wall time. A campaign runs until its goals are met or its questions are answered, its time is up, or you stop it; only the limits you configure apply.
+- **It keeps going.** There are no default caps on turns, submissions, failures or wall time. A campaign runs until its goals are met or its questions are answered, its research stops adding, its time is up, or you stop it; only the limits you configure apply.
 - **Your machines, your models.** Run it on your own computer, on machines with GPUs over SSH, on a Kubernetes cluster, or on a RunPod GPU by the hour. The agents use a free model, a model server of your own, an API key, or a Claude or ChatGPT subscription.
 - **Nothing useful is thrown away.** Every losing attempt is kept with its code and its verdict. Agents keep field notes as they work, and each campaign's records go into a knowledge base that later runs read.
 - **People stay in charge.** One dashboard shows every campaign on every machine, live. You can pause, redirect, message, reset and reassign any run from the dashboard, the REST API or an MCP client, and decide which wins wait for your approval.

@@ -77,7 +77,7 @@ A campaign can run on several rigs at once, all with the same kit commit. A `cud
 
 A rig works on one run at a time. Starting or resuming a run pauses the run that was running there. Each run brings its own kit, so over time one rig can measure many projects, each with its own kit, as long as each kit is for the rig's kind of hardware.
 
-The rig keeps what it has seen. Every kit it imported stays in its private store, and every run's attempts and verdicts stay in its ledger, so a paused run can be resumed later and a new run can use a kit that is already there. A full reset of the rig clears them, after the rig's results have reached its results repository. Rigs that control sets up on machines and clusters, and joined rigs, have no results repository yet, so they can't be fully reset ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+The rig keeps what it has seen. Every kit it imported stays in its private store, and every run's attempts and verdicts stay in its ledger, so a paused run can be resumed later and a new run can use a kit that is already there. A full reset of the rig clears them, once the rig's full export has left it: in its results repository or, for a rig without one, on control ([Rig lifecycle](../how-to/operate/rig-lifecycle.md)).
 
 The rig's own **smoke check** is an example. The harness image carries a small smoke kit for each kind of hardware. When you run the check, the rig pauses its running run, judges a set of known changes with that kit, and then resumes the run.
 

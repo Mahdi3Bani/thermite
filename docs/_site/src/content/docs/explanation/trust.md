@@ -174,7 +174,7 @@ Past research and field notes reach the agents as data, never as a verdict: the 
 
 ## Decisions that stay with people
 
-Some steps wait for a person. A full reset, for one, wipes a rig only after its final export has reached the results repository and the owner has looked at the pushed commit there and confirmed the wipe.
+Some steps wait for a person. A full reset, for one, wipes a rig only after its final export has reached the results repository, or control for a rig without one, and the owner has checked it there and confirmed the wipe.
 
 ## What the supervisor cannot do
 

@@ -17,6 +17,7 @@ Thermite is at version 0.x. This page lists what to know before you run it: the 
 | [Research mode searches the web only through an MCP server](#research-mode-searches-the-web-only-through-an-mcp-server) | No goal: give the campaign a search server |
 | [Runs of several days are not yet proven](#runs-of-several-days-are-not-yet-proven) | [Goal 049](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/049-multi-day-test-fire.goal), v0.5.0 |
 | [The CUDA 13 harness is untested](#the-cuda-13-harness-is-untested) | [Goal 132](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/132-cuda-images-per-gpu.goal), v0.1.2 |
+| [A win the champion moved past still asks to be made the champion](#a-win-the-champion-moved-past-still-asks-to-be-made-the-champion) | [Goal 141](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/141-waiting-win-after-champion-moved.goal), v0.1.3 |
 | [0.x versions make no upgrade promise](#0x-versions-make-no-upgrade-promise) | No goal yet: it holds until 1.0 |
 
 ## Agents run code that a model wrote, on your machine
@@ -60,6 +61,8 @@ A RunPod GPU is in a machine that other customers' pods share. Their work can sl
 
 Research workers have no search of their own: their `search` tool answers that the rig has no web search. They search the web with the tools of an MCP server that the campaign gives them, such as a search or browsing server you add in **Settings** ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)). Without one, they start from the contract's starting pages (`seeds`) and follow the links of the pages already archived ([the research contract](contract.md#research)), so a research campaign finds only what its starting pages lead to.
 
+**Removed by:** no goal. Give the campaign a search or browsing MCP server.
+
 ## Runs of several days are not yet proven
 
 Thermite is built to run unattended for as long as a campaign takes, and to recover from crashes and restarts. Its own tests run campaigns for minutes to a few hours: the longest, `scripts/research-longrun.mjs`, runs a research campaign for about two hours by default and kills the harness's controller halfway. The test that proves runs of several days has not run yet: several campaigns in all three modes, for days, with crashes, restarts, a full disk and a lost model along the way.
@@ -71,6 +74,12 @@ Thermite is built to run unattended for as long as a campaign takes, and to reco
 The release publishes two CUDA harnesses ([The CUDA harness](harness-image.md#the-cuda-harness)). The CUDA 12 one (`-cuda`) runs Thermite's GPU rigs, on P100 GPUs among others. The CUDA 13 one (`-cuda13`), for Turing to Blackwell and the DGX Spark, is built, and the release's checks hold it to its architectures, but it has not yet run on a GPU. Control sets GPU rigs up from the CUDA 12 image unless `THERMITE_RIG_HARNESS_CUDA_IMAGE` names another, and it doesn't yet choose the image from a rig's GPUs.
 
 **Removed by:** [goal 132](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/132-cuda-images-per-gpu.goal), Rig images for each GPU generation (v0.1.2). If you run it on a Blackwell GPU or a DGX Spark, [tell us how it went](../project/getting-help.md).
+
+## A win the champion moved past still asks to be made the champion
+
+A confirmed win can wait for you: under **Needs you** when you ask to decide each promotion, or after an audit. Meanwhile another win can become the champion. The waiting win's card still asks **Make it the champion**, but approving it does not make it the champion at once: the judge screens it again against the new champion, and it becomes the champion only if it still wins there. The change it held may also come back as a port onto the new champion.
+
+**Removed by:** [goal 141](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/141-waiting-win-after-champion-moved.goal), A waiting win the champion moved past (v0.1.3).
 
 ## 0.x versions make no upgrade promise
 

@@ -360,6 +360,7 @@ These fields pass validation and become part of the contract and its hash, but n
 | `max_duration is shorter than min_duration` | Both are set, and `max_duration` is shorter |
 | `at most 16: a rig has users for lanes 1 to 16 only` | `lanes.count` is more than 16 |
 | `research campaigns need min_duration` | A research contract has no `min_duration` |
+| `rubrics has <n> entries for <m> questions: give one for each question, in order` | A research contract's `rubrics` is not one for each of its `questions` |
 | `hill_climb campaigns need a target` | A hill climb contract has no `target` |
 | `<cells> is in both cells and held_out_cells: a held-out cell is measured only at confirmation, so it can't be one of cells` (`are`, for more than one) | A hill climb names a cell in both `cells` and `held_out_cells`. The path is `held_out_cells` |
 
@@ -381,3 +382,5 @@ The `assign_campaign` [signed command](signed-commands.md) carries the contract 
 | `kit <repo> at <commit> has no valid kit.json: <error>` | The kit's manifest is missing or refused |
 | `the kit does not fit the contract: <problems>` | The kit lacks a cell, metric or verifier the contract names, a case the contract runs has no `work` parameter above zero for one of the kit's rate metrics, or the kit measures on another target. See [the kit against the contract](kit-manifest.md#the-kit-against-the-contract) |
 | `seed commit <commit> is not in <repo>; import its bundle first` | The starting commit is not on the rig |
+| `commit <commit> has no folder <folder>` | The project's `folder` is not in the starting commit |
+| `the kit names the MCP servers <list>, and the assignment names <list>: start the run from control, which reads the kit's servers, or give the kit's mcp_servers in the assignment` | The command's `mcp_servers` is not the kit's (for a research run, `the contract` and its `mcp_servers`) |
