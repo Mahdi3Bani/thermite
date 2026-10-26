@@ -1,7 +1,7 @@
+import { COMPACTION_SYSTEM } from "../../agents/roles/compaction.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { fenced } from "./cli-conversation.ts";
-import { SUMMARY_SYSTEM } from "./compaction.ts";
 import type { ModelConfig } from "./model.ts";
 
 /**
@@ -112,7 +112,7 @@ export function keptLine(at: KeptAt): string {
  */
 export function codexCompactPrompt(at: KeptAt): string {
   const dir = at.dir.replace(/\/+$/, "");
-  return `${SUMMARY_SYSTEM}
+  return `${COMPACTION_SYSTEM}
 
 Thermite keeps the whole conversation before this point in ${dir}/${at.place ? ` (${at.place})` : ""}, as the newest file named ${at.stem}-<number>.md (the number counts this conversation's compactions from 1). Name that file in your summary${at.readable ? ", and say that the agent can read it there for any detail the summary leaves out" : ", as where the conversation is kept"}.`;
 }

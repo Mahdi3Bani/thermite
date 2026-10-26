@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
+import { AUDITOR_SYSTEM } from "../../src/agents/roles/auditor.ts";
+import { COMPACTION_SYSTEM } from "../../src/agents/roles/compaction.ts";
+import { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "../../src/agents/roles/final-writer.ts";
+import { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM } from "../../src/agents/roles/merged-by.ts";
 import {
   PLAN_LIMITS_TEXT,
   PLANNER_ASK_SYSTEM,
@@ -17,6 +21,16 @@ import {
   RESEARCH_WORKER_NOTES,
   RESEARCH_WORKER_SYSTEM,
 } from "../../src/agents/roles/research-worker.ts";
+import { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "../../src/agents/roles/reviewer.ts";
+import {
+  ADVISOR_NOTES,
+  AT_WORK_GUIDE,
+  BRIEF_GUIDE,
+  PAST_GUIDE,
+  RESEARCH_GUIDE,
+} from "../../src/agents/roles/shared.ts";
+import { SYNTHESIZER_SYSTEM } from "../../src/agents/roles/synthesizer.ts";
+import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "../../src/agents/roles/teacher.ts";
 import {
   WORKER_CLAUDE_CODE_SYSTEM,
   WORKER_CODEX_SYSTEM,
@@ -24,24 +38,6 @@ import {
   WORKER_PI_NOTES,
   WORKER_PI_SYSTEM,
 } from "../../src/agents/roles/worker.ts";
-import { SUMMARY_SYSTEM } from "../../src/harness/agents/compaction.ts";
-import {
-  ADVISOR_NOTES,
-  AT_WORK_GUIDE,
-  AUDITOR,
-  BRIEF_GUIDE,
-  MERGED_BY,
-  PANEL,
-  PAST_GUIDE,
-  RESEARCH_GUIDE,
-  RESEARCH_MERGED_BY,
-  RESEARCH_PANEL,
-  RESEARCH_TEACHER,
-  STE_SHORT_RULES,
-  SYNTHESIZER,
-  TEACHER,
-  WRITER,
-} from "../../src/supervisor/advisors.ts";
 
 /**
  * The fixed text of every agent role (goal 166), held byte for byte against the files in
@@ -69,17 +65,17 @@ const TEXTS: Record<string, string> = {
   "advisors.at-work-guide": AT_WORK_GUIDE,
   "advisors.past-guide": PAST_GUIDE,
   "advisors.research-guide": RESEARCH_GUIDE,
-  "teacher.system": TEACHER,
-  "merged-by.system": MERGED_BY,
-  "research-teacher.system": RESEARCH_TEACHER,
-  "research-merged-by.system": RESEARCH_MERGED_BY,
-  "auditor.system": AUDITOR,
-  "reviewer.system": PANEL,
-  "research-reviewer.system": RESEARCH_PANEL,
-  "final-writer.system": WRITER,
+  "teacher.system": TEACHER_SYSTEM,
+  "merged-by.system": MERGED_BY_SYSTEM,
+  "research-teacher.system": RESEARCH_TEACHER_SYSTEM,
+  "research-merged-by.system": RESEARCH_MERGED_BY_SYSTEM,
+  "auditor.system": AUDITOR_SYSTEM,
+  "reviewer.system": REVIEWER_SYSTEM,
+  "research-reviewer.system": RESEARCH_REVIEWER_SYSTEM,
+  "final-writer.system": FINAL_WRITER_SYSTEM,
   "final-writer.ste-short-rules": STE_SHORT_RULES,
-  "synthesizer.system": SYNTHESIZER,
-  "compaction.system": SUMMARY_SYSTEM,
+  "synthesizer.system": SYNTHESIZER_SYSTEM,
+  "compaction.system": COMPACTION_SYSTEM,
 };
 
 const golden = (name: string) => new URL(`golden/${name}.txt`, import.meta.url);
