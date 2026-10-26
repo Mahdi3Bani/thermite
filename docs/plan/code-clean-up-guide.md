@@ -466,7 +466,7 @@ After the owner answered section 7, they asked for four more things, and then fo
 | --- | --- | --- |
 | [166](goals/166-agent-definitions.goal) | One definition for each agent role in `src/agents/roles/`, with a pure `render` for a run's prompt, a table of tools, and every prompt sent recorded | T7 grows: the table of agent programs sits beside the roles and the tools. T1 gains the role names. |
 | [167](goals/_completed/167-how-the-parts-talk.goal) | A review of every channel: 45 channels, 35 polling loops, the delay each adds | Its explanation page, [How the parts talk](../_site/src/content/docs/explanation/how-the-parts-talk.md), is written. Its findings feed T2 and goal 168. |
-| [168](goals/168-message-bus.goal) | The message bus. The review recommends a first part over HTTP (the link's contract in `core/link/`, one client for the supervisor, a change feed for each rig, Server-Sent Events, views kept up to date), then a decision on NATS with its numbers | T2 becomes this first part. T12's views kept up to date are its step 4. |
+| [168](goals/168-message-bus.goal) | The message bus: NATS JetStream as the event log, the delivery and the queues between control, the rigs' supervisors and the dashboard, chosen by the owner on 2026-10-26; the harness and the agents stay off it, bridged by the supervisor | T2 becomes the link's contract in `core/link/` (subjects, schemas, limits, signers). T12's views kept up to date are JetStream consumers. |
 | [169](goals/169-agents-in-their-terminal.goal) | Workers in their program's own terminal UI, session logs as events, steering inside a turn | Comes after goal 166 and T7's one trial loop; its terminal mode is a field of each program's entry. |
 | [170](goals/170-one-hierarchy.goal) | One hierarchy: run IDs unique across rigs, a run registry on control, views and addresses by run (`/ui/runs/<run>/attempts/<attempt>`), the run on every event | A new theme, T15. Its rule of shape: a thing is addressed through what owns it; where it ran is an attribute. |
 | [171](goals/171-bugs-on-the-wire.goal) | Bugs on the wire: a lost long reply, a command sent again in full, a live view stopped by one line, a prompt too long for one argument | Joins goals 161 to 165 in step 2 of the order of work. |
@@ -477,11 +477,10 @@ After the owner answered section 7, they asked for four more things, and then fo
 2. The bugs: goals 161 to 165, 171, and goal 170's run IDs and a run's export with its verdicts.
 3. The shared homes: T1 (with the role names and `core/ids.ts`), T3 and T4.
 4. The test scaffolding (T10), and golden tests of every role's prompt (goal 166).
-5. The link's contract and the supervisor's client (goal 168's first part, which is T2), the domain modules out of the dashboard (T5), the ledger's owners (T6), the run on every event and the run registry (goal 170), and the table of agent programs with the roles and tools (T7, goal 166).
+5. The link's contract in `core/link/` (T2) and the bus's first steps (goal 168: the compose spike, then commands), the domain modules out of the dashboard (T5), the ledger's owners (T6), the run on every event and the run registry (goal 170), and the table of agent programs with the roles and tools (T7, goal 166).
 6. The splits (T8), with views by run and kept up to date (goals 168 and 170) when `control/views.ts` splits.
 7. The folder moves (T9), and run-scoped addresses (goal 170).
-8. The change feed and Server-Sent Events (goal 168), the record of prompts and their surfaces (goal 166), and the terminals (goal 169).
+8. The rest of the bus (goal 168: live lines and the dashboard's push, config and the knowledge base, queues, every placement), the record of prompts and their surfaces (goal 166), and the terminals (goal 169).
 9. Knowledge (T11, with the knowledge base keyed by run), growth (T12), dead code (T13), containers and CI (T14).
-10. The NATS decision (goal 168), with the numbers from its step 0.
 
 The owner's questions for part 2 are in each goal; until they are answered, the goals keep the reviewers' recommendations as proposals.

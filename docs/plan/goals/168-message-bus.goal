@@ -55,53 +55,77 @@ The audit's lane 11 (`.internal/reviews/v0.1.1-audit/11-message-bus.md`) evaluat
 - **JetStream would keep a second copy** of reports and commands, with its own retention and backups, which can drift from the records.
 - **More to secure and to test:** a server, its ports and a second way to authenticate; the Node library for NATS's auth callout is a pre-release; every acceptance check would start a NATS server.
 
-## Design (proposed by the review)
+## Design
 
-**First part, over HTTP, needed with or without NATS** (each step green on its own, in goal [125](125-code-to-the-conventions.goal)'s order):
+The owner chose this design on 2026-10-26, from a drawing of it: JetStream as the event log, the delivery and the queues between control, the rigs' supervisors and the dashboard. The review's first part over HTTP is folded into it where it still applies (the link's contract, views kept up to date).
 
-0. Measure the link: delivery times, calls per rig, view times, as `/metrics` series.
-1. The link's contract in `core/link/`: one module for each message type, with its name (later its subject), direction, schema, byte limit, who signs it and how it is delivered.
-2. One client for the supervisor's calls to control, with a named timeout and typed errors.
-3. Pages bounded by bytes.
-4. Views kept up to date as events arrive, not refolded.
-5. One long-poll change feed for each rig, in place of the supervisor's command, route, MCP and past-research loops.
-6. Reports and live lines sent as they happen.
-7. Server-Sent Events for the dashboard.
-8. The link's state in REST, MCP and `/metrics`.
-9. Each secret the link carries sealed to the rig's own key.
+**Who connects**
 
-**Second part, if the owner chooses NATS:** a spike behind `core/link` with a `nats` transport beside `http` and the `nats` service in compose, measured against the first part's numbers; then each rig's identity (a key made by the supervisor and registered over HTTPS); the release bundle; the docs; the acceptance checks; then machines and clusters move to it. Pull mode, kits, exports, the harness, the broker, git and the dashboard stay as they are.
+- **Control** runs the NATS server, with JetStream.
+- **A rig on a machine or a cluster:** its supervisor connects to control's server over TLS, with its rig's own key, as it reaches control today.
+- **A rig on RunPod:** a small NATS server in the pod accepts one connection only: control's own server, which dials it as a leaf node over TLS, with keys checked both ways. Control mints the keys at launch and learns the pod's address from RunPod's API, so control never needs to be public. It replaces pull mode's tunnel.
+- **The dashboard** reads its views through control (question 5).
+
+**Off the bus, on purpose**
+
+- **The harness** keeps its SQLite ledger: the judge's leases and fencing, and the compare-and-set promotion, stay there. It talks to its supervisor over HTTP, as today. The supervisor publishes the harness's signed events and delivers its commands.
+- **The agents** never hold a bus credential; the harness acts for them.
+- **Kits and large files** stay on git and HTTP.
+
+**Subjects** follow goal [170](170-one-hierarchy.goal)'s hierarchy; the rig and the ledger travel in headers, never in a run's subject.
+
+| Subject | Stream or bucket | Truth | Kept |
+| --- | --- | --- | --- |
+| `thermite.run.<run>.ev.<kind>`, `thermite.run.<run>.attempt.<attempt>.<kind>`, `thermite.run.<run>.trial.<trial>.<kind>` | `EVENTS`, a record | the rig's ledger | for good; deletes and purges refused |
+| `thermite.rig.<rig>.ev.<kind>` | `RIG_EVENTS`, a record | the rig's ledger | for good |
+| `thermite.run.<run>.queue.<op>` | `EVENTS`, and a key-value bucket of each experiment's state | the rig's ledger | for good; the bucket holds the latest, changed by compare-and-set |
+| `thermite.rig.<rig>.cmd` | `COMMANDS`, a work queue | control signs and keeps each; the rig's ledger keeps its outcome | until the rig acks |
+| `thermite.run.<run>.live.<source>` | `LIVE`, a view | none | by count and age |
+| `thermite.rig.<rig>.config` | a key-value bucket | control's store | the latest; secrets sealed to the rig's key |
+| `thermite.campaign.<campaign>.<kind>`, `thermite.kb.<collection>.item` | `CAMPAIGNS`, `KB`, records | control's store | for good |
+
+Control's own SQLite copies of the rigs' events and of its commands go: JetStream holds control's one copy, and control's pages read views that consumers keep up to date. JetStream snapshots are its backup.
+
+**Who may do what.** Only control and the rigs' supervisors hold bus credentials. A supervisor publishes only its own rig's subjects and its runs' (control also checks that the run registry gives each run to that rig), takes its own rig's commands, and reads its rig's config and the collections its runs may read. Control publishes commands, each signed, config, campaigns and the knowledge base, and reads everything. The owner and operators act through control, which signs what they may issue. Every record a rig publishes keeps the harness's signature inside it, so a bus credential alone can forge nothing.
+
+**The experiment queue** stays as it is inside the rig: its truth is the harness's ledger, and every change is one transaction and one event. The owner changes it by signed commands; the planner accepts, adds, moves, drops and hands out (it gives each lane its experiment when the lane's trial starts; workers never pick); the teachers and the auditor add and move; workers propose; the judge adds ports. The bus changes only how the owner's changes arrive and how the queue's events leave.
+
+**Still needed, whatever the transport:** the link's contract in `core/link/` (one module for each message type: its subject, schema, byte limit and signer), views kept up to date as events arrive, and the link's state in REST, MCP and `/metrics`.
+
+**The steps,** each green on its own:
+
+0. **A spike in compose:** the `nats` service with JetStream; the supervisor publishes its events to `EVENTS`; control consumes and folds them. Measured against today's polling.
+1. **Commands:** the `COMMANDS` work queue for each rig, acked by the supervisor, outcomes as events. The command poll goes.
+2. **Live and the dashboard:** the `LIVE` stream, and the dashboard's push. The live poll goes.
+3. **Config and the knowledge base:** the config bucket and the `KB` stream. The route, MCP and past-research polls go.
+4. **Queues, and control's own copies:** the queue's subjects and bucket; control's tables of rig events and commands go.
+5. **Every placement:** RunPod's leaf node, machines and clusters, the release bundle and every acceptance stack.
+6. **Later, by decision:** the harness on a rig-local NATS, and the ledger moving toward JetStream.
 
 ## Decisions
 
-- 2026-10-26: the audit's lane 11 evaluated NATS JetStream and proposed the design above.
+- 2026-10-26: the audit's lane 11 evaluated NATS JetStream; it recommended a first part over HTTP and a decision on NATS after it.
+- 2026-10-26, owner, after a drawing of the design above: "for jetstream direction, this looks great". JetStream is the event log, the delivery and the queues between control, the rigs' supervisors and the dashboard, with the harness and the agents off the bus at first, bridged by the supervisor ([decisions.md](../decisions.md#the-product)). This answers the review's questions on when to add NATS (now, as designed), on RunPod (a leaf node in the pod, dialed by control, in place of the tunnel), on what JetStream holds (records, the commands queue, the live view and key-value buckets, with control's own copies gone), on a report soon after each command (events now arrive as they happen) and on one configuration document for each rig (the config bucket).
 
 ## Open questions
 
-Each with the review's recommendation.
+Each with the reviews' recommendation.
 
-1. **NATS now, or after the first part?** Recommended: the first part over HTTP in v0.1.1, then decide NATS with its numbers and goal 169's needs. Instead: core NATS for rigs that dial out in v0.1.1, after the first part's steps 1 to 3; or NATS with JetStream as first asked, with a second copy of reports and commands.
-2. **Will the owner type into an agent's terminal from the dashboard (goal 169)?** Recommended: decide this first; it decides whether the link needs a lasting two-way stream, the one load polling serves badly. Each line typed is steering, so it is a signed command.
-3. **How remote rigs reach the bus, if NATS is chosen.** Recommended: WebSocket over TLS through the operator's existing HTTPS reverse proxy: one name, one port, the TLS already set up.
-4. **Rig identities on the bus.** Recommended: a key made by each supervisor, registered over today's HTTPS call; control writes the server's users file and reloads it. The secret never leaves the rig.
-5. **How secrets travel on the link.** Recommended: sealed to each rig's own key on every rig, and sent only when they change.
-6. **Push to the dashboard.** Recommended: Server-Sent Events from control, with no new dependency.
-7. **RunPod's pull mode.** Recommended: keep the tunnel; control's adapter feeds the same handlers.
-8. **What JetStream may hold, if NATS is chosen.** Recommended: nothing at first, then at most a key-value store of revisions that hold no secret; "the bus holds no record" goes in [decisions.md](../decisions.md).
+1. **Will the owner type into an agent's terminal from the dashboard (goal [169](169-agents-in-their-terminal.goal))?** Recommended: signed inputs, owner only (text, slash commands, a fixed list of named keys), each recorded; no free stream of keys until a signed grant for one session exists.
+2. **How a rig on a machine or a cluster reaches control's server.** Recommended: WebSocket over TLS through the operator's existing HTTPS reverse proxy: one name, one port, the TLS already set up.
+3. **Rig identities on the bus.** Recommended: a key made by each supervisor, registered over today's HTTPS call; control writes the server's users file and reloads it. The secret never leaves the rig.
+4. **How secrets travel to a rig.** Recommended: sealed to each rig's own key on every rig, and sent only when they change.
+5. **The dashboard's push.** Recommended: Server-Sent Events from control first, which needs no credential in the browser; a read-only NATS credential for each session later, if wanted.
+6. **Should the auditor and the review panel get their own loop?** Recommended: yes, so a promotion never waits for a teacher's round.
+7. **Should every reader of a signed batch keep what it knows and count the rest?** Recommended: yes, written once in `core` as the rule for every subject.
+8. **Counters for each channel and subject in the supervisor's figures?** Recommended: yes; they are cheap and show on the rig's page without a log store.
 
-From the review of how the parts talk (goal [167](_completed/167-how-the-parts-talk.goal)):
-
-9. **A report soon after each command:** now (2 files), or with the bus? Recommended: now. It removes the largest delay the owner meets.
-10. **Should the auditor and the review panel get their own loop?** Recommended: yes, so a promotion never waits for a teacher's round.
-11. **One configuration document for each rig,** sent when it changes, in place of three polls? Recommended: yes.
-12. **Push to the browser:** Server-Sent Events from control, or keep polling? Recommended: Server-Sent Events, for the live transcript and "rig reported", which fit server-rendered pages with small scripts.
-13. **Should every reader of a signed batch keep what it knows and count the rest?** Recommended: yes, written once in `core` as the rule for every channel and every future subject.
-14. **A longer life for an assignment whose models take long to download?** Recommended: test it first (goal [171](171-bugs-on-the-wire.goal), item 5); if confirmed, a "staging" state holds the expiry.
-15. **Counters for each channel in the supervisor's figures?** Recommended: yes; they are cheap and show on the rig's page without a log store.
+The question of an assignment that expires while its models download is goal [171](171-bugs-on-the-wire.goal)'s item 5.
 
 ## Progress
 
 - 2026-10-26 21:03 UTC: Goal written from the owner's words. Lanes 10 and 11 of the audit review the channels and the bus.
+- 2026-10-26 22:33 UTC: The owner chose the JetStream design above. Next: the spike in compose (step 0).
 
 ---
 
