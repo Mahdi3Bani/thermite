@@ -154,6 +154,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [146](goals/146-supervisor-alone.goal) Restart or update a rig's supervisor alone, while its harness goes on · `PROPOSED`
 - [141](goals/141-waiting-win-after-champion-moved.goal) A waiting win the champion moved past: closed when a champion has it, an approval when none does · `PROPOSED`
 - [149](goals/149-output-cut-notice.goal) A command's result says its output was cut only when it was · `PROPOSED`
+- [150](goals/150-model-check-busy-model.goal) A model check on a busy model: it waits as long as the rig says, and doesn't call the model down · `PROPOSED`
 
 ## v0.1.4
 
