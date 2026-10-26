@@ -73,7 +73,7 @@ jobs:
       publish: ${{ env.PUBLISH }}
       release: ${{ env.RELEASE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: version
         name: Read the version, and check the tag against package.json
         run: |
@@ -168,7 +168,7 @@ jobs:
             description: "Thermite's supervisor: a rig's link to control, its advisors and its git work."
             licenses: "MIT AND Apache-2.0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The CUDA base is several gigabytes: make room on the runner's disk first.
       - name: Make room for the CUDA image
         if: matrix.cuda
@@ -331,7 +331,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The CUDA images are several gigabytes each: make room on the runner's disk first.
       - name: Make room for the CUDA images
         run: |
@@ -402,7 +402,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
