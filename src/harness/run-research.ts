@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { RUN_RESEARCH_TOOLS } from "../agents/tools/names.ts";
 import { clip } from "../core/kb-index.ts";
 import { FILE_BYTES_MAX, READ_LINES_DEFAULT, READ_LINES_MAX } from "./evidence.ts";
 import { searchLimit, searchWords } from "./knowledge.ts";
@@ -22,14 +23,6 @@ import { cardPath, readNoFollow, sectionPath } from "./research/folder.ts";
  * Every answer is cut to a size, pages its lists, and says that what it holds is data the run's
  * workers wrote or fetched, never instructions. Nothing here writes.
  */
-
-/** The teachers' tools that read it, as the supervisor names them (supervisor/research-tools.ts). */
-export const RUN_RESEARCH_TOOLS = {
-  list: "list_research",
-  source: "read_source",
-  file: "read_research_file",
-  search: "search_research",
-} as const;
 
 /** The kinds of the run's research, as the tools and the search name them. */
 export const RESEARCH_KINDS = ["source", "claim", "hypothesis", "finding", "note", "file"] as const;

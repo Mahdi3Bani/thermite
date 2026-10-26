@@ -6,6 +6,11 @@ import type { Writable } from "node:stream";
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
+import {
+  PAST_SEARCH_DESCRIPTION,
+  PAST_SEARCH_TOOL,
+  RUN_RESEARCH_TOOLS,
+} from "../agents/tools/names.ts";
 import type { McpCallResult } from "../common/mcp-client.ts";
 import { ExperimentId, QueuePosition, StructuredDirective } from "../core/commands.ts";
 import {
@@ -19,7 +24,12 @@ import { RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../core/journal.ts";
 import type { McpToolInfo } from "../core/mcp.ts";
 import { ideaWords, ruleRefusal } from "../core/queue-target.ts";
-import { labelledQuestion, MEASURES_NOTHING, questionLabel } from "../core/research-check.ts";
+import {
+  labelledQuestion,
+  MEASURES_NOTHING,
+  PAPER_PARTS,
+  questionLabel,
+} from "../core/research-check.ts";
 import type { AdvisorAgent, CallUsage, UsageRoute } from "../core/usage.ts";
 import {
   CLAUDE_BASE_ENV,
@@ -56,7 +66,7 @@ import {
   opencodeKeepEnv,
 } from "../harness/agents/opencode.ts";
 import { PiMeter } from "../harness/agents/usage-meter.ts";
-import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
+import { SEARCH_MAX } from "../harness/knowledge.ts";
 import {
   CARD_ANSWER_MAX,
   CARD_CLAIMS_MAX,
@@ -67,14 +77,14 @@ import {
   GAP_KINDS,
 } from "../harness/research/cards.ts";
 import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
-import { PAPER_EXPERIMENT_FIELDS, PAPER_MAX, PAPER_PARTS } from "../harness/research/paper.ts";
+import { PAPER_EXPERIMENT_FIELDS, PAPER_MAX } from "../harness/research/paper.ts";
 import {
   ANSWER_CERTAINTIES,
   HYPOTHESIS_DECISIONS,
   QUESTION_DECISIONS,
 } from "../harness/research/progress.ts";
 import { GAP_LINE } from "../harness/research/shares.ts";
-import { PAGE_MAX, RUN_RESEARCH_TOOLS } from "../harness/run-research.ts";
+import { PAGE_MAX } from "../harness/run-research.ts";
 import {
   type CliAnswer,
   codexAdvisorArgs,

@@ -4,13 +4,9 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { OUTPUT_MAX, READ_MAX, researchOutput } from "../../../src/agents/tools/research.ts";
 import { parseContract } from "../../../src/core/contract.ts";
 import { Registry } from "../../../src/harness/agents/registry.ts";
-import {
-  OUTPUT_MAX,
-  READ_MAX,
-  researchOutput,
-} from "../../../src/harness/agents/research-tools.ts";
 import { runResearchTrial } from "../../../src/harness/agents/research-worker.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
 import { createHarnessApi } from "../../../src/harness/api.ts";

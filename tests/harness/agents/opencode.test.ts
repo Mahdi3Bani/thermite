@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { RESEARCH_SYSTEM } from "../../../src/agents/tools/research.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
 import type { CallUsage } from "../../../src/core/usage.ts";
 import { claudeEnv } from "../../../src/harness/agents/claude-code.ts";
@@ -23,7 +24,6 @@ import {
   runOpencodeResearchTrial,
   runOpencodeTrial,
 } from "../../../src/harness/agents/opencode.ts";
-import { RESEARCH_SYSTEM } from "../../../src/harness/agents/research-tools.ts";
 import type { TrialSpec } from "../../../src/harness/agents/worker.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
 

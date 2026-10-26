@@ -2,6 +2,15 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { NOTE_USAGE } from "../../agents/tools/names.ts";
+import {
+  CODE_RESEARCH_TOOLS,
+  codeResearchNote,
+  RESEARCH_SYSTEM,
+  type ResearchFolderPaths,
+  researchCommands,
+  researchFolderNote,
+} from "../../agents/tools/research.ts";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
@@ -28,16 +37,7 @@ import {
   failingOf,
   type ProviderLink,
 } from "./provider-errors.ts";
-import {
-  CODE_RESEARCH_TOOLS,
-  codeResearchNote,
-  RESEARCH_SYSTEM,
-  type ResearchFolderPaths,
-  researchCommands,
-  researchFolderNote,
-} from "./research-tools.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
-import { NOTE_USAGE } from "./trial-cli.ts";
 import { trialBudget } from "./trial-clock.ts";
 import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } from "./worker.ts";
 

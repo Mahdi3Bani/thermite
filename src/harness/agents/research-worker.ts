@@ -1,5 +1,13 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
+import {
+  READ_MAX,
+  RESEARCH_SYSTEM,
+  RESEARCH_TOOLS,
+  type ResearchFolderPaths,
+  researchFolderNote,
+  researchOutput,
+} from "../../agents/tools/research.ts";
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import type { CallUsage } from "../../core/usage.ts";
@@ -13,14 +21,6 @@ import { type FailureCount, failingOf, ProviderWatch } from "./provider-errors.t
 import { guardRepeats } from "./repeats.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
-import {
-  READ_MAX,
-  RESEARCH_SYSTEM,
-  RESEARCH_TOOLS,
-  type ResearchFolderPaths,
-  researchFolderNote,
-  researchOutput,
-} from "./research-tools.ts";
 import { TrialClock } from "./trial-clock.ts";
 import { PiMeter } from "./usage-meter.ts";
 import type { CompactionLink, McpForAgent, ProviderWait, TrialResult } from "./worker.ts";

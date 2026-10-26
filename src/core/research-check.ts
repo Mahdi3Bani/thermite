@@ -137,3 +137,38 @@ export function hypothesisStatusWords(status: string, mergedInto?: string | null
 /** Where the hypotheses go, in words, for a worker's brief and the research folder. */
 export const HYPOTHESES_RULE =
   "Only the author's hypotheses and promoted ones need a verdict from the review panel. The others are the run's pool, which the report lists as proposed by the run and no review waits on. Propose a hypothesis only when it is new; to change one of the pool's words, question or supporting claims, revise it (revise_hypothesis) instead of proposing it again.";
+
+/**
+ * The parts of a usual research paper, each a level-2 heading, in this order: what the writer is
+ * asked for. The writer chooses its parts and their words; code checks none of them, only that
+ * every question is answered somewhere (owner, 2026-10-24).
+ */
+export const PAPER_PARTS = [
+  {
+    part: "Abstract",
+    what: "one paragraph: the topic, how the run worked, the main answers and how certain they are",
+  },
+  {
+    part: "Introduction",
+    what: "the topic, why it is important, and the run's questions and hypotheses, in sentences",
+  },
+  { part: "Related work", what: "earlier work that the sources describe, when they describe it" },
+  { part: "Method", what: "how the sources were found, archived and checked, with the figures" },
+  {
+    part: "Results",
+    what: "the answer to each question, from its card, with its evidence and the certainty that the review panel decided",
+  },
+  {
+    part: "Discussion",
+    what: "what the answers show together, the hypotheses with the review panel's verdicts, and where reviewers dissent",
+  },
+  {
+    part: "Limitations",
+    what: "claims from a single site, open gaps, questions that stayed open, and draft findings that stay unverified",
+  },
+  {
+    part: "Future work",
+    what: "what only a measurement could settle (each question's next_experiments), then what else to try, each with why",
+  },
+  { part: "Conclusion", what: "the main result, in a few sentences" },
+] as const;

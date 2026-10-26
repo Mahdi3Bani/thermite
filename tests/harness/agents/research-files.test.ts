@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { OUTPUT_MAX, READ_MAX, researchOutput } from "../../../src/agents/tools/research.ts";
 import {
   listFiles,
   readFile,
@@ -17,11 +18,6 @@ import {
   searchFiles,
   writeFile,
 } from "../../../src/harness/agents/research-files.ts";
-import {
-  OUTPUT_MAX,
-  READ_MAX,
-  researchOutput,
-} from "../../../src/harness/agents/research-tools.ts";
 
 /** A folder with a record, a lane's working area, and a secret next to it (outside). */
 function folder() {

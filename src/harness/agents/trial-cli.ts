@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { apiCall } from "./api-call.ts";
+import { NOTE_USAGE } from "../../agents/tools/names.ts";
 import {
   CLAIM_LIMITS_WORDS,
   RESEARCH_TOOLS,
   researchOutput,
   researchTool,
-} from "./research-tools.ts";
+} from "../../agents/tools/research.ts";
+import { apiCall } from "./api-call.ts";
 
 /**
  * `thermite-trial`: Thermite's tools for an agent that works through its own shell (the OpenCode
@@ -20,9 +21,6 @@ import {
  *   thermite-trial note --kind KIND [--about TYPE:ID] TEXT
  *   thermite-trial research TOOL [WORDS...] [--FLAG VALUE]... [-]   (the research tools)
  */
-
-/** How to write a field note from a shell, for the workers' instructions. */
-export const NOTE_USAGE = "thermite-trial note --kind KIND [--about TYPE:ID] TEXT";
 
 const USAGE = `usage:
   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...

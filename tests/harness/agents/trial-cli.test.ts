@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { OUTPUT_MAX, RESEARCH_TOOLS } from "../../../src/harness/agents/research-tools.ts";
+import { OUTPUT_MAX, RESEARCH_TOOLS } from "../../../src/agents/tools/research.ts";
 import { parseArgs, researchRequest, trialCli } from "../../../src/harness/agents/trial-cli.ts";
 
 function repo(): string {

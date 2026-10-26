@@ -1,12 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { RUN_RESEARCH_TOOLS } from "../agents/tools/names.ts";
 import { SEARCH_MAX } from "../harness/knowledge.ts";
-import {
-  PAGE_MAX,
-  RESEARCH_KINDS,
-  RUN_RESEARCH_TOOLS,
-  SOURCE_CHARS_MAX,
-} from "../harness/run-research.ts";
+import { PAGE_MAX, RESEARCH_KINDS, SOURCE_CHARS_MAX } from "../harness/run-research.ts";
 import { toolNumber, toolText } from "./code-tools.ts";
 
 /**

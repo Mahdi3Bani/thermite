@@ -2,6 +2,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import {
+  CLAIM_LIMITS,
+  CODE_RESEARCH_TOOLS,
+  moreText,
+  READ_MAX,
+  researchTool,
+} from "../../agents/tools/research.ts";
 import { log } from "../../common/env.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
@@ -13,13 +20,6 @@ import {
   LIVE_HYPOTHESES,
   questionLabel,
 } from "../../core/research-check.ts";
-import {
-  CLAIM_LIMITS,
-  CODE_RESEARCH_TOOLS,
-  moreText,
-  READ_MAX,
-  researchTool,
-} from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
 import { blockedSpans } from "./blocked.ts";

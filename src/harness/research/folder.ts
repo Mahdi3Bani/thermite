@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import type { ResearchFolderPaths } from "../../agents/tools/research.ts";
 import { BRIEF_FILE, briefFile } from "../../core/brief.ts";
 import { COMPACTIONS_DIR } from "../../core/compaction.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
@@ -23,7 +24,6 @@ import {
   questionLabel,
   REQUIRED_HYPOTHESES,
 } from "../../core/research-check.ts";
-import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";

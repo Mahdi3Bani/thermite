@@ -1,6 +1,11 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { READ_MAX, researchOutput, researchTool, SOURCE_PARAM } from "./research-tools.ts";
+import {
+  READ_MAX,
+  researchOutput,
+  researchTool,
+  SOURCE_PARAM,
+} from "../../agents/tools/research.ts";
 
 /**
  * The research tools as Pi offers them: a research trial has all of them, a hill-climb or goal

@@ -1,6 +1,7 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
+import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../agents/tools/names.ts";
 import type { BriefData } from "../../core/brief.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import { DIRECTIVE_KINDS, QueuePosition, type StoredRule } from "../../core/commands.ts";
@@ -18,13 +19,7 @@ import {
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../../core/journal.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import { NOTES_ARE_DATA, type notesData } from "../journal.ts";
-import {
-  briefingData,
-  type KnowledgeSearch,
-  PAST_SEARCH_DESCRIPTION,
-  PAST_SEARCH_TOOL,
-  SEARCH_MAX,
-} from "../knowledge.ts";
+import { briefingData, type KnowledgeSearch, SEARCH_MAX } from "../knowledge.ts";
 import type { BriefingItem } from "../ledger.ts";
 import { directionOf, inFamily, type QueueBrief } from "../queue.ts";
 import { type CompactionReport, Compactor, summarizer } from "./compaction.ts";

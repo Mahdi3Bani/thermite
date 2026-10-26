@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
+import { RESEARCH_SYSTEM as RESEARCH_WORKER_SYSTEM } from "../../src/agents/tools/research.ts";
 import { CLAUDE_SYSTEM } from "../../src/harness/agents/claude-code.ts";
 import { CODEX_SYSTEM } from "../../src/harness/agents/codex.ts";
 import { SUMMARY_SYSTEM } from "../../src/harness/agents/compaction.ts";
@@ -17,7 +18,6 @@ import {
   RESEARCH_SYSTEM as RESEARCH_PLANNER_SYSTEM,
   RESEARCH_TASK as RESEARCH_PLANNER_TASK,
 } from "../../src/harness/agents/research-planner.ts";
-import { RESEARCH_SYSTEM as RESEARCH_WORKER_SYSTEM } from "../../src/harness/agents/research-tools.ts";
 import { RESEARCH_NOTES } from "../../src/harness/agents/research-worker.ts";
 import { NOTES_AND_SOURCES, SYSTEM as WORKER_SYSTEM } from "../../src/harness/agents/worker.ts";
 import {

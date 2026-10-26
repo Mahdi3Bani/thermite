@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
-import { PAPER_ACCEPTED, PAPER_REFUSED, PAPER_REQUESTED } from "../../core/research-check.ts";
+import {
+  PAPER_ACCEPTED,
+  PAPER_PARTS,
+  PAPER_REFUSED,
+  PAPER_REQUESTED,
+} from "../../core/research-check.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { newExperimentId } from "../queue.ts";
 import { type CardGap, cardsOf, verifiedByQuestion } from "./cards.ts";
@@ -60,41 +65,6 @@ import {
  */
 
 type Row = Record<string, unknown>;
-
-/**
- * The parts of a usual research paper, each a level-2 heading, in this order: what the writer is
- * asked for. The writer chooses its parts and their words; code checks none of them, only that
- * every question is answered somewhere (owner, 2026-10-24).
- */
-export const PAPER_PARTS = [
-  {
-    part: "Abstract",
-    what: "one paragraph: the topic, how the run worked, the main answers and how certain they are",
-  },
-  {
-    part: "Introduction",
-    what: "the topic, why it is important, and the run's questions and hypotheses, in sentences",
-  },
-  { part: "Related work", what: "earlier work that the sources describe, when they describe it" },
-  { part: "Method", what: "how the sources were found, archived and checked, with the figures" },
-  {
-    part: "Results",
-    what: "the answer to each question, from its card, with its evidence and the certainty that the review panel decided",
-  },
-  {
-    part: "Discussion",
-    what: "what the answers show together, the hypotheses with the review panel's verdicts, and where reviewers dissent",
-  },
-  {
-    part: "Limitations",
-    what: "claims from a single site, open gaps, questions that stayed open, and draft findings that stay unverified",
-  },
-  {
-    part: "Future work",
-    what: "what only a measurement could settle (each question's next_experiments), then what else to try, each with why",
-  },
-  { part: "Conclusion", what: "the main result, in a few sentences" },
-] as const;
 
 /** The parts code appends to an accepted paper: the writer writes none of them. */
 const APPENDED = ["references", "bibliography", "appendix", "review panel"];

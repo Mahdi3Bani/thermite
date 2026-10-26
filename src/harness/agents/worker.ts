@@ -1,5 +1,6 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
+import { CODE_RESEARCH_TOOLS, codeResearchNote } from "../../agents/tools/research.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
@@ -23,7 +24,6 @@ import {
 } from "./provider-errors.ts";
 import { guardRepeats } from "./repeats.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
-import { CODE_RESEARCH_TOOLS, codeResearchNote } from "./research-tools.ts";
 import { TrialClock, trialBudget } from "./trial-clock.ts";
 import { PiMeter } from "./usage-meter.ts";
 
