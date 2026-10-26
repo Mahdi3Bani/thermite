@@ -100,6 +100,7 @@ The published state of the art solves these with a locked brief, a living answer
 - 2026-10-24, owner, on the paper reading "very mechanical", not "a nice to read paper that could get submitted to arxiv": "STE is not the problem, at all... your structure and sections and stuff is what hurts it. We are NOT dropping STE." The writer chooses a normal paper structure (abstract, introduction, related work, method, results, discussion, limitations), in STE, and code checks "only that every question is answered somewhere"; citations become "normal reference numbering like [1] in the text, mapped to claims behind the scenes"; the certainty lines, the table of verdicts and the review panel's table move into an appendix.
 - 2026-10-26, owner: saturation counts a card's change only when its certainty rises ("Fix the rule"). The rerun of the 35-hour run's brief had run 31 hours with two questions open at low certainty, no improvement for 15.6 hours against the 5.9 its progress rule needed, and their cards rewritten each round (47 versions of one), so its questions never saturated and the run could not end.
 - 2026-10-26, owner: the content-defined chunking test runs again now, at most 2 hours.
+- 2026-10-26, owner, at the tag: "Its good enough... we can push tags and do release." v0.1.0 ships without waiting for the last two acceptance runs (the chunking test and the close of the 35-hour brief's rerun); they finish on the lab after the release.
 
 ## Open questions
 

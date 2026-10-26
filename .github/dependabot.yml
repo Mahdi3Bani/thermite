@@ -3,13 +3,14 @@
 # per ecosystem; each major update comes alone. Starlight is still 0.x, where a minor version can
 # break the site, so it always comes alone (see docs/writing-docs.md). @types/node gets no major
 # update: its major is the Node.js version Thermite supports (package.json's engines), and a newer
-# one's types would let code use what that Node.js does not have. The pull requests go to main, the
-# default branch, where the work happens until v0.1.0 ships; after it, target-branch names the branch
-# of the version being built (docs/plan/decisions.md, Releases and planning).
+# one's types would let code use what that Node.js does not have. The pull requests go to the branch
+# of the version being built, which target-branch names (docs/plan/decisions.md, Releases and
+# planning): main moves only when a version ships.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: v0.1.1
     schedule:
       interval: weekly
     groups:
@@ -21,6 +22,7 @@ updates:
 
   - package-ecosystem: npm
     directory: /docs/_site
+    target-branch: v0.1.1
     schedule:
       interval: weekly
     groups:
@@ -30,6 +32,7 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: v0.1.1
     schedule:
       interval: weekly
     groups:
