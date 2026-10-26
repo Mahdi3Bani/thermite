@@ -135,10 +135,10 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [165](goals/165-results-kept-through-remove-and-reset.goal) Results kept through remove, reset and update: the remove guard on every placement, two reset bugs, an update that survives a restart · `PROPOSED`
 - [171](goals/171-bugs-on-the-wire.goal) Bugs on the wire: lost long replies, commands sent again in full, a live view stopped by one line, prompts too long for one argument · `PROPOSED`
 - [167](goals/_completed/167-how-the-parts-talk.goal) How the parts talk: a review of every interface between control, rigs, kits, campaigns, runs and agents · `VERIFIED`
-- [170](goals/170-one-hierarchy.goal) One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs · `IN_PROGRESS`
+- [170](goals/170-one-hierarchy.goal) One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs · `READY`
 - [166](goals/166-agent-definitions.goal) Agent definitions you can read and change: one definition for each role in code, and the prompt each run gives it · `IN_PROGRESS`
-- [168](goals/168-message-bus.goal) One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval · `IN_PROGRESS`
-- [169](goals/169-agents-in-their-terminal.goal) Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events · `IN_PROGRESS`
+- [168](goals/168-message-bus.goal) One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval · `READY`
+- [169](goals/169-agents-in-their-terminal.goal) Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events · `READY`
 - [125](goals/125-code-to-the-conventions.goal) Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication · `PROPOSED`
 - [124](goals/124-file-sizes.goal) Files of a size you can review · `DROPPED`, merged into 125
 

@@ -1,7 +1,7 @@
 ---
 id: "168"
 title: "One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval"
-status: IN_PROGRESS
+status: READY
 version: "0.1.1"
 depends_on: ["167"]
 created: 2026-10-26
@@ -10,7 +10,7 @@ updated: 2026-10-26
 
 # 168 · One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [167](_completed/167-how-the-parts-talk.goal)
+**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [167](_completed/167-how-the-parts-talk.goal)
 
 ## What
 
@@ -126,6 +126,7 @@ The question of an assignment that expires while its models download is goal [17
 
 - 2026-10-26 21:03 UTC: Goal written from the owner's words. Lanes 10 and 11 of the audit review the channels and the bus.
 - 2026-10-26 22:33 UTC: The owner chose the JetStream design above. Next: the spike in compose (step 0).
+- 2026-10-26 23:34 UTC: The design and the owner's decisions are in; the goal is READY. Building waits for the owner's word: the owner set this phase to documentation and planning only.
 
 ---
 

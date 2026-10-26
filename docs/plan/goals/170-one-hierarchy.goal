@@ -1,7 +1,7 @@
 ---
 id: "170"
 title: "One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs"
-status: IN_PROGRESS
+status: READY
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-26
@@ -10,7 +10,7 @@ updated: 2026-10-26
 
 # 170 · One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
@@ -75,6 +75,7 @@ The audit's lane 13 (`.internal/reviews/v0.1.1-audit/13-hierarchy.md`) reviewed 
 ## Progress
 
 - 2026-10-26 21:08 UTC: Goal written from the owner's words. Lane 13 of the audit reviews the hierarchy.
+- 2026-10-26 23:34 UTC: The design and the owner's decisions are in; the goal is READY. Building waits for the owner's word: the owner set this phase to documentation and planning only.
 
 ---
 
