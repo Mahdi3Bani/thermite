@@ -95,7 +95,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [143](goals/_completed/143-stuck-and-looping-trials.goal) A stuck or looping trial shows itself, and an agent's refused request says why · `VERIFIED`
 - [144](goals/144-trial-clock.goal) A trial's clock: the agent sees the time left, a command ends before its trial does, and a lane's build cache works across its trials · `IN_PROGRESS`
 - [147](goals/147-notes-per-turn.goal) An optional limit on the field notes a worker writes in one reply · `IN_PROGRESS`
-- [151](goals/151-plan-usage-on-providers.goal) A subscription's usage on Providers: Claude's and ChatGPT's windows, how much is used and when each resets · `IN_PROGRESS`
+- [151](goals/_completed/151-plan-usage-on-providers.goal) A subscription's usage on Providers: Claude's and ChatGPT's windows, how much is used and when each resets · `VERIFIED`
 
 ### Research mode
 
