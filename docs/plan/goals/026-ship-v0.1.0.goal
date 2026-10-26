@@ -59,6 +59,7 @@ The owner commits the release's last changes on `main` and makes the tag (2026-1
 - 2026-10-23, owner: the project is ready for v0.1.0 once goal 115 (a hill climb's first job measures its starting point) is in: "if we get this fix in for baseline then I think buddy we ready for v0.1.0 release."
 - 2026-10-24, owner: the development branch `v1/build` is dropped. The work, and this release, happen on `main`, so there is no pull request into `main`; this replaces the 2026-10-20 decisions on a pull request and on `main` following the development branch. After v0.1.0, each version is built on a branch of its own, named for it, such as `v0.1.1`, and `main` moves only when a version ships.
 - 2026-10-25, owner: the scope is frozen ("we keep scope creeping for 2 weeks"). The release ships what is on `main`; the release plan lists what is left before the tag.
+- 2026-10-26, owner: the statements that change at the tag (the README's and the docs' status, AGENTS.md's stage, the changelog's date, the roadmap page's v0.1.0 section) land with the tag, not before: until then `main` says that work is toward v0.1.0. They are ready as one commit on the branch `release/v0.1.0-tag-docs`.
 
 ## Open questions
 
