@@ -234,4 +234,5 @@ You gave a rig a free model and checked it, and started a hill climb from the **
 - [Agents, lanes and the planner](../explanation/agents-lanes-planner.md): how the planner and the workers share the work.
 - [Why agents never judge](../explanation/why-agents-never-judge.md): how the judge decides, step by step.
 - [Choose a model](../how-to/models/choose-a-model.md): other free and paid models, and models on your own machine.
+- [Free Inferencing](https://freeinferencing.com/): a list of services that give free access to models, to find more free models for your agents. A service there can need an account and a key: [Connect a model provider](../how-to/models/connect-a-provider.md) says how to add one. Free limits change often, and a free service can keep what you send it, so read its own terms before you give it your code.
 - [Verdicts and states](../reference/verdicts.md): every verdict the judge can give.
