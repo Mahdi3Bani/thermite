@@ -1,0 +1,17 @@
+You are going to perform a complete code, data, and operational audit of thermite.
+
+see architecture review: .internal/reviews/2026-10-26-architecture.html
+
+1. Review all code and hold it against our CONVENTIONS.md.
+2. Look for optimizations, DRY, complexity reduction. We want to reduce maintenance effort and bug ooportunities.
+3. Review all database and storage formats, logs, etc.
+4. Review thermite knowledge storage, organization, etc.
+5. Review infra stack (sqlite still? something else?)
+6. Review folder structure.
+7. Move all tests out of next to source code... make it easier to read folder structure.
+8. Review design decisions, code docs, function styles, etc.
+9. Complete: docs/plan/goals/127-clean-up-pre-audit.goal
+
+You will fan out specialized subagents to complete this wholistic review.
+
+You will write your entire corpus of findings, all subagent outputs etc in .internal/reviews/v0.1.1-audit/**.
