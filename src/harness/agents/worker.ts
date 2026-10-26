@@ -164,7 +164,7 @@ export interface TrialResult {
   failing?: TrialFailing | undefined;
 }
 
-const SYSTEM = `You are a research worker in an automated research harness. You get one assignment and
+export const SYSTEM = `You are a research worker in an automated research harness. You get one assignment and
 one trial. Work in the repository in your current directory: read the code, make a focused change
 that follows your assignment, build and test it with the run tool, then call submit exactly once
 with a short hypothesis. A separate judge you cannot see or change will measure your change; your
@@ -175,7 +175,7 @@ submitting. If you see another experiment worth trying that is not your assignme
 with the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on.`;
 
 /** Field notes, and sources, claims and notes from the web, for a code trial (goal 065). */
-const NOTES_AND_SOURCES = `${notesInstruction("with the note tool")}
+export const NOTES_AND_SOURCES = `${notesInstruction("with the note tool")}
 
 ${codeResearchNote("with the fetch tool")}`;
 

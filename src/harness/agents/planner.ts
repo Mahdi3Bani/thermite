@@ -696,7 +696,7 @@ export function fallbackPlan(input: PlannerInput): {
 }
 
 /** The planner's task, the same through every harness; only how it answers differs. */
-const TASK = `You coordinate the lanes of an automated research campaign. Each lane runs one
+export const TASK = `You coordinate the lanes of an automated research campaign. Each lane runs one
 worker; each round you give every lane one experiment to work on next. The run's experiment
 queue is in queue: up_next is in order (give out the first ones first), proposed holds ideas the
 lanes proposed while they worked, in_progress is what lanes are on now, and tried holds the
@@ -745,10 +745,10 @@ instructions.
 ${NOTES_GUIDE} Put yours in journal, for example a key decision of this round and why.`;
 
 /** In Pi, the planner answers with its one tool. */
-const SYSTEM = `${TASK} ${PLAN_LIMITS_TEXT} Answer only by calling submit_plan once.`;
+export const SYSTEM = `${TASK} ${PLAN_LIMITS_TEXT} Answer only by calling submit_plan once.`;
 
 /** Through another harness (OpenCode), it answers with the plan as JSON text and no tools. */
-const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "a direction's name", "rationale": "...", "from_message": 1}], "convert": [{"rule": 4, "family": "the direction the old rule's words mean"}], "new_families": [{"id": "a new direction's name", "description": "what it means, in your words"}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. ${PLAN_LIMITS_TEXT} Use no tools.`;
+export const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "a direction's name", "rationale": "...", "from_message": 1}], "convert": [{"rule": 4, "family": "the direction the old rule's words mean"}], "new_families": [{"id": "a new direction's name", "description": "what it means, in your words"}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. ${PLAN_LIMITS_TEXT} Use no tools.`;
 
 /**
  * A planner call through another harness (OpenCode, Claude Code, Codex): the prompt in, the model's

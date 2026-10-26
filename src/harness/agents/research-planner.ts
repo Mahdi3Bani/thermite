@@ -83,7 +83,7 @@ export const RESEARCH_PLAN_LIMITS = {
   retire: 20,
 } as const;
 
-const LIMITS_TEXT = `Limits (an answer over one is refused): a task's title ${RESEARCH_PLAN_LIMITS.title} characters, its details ${RESEARCH_PLAN_LIMITS.details}, its gap ${RESEARCH_PLAN_LIMITS.gap}, its source_kind ${RESEARCH_PLAN_LIMITS.sourceKind}; each why ${RESEARCH_PLAN_LIMITS.why}; a ref ${RESEARCH_PLAN_LIMITS.ref}; notes ${RESEARCH_PLAN_LIMITS.notes}; at most ${RESEARCH_PLAN_LIMITS.changes} moves and ${RESEARCH_PLAN_LIMITS.changes} drops, ${PROMOTE_PER_ROUND} promotions and ${RESEARCH_PLAN_LIMITS.retire} retirements. Added tasks have no count.`;
+export const LIMITS_TEXT = `Limits (an answer over one is refused): a task's title ${RESEARCH_PLAN_LIMITS.title} characters, its details ${RESEARCH_PLAN_LIMITS.details}, its gap ${RESEARCH_PLAN_LIMITS.gap}, its source_kind ${RESEARCH_PLAN_LIMITS.sourceKind}; each why ${RESEARCH_PLAN_LIMITS.why}; a ref ${RESEARCH_PLAN_LIMITS.ref}; notes ${RESEARCH_PLAN_LIMITS.notes}; at most ${RESEARCH_PLAN_LIMITS.changes} moves and ${RESEARCH_PLAN_LIMITS.changes} drops, ${PROMOTE_PER_ROUND} promotions and ${RESEARCH_PLAN_LIMITS.retire} retirements. Added tasks have no count.`;
 
 /** A hypothesis as the research planner reads it. */
 export interface PlannerHypothesis {
@@ -621,7 +621,7 @@ export function researchPlannerContext(input: ResearchPlannerInput): string {
 }
 
 /** The research planner's task, the same through every harness; only how it answers differs. */
-const RESEARCH_TASK = `You plan the next round of an automated research run. Each lane runs one
+export const RESEARCH_TASK = `You plan the next round of an automated research run. Each lane runs one
 worker; each round you give every lane one research task. ${MEASURES_NOTHING}
 
 Every task names one question (question: its index, from 0), one gap in that question's evidence
@@ -670,10 +670,10 @@ some, says what earlier runs and the campaigns granted to this one recorded, and
 ${NOTES_GUIDE} Put yours in journal, for example a key decision of this round and why.`;
 
 /** In Pi, the research planner answers with its one tool. */
-const RESEARCH_SYSTEM = `${RESEARCH_TASK} ${LIMITS_TEXT} Answer only by calling submit_plan once.`;
+export const RESEARCH_SYSTEM = `${RESEARCH_TASK} ${LIMITS_TEXT} Answer only by calling submit_plan once.`;
 
 /** Through another harness, it answers with the plan as JSON text and no tools. */
-const RESEARCH_ASK_SYSTEM = `${RESEARCH_TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "task": "an id from queue.up_next or queue.proposed, or the ref of one you add", "why": "..."}], "add": [{"ref": "new-1", "question": 0, "gap": "...", "source_kind": "...", "title": "...", "details": "...", "kind": "explore", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "promote": [{"id": "h-...", "why": "..."}], "retire": [{"id": "h-...", "why": "..."}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. ${LIMITS_TEXT} Use no tools.`;
+export const RESEARCH_ASK_SYSTEM = `${RESEARCH_TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "task": "an id from queue.up_next or queue.proposed, or the ref of one you add", "why": "..."}], "add": [{"ref": "new-1", "question": 0, "gap": "...", "source_kind": "...", "title": "...", "details": "...", "kind": "explore", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "promote": [{"id": "h-...", "why": "..."}], "retire": [{"id": "h-...", "why": "..."}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. ${LIMITS_TEXT} Use no tools.`;
 
 const Position = Type.Union([Type.String(), Type.Number()], {
   description: '"top", "end", or an index among the queued tasks (0 first)',

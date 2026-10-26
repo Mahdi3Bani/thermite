@@ -73,7 +73,7 @@ export interface ResearchDeps {
 }
 
 /** A research worker's field notes, told apart from its research notes. */
-const RESEARCH_NOTES = `${notesInstruction("with the note tool")} Field notes are not research notes (add_note), which record what sources say for the report.`;
+export const RESEARCH_NOTES = `${notesInstruction("with the note tool")} Field notes are not research notes (add_note), which record what sources say for the report.`;
 
 const out = (value: unknown) => ({
   content: [{ type: "text" as const, text: researchOutput(value) }],
