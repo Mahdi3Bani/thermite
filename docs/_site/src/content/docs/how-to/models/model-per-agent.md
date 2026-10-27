@@ -137,7 +137,7 @@ An agent or a script can set the same models without this page:
 
 Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: the rig's own settings for the workers, **same as the workers** for the planner, and the rig's advisors file for an advisor. Every agent takes `harness`, `context_window` and `compact_at`.
 
-The old names `combiner` and `panel` are still taken in 0.1.0: `combiner` sets the teachers' merged by model, and `panel` the review panel. The answer then starts with what the name is now, such as "The name panel is now review_panel."
+The names `combiner` and `panel` of v0.1.0 are refused: give `agent` `teachers` with `merged_by` for the teachers' merged by model, and `review_panel` for the review panel.
 
 `harness` chooses the program any agent runs in: `pi`, `opencode` (OpenCode v2), `claude-code` or `codex` (the Codex CLI). Without it, the agent gets the one its model needs. A harness that can't run the model is refused, for example "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
 

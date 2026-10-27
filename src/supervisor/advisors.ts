@@ -349,19 +349,14 @@ export interface AdvisorUsage extends UsageRoute {
 
 /**
  * The advisors file, with goal 074's names: one or two teachers, the model that merges the advice
- * of two (`merged_by`), the auditor and the review panel. The old names `combiner` (merged_by) and
- * `panel` (review_panel) are still taken in v0.1.0; a file that gives both names of one is
- * refused. AdvisorsConfig is what the supervisor runs: the new names only.
+ * of two (`merged_by`), the auditor and the review panel. AdvisorsConfig is what the supervisor
+ * runs.
  */
 const AdvisorsFile = z.strictObject({
   teachers: z.array(Runtime).max(2).default([]),
   merged_by: Runtime.optional(),
-  /** The old name of merged_by, still taken in v0.1.0. */
-  combiner: Runtime.optional(),
   auditor: Runtime.optional(),
-  review_panel: z.array(Runtime).max(5).optional(),
-  /** The old name of review_panel, still taken in v0.1.0. */
-  panel: z.array(Runtime).max(5).optional(),
+  review_panel: z.array(Runtime).max(5).default([]),
   /** Minutes between teacher reviews of one run (hourly by default). */
   teacher_minutes: z.number().positive().default(60),
   /**
@@ -384,24 +379,7 @@ const AdvisorsFile = z.strictObject({
     })
     .optional(),
 });
-export const AdvisorsConfig = AdvisorsFile.superRefine((c, ctx) => {
-  if (c.combiner && c.merged_by)
-    ctx.addIssue({
-      code: "custom",
-      path: ["combiner"],
-      message: "combiner is the old name of merged_by: give merged_by only",
-    });
-  if (c.panel && c.review_panel)
-    ctx.addIssue({
-      code: "custom",
-      path: ["panel"],
-      message: "panel is the old name of review_panel: give review_panel only",
-    });
-}).transform(({ combiner, panel, ...c }) => ({
-  ...c,
-  merged_by: c.merged_by ?? combiner,
-  review_panel: c.review_panel ?? panel ?? [],
-}));
+export const AdvisorsConfig = AdvisorsFile;
 export type AdvisorsConfig = z.output<typeof AdvisorsConfig>;
 
 export interface AdvisorResult<T> {
@@ -2102,7 +2080,7 @@ export async function teacherRound(input: {
       answerSchema: research ? ResearchDirectiveAnswer : DirectiveAnswer,
       keeper: input.keeper,
     });
-    count(r, "combiner");
+    count(r, "merged_by");
     if (!r.output) {
       run.error = `the teachers' merged by model gave no directive set: ${r.error ?? ""}`;
       return run;

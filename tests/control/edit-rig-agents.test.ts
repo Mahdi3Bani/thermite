@@ -626,7 +626,7 @@ describe("Edit rig's empty model names the real fallback (goal 074)", () => {
         },
       ],
     });
-    const roles = { teachers: 1, combiner: false, auditor: true, panel: 2 };
+    const roles = { teachers: 1, merged_by: false, auditor: true, review_panel: 2 };
     assert.equal(
       await report(s, { advisors: { ...STATS, roles, file: advisorsFileReport(file) } }),
       200,
@@ -692,7 +692,7 @@ describe("Edit rig's empty model names the real fallback (goal 074)", () => {
 
   test("an older supervisor (roles only): rig's file, as not reported", async () => {
     const s = await stack();
-    const roles = { teachers: 2, combiner: true, auditor: true, panel: 0 };
+    const roles = { teachers: 2, merged_by: true, auditor: true, review_panel: 0 };
     assert.equal(await report(s, { advisors: { ...STATS, roles } }), 200);
     const html = await s.page();
     assert.equal(cells(html, "auditor").model, "rig's file");

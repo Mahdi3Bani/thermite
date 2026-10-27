@@ -261,10 +261,11 @@ describe("each agent's model over REST and MCP", () => {
     assert.equal(route("auditor")?.type, "chatgpt");
     assert.equal(route("merged_by")?.type, "openai");
     assert.equal(route("review_panel")?.model, "wide-model");
-    // A supervisor of an earlier version reads the old names: the first teacher, combiner, panel.
-    assert.equal(route("teachers")?.model, "gpt-sol");
-    assert.equal(route("combiner")?.model, "strong-model");
-    assert.equal(route("panel")?.model, "wide-model");
+    // Only the public names: the old ones of a supervisor before v0.1.1 are gone.
+    assert.deepEqual(
+      [route("teachers"), route("combiner"), route("panel")],
+      [undefined, undefined, undefined],
+    );
 
     // Cleared one at a time: that agent goes back to its default, the others keep theirs.
     const planner = await s.give({ agent: "planner", clear: true });
@@ -416,10 +417,7 @@ describe("each agent's model over REST and MCP", () => {
       "The teachers have no model of their own yet: give a provider and a model for the first teacher too.",
     );
     const empty = (await s.asRig("/v1/rigs/rig-a/advisor-routes")) as Record<string, unknown>;
-    assert.deepEqual(
-      [empty.teacher_models, empty.merged_by, empty.teachers, empty.combiner],
-      [[], null, null, null],
-    );
+    assert.deepEqual([empty.teacher_models, empty.merged_by, empty.review_panel], [[], null, null]);
 
     // The shape: second_model and merged_by only for the teachers, and never with clear.
     for (const [body, error] of [
@@ -460,56 +458,15 @@ describe("each agent's model over REST and MCP", () => {
     assert.match(String(unknownField.body.error), /^bad request: merged_by/);
   });
 
-  test("REST: the old names combiner and panel are still taken, and say what they are now", async () => {
+  test("REST: the old names combiner and panel are refused (v0.1.1)", async () => {
     const s = await stack();
-    await s.give({ agent: "teachers", provider: "sub", model: "gpt-sol" });
-    const combiner = await s.give({ agent: "combiner", provider: "lab", model: "strong-model" });
-    assert.equal(combiner.status, 200, JSON.stringify(combiner.body));
-    assert.equal(combiner.body.agent, "combiner");
-    assert.equal(combiner.body.model, "strong-model");
-    assert.equal(combiner.body.context_window, 400_000);
-    assert.equal(
-      combiner.body.said,
-      "The name combiner is now the teachers' merged by model: agent teachers, with merged_by. Control sent a merged by model for the teachers to rig-a. The rig takes the change in less than one minute.",
-    );
-    const panel = await s.give({ agent: "panel", provider: "lab", model: "wide-model" });
-    assert.equal(
-      panel.body.said,
-      "The name panel is now review_panel. Control sent a model for the review panel to rig-a. The rig takes the change in less than one minute.",
-    );
-    const agents = panel.body.agents as {
-      teachers: { models: { model: string }[]; merged_by: { model: string } | null };
-      review_panel: { model: string } | null;
-    };
-    assert.equal(agents.teachers.merged_by?.model, "strong-model");
-    assert.deepEqual(
-      agents.teachers.models.map((m) => m.model),
-      ["gpt-sol"],
-      "the first teacher kept",
-    );
-    assert.equal(agents.review_panel?.model, "wide-model");
-    assert.equal(Object.hasOwn(agents, "combiner"), false, "rig_models shows the new shape");
-    // Cleared by an old name: its place goes back to the rig's advisors file.
-    const cleared = await s.give({ agent: "combiner", clear: true });
-    assert.match(
-      String(cleared.body.said),
-      /^The name combiner is now .*Control sent the teachers' merged by model back to the rig's advisors file to rig-a\./,
-    );
-    assert.equal(s.store.roleModels("rig-a").merged_by, undefined);
-    assert.equal(s.store.roleModels("rig-a").teachers?.model, "gpt-sol");
-    // An old name takes no second_model or merged_by.
-    const mixed = await s.give({
-      agent: "combiner",
-      provider: "lab",
-      model: "wide-model",
-      merged_by: { provider: "lab", model: "wide-model" },
-    });
-    assert.equal(mixed.status, 400);
-    assert.equal(
-      mixed.body.error,
-      "second_model and merged_by are for the teachers only: give agent teachers.",
-    );
+    for (const agent of ["combiner", "panel"]) {
+      const old = await s.give({ agent, provider: "lab", model: "strong-model" });
+      assert.match(`${old.status} ${old.body.error}`, /^400 bad request: agent/);
+    }
+    assert.deepEqual(s.store.roleModels("rig-a"), {});
   });
+
   test("REST: Edit rig's refusals in its words, and a refusal changes nothing", async () => {
     const s = await stack();
     await s.give({ agent: "auditor", provider: "lab", model: "wide-model" });
@@ -610,8 +567,9 @@ describe("each agent's model over REST and MCP", () => {
     assert.equal(mr.planner?.harness, "opencode");
     assert.equal(mr.planner?.type, "openai");
     const adv = await s.asRig("/v1/rigs/rig-a/advisor-routes");
+    const [first] = adv.teacher_models as unknown as Record<string, unknown>[];
     assert.deepEqual(
-      [adv.teachers?.harness, adv.teachers?.type],
+      [first?.harness, first?.type],
       ["codex", "chatgpt"],
       "a ChatGPT sign-in in Codex",
     );
@@ -890,7 +848,7 @@ describe("the advisors file, as control reads it from the supervisor", () => {
     tokens_out: 0,
     usd: 0,
   };
-  const ROLES = { teachers: 1, combiner: false, auditor: true, panel: 0 };
+  const ROLES = { teachers: 1, merged_by: false, auditor: true, review_panel: 0 };
   const AUDITOR = {
     harness: "claude-code",
     model: "opus-5.5",

@@ -94,20 +94,20 @@ export function writer(by: string): { key: string; text: string; cls: string } {
   if (/^lane-\d+$/.test(by)) return { key: by, text: by, cls: "lane" };
   if (by === "planner" || by.startsWith("planner"))
     return { key: "planner", text: "planner", cls: "planner" };
-  if (/teacher|combiner/.test(by)) return { key: "teachers", text: "teachers", cls: "teacher" };
+  if (/teacher|merged/.test(by)) return { key: "teachers", text: "teachers", cls: "teacher" };
   if (/auditor/.test(by)) return { key: "auditor", text: "auditor", cls: "auditor" };
-  if (/panel|review/.test(by)) return { key: "panel", text: "review panel", cls: "auditor" };
+  if (/panel|review/.test(by)) return { key: "review_panel", text: "review panel", cls: "auditor" };
   if (by === "owner" || by.startsWith("owner") || by.startsWith("control:owner"))
     return { key: "you", text: "you", cls: "you" };
   return { key: by, text: by, cls: "auditor" };
 }
 /** The Journal's writer filters after the lanes: the agents that write field notes. */
-const WRITER_ORDER = ["planner", "teachers", "auditor", "panel"];
+const WRITER_ORDER = ["planner", "teachers", "auditor", "review_panel"];
 const WRITER_WORD: Record<string, string> = {
   planner: "Planner",
   teachers: "Teachers",
   auditor: "Auditor",
-  panel: "Review panel",
+  review_panel: "Review panel",
 };
 
 // ---------------------------------------------------------------- a run's Journal tab

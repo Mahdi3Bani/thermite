@@ -20,7 +20,7 @@ test("the harness's refusals of the advisors' calls are logged once each, with t
     "tok",
     (_part, msg, fields) => void lines.push({ msg, fields }),
   );
-  const told = { auditor: true, panel: 0, writer: false };
+  const told = { auditor: true, review_panel: 0, writer: false };
 
   // Refused: the defaults stand, and each call says so once, however often it fails.
   for (let i = 0; i < 3; i++) {

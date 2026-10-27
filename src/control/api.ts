@@ -245,9 +245,9 @@ const SupervisorStats = z.object({
       roles: z
         .object({
           teachers: Count,
-          combiner: z.boolean(),
+          merged_by: z.boolean(),
           auditor: z.boolean(),
-          panel: Count,
+          review_panel: Count,
         })
         .optional(),
       /**
@@ -820,8 +820,7 @@ export function createControlApi(
   // The advisors' routes, by role, when the owner gave them models (each with its key or a
   // subscription's token). A role with none keeps the rig's advisors file: the supervisor's own
   // configuration. Goal 074: the teachers' one or two models (a second only with a first), their
-  // merged by model, the auditor and the review panel. A supervisor of an earlier version reads
-  // teachers (the first teacher's model, which it runs as two teachers), combiner and panel.
+  // merged by model, the auditor and the review panel.
   app.get("/v1/rigs/:rig/advisor-routes", rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
@@ -834,9 +833,6 @@ export function createControlApi(
       merged_by: mergedBy,
       auditor: await roleRouteOf(rig, "auditor"),
       review_panel: reviewPanel,
-      teachers: first,
-      combiner: mergedBy,
-      panel: reviewPanel,
     });
   });
 

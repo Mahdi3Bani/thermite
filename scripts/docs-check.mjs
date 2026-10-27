@@ -119,7 +119,7 @@ for (const page of pages) {
 
 // Goal 074: one name for each agent. The work: Workers, Planner. The advisors: Teachers (one or
 // two, with a merged by model for two), Auditor, Review panel. The old names stay out of the
-// pages' prose; in code (`combiner`, `panel`) they may name what the API still takes.
+// pages' prose; in code (`combiner`, `panel`) a page may say what v0.1.0 took.
 const OLD_NAMES = [
   [/\bteacher pairs?\b/gi, 'the teachers ("teacher pair" is an old name)'],
   [/\bcombiners?\b/gi, `the teachers' merged by model ("combiner" is an old name)`],

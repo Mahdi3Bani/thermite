@@ -612,7 +612,10 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
     assert.equal(s.due().due, false);
 
     // The final writer is asked; its package says how the run ended and which question stayed open.
-    await s.env.service.setAdvisors({ auditor: false, panel: 3, writer: true }, "supervisor");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 3, writer: true },
+      "supervisor",
+    );
     await sch.tick();
     const pkg = s.env.service.paperPackages()[0] as PaperPackage;
     assert.deepEqual(pkg.end, { reason: PROGRESS_STOPPED, open: [2], open_hypotheses: [] });

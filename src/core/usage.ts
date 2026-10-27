@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currentAgent } from "./names.ts";
 
 /**
  * Model usage (goal 075): what each model call of a run's agents used, and the sums control shows.
@@ -10,25 +11,31 @@ import { z } from "zod";
  */
 
 /**
- * The agents a record names, by their internal identifiers: `combiner` is the teachers' merged by
- * model, `panel` the review panel (goal 074's names, in AGENT_WORDS) and `synthesizer` the writer
- * of a research run's answer cards (goal 117), on the first teacher's model. Records keep these
- * values; this list and AGENT_WORDS are the one place that names them.
+ * The agents a record names: `merged_by` is the teachers' merged by model, `review_panel` the
+ * review panel (goal 074's names) and `synthesizer` the writer of a research run's answer cards
+ * (goal 117), on the first teacher's model. Records from before v0.1.1 named the first two
+ * `combiner` and `panel`; core/names.ts reads them under these names.
  */
 export const USAGE_AGENTS = [
   "workers",
   "planner",
   "teachers",
-  "combiner",
+  "merged_by",
   "auditor",
-  "panel",
+  "review_panel",
   "synthesizer",
 ] as const;
 export const UsageAgent = z.enum(USAGE_AGENTS);
 export type UsageAgent = z.infer<typeof UsageAgent>;
 
 /** The agents in the supervisor: what the supervisor may record. */
-export const ADVISOR_AGENTS = ["teachers", "combiner", "auditor", "panel", "synthesizer"] as const;
+export const ADVISOR_AGENTS = [
+  "teachers",
+  "merged_by",
+  "auditor",
+  "review_panel",
+  "synthesizer",
+] as const;
 export const AdvisorAgent = z.enum(ADVISOR_AGENTS);
 export type AdvisorAgent = z.infer<typeof AdvisorAgent>;
 
@@ -37,9 +44,9 @@ export const AGENT_WORDS: Record<UsageAgent, string> = {
   workers: "Workers",
   planner: "Planner",
   teachers: "Teachers",
-  combiner: "Teachers (merged by)",
+  merged_by: "Teachers (merged by)",
   auditor: "Auditor",
-  panel: "Review panel",
+  review_panel: "Review panel",
   synthesizer: "Synthesizer",
 };
 
@@ -128,7 +135,8 @@ export const MODEL_CALL_EVENT = "model_call";
 export const ModelCallBody = z.object({
   trial: z.string().max(100).nullable(),
   round: z.string().max(200).nullable(),
-  agent: UsageAgent,
+  // A record from before v0.1.1 names its agent as it was then (core/names.ts).
+  agent: z.preprocess((a) => (typeof a === "string" ? currentAgent(a) : a), UsageAgent),
   harness: UsageHarness,
   provider: z.string().max(100).nullable(),
   model: z.string().min(1).max(200),

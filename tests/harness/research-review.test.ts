@@ -691,7 +691,7 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
       "it waits for the supervisor",
     );
     // A rig with no final writer: the run closes with the decisions, and says why it has no paper.
-    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: false }, "supervisor");
+    await s.env.service.setAdvisors({ auditor: false, review_panel: 2 }, "supervisor");
     await sch.tick();
     const run = s.env.service.ledger.getRun(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", ANSWERED]);
@@ -774,7 +774,7 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
     );
     assert.ok(yes.status === "applied" && yes.accepted, JSON.stringify(yes));
     // This rig's supervisor has no final writer (goal 112).
-    await s.env.service.setAdvisors({ auditor: false, panel: 2 }, "supervisor");
+    await s.env.service.setAdvisors({ auditor: false, review_panel: 2 }, "supervisor");
     await sch.tick();
     await sch.idle();
     await sch.tick();
@@ -838,12 +838,12 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
     // Each reviewer that found an item open or failed the check has a note in the journal.
     assert.deepEqual(
       notes(s)
-        .filter((n) => n.by.startsWith("panel:"))
+        .filter((n) => n.by.startsWith("review_panel:"))
         .map((n) => n.by),
-      ["panel:reviewer-1", "panel:reviewer-2", "panel:reviewer-3"],
+      ["review_panel:reviewer-1", "review_panel:reviewer-2", "review_panel:reviewer-3"],
     );
     assert.match(
-      notes(s).find((n) => n.by === "panel:reviewer-3")?.text ?? "",
+      notes(s).find((n) => n.by === "review_panel:reviewer-3")?.text ?? "",
       /Question 2: the answered verdict did not pass the check \(no claim c-nope; the number 43 is not in the claims it cites\)/,
     );
     await sch.tick();

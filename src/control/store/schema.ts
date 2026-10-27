@@ -677,6 +677,16 @@ function schemaThree(db: DatabaseSync): void {
 }
 
 /**
+ * The agents' public names in every row control keeps (goal 125, T1): the merged by model was
+ * `combiner` and the review panel `panel` in the model usage of v0.1.0. The rigs' events keep
+ * their words; core/names.ts reads them under these.
+ */
+function schemaFour(db: DatabaseSync): void {
+  db.exec(`update model_call set agent = case agent when 'combiner' then 'merged_by'
+  else 'review_panel' end where agent in ('combiner', 'panel')`);
+}
+
+/**
  * Control's migrations, in order: the store's schema version is how many have run. A change to
  * the schema is a new function at the end, never an edit of one that has run.
  */
@@ -684,6 +694,7 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   schemaOne,
   schemaTwo,
   schemaThree,
+  schemaFour,
 ];
 
 /**

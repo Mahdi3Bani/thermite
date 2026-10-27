@@ -186,10 +186,6 @@ describe("advisors from control", () => {
       merged_by: route({ model: "model-c" }),
       auditor: null,
       review_panel: route({ model: "model-d" }),
-      // What a supervisor of an earlier version reads: never used when the new names are there.
-      teachers: route({ model: "model-a" }),
-      combiner: route({ model: "model-old" }),
-      panel: null,
     });
     assert.deepEqual(
       two.teachers?.map((t) => [t.name, t.runtime === "openai" ? t.model : ""]),
@@ -215,87 +211,44 @@ describe("advisors from control", () => {
     assert.equal(merged?.merged_by?.name, "m");
   });
 
-  test("the advisors file takes merged_by and review_panel, and still the old names combiner and panel", () => {
+  test("the advisors file takes merged_by and review_panel; the old names combiner and panel are refused", () => {
     const cli = (name: string) => ({ name, runtime: "cli", argv: ["x"], restricted: true });
-    const old = AdvisorsConfig.parse({
-      teachers: [cli("a"), cli("b")],
-      combiner: cli("c"),
-      panel: [cli("p1"), cli("p2")],
-    });
-    assert.equal(old.merged_by?.name, "c");
-    assert.deepEqual(
-      old.review_panel.map((p) => p.name),
-      ["p1", "p2"],
-    );
-    assert.equal(Object.hasOwn(old, "combiner"), false, "the supervisor runs the new names only");
     const now = AdvisorsConfig.parse({ merged_by: cli("m"), review_panel: [cli("r1")] });
     assert.deepEqual([now.merged_by?.name, now.review_panel.length], ["m", 1]);
     assert.deepEqual(AdvisorsConfig.parse({}).review_panel, []);
-    // Both names of one advisor: refused, in words.
-    const both = AdvisorsConfig.safeParse({ merged_by: cli("m"), combiner: cli("c") });
-    assert.equal(both.success, false);
-    assert.match(
-      String(both.error?.issues[0]?.message),
-      /combiner is the old name of merged_by: give merged_by only/,
-    );
-    const panels = AdvisorsConfig.safeParse({ review_panel: [cli("r")], panel: [cli("p")] });
-    assert.equal(panels.success, false);
+    for (const old of [{ combiner: cli("c") }, { panel: [cli("p")] }]) {
+      const r = AdvisorsConfig.safeParse({ teachers: [cli("a"), cli("b")], ...old });
+      assert.equal(r.success, false, JSON.stringify(old));
+    }
     assert.equal(AdvisorsConfig.safeParse({ teachers: [], mergedby: cli("m") }).success, false);
   });
 
-  test("a control of an earlier version: its one teachers' model runs as two teachers; its combiner and panel are the merged by model and the review panel", async () => {
-    const file = AdvisorsConfig.parse({
-      teachers: [{ name: "t", runtime: "cli", argv: ["x"], restricted: true }],
-      auditor: { name: "a", runtime: "cli", argv: ["y"], restricted: true },
-      teacher_minutes: 15,
-    });
-    const fake = (async (input: string | URL | Request) => {
-      assert.match(String(input), /\/v1\/rigs\/rig-a\/advisor-routes$/);
-      return Response.json({
-        teachers: route({ type: "claude", model: "claude-sonnet-5-5", api_key: "tok" }),
-        combiner: null,
-        auditor: null,
-        panel: route(),
+  test("control's routes by the public names only; a control with no routes changes nothing", async () => {
+    const answered = (body: Record<string, unknown>) =>
+      fetchControlAdvisors({
+        rig: "rig-a",
+        controlUrl: "http://control",
+        controlToken: "t",
+        fetchImpl: (async () => Response.json(body)) as typeof fetch,
       });
-    }) as typeof fetch;
-    const control = await fetchControlAdvisors({
-      rig: "rig-a",
-      controlUrl: "http://control",
-      controlToken: "t",
-      fetchImpl: fake,
+    // The names of v0.1.0's control are not read.
+    const old = await answered({ teachers: route(), combiner: route(), panel: route() });
+    assert.deepEqual(old, {
+      teachers: undefined,
+      merged_by: undefined,
+      auditor: undefined,
+      review_panel: undefined,
     });
-    assert.deepEqual(
-      control.teachers?.map((t) => t.name),
-      ["teacher-1", "teacher-2"],
-    );
-    assert.equal(control.review_panel?.length, 3);
-    assert.equal(control.merged_by, undefined);
-    const combined = await fetchControlAdvisors({
-      rig: "rig-a",
-      controlUrl: "http://control",
-      controlToken: "t",
-      fetchImpl: (async () =>
-        Response.json({
-          teachers: null,
-          combiner: route(),
-          auditor: null,
-          panel: null,
-        })) as typeof fetch,
-    });
-    assert.equal(combined.merged_by?.name, "merged-by");
-    const merged = mergeAdvisors(file, control);
-    assert.equal(merged?.teachers[0]?.runtime, "claude-code");
-    assert.equal(merged?.auditor?.name, "a", "the file's auditor stays");
-    assert.equal(merged?.teacher_minutes, 15);
-    // No file and nothing from control: no advisors at all. An older control: its 404 changes nothing.
+    // No file and nothing from control: no advisors at all. A control with no such route: its
+    // 404 changes nothing.
     assert.equal(mergeAdvisors(undefined, {}), undefined);
-    const old = await fetchControlAdvisors({
+    const none = await fetchControlAdvisors({
       rig: "rig-a",
       controlUrl: "http://control",
       controlToken: "t",
       fetchImpl: (async () => new Response("no", { status: 404 })) as typeof fetch,
     });
-    assert.deepEqual(old, {});
+    assert.deepEqual(none, {});
   });
 
   test("a Claude Code advisor gets the token on file descriptor 3 and in no environment, no tools, settings or scrub, and its answer is read", async () => {

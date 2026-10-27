@@ -128,7 +128,7 @@ export const CLIENT_JS = `
     if (sel) sel.addEventListener("change", () => {
       hint();
       const t = sel.value;
-      const w = ["advisors", "teachers", "auditor", "panel"].includes(t) ? "advisors" : t;
+      const w = ["advisors", "teachers", "auditor", "review_panel"].includes(t) ? "advisors" : t;
       if (document.querySelector('.lchip[data-w="' + CSS.escape(w) + '"]')) view(w);
     });
     const fb = $(".lfollow");

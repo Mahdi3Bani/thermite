@@ -66,7 +66,7 @@ function checkerAt(guide?: string): string {
 async function waiting(t: TestContext) {
   const s = await answeredResearchRun(RUN);
   t.after(() => s.close());
-  await s.env.service.setAdvisors({ auditor: false, panel: 0, writer: true }, "supervisor");
+  await s.env.service.setAdvisors({ auditor: false, review_panel: 0, writer: true }, "supervisor");
   assert.ok(s.env.service.papers.request(RUN, "s"));
   // Every answer card is up to date: only the final writer works in these rounds (goal 117).
   cardsUpToDate(s.env.service, RUN);

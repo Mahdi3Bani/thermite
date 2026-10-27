@@ -565,19 +565,19 @@ export class HarnessService {
    * papers (goal 112; a supervisor from before it does not say, which reads as none). Unknown
    * until it says.
    */
-  advisors: { auditor: boolean; panel: number; writer: boolean; at: string } | undefined;
+  advisors: { auditor: boolean; review_panel: number; writer: boolean; at: string } | undefined;
 
   /**
    * The supervisor says which advisors it has (goal 079). Without an auditor, the audits held for
    * one go on by the run's rules: promoted, or to the owner where the run asks.
    */
   async setAdvisors(
-    a: { auditor: boolean; panel: number; writer?: boolean | undefined },
+    a: { auditor: boolean; review_panel: number; writer?: boolean | undefined },
     by: string,
   ): Promise<string[]> {
     this.advisors = {
       auditor: a.auditor,
-      panel: a.panel,
+      review_panel: a.review_panel,
       writer: a.writer === true,
       at: this.clock().toISOString(),
     };
@@ -803,7 +803,7 @@ export class HarnessService {
         this.journal.writeAll(
           run,
           [{ kind: "observation", text: `Review ${id}: ${gaps.join(". ")}.`.slice(0, 2000) }],
-          { by: `panel:${r.reviewer}`, actor: by, source: "supervisor" },
+          { by: `review_panel:${r.reviewer}`, actor: by, source: "supervisor" },
         );
       }
       return { result };
@@ -1824,7 +1824,7 @@ export class HarnessService {
       const brief = briefData(this.contractFor(pkg.run));
       const extra = {
         ...(brief ? { campaign_brief: brief } : {}),
-        owner_messages: this.ownerMessagesFor(pkg.run, "panel"),
+        owner_messages: this.ownerMessagesFor(pkg.run, "review_panel"),
         ...this.backgroundFor(pkg.run),
       };
       if (!("diff" in pkg)) return { ...pkg, ...extra };

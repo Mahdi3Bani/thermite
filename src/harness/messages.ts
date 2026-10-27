@@ -1,3 +1,4 @@
+import { ADVISOR_ROLES, type AdvisorRole } from "../core/agents.ts";
 import { type Contract, MAX_LANES } from "../core/contract.ts";
 import type { LiveLog } from "../core/live.ts";
 import { lanesAtWork } from "./agents/coordinator.ts";
@@ -14,7 +15,7 @@ import type { RigSettings } from "./rig-settings.ts";
  *   next trial, which is told so;
  * - `planner`: the planner, at its next plan;
  * - `advisors`: the teachers, the auditor and the review panel, each once; `teachers`,
- *   `auditor` and `panel` (the review panel): that role.
+ *   `auditor` and `review_panel`: that role.
  *
  * A message is waiting for a reader until that reader has received it: a read is recorded only
  * when the text was given to an agent (in its brief, at its next step, in a continued session or
@@ -26,8 +27,7 @@ import type { RigSettings } from "./rig-settings.ts";
  * owner's own (a signed owner command), so it may go into the ledger.
  */
 
-export type AdvisorRole = "teachers" | "auditor" | "panel";
-export const ADVISOR_ROLES: readonly AdvisorRole[] = ["teachers", "auditor", "panel"];
+export type { AdvisorRole };
 
 export interface OwnerMessage {
   id: number;
@@ -47,7 +47,7 @@ export function messageText(m: Pick<OwnerMessage, "text" | "note">): string {
 const ROLE_NAME: Record<AdvisorRole, string> = {
   teachers: "the teachers",
   auditor: "the auditor",
-  panel: "the review panel",
+  review_panel: "the review panel",
 };
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -170,7 +170,7 @@ export class OwnerMessages {
       if (why) throw new LedgerError("invalid", why);
       return { readers: ["planner"] };
     }
-    if (to === "teachers" || to === "auditor" || to === "panel") {
+    if (to === "teachers" || to === "auditor" || to === "review_panel") {
       const why = advisor(to);
       if (why) throw new LedgerError("invalid", why);
       return { readers: [to] };
@@ -358,7 +358,7 @@ export class OwnerMessages {
     return {
       teachers: this.waitingForAdvisor(run, "teachers", 50).map((m) => m.id),
       auditor: this.waitingForAdvisor(run, "auditor", 50).map((m) => m.id),
-      panel: this.waitingForAdvisor(run, "panel", 50).map((m) => m.id),
+      review_panel: this.waitingForAdvisor(run, "review_panel", 50).map((m) => m.id),
     };
   }
 

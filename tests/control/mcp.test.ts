@@ -219,7 +219,7 @@ describe("control over MCP", () => {
         advisors: {
           ...{ teacher_runs: 0, directive_sets: 0, directives: 0, audits: 0, reviews: 0 },
           ...{ errors: 0, tokens_in: 0, tokens_out: 0, usd: 0 },
-          roles: { teachers: 2, combiner: true, auditor: false, panel: 0 },
+          roles: { teachers: 2, merged_by: true, auditor: false, review_panel: 0 },
         },
       }),
     });
@@ -235,7 +235,7 @@ describe("control over MCP", () => {
       "This rig's supervisor has no auditor set up, so nothing would read it.",
     );
     // The review panel by its name (goal 074), and by panel, the name every rig takes.
-    for (const to of ["review_panel", "panel"])
+    for (const to of ["review_panel", "review_panel"])
       assert.equal(
         await refusal({ to, text: "be strict" }),
         "This rig's supervisor has no review panel set up, so nothing would read it.",

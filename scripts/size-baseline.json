@@ -10,10 +10,10 @@
       "lines": 1327
     },
     "src/control/api.ts": {
-      "lines": 1689
+      "lines": 1685
     },
     "src/control/dashboard.ts": {
-      "lines": 8783
+      "lines": 8780
     },
     "src/control/mcp-servers.ts": {
       "lines": 996
@@ -94,16 +94,16 @@
       "lines": 2936
     },
     "src/supervisor/advise.ts": {
-      "lines": 1368
+      "lines": 1366
     },
     "src/supervisor/advisors.ts": {
-      "lines": 2746
+      "lines": 2724
     },
     "tests/control/dashboard.test.ts": {
-      "lines": 2497
+      "lines": 2496
     },
     "tests/control/rig-model.test.ts": {
-      "lines": 967
+      "lines": 925
     },
     "tests/control/runpod-lifecycle.test.ts": {
       "lines": 931

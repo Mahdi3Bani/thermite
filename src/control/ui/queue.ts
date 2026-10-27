@@ -37,7 +37,7 @@ export function byLabel(by: string): { text: string; cls: string } {
     return { text: "you", cls: "you" };
   if (by === "planner" || by.startsWith("planner")) return { text: "planner", cls: "planner" };
   if (/^lane-\d+$/.test(by)) return { text: `${by}'s idea`, cls: "lane" };
-  if (/teacher|combiner|supervisor/.test(by)) return { text: "teachers", cls: "teacher" };
+  if (/teacher|merged|supervisor/.test(by)) return { text: "teachers", cls: "teacher" };
   if (/auditor/.test(by)) return { text: "auditor", cls: "auditor" };
   if (/panel|review/.test(by)) return { text: "review panel", cls: "auditor" };
   if (by.startsWith("control:")) return { text: by.replace(/^control:/, ""), cls: "you" };

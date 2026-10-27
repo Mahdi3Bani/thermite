@@ -229,7 +229,7 @@ describe("audits", () => {
     // The supervisor said: no auditor. A large gain with declared flaws promotes at once.
     const env = makeJudgeEnv({ contract: lowAudit });
     await env.service.applyCommand(env.assign);
-    await env.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    await env.service.setAdvisors({ auditor: false, review_panel: 0 }, "supervisor");
     const win = await submit(env, FAST_KERNEL, ["only tested on small inputs"]);
     await env.drain();
     assert.equal(env.ledger.currentChampion("js-1").attempt, win, env.explain(win));
@@ -247,7 +247,7 @@ describe("audits", () => {
     const said = await api.request("/v1/advisors", {
       method: "PUT",
       headers: auth(tokens.supervisor),
-      body: JSON.stringify({ auditor: false, panel: 0 }),
+      body: JSON.stringify({ auditor: false, review_panel: 0 }),
     });
     assert.equal(said.status, 200);
     assert.deepEqual(((await said.json()) as { released: string[] }).released, [x]);
@@ -257,7 +257,7 @@ describe("audits", () => {
     const refused = await api.request("/v1/advisors", {
       method: "PUT",
       headers: auth(tokens.proposer),
-      body: JSON.stringify({ auditor: false, panel: 0 }),
+      body: JSON.stringify({ auditor: false, review_panel: 0 }),
     });
     assert.equal(refused.status, 401);
   });
@@ -277,7 +277,7 @@ describe("audits", () => {
     const gain = makeJudgeEnv({ contract: lowAudit, assign: { ask_owner: { above_gain: 0.05 } } });
     await gain.service.applyCommand(gain.assign);
     assert.deepEqual(gain.ledger.getRun("js-1")?.ask_owner, { above_gain: 0.05 });
-    await gain.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    await gain.service.setAdvisors({ auditor: false, review_panel: 0 }, "supervisor");
     const a = await submit(gain, FAST_KERNEL);
     await gain.drain();
     assert.equal(String(gain.ledger.getAttempt(a)?.lifecycle), "awaiting_approval");
@@ -317,13 +317,13 @@ describe("audits", () => {
     // A run that asked for the owner's approval (a run from before goal 079 keeps its choice).
     const old = makeJudgeEnv({ promotion: "owner_approval" });
     await old.service.applyCommand(old.assign);
-    await old.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    await old.service.setAdvisors({ auditor: false, review_panel: 0 }, "supervisor");
     const o = await submit(old, FAST_KERNEL);
     await old.drain();
     assert.equal(String(old.ledger.getAttempt(o)?.lifecycle), "awaiting_approval");
     const own = makeJudgeEnv({ assign: { promotion: "owner_approval" } });
     await own.service.applyCommand(own.assign);
-    await own.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor");
+    await own.service.setAdvisors({ auditor: false, review_panel: 0 }, "supervisor");
     const w = await submit(own, FAST_KERNEL);
     await own.drain();
     assert.equal(String(own.ledger.getAttempt(w)?.lifecycle), "awaiting_approval");

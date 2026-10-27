@@ -554,7 +554,7 @@ export function createHarnessApi(
     const body = z
       .strictObject({
         auditor: z.boolean(),
-        panel: z.number().int().min(0).max(100),
+        review_panel: z.number().int().min(0).max(100),
         writer: z.boolean().optional(),
       })
       .parse(await c.req.json());
@@ -568,7 +568,7 @@ export function createHarnessApi(
     const body = z
       .strictObject({
         run: z.string().min(1).max(100),
-        role: z.enum(["teachers", "auditor", "panel"]),
+        role: z.enum(["teachers", "auditor", "review_panel"]),
         read: z.array(z.number().int().positive()).max(100).default([]),
         answers: z
           .array(
@@ -597,7 +597,7 @@ export function createHarnessApi(
     const body = z
       .strictObject({
         run: z.string().min(1).max(100),
-        role: z.enum(["teachers", "auditor", "panel"]),
+        role: z.enum(["teachers", "auditor", "review_panel"]),
         by: z.string().trim().min(1).max(100),
         notes: z.array(z.unknown()),
       })

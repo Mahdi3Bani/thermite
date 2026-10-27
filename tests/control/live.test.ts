@@ -142,7 +142,7 @@ describe("the owner's messages to agents", () => {
     const toPanel = await issue({
       rig: "rig-a",
       kind: "message_agent",
-      payload: { run: "smoke-1", to: "panel", text: "judge it strictly" },
+      payload: { run: "smoke-1", to: "review_panel", text: "judge it strictly" },
     });
     assert.equal(toPanel.status, 400);
     assert.match(

@@ -142,7 +142,7 @@ describe("advisors", () => {
       );
     assert.equal(usage.length, fake.requests);
     assert.deepEqual(usage.map((u) => [u.run, u.actor, u.agent, u.harness, u.model]).sort(), [
-      ["js-1", "supervisor", "combiner", "pi", "merged-by"],
+      ["js-1", "supervisor", "merged_by", "pi", "merged-by"],
       ["js-1", "supervisor", "teachers", "pi", "teacher-a"],
       ["js-1", "supervisor", "teachers", "pi", "teacher-a"],
       ["js-1", "supervisor", "teachers", "pi", "teacher-b"],
@@ -255,12 +255,14 @@ describe("advisors", () => {
       families: ["first"],
       called: { first: 1, second: 1, merger: 0 },
     });
-    // Two teachers and a merged by model (by its old name too): the merged set.
-    for (const merger of [{ merged_by: runtime("merger") }, { combiner: runtime("merger") }])
-      assert.deepEqual(
-        await round({ teachers: [runtime("first"), runtime("second")], ...merger }),
-        { families: ["merged"], called: { first: 1, second: 1, merger: 1 } },
-      );
+    // Two teachers and a merged by model: the merged set.
+    assert.deepEqual(
+      await round({
+        teachers: [runtime("first"), runtime("second")],
+        merged_by: runtime("merger"),
+      }),
+      { families: ["merged"], called: { first: 1, second: 1, merger: 1 } },
+    );
     for (const f of Object.values(fakes)) await f.close();
   });
 
@@ -495,8 +497,8 @@ describe("advisors", () => {
     assert.deepEqual(
       usage.map((u) => [u.agent, u.model, u.round]),
       [
-        ["panel", "reviewer-1", "review 1"],
-        ["panel", "reviewer-2", "review 1"],
+        ["review_panel", "reviewer-1", "review 1"],
+        ["review_panel", "reviewer-2", "review 1"],
       ],
     );
   });

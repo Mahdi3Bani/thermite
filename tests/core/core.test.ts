@@ -381,7 +381,7 @@ describe("signed commands", () => {
       "advisors",
       "teachers",
       "auditor",
-      "panel",
+      "review_panel",
       "lane-1",
       "lane-16",
       "trial:t-0123456789abcdef",

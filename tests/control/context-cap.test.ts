@@ -439,8 +439,12 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
     assert.equal(r.model.planner?.context_window, 65_536);
     assert.equal(r.model.planner?.compact_at, 70);
     // Each advisor's: a cap below the provider's, a cap with no provider window, a point alone.
-    assert.equal(r.advisors.teachers?.context_window, 32_768);
-    assert.equal(r.advisors.teachers?.compact_at, 60);
+    const [teacher] = r.advisors.teacher_models as unknown as {
+      context_window: number;
+      compact_at?: number;
+    }[];
+    assert.equal(teacher?.context_window, 32_768);
+    assert.equal(teacher?.compact_at, 60);
     assert.equal(r.advisors.auditor?.context_window, 16_384);
     assert.equal(r.advisors.auditor?.compact_at, undefined);
     assert.equal(r.advisors.review_panel?.context_window, 204_800);
@@ -498,8 +502,9 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
     // Given again without them: none, as for the workers.
     await s.give({ agent: "teachers", provider: "lab", model: "narrow-model" });
     const again = await routes(s);
-    assert.equal(again.advisors.teachers?.context_window, 131_072);
-    assert.equal(again.advisors.teachers?.compact_at, undefined);
+    const [first] = again.advisors.teacher_models as unknown as { context_window: number }[];
+    assert.equal(first?.context_window, 131_072);
+    assert.equal((first as { compact_at?: number })?.compact_at, undefined);
     const audit = s.store
       .listAudit(50, { action: "agent_model_given" })
       .map((e) => e.body as { role: string; context_cap: number | null; compact_at: number | null })

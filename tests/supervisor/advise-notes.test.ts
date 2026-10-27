@@ -238,7 +238,7 @@ describe("the advisors' field notes", () => {
     assert.ok(audited > 0 && noted > audited, "the note after the audit");
   });
 
-  test("each reviewer's notes come after the posted review, as panel:<name>", async (t: TestContext) => {
+  test("each reviewer's notes come after the posted review, as review_panel:<name>", async (t: TestContext) => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
     await env.service.applyCommand(env.assign);
     await env.drain();
@@ -262,7 +262,7 @@ describe("the advisors' field notes", () => {
     assert.equal(state.stats.reviews, 1, JSON.stringify(state.stats));
     assert.deepEqual(
       advisorNotes(env).map(([by]) => by),
-      ["panel:reviewer-1", "panel:reviewer-2"],
+      ["review_panel:reviewer-1", "review_panel:reviewer-2"],
     );
   });
 });

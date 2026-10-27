@@ -91,9 +91,9 @@ const AGENT: Record<string, [string, string]> = {
   workers: ["Workers", ""],
   planner: ["Planner", ""],
   teachers: ["Teachers", ""],
-  combiner: ["Teachers", "merged by"],
+  merged_by: ["Teachers", "merged by"],
   auditor: ["Auditor", ""],
-  panel: ["Review panel", ""],
+  review_panel: ["Review panel", ""],
   synthesizer: ["Synthesizer", "answer cards"],
 };
 const WORK = new Set(["workers", "planner"]);

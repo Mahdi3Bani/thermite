@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { errorText, Refusal } from "../common/errors.ts";
+import { ADVISOR_ROLES, type AdvisorRole } from "../core/agents.ts";
 import { canonicalJson } from "../core/canonical.ts";
 import {
   type CommandKind,
@@ -17,13 +18,11 @@ import type { ControlStore } from "./store.ts";
 import { currentChampion } from "./views/facts.ts";
 import { type RigView, type RunView, rigView } from "./views.ts";
 
-type AdvisorRole = "teachers" | "auditor" | "panel";
-const ADVISOR_ROLES: readonly AdvisorRole[] = ["teachers", "auditor", "panel"];
 /** Each advisor's name in a sentence (goal 074), and its verb. */
 const ROLE_NAME: Record<AdvisorRole, { name: string; is: string }> = {
   teachers: { name: "teachers", is: "are" },
   auditor: { name: "auditor", is: "is" },
-  panel: { name: "review panel", is: "is" },
+  review_panel: { name: "review panel", is: "is" },
 };
 
 /**
@@ -60,16 +59,16 @@ export function nobodyReads(
       ? Number(roles.teachers) > 0
       : x === "auditor"
         ? roles.auditor === true
-        : Number(roles.panel) > 0);
+        : Number(roles.review_panel) > 0);
   const role = (x: AdvisorRole): string => {
     if (research && x === "auditor") return "A research run has no attempts to audit.";
-    if (u.settings?.[x === "panel" ? "review" : x] === false)
+    if (u.settings?.[x === "review_panel" ? "review" : x] === false)
       return `The ${ROLE_NAME[x].name} ${ROLE_NAME[x].is} off on this rig (Edit rig), so nothing would read it.`;
     return unset(x)
       ? `This rig's supervisor has no ${ROLE_NAME[x].name} set up, so nothing would read it.`
       : "";
   };
-  if (to === "teachers" || to === "auditor" || to === "panel") return role(to);
+  if (to === "teachers" || to === "auditor" || to === "review_panel") return role(to);
   if (to !== "advisors") return "";
   if (ADVISOR_ROLES.every(unset))
     return "This rig's supervisor has no advisors set up, so nothing would read it.";
@@ -85,8 +84,7 @@ export function nobodyReads(
 function checkedMessage(store: ControlStore, rig: string, payload: unknown): unknown {
   if (!payload || typeof payload !== "object") return payload;
   const p = payload as { run?: unknown; to?: unknown; text?: unknown };
-  // The review panel by its name (goal 074): the rig takes it as panel, as every version does.
-  const to = p.to === "review_panel" ? "panel" : p.to;
+  const to = p.to;
   const text = typeof p.text === "string" ? p.text.trim() : p.text;
   if (text === "") throw new Error("Write a message first.");
   const u = typeof p.run === "string" && typeof to === "string" ? rigView(store, rig) : undefined;
@@ -97,7 +95,7 @@ function checkedMessage(store: ControlStore, rig: string, payload: unknown): unk
   const campaign =
     r?.campaign ||
     (typeof p.run === "string" ? store.assignedCampaigns(rig).get(p.run) : undefined);
-  if (to === "panel" && campaign && !panelReviews(store, campaign))
+  if (to === "review_panel" && campaign && !panelReviews(store, campaign))
     throw new Error("This run has no goal the review panel reviews, so nothing would read it.");
   return { ...p, to, text };
 }

@@ -10,7 +10,7 @@ export interface AdvisorSwitches {
 /** Which advisors decide, as the harness is told. */
 export interface AdvisorsTold {
   auditor: boolean;
-  panel: number;
+  review_panel: number;
   writer: boolean;
 }
 

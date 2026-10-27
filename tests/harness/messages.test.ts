@@ -9,6 +9,7 @@ import { type CommandKind, signEnvelope } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
+import { LEDGER_MIGRATIONS } from "../../src/harness/ledger/migrations.ts";
 import { Ledger } from "../../src/harness/ledger.ts";
 import { MIGRATIONS } from "../../src/harness/schema.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
@@ -258,7 +259,7 @@ describe("the owner's messages", () => {
       assert.equal(r.accepted, false, JSON.stringify(payload));
       assert.match(String(r.result.error), why);
     };
-    await refused({ to: "panel" }, /no goal the review panel reviews/);
+    await refused({ to: "review_panel" }, /no goal the review panel reviews/);
     await refused({ to: "lane-3" }, /run js-1 has 2 lanes/);
     assert.deepEqual((await send(env, { to: "advisors", text: "x" })).result.readers, [
       "teachers",
@@ -305,8 +306,8 @@ describe("the owner's messages", () => {
     assert.match(String((await msg("auditor")).result.error), /a research run has no audits/);
     assert.deepEqual((await msg("all")).result.readers, ["lane-1", "lane-2", "planner"]);
     // The review panel checks whether a research run's questions are answered (goal 112).
-    assert.deepEqual((await msg("panel")).result.readers, ["panel"]);
-    assert.deepEqual((await msg("advisors")).result.readers, ["teachers", "panel"]);
+    assert.deepEqual((await msg("review_panel")).result.readers, ["review_panel"]);
+    assert.deepEqual((await msg("advisors")).result.readers, ["teachers", "review_panel"]);
   });
 
   test("the advisors: the brief and the supervisor's route record reads and answers, only for messages to that role", async () => {
@@ -328,7 +329,7 @@ describe("the owner's messages", () => {
     assert.deepEqual(runs.runs[0]?.owner_messages_waiting, {
       teachers: [1, 2],
       auditor: [2],
-      panel: [2],
+      review_panel: [2],
     });
     const brief = async () =>
       (
@@ -481,13 +482,45 @@ describe("the owner's messages", () => {
         // Shown in the advisors' briefs under the earlier rules: never given again.
         { message: 4, reader: "teachers", trial: null, read_at: at },
         { message: 4, reader: "auditor", trial: null, read_at: at },
-        { message: 4, reader: "panel", trial: null, read_at: at },
+        { message: 4, reader: "review_panel", trial: null, read_at: at },
       ],
     );
     const cols = (
       ledger.db.prepare("pragma table_info(agent_message)").all() as { name: string }[]
     ).map((c) => c.name);
     assert.ok(cols.includes("keep") && cols.includes("unkept_at"));
+    ledger.close();
+  });
+
+  test("a message to the review panel by its v0.1.0 name still waits for it after the update (goal 125)", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "thermite-ledger-")), "ledger.db");
+    const db = new DatabaseSync(path);
+    db.exec("create table schema_migrations (version integer primary key)");
+    LEDGER_MIGRATIONS.slice(0, 21).forEach((m, i) => {
+      if (typeof m === "string") db.exec(m);
+      else m(db);
+      db.prepare("insert into schema_migrations (version) values (?)").run(i + 1);
+    });
+    const msg = db.prepare(
+      "insert into agent_message (run, target, text, issued_by, created_at) values ('r', ?, ?, 'owner', '2026-10-26T00:00:00.000Z')",
+    );
+    msg.run("panel", "waits");
+    msg.run("panel", "read");
+    db.prepare(
+      "insert into agent_message_read (message, reader, read_at) values (2, 'panel', '2026-10-26T01:00:00.000Z')",
+    ).run();
+    db.close();
+    const ledger = Ledger.open(path);
+    const rows = (sql: string) =>
+      ledger.db
+        .prepare(sql)
+        .all()
+        .map((r) => Object.values(r));
+    assert.deepEqual(rows("select target from agent_message order by id"), [
+      ["review_panel"],
+      ["review_panel"],
+    ]);
+    assert.deepEqual(rows("select reader from agent_message_read"), [["review_panel"]]);
     ledger.close();
   });
 });

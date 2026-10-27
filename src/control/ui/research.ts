@@ -344,9 +344,8 @@ function itemCell(r: RunView, kind: string, key: string, said = true): string {
 
 /** The owner's messages to the review panel that a review was given, or waits to give. */
 function messagesFor(r: RunView, rv: Review, research: Review[]): MessageView[] {
-  const toPanel = (m: MessageView) =>
-    m.to === "panel" || m.to === "review_panel" || m.to === "advisors";
-  const read = (m: MessageView) => m.reads.find((x) => x.by === "panel")?.at;
+  const toPanel = (m: MessageView) => m.to === "review_panel" || m.to === "advisors";
+  const read = (m: MessageView) => m.reads.find((x) => x.by === "review_panel")?.at;
   const posted = research.filter((x) => x.posted_at).map((x) => x.posted_at as string);
   return r.messages.filter((m) => {
     if (!toPanel(m)) return false;
@@ -516,7 +515,8 @@ function reviewRow(
   const nextPosted = research.find((x) => x.posted_at && posted && x.posted_at > posted)?.posted_at;
   const panelNotes = posted
     ? r.journal.filter(
-        (n) => n.by.startsWith("panel") && n.at >= posted && (!nextPosted || n.at < nextPosted),
+        (n) =>
+          n.by.startsWith("review_panel") && n.at >= posted && (!nextPosted || n.at < nextPosted),
       ).length
     : 0;
   const notes = panelNotes
@@ -528,13 +528,13 @@ function reviewRow(
           (m) =>
             `<div class="qturn"><div class="qmsg you"><div class="qmh"><span class="qsrc you">you</span> <span class="muted xs">${esc(m.at.slice(0, 16).replace("T", " "))} UTC${m.to === "advisors" ? " · to all advisors" : ""}</span></div>${esc(m.text)}</div>${
               m.answers
-                .filter((a) => a.role === "panel" || a.role === "review_panel")
+                .filter((a) => a.role === "review_panel")
                 .map(
                   (a) =>
                     `<div class="qmsg planner"><div class="qmh"><span class="qsrc auditor">${esc(a.advisor ?? "review panel")}</span> <span class="muted xs">${esc(a.at.slice(11, 16))} UTC</span></div>${esc(a.text)}</div>`,
                 )
                 .join("") ||
-              `<div class="muted xs">${m.reads.some((x) => x.by === "panel") ? "Read with this review; no reviewer answered it." : "The review panel reads it at its next try."}</div>`
+              `<div class="muted xs">${m.reads.some((x) => x.by === "review_panel") ? "Read with this review; no reviewer answered it." : "The review panel reads it at its next try."}</div>`
             }</div>`,
         )
         .join("")}`

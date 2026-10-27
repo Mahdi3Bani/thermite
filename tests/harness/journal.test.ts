@@ -220,10 +220,13 @@ describe("field notes", () => {
       "only an advisor role",
     );
     assert.equal(
-      (await post({ run: RUN, role: "panel", by: "p", notes: [] }, "trial.x")).status,
+      (await post({ run: RUN, role: "review_panel", by: "p", notes: [] }, "trial.x")).status,
       401,
     );
-    assert.equal((await post({ run: "none", role: "panel", by: "p", notes: [] })).status, 404);
+    assert.equal(
+      (await post({ run: "none", role: "review_panel", by: "p", notes: [] })).status,
+      404,
+    );
   });
 
   test("a worker's brief window: its lane's newest 10, and the newest 5 decisions and lessons of others", async () => {

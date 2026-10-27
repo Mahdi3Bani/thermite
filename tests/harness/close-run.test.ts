@@ -410,7 +410,10 @@ describe("close_run (goal 087)", () => {
     );
     assert.equal(new Audits(env.ledger).get(held)?.decision, null);
     // A rig that says it has no auditor lets no held audit of it go on.
-    assert.deepEqual(await env.service.setAdvisors({ auditor: false, panel: 0 }, "supervisor"), []);
+    assert.deepEqual(
+      await env.service.setAdvisors({ auditor: false, review_panel: 0 }, "supervisor"),
+      [],
+    );
     assert.equal(String(env.ledger.getAttempt(held)?.lifecycle), "awaiting_audit");
     assert.equal(env.ledger.currentChampion("js-1").seq, 1, "the champion stays");
   });

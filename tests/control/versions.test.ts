@@ -396,7 +396,7 @@ describe("a newer rig's fields that control does not know", () => {
         tokens_out: 20,
         usd: 0,
         cache_hits: 7,
-        roles: { teachers: 2, combiner: true, auditor: false, panel: 0, scout: 1 },
+        roles: { teachers: 2, merged_by: true, auditor: false, review_panel: 0, scout: 1 },
       },
     });
     const r = await s.api.request("/v1/rigs/rig-a/supervisor", {
@@ -413,7 +413,12 @@ describe("a newer rig's fields that control does not know", () => {
     assert.equal("mirror" in ((sup.models as object[])[0] as object), false);
     const advisors = sup.advisors as { cache_hits?: number; roles: Record<string, unknown> };
     assert.equal(advisors.cache_hits, undefined);
-    assert.deepEqual(advisors.roles, { teachers: 2, combiner: true, auditor: false, panel: 0 });
+    assert.deepEqual(advisors.roles, {
+      teachers: 2,
+      merged_by: true,
+      auditor: false,
+      review_panel: 0,
+    });
     // The rest is used: the download is a step in the rig's history.
     assert.ok(s.store.rigSetupEvents("rig-a").some((e) => e.step === "model_started"));
     // A field control knows keeps its check.

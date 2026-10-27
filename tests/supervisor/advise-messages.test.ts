@@ -330,7 +330,7 @@ describe("the owner's messages to the advisors", () => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
     await env.service.applyCommand(env.assign);
     await env.drain();
-    await ownerSays(env, "panel", "judge readability strictly");
+    await ownerSays(env, "review_panel", "judge readability strictly");
     const fake = await startFakeModel(({ messages }) => ({
       toolCalls: [
         {
@@ -357,8 +357,8 @@ describe("the owner's messages to the advisors", () => {
     assert.deepEqual(
       bodies(env, "advisor_answer").map((b) => [b.role, b.advisor, b.text]),
       [
-        ["panel", "reviewer-1", "Strictly judged."],
-        ["panel", "reviewer-2", "Strictly judged."],
+        ["review_panel", "reviewer-1", "Strictly judged."],
+        ["review_panel", "reviewer-2", "Strictly judged."],
       ],
     );
     assert.match(lines.join("\n"), /review 1 of goal readable, reviewer-1: pass\. clear and small/);
@@ -372,7 +372,7 @@ describe("the owner's messages to the advisors", () => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
     await env.service.applyCommand(env.assign);
     await env.drain();
-    await ownerSays(env, "panel", "judge readability strictly");
+    await ownerSays(env, "review_panel", "judge readability strictly");
     const pass = (messages: unknown) => ({
       toolCalls: [
         {
@@ -409,7 +409,7 @@ describe("the owner's messages to the advisors", () => {
     );
     assert.deepEqual(
       bodies(env, "agent_message_read").map((b) => b.by),
-      ["panel"],
+      ["review_panel"],
     );
   });
 });

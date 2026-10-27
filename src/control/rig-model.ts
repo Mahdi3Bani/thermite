@@ -27,23 +27,12 @@ import {
  *
  * The agents (goal 074): the work, the workers and the planner; the advisors, the teachers, the
  * auditor and the review panel. The teachers take one or two models (`model`, and `second_model`
- * for a second teacher), and with two a `merged_by` model that merges their advice. The old names
- * `combiner` (now the teachers' merged by model) and `panel` (now `review_panel`) are still taken
- * in v0.1.0, and the answer says in words what each is now.
+ * for a second teacher), and with two a `merged_by` model that merges their advice.
  */
 
 /** The agents, as REST, MCP and the pages name them (goal 074). */
 export const MODEL_AGENTS = ["workers", "planner", "teachers", "auditor", "review_panel"] as const;
 export type ModelAgent = (typeof MODEL_AGENTS)[number];
-
-/** The old names still taken in v0.1.0, and what each one is now, in words (goal 074). */
-export const OLD_AGENT_NAMES = {
-  combiner:
-    "The name combiner is now the teachers' merged by model: agent teachers, with merged_by.",
-  panel: "The name panel is now review_panel.",
-} as const;
-export type OldAgent = keyof typeof OLD_AGENT_NAMES;
-const AGENT_VALUES = [...MODEL_AGENTS, "combiner", "panel"] as const;
 
 /**
  * Each model control keeps for a rig's agents but the workers (AgentRole: the planner, each of
@@ -114,7 +103,7 @@ export interface ModelChoice {
 /** One agent's model request, in the dashboard's terms. */
 export interface RigModelRequest {
   /** Default: the workers. The old names are still taken in v0.1.0. */
-  agent?: ModelAgent | OldAgent | undefined;
+  agent?: ModelAgent | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   /** True: the agent's default again, as Edit rig's first choice in its row. */
@@ -216,11 +205,9 @@ type TeacherModelBody = z.infer<typeof TeacherModelBody>;
 /** The request's fields over REST and MCP, in snake case (MCP adds the rig). */
 export const rigModelFields = {
   agent: z
-    .enum(AGENT_VALUES)
+    .enum(MODEL_AGENTS)
     .optional()
-    .describe(
-      "Whose model: workers (default), planner, teachers, auditor or review_panel. The old names are still taken in v0.1.0: combiner is the teachers' merged_by, panel is review_panel",
-    ),
+    .describe("Whose model: workers (default), planner, teachers, auditor or review_panel"),
   provider: providerField.optional(),
   model: modelField.optional(),
   clear: z
@@ -318,8 +305,7 @@ export interface RoleChange {
 
 /**
  * What a request changes, in order (after rigModelShapeRefusal): the agent's own model, and for
- * the teachers their second and merged by models. Clearing the teachers clears all three. The old
- * names go to their places now: combiner to merged_by, panel to review_panel.
+ * the teachers their second and merged by models. Clearing the teachers clears all three.
  */
 export function rigModelChanges(r: RigModelRequest): RoleChange[] {
   const agent = r.agent ?? "workers";
@@ -334,8 +320,6 @@ export function rigModelChanges(r: RigModelRequest): RoleChange[] {
           contextWindow: r.contextWindow,
           compactAt: r.compactAt,
         };
-  if (agent === "combiner") return [{ role: "merged_by", choice: own }];
-  if (agent === "panel") return [{ role: "review_panel", choice: own }];
   if (agent !== "teachers") return [{ role: agent, choice: own }];
   if (r.clear)
     return [

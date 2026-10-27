@@ -8,8 +8,8 @@ import { describe, test } from "node:test";
 import { copiesOf } from "../../src/common/db-copy.ts";
 import { sha256Hex } from "../../src/core/canonical.ts";
 import { type Contract, parseContract } from "../../src/core/contract.ts";
+import { LEDGER_MIGRATIONS as MIGRATIONS } from "../../src/harness/ledger/migrations.ts";
 import { Ledger, LedgerError, MAX_LEASE_EXPIRIES } from "../../src/harness/ledger.ts";
-import { MIGRATIONS } from "../../src/harness/schema.ts";
 import { goalFixture, hillClimbFixture } from "../helpers/fixtures.ts";
 import { appendOther } from "../helpers/kinds.ts";
 

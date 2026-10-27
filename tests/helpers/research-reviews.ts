@@ -177,7 +177,7 @@ export function researchRunEvents(): Ev[] {
       {
         trial: null,
         round,
-        agent: "panel",
+        agent: "review_panel",
         harness: "pi",
         provider: "p",
         model: "m",
@@ -434,7 +434,7 @@ export function researchRunEvents(): Ev[] {
       "journal_note",
       {
         id: 1,
-        by: "panel:reviewer-1",
+        by: "review_panel:reviewer-1",
         kind: "observation",
         text: "Question 2 rests on one site.",
         about: { type: "run", id: "s-1" },
@@ -444,7 +444,7 @@ export function researchRunEvents(): Ev[] {
     // The owner's message to the review panel, read and answered with review 2.
     ev(
       "agent_message",
-      { id: 5, to: "panel", text: "Judge question 2 by what sources can say." },
+      { id: 5, to: "review_panel", text: "Judge question 2 by what sources can say." },
       4.5,
     ),
     // Review 2: passed after three tries; question 2 at the best available; the owner accepted it.
@@ -487,12 +487,12 @@ export function researchRunEvents(): Ev[] {
       },
       5.7,
     ),
-    ev("agent_message_read", { message: 5, by: "panel" }, 5.71),
+    ev("agent_message_read", { message: 5, by: "review_panel" }, 5.71),
     ev(
       "advisor_answer",
       {
         message: 5,
-        role: "panel",
+        role: "review_panel",
         advisor: "reviewer-1",
         text: "Question 2 is the best available.",
       },

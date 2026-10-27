@@ -23,7 +23,7 @@ describe("control's store migrations", () => {
     old.close();
 
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 3);
+    assert.equal(version(store.db), 4);
     const folder = store.db.prepare("select name from campaign_folder").get() as { name: string };
     assert.equal(folder.name, "speed");
     store.db.close();
@@ -45,7 +45,7 @@ describe("control's store migrations", () => {
   test("a new store is not copied", () => {
     const path = fresh();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 3);
+    assert.equal(version(store.db), 4);
     store.db.close();
     assert.deepEqual(copiesOf(path), []);
   });
@@ -56,12 +56,41 @@ describe("control's store migrations", () => {
     one.db.exec("drop table rig_update; delete from schema_migrations where version >= 2");
     one.db.close();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 3);
+    assert.equal(version(store.db), 4);
     assert.ok(store.db.prepare("select 1 from sqlite_master where name = 'rig_update'").get());
     store.db.close();
     assert.deepEqual(
       copiesOf(path).map((c) => c.version),
       [1],
+    );
+  });
+
+  test("a store at version 3 gets the agents' public names in its usage records (goal 125)", () => {
+    const path = fresh();
+    const three = new ControlStore(path);
+    three.db.exec("delete from schema_migrations where version >= 4");
+    const row = three.db.prepare(
+      `insert into model_call (rig, ledger_id, event_id, run, agent, harness, model, at, tokens_in,
+         tokens_out) values ('rig-a', 'l-1', ?, 'r-1', ?, 'pi', 'm', '2026-10-27T00:00:00Z', 1, 1)`,
+    );
+    for (const [id, agent] of [
+      [1, "combiner"],
+      [2, "panel"],
+      [3, "workers"],
+    ] as const)
+      row.run(id, agent);
+    three.db.close();
+    const store = new ControlStore(path);
+    assert.equal(version(store.db), 4);
+    const agents = store.db.prepare("select agent from model_call order by event_id").all();
+    assert.deepEqual(
+      agents.map((r) => r.agent),
+      ["merged_by", "review_panel", "workers"],
+    );
+    store.db.close();
+    assert.deepEqual(
+      copiesOf(path).map((c) => c.version),
+      [3],
     );
   });
 
@@ -71,11 +100,11 @@ describe("control's store migrations", () => {
     old.exec(V010);
     old.close();
     const store = new ControlStore(path);
-    store.db.prepare("insert into schema_migrations (version) values (4)").run();
+    store.db.prepare("insert into schema_migrations (version) values (5)").run();
     store.db.close();
     assert.throws(
       () => new ControlStore(path),
-      /control store is at schema version 4, newer than this code's 3: .*the copy made then: .*control\.db\.v0\..*\.copy/,
+      /control store is at schema version 5, newer than this code's 4: .*the copy made then: .*control\.db\.v0\..*\.copy/,
     );
   });
 });

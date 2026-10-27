@@ -24,3 +24,7 @@ export type ProviderType = (typeof PROVIDER_TYPES)[number];
 /** The kinds reached with an API key; the others are subscriptions, reached with a sign-in. */
 export const KEY_PROVIDER_TYPES: readonly ProviderType[] = ["openai", "anthropic", "opencode"];
 export const PLAN_PROVIDER_TYPES: readonly ProviderType[] = ["claude", "chatgpt"];
+
+/** The advisors' roles, as messages, answers and field notes name them (goal 074's names). */
+export const ADVISOR_ROLES = ["teachers", "auditor", "review_panel"] as const;
+export type AdvisorRole = (typeof ADVISOR_ROLES)[number];

@@ -245,7 +245,7 @@ export type BriefingSeed = z.infer<typeof BriefingSeed>;
  * The lanes stop at MAX_LANES (lanes.test.ts checks it).
  */
 export const MESSAGE_TARGET =
-  /^(all|planner|advisors|teachers|auditor|panel|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/;
+  /^(all|planner|advisors|teachers|auditor|review_panel|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/;
 
 /**
  * What a run asks the owner about (goal 079). Thermite is hands-off by default: a win the judge

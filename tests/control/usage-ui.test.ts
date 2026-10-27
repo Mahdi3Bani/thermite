@@ -196,7 +196,7 @@ async function stack() {
       "model_call",
       "r-1",
       call({
-        agent: "combiner",
+        agent: "merged_by",
         harness: "opencode",
         provider: "zen",
         model: "free-model",

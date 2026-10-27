@@ -249,7 +249,7 @@ async function main(): Promise<void> {
       const advisors = await refreshAdvisors();
       if (!advisors) {
         // No role has an advisor: look again later (the owner may give one a model).
-        await tellAdvisors({ auditor: false, panel: 0, writer: false });
+        await tellAdvisors({ auditor: false, review_panel: 0, writer: false });
         const until = Date.now() + Math.max(intervalMs, 30_000);
         while (!stopping && Date.now() < until) {
           await new Promise((r) => setTimeout(r, 250));
@@ -270,7 +270,7 @@ async function main(): Promise<void> {
         };
         await tellAdvisors({
           auditor: Boolean(active.auditor),
-          panel: active.review_panel.length,
+          review_panel: active.review_panel.length,
           writer: active.teachers.length > 0,
         });
         adviseState = await adviseOnce(
@@ -592,13 +592,12 @@ async function main(): Promise<void> {
           ? {
               ...adviseState.stats,
               // Which roles are configured and on, so control can say whether an audit will be
-              // decided. Control reads these keys from every version of the supervisor: the
-              // merged by model is `combiner` and the review panel `panel` here (goal 074).
+              // decided.
               roles: {
                 teachers: harnessLink.last().teachers ? advisors.teachers.length : 0,
-                combiner: harnessLink.last().teachers && Boolean(advisors.merged_by),
+                merged_by: harnessLink.last().teachers && Boolean(advisors.merged_by),
                 auditor: harnessLink.last().auditor && Boolean(advisors.auditor),
-                panel: harnessLink.last().review ? advisors.review_panel.length : 0,
+                review_panel: harnessLink.last().review ? advisors.review_panel.length : 0,
               },
               // What the rig's advisors file sets up for each role, so that Edit rig can say what
               // an advisor with no model from control uses (goal 074). No key, token or address.

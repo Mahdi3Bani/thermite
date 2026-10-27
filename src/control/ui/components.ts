@@ -183,7 +183,7 @@ function noReviewPanel(u: Pick<RigView, "supervisor" | "settings">): string {
   const sup = u.supervisor as { advisors?: { roles?: Record<string, unknown> } | null } | null;
   const roles =
     sup && "advisors" in sup ? (sup.advisors === null ? {} : sup.advisors?.roles) : undefined;
-  return roles !== undefined && !(Number(roles.panel) > 0)
+  return roles !== undefined && !(Number(roles.review_panel) > 0)
     ? "this rig's supervisor has no review panel set up"
     : "";
 }

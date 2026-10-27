@@ -116,9 +116,9 @@ async function stack(service: HarnessService, privateKeyPem: string) {
   /** The supervisor's report of the advisor roles it has set up. */
   const advisorsSetUp = async (roles: {
     teachers: number;
-    combiner: boolean;
+    merged_by: boolean;
     auditor: boolean;
-    panel: number;
+    review_panel: number;
   }) => {
     const r = await control.request("/v1/rigs/rig-a/supervisor", {
       method: "POST",
@@ -239,7 +239,7 @@ describe("Live's message box", () => {
     const s = await stack(env.service, env.keys.privateKeyPem);
     await env.start();
     await s.sync();
-    await s.advisorsSetUp({ teachers: 2, combiner: true, auditor: true, panel: 1 });
+    await s.advisorsSetUp({ teachers: 2, merged_by: true, auditor: true, review_panel: 1 });
     // Two lanes at work: the first lines of their agents.
     const t1 = { id: "t-1111111111111111", run: "js-1", lane: "lane-1" };
     const t2 = { id: "t-2222222222222222", run: "js-1", lane: "lane-2" };
@@ -271,7 +271,7 @@ describe("Live's message box", () => {
     );
     assert.deepEqual(
       to.filter((o) => o.greyed).map((o) => [o.to, o.greyed]),
-      [["panel", "This run has no goal the review panel reviews."]],
+      [["review_panel", "This run has no goal the review panel reviews."]],
     );
     // Each says when it is read: the placeholder shows the chosen one's.
     const hint = (v: string) => to.find((o) => o.to === v)?.hint;
@@ -318,7 +318,7 @@ describe("Live's message box", () => {
     await send(advisors.page, { text: "Be strict." });
     // A greyed-out recipient is refused with the words it shows; nothing is signed.
     assert.match(
-      await send(advisors.page, { to: "panel", text: "Judge it strictly." }),
+      await send(advisors.page, { to: "review_panel", text: "Judge it strictly." }),
       /&msgerror=This run has no goal the review panel reviews, so nothing would read it\.$/,
     );
     assert.deepEqual(s.signed("message_agent"), [
@@ -505,7 +505,7 @@ describe("Live's message box", () => {
     // Its planner plans its rounds from the answer cards, and reads the owner's messages.
     assert.equal(to.find((o) => o.to === "planner")?.greyed, undefined);
     // The review panel checks whether a research run's questions are answered (goal 112).
-    assert.equal(to.find((o) => o.to === "panel")?.greyed, undefined);
+    assert.equal(to.find((o) => o.to === "review_panel")?.greyed, undefined);
     assert.equal(
       to.find((o) => o.to === "all")?.hint,
       "Each agent reads it when it can; the planner at its next plan",

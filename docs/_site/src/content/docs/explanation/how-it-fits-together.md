@@ -146,7 +146,7 @@ sequenceDiagram
 - **everyone working** (`all`): every lane at work, and the planner of a hill-climb or goal run when the planner is on. The lanes at work are the contract's lanes, or fewer when a rule for the number of lanes says so;
 - one **lane** (`lane-N`), or one **trial** of a lane (`trial:ID`). A message to a trial that ends before it reads it goes to the lane's next trial, which is told so;
 - **the planner**;
-- **the advisors**: all of them (`advisors`), or only the teachers (`teachers`), the auditor (`auditor`) or the review panel (`review_panel`; `panel`, its old name, is still taken, and is what control sends the rig).
+- **the advisors**: all of them (`advisors`), or only the teachers (`teachers`), the auditor (`auditor`) or the review panel (`review_panel`).
 
 Live's box offers all of them but a single trial, which only the REST API, MCP and the command line can reach.
 
@@ -241,7 +241,7 @@ A command-line advisor (`cli`) says nothing about its calls, so it has no record
 | The event's subject | The run |
 | `trial` | The worker's trial, or `null` |
 | `round` | The planner's round, such as `epoch 3`, or the advisors': `teachers <time>`, `audit <attempt>`, `review <id>`, for the synthesizer's answer cards `cards <time>`, or, for the final writer's research paper, `final paper <review>`. `null` for a worker |
-| `agent` | `workers`, `planner`, `teachers` (the final writer's calls too: it uses the first teacher's model), `combiner` (the teachers' merged by model), `auditor`, `panel` (the review panel) or `synthesizer` (the writer of a research run's answer cards) |
+| `agent` | `workers`, `planner`, `teachers` (the final writer's calls too: it uses the first teacher's model), `merged_by` (the teachers' merged by model), `auditor`, `review_panel` or `synthesizer` (the writer of a research run's answer cards) |
 | `harness` | `pi`, `opencode`, `codex` or `claude-code` |
 | `provider` | The provider's name in **Settings › Providers**, or `null` for a rig's own model settings and an advisors file that names none |
 | `model` | The model's name |

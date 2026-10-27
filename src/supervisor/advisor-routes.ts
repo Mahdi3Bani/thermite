@@ -12,8 +12,7 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
  * A ChatGPT sign-in's access token lasts an hour; control's routes are read each round.
  *
  * The roles (goal 074): the teachers (one or two models), their merged by model, the auditor and
- * the review panel. A control of an earlier version gives the teachers one model, run here as two
- * teachers, and names the others combiner and panel.
+ * the review panel.
  */
 
 /** A route as control hands it (see the harness's ControlRoute); its key stays in memory. */
@@ -138,8 +137,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
 /**
  * The advisors' routes from control, as runtimes by role: each teacher's model (teacher-1 and
  * teacher-2), the merged by model, the auditor, and the review panel three times (reviewer-1 to
- * reviewer-3). From a control of an earlier version: its one teachers' model twice, and its
- * combiner and panel as the merged by model and the review panel.
+ * reviewer-3).
  */
 export async function fetchControlAdvisors(o: {
   rig: string;
@@ -163,18 +161,17 @@ export async function fetchControlAdvisors(o: {
     );
     return list.length ? list : undefined;
   };
-  const listed = Array.isArray(body.teacher_models)
-    ? (body.teacher_models as AdvisorRoute[])
-        .slice(0, 2)
-        .map((route, i) => runtimeOf(route, `teacher-${i + 1}`))
-        .filter((x): x is AdvisorRuntime => x !== undefined)
-    : undefined;
-  const mergedBy = "merged_by" in body ? r.merged_by : r.combiner;
+  const teachers = (
+    Array.isArray(body.teacher_models) ? (body.teacher_models as AdvisorRoute[]) : []
+  )
+    .slice(0, 2)
+    .map((route, i) => runtimeOf(route, `teacher-${i + 1}`))
+    .filter((x): x is AdvisorRuntime => x !== undefined);
   return {
-    teachers: listed ? (listed.length ? listed : undefined) : many(r.teachers, "teacher", 2),
-    merged_by: mergedBy ? runtimeOf(mergedBy, "merged-by") : undefined,
+    teachers: teachers.length ? teachers : undefined,
+    merged_by: r.merged_by ? runtimeOf(r.merged_by, "merged-by") : undefined,
     auditor: r.auditor ? runtimeOf(r.auditor, "auditor") : undefined,
-    review_panel: many("review_panel" in body ? r.review_panel : r.panel, "reviewer", 3),
+    review_panel: many(r.review_panel, "reviewer", 3),
   };
 }
 

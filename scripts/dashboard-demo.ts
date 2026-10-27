@@ -774,7 +774,7 @@ c1.ev(1.0, "card_refused", RS, {
 // The owner's message to the review panel, and its answer.
 c1.ev(2.5, "agent_message", RS, {
   id: 7,
-  to: "panel",
+  to: "review_panel",
   text: "Judge question 4 against what sources can say: how many repetitions a rig needs is a next experiment.",
 });
 // Reviews: each asked, each reviewer's answers per item, the decision on each item.
@@ -932,14 +932,14 @@ review(
   ],
   "review_failed",
 );
-c1.ev(1.88, "agent_message_read", RS, { message: 7, by: "panel" });
+c1.ev(1.88, "agent_message_read", RS, { message: 7, by: "review_panel" });
 c1.ev(
   1.88,
   "advisor_answer",
   RS,
   {
     message: 7,
-    role: "panel",
+    role: "review_panel",
     advisor: "reviewer-1",
     text: "Understood: question 4 is the best available, insufficient; the repetitions a rig needs are a next experiment.",
   },
@@ -970,7 +970,7 @@ for (const [h, run, calls] of [
     c1.ev(h, "model_call", RS, {
       trial: null,
       round: run,
-      agent: "panel",
+      agent: "review_panel",
       harness: "pi",
       provider: "demo-models",
       model: reviewer === "reviewer-3" ? "kimi-k3" : "glm-5.1",

@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { log } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
+import type { AdvisorRole } from "../core/agents.ts";
 import type { AgentsContext } from "../core/compaction.ts";
 import type { NoteInput } from "../core/journal.ts";
 import type { LiveKind } from "../core/live.ts";
@@ -532,7 +533,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
    */
   const receipts = async (
     run: string,
-    role: "teachers" | "auditor" | "panel",
+    role: AdvisorRole,
     given: number[],
     answers: { message: number; text: string; advisor?: string | undefined }[],
   ) => {
@@ -615,7 +616,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
    */
   const notesOut = async (
     run: string,
-    role: "teachers" | "auditor" | "panel",
+    role: AdvisorRole,
     by: string,
     notes: NoteInput[],
   ): Promise<unknown> => {
@@ -1152,7 +1153,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         );
         for (const { runtime, r } of calls) {
           count(r);
-          await usageOut(pkg.run, `review ${pkg.id}`, "panel", r.usage);
+          await usageOut(pkg.run, `review ${pkg.id}`, "review_panel", r.usage);
           compactions.push(...(r.compactions ?? []));
           if (!r.output) {
             unanswered.push({ reviewer: runtime.name, why: clip(r.error ?? "no answer", 300) });
@@ -1205,12 +1206,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         };
         s.reviews++;
         if (pkg.run) {
-          await receipts(
-            pkg.run,
-            "panel",
-            owner.map((m) => m.id),
-            answers,
-          );
+          const ids = owner.map((m) => m.id);
+          await receipts(pkg.run, "review_panel", ids, answers);
           for (const m of owner) told.add(m.id);
         }
         say(
@@ -1221,7 +1218,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         // Each reviewer's field notes, once the review is posted.
         const noted: unknown[] = [];
         if (pkg.run)
-          for (const j of journal) noted.push(await notesOut(pkg.run, "panel", j.by, j.notes));
+          for (const j of journal)
+            noted.push(await notesOut(pkg.run, "review_panel", j.by, j.notes));
         record(`review-${pkg.id}`, {
           results,
           posted,

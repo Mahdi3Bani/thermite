@@ -97,7 +97,10 @@ describe("a research run whose questions are answered waits for its paper (goal 
     await sch.tick();
     assert.equal(s.events("research_paper_requested").length, 0);
     assert.deepEqual((await s.call("GET", "/v1/research/papers/pending")).body, { papers: [] });
-    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: true }, "supervisor");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 2, writer: true },
+      "supervisor",
+    );
     await sch.tick();
     await sch.idle();
     await sch.tick();
@@ -158,7 +161,10 @@ describe("a research run whose questions are answered waits for its paper (goal 
         )
         .run(id, RUN, text, question, new Date().toISOString(), new Date().toISOString());
     pool("h-pool0001", 1, "A clock of 8 hours is enough.");
-    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: true }, "supervisor");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 2, writer: true },
+      "supervisor",
+    );
     await scheduler(s).tick();
     const pkg = (
       (await s.call("GET", "/v1/research/papers/pending")).body.papers as unknown[]
@@ -274,7 +280,10 @@ describe("a research run whose questions are answered waits for its paper (goal 
         now,
         now,
       );
-    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: true }, "supervisor");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 2, writer: true },
+      "supervisor",
+    );
     await scheduler(s).tick();
     const pkg = (
       (await s.call("GET", "/v1/research/papers/pending")).body.papers as unknown[]
@@ -307,7 +316,10 @@ describe("a research run whose questions are answered waits for its paper (goal 
 
   test("check_paper finds an unknown or draft claim, a number not in the cited claims, an unanswered question, a verdict the review panel did not give and a part that code appends", async (t) => {
     const s = await answered(t);
-    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: true }, "supervisor");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 2, writer: true },
+      "supervisor",
+    );
     await scheduler(s).tick();
     const check = async (paper: string) =>
       problemsOf((await s.call("POST", `/v1/research/papers/${RUN}/check`, { paper })).body);
@@ -420,7 +432,10 @@ describe("a research run whose questions are answered waits for its paper (goal 
 
   test("a paper the STE checker found errors in is refused, and the writer's next package carries the problems", async (t) => {
     const s = await answered(t);
-    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: true }, "supervisor");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 2, writer: true },
+      "supervisor",
+    );
     await scheduler(s).tick();
     const paper = goodPaper(s.ids);
     const ste = {
@@ -494,7 +509,10 @@ describe("a research run whose questions are answered waits for its paper (goal 
 
   test("accepted: paper.md, the final report with the paper first, the next experiments in the knowledge base, and the close once trials end", async (t) => {
     const s = await answered(t);
-    await s.env.service.setAdvisors({ auditor: false, panel: 2, writer: true }, "supervisor");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 2, writer: true },
+      "supervisor",
+    );
     const sch = scheduler(s);
     await sch.tick();
     const paper = goodPaper(s.ids);

@@ -87,7 +87,7 @@ The page says, for example, "Control sent a model for the teachers to rig-1. The
    }
    ```
 
-   Leave out a role to turn it off. One teacher works alone, with no merge. Two teachers without `merged_by` give the set of the first review that comes back. A review panel needs at least two reviewers with different names: the file loads with one, but then each review fails with an `advisor error`. OpenCode's free models don't work in the file either, since they answer only OpenCode itself. A file written before 0.1.0 may still say `combiner` for `merged_by` and `panel` for `review_panel`; a file that gives both names of one field is refused. The [advisors file reference](../../reference/advisors-file.md) has every field.
+   Leave out a role to turn it off. One teacher works alone, with no merge. Two teachers without `merged_by` give the set of the first review that comes back. A review panel needs at least two reviewers with different names: the file loads with one, but then each review fails with an `advisor error`. OpenCode's free models don't work in the file either, since they answer only OpenCode itself. Since v0.1.1 a file that still says `combiner` for `merged_by` or `panel` for `review_panel` is refused: rename the field. The [advisors file reference](../../reference/advisors-file.md) has every field.
 
 2. Put the file and its key files in `.dev/advisors/`, which the local stack's supervisor sees as `/etc/thermite/advisors/`:
 
@@ -153,7 +153,7 @@ Besides the run's own records, the advisors read what the run's agents noted and
 - **The auditor's and each reviewer's package** hold the background, and neither the field notes nor that line.
 - **Every brief and package** holds the campaign's brief from its author, whole, when it has one: its additional information, starting links, ideas to try and hypotheses, as `campaign_brief`. It comes before the evidence and the diff, so a package cut at its end, to fit the advisor's window or its size limit, loses those first. The advisors take it as the author's view, and the review panel uses it to read the criteria, not as more criteria. See [The campaign's brief](../../reference/contract.md#the-campaigns-brief).
 
-Every advisor may also write field notes: each teacher, the teachers' merged by model, the auditor and each reviewer of the review panel. A note is an observation, a decision and why, a surprise, an open question or a lesson. The supervisor posts an advisor's notes after its review, audit or verdict, and the rig records each one as written by `<role>:<name>`, such as `teachers:teacher-1`, `teachers:merged-by`, `auditor:auditor` or `panel:reviewer-2` (the review panel's role keeps the name `panel` in these records). They show:
+Every advisor may also write field notes: each teacher, the teachers' merged by model, the auditor and each reviewer of the review panel. A note is an observation, a decision and why, a surprise, an open question or a lesson. The supervisor posts an advisor's notes after its review, audit or verdict, and the rig records each one as written by `<role>:<name>`, such as `teachers:teacher-1`, `teachers:merged-by`, `auditor:auditor` or `review_panel:reviewer-2`. Notes written before v0.1.1 say `panel:`; the pages show them under the review panel. They show:
 
 - on the run's **Journal** tab, under the writers **Teachers**, **Auditor** and **Review panel**;
 - in the run's **Live**, under **Advisors**, such as `teachers:teacher-1 noted (lesson): …`;

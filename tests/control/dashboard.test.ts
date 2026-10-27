@@ -526,9 +526,8 @@ describe("control dashboard", () => {
     >;
     assert.equal(adv.auditor?.type, "claude");
     assert.equal(adv.auditor?.effort, "max");
-    assert.equal(adv.teachers?.type, "anthropic");
-    assert.equal(adv.combiner, null);
-    assert.equal(adv.panel, null);
+    // Only the public names: an older supervisor's teachers, combiner and panel are gone.
+    assert.deepEqual([adv.teachers, adv.combiner, adv.panel], [undefined, undefined, undefined]);
     // The line Teachers gives the first teacher its model and effort: one teacher.
     const one = (adv as unknown as { teacher_models: { model: string; reasoning: string }[] })
       .teacher_models;
@@ -871,7 +870,7 @@ describe("control dashboard", () => {
           tokens_in: 100,
           tokens_out: 20,
           usd: 0,
-          roles: { teachers: 2, combiner: true, auditor: false, panel: 0 },
+          roles: { teachers: 2, merged_by: true, auditor: false, review_panel: 0 },
         },
       }),
     });

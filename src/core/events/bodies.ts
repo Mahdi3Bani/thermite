@@ -1,4 +1,4 @@
-import type { Harness } from "../agents.ts";
+import type { AdvisorRole, Harness } from "../agents.ts";
 import type { Mode } from "../contract.ts";
 import type { EventKind } from "./kinds.ts";
 
@@ -182,7 +182,7 @@ export interface EventBodies {
   audit_overridden: { lifecycle: string };
   advisor_answer: {
     message: number;
-    role: "teachers" | "auditor" | "panel";
+    role: AdvisorRole;
     text: string;
     advisor?: string | undefined;
   };

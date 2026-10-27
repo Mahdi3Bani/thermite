@@ -18,6 +18,28 @@ const KEYS: Record<string, string> = {
   source_unit: "source_rig",
 };
 
+/** The agents' names before v0.1.1 (goal 074): the merged by model and the review panel. */
+const AGENTS: Record<string, string> = { combiner: "merged_by", panel: "review_panel" };
+
+/** The field of each kind of event that names an agent or an advisor role. */
+const AGENT_FIELDS: Record<string, string> = {
+  model_call: "agent",
+  advisor_answer: "role",
+  agent_message: "to",
+  agent_message_read: "by",
+  journal_note: "by",
+};
+
+/**
+ * An agent's or an advisor role's name under the public names, alone (`panel`) or naming a writer
+ * (`panel:reviewer-1`).
+ */
+export function currentAgent(name: string): string {
+  const [head = "", ...rest] = name.split(":");
+  const now = AGENTS[head];
+  return now ? [now, ...rest].join(":") : name;
+}
+
 /** Every kind an event of this (new) kind may have been recorded under. */
 export function eventKinds(kind: string): string[] {
   return [kind, ...Object.keys(KINDS).filter((k) => KINDS[k] === kind)];
@@ -34,6 +56,13 @@ export function currentBody<T>(body: T): T {
 /** An event under the new names. */
 export function currentEvent<E extends { kind: string; body: unknown }>(e: E): E {
   const kind = KINDS[e.kind] ?? e.kind;
-  const body = currentBody(e.body);
+  let body = currentBody(e.body);
+  const field = AGENT_FIELDS[kind];
+  const named =
+    field && body && typeof body === "object"
+      ? (body as Record<string, unknown>)[field]
+      : undefined;
+  if (field && typeof named === "string" && currentAgent(named) !== named)
+    body = { ...(body as object), [field]: currentAgent(named) } as typeof body;
   return kind === e.kind && body === e.body ? e : { ...e, kind, body };
 }

@@ -69,7 +69,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       ? "You"
       : by === "planner" || by.startsWith("planner:")
         ? "The planner"
-        : /teacher|combiner|merged/.test(by) || by === "supervisor"
+        : /teacher|merged/.test(by) || by === "supervisor"
           ? "The teachers"
           : /auditor/.test(by)
             ? "The auditor"

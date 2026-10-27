@@ -187,7 +187,6 @@ import {
   HARNESS_NAMES,
   harnessRefusal,
   neededHarness,
-  OLD_AGENT_NAMES,
   opencodeOnly,
   ROLE_WORDS,
   rigModelChanges,
@@ -3674,7 +3673,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
               ? "The teachers read it in their next round and answer here"
               : to === "auditor"
                 ? "The auditor reads it before its next audit and answers here"
-                : to === "panel"
+                : to === "review_panel"
                   ? "The review panel reads it before its next review and answers here"
                   : "The advisors read it and answer here";
     // A run without agents has no one working: the box starts on the advisors.
@@ -3703,7 +3702,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
         : `<form class="lcomposer" method="post" action="/ui/live/message" data-act><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
-<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working", off("all"))}${lanes.map((l) => opt(l, `To ${l}`, off(l))).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("panel", "To the review panel", off("panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
+<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working", off("all"))}${lanes.map((l) => opt(l, `To ${l}`, off(l))).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("review_panel", "To the review panel", off("review_panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
 <textarea name="text" rows="1" required data-words maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
 <button class="primary">${icon.send}Send</button></form>`;
@@ -4968,10 +4967,8 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       const own = r.clear || !r.provider ? undefined : given[0];
       const said =
         r.agent === "teachers" && r.clear ? [ROLE_WORDS.teachers.cleared] : given.map((g) => g.ok);
-      const old =
-        r.agent === "combiner" || r.agent === "panel" ? `${OLD_AGENT_NAMES[r.agent]} ` : "";
       return {
-        ok: `${old}Control sent ${listText(said)} to ${rig}. The rig takes the change in less than one minute.${given.map((g) => g.words).join("")}`,
+        ok: `Control sent ${listText(said)} to ${rig}. The rig takes the change in less than one minute.${given.map((g) => g.words).join("")}`,
         contextWindow: own?.contextWindow || null,
         compactAt: own?.compactAt ?? null,
         agents: agentModelsOf(store, rig),

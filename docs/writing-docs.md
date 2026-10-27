@@ -25,7 +25,7 @@ The site's dependencies are pinned to exact versions and kept apart from Thermit
 - a setting that the code does not read, or a setting the code reads that [the settings reference](_site/src/content/docs/reference/settings.md) leaves out;
 - a number setting whose Type or Default cell on the settings reference says other than its part's table: the range, whole numbers or fractions, the unit and the default. Each part keeps its number settings in one table, `CONTROL_NUMBERS`, `HARNESS_NUMBERS`, `BROKER_NUMBERS`, `SUPERVISOR_NUMBERS` and `CLI_NUMBERS`, in its `settings.ts`, and reads them through it;
 - a contract, `kit.json` or `advisors.json` example that the real schema refuses;
-- an agent named by an old name outside code: "teacher pair", "combiner", "panelist", "the supervisor's advisors", or "panel" alone for the review panel. Each agent has one name: the workers and the planner (the work), the teachers, their merged by model, the auditor and the review panel (the advisors). Code spans may show the old API names that are still taken;
+- an agent named by an old name outside code: "teacher pair", "combiner", "panelist", "the supervisor's advisors", or "panel" alone for the review panel. Each agent has one name: the workers and the planner (the work), the teachers, their merged by model, the auditor and the review panel (the advisors). Code spans may show v0.1.0's names where a page says they are refused;
 - a placeholder in angle brackets, such as `<campaign>`, outside a code span: the site reads it as an HTML tag and hides it, so write it in backticks;
 - a page missing from `llms.txt` or `llms-full.txt`, or without its Markdown copy;
 - a page that is still a stub;

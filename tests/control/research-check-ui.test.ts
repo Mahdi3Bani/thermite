@@ -107,7 +107,7 @@ describe("a research run's answer check on control (goal 112)", () => {
       await c.line(),
       "The check waits for a review panel: this rig's supervisor has no review panel set up. The run keeps researching.",
     );
-    c.store.setSupervisor("rig-a", { advisors: { roles: { panel: 3 } } });
+    c.store.setSupervisor("rig-a", { advisors: { roles: { review_panel: 3 } } });
     c.ingest({
       kind: "review_panel",
       subject: "s-1",
