@@ -76,6 +76,19 @@ describe("the owner's messages", () => {
       "lane-2",
       "planner",
     ]);
+    // A teacher's later rule of 3 lanes does not apply over the owner's 2, for the scheduler or
+    // for the readers: the message never waits for a lane that never runs (goal 162).
+    env.service.ledger.addDirective("js-1", "supervisor:teachers", {
+      kind: "lane_count",
+      value: 3,
+      rationale: "more lanes",
+    });
+    const again = await send(env, { to: "all", text: "still two lanes" });
+    assert.deepEqual((again.result as { readers: string[] }).readers, [
+      "lane-1",
+      "lane-2",
+      "planner",
+    ]);
   });
 
   test("everyone working reaches each lane once and the planner; a read is recorded only when given, and the first read by each reader is an event", async () => {

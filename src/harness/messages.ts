@@ -1,5 +1,6 @@
 import { type Contract, MAX_LANES } from "../core/contract.ts";
 import type { LiveLog } from "../core/live.ts";
+import { lanesAtWork } from "./agents/coordinator.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import type { RigSettings } from "./rig-settings.ts";
 
@@ -123,14 +124,8 @@ export class OwnerMessages {
     const contract = this.contractFor(run);
     const s = this.settings();
     const lanes = Math.min(contract.lanes.count, MAX_LANES);
-    // The lanes at work now: a lane_count rule can run fewer than the contract's count.
-    const ruled = this.ledger
-      .activeDirectives(run)
-      .map((d) => d.body as { kind?: string; value?: unknown })
-      .filter((b) => b.kind === "lane_count" && Number.isFinite(Number(b.value)))
-      .map((b) => Number(b.value))
-      .at(-1);
-    const working = ruled !== undefined ? Math.max(1, Math.min(lanes, Math.trunc(ruled))) : lanes;
+    // The lanes at work now, as the scheduler counts them: the owner's lane count first.
+    const working = lanesAtWork(this.ledger, run, contract);
     // A run without agents (a try) has no lanes and no planner to read anything.
     const noAgents = this.ledger.getRun(run)?.agents === false;
     if (

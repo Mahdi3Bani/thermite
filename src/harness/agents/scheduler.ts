@@ -6,7 +6,7 @@ import { renderWorkerBrief } from "../../agents/roles/worker.ts";
 import { log } from "../../common/env.ts";
 import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief.ts";
 import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
-import { type Contract, MAX_LANES, type ResearchContract } from "../../core/contract.ts";
+import type { Contract, ResearchContract } from "../../core/contract.ts";
 import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
@@ -71,6 +71,7 @@ import {
   focusOf,
   type Handout,
   keepsWorking,
+  lanesAtWork,
   limitsInForce,
   PLANNER,
   resultOf,
@@ -865,13 +866,7 @@ export class Scheduler {
   }
 
   private laneCount(run: string, contract: Contract): number {
-    // A contract stored before lanes.count stopped at MAX_LANES may ask for more: lanes beyond
-    // it have no user to run as.
-    const cap = Math.min(contract.lanes.count, MAX_LANES);
-    const d = this.directives(run)
-      .filter((x) => x.body.kind === "lane_count" && typeof x.body.value === "number")
-      .at(-1);
-    return Math.max(1, Math.min(cap, Number(d?.body.value ?? cap)));
+    return lanesAtWork(this.ledger, run, contract);
   }
 
   /**

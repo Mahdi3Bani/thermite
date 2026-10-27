@@ -1,5 +1,5 @@
 import type { StoredRule } from "../../core/commands.ts";
-import { type Contract, type LaneLimitValues, laneLimits } from "../../core/contract.ts";
+import { type Contract, type LaneLimitValues, laneLimits, MAX_LANES } from "../../core/contract.ts";
 import { ideaWords, ruleRefusal } from "../../core/queue-target.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import {
@@ -90,6 +90,21 @@ export function rulesInForce(ledger: Ledger, run: string): { id: number; body: S
           !(d.body.kind === "lane_count" && ownerLanes)),
     )
     .map((d) => ({ id: d.id, body: d.body }));
+}
+
+/**
+ * How many lanes work now (goal 162): the contract's count, at most MAX_LANES (a contract stored
+ * before the cap may ask for more, and lanes past it have no user to run as), or the lane count
+ * of the rules in force, the owner's first. The scheduler starts this many, and a message to
+ * everyone waits for the reads of this many.
+ */
+export function lanesAtWork(ledger: Ledger, run: string, contract: Contract): number {
+  const cap = Math.min(contract.lanes.count, MAX_LANES);
+  const ruled = rulesInForce(ledger, run)
+    .map((d) => d.body)
+    .filter((b) => b.kind === "lane_count" && Number.isFinite(Number(b.value)))
+    .at(-1);
+  return Math.max(1, Math.min(cap, Math.trunc(Number(ruled?.value ?? cap))));
 }
 
 /** An attempt's lifecycles in which the judge is done with it, for now or for good. */
