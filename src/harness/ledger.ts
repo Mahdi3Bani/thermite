@@ -8,10 +8,11 @@ import type { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import type { AppendEvent, EventOf } from "../core/events/bodies.ts";
-import { currentBody, currentEvent, type EventKind, eventKinds } from "../core/names.ts";
+import { currentEvent, type EventKind } from "../core/names.ts";
 import { PROMOTABLE_VERDICTS } from "../core/verdicts.ts";
 import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
+import { LedgerEvents } from "./ledger/events.ts";
 import { migrateLedger } from "./ledger/migrate.ts";
 import {
   type AttemptInput,
@@ -68,11 +69,14 @@ type Row = Record<string, SQLInputValue>;
 
 export class Ledger {
   readonly db: DatabaseSync;
+  /** The events, read by kind (the one module that queries the event table). */
+  readonly events: LedgerEvents;
   private readonly clock: () => Date;
   private depth = 0;
 
   private constructor(db: DatabaseSync, clock: () => Date) {
     this.db = db;
+    this.events = new LedgerEvents(db);
     this.clock = clock;
   }
 
@@ -158,13 +162,7 @@ export class Ledger {
 
   /** The body of the newest event of a kind about a subject, if any. */
   latestEventBody(kind: string, subject: string): Record<string, unknown> | undefined {
-    const kinds = eventKinds(kind);
-    const r = this.get<Row>(
-      `select body from event where kind in (${kinds.map(() => "?").join(", ")}) and subject = ? order by id desc limit 1`,
-      ...kinds,
-      subject,
-    );
-    return r ? currentBody(JSON.parse(String(r.body)) as Record<string, unknown>) : undefined;
+    return this.events.newest(kind as EventKind, { subject })?.body as Record<string, unknown>;
   }
 
   /** Events strictly after the cursor, in order. The next cursor is the last id returned. */
