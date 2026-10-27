@@ -22,7 +22,7 @@
       "lines": 1652
     },
     "src/control/store.ts": {
-      "lines": 3718
+      "lines": 3711
     },
     "src/control/ui/operator.ts": {
       "lines": 1485
@@ -97,7 +97,7 @@
       "lines": 1368
     },
     "src/supervisor/advisors.ts": {
-      "lines": 2747
+      "lines": 2746
     },
     "tests/control/dashboard.test.ts": {
       "lines": 2497

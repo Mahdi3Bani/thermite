@@ -1,3 +1,4 @@
+import { EFFORTS } from "../../core/agents.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import type { AdvisorSetupView, AdvisorsFileView } from "../rig-model.ts";
 import type { AgentRole } from "../store.ts";
@@ -172,7 +173,6 @@ const HARNESS_CHOICES: [string, string][] = [
   ["claude-code", "Claude Code"],
   ["codex", "Codex"],
 ];
-const EFFORT_CHOICES = ["low", "medium", "high", "xhigh", "max"];
 
 const AGENT_TIP =
   "Each agent, with its job under its name. The work runs in the rig's harness. The advisors run in the supervisor and never judge: code measures each change and decides.";
@@ -395,7 +395,7 @@ export function agentsTable(o: AgentsTableInput): string {
           : model;
     const effort = `<select name="${f.effort}" data-effort="${spec.id}" data-label="${label} effort" aria-label="${label} effort">${[
       ["", "model's default"],
-      ...EFFORT_CHOICES.map((e) => [e, e]),
+      ...EFFORTS.map((e) => [e, e]),
     ]
       .map(
         ([v, t]) =>

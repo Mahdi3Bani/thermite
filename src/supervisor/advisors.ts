@@ -15,6 +15,7 @@ import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "../agents/roles/teacher
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../agents/tools/names.ts";
 import { errorText } from "../common/errors.ts";
 import type { McpCallResult } from "../common/mcp-client.ts";
+import { EFFORTS } from "../core/agents.ts";
 import { ExperimentId, QueuePosition, StructuredDirective } from "../core/commands.ts";
 import {
   type AgentsContext,
@@ -193,7 +194,7 @@ const Runtime = z.discriminatedUnion("runtime", [
     runtime: z.literal("claude-code"),
     model: z.string().min(1),
     token: z.string().min(1),
-    effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+    effort: z.enum(EFFORTS).optional(),
     /**
      * The window Claude Code compacts within, in tokens, and its compaction point in percent
      * (goal 070): Claude Code's own settings. Unset: Claude Code's window, and COMPACT_AT_DEFAULT.
@@ -873,9 +874,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
         limit: Type.Optional(Type.Number({ description: "How many characters, at most 20,000" })),
       }),
       read_research_file: Type.Object({
-        path: Type.String({
-          description: "REPORT.md, report/<name>.md or lanes/<lane>/<path>",
-        }),
+        path: Type.String({ description: "REPORT.md, report/<name>.md or lanes/<lane>/<path>" }),
         offset: Type.Optional(Type.Number({ description: "The first line, 1 first" })),
         limit: Type.Optional(Type.Number({ description: "How many lines, at most 2000" })),
       }),

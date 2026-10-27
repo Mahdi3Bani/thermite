@@ -10,8 +10,9 @@ import {
   type AgentRole,
   type ControlStore,
   codexTakes,
+  EFFORTS,
   type Effort,
-  HARNESS_IDS,
+  HARNESSES,
   type Harness,
   type ModelProvider,
 } from "./store.ts";
@@ -185,13 +186,11 @@ const modelField = z
   .max(200)
   .describe("A model id, as the providers tool lists it");
 const harnessField = z
-  .enum(HARNESS_IDS as [Harness, ...Harness[]])
+  .enum(HARNESSES)
   .describe(
     "Where the agent runs: pi, opencode (OpenCode v2), claude-code or codex; left out, what its model needs",
   );
-const effortField = z
-  .enum(["low", "medium", "high", "xhigh", "max"])
-  .describe("How long the model thinks, as Effort on Edit rig");
+const effortField = z.enum(EFFORTS).describe("How long the model thinks, as Effort on Edit rig");
 const windowField = z
   .number()
   .int()

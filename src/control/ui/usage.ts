@@ -1,3 +1,4 @@
+import { PLAN_PROVIDER_TYPES } from "../../core/agents.ts";
 import {
   isFree,
   type ModelPrice,
@@ -602,7 +603,7 @@ export const PRICE_WORDS = {
 } as const;
 
 /** Provider types whose calls are on a plan: their models have no price. */
-const PLAN_TYPES = new Set(["claude", "chatgpt"]);
+const PLAN_TYPES = new Set<string>(PLAN_PROVIDER_TYPES);
 
 const MP_TIP = {
   model:

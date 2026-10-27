@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { z } from "zod";
+import { EFFORTS, HARNESSES, PROVIDER_TYPES } from "../../core/agents.ts";
 import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../../core/compaction.ts";
 import { codexReaches, type ModelConfig, reasoningFromEnv } from "./model.ts";
 
@@ -8,9 +9,9 @@ export const ControlRoute = z
   .strictObject({
     name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
     /** The provider's API (the first version's routes had none: OpenAI-compatible). */
-    type: z.enum(["openai", "anthropic", "opencode", "claude", "chatgpt"]).default("openai"),
+    type: z.enum(PROVIDER_TYPES).default("openai"),
     /** The harness the agents run in (the first versions' routes had none: Pi). */
-    harness: z.enum(["pi", "opencode", "claude-code", "codex"]).default("pi"),
+    harness: z.enum(HARNESSES).default("pi"),
     version: z.number().int().min(1),
     base_url: z
       .string()
@@ -27,7 +28,7 @@ export const ControlRoute = z
     max_tokens: z.number().int().min(0).max(10_000_000),
     reasoning: z.enum(["none", "low", "medium", "high"]).nullable(),
     /** Claude Code's effort level (a Claude subscription's route only). */
-    effort: z.enum(["low", "medium", "high", "xhigh", "max"]).nullable().optional(),
+    effort: z.enum(EFFORTS).nullable().optional(),
     key_hint: z.string().max(16),
     /** Changes whenever anything about the route does (control's digest of it). */
     revision: z.string().regex(/^[0-9a-f]{8,64}$/),

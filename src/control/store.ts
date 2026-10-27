@@ -2,6 +2,13 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { Refusal } from "../common/errors.ts";
+import {
+  EFFORTS,
+  type Effort,
+  HARNESSES,
+  type Harness,
+  type ProviderType,
+} from "../core/agents.ts";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
@@ -102,25 +109,11 @@ export interface IngestReport {
   summary: unknown;
 }
 
-/**
- * A model provider's kind; "claude" is a Claude subscription (its token from `claude setup-token`),
- * "chatgpt" a ChatGPT subscription (its login from Sign in with ChatGPT, renewed by control).
- */
-export type ProviderType = "openai" | "anthropic" | "opencode" | "claude" | "chatgpt";
-/**
- * Where a rig's agents run: Pi, OpenCode v2, Claude Code (the only one a Claude subscription
- * allows) or the Codex CLI (a ChatGPT sign-in or an OpenAI-compatible key: OpenAI's Responses API).
- */
-export type Harness = "pi" | "opencode" | "claude-code" | "codex";
-export const HARNESS_IDS: Harness[] = ["pi", "opencode", "claude-code", "codex"];
+export { EFFORTS, type Effort, HARNESSES, type Harness, type ProviderType };
 /** A harness from a form or a row; anything else is Pi, the default. */
-export const harnessOf = (v: unknown): Harness =>
-  HARNESS_IDS.find((h) => h === v) ?? ("pi" as const);
+export const harnessOf = (v: unknown): Harness => HARNESSES.find((h) => h === v) ?? "pi";
 /** Whether the Codex CLI can reach a provider of this type (OpenAI's Responses API only). */
 export const codexTakes = (type: ProviderType): boolean => type === "chatgpt" || type === "openai";
-/** How hard an agent's model thinks: Claude Code's levels (other providers take up to high). */
-export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
-export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
 /**
  * A rig's agents other than its workers, each of which may have its own model (goal 074): the
  * planner; the teachers' first model (`teachers`), their second (`second_teacher`: a second
@@ -1763,7 +1756,7 @@ export class ControlStore {
           effort: EFFORTS.includes(String(r.effort) as Effort)
             ? (String(r.effort) as Effort)
             : null,
-          harness: HARNESS_IDS.find((h) => h === r.harness) ?? null,
+          harness: HARNESSES.find((h) => h === r.harness) ?? null,
           ...(Number(r.context_cap) > 0 ? { contextCap: Number(r.context_cap) } : {}),
           ...(Number(r.compact_at) > 0 ? { compactAt: Number(r.compact_at) } : {}),
         },

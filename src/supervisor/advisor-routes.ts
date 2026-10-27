@@ -1,3 +1,4 @@
+import { EFFORTS } from "../core/agents.ts";
 import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../core/compaction.ts";
 import { buildHeaders } from "../core/version.ts";
 import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
@@ -40,8 +41,6 @@ export interface ControlAdvisors {
   auditor?: AdvisorRuntime | undefined;
   review_panel?: AdvisorRuntime[] | undefined;
 }
-
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 /** A compaction point a route carries, when it is a whole percent in range. */
 const pointOf = (route: AdvisorRoute) =>

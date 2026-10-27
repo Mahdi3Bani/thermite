@@ -7,6 +7,7 @@ import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { errorText } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
+import { KEY_PROVIDER_TYPES } from "../core/agents.ts";
 import { type BriefingSeed, COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import {
   type AgentsContext,
@@ -228,7 +229,7 @@ import {
   EFFORTS,
   type Effort,
   fingerprint,
-  HARNESS_IDS,
+  HARNESSES,
   type Harness,
   harnessOf,
   type JoinedRig,
@@ -3878,9 +3879,9 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     // Who is at work: for one worker, its agent, task, start and last activity.
     const agent = u.model
       ? u.model.source === "control"
-        ? `${HARNESSES[u.model.harness] ?? u.model.harness} · ${u.model.model} (from ${u.model.name})`
+        ? `${HARNESS_NAMES[u.model.harness] ?? u.model.harness} · ${u.model.model} (from ${u.model.name})`
         : u.model.source === "environment"
-          ? `${HARNESSES[u.model.harness] ?? u.model.harness} · ${u.model.model} (the rig's own settings)`
+          ? `${HARNESS_NAMES[u.model.harness] ?? u.model.harness} · ${u.model.model} (the rig's own settings)`
           : "no model: the agents wait"
       : "not reported by this rig's harness";
     const trial = source.startsWith("trial:")
@@ -4291,8 +4292,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
   const modelPrefix = (type: ProviderType) =>
     type === "claude" ? "claude-code:" : type === "chatgpt" ? "chatgpt:" : "";
   /** The types reached with an API key (a subscription is added differently). */
-  const KEY_TYPES: ProviderType[] = ["openai", "anthropic", "opencode"];
-  const HARNESSES = HARNESS_NAMES;
+  const KEY_TYPES = KEY_PROVIDER_TYPES;
   const TYPE_TIP =
     "What kind of provider it is. OpenAI-compatible covers most model servers (vLLM, LiteLLM, OpenRouter, Ollama). Anthropic is Anthropic's own API. OpenCode is OpenCode's own service, whose free models need the OpenCode harness.";
   const BASE_TIP =
@@ -4551,15 +4551,15 @@ ${
         const uses = !m
           ? "Its harness does not report its model (it needs a newer image)."
           : m.source === "control"
-            ? `Its agents run under ${HARNESSES[m.harness]} with ${m.model} from ${m.name}.${capped ? ` Its context window: ${capped}.` : ""}${compacts}`
+            ? `Its agents run under ${HARNESS_NAMES[m.harness]} with ${m.model} from ${m.name}.${capped ? ` Its context window: ${capped}.` : ""}${compacts}`
             : m.source === "environment"
-              ? `Its agents use the rig's own settings (${m.model}, under ${HARNESSES[m.harness]}).`
+              ? `Its agents use the rig's own settings (${m.model}, under ${HARNESS_NAMES[m.harness]}).`
               : "Its agents have no model: they wait.";
         const taking = takingModel(m, want);
         const moving = !taking
           ? ""
           : want
-            ? ` <span class="chip info">taking ${esc(want.model)} under ${esc(HARNESSES[want.harness])}</span>`
+            ? ` <span class="chip info">taking ${esc(want.model)} under ${esc(HARNESS_NAMES[want.harness])}</span>`
             : ` <span class="chip info">going back to its own settings</span>`;
         // The model check in its state now: sent, running, its result, or why it did not run.
         const chk =
@@ -4573,7 +4573,7 @@ ${
           : waits
             ? ` data-follow="${esc(checkFollowUrl(u.id, "model"))}" data-follow-state="${chk.state}"`
             : "";
-        return `<div class="ck rr-route"${follow}><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${bad ? "bad" : ""}">${modelCheckHtml(chk, now)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs" data-act><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="harness" class="harness" aria-label="harness for ${esc(u.id)}">${(Object.keys(HARNESSES) as Harness[]).map((h) => `<option value="${h}"${(want?.harness ?? "pi") === h ? " selected" : ""}>${HARNESSES[h]}</option>`).join("")}</select><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings", disabled: waits })}</span></div>`;
+        return `<div class="ck rr-route"${follow}><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${bad ? "bad" : ""}">${modelCheckHtml(chk, now)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs" data-act><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="harness" class="harness" aria-label="harness for ${esc(u.id)}">${HARNESSES.map((h) => `<option value="${h}"${(want?.harness ?? "pi") === h ? " selected" : ""}>${HARNESS_NAMES[h]}</option>`).join("")}</select><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings", disabled: waits })}</span></div>`;
       })
       .join("");
     return page(
@@ -8156,7 +8156,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     });
     const capped = capWords(listed, contextCap);
     return {
-      ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.${capped ? ` Its context window: ${capped}.` : ""}${compactAt ? ` Its conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
+      ok: `${rig} takes ${model} from "${provider}" under ${HARNESS_NAMES[harness]} within a minute, and checks it.${capped ? ` Its context window: ${capped}.` : ""}${compactAt ? ` Its conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
       contextWindow: cappedWindow(listed, contextCap),
       compactAt,
     };
@@ -8559,7 +8559,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       const cur = roles[role];
       if (!raw && !cur) continue;
       const roleEffort = effortOf(`effort_${role}`);
-      const picked = HARNESS_IDS.find((h) => h === String(f[`harness_${role}`] ?? ""));
+      const picked = HARNESSES.find((h) => h === String(f[`harness_${role}`] ?? ""));
       const ctx = contextOf(role, raw);
       if ("error" in ctx) return refuse(role, ctx.error);
       if (cur && raw === modelValue(cur.provider, cur.model)) {
