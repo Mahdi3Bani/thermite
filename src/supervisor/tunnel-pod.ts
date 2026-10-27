@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { log } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import { numberSetting } from "../common/settings.ts";
 import {
   controlCodeProof,
@@ -329,7 +330,7 @@ export class PodTunnel {
       res.end(out);
     } catch (err) {
       log("supervisor", "pull mode: a request from control failed", {
-        error: err instanceof Error ? err.message : String(err),
+        error: errorText(err),
       });
       this.nothing(res);
     }

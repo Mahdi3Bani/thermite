@@ -2,6 +2,7 @@ import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-age
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { WORKER_PI_NOTES, WORKER_PI_SYSTEM } from "../../agents/roles/worker.ts";
 import { CODE_RESEARCH_TOOLS } from "../../agents/tools/research.ts";
+import { errorText } from "../../common/errors.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
@@ -355,7 +356,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
             try {
               return await (deps.research as NonNullable<TrialDeps["research"]>)(op, args);
             } catch (err) {
-              return `refused: ${err instanceof Error ? err.message : String(err)}`;
+              return `refused: ${errorText(err)}`;
             }
           },
           { run: spec.run, lane: spec.lane },
@@ -453,9 +454,8 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     },
     streamFn: watchedStream(models, watch, meter),
     convertToLlm: withoutPastThinking,
-    // One tool call at a time: lane processes are killed by user when a tool finishes, so
-    // parallel calls would kill each other, and a submission must end the trial before anything
-    // else runs.
+    // One tool call at a time: lane processes are killed by user when a tool finishes, so parallel
+    // calls would kill each other, and a submission must end the trial before anything else runs.
     toolExecution: "sequential",
   });
   meter?.watch(agent);
@@ -578,7 +578,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   } catch (err) {
     if (result.stopped === "no_submission") {
       result.stopped = "error";
-      result.error = err instanceof Error ? err.message : String(err);
+      result.error = errorText(err);
     }
   } finally {
     if (wall) clearTimeout(wall);

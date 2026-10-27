@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { errorText } from "../common/errors.ts";
 import type { ClusterFacts, SlotQuota } from "./clusters/facts.ts";
 import { rigResources } from "./clusters/manifests.ts";
 import { MAX_RIG_GPUS } from "./machines/deploy.ts";
@@ -205,7 +206,7 @@ export function planClusterResize(
       try {
         rigResources({ cpus, memoryGi });
       } catch (err) {
-        return refuse(err instanceof Error ? err.message : String(err));
+        return refuse(errorText(err));
       }
       resources = { cpus, memoryGi };
       if (!sameResources(resources, s.resources)) {

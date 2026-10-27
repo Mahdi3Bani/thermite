@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { errorText } from "../common/errors.ts";
 import { CHATGPT_USAGE_URL, chatgptWindows, type PlanUsage } from "./plan-usage.ts";
 import type { SecretBox } from "./secrets.ts";
 import type { ControlStore, ModelProvider, ProviderModel } from "./store.ts";
@@ -153,7 +154,7 @@ export class ChatGPTLogins {
       });
       return this.loginOf(t, client_id, p.host_id);
     } catch (err) {
-      return { error: `The sign-in failed: ${err instanceof Error ? err.message : String(err)}` };
+      return { error: `The sign-in failed: ${errorText(err)}` };
     }
   }
 
@@ -233,7 +234,7 @@ export class ChatGPTLogins {
       this.store.setProviderKey(name, this.seal(next));
       return next.access;
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       if (err instanceof LoginEnded) {
         const error = `its ChatGPT sign-in ended (${why}): sign in again`;
         this.store.setProviderModels(name, { error });

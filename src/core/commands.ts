@@ -491,6 +491,76 @@ export const CommandPayloads = {
 export type CommandKind = keyof typeof CommandPayloads;
 export const COMMAND_KINDS = Object.keys(CommandPayloads) as CommandKind[];
 
+// ------------------------------------------------------------------ who may issue each kind
+
+/**
+ * Kinds an agent may issue through control's MCP. Wiping state, full resets, accepting a
+ * subjective goal and accepting a "not possible" ending stay with the owner (dashboard or REST):
+ * no model is the final gate.
+ */
+export const MCP_AGENT_KINDS = [
+  "assign_campaign",
+  "pause_run",
+  "resume_run",
+  "redirect",
+  "reset_workers",
+  "export_now",
+  "rig_check",
+] as const satisfies readonly CommandKind[];
+/**
+ * An operator (a token the owner gives an operating agent) may also message the run's agents and
+ * stop a trial (goal 136), on the owner's behalf; it never approves, accepts or wipes.
+ */
+export const MCP_OPERATOR_KINDS = [
+  ...MCP_AGENT_KINDS,
+  "message_agent",
+  "unkeep_message",
+  "stop_trial",
+  // The experiment queue and the rules for the plan (goal 064): the owner's and operators'.
+  "queue_add",
+  "queue_move",
+  "queue_edit",
+  "queue_drop",
+  "queue_accept",
+  "drop_directive",
+] as const satisfies readonly CommandKind[];
+/**
+ * The owner (admin token) may also approve or decline promotions over MCP, and close a run for
+ * good (goal 087); operators and agents never may.
+ */
+export const MCP_OWNER_KINDS = [
+  ...MCP_OPERATOR_KINDS,
+  "approve_promotion",
+  "decline_promotion",
+  "close_run",
+  // A research run's hypotheses (goal 117): which need the review panel's verdict.
+  "hypothesis_status",
+] as const satisfies readonly CommandKind[];
+
+/**
+ * Kinds the harness takes only from the owner: control records the issuer in the signed envelope,
+ * and the harness refuses these from anyone else.
+ */
+export const OWNER_ONLY_KINDS: ReadonlySet<string> = new Set<CommandKind>([
+  "approve_promotion",
+  "decline_promotion",
+  "accept_review",
+  "conclude",
+  "close_run",
+  "wipe_state",
+  "message_agent",
+  "unkeep_message",
+  "rig_settings",
+  "queue_add",
+  "queue_move",
+  "queue_edit",
+  "queue_drop",
+  "queue_accept",
+  "drop_directive",
+  "hypothesis_status",
+  "stop_trial",
+]);
+
 export const Envelope = z.object({
   v: z.literal(1),
   id: z.uuid(),

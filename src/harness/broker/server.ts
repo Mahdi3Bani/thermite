@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, chownSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { log } from "../../common/env.ts";
+import { errorText } from "../../common/errors.ts";
 import { cardsOf, fenceArgs, type GpuLayout, identityFor } from "./devices.ts";
 import { killScope, runSupervised, sweepRole } from "./process.ts";
 import { BrokerRequest, type BrokerResponse, type BrokerRequest as Req } from "./protocol.ts";
@@ -204,7 +205,7 @@ export function startBrokerServer(opts: BrokerServerOptions): Server {
             id = req.id;
             res = { id, ok: true, result: await handle(req, opts) };
           } catch (err) {
-            res = { id, ok: false, error: err instanceof Error ? err.message : String(err) };
+            res = { id, ok: false, error: errorText(err) };
             log("broker", "request refused", { error: res.error });
           }
           if (!sock.destroyed) sock.write(`${JSON.stringify(res)}\n`);

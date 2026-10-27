@@ -3,6 +3,7 @@ import { chownSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../../common/env.ts";
+import { errorText } from "../../common/errors.ts";
 import { deriveKeys, parseSnapshotKey } from "./seal.ts";
 import { backupLedger, TakeJob, takeSnapshot } from "./snapshot.ts";
 
@@ -114,7 +115,7 @@ async function main(): Promise<number> {
     log("broker", "could not take a snapshot of the rig's state: the last one stays", {
       dir: job.dir,
       reason: job.reason,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorText(err),
     });
     return 1;
   } finally {

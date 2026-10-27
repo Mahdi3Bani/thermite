@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { log } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import type { AgentsContext } from "../core/compaction.ts";
 import type { NoteInput } from "../core/journal.ts";
 import type { LiveKind } from "../core/live.ts";
@@ -202,11 +203,10 @@ interface RunRow {
 const fileSafe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80) || "advisor";
 
 /**
- * Where an advisor's conversation is kept before each compaction (goal 070): the supervisor's
- * home, beside its records of the advisors' rounds (advisors/), under compactions/<run>/. Never
- * the run's research folder, which the run's agents read: an advisor's conversation may hold an
- * outside knowledge base's results or a fetched page. Each compaction is a line in the run's
- * live view.
+ * Where an advisor's conversation is kept before each compaction (goal 070): the supervisor's home,
+ * beside its records of the advisors' rounds (advisors/), under compactions/<run>/. Never the run's
+ * research folder, which the run's agents read: an advisor's conversation may hold an outside
+ * knowledge base's results or a fetched page. Each compaction is a line in the run's live view.
  */
 export function advisorKeeper(
   home: string,
@@ -485,7 +485,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     try {
       await api("POST", `/v1/reviews/${review}/tries`, {
         try: Math.max(1, attempt),
-        error: (err instanceof Error ? err.message : String(err)).slice(0, 4000) || "no answer",
+        error: errorText(err).slice(0, 4000) || "no answer",
       });
     } catch {
       // An older harness: nothing more to keep than the Live line.
@@ -493,7 +493,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   };
   const fail = (what: string, err: unknown, run?: string) => {
     s.errors++;
-    s.last_error = `${what}: ${err instanceof Error ? err.message : String(err)}`.slice(0, 500);
+    s.last_error = `${what}: ${errorText(err)}`.slice(0, 500);
     log("supervisor", "advisor error", { error: s.last_error });
     say(run, "status", `${clip(s.last_error, 400)}`);
   };
@@ -891,7 +891,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       err: unknown,
     ): Promise<void> => {
       fail(`audit of ${pkg.attempt}`, err, pkg.run);
-      errors[key] = clip(err instanceof Error ? err.message : String(err), 500);
+      errors[key] = clip(errorText(err), 500);
       if ((next.tries[key] ?? 0) < MAX_TRIES) return;
       await toOwner(pkg, key);
     };
@@ -1141,7 +1141,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
                 runtime,
                 r: {
                   output: undefined,
-                  error: err instanceof Error ? err.message : String(err),
+                  error: errorText(err),
                   tokensIn: 0,
                   tokensOut: 0,
                   usd: 0,

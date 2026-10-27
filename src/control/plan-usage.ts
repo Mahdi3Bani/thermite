@@ -1,4 +1,5 @@
 import { redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import type { ControlStore, ModelProvider } from "./store.ts";
 import { ago, esc } from "./ui/components.ts";
 
@@ -180,7 +181,7 @@ export class PlanUsageReader {
           source: "openai",
           windows: [],
           at: new Date(this.now()).toISOString(),
-          error: `could not ask OpenAI: ${err instanceof Error ? err.message : String(err)}`,
+          error: `could not ask OpenAI: ${errorText(err)}`,
         }),
       );
       k = { at: this.now(), value };

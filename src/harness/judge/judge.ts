@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "../../common/env.ts";
+import { errorText } from "../../common/errors.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
 import { Audits, auditTrigger } from "../audits.ts";
@@ -259,7 +260,7 @@ export class Judge {
                 ? await this.validate(job)
                 : await this.calibrate(job);
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
+      const reason = errorText(err);
       log("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
       this.note(`${job.kind} ${subject}: failed (${clipReason(reason)})`, this.jobRun(job));
       this.infraFailure(job, reason);
@@ -914,7 +915,7 @@ export class Judge {
       log("judge", "held-out pass failed", {
         job: job.id,
         attempt: job.attempt,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorText(err),
       });
       throw new InfraError(HELD_OUT_INFRA);
     }
@@ -1827,8 +1828,7 @@ export class Judge {
     const setup = job.attempt ?? undefined;
     let commit: string;
     if (setup) {
-      // The run is no longer in setup: the change is judged as any change is, against the
-      // champion.
+      // The run is no longer in setup: the change is judged as any change is, against the champion.
       if (s.state !== "setup")
         return {
           result: { setup_over: true },

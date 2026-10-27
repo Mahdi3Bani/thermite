@@ -4,6 +4,7 @@ import { type Prompt, promptText } from "../../agents/prompt.ts";
 import { ownerMessageSections } from "../../agents/roles/shared.ts";
 import { renderWorkerBrief } from "../../agents/roles/worker.ts";
 import { log } from "../../common/env.ts";
+import { errorText } from "../../common/errors.ts";
 import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief.ts";
 import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
 import type { Contract, ResearchContract } from "../../core/contract.ts";
@@ -1259,9 +1260,8 @@ export class Scheduler {
               ),
         }
       : undefined;
-    // The run's past research, read only: Pi's planner searches it with its tool; through
-    // OpenCode, Claude Code or Codex, the planner reads the run's knowledge/ files with its own
-    // tools.
+    // The run's past research, read only: Pi's planner searches it with its tool; through OpenCode,
+    // Claude Code or Codex, the planner reads the run's knowledge/ files with its own tools.
     const knowledge = this.o.service.knowledge;
     const pastLine = this.pastResearch(run, ask ? "files" : "tool");
     const past: PlannerPast | undefined = pastLine
@@ -1991,7 +1991,7 @@ export class Scheduler {
         if (r.refused) refused.push(`${url} (${r.refused})`);
         else archived++;
       } catch (err) {
-        refused.push(`${url} (${err instanceof Error ? err.message : String(err)})`);
+        refused.push(`${url} (${errorText(err)})`);
       }
     }
     this.o.service.live.append({
@@ -2527,7 +2527,7 @@ export class Scheduler {
           abort.signal,
         );
       } catch (err) {
-        r = { ...r, error: err instanceof Error ? err.message : String(err) };
+        r = { ...r, error: errorText(err) };
       } finally {
         if (abort.signal.aborted) r = { ...r, stopped: "interrupted" };
         r = this.withProgress(id, r);
@@ -2662,7 +2662,7 @@ export class Scheduler {
           abort.signal,
         );
       } catch (err) {
-        r = { ...r, stopped: "error", error: err instanceof Error ? err.message : String(err) };
+        r = { ...r, stopped: "error", error: errorText(err) };
       } finally {
         if (abort.signal.aborted && r.stopped !== "submitted") r = { ...r, stopped: "interrupted" };
         r = this.withProgress(id, r);

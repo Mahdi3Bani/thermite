@@ -1,4 +1,5 @@
 import { log } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import type { ControlStore } from "./store.ts";
 
 /** Where control set a rig up: each keeps its rig's state in a table of its own. */
@@ -24,7 +25,7 @@ export function inBackground(
   return work.then(
     () => undefined,
     (err: unknown) => {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       log("control", "background work failed", { rig, placement, step, error: why });
       store.rigSetupEvent(rig, step, false, why);
       const now =

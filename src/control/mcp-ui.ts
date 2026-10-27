@@ -1,4 +1,5 @@
 import type { Context, Hono } from "hono";
+import { errorText } from "../common/errors.ts";
 import { redirectUriOf } from "./mcp-server-routes.ts";
 import {
   type McpAuth,
@@ -272,7 +273,7 @@ export function mountMcpUi(
     try {
       servers.put(inputOf(f, auth, name, String(f.url ?? "")), "owner:ui");
     } catch (err) {
-      return back(c, "error", err instanceof Error ? err.message : String(err));
+      return back(c, "error", errorText(err));
     }
     // An OAuth server: the sign-in opens from a link (a form may not go to another site).
     if (auth === "oauth")
@@ -310,7 +311,7 @@ export function mountMcpUi(
         "owner:ui",
       );
     } catch (err) {
-      return back(c, "error", err instanceof Error ? err.message : String(err), name);
+      return back(c, "error", errorText(err), name);
     }
     const now = servers.get(name);
     if (now?.auth === "oauth" && !now.signed_in)
@@ -342,7 +343,7 @@ export function mountMcpUi(
       );
       return c.redirect(url, 302);
     } catch (err) {
-      return back(c, "error", `${name}: ${err instanceof Error ? err.message : String(err)}`, name);
+      return back(c, "error", `${name}: ${errorText(err)}`, name);
     }
   });
 

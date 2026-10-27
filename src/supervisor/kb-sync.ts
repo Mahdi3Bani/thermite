@@ -1,3 +1,4 @@
+import { errorText } from "../common/errors.ts";
 import { knownKbKind, readKbSync } from "../core/kb.ts";
 import { buildHeaders } from "../core/version.ts";
 
@@ -151,7 +152,7 @@ export async function syncKnowledgeOnce(
           throw new Error(`control said more items wait after ${after}, but gave none`);
       }
     } catch (err) {
-      out.errors.push(`${run.id}: ${err instanceof Error ? err.message : String(err)}`);
+      out.errors.push(`${run.id}: ${errorText(err)}`);
     }
   }
   if (Object.keys(skipped).length) out.state.skipped = skipped;

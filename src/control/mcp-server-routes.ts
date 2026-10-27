@@ -1,6 +1,7 @@
 import type { Hono, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { errorText } from "../common/errors.ts";
 import { MCP_AUTHS, type McpServer, type McpServers, namedBy } from "./mcp-servers.ts";
 import type { ControlStore } from "./store.ts";
 
@@ -64,7 +65,7 @@ export function mountMcpServerRoutes(
     try {
       servers.put({ ...b, auth: b.auth as McpServer["auth"] }, "owner:api");
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      return c.json({ error: errorText(err) }, 400);
     }
     const name = b.name.trim();
     if (b.auth === "oauth") {
@@ -76,10 +77,7 @@ export function mountMcpServerRoutes(
         );
         return c.json({ server: one(name), sign_in_url: url }, 201);
       } catch (err) {
-        return c.json(
-          { server: one(name), error: err instanceof Error ? err.message : String(err) },
-          201,
-        );
+        return c.json({ server: one(name), error: errorText(err) }, 201);
       }
     }
     const why = await servers.check(name);
@@ -105,7 +103,7 @@ export function mountMcpServerRoutes(
         "owner:api",
       );
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      return c.json({ error: errorText(err) }, 400);
     }
     const now = servers.get(name);
     if (now?.auth === "oauth" && !now.signed_in)
@@ -129,7 +127,7 @@ export function mountMcpServerRoutes(
         await servers.startSignIn(name, redirectUriOf(o.publicUrl, c.req.url), "owner:api"),
       );
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+      return c.json({ error: errorText(err) }, 409);
     }
   });
 

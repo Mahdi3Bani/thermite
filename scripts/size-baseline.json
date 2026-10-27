@@ -7,19 +7,19 @@
       "lines": 957
     },
     "src/cli/thermite.ts": {
-      "lines": 1328
+      "lines": 1327
     },
     "src/control/api.ts": {
       "lines": 1697
     },
     "src/control/dashboard.ts": {
-      "lines": 8802
+      "lines": 8790
     },
     "src/control/mcp-servers.ts": {
       "lines": 996
     },
     "src/control/mcp.ts": {
-      "lines": 1690
+      "lines": 1652
     },
     "src/control/store.ts": {
       "lines": 3718
@@ -46,7 +46,7 @@
       "lines": 997
     },
     "src/harness/agents/planner.ts": {
-      "lines": 1279
+      "lines": 1277
     },
     "src/harness/agents/scheduler.ts": {
       "lines": 3034
@@ -58,7 +58,7 @@
       "lines": 1016
     },
     "src/harness/broker.ts": {
-      "lines": 1207
+      "lines": 1206
     },
     "src/harness/broker/snapshot.ts": {
       "lines": 1250
@@ -91,7 +91,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2959
+      "lines": 2938
     },
     "src/supervisor/advise.ts": {
       "lines": 1368

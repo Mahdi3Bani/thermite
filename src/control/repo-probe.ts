@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { errorText } from "../common/errors.ts";
 import { type GitAuth, withGitAuth } from "../common/git-auth.ts";
 
 const run = promisify(execFile);
@@ -72,7 +73,7 @@ async function probeWith(
     try {
       out = (await git(["ls-remote", "--", url, ref, `${ref}^{}`])).stdout;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorText(err);
       throw new Error(
         /could not read Username|Authentication|403|401/.test(msg)
           ? "control cannot read it without a key: is the repository private?"
@@ -148,7 +149,7 @@ export async function readKitManifest(
           dir,
         );
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorText(err);
         throw new Error(
           /could not read Username|Authentication|403|401/.test(msg)
             ? "control cannot read the kit's repository without a key: is it private?"

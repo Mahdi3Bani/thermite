@@ -3,6 +3,7 @@ import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { PLAN_LIMITS, PLANNER_ASK_SYSTEM, PLANNER_PI_SYSTEM } from "../../agents/roles/planner.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../agents/tools/names.ts";
+import { errorText } from "../../common/errors.ts";
 import type { BriefData } from "../../core/brief.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import { DIRECTIVE_KINDS, QueuePosition, type StoredRule } from "../../core/commands.ts";
@@ -967,7 +968,7 @@ export const causeWords: Record<PlanCause, string> = {
 
 /** The cause of a failed call another harness threw (OpenCode, Claude Code, Codex): its words. */
 function causeOf(err: unknown): PlannerCallError {
-  const message = err instanceof Error ? err.message : String(err);
+  const message = errorText(err);
   if (/no answer in \d+ s|timed? ?out/i.test(message))
     return new PlannerCallError("timeout", message);
   if (/aborted|cancel/i.test(message)) return new PlannerCallError("cancelled", message);
@@ -996,10 +997,7 @@ const PLAN_PARAMETERS = Type.Object({
         Type.String({ maxLength: PLAN_LIMITS.why, description: "Why this lane gets it" }),
       ),
       title: Type.Optional(
-        Type.String({
-          maxLength: PLAN_LIMITS.title,
-          description: "A new experiment, inline",
-        }),
+        Type.String({ maxLength: PLAN_LIMITS.title, description: "A new experiment, inline" }),
       ),
       focus: Type.Optional(
         Type.String({

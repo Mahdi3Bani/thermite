@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { log, redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import {
   createPod,
   getPod,
@@ -457,9 +458,7 @@ export class RunpodTests {
               s.billed_since = now;
               s.phase = "restarting";
             } catch (err) {
-              s.notes.push(
-                `RunPod would not start the pod again: ${err instanceof Error ? err.message : String(err)}.`,
-              );
+              s.notes.push(`RunPod would not start the pod again: ${errorText(err)}.`);
               s.phase = "ending";
             }
           }
@@ -483,7 +482,7 @@ export class RunpodTests {
       }
     } catch (err) {
       // Any failure ends the test, and the pod with it.
-      const why = redact(err instanceof Error ? err.message : String(err));
+      const why = redact(errorText(err));
       log("control", "runpod test step failed", { id, phase: s.phase, error: why });
       if (s.phase === "ending") {
         s.error = `control could not remove pod ${s.pod_id}: ${why}. It tries again.`;

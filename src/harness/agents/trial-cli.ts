@@ -6,6 +6,7 @@ import {
   researchOutput,
   researchTool,
 } from "../../agents/tools/research.ts";
+import { errorText } from "../../common/errors.ts";
 import { apiCall } from "./api-call.ts";
 
 /**
@@ -124,7 +125,7 @@ export function researchRequest(
     try {
       fields = JSON.parse(stdin ?? "");
     } catch (err) {
-      return `error: "-" reads a JSON object from stdin, and that was not one (${err instanceof Error ? err.message : String(err)}); use:\n${tool.usage}`;
+      return `error: "-" reads a JSON object from stdin, and that was not one (${errorText(err)}); use:\n${tool.usage}`;
     }
     if (!fields || typeof fields !== "object" || Array.isArray(fields))
       return `error: "-" reads a JSON object from stdin; use:\n${tool.usage}`;
@@ -261,7 +262,7 @@ async function main(): Promise<void> {
     process.stdout.write(`${out}\n`);
     if (out.startsWith("error:") || out.startsWith("usage:")) process.exitCode = 2;
   } catch (err) {
-    process.stdout.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stdout.write(`error: ${errorText(err)}\n`);
     process.exitCode = 1;
   }
 }

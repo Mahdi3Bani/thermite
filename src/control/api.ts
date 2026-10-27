@@ -3,7 +3,7 @@ import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { log, redact } from "../common/env.ts";
-import { answerOf, jsonBody } from "../common/errors.ts";
+import { answerOf, errorText, jsonBody } from "../common/errors.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
@@ -532,7 +532,7 @@ export function createControlApi(
     try {
       store.kb();
     } catch (err) {
-      const error = redact(err instanceof Error ? err.message : String(err));
+      const error = redact(errorText(err));
       log("control", "knowledge base catch-up failed", { rig, error });
       store.audit("control", "kb_failed", { rig, error });
     }
@@ -974,7 +974,7 @@ export function createControlApi(
     try {
       return c.json({ restarted: await driver.restart(rig, body.components, "owner:api") });
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+      return c.json({ error: errorText(err) }, 409);
     }
   });
 
@@ -1217,7 +1217,7 @@ export function createControlApi(
     } catch (err) {
       // A refused command (a bad payload, a message nothing would read) is the client's to fix,
       // and in the audit log as the dashboard's and MCP's refusals are.
-      const error = err instanceof Error ? err.message : String(err);
+      const error = errorText(err);
       store.audit("owner:api", "refused", {
         path: "/v1/commands",
         kind: body.kind,
@@ -1529,7 +1529,7 @@ export function createControlApi(
     try {
       return c.json(await runpodTests.start(c.req.param("name"), body, "owner:api"), 201);
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+      return c.json({ error: errorText(err) }, 409);
     }
   });
   // Rigs on a GPU cloud: launched by the owner alone (this token; MCP's owner tools; never an
@@ -1558,7 +1558,7 @@ export function createControlApi(
     try {
       return c.json(await runpodRigs.launch(c.req.param("name"), body, "owner:api"), 201);
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+      return c.json({ error: errorText(err) }, 409);
     }
   });
   app.get("/v1/rigs/:rig/runpod", admin, (c) => {
@@ -1578,13 +1578,13 @@ export function createControlApi(
     try {
       return c.json(await runpodRigs.logs(rig, q));
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 502);
+      return c.json({ error: errorText(err) }, 502);
     }
   });
   // Stop, start and terminate a rig's pod (the owner's alone, as the launch). Restart and the full
   // reset are the routes every rig has: /v1/rigs/<rig>/restart and /v1/rigs/<rig>/reset.
   const lifecycleRefused = (err: unknown) => {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errorText(err);
     return { error, status: /^no rig /.test(error) ? (404 as const) : (409 as const) };
   };
   app.post("/v1/rigs/:rig/runpod/stop", admin, async (c) => {
@@ -1620,7 +1620,7 @@ export function createControlApi(
     try {
       return c.json(runpodRigs.limits(c.req.param("rig"), body, "owner:api"));
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
+      const error = errorText(err);
       return c.json({ error }, /^no rig /.test(error) ? 404 : 400);
     }
   });
@@ -1633,7 +1633,7 @@ export function createControlApi(
     try {
       return c.json(await runpodTests.end(c.req.param("id"), "owner:api"));
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 404);
+      return c.json({ error: errorText(err) }, 404);
     }
   });
 

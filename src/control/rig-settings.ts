@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { errorText } from "../common/errors.ts";
 import { CommandPayloads } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
 import { issueCommand } from "./issue.ts";
@@ -188,7 +189,7 @@ export function setRigSettings(
     }));
   } catch (err) {
     // A rig control refuses for its version, for example: nothing is sent.
-    return refuse(err instanceof Error ? err.message : String(err), 409);
+    return refuse(errorText(err), 409);
   }
   const restarts = change.judge_gpus !== undefined;
   return {

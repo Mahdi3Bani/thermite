@@ -1,4 +1,5 @@
 import { log, redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import { harnessConfirmed, issueCommand } from "./issue.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import { getPod, podAction, type RunpodPod, RunpodRefused, terminatePod } from "./runpod.ts";
@@ -508,7 +509,7 @@ export class RunpodLifecycle {
       const busy = noFreeGpu(err);
       const why = busy
         ? `RunPod has no free GPU for pod ${r.pod} now, so the pod stays stopped (${busy}). Its volume stays. Try again later, or terminate it and launch a new rig`
-        : `RunPod would not start pod ${r.pod}: ${redact(err instanceof Error ? err.message : String(err))}. It stays stopped, with its volume`;
+        : `RunPod would not start pod ${r.pod}: ${redact(errorText(err))}. It stays stopped, with its volume`;
       s.op = null;
       if (op.kind === "restart") {
         s.stopped_at = this.iso();
@@ -535,7 +536,7 @@ export class RunpodLifecycle {
     const pod = await getPod(key, r.pod, this.fetchImpl).catch((e) => {
       log("control", "could not read a pod after its start", {
         pod: r.pod,
-        error: redact(e instanceof Error ? e.message : String(e)),
+        error: redact(errorText(e)),
       });
       return undefined;
     });
@@ -558,7 +559,7 @@ export class RunpodLifecycle {
         this.issue(r.rig, "resume_run", { run }, op.by, 24 * 60);
         resumed.push(run);
       } catch (err) {
-        failed.push(`${run} (${err instanceof Error ? err.message : String(err)})`);
+        failed.push(`${run} (${errorText(err)})`);
       }
     }
     s.paused_runs = [];

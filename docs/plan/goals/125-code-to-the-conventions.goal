@@ -154,6 +154,7 @@ Known at the start, 2026-10-24:
 - 2026-10-27 05:09 UTC: Started by goal 172. The accepted rules of shape are added to CONVENTIONS.md, with the owner's answers to the guide's questions 1, 4, 10, 18, 19 and 22 and goal 170's rule of address, for the owner's review (gate A).
 - 2026-10-27 05:17 UTC: The owner approved the rules of shape (gate A). The size check is built (`npm run check:sizes`, `scripts/lib/sizes.ts`, tests in `tests/scripts/sizes.test.ts`), in `npm run check` and CI, with its first baseline: 597 files in scope, 124 over 500 lines, 49 over 800 (`scripts/size-baseline.json`).
 - 2026-10-27 05:23 UTC: The import-rule check (the guide's question 3) is in `npm run check` and CI, with 62 exceptions listed by file in `scripts/import-exceptions.json`; each is dropped when its code moves.
+- 2026-10-27 08:39 UTC: Step 3, the shared homes, starts. T3: `errorText` in `common/errors.ts` replaces the 145 copies of the error-to-text idiom in 52 files; the files over 800 lines that took its import gave a line back elsewhere (a comment re-wrapped, a wrapper `snapshot.ts` no longer needs, an object on one line). T1: the issuer tables move beside `CommandPayloads` in `core/commands.ts`: the kinds an agent, an operator and the owner may issue over MCP (`MCP_AGENT_KINDS`, `MCP_OPERATOR_KINDS`, `MCP_OWNER_KINDS`), from `control/mcp.ts`, and the kinds the harness takes only from the owner (`OWNER_ONLY_KINDS`), from `harness/service.ts`. The image package upgrade is written in each Containerfile and waits for its build.
 
 ---
 

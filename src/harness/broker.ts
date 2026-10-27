@@ -15,6 +15,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import { podTunnelDirs } from "../core/tunnel.ts";
 import {
   effectiveGpuLists,
@@ -152,7 +153,7 @@ function tryDo(what: string, fn: () => void): void {
   try {
     fn();
   } catch (err) {
-    log("broker", `could not ${what}`, { error: err instanceof Error ? err.message : String(err) });
+    log("broker", `could not ${what}`, { error: errorText(err) });
   }
 }
 
@@ -346,9 +347,7 @@ function chooseRunCpus(
     log("broker", "timed runs pinned to their judge card's local CPUs", { buses, pinned });
     return pinned;
   } catch (err) {
-    log("broker", "timed runs are not pinned", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    log("broker", "timed runs are not pinned", { error: errorText(err) });
     return undefined;
   }
 }
@@ -454,7 +453,7 @@ function prepareDevices(lists: GpuLists): GpuLayout | undefined {
     });
   } catch (err) {
     layout = undefined;
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errorText(err);
     record = { ok: false, mode: "dedicated", error };
     log("broker", "could not set up the dedicated development card", { error });
   }
@@ -845,7 +844,7 @@ function prepareSnapshots(): SnapshotRecord | undefined {
   try {
     shown = prepareSnapshotDir(snapDir);
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errorText(err);
     log("broker", "could not make the snapshot folder: no snapshot is taken or restored", {
       dir: snapDir,
       error,
@@ -907,7 +906,7 @@ function prepareSnapshots(): SnapshotRecord | undefined {
   } catch (err) {
     log("broker", "could not remove an unsealed snapshot an older image left", {
       dir: snapDir,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorText(err),
     });
   }
   if ("why" in snapshotKey) {
@@ -968,7 +967,7 @@ function prepareSnapshots(): SnapshotRecord | undefined {
     }
     log("broker", "fatal: could not restore the rig's state from its snapshot", {
       dir: snapDir,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorText(err),
     });
     fatalExit();
   }
@@ -1123,7 +1122,7 @@ if (isRoot) {
     pod = withSupervisor ? prepareOneContainer() : undefined;
   } catch (err) {
     log("broker", "fatal: could not prepare the rig's folders", {
-      error: err instanceof Error ? err.message : String(err),
+      error: errorText(err),
     });
     fatalExit();
   }
@@ -1188,7 +1187,7 @@ if (isRoot) {
         },
         (err) => {
           log("broker", "fatal: could not give the harness control's key from enrollment", {
-            error: err instanceof Error ? err.message : String(err),
+            error: errorText(err),
           });
           fatalExit();
         },

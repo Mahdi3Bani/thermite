@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { z } from "zod";
 import { log } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import type { McpConnect } from "../common/mcp-client.ts";
 import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
@@ -15,6 +16,7 @@ import {
   ExperimentText,
   type ImportSpec,
   type KeyPairPem,
+  OWNER_ONLY_KINDS,
   QueuePosition,
   reportBody,
   StructuredDirective,
@@ -123,27 +125,6 @@ const CLOSED_RUN_REFUSALS = {
   accept_review: "its goals are not checked again",
   conclude: "it can't end as not possible or go on",
 } as const;
-
-/** Command kinds only the owner may issue (control records the issuer in the signed envelope). */
-const OWNER_ONLY = new Set([
-  "approve_promotion",
-  "decline_promotion",
-  "accept_review",
-  "conclude",
-  "close_run",
-  "wipe_state",
-  "message_agent",
-  "unkeep_message",
-  "rig_settings",
-  "queue_add",
-  "queue_move",
-  "queue_edit",
-  "queue_drop",
-  "queue_accept",
-  "drop_directive",
-  "hypothesis_status",
-  "stop_trial",
-]);
 
 /** An advisor's additions and moves for a run's queue (the supervisor's /v1/queue). */
 export const AdvisorQueueRequest = z.strictObject({
@@ -966,7 +947,7 @@ export class HarnessService {
       result = await this.execute(envelope, payload);
     } catch (err) {
       accepted = false;
-      result = { error: err instanceof Error ? err.message : String(err) };
+      result = { error: errorText(err) };
     } finally {
       this.inFlight.delete(envelope.id);
     }
@@ -987,7 +968,7 @@ export class HarnessService {
     // The owner's gates: control signs who issued a command, and only the owner (not an agent
     // with an API or MCP token) approves promotions, accepts reviews and endings, and wipes.
     if (
-      OWNER_ONLY.has(envelope.kind) &&
+      OWNER_ONLY_KINDS.has(envelope.kind) &&
       envelope.issued_by !== "owner" &&
       !envelope.issued_by.startsWith("owner:")
     ) {
@@ -1735,9 +1716,7 @@ export class HarnessService {
     };
     this.checkRun = check
       .run({ force })
-      .then(finish, (err: unknown) =>
-        finish({ ok: false, summary: err instanceof Error ? err.message : String(err) }),
-      )
+      .then(finish, (err: unknown) => finish({ ok: false, summary: errorText(err) }))
       .finally(() => {
         this.checking = undefined;
         // A model route that arrived during another check is checked now.
@@ -2209,7 +2188,7 @@ export class HarnessService {
     } catch (err) {
       this.ledger.appendEvent("judge", "champion_ref_failed", run, {
         seq: champ.seq,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorText(err),
       });
     }
     await portReplaced(this, run);

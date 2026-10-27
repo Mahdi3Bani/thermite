@@ -3,7 +3,13 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Hono } from "hono";
 import { z } from "zod";
 import { redact } from "../common/env.ts";
-import type { CommandKind } from "../core/commands.ts";
+import { errorText } from "../common/errors.ts";
+import {
+  type CommandKind,
+  MCP_AGENT_KINDS,
+  MCP_OPERATOR_KINDS,
+  MCP_OWNER_KINDS,
+} from "../core/commands.ts";
 import {
   COMPACT_AT_DEFAULT,
   COMPACT_AT_MAX,
@@ -111,50 +117,6 @@ import { campaignModes, leaderboard, rigView } from "./views.ts";
  * The same views and the same signed-command path as the dashboard and the REST API.
  */
 
-/**
- * Commands agents may issue through MCP. Wiping state, full resets, accepting a subjective goal
- * and accepting a "not possible" ending stay with the owner (dashboard or REST): no model is the
- * final gate.
- */
-const AGENT_COMMANDS = [
-  "assign_campaign",
-  "pause_run",
-  "resume_run",
-  "redirect",
-  "reset_workers",
-  "export_now",
-  "rig_check",
-] as const satisfies readonly CommandKind[];
-/**
- * An operator (a token the owner gives an operating agent) may also message the run's agents and
- * stop a trial (goal 136), on the owner's behalf; it never approves, accepts or wipes.
- */
-const OPERATOR_COMMANDS = [
-  ...AGENT_COMMANDS,
-  "message_agent",
-  "unkeep_message",
-  "stop_trial",
-  // The experiment queue and the rules for the plan (goal 064): the owner's and operators'.
-  "queue_add",
-  "queue_move",
-  "queue_edit",
-  "queue_drop",
-  "queue_accept",
-  "drop_directive",
-] as const;
-/**
- * The owner (admin token) may also approve or decline promotions over MCP, and close a run for
- * good (goal 087); operators and agents never may.
- */
-const OWNER_COMMANDS = [
-  ...OPERATOR_COMMANDS,
-  "approve_promotion",
-  "decline_promotion",
-  "close_run",
-  // A research run's hypotheses (goal 117): which need the review panel's verdict.
-  "hypothesis_status",
-] as const;
-
 /** What get_run gives of a research run (goals 112, 116 and 117), for both of its descriptions. */
 const RESEARCH_DETAIL =
   "for a research run its newest digest (research), its answer cards (cards: each question's newest card the harness kept, by index from 0, with version, certainty, answer, claims cited and gaps of kind evidence or measurement; card_refusals: the newest refused card of a question since its card, with the problems), its hypotheses (each with its question, an index from 0 or null for the whole run; its status: author, pool, promoted, merged with merged_into, or retired; the verified claims supporting it; and status_change: the newest change of its status by the owner or the plan, with why), the review panel's decisions (decisions: each item's decision in each review, oldest first, with its certainty and each dissenting reviewer; standing: each item's newest decision, with stands false when the question's card has a newer version than the one decided on, newer_card), its reviews (each with requested_at, posted_at, what it saw when asked, the owner's decision and note, reviewers: each reviewer's answer on each item with its verdict, certainty, reasons, the claims it cites and the problems code found; decided: the review panel's decision on each item in that review; counts; tries when the rig says), and the progress rule's state at the newest digest (progress: the open questions, those of them that are saturated, the last improvement, since_ms without one and needed_ms, a quarter of the running time)";
@@ -199,7 +161,7 @@ const json = (value: unknown) => ({
 function buildServer(store: ControlStore, opts: McpOptions, actor: string, role: Role): McpServer {
   const canCommand = role !== "reader";
   const kinds =
-    role === "owner" ? OWNER_COMMANDS : role === "operator" ? OPERATOR_COMMANDS : AGENT_COMMANDS;
+    role === "owner" ? MCP_OWNER_KINDS : role === "operator" ? MCP_OPERATOR_KINDS : MCP_AGENT_KINDS;
   const server = new McpServer({
     name: "thermite-control",
     version: (opts.control ?? buildInfo()).version,
@@ -214,7 +176,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       try {
         return json(await fn(args));
       } catch (err) {
-        const error = err instanceof Error ? err.message : String(err);
+        const error = errorText(err);
         // A refusal is in the audit log too, as the dashboard's are.
         store.audit(actor, "refused", { tool: `mcp:${tool}`, why: redact(error) });
         return { ...json({ error }), isError: true };

@@ -7,6 +7,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../agents/tools/names.ts";
+import { errorText } from "../common/errors.ts";
 import { SEARCH_MAX } from "../harness/knowledge.ts";
 import { type AdvisorCode, CODE_TOOL_NAMES, registerCodeTools } from "./code-tools.ts";
 import { type AdvisorPaper, PAPER_TOOL_NAMES, registerPaperTools } from "./paper-tools.ts";
@@ -125,7 +126,7 @@ export async function serveAdvisorTools(o: {
               content: [
                 {
                   type: "text" as const,
-                  text: `the search failed: ${err instanceof Error ? err.message : String(err)}`,
+                  text: `the search failed: ${errorText(err)}`,
                 },
               ],
               isError: true,

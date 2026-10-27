@@ -13,6 +13,7 @@ import { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "../agents/roles/revie
 import { SYNTHESIZER_SYSTEM } from "../agents/roles/synthesizer.ts";
 import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "../agents/roles/teacher.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../agents/tools/names.ts";
+import { errorText } from "../common/errors.ts";
 import type { McpCallResult } from "../common/mcp-client.ts";
 import { ExperimentId, QueuePosition, StructuredDirective } from "../core/commands.ts";
 import {
@@ -487,7 +488,7 @@ function collectCompactions(o: {
       else if (!o.keeper) error = "this advisor's call has no place to keep it";
       else kept = o.keeper.keep(o.advisor, o.call, n, got.markdown);
     } catch (err) {
-      error = `the conversation was not kept: ${err instanceof Error ? err.message : String(err)}`;
+      error = `the conversation was not kept: ${errorText(err)}`;
     }
     const c: AdvisorCompaction = {
       advisor: o.advisor,
@@ -507,9 +508,8 @@ function collectCompactions(o: {
 }
 
 /**
- * An advisor's window in tokens, where Thermite knows it: an API route's, or the one control or
- * the advisors file gives Claude Code, OpenCode or Codex; 0 when unknown, as for a command-line
- * agent.
+ * An advisor's window in tokens, where Thermite knows it: an API route's, or the one control or the
+ * advisors file gives Claude Code, OpenCode or Codex; 0 when unknown, as for a command-line agent.
  */
 export function advisorWindow(rt: AdvisorRuntime): number {
   return rt.runtime === "cli" ? 0 : (rt.context_window ?? 0);
@@ -784,7 +784,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
         try {
           return text(await run(params as Record<string, unknown>));
         } catch (err) {
-          return text(`failed: ${err instanceof Error ? err.message : String(err)}`);
+          return text(`failed: ${errorText(err)}`);
         }
       },
     } as AgentTool);
@@ -1060,7 +1060,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   try {
     await agent.prompt(input.prompt);
   } catch (err) {
-    result.error ??= err instanceof Error ? err.message : String(err);
+    result.error ??= errorText(err);
   } finally {
     if (deadline) clearTimeout(deadline);
   }
@@ -1254,7 +1254,7 @@ function runCli<S extends z.ZodType>(
     rmSync(home, { recursive: true, force: true });
     return Promise.resolve({
       output: undefined,
-      error: `could not set ${rt.argv[0]} up: ${err instanceof Error ? err.message : String(err)}`,
+      error: `could not set ${rt.argv[0]} up: ${errorText(err)}`,
       tokensIn: 0,
       tokensOut: 0,
       usd: 0,

@@ -1,5 +1,6 @@
 import type { Hono, MiddlewareHandler } from "hono";
 import { z } from "zod";
+import { errorText } from "../../common/errors.ts";
 import { RUN_DETAIL_INPUT, runDetail } from "../run-lists.ts";
 import type { RunView } from "../views.ts";
 
@@ -46,7 +47,7 @@ export function runRoutes(app: Hono, admin: MiddlewareHandler, deps: RunRoutesDe
     try {
       return c.json(runDetail(found.run, q.data));
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      return c.json({ error: errorText(err) }, 400);
     }
   });
 

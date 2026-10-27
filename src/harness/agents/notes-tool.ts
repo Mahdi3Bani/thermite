@@ -1,4 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
+import { errorText } from "../../common/errors.ts";
 import { ABOUT_TYPES, NOTE_KINDS, NOTE_MAX } from "../../core/journal.ts";
 
 /**
@@ -94,6 +95,6 @@ export async function writeNote(
     const out = await note({ kind, text: body, ...(about ? { about } : {}) });
     return text(`noted (#${out.note}). Your trial goes on.`);
   } catch (err) {
-    return text(`the note was not recorded: ${err instanceof Error ? err.message : String(err)}`);
+    return text(`the note was not recorded: ${errorText(err)}`);
   }
 }

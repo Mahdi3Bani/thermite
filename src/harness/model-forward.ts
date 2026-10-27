@@ -1,5 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { errorText } from "../common/errors.ts";
 import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./agents/model.ts";
 import { DataSeen, ModelStreamSilent, modelStallMs, stallWords } from "./agents/model-stall.ts";
 import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
@@ -87,10 +88,7 @@ export async function forwardToProvider(
     try {
       body = chatgptRequest(body);
     } catch (err) {
-      return Response.json(
-        { error: err instanceof Error ? err.message : String(err) },
-        { status: 400 },
-      );
+      return Response.json({ error: errorText(err) }, { status: 400 });
     }
   }
   if (body) headers["content-length"] = String(body.length);

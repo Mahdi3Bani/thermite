@@ -1,6 +1,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { MODEL_CHECK_PI_SYSTEM, modelCheckPiPrompt } from "../../agents/roles/model-check.ts";
+import { errorText } from "../../common/errors.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 
 /** What a rig check found: whether it passed, in a sentence, and the details behind it. */
@@ -61,7 +62,7 @@ export async function checkModel(cfg: ModelConfig, timeoutMs = 120_000): Promise
   try {
     await agent.prompt(modelCheckPiPrompt(word));
   } catch (err) {
-    thrown = err instanceof Error ? err.message : String(err);
+    thrown = errorText(err);
   } finally {
     clearTimeout(timer);
   }

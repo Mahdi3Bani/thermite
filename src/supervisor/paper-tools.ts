@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { errorText } from "../common/errors.ts";
 import { PAPER_MAX } from "../harness/research/paper.ts";
 import { toolText } from "./code-tools.ts";
 
@@ -76,7 +77,7 @@ export function registerPaperTools(server: McpServer, paper: AdvisorPaper): void
             content: [
               {
                 type: "text" as const,
-                text: `failed: ${err instanceof Error ? err.message : String(err)}`,
+                text: `failed: ${errorText(err)}`,
               },
             ],
             isError: true,

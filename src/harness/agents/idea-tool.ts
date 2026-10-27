@@ -1,4 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
+import { errorText } from "../../common/errors.ts";
 
 /**
  * The idea tool, the same for code and research workers in Pi: the worker proposes an experiment
@@ -57,7 +58,7 @@ export async function proposeIdea(
       `proposed ${out.experiment}: it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.`,
     );
   } catch (err) {
-    return text(`the idea was not recorded: ${err instanceof Error ? err.message : String(err)}`);
+    return text(`the idea was not recorded: ${errorText(err)}`);
   }
 }
 

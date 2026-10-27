@@ -22,6 +22,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { errorText } from "../../common/errors.ts";
 import { minutesSetting, numberSetting, secondsSetting } from "../../common/settings.ts";
 import { oneContainer, supervisorPaths } from "./one-container.ts";
 import { IDS } from "./runner.ts";
@@ -247,7 +248,6 @@ const READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const CREATE = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
 
 const errCode = (err: unknown): string | undefined => (err as NodeJS.ErrnoException)?.code;
-const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function writeAll(fd: number, buf: Buffer): void {
   let off = 0;
@@ -319,7 +319,7 @@ function readWhole(name: string, max: number): Buffer | undefined {
   } catch (err) {
     if (errCode(err) === "ENOENT") return undefined;
     throw new Error(
-      errCode(err) === "ELOOP" ? "it is a link" : `it can't be opened (${message(err)})`,
+      errCode(err) === "ELOOP" ? "it is a link" : `it can't be opened (${errorText(err)})`,
     );
   }
   try {
@@ -340,14 +340,14 @@ function readManifest(name: string, keys: SnapshotKeys): ManifestRead {
   try {
     sealed = readWhole(name, MANIFEST_MAX_BYTES);
   } catch (err) {
-    return { why: `its ${name}: ${message(err)}` };
+    return { why: `its ${name}: ${errorText(err)}` };
   }
   if (!sealed) return undefined;
   let plain: Buffer;
   try {
     plain = unseal(keys.manifest, "manifest", sealed);
   } catch (err) {
-    return { why: `its ${name}: ${message(err)}` };
+    return { why: `its ${name}: ${errorText(err)}` };
   }
   try {
     const parsed = Manifest.safeParse(JSON.parse(plain.toString("utf8")));

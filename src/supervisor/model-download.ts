@@ -13,6 +13,7 @@ import { dirname } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 
 /**
  * Model files by URL (an assignment's `model` imports with a source): the supervisor downloads
@@ -282,7 +283,7 @@ async function download(input: DownloadInput): Promise<void> {
   // A message for the report, the live view and the command's outcome. Messages are Thermite's
   // own; the token is taken out all the same, in case a server echoed it.
   const clean = (err: unknown) => {
-    const msg = redact(err instanceof Error ? err.message : String(err));
+    const msg = redact(errorText(err));
     return input.hfToken ? msg.replaceAll(input.hfToken, "***") : msg;
   };
   try {

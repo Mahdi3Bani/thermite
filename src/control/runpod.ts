@@ -8,6 +8,7 @@
  */
 
 import { redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import type { SecretBox } from "./secrets.ts";
 import type { ControlStore } from "./store.ts";
 
@@ -80,9 +81,7 @@ async function runpodCall(
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {
-    throw new Error(
-      `control could not reach RunPod: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new Error(`control could not reach RunPod: ${errorText(err)}`);
   }
   if (r.status === 401 || r.status === 403)
     throw new Error(
@@ -417,11 +416,7 @@ export async function podLogs(
     } catch (err) {
       if (stopped)
         throw new Error(`RunPod did not answer for pod ${podId}'s log within ${totalMs / 1000} s`);
-      throw new Error(
-        redact(
-          `control could not reach RunPod: ${err instanceof Error ? err.message : String(err)}`,
-        ),
-      );
+      throw new Error(redact(`control could not reach RunPod: ${errorText(err)}`));
     }
     if (!r.ok) throw await podLogRefusal(r, podId);
     if (!r.body) return lines;
@@ -453,9 +448,7 @@ export async function podLogs(
       } catch (err) {
         if (stopped || lines.length) break;
         throw new Error(
-          redact(
-            `control lost RunPod's stream of pod ${podId}'s log: ${err instanceof Error ? err.message : String(err)}`,
-          ),
+          redact(`control lost RunPod's stream of pod ${podId}'s log: ${errorText(err)}`),
         );
       }
       if (chunk.done) {
@@ -577,7 +570,7 @@ export async function refreshGpuClouds(
     try {
       store.setGpuCloudFacts(g.name, { facts: await readRunpod(secrets.open(sealed), fetchImpl) });
     } catch (err) {
-      store.setGpuCloudFacts(g.name, { error: err instanceof Error ? err.message : String(err) });
+      store.setGpuCloudFacts(g.name, { error: errorText(err) });
     }
   }
 }

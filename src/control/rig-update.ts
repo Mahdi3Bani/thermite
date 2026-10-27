@@ -1,4 +1,5 @@
 import { log, redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import type { BuildInfo } from "../core/version.ts";
 import { issueCommand } from "./issue.ts";
 import type { ControlStore } from "./store.ts";
@@ -202,7 +203,7 @@ export class RigUpdates {
       .run(rig, by, at, at);
     return this.run(rig, by, target)
       .catch((err) => {
-        const why = redact(err instanceof Error ? err.message : String(err));
+        const why = redact(errorText(err));
         log("control", "rig update failed", { rig, error: why });
         this.step(rig, "update_failed", false, why);
       })
@@ -262,7 +263,7 @@ export class RigUpdates {
     try {
       this.step(rig, "update_images", true, await target.apply());
     } catch (err) {
-      const why = redact(err instanceof Error ? err.message : String(err));
+      const why = redact(errorText(err));
       this.step(rig, "update_images", false, `${why}. The rig keeps the images it had`);
       await this.resume(rig, paused, by);
       this.step(rig, "update_failed", false, "its containers could not move onto control's images");
@@ -330,12 +331,7 @@ export class RigUpdates {
             : `${passed ? "passed" : "failed"}${summary ? `: ${summary}` : ""}`,
       );
     } catch (err) {
-      this.step(
-        rig,
-        "update_isolation",
-        false,
-        `not asked: ${redact(err instanceof Error ? err.message : String(err))}`,
-      );
+      this.step(rig, "update_isolation", false, `not asked: ${redact(errorText(err))}`);
     }
     // 5. The runs it paused go on.
     await this.resume(rig, paused, by);
@@ -353,7 +349,7 @@ export class RigUpdates {
         this.issue(rig, "resume_run", { run }, by, 24 * 60);
         done.push(run);
       } catch (err) {
-        failed.push(`${run} (${err instanceof Error ? err.message : String(err)})`);
+        failed.push(`${run} (${errorText(err)})`);
       }
     }
     this.step(

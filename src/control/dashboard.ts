@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
+import { errorText } from "../common/errors.ts";
 import { type BriefingSeed, COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import {
   type AgentsContext,
@@ -1502,7 +1503,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         ),
       );
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      return c.json({ error: errorText(err) }, 400);
     }
   });
   // A kit uploaded on the page: unpacked and checked now, its archive kept beside the kit
@@ -1521,7 +1522,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       writeFileSync(join(uploadsDir(), `${k.id}.name`), file.name);
       return c.json({ id: k.id, ...kitSummary(k.kit) });
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      return c.json({ error: errorText(err) }, 400);
     }
   });
   /** An uploaded kit, unpacked again from its kept archive. */
@@ -1551,7 +1552,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         mcp_servers: uses.data,
       });
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      return c.json({ error: errorText(err) }, 400);
     }
   });
   // What a page sent back with mistakes shows again about the kit it had uploaded.
@@ -1597,7 +1598,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       } catch (err) {
         return newCampaignPage(c, {
           draft,
-          errors: [`The project: ${err instanceof Error ? err.message : String(err)}`],
+          errors: [`The project: ${errorText(err)}`],
         });
       }
     }
@@ -1673,7 +1674,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         },
       );
     } catch (err) {
-      r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
+      r = { ok: false, errors: [errorText(err)] };
     }
     if (!r.ok) return newCampaignPage(c, { draft, errors: r.errors });
     if (r.run && split !== undefined) sendSplit(rig.id, split);
@@ -2022,7 +2023,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         },
       );
     } catch (err) {
-      r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
+      r = { ok: false, errors: [errorText(err)] };
     }
     if (!r.ok) return refuse(r.errors.join(" "));
     if (split !== undefined) sendSplit(rig.id, split, by);
@@ -3816,7 +3817,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         issuedBy: "owner:ui",
       }));
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       return json ? c.json(notSent(why), 400) : back(`&msgerror=${encodeURIComponent(why)}`);
     }
     const cmd = json ? store.commandRow(id) : undefined;
@@ -3968,7 +3969,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         issuedBy: "owner:ui",
       });
     } catch (err) {
-      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+      return c.text(`refused: ${errorText(err)}`, 400);
     }
     return c.redirect(
       `/ui/rigs/${encodeURIComponent(rig)}/live${source ? `?source=${encodeURIComponent(source)}` : ""}`,
@@ -4157,7 +4158,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         staleAfterMs: opts.staleAfterMs,
       });
     } catch (err) {
-      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+      return c.text(`refused: ${errorText(err)}`, 400);
     }
     return c.redirect("/ui/reports", 303);
   });
@@ -4166,7 +4167,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     try {
       cancelReset(store, Number(c.req.param("id")), "owner:ui");
     } catch (err) {
-      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+      return c.text(`refused: ${errorText(err)}`, 400);
     }
     return c.redirect("/ui/reports", 303);
   });
@@ -4210,7 +4211,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         staleAfterMs: opts.staleAfterMs,
       });
     } catch (err) {
-      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+      return c.text(`refused: ${errorText(err)}`, 400);
     }
     const target = views()
       .find((x) => x.id === toRig)
@@ -4231,7 +4232,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       try {
         await opts.runpodDriver.restart(rig, ["harness", "supervisor"], "owner:ui");
       } catch (err) {
-        return to("error", err instanceof Error ? err.message : String(err));
+        return to("error", errorText(err));
       }
       return to("ok", "Restarting: the pod stops, then starts again.");
     }
@@ -4240,7 +4241,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     try {
       await opts.driver.restart(rig, ["harness", "supervisor"]);
     } catch (err) {
-      return c.text(`restart failed: ${err instanceof Error ? err.message : String(err)}`, 500);
+      return c.text(`restart failed: ${errorText(err)}`, 500);
     }
     return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
   });
@@ -4266,7 +4267,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         staleAfterMs: opts.staleAfterMs,
       });
     } catch (err) {
-      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+      return c.text(`refused: ${errorText(err)}`, 400);
     }
     return c.redirect("/ui/reports", 303);
   });
@@ -4742,7 +4743,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       store.setClusterFacts(name, { facts: await checkCluster(kube, clusterTarget(c), c.slots) });
       return null;
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       store.setClusterFacts(name, { error: why });
       return why;
     }
@@ -4829,7 +4830,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     try {
       contexts = await kube.contextsOf(kubeconfig);
     } catch (err) {
-      return fail(err instanceof Error ? err.message : String(err));
+      return fail(errorText(err));
     }
     const seen = await inspectKubeconfig(kube, kubeconfig);
     if (seen.problems.length) return fail(`Not added: ${seen.problems.join("; ")}.`);
@@ -5032,7 +5033,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       store.setGpuCloudFacts(name, { facts: await readRunpod(key, opts.cloudFetch) });
       return null;
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       store.setGpuCloudFacts(name, { error: why });
       return why;
     }
@@ -5152,7 +5153,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       });
       store.setGpuCloudFacts(name, { facts });
     } catch (err) {
-      return fail(`Not added: ${err instanceof Error ? err.message : String(err)}.`);
+      return fail(`Not added: ${errorText(err)}.`);
     }
     return c.redirect(
       settingsUrl("ok", `"${name}" is added and read: see what control found below.`),
@@ -5178,13 +5179,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       store.replaceGpuCloudKey(name, opts.secrets.seal(key), keyHint(key), "owner:ui");
       store.setGpuCloudFacts(name, { facts });
     } catch (err) {
-      return c.redirect(
-        settingsUrl(
-          "error",
-          `Kept the old key: ${err instanceof Error ? err.message : String(err)}.`,
-        ),
-        303,
-      );
+      return c.redirect(settingsUrl("error", `Kept the old key: ${errorText(err)}.`), 303);
     }
     return c.redirect(settingsUrl("ok", `"${name}" has its new key, and is read again.`), 303);
   });
@@ -5214,10 +5209,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
         303,
       );
     } catch (err) {
-      return c.redirect(
-        settingsUrl("error", `No test pod: ${err instanceof Error ? err.message : String(err)}.`),
-        303,
-      );
+      return c.redirect(settingsUrl("error", `No test pod: ${errorText(err)}.`), 303);
     }
   });
   app.post("/ui/settings/clouds/:name/tests/:id/end", async (c) => {
@@ -5234,10 +5226,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
         303,
       );
     } catch (err) {
-      return c.redirect(
-        settingsUrl("error", err instanceof Error ? err.message : String(err)),
-        303,
-      );
+      return c.redirect(settingsUrl("error", errorText(err)), 303);
     }
   });
   app.get("/ui/settings/clouds/:name/tests/:id{.+\\.json}", (c) => {
@@ -5515,7 +5504,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       store.rigSetupEvent(r.rig, "applied", true, `namespace ${r.namespace}`);
       store.setClusterRigStatus(r.rig, "starting");
     } catch (err) {
-      store.rigSetupEvent(r.rig, "deploy", false, err instanceof Error ? err.message : String(err));
+      store.rigSetupEvent(r.rig, "deploy", false, errorText(err));
       store.setClusterRigStatus(r.rig, "failed");
       return;
     }
@@ -5596,7 +5585,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       store.rigSetupEvent(r.rig, "deployed", true);
       store.setMachineRigStatus(r.rig, "starting");
     } catch (err) {
-      store.rigSetupEvent(r.rig, "deploy", false, err instanceof Error ? err.message : String(err));
+      store.rigSetupEvent(r.rig, "deploy", false, errorText(err));
       store.setMachineRigStatus(r.rig, "failed");
       return;
     }
@@ -5910,7 +5899,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       try {
         rigResources({ cpus, memoryGi });
       } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err));
+        return fail(errorText(err));
       }
       if (slotQuota?.cpus !== undefined && cpus > slotQuota.cpus + 1e-9)
         return fail(`The slot ${namespace} allows ${slotQuota.cpus} CPUs.`);
@@ -6306,7 +6295,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         clusterRigResized(clusterPlan({ ...r, spec: { ...r.spec, ...to } }), stopped),
       );
     } catch (err) {
-      return failed(err instanceof Error ? err.message : String(err));
+      return failed(errorText(err));
     }
     if (newClaim) {
       const del = await kube.kubectl(
@@ -6366,7 +6355,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         });
         words += `; the judge's share it kept, ${kept}, → ${to.judgeGpus}`;
       } catch (err) {
-        words += `; the judge's share it keeps, ${kept}, did not change: ${err instanceof Error ? err.message : String(err)}`;
+        words += `; the judge's share it keeps, ${kept}, did not change: ${errorText(err)}`;
       }
     }
     store.rigSetupEvent(rig, "resources", true, stopped ? `${words}; at its next start` : words);
@@ -6902,7 +6891,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       );
       if (out.code !== 0) throw new Error(tail(out.stderr) || `exit ${out.code}`);
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       store.rigSetupEvent(r.rig, action, false, why);
       return back("error", why);
     }
@@ -7110,7 +7099,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         apply: () => (place.kind === "machine" ? updateMachineRig(rig) : updateClusterRig(rig)),
       });
     } catch (err) {
-      return back("error", err instanceof Error ? err.message : String(err));
+      return back("error", errorText(err));
     }
     store.audit("owner:ui", "rig_update", { rig, to: control.version });
     return back(
@@ -7199,7 +7188,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       } catch (err) {
         found = {
           ok: false,
-          words: `Control could not log in to ${r.machine} over SSH: ${err instanceof Error ? err.message : String(err)}`,
+          words: `Control could not log in to ${r.machine} over SSH: ${errorText(err)}`,
         };
       }
     } else found = await checkClusterRig(rig);
@@ -7283,7 +7272,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         `Read ${r.lines.length} line${r.lines.length === 1 ? "" : "s"} of pod ${r.pod}'s log from RunPod.`,
       );
     } catch (err) {
-      return answer(false, `Not read: ${err instanceof Error ? err.message : String(err)}`);
+      return answer(false, `Not read: ${errorText(err)}`);
     }
   });
   /** A RunPod rig's history: the pod's steps, the rig's events and its state's lines, filtered. */
@@ -7353,7 +7342,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         await rigs.terminate(rig, "owner:ui", confirm);
       } else return back("error", "No such action.");
     } catch (err) {
-      return back("error", err instanceof Error ? err.message : String(err));
+      return back("error", errorText(err));
     }
     return back("ok", podActions[action as keyof typeof podActions]);
   });
@@ -7481,7 +7470,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         303,
       );
     } catch (err) {
-      return launchPage(c, form, err instanceof Error ? err.message : String(err));
+      return launchPage(c, form, errorText(err));
     }
   });
 
@@ -7507,7 +7496,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       store.setMachineFacts(name, { facts: parseFacts(r.stdout) });
       return null;
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       store.setMachineFacts(name, { error: why });
       // A changed host key: read what it presents now, for the owner to compare.
       if (/different host key/.test(why))
@@ -7542,7 +7531,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       try {
         pub = await ssh.publicKeyOf(privateKey);
       } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err));
+        return fail(errorText(err));
       }
     } else {
       const k = makeDeployKey(`thermite ${name}`);
@@ -7659,8 +7648,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       .sshScript(target, s.script, [], 30 * 60_000)
       .then(
         (r) => store.finishInstall(approval, r.code === 0, `${r.stdout}\n${r.stderr}`.trim()),
-        (err) =>
-          store.finishInstall(approval, false, err instanceof Error ? err.message : String(err)),
+        (err) => store.finishInstall(approval, false, errorText(err)),
       )
       .then(() => checkMachine(m.name))
       .catch(() => {});
@@ -7755,7 +7743,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         303,
       );
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       return c.redirect(settingsUrl("error", `"${name}" could not read ${url}: ${why}`), 303);
     }
   });
@@ -8768,7 +8756,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         owner: true,
       }));
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       return json ? c.json(notSent(why), 400) : c.text(`refused: ${why}`, 400);
     }
     const now = Date.now();

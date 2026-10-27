@@ -1,3 +1,4 @@
+import { errorText } from "../common/errors.ts";
 import { COMPACTIONS_DIR, compactionFile } from "../core/compaction.ts";
 import { KB_BODY_MAX } from "../core/kb-index.ts";
 import type { LiveLog } from "../core/live.ts";
@@ -189,7 +190,7 @@ export class Compactions {
       this.keep(of, c.number, c.markdown);
       kept = true;
     } catch (err) {
-      error = `the conversation was not kept: ${err instanceof Error ? err.message : String(err)}`;
+      error = `the conversation was not kept: ${errorText(err)}`;
     }
     this.record(of, {
       number: c.number,

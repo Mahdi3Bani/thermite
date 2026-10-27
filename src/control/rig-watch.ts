@@ -1,4 +1,5 @@
 import { log, redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import type { ControlActions } from "./actions.ts";
 import type { ControlStore } from "./store.ts";
 import { OFFLINE_AFTER_MS } from "./views.ts";
@@ -42,7 +43,7 @@ export async function checkQuietRigs(o: {
     } catch (err) {
       log("control", "a quiet rig's check failed", {
         rig: u.id,
-        error: redact(err instanceof Error ? err.message : String(err)),
+        error: redact(errorText(err)),
       });
     }
   }

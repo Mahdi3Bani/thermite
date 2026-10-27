@@ -1,4 +1,5 @@
 import { log, redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import { POD_CONFIG_ENV, PodConfig } from "../core/tunnel.ts";
 import {
   createPod,
@@ -332,7 +333,7 @@ export class RunpodRigs {
       await terminatePod(key, pod.id, this.fetchImpl).catch((e) =>
         log("control", "could not remove a pod after a failed launch", {
           pod: pod.id,
-          error: redact(e instanceof Error ? e.message : String(e)),
+          error: redact(errorText(e)),
         }),
       );
       this.store.dropTunnelRig(minted.rig, by);
@@ -517,7 +518,7 @@ export class RunpodRigs {
         }
       }
     } catch (err) {
-      s.error = redact(err instanceof Error ? err.message : String(err));
+      s.error = redact(errorText(err));
       log("control", "runpod rig step failed", { rig, error: s.error });
     }
     // A refusal stays until a newer step in the rig's history (a full reset, say), not a read.
@@ -694,7 +695,7 @@ export class RunpodRigs {
         this.lastLogs.set(rig, { ...out, source, error: null });
         return out;
       } catch (err) {
-        const error = redact(err instanceof Error ? err.message : String(err));
+        const error = redact(errorText(err));
         this.lastLogs.set(rig, { rig, pod: r.pod, lines: [], read_at: this.iso(), source, error });
         throw new Error(error);
       }

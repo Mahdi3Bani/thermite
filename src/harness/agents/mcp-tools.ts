@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
+import { errorText } from "../../common/errors.ts";
 import { type McpCallResult, resultText } from "../../common/mcp-client.ts";
 import { agentToolName, type McpToolInfo } from "../../core/mcp.ts";
 
@@ -93,9 +94,7 @@ export function mcpAgentTools(
           const said = resultText(r);
           return text(r.isError ? `the tool failed: ${said}` : said || "(no text in the answer)");
         } catch (err) {
-          return text(
-            `the MCP server ${t.server} failed: ${err instanceof Error ? err.message : String(err)}. Go on without it.`,
-          );
+          return text(`the MCP server ${t.server} failed: ${errorText(err)}. Go on without it.`);
         }
       },
     } as AgentTool;

@@ -15,12 +15,17 @@ export class BadInput extends Error {
   override name = "BadInput";
 }
 
+/** An error's words: its message, or what was thrown, as text. */
+export function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** An error as an API answers it: the HTTP status and the words. Any other error is a 500. */
 export function answerOf(err: unknown): { status: 400 | 409 | 500; error: string } {
   if (err instanceof z.ZodError) return { status: 400, error: "invalid request" };
   if (err instanceof BadInput) return { status: 400, error: err.message };
   if (err instanceof Refusal) return { status: 409, error: err.message };
-  return { status: 500, error: err instanceof Error ? err.message : String(err) };
+  return { status: 500, error: errorText(err) };
 }
 
 /** A request's JSON body; BadInput when the body is not JSON. */

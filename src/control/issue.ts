@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Refusal } from "../common/errors.ts";
+import { errorText, Refusal } from "../common/errors.ts";
 import { canonicalJson } from "../core/canonical.ts";
 import {
   type CommandKind,
@@ -352,7 +352,7 @@ export async function issueWaking(
       woke = await pods.wake(input.rig, input.issuedBy, why);
     } catch (err) {
       throw new WakeRefused(
-        `Not sent: control could not start ${input.rig}'s pod on RunPod for it. ${err instanceof Error ? err.message : String(err)}`,
+        `Not sent: control could not start ${input.rig}'s pod on RunPod for it. ${errorText(err)}`,
       );
     }
   }

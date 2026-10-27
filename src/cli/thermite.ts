@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { errorText } from "../common/errors.ts";
 import { newToken } from "../control/credential.ts";
 import type { RunpodRigView } from "../control/runpod-rig-view.ts";
 import { briefChange } from "../core/brief.ts";
@@ -264,7 +265,7 @@ function briefFromFlags(values: {
     try {
       notes = readFileSync(file, "utf8");
     } catch (err) {
-      fail(`--info-file: ${err instanceof Error ? err.message : String(err)}`);
+      fail(`--info-file: ${errorText(err)}`);
     }
   }
   return {
@@ -547,7 +548,7 @@ async function main(argv: string[]): Promise<void> {
       try {
         ask = askOwnerOption(values.ask);
       } catch (err) {
-        fail(err instanceof Error ? err.message : String(err));
+        fail(errorText(err));
       }
       if (!values.print && (!values.control || !values["token-file"] || !values.rig))
         fail("give --control, --token-file and --rig to issue it, or --print to show it");
@@ -888,7 +889,7 @@ async function main(argv: string[]): Promise<void> {
           return;
         }
       } catch (err) {
-        fail(err instanceof Error ? err.message : String(err));
+        fail(errorText(err));
       }
       fail(USAGE);
       return;
@@ -919,7 +920,7 @@ async function main(argv: string[]): Promise<void> {
       try {
         body = runStartBody(values);
       } catch (err) {
-        fail(err instanceof Error ? err.message : String(err));
+        fail(errorText(err));
       }
       const out = (await post(
         `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(campaign)}/runs`,
@@ -986,9 +987,7 @@ async function main(argv: string[]): Promise<void> {
         try {
           mcpServers = JSON.parse(readFileSync(mcpFile, "utf8"));
         } catch (err) {
-          fail(
-            `--mcp-servers-json: ${mcpFile} is not a JSON list: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          fail(`--mcp-servers-json: ${mcpFile} is not a JSON list: ${errorText(err)}`);
         }
       }
       const out = await post(
@@ -1048,7 +1047,7 @@ async function main(argv: string[]): Promise<void> {
       try {
         bundle = readFileSync(file);
       } catch (err) {
-        fail(`${file}: ${err instanceof Error ? err.message : String(err)}`);
+        fail(`${file}: ${errorText(err)}`);
       }
       const q = new URLSearchParams({
         ...(values.ref ? { ref: values.ref } : {}),
@@ -1325,4 +1324,4 @@ async function main(argv: string[]): Promise<void> {
   }
 }
 
-main(process.argv.slice(2)).catch((err) => fail(err instanceof Error ? err.message : String(err)));
+main(process.argv.slice(2)).catch((err) => fail(errorText(err)));

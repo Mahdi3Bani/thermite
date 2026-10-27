@@ -1,3 +1,4 @@
+import { errorText } from "../../common/errors.ts";
 import { EXPERIMENT_DETAILS } from "../../core/commands.ts";
 import { readableDiff } from "../git.ts";
 import type { Ledger } from "../ledger.ts";
@@ -97,7 +98,7 @@ export async function queuePort(
       String(a.commit_sha),
     );
   } catch (err) {
-    diff = `(its diff could not be read: ${err instanceof Error ? err.message : String(err)})`;
+    diff = `(its diff could not be read: ${errorText(err)})`;
   }
   const room = EXPERIMENT_DETAILS - head.length - 40;
   const body =

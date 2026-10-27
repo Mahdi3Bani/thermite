@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { errorText } from "../common/errors.ts";
 
 /**
  * The teachers' read-only tools for a run's code and evidence (goal 081): the champion's tree,
@@ -110,7 +111,7 @@ export function registerCodeTools(server: McpServer, code: AdvisorCode): void {
             content: [
               {
                 type: "text" as const,
-                text: `failed: ${err instanceof Error ? err.message : String(err)}`,
+                text: `failed: ${errorText(err)}`,
               },
             ],
             isError: true,

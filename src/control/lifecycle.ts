@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { log } from "../common/env.ts";
-import { Refusal } from "../common/errors.ts";
+import { errorText, Refusal } from "../common/errors.ts";
 import { harnessConfirmed, issueCommand } from "./issue.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -439,7 +439,7 @@ async function advanceOnce(input: {
               restart = `restarted ${(await input.driver.restart(rig, ["harness", "supervisor"])).join(", ")}`;
             } catch (err) {
               // The wipe happened; the containers restart themselves after it anyway.
-              restart = `the restart through the driver failed (${err instanceof Error ? err.message : String(err)}); the rig restarts itself`;
+              restart = `the restart through the driver failed (${errorText(err)}); the rig restarts itself`;
             }
           }
           store.updateReset(id, { state: "done", detail: `wiped; ${restart}` });
@@ -447,7 +447,7 @@ async function advanceOnce(input: {
         }
       }
     } catch (err) {
-      fail(err instanceof Error ? err.message : String(err));
+      fail(errorText(err));
     }
   }
 }

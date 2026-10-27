@@ -11,6 +11,7 @@ import {
   researchFolderNote,
   researchOutput,
 } from "../../agents/tools/research.ts";
+import { errorText } from "../../common/errors.ts";
 import type { LaneLimitValues } from "../../core/contract.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import { Compactor, summarizer } from "./compaction.ts";
@@ -247,7 +248,7 @@ export async function runResearchTrial(
   } catch (err) {
     if (result.stopped === "no_submission") {
       result.stopped = "error";
-      result.error = err instanceof Error ? err.message : String(err);
+      result.error = errorText(err);
     }
   } finally {
     if (wall) clearTimeout(wall);
@@ -275,7 +276,7 @@ function folderTools(folder: ResearchFolderPaths, result: TrialResult): AgentToo
       try {
         return out(run(params as Record<string, unknown>));
       } catch (err) {
-        return out(`error: ${err instanceof Error ? err.message : String(err)}`);
+        return out(`error: ${errorText(err)}`);
       }
     },
   });

@@ -7,6 +7,7 @@ import type {
 import { getSystemMessageText, type Message } from "@earendil-works/pi-ai";
 import { estimateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { COMPACTION_SYSTEM } from "../../agents/roles/compaction.ts";
+import { errorText } from "../../common/errors.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import type { PiMeter } from "./usage-meter.ts";
@@ -156,7 +157,7 @@ export class Compactor {
     try {
       kept = await this.o.keep(n, transcriptMarkdown(this.o.title, n, before, messages));
     } catch (err) {
-      keepError = `the conversation was not kept: ${err instanceof Error ? err.message : String(err)}`;
+      keepError = `the conversation was not kept: ${errorText(err)}`;
     }
     // A full context of unknown size: the room it had is what it filled. The compacted one is
     // measured as the whole one is here, by its text.
@@ -171,7 +172,7 @@ export class Compactor {
       if (!summary) throw new Error("the model's summary was empty");
     } catch (err) {
       summary = undefined;
-      summaryError = `the summary failed: ${err instanceof Error ? err.message : String(err)}`;
+      summaryError = `the summary failed: ${errorText(err)}`;
     }
     const where = kept
       ? `The whole conversation before this point is in ${kept.path}. ${kept.read}.`

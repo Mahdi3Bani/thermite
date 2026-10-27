@@ -1,5 +1,6 @@
 import { createPublicKey, randomBytes } from "node:crypto";
 import { log, redact } from "../common/env.ts";
+import { errorText } from "../common/errors.ts";
 import {
   controlCodeProof,
   EnrollAnswer,
@@ -422,7 +423,7 @@ export class ControlTunnels {
             );
           } catch (err) {
             // The call is answered all the same: the supervisor sees control's error, in words.
-            const error = redact(err instanceof Error ? err.message : String(err));
+            const error = redact(errorText(err));
             log("control", "pull mode: a rig's call failed", { rig, path: c.path, error });
             return piecesOf(
               c.id,
@@ -438,7 +439,7 @@ export class ControlTunnels {
       this.retry.delete(rig);
       return `exchanged: ${answers.length} answer(s) delivered, ${calls.length} call(s) collected`;
     } catch (err) {
-      return fail(err instanceof Error ? err.message : String(err));
+      return fail(errorText(err));
     }
   }
 
