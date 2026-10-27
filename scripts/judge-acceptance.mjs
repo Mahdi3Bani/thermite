@@ -15,6 +15,7 @@
 // It writes a JSON report to .dev/acceptance/. Usage: COMPOSE="podman compose" node scripts/judge-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import {
   assign,
   candidatePatch,
@@ -39,12 +40,7 @@ const report = {
   compose: process.env.COMPOSE ?? "podman compose",
   checks: [],
 };
-const check = (name, ok, detail) => {
-  report.checks.push({ name, ok, detail });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail ? `: ${typeof detail === "string" ? detail : JSON.stringify(detail)}` : ""}`,
-  );
-};
+const { check } = acceptanceChecks({ into: report.checks });
 const harnessExec = (...args) => dc(composeEnv, "exec", "-T", "harness", ...args);
 const procsOf = (uid) =>
   JSON.parse(

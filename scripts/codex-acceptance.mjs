@@ -24,6 +24,7 @@
 // Usage: COMPOSE="podman compose" node scripts/codex-acceptance.mjs
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { hostName as containersHost } from "./lib/scripted-model.mjs";
 import {
   api,
@@ -47,13 +48,7 @@ const composeEnv = {
   THERMITE_MAX_TRIALS: "1",
   THERMITE_MODEL_ROUTE_POLL_SECONDS: "2",
 };
-const results = [];
-const check = (name, ok, detail) => {
-  results.push({ name, ok });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 400)}`}`,
-  );
-};
+const { check, results } = acceptanceChecks({ max: 400 });
 
 /** The provider: its model list for control, and a short Responses stream for each call. */
 const seen = { keys: new Set(), paths: [] };

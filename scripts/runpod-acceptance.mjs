@@ -31,6 +31,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { cleanEngine } from "./lib/smoke-env.mjs";
 
 // Control's side, in this process (Node.js strips the types of these files).
@@ -52,11 +53,7 @@ const OWNER = "an-owner-token-for-the-runpod-check";
 // Inside the fake's hooks: control's loops go on while the engine works, as they do on RunPod.
 const run = async (args) => (await promisify(execFile)(engine, args, { encoding: "utf8" })).stdout;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failed = 0;
-const check = (ok, what, detail = "") => {
-  console.log(`${ok ? "PASS" : "FAIL"} ${what}${detail ? `: ${detail}` : ""}`);
-  if (!ok) failed++;
-};
+const { check, failed } = acceptanceChecks();
 /** Waits until `fn` gives something, checking every `every` ms; throws, in words, at the end. */
 async function until(what, fn, ms = 300_000, every = 1000) {
   const deadline = Date.now() + ms;
@@ -221,18 +218,19 @@ try {
     settings: { THERMITE_TARGET: "cpu", THERMITE_TARGET_CLASS: "runpod-check" },
   });
   check(
-    launched.status === 201,
     "the owner launches a rig over REST",
+    launched.status === 201,
     JSON.stringify(launched.body).slice(0, 300),
   );
   const rig = launched.body.rig;
   const pod = cloud.pods.get(launched.body.pod);
   check(
-    Boolean(pod) && has("container", container(pod)),
     "its pod runs: a container of the rig image",
+    Boolean(pod) && has("container", container(pod)),
     pod ? container(pod) : "no pod",
   );
   check(
+    "the launch gave the pod pull mode's values and its snapshot key, and nothing else",
     JSON.stringify(Object.keys(pod.env).sort()) ===
       JSON.stringify([
         "THERMITE_RIG_ID",
@@ -243,29 +241,28 @@ try {
         "THERMITE_TUNNEL_PORT",
         "THERMITE_TUNNEL_PREFIX",
       ]),
-    "the launch gave the pod pull mode's values and its snapshot key, and nothing else",
     Object.keys(pod.env).join(", "),
   );
 
   // Enroll, then report.
   const enrolled = await until("enrollment", () => store.tunnelRig(rig)?.enrolled_at);
-  check(Boolean(enrolled), "control enrolled the pod through the proxy and pinned its keys");
+  check("control enrolled the pod through the proxy and pinned its keys", Boolean(enrolled));
   const keysBefore = store.tunnelRig(rig)?.pod_sign_public;
   await until("report", () =>
     store.rigs().find((u) => u.id === rig && Date.parse(u.last_seen) > 0),
   );
-  check(true, "the rig's reports reach control through control's pulls");
+  check("the rig's reports reach control through control's pulls", true);
   await until(
     "the supervisor's export figures",
     () => store.supervisor(rig)?.export?.to === "control",
   );
-  check(true, "the supervisor sends its exports to control");
+  check("the supervisor sends its exports to control", true);
 
   // Stop: the results leave first, then the pod stops.
   const stopAsked = await api(`/v1/rigs/${rig}/runpod/stop`, {});
   check(
-    stopAsked.status === 200 && stopAsked.body.op?.kind === "stop",
     "the owner stops the pod over REST",
+    stopAsked.status === 200 && stopAsked.body.op?.kind === "stop",
     stopAsked.body.op_words ?? JSON.stringify(stopAsked.body),
   );
   const stopped = await until("the stop", () => {
@@ -274,18 +271,18 @@ try {
   });
   const stopExport = stopped.last_export;
   check(
-    stopped.last_export_left === true && Boolean(store.rigExport(rig, stopExport)?.complete_at),
     "its export left the pod for control before the pod stopped",
+    stopped.last_export_left === true && Boolean(store.rigExport(rig, stopExport)?.complete_at),
     `${stopExport}: ${JSON.stringify(store.rigSetupEvents(rig).at(-1)?.detail)}`,
   );
   check(
-    pod.stopCode === "0" && pod.stopLog.includes('"msg":"stopped"'),
     "the pod's container stopped cleanly",
+    pod.stopCode === "0" && pod.stopLog.includes('"msg":"stopped"'),
     `exit ${pod.stopCode}`,
   );
   check(
-    !has("container", container(pod)) && has("volume", volume(pod)),
     "the pod's disk is gone and its volume stays",
+    !has("container", container(pod)) && has("volume", volume(pod)),
   );
   // The live state was on the pod's disk; the stop took a snapshot of it onto the volume first.
   const stopSnap = pod.stopLog
@@ -293,8 +290,8 @@ try {
     .filter((l) => l.includes('"reason":"at the stop"'))
     .map((l) => JSON.parse(l))[0];
   check(
-    stopSnap?.msg === "took a snapshot of the rig's state" && stopSnap.ledger === true,
     "the stop took a snapshot of the rig's state, with its ledger, onto the volume",
+    stopSnap?.msg === "took a snapshot of the rig's state" && stopSnap.ledger === true,
     JSON.stringify(stopSnap),
   );
   // RunPod's volume refuses root a change of owner: nothing on it was ever given one, and its
@@ -317,8 +314,8 @@ try {
     .trim()
     .split("\n");
   check(
-    onVolume.length === 1 && onVolume[0] === "0 700",
     "nothing on the volume belongs to anyone but root, and the snapshot folder is root's, 0700",
+    onVolume.length === 1 && onVolume[0] === "0 700",
     onVolume.join("; "),
   );
   const sealedLook = JSON.parse(
@@ -335,34 +332,34 @@ try {
     ]),
   );
   check(
+    "the snapshot on the volume is sealed: the manifest and sealed files only, nothing in plain text",
     sealedLook.names.includes("manifest") &&
       sealedLook.names.every((n) => n === "manifest" || /^[0-9a-f]{64}$/.test(n)) &&
       sealedLook.plain.length === 0 &&
       !JSON.stringify(sealedLook).includes(pod.env.THERMITE_STATE_SNAPSHOT_KEY),
-    "the snapshot on the volume is sealed: the manifest and sealed files only, nothing in plain text",
     `${sealedLook.names.length} names; not sealed: ${sealedLook.plain.join(", ")}`,
   );
   check(
-    !pod.stopLog.includes(pod.env.THERMITE_STATE_SNAPSHOT_KEY),
     "the snapshot key appears nowhere in the pod's output",
+    !pod.stopLog.includes(pod.env.THERMITE_STATE_SNAPSHOT_KEY),
   );
-  check(stopped.stopped_by === "owner", "the rig shows who stopped it", stopped.stopped_by);
+  check("the rig shows who stopped it", stopped.stopped_by === "owner", stopped.stopped_by);
 
   // Start: the pod runs again from its volume, with its keys, and reports.
   const startedAt = Date.now();
   const started = await api(`/v1/rigs/${rig}/runpod/start`, {});
   check(
-    started.status === 200,
     "the owner starts the pod again over REST",
+    started.status === 200,
     started.body.op_words ?? started.body.status,
   );
   await until("a report after the start", () =>
     store.rigs().find((u) => u.id === rig && Date.parse(u.last_seen) > startedAt),
   );
   check(
+    "the pod reports again with the keys and the enrollment on its volume",
     store.tunnelRig(rig)?.enrolled_at === enrolled &&
       store.tunnelRig(rig)?.pod_sign_public === keysBefore,
-    "the pod reports again with the keys and the enrollment on its volume",
   );
   // On its fresh disk, root restored the state from the snapshot: the ledger, the supervisor's
   // keys and enrollment, and the token between the two parts, which is not made again.
@@ -372,6 +369,7 @@ try {
     .filter((l) => l.includes("restored the rig's state from its snapshot"))
     .map((l) => JSON.parse(l))[0];
   check(
+    "the start restored the rig's state from the sealed snapshot, every file verified, with the same token",
     restored?.parts?.harness?.files > 0 &&
       restored.parts.supervisor?.files > 0 &&
       restored.parts.secrets?.files === 1 &&
@@ -380,7 +378,6 @@ try {
       !restored.refused &&
       !startLog.includes("the snapshot did not verify") &&
       !startLog.includes("made the token between the supervisor and the harness"),
-    "the start restored the rig's state from the sealed snapshot, every file verified, with the same token",
     JSON.stringify(restored),
   );
 
@@ -389,37 +386,37 @@ try {
   // supervisor's files made again by root (goal 165), and both report again.
   const resetAsked = await api(`/v1/rigs/${rig}/reset`, { confirm: `reset ${rig}` });
   check(
-    resetAsked.status === 201,
     "the owner asks for a full reset over REST",
+    resetAsked.status === 201,
     resetAsked.body.error,
   );
   const resetOf = () => store.resets(50).find((r) => Number(r.id) === resetAsked.body.reset);
   const resetIn = (...states) => (states.includes(String(resetOf()?.state)) ? true : undefined);
   await until("the reset's export", () => resetIn("awaiting_owner", "failed", "cancelled"));
   check(
-    resetIn("awaiting_owner"),
     "the reset's export reached control, and the reset waits for the owner",
+    resetIn("awaiting_owner"),
     String(resetOf()?.detail),
   );
   const ledgerBefore = store.rigs().find((u) => u.id === rig)?.ledger_id;
   await api(`/v1/resets/${resetAsked.body.reset}/confirm`, {});
   await until("the wipe", () => resetIn("done", "failed"));
   const wipedAt = Date.now();
-  check(resetIn("done"), "the rig wiped its state", String(resetOf()?.detail));
+  check("the rig wiped its state", resetIn("done"), String(resetOf()?.detail));
   await until("a report from the wiped harness", () =>
     store.rigs().find((u) => u.id === rig && u.ledger_id !== ledgerBefore),
   );
   await until("a report from the supervisor after the wipe", () =>
     Date.parse(store.supervisor(rig)?.received_at ?? "") > wipedAt ? true : undefined,
   );
-  check(true, "the harness reports a new ledger, and the supervisor reports again");
+  check("the harness reports a new ledger, and the supervisor reports again", true);
 
   // Terminate: a full export leaves the pod, then the pod and its volume go.
   const termAt = new Date().toISOString();
   const termAsked = await api(`/v1/rigs/${rig}/runpod/terminate`, { confirm: `terminate ${rig}` });
   check(
-    termAsked.status === 200 && termAsked.body.op?.kind === "terminate",
     "the owner terminates the pod over REST",
+    termAsked.status === 200 && termAsked.body.op?.kind === "terminate",
     termAsked.body.op_words ?? JSON.stringify(termAsked.body),
   );
   const gone = await until("the terminate", () => {
@@ -430,15 +427,15 @@ try {
   const exports = store.rigExports(rig);
   const lastFull = exports.find((e) => e.full && e.complete_at && e.created_at >= termAt);
   check(
-    gone.status === "TERMINATED" && Boolean(lastFull),
     "a full export reached control before the pod was removed",
+    gone.status === "TERMINATED" && Boolean(lastFull),
     lastFull?.name ?? exports.map((e) => `${e.name} full=${e.full} ${e.complete_at}`).join("; "),
   );
   check(
-    !has("container", container(pod)) && !has("volume", volume(pod)),
     "the pod and its volume are gone",
+    !has("container", container(pod)) && !has("volume", volume(pod)),
   );
-  check(Boolean(store.rigRetired(rig)), "the rig is retired: control no longer connects to it");
+  check("the rig is retired: control no longer connects to it", Boolean(store.rigRetired(rig)));
 
   const history = store.rigSetupEvents(rig).map((e) => `${e.step}${e.ok ? "" : " (not ok)"}`);
   const want = [
@@ -453,14 +450,15 @@ try {
     "runpod_terminated",
   ];
   check(
-    JSON.stringify(history) === JSON.stringify(want),
     "each change is in the rig's history",
+    JSON.stringify(history) === JSON.stringify(want),
     history.join(", "),
   );
   const calls = cloud.calls
     .filter((c) => c.host === "api.runpod.io" && c.method !== "GET")
     .map((c) => `${c.method} ${c.path}${c.body?.action ? ` ${c.body.action}` : ""}`);
   check(
+    "RunPod's API got a create, a stop, a start and a delete, nothing more",
     JSON.stringify(calls) ===
       JSON.stringify([
         "POST /v2/pods",
@@ -468,16 +466,14 @@ try {
         `POST /v2/pods/${pod.id}/action start`,
         `DELETE /v2/pods/${pod.id}`,
       ]),
-    "RunPod's API got a create, a stop, a start and a delete, nothing more",
     calls.join("; "),
   );
 } catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
+  check("the script ran to its end", false, err instanceof Error ? err.message : String(err));
   for (const pod of cloud.pods.values())
     console.error(`${container(pod)}'s last output:\n${logsOf(container(pod)).slice(-3000)}`);
-  failed++;
 } finally {
   cleanup();
 }
-console.log(failed ? `runpod acceptance: ${failed} FAILED` : "runpod acceptance: OK");
-process.exit(failed ? 1 : 0);
+console.log(failed() ? `runpod acceptance: ${failed()} FAILED` : "runpod acceptance: OK");
+process.exit(failed() ? 1 : 0);

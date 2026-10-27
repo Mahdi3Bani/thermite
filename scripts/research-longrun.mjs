@@ -9,6 +9,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { api, command, control, dc, prepare, sleep, until } from "./lib/smoke-env.mjs";
 
 const minutes = Number(process.env.MINUTES ?? "125");
@@ -130,12 +131,7 @@ const composeEnv = {
 };
 
 const report = { started_at: new Date().toISOString(), minutes, seeds: SEEDS, checks: [] };
-const check = (name, ok, detail) => {
-  report.checks.push({ name, ok, detail });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 400)}`}`,
-  );
-};
+const { check } = acceptanceChecks({ max: 400, into: report.checks });
 
 prepare();
 const { parseContract } = await import("../dist/core/contract.js");

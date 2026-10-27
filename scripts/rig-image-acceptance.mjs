@@ -27,6 +27,7 @@
 //   COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { cleanEngine } from "./lib/smoke-env.mjs";
 
 // Control's side, in this process (Node.js strips the types of these files).
@@ -50,11 +51,7 @@ const SNAPSHOT = "/workspace/thermite";
 const sh = (args, opts = {}) =>
   execFileSync(engine, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failed = 0;
-const check = (ok, what, detail = "") => {
-  console.log(`${ok ? "PASS" : "FAIL"} ${what}${detail ? `: ${detail}` : ""}`);
-  if (!ok) failed++;
-};
+const { check, failed } = acceptanceChecks();
 
 /** As in the multi-GPU acceptance: rootless Podman on a machine VM can show such nodes. */
 function foreignNodesPossible() {
@@ -149,7 +146,7 @@ try {
     "-perm",
     "/6000",
   ]).trim();
-  check(setid === "", "the image has no set-id file", setid.split("\n").slice(0, 5).join(", "));
+  check("the image has no set-id file", setid === "", setid.split("\n").slice(0, 5).join(", "));
 
   if (foreign) {
     // podman machine ssh joins its arguments into one remote command line: quote it whole.
@@ -181,7 +178,7 @@ try {
     rig,
     config: { THERMITE_TARGET_CLASS: "rig-image-check" },
   });
-  check(minted.port === 8790, "control's launch values use the image's port", String(minted.port));
+  check("control's launch values use the image's port", minted.port === 8790, String(minted.port));
   // RunPod's eight variables, as the first spike found them; the values are made up.
   const runpod = {
     RUNPOD_API_KEY: "made-up-key-for-the-test",
@@ -221,13 +218,13 @@ try {
   // Before enrollment: the supervisor serves the port, the harness waits.
   await waitFor("waiting for enrollment: the harness starts once control has enrolled the pod");
   const supervisorUp = await waitFor("waiting for the harness").catch(() => undefined);
-  check(Boolean(supervisorUp) || pidsOf("dist/supervisor/main.js") !== "[]", "the supervisor runs");
+  check("the supervisor runs", Boolean(supervisorUp) || pidsOf("dist/supervisor/main.js") !== "[]");
   await sleep(3000);
-  check(pidsOf("dist/harness/main.js") === "[]", "the harness does not start before enrollment");
+  check("the harness does not start before enrollment", pidsOf("dist/harness/main.js") === "[]");
   const keyFile = "/etc/thermite/control-signing.pub";
   check(
-    spawnSync(engine, ["exec", name, "test", "-e", keyFile]).status !== 0,
     "no key for the harness before enrollment",
+    spawnSync(engine, ["exec", name, "test", "-e", keyFile]).status !== 0,
   );
 
   // Control connects to the pod and enrolls it, then exchanges with it as its loop does.
@@ -237,20 +234,20 @@ try {
     tunnels.advance(1000).catch((err) => console.error(`pull: ${String(err)}`));
   }, 500);
   await waitFor("enrolled: the harness starts with control's key from enrollment", 120_000);
-  check(Boolean(store.tunnelRig(rig)?.enrolled_at), "control enrolled the pod and pinned its keys");
+  check("control enrolled the pod and pinned its keys", Boolean(store.tunnelRig(rig)?.enrolled_at));
   await waitFor("judge ready");
   // The state snapshot: root's folder, closed to the parts and the roles, taken after enrollment.
   const closed = await waitFor("the snapshot folder is closed to the parts and the roles", 5000);
   const snapStat = sh(["exec", name, "stat", "-c", "%u %a", SNAPSHOT]).trim();
   check(
-    closed.dir === SNAPSHOT && snapStat === "0 700",
     "the state's snapshot folder is root's, mode 0700, closed to the parts and the roles",
+    closed.dir === SNAPSHOT && snapStat === "0 700",
     `${snapStat}; ${JSON.stringify(closed)}`,
   );
   const enrolledSnap = (await waitFor("took a snapshot of the rig's state", 60_000)) ?? {};
   check(
-    enrolledSnap.reason === "after enrollment" && enrolledSnap.files > 0,
     "root took a snapshot of the state right after enrollment",
+    enrolledSnap.reason === "after enrollment" && enrolledSnap.files > 0,
     JSON.stringify(enrolledSnap),
   );
   // Sealed: the manifest and files named by a keyed hash, each sealed; nothing in plain text.
@@ -261,23 +258,23 @@ try {
   );
   // A snapshot after an export may be under way: its files being sealed are there too.
   check(
+    "the snapshot is sealed: the manifest and sealed files only, nothing in plain text",
     onVolume.names.includes("manifest") &&
       onVolume.names.length > 2 &&
       onVolume.names.every((n) => /^(manifest(\.new)?|[0-9a-f]{64}|\.new-[0-9a-f]{32})$/.test(n)) &&
       onVolume.plain.length === 0,
-    "the snapshot is sealed: the manifest and sealed files only, nothing in plain text",
     `${onVolume.names.length} names; not sealed: ${onVolume.plain.join(", ")}`,
   );
   const tokenMade = logLines("made the token between the supervisor and the harness").length;
-  check(tokenMade === 1, "the broker made the token between the two parts once");
+  check("the broker made the token between the two parts once", tokenMade === 1);
   const keyNow = () => ({
     sha: keySha256(sh(["exec", name, "cat", keyFile])),
     stat: sh(["exec", name, "stat", "-c", "%U %a", keyFile]).trim(),
   });
   const given = keyNow();
   check(
-    given.sha === keySha256(controlKeys.publicKeyPem) && given.stat === "root 644",
     "root gave the harness its own copy of control's key, the one the launch named",
+    given.sha === keySha256(controlKeys.publicKeyPem) && given.stat === "root 644",
     given.stat,
   );
   // The controller's environment, read as its own user: control's settings, not the code.
@@ -287,11 +284,11 @@ try {
     "10010:10010",
   ).split("\n");
   check(
+    "the controller has the rig's settings from control, and no code, path, snapshot key or RunPod variable",
     ctlEnv.includes("THERMITE_TARGET_CLASS=rig-image-check") &&
       !ctlEnv.some((k) =>
         /^(THERMITE_TUNNEL_(ENROLL_CODE|PREFIX|PORT)|THERMITE_STATE_SNAPSHOT_KEY|RUNPOD_)/.test(k),
       ),
-    "the controller has the rig's settings from control, and no code, path, snapshot key or RunPod variable",
     ctlEnv
       .filter((k) => /^(THERMITE_TUNNEL|THERMITE_STATE_SNAPSHOT_KEY|RUNPOD)/.test(k))
       .join(", "),
@@ -303,15 +300,15 @@ try {
     "10001:10001",
   ).split("\n");
   check(
-    supEnv.includes("THERMITE_SUPERVISOR_HOME") && !supEnv.includes("THERMITE_STATE_SNAPSHOT_KEY"),
     "the supervisor has no snapshot key",
+    supEnv.includes("THERMITE_SUPERVISOR_HOME") && !supEnv.includes("THERMITE_STATE_SNAPSHOT_KEY"),
     supEnv.filter((k) => k.startsWith("THERMITE_STATE")).join(", "),
   );
   check(
+    "RunPod's API key, the enrollment code and the snapshot key appear nowhere in the rig's output",
     !logs().includes("made-up-key-for-the-test") &&
       !logs().includes(minted.env.THERMITE_TUNNEL_ENROLL_CODE) &&
       !logs().includes(minted.env.THERMITE_STATE_SNAPSHOT_KEY),
-    "RunPod's API key, the enrollment code and the snapshot key appear nowhere in the rig's output",
   );
   // The rig's reports reach control, through control's pulls only.
   let reported = false;
@@ -319,11 +316,11 @@ try {
     reported = store.rigs().some((r) => r.id === rig);
     if (!reported) await sleep(2000);
   }
-  check(reported, "the rig's reports reach control through control's pulls");
+  check("the rig's reports reach control through control's pulls", reported);
 
   if (foreign) {
     const seen = sh(["exec", name, "stat", "-c", "%U %a", "/dev/nvidia0"]).trim();
-    check(seen === "nobody 666", "the GPU's node is nobody's, 0666, as on RunPod", seen);
+    check("the GPU's node is nobody's, 0666, as on RunPod", seen === "nobody 666", seen);
   }
 
   // The harness's own isolation check at start, as its controller's user.
@@ -333,9 +330,10 @@ try {
     ),
   );
   const atStart = started.find((b) => b.check === "isolation");
-  check(atStart?.ok === true, "the harness's isolation check at start passes", atStart?.summary);
+  check("the harness's isolation check at start passes", atStart?.ok === true, atStart?.summary);
   const startContainer = atStart?.detail?.container ?? {};
   check(
+    "it checked the container, from the controller's side too",
     startContainer["supervisor-user"] === "uid 10001, gid 10001, no_new_privs" &&
       /^none \(read [1-9]/.test(startContainer["runpod-variables"] ?? "") &&
       /^none \(read [1-9]/.test(startContainer["enroll-code"] ?? "") &&
@@ -344,7 +342,6 @@ try {
         startContainer["state-snapshot"] ?? "",
       ) &&
       /^none \(read [1-9]/.test(startContainer["snapshot-key"] ?? ""),
-    "it checked the container, from the controller's side too",
     JSON.stringify(startContainer),
   );
 
@@ -358,45 +355,45 @@ try {
   } catch {
     report = { ok: false, error: `${self.stdout}${self.stderr}`.slice(-3000) };
   }
-  check(report.ok === true, "the isolation selftest passes", report.devices ?? report.error);
+  check("the isolation selftest passes", report.ok === true, report.devices ?? report.error);
   const c = report.container ?? {};
   check(
-    c["supervisor-user"] === "uid 10001, gid 10001, no_new_privs",
     "the supervisor runs as its own user, with no_new_privs",
+    c["supervisor-user"] === "uid 10001, gid 10001, no_new_privs",
     c["supervisor-user"],
   );
-  check(c["setid-files"] === "none", "no set-id file on the container's disk", c["setid-files"]);
+  check("no set-id file on the container's disk", c["setid-files"] === "none", c["setid-files"]);
   // Root without CAP_SYS_PTRACE reads only root's processes: PID 1 (tini) and the broker, from
   // whose environment the supervisor's and the controller's are made.
   const rp = /^none \(read (\d+) of (\d+) processes\)$/.exec(c["runpod-variables"] ?? "");
   check(
-    Boolean(rp) && Number(rp[1]) >= 2 && Number(rp[2]) >= 4,
     "no process of the rig holds a RunPod variable, PID 1 included",
+    Boolean(rp) && Number(rp[1]) >= 2 && Number(rp[2]) >= 4,
     c["runpod-variables"],
   );
   check(
+    "only root and the supervisor had the code; the harness's key is root's and the launch's",
     /^none \(read [1-9]/.test(c["enroll-code"] ?? "") &&
       c["control-key"] === "root's, the key the launch named",
-    "only root and the supervisor had the code; the harness's key is root's and the launch's",
     `${c["enroll-code"]}; ${c["control-key"]}`,
   );
   check(
+    "the supervisor's user cannot open the GPU",
     foreign
       ? c["supervisor-gpu"] === "refused (fence: landlock)"
       : (c["supervisor-gpu"] ?? "").startsWith("no GPU node"),
-    "the supervisor's user cannot open the GPU",
     c["supervisor-gpu"],
   );
   check(
+    "the snapshot is sealed, and neither part nor a role may open its folder",
     /^sealed, closed to thermite, supervisor, agent-1 \(owner 0:0, mode 700\); holds the manifest and [1-9]\d* sealed files$/.test(
       c["state-snapshot"] ?? "",
     ),
-    "the snapshot is sealed, and neither part nor a role may open its folder",
     c["state-snapshot"],
   );
   check(
-    /^none \(read [1-9]/.test(c["snapshot-key"] ?? ""),
     "no process of the rig but root's holds the snapshot key",
+    /^none \(read [1-9]/.test(c["snapshot-key"] ?? ""),
     c["snapshot-key"],
   );
   const roles = report.roles ?? {};
@@ -416,16 +413,16 @@ try {
       .map((p) => `${role} ${p}: ${r[p]}`),
   ]);
   check(
-    Object.keys(roles).length >= 6 && leaks.length === 0,
     "no role reaches the supervisor's places, PID 1's environment, the state's snapshot, its key or a RunPod variable",
+    Object.keys(roles).length >= 6 && leaks.length === 0,
     leaks.slice(0, 6).join("; "),
   );
   if (foreign) {
     const fenced = ["builder", "lane-1", "agent-1"].map((r) => [r, roles[r]?.["device:nvidia0"]]);
     check(
+      "the GPU fence alone keeps every other role off the GPU",
       (report.devices ?? "").includes("fence: landlock") &&
         fenced.every(([, v]) => String(v).startsWith("EACCES")),
-      "the GPU fence alone keeps every other role off the GPU",
       `${report.devices}; ${JSON.stringify(fenced)}`,
     );
   } else {
@@ -444,8 +441,8 @@ try {
     after = pidsOf("dist/supervisor/main.js");
   }
   check(
-    after !== "[]" && after !== before,
     "a supervisor that exits starts again",
+    after !== "[]" && after !== before,
     `${before} -> ${after}`,
   );
   // A supervisor that writes another key after enrollment changes nothing the harness trusts:
@@ -458,11 +455,11 @@ try {
   kill("dist/harness/main.js");
   await waitFor("controller exited; restarting", 30_000);
   await waitFor("judge ready", 180_000, 2);
-  check(true, "a controller that exits starts again");
+  check("a controller that exits starts again", true);
   const kept = keyNow();
   check(
-    kept.sha === given.sha && kept.stat === "root 644",
     "a key the supervisor writes later is not the one the harness trusts",
+    kept.sha === given.sha && kept.stat === "root 644",
     kept.stat,
   );
 
@@ -482,8 +479,8 @@ try {
     (l) => l.component === "supervisor" && l.pull_mode === true,
   ).length;
   check(
-    code === "0" && stopped === 1 && supervisorStopping === 1 && stopS < 60,
     "a stop ends both parts cleanly, with control away",
+    code === "0" && stopped === 1 && supervisorStopping === 1 && stopS < 60,
     `exit ${code}, ${stopS} s, "stopped" logged ${stopped} time(s), the supervisor stopping in pull mode ${supervisorStopping} time(s)`,
   );
   // The stop's snapshot, taken before the parts were told to stop, with the ledger.
@@ -494,18 +491,17 @@ try {
   );
   const stopSnap = atStop >= 0 ? JSON.parse(lines[atStop]) : {};
   check(
+    "the stop took a snapshot of the state, with the ledger, before the parts stopped",
     stopSnap.msg === "took a snapshot of the rig's state" &&
       stopSnap.ledger === true &&
       atStop < partsStopping,
-    "the stop took a snapshot of the state, with the ledger, before the parts stopped",
     JSON.stringify(stopSnap),
   );
   if (code !== "0" || stopped !== 1) console.log(`the rig's last output:\n${logs().slice(-4000)}`);
 } catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  failed++;
+  check("the script ran to its end", false, err instanceof Error ? err.message : String(err));
 } finally {
   cleanup();
 }
-console.log(failed ? `rig image acceptance: ${failed} FAILED` : "rig image acceptance: OK");
-process.exit(failed ? 1 : 0);
+console.log(failed() ? `rig image acceptance: ${failed()} FAILED` : "rig image acceptance: OK");
+process.exit(failed() ? 1 : 0);

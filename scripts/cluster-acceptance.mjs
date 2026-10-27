@@ -16,15 +16,10 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { cleanEngine, compose, dc, secret, sh, until } from "./lib/smoke-env.mjs";
 
-const results = [];
-const check = (name, ok, detail) => {
-  results.push({ name, ok });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail)}`}`,
-  );
-};
+const { check, results } = acceptanceChecks();
 if (compose[0] !== "podman") {
   console.log("cluster acceptance: needs Podman (kind's Podman provider)");
   process.exit(1);

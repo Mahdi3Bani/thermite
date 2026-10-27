@@ -15,6 +15,7 @@
 //   - the token shows in no page, event or record.
 // Usage: COMPOSE="podman compose" node scripts/claude-acceptance.mjs
 import { readFileSync, writeFileSync } from "node:fs";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import {
   api,
   assign,
@@ -37,13 +38,7 @@ const composeEnv = {
   THERMITE_MAX_TRIALS: "1",
   THERMITE_MODEL_ROUTE_POLL_SECONDS: "2",
 };
-const results = [];
-const check = (name, ok, detail) => {
-  results.push({ name, ok });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 400)}`}`,
-  );
-};
+const { check, results } = acceptanceChecks({ max: 400 });
 
 /** A form's current values from its page (inputs, checked boxes and radios, selected options). */
 const formOf = (html, id) => {

@@ -25,6 +25,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { acceptanceChecks } from "./lib/checks.mjs";
 
 const { values: o } = parseArgs({
   options: {
@@ -59,12 +60,7 @@ if (!(spendLimit > 0)) {
 const control = o.control.replace(/\/$/, "");
 const token = readFileSync(o["token-file"], "utf8").trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failed = 0;
-const check = (ok, what, detail = "") => {
-  console.log(`${ok ? "PASS" : "FAIL"} ${what}${detail ? `: ${detail}` : ""}`);
-  if (!ok) failed++;
-  return ok;
-};
+const { check, failed } = acceptanceChecks();
 async function api(path, body) {
   const r = await fetch(`${control}${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -104,8 +100,8 @@ try {
   });
   if (
     !check(
-      launched.status === 201,
       "the launch is accepted",
+      launched.status === 201,
       JSON.stringify(launched.body).slice(0, 400),
     )
   )
@@ -115,13 +111,13 @@ try {
   console.log(
     `rig ${rig}, pod ${pod}, ${launched.body.gpu_name}, $${launched.body.price_per_hr}/h`,
   );
-  check(launched.body.cloud_type === "SECURE", "on Secure cloud");
+  check("on Secure cloud", launched.body.cloud_type === "SECURE");
 
   // Enroll and report.
   await until("enrollment", async () => (await view(rig)).enrolled_at, 20);
   check(
-    true,
     "control enrolled the pod through RunPod's proxy",
+    true,
     `${Math.round((Date.now() - t0) / 1000)} s after the launch`,
   );
   await until(
@@ -133,8 +129,8 @@ try {
     10,
   );
   check(
-    true,
     "the rig's reports reach control",
+    true,
     `${Math.round((Date.now() - t0) / 1000)} s after the launch`,
   );
   const iso = await until(
@@ -145,7 +141,7 @@ try {
     },
     15,
   );
-  check(iso.ok === true, "the isolation check at start passes on RunPod", iso.summary ?? "");
+  check("the isolation check at start passes on RunPod", iso.ok === true, iso.summary ?? "");
 
   // The judge's smoke check on the pod's GPU. Its no-op candidate is an A/A run: neutral when the
   // pod's timing stays inside the contract's equivalence band, inconclusive (with a note) when not.
@@ -158,8 +154,8 @@ try {
     });
     if (
       check(
-        asked.status === 201,
         "the smoke check is asked for",
+        asked.status === 201,
         JSON.stringify(asked.body).slice(0, 300),
       )
     ) {
@@ -173,8 +169,8 @@ try {
         90,
       );
       check(
-        smoke.ok === true,
         "the judge's smoke check passes on the pod's GPU",
+        smoke.ok === true,
         `${smoke.summary ?? ""} (${Math.round((Date.now() - smokeAt) / 60_000)} min)`,
       );
       console.log(
@@ -210,16 +206,16 @@ try {
     }
   const odd = seen.filter((s) => s.status !== 404 || s.bytes !== 0);
   check(
-    odd.length === 0,
     "every request from outside gets the same empty 404",
+    odd.length === 0,
     odd.length ? JSON.stringify(odd) : `${seen.length} requests`,
   );
 
   // Stop.
   const stop = await api(`/v1/rigs/${encodeURIComponent(rig)}/runpod/stop`, {});
   check(
-    stop.status === 200,
     "the stop is accepted",
+    stop.status === 200,
     stop.body.op_words ?? JSON.stringify(stop.body),
   );
   const stopped = await until(
@@ -231,8 +227,8 @@ try {
     20,
   );
   check(
-    stopped.last_export_left === true,
     "the results left the pod before it stopped",
+    stopped.last_export_left === true,
     stopped.history?.at(-1)?.detail ?? "",
   );
 
@@ -241,11 +237,11 @@ try {
   const start = await api(`/v1/rigs/${encodeURIComponent(rig)}/runpod/start`, {});
   if (start.status === 409 && /no free GPU/.test(start.body.error ?? "")) {
     console.log(`NOTE RunPod had no GPU free for the pod: ${start.body.error}`);
-    check(true, "the start says plainly that RunPod has no GPU free");
+    check("the start says plainly that RunPod has no GPU free", true);
   } else {
     check(
-      start.status === 200,
       "the start is accepted",
+      start.status === 200,
       start.body.status ?? JSON.stringify(start.body),
     );
     await until(
@@ -257,8 +253,8 @@ try {
       15,
     );
     check(
-      true,
       "the pod runs again and reports, without enrolling again",
+      true,
       `${Math.round((Date.now() - startedAt) / 1000)} s`,
     );
   }
@@ -268,8 +264,8 @@ try {
     confirm: `terminate ${rig}`,
   });
   check(
-    term.status === 200,
     "the terminate is accepted",
+    term.status === 200,
     term.body.op_words ?? JSON.stringify(term.body),
   );
   const gone = await until(
@@ -281,7 +277,7 @@ try {
     },
     90,
   );
-  check(gone.status === "TERMINATED", "every result left the pod, then RunPod removed it");
+  check("every result left the pod, then RunPod removed it", gone.status === "TERMINATED");
   console.log(
     `history: ${(gone.history ?? []).map((h) => `${h.step}${h.ok ? "" : " (not ok)"}`).join(", ")}`,
   );
@@ -289,8 +285,7 @@ try {
     `it cost $${gone.spend_usd} by control's count, in ${Math.round((Date.now() - t0) / 60_000)} minutes`,
   );
 } catch (err) {
-  failed++;
-  console.error(err instanceof Error ? err.message : String(err));
+  check("the script ran to its end", false, err instanceof Error ? err.message : String(err));
   if (rig) {
     const v = await view(rig).catch(() => undefined);
     if (v?.active && v.status !== "EXITED") {
@@ -304,5 +299,5 @@ try {
       );
   }
 }
-console.log(failed ? `runpod paid acceptance: ${failed} FAILED` : "runpod paid acceptance: OK");
-process.exit(failed ? 1 : 0);
+console.log(failed() ? `runpod paid acceptance: ${failed()} FAILED` : "runpod paid acceptance: OK");
+process.exit(failed() ? 1 : 0);

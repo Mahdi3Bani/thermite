@@ -14,6 +14,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import {
   api,
   compose,
@@ -27,13 +28,7 @@ import {
   until,
 } from "./lib/smoke-env.mjs";
 
-const results = [];
-const check = (name, ok, detail) => {
-  results.push({ name, ok, detail });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail)}`}`,
-  );
-};
+const { check, results } = acceptanceChecks();
 
 // The project: one C file whose benchmark prints the n it was given.
 const root = mkdtempSync(join(tmpdir(), "thermite-newcamp-"));

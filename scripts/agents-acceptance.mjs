@@ -15,6 +15,7 @@
 // Usage: COMPOSE="podman compose" node scripts/agents-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { hostName as containersHost, scriptedModel } from "./lib/scripted-model.mjs";
 import {
   api,
@@ -277,12 +278,7 @@ const report = {
   compose: process.env.COMPOSE ?? "podman compose",
   checks: [],
 };
-const check = (name, ok, detail) => {
-  report.checks.push({ name, ok, detail });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 300)}`}`,
-  );
-};
+const { check } = acceptanceChecks({ max: 300, into: report.checks });
 
 const env = prepare();
 // One epoch of one trial per lane, two lanes.

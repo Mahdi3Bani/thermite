@@ -13,6 +13,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import {
   api,
   assign,
@@ -37,12 +38,7 @@ const report = {
   compose: process.env.COMPOSE ?? "podman compose",
   checks: [],
 };
-const check = (name, ok, detail) => {
-  report.checks.push({ name, ok, detail });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 300)}`}`,
-  );
-};
+const { check } = acceptanceChecks({ max: 300, into: report.checks });
 const dcp = (...args) => dc(composeEnv, ...profile, ...args);
 const view = async (rig) => (await api(`/v1/rigs/${rig}/view`)).body;
 const runStatus = async (rig, id) => (await view(rig)).runs?.find((i) => i.id === id)?.status;

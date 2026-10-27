@@ -12,6 +12,7 @@ import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { cleanEngine } from "./lib/smoke-env.mjs";
 
 const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
@@ -27,11 +28,7 @@ const FOREIGN = "/var/tmp/thermite-multigpu-foreign-nodes";
 const sh = (args, opts = {}) =>
   execFileSync(engine, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failed = 0;
-const check = (ok, what, detail = "") => {
-  console.log(`${ok ? "PASS" : "FAIL"} ${what}${detail ? `: ${detail}` : ""}`);
-  if (!ok) failed++;
-};
+const { check, failed } = acceptanceChecks();
 
 const dir = mkdtempSync(join(tmpdir(), "thermite-multigpu-"));
 const token = randomBytes(24).toString("base64url");
@@ -163,9 +160,9 @@ try {
   start(a, { THERMITE_GPU_INDEX: "0,1", THERMITE_DEV_GPU_INDEX: "2,3" });
   const cards = await waitFor(a, "dedicated cards");
   check(
+    "the broker set up two judge cards and two agents' cards",
     JSON.stringify(cards.judges) === JSON.stringify(["/dev/nvidia0", "/dev/nvidia1"]) &&
       JSON.stringify(cards.devs) === JSON.stringify(["/dev/nvidia2", "/dev/nvidia3"]),
-    "the broker set up two judge cards and two agents' cards",
     JSON.stringify(cards),
   );
   const groups = sh([
@@ -181,6 +178,7 @@ try {
     "/dev/nvidiactl",
   ]).trim();
   check(
+    "each card has its own group, the shared nodes gpuctl",
     groups ===
       [
         "/dev/nvidia0 10500 660",
@@ -189,28 +187,27 @@ try {
         "/dev/nvidia3 10521 660",
         "/dev/nvidiactl 10502 660",
       ].join("\n"),
-    "each card has its own group, the shared nodes gpuctl",
     groups.replace(/\n/g, "; "),
   );
   const run1 = sh(["exec", a, "id", "run-1"]).trim();
   check(
-    /uid=10031\(run-1\) gid=10511\(gpu-j1\)/.test(run1),
     "the second judge card's timing user",
+    /uid=10031\(run-1\) gid=10511\(gpu-j1\)/.test(run1),
     run1,
   );
   const builder1 = sh(["exec", a, "id", "builder-1"]).trim();
   check(
-    /uid=10021\(builder-1\) gid=10021\(builder-1\)/.test(builder1),
     "the second judge card's builder",
+    /uid=10021\(builder-1\) gid=10021\(builder-1\)/.test(builder1),
     builder1,
   );
   const ready = await waitFor(a, "judge ready");
-  check(ready.judge_cards === 2, "two judge executors", JSON.stringify(ready));
+  check("two judge executors", ready.judge_cards === 2, JSON.stringify(ready));
   const hw = logLine(a, "hardware");
   check(
+    "the hardware report lists every card with its role",
     JSON.stringify(hw?.devices?.map((d) => d.split(":")[0])) ===
       JSON.stringify(["judge", "judge", "dev", "dev"]),
-    "the hardware report lists every card with its role",
     JSON.stringify(hw?.devices),
   );
   const self = spawnSync(engine, ["exec", a, "thermite", "selftest", "isolation", "--force"], {
@@ -222,33 +219,33 @@ try {
   } catch {
     report = { ok: false, error: `${self.stdout}${self.stderr}`.slice(-1500) };
   }
-  check(report.ok === true, "the isolation selftest passes on every card", report.devices ?? "");
+  check("the isolation selftest passes on every card", report.ok === true, report.devices ?? "");
   const roles = report.roles ?? {};
   check(
+    "run-1 reaches only judge card 2",
     roles["run-1"]?.["device:nvidia1"] === "reachable" &&
       roles["run-1"]?.["device:nvidia0"]?.startsWith("EACCES") &&
       roles["run-1"]?.["device:nvidia3"]?.startsWith("EACCES") &&
       roles["run-1"]?.["visible-gpus"] === "sees GPU-00000000-0000-0000-0000-000000000001",
-    "run-1 reaches only judge card 2",
     JSON.stringify(roles["run-1"]),
   );
   check(
+    "the second card's builder can't reach the first card's build under way",
     roles["builder-1"]?.["build-work"]?.startsWith("EACCES") &&
       roles["builder-1"]?.["builds-list"]?.startsWith("EACCES"),
-    "the second card's builder can't reach the first card's build under way",
     JSON.stringify(roles["builder-1"]),
   );
   check(
+    "a dev run on the second agents' card reaches only that card",
     roles["lane-1+gpu@2"]?.["device:nvidia3"] === "reachable" &&
       roles["lane-1+gpu@2"]?.["device:nvidia2"]?.startsWith("EACCES") &&
       roles["lane-1+gpu@2"]?.["device:nvidia1"]?.startsWith("EACCES"),
-    "a dev run on the second agents' card reaches only that card",
     JSON.stringify(roles["lane-1+gpu@2"]),
   );
   check(
+    "a lane's plain commands reach no card",
     Object.values(roles["lane-1"] ?? {}).every((v) => !String(v).startsWith("ALLOWED")) &&
       roles["lane-1"]?.["device:nvidia1"]?.startsWith("EACCES"),
-    "a lane's plain commands reach no card",
     JSON.stringify(roles["lane-1"]),
   );
 
@@ -256,7 +253,7 @@ try {
   const b = names[1];
   start(b, { THERMITE_GPU_INDEX: "0,1", THERMITE_DEV_GPU_INDEX: "1,2" });
   const refused = await waitFor(b, "could not set up the dedicated development card");
-  check(/both index 1/.test(refused.error ?? ""), "overlapping lists are refused", refused.error);
+  check("overlapping lists are refused", /both index 1/.test(refused.error ?? ""), refused.error);
 
   // A rig configured with its GPU set: the deployment's starting split, then a new one from the
   // rig's settings (as Edit rig or a campaign's deployment sends it), applied when the harness
@@ -265,10 +262,10 @@ try {
   start(c, { THERMITE_GPUS: "0,1,2,3", THERMITE_JUDGE_GPUS: "1" });
   const first = await waitFor(c, "judge ready");
   check(
+    "a GPU set starts with the deployment's split: one judge card, three agents' cards",
     first.judge_cards === 1 &&
       groupsOf(c) ===
         "/dev/nvidia0 10500; /dev/nvidia1 10501; /dev/nvidia2 10521; /dev/nvidia3 10522",
-    "a GPU set starts with the deployment's split: one judge card, three agents' cards",
     groupsOf(c),
   );
   sh([
@@ -289,11 +286,11 @@ try {
   const regrouped = await waitFor(c, "the rig's GPU split changed: regrouping the cards");
   const second = await waitFor(c, "judge ready", 180_000, 2);
   check(
+    "a new split in the rig's settings regroups the cards at the next start: three judge cards, one agents' card",
     regrouped.judge === "0,1,2" &&
       second.judge_cards === 3 &&
       groupsOf(c) ===
         "/dev/nvidia0 10500; /dev/nvidia1 10511; /dev/nvidia2 10512; /dev/nvidia3 10501",
-    "a new split in the rig's settings regroups the cards at the next start: three judge cards, one agents' card",
     groupsOf(c),
   );
 
@@ -327,8 +324,8 @@ try {
     );
     const seen = sh(["exec", d, "stat", "-c", "%U %a", "/dev/nvidia0"]).trim();
     check(
-      seen === "nobody 666" && only.landlock_abi > 0,
       "nodes the container can't regroup (nobody's, 0666): the broker says only the fence holds",
+      seen === "nobody 666" && only.landlock_abi > 0,
       `${seen}; ${JSON.stringify(only)}`,
     );
     await waitFor(d, "judge ready");
@@ -346,18 +343,17 @@ try {
       rd.roles?.[r]?.["device:nvidia0"],
     ]);
     check(
-      rd.ok === true && fenced.every(([, v]) => String(v).startsWith("EACCES")),
       "the isolation selftest passes with the fence alone: no other role opens the GPU",
+      rd.ok === true && fenced.every(([, v]) => String(v).startsWith("EACCES")),
       JSON.stringify(fenced),
     );
   } else {
     console.log("SKIP nodes a container can't regroup: needs rootless Podman on a machine VM");
   }
 } catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  failed++;
+  check("the script ran to its end", false, err instanceof Error ? err.message : String(err));
 } finally {
   cleanup();
 }
-console.log(failed ? `multigpu acceptance: ${failed} FAILED` : "multigpu acceptance: OK");
-process.exit(failed ? 1 : 0);
+console.log(failed() ? `multigpu acceptance: ${failed()} FAILED` : "multigpu acceptance: OK");
+process.exit(failed() ? 1 : 0);

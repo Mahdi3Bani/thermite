@@ -7,15 +7,10 @@
 // refused.
 // Usage: COMPOSE="podman compose" node scripts/machine-acceptance.mjs (or "docker compose").
 import { execFileSync } from "node:child_process";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { compose, control, dc, secret, sh, until } from "./lib/smoke-env.mjs";
 
-const results = [];
-const check = (name, ok, detail) => {
-  results.push({ name, ok });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail)}`}`,
-  );
-};
+const { check, results } = acceptanceChecks();
 const engine = compose[0] === "docker" ? "docker" : "podman";
 const box = "thermite-test-machine";
 const run = (...a) => sh(engine, a);

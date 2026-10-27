@@ -14,6 +14,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import {
   api,
   assign,
@@ -152,12 +153,7 @@ const report = {
   lifecycle_driver: Boolean(socket),
   checks: [],
 };
-const check = (name, ok, detail) => {
-  report.checks.push({ name, ok, detail });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 300)}`}`,
-  );
-};
+const { check } = acceptanceChecks({ max: 300, into: report.checks });
 const rigEvents = async (rig) => {
   const all = [];
   let after = 0;

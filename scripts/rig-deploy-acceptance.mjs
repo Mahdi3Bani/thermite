@@ -8,15 +8,10 @@
 // The rig's images are the ones compose builds, loaded into the machine's rootless Podman.
 // Usage: COMPOSE="podman compose" node scripts/rig-deploy-acceptance.mjs (Podman only).
 import { execSync } from "node:child_process";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { compose, control, dc, secret, sh, until } from "./lib/smoke-env.mjs";
 
-const results = [];
-const check = (name, ok, detail) => {
-  results.push({ name, ok });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail)}`}`,
-  );
-};
+const { check, results } = acceptanceChecks();
 if (compose[0] !== "podman") {
   console.log("rig deploy acceptance: needs Podman (a privileged systemd container)");
   process.exit(1);

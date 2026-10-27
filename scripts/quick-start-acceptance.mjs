@@ -57,6 +57,7 @@ import {
   quickStartPlan,
   rewrite,
 } from "../tests/helpers/quick-start.ts";
+import { acceptanceChecks } from "./lib/checks.mjs";
 import { hostName, scriptedModel } from "./lib/scripted-model.mjs";
 import { latestVerdicts, lifecycles, until } from "./lib/smoke-env.mjs";
 
@@ -89,13 +90,7 @@ function section(name) {
   console.log(`\n== ${name} (at ${minutes(now - t0)})`);
 }
 /** A check: it is recorded, and a failure stops the test, since each step needs the last. */
-function check(name, ok, detail) {
-  report.checks.push({ name, ok, ...(detail === undefined ? {} : { detail }) });
-  console.log(
-    `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 400)}`}`,
-  );
-  if (!ok) throw new Error(`failed: ${name}`);
-}
+const { check } = acceptanceChecks({ max: 400, into: report.checks, stop: true });
 
 // ---------------------------------------------------------------- processes
 
