@@ -1,4 +1,5 @@
 import type { ControlStore } from "./store.ts";
+import { currentChampion } from "./views/facts.ts";
 import { rigView } from "./views.ts";
 
 /**
@@ -41,7 +42,7 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
   for (const u of views) {
     for (const i of u.runs) {
       const l = `rig="${label(u.id)}",run="${label(i.id)}",campaign="${label(i.campaign ?? "")}"`;
-      const champ = i.champion.filter((c) => !c.reopened).at(-1);
+      const champ = currentChampion(i);
       lines.push(`thermite_run_champion_seq{${l}} ${champ?.seq ?? 1}`);
       lines.push(`thermite_run_champion_gain{${l}} ${((champ?.cumulative ?? 1) - 1).toFixed(6)}`);
       for (const [verdict, n] of Object.entries(i.verdicts)) {

@@ -109,7 +109,7 @@ import { keyHint } from "./secrets.ts";
 import { type StartRunBody, startRunAnswer, startRunFields, startRunRequest } from "./start-run.ts";
 import type { ControlStore } from "./store.ts";
 import { modelPrices, modelUsage, setModelPrice } from "./usage.ts";
-import { campaignModes, leaderboard, rigView } from "./views.ts";
+import { campaignModes, currentChampion, leaderboard, rigView } from "./views.ts";
 
 /**
  * Control over MCP (streamable HTTP at /mcp, stateless). The admin token may read and issue
@@ -223,7 +223,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
               }
             : null,
           runs: v.runs.map((i) => {
-            const champ = i.champion.filter((c) => !c.reopened).at(-1);
+            const champ = currentChampion(i);
             return {
               run: i.id,
               campaign: i.campaign,

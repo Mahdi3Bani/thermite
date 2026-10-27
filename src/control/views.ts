@@ -31,6 +31,10 @@ import {
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
+import { currentChampion } from "./views/facts.ts";
+
+export { championsInForce, currentChampion } from "./views/facts.ts";
+
 import { doingsOf, type TrialDoing } from "./views/work.ts";
 
 /**
@@ -397,9 +401,8 @@ export interface RunView {
     status: string;
     reasons: string;
     /**
-     * A code verifier's goal (goal 086): each public cell's values as the judge measured them,
-     * met or not; null for another goal, or a report from an older harness. Never a held-out
-     * cell's.
+     * A code verifier's goal (goal 086): each public cell's values as the judge measured them, met
+     * or not; null for another goal, or a report from an older harness. Never a held-out cell's.
      */
     values: GoalValues[] | null;
   }[];
@@ -741,10 +744,7 @@ export function rigSettingsOf(
   const u = store.rigs().find((x) => x.id === rig);
   if (!u) return undefined;
   const summary = u.summary as { settings?: unknown; gpu_split?: unknown } | undefined;
-  return {
-    settings: readSettings(summary?.settings),
-    gpu_split: readGpuSplit(summary?.gpu_split),
-  };
+  return { settings: readSettings(summary?.settings), gpu_split: readGpuSplit(summary?.gpu_split) };
 }
 
 /**
@@ -1175,7 +1175,7 @@ export function rigView(
         // A setup change that became the starting point (goal 115): the gain starts again.
         const setup = b.setup === true;
         const delta = attempt && !setup ? (confirmDelta.get(attempt) ?? null) : null;
-        const prev = v.champion.filter((c) => !c.reopened).at(-1);
+        const prev = currentChampion(v);
         v.champion.push({
           seq: Number(b.seq),
           attempt,
@@ -1925,7 +1925,7 @@ export function leaderboard(
     for (const i of v.runs) {
       // Hill climbs: a gain over the baseline is what is compared.
       if (i.mode !== "hill_climb" || !i.campaign) continue;
-      const champ = i.champion.filter((c) => !c.reopened).at(-1);
+      const champ = currentChampion(i);
       const seq = champ?.seq ?? 1;
       const tree = i.published_trees[seq];
       if (!out[i.campaign]) out[i.campaign] = [];

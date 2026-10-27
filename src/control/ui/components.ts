@@ -2,6 +2,7 @@ import type { Hardware } from "../../core/hardware.ts";
 import { ANSWERED, RESEARCH_REVIEW } from "../../core/research-check.ts";
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../core/verdicts.ts";
 import { championWords } from "../metric-values.ts";
+import { championsInForce } from "../views/facts.ts";
 import {
   type CampaignView,
   campaignViews,
@@ -402,7 +403,7 @@ export function deltaCell(d: number | null): string {
 
 /** The champion's gain over time: a stepped line with an area, promotions marked. */
 export function gainChart(v: RunView, w = 760, h = 200): string {
-  const steps = v.champion.filter((c) => !c.reopened);
+  const steps = championsInForce(v);
   if (steps.length < 2)
     return `<div class="empty">No promotion yet: the champion is the seed.</div>`;
   const padL = 46;
@@ -453,7 +454,7 @@ export function gainChart(v: RunView, w = 760, h = 200): string {
 
 /** A small sparkline of the champion's gain, for tiles and lists. */
 export function sparkline(v: RunView, w = 120, h = 28): string {
-  const steps = v.champion.filter((c) => !c.reopened);
+  const steps = championsInForce(v);
   if (steps.length < 2) return "";
   const ts = steps.map((s) => Date.parse(s.at));
   const t0 = Math.min(...ts);

@@ -385,6 +385,7 @@ import {
 } from "./ui/usage.ts";
 import { auditReason, clip, jobText, listText, runStatusText, signed, span } from "./ui/words.ts";
 import { pricingOf, setModelPrice, usageData } from "./usage.ts";
+import { championsInForce, currentChampion } from "./views/facts.ts";
 import {
   type CampaignView,
   campaignModes,
@@ -1023,7 +1024,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
         : []),
     ].join("")}</div></div>`;
     const waiting = decisions.length;
-    const champ = i.champion.filter((x) => !x.reopened).at(-1);
+    const champ = currentChampion(i);
     const met = i.goals.filter((g) => g.status === "met").length;
     const lanesAtWork = Object.keys(i.at_work).length;
     const judging =
@@ -1065,7 +1066,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     // The champions, newest first: what each one changed and what it gained.
     const ladder =
       i.mode === "hill_climb"
-        ? `<div class="block"><div class="head"><h2>Champions</h2><span class="n">${i.champion.filter((x) => !x.reopened).length}</span><span class="right">gain over the starting point, measured on this rig</span></div><div class="card flat"><div class="ladder-chart">${gainChart(i)}</div>${i.champion
+        ? `<div class="block"><div class="head"><h2>Champions</h2><span class="n">${championsInForce(i).length}</span><span class="right">gain over the starting point, measured on this rig</span></div><div class="card flat"><div class="ladder-chart">${gainChart(i)}</div>${i.champion
             .filter((x) => !x.reopened)
             .slice()
             .reverse()
@@ -1213,8 +1214,7 @@ ${body}
   const headline = (k: CampaignView): { value: string; sub: string; best?: RunView } => {
     const runs = k.runs.map((x) => x.run);
     if (k.mode === "hill_climb") {
-      const gain = (i: RunView) =>
-        (i.champion.filter((s) => !s.reopened).at(-1)?.cumulative ?? 1) - 1;
+      const gain = (i: RunView) => (currentChampion(i)?.cumulative ?? 1) - 1;
       const best = [...runs].sort((a, b) => gain(b) - gain(a))[0];
       return { value: best ? pct(gain(best), 1) : "·", sub: bestGainWords(best), best };
     }
@@ -3717,7 +3717,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         ? `${num((r.research as Record<string, unknown> | null)?.verified)} verified claims`
         : r.mode === "goal"
           ? `${r.goals.filter((g) => g.status === "met").length} of ${r.goals.length} goals met`
-          : signed((r.champion.filter((x) => !x.reopened).at(-1)?.cumulative ?? 1) - 1),
+          : signed((currentChampion(r)?.cumulative ?? 1) - 1),
       waitingOn(r, u)
         ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r, u)} wait${waitingOn(r, u) === 1 ? "s" : ""} for you</a>`
         : "",

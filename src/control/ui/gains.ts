@@ -7,6 +7,7 @@ import {
   valuesByCase,
   valuesWords,
 } from "../metric-values.ts";
+import { currentChampion } from "../views/facts.ts";
 import type { RunView } from "../views.ts";
 import { esc, infoLabel } from "./components.ts";
 import { signed } from "./words.ts";
@@ -84,7 +85,7 @@ const CHAMPION_TIP =
  * value and its gain over the starting point. Empty for another mode, or with nothing to show.
  */
 export function championCard(r: Pick<RunView, "mode" | "baseline" | "champion" | "attempts">) {
-  const step = r.champion.filter((c) => !c.reopened).at(-1);
+  const step = currentChampion(r);
   if (r.mode !== "hill_climb" || !step) return "";
   const v = championValues(r);
   const u = v?.unit ? `<span class="u"> ${esc(v.unit)}</span>` : "";

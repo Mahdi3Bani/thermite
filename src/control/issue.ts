@@ -14,6 +14,7 @@ import { campaignContextRefusal } from "./campaign-context.ts";
 import { mcpRefusal } from "./mcp-servers.ts";
 import { usedRunRefusal } from "./run-names.ts";
 import type { ControlStore } from "./store.ts";
+import { currentChampion } from "./views/facts.ts";
 import { type RigView, type RunView, rigView } from "./views.ts";
 
 type AdvisorRole = "teachers" | "auditor" | "panel";
@@ -452,7 +453,7 @@ export function propagateChampion(
   const from = rigView(store, input.fromRig, { staleAfterMs: input.staleAfterMs });
   const src = from?.runs.find((i) => i.id === input.run);
   if (!src) throw new Refusal(`no run ${input.run} on ${input.fromRig}`);
-  const champ = src.champion.filter((c) => !c.reopened).at(-1);
+  const champ = currentChampion(src);
   const pub = src.published;
   if (!champ || champ.seq <= 1) throw new Refusal("the source run has no champion beyond its seed");
   if (!pub || pub.seq !== champ.seq) {

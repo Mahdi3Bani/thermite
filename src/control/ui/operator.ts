@@ -30,6 +30,7 @@ import { hasAdvisors, outcome } from "./operator/outcome.ts";
 export { championHeldOutBlock, outcome };
 
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../core/verdicts.ts";
+import { currentChampion } from "../views/facts.ts";
 import { card } from "./need-card.ts";
 import { stuckChip, stuckNeeds, stuckTrials } from "./stuck.ts";
 import {
@@ -96,7 +97,6 @@ export interface Need {
   box: string;
 }
 
-const champSeq = (r: RunView) => r.champion.filter((c) => !c.reopened).at(-1)?.seq ?? 1;
 const nextSeq = (r: RunView) => Math.max(1, ...r.champion.map((c) => c.seq)) + 1;
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 8) : "?");
 
@@ -248,7 +248,7 @@ const auditWhy = (reason: string, a: AttemptView | undefined) => {
 };
 
 const promoteDoes = (r: RunView, a: AttemptView | undefined, expected: number | null) => {
-  const cur = champSeq(r);
+  const cur = currentChampion(r)?.seq ?? 1;
   const moved = expected !== null && expected !== cur;
   const flaws = a?.known_flaws.length
     ? " You also accept the problems that the agent wrote. The record shows your name."
@@ -993,7 +993,7 @@ export function runFigure(r: RunView): string | null {
     return `${r.goals.filter((g) => g.status === "met").length}/${r.goals.length} goals`;
   }
   if (r.mode === "hill_climb") {
-    const champ = r.champion.filter((c) => !c.reopened).at(-1);
+    const champ = currentChampion(r);
     return signed((champ?.cumulative ?? 1) - 1);
   }
   const verified = Number((r.research as Record<string, unknown> | null)?.verified ?? 0);
@@ -1137,7 +1137,7 @@ export function runBrief(
     rows.push(
       `<div class="br"><span class="br-who"></span><a class="br-what warn" href="#needs">${opts.waiting} decision${opts.waiting === 1 ? "" : "s"} from this run wait${opts.waiting === 1 ? "s" : ""} for you ↑</a><span class="br-when"></span></div>`,
     );
-  const champ = r.champion.filter((c) => !c.reopened).at(-1);
+  const champ = currentChampion(r);
   const head = opts.heading
     ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(u.id, r)}">${esc(r.campaign || r.id)} › ${esc(r.id)}</a>${judgeOnlyMark(r)}<span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
     : "";

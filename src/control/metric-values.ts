@@ -1,3 +1,4 @@
+import { currentChampion } from "./views/facts.ts";
 import type { RunView } from "./views.ts";
 
 /**
@@ -79,7 +80,7 @@ export function championValues(r: Pick<RunView, "baseline" | "champion" | "attem
   const starts = (r.baseline?.cells ?? []).flatMap((c) =>
     c.metrics.filter((m) => m.metric === metric).map((m) => m.median),
   );
-  const step = r.champion.filter((c) => !c.reopened).at(-1);
+  const step = currentChampion(r);
   const values = step?.attempt ? r.attempts.find((a) => a.id === step.attempt)?.values : null;
   const start = starts.length ? mean(starts) : null;
   const estimated = !values && Boolean(step?.attempt) && start !== null;
