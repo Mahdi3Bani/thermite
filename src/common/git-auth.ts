@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { shellQuote } from "./exec.ts";
 
 /**
  * Git access for a private repository: an SSH deploy key or an HTTPS token, as control keeps it
@@ -48,17 +49,16 @@ export async function withGitAuth<T>(
     });
     const known = knownHostsFile ?? join(dir, "known_hosts");
     mkdirSync(join(known, ".."), { recursive: true });
-    const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
     return await fn({
       env: {
         GIT_SSH_COMMAND: [
           "ssh",
           "-i",
-          q(key),
+          shellQuote(key),
           "-o IdentitiesOnly=yes",
           "-o BatchMode=yes",
           "-o StrictHostKeyChecking=accept-new",
-          `-o UserKnownHostsFile=${q(known)}`,
+          `-o UserKnownHostsFile=${shellQuote(known)}`,
         ].join(" "),
       },
       protocols: "ssh",

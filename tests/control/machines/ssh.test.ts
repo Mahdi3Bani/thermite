@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { shellQuote } from "../../../src/common/exec.ts";
 import { makeDeployKey } from "../../../src/control/git-keys.ts";
 import {
   CHECK_SCRIPT,
@@ -17,17 +18,16 @@ import {
   fingerprint,
   parseHostKeys,
   publicKeyOf,
-  shq,
   sshError,
   USER,
 } from "../../../src/control/machines/ssh.ts";
 
 describe("machines over SSH", () => {
   test("words are quoted for the shell; addresses and users that ssh could misread are refused", () => {
-    assert.equal(shq("it's"), `'it'\\''s'`);
+    assert.equal(shellQuote("it's"), `'it'\\''s'`);
     const out = execFileSync("sh", [
       "-c",
-      `printf '%s|' ${shq("a b")} ${shq("$(id)")} ${shq("it's")}`,
+      `printf '%s|' ${shellQuote("a b")} ${shellQuote("$(id)")} ${shellQuote("it's")}`,
     ]);
     assert.equal(String(out), "a b|$(id)|it's|");
     for (const ok of ["gpu-box.example.com", "192.0.2.10", "fe80::1", "box1"])

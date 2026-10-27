@@ -96,6 +96,19 @@ test("every image's Containerfile clears set-id bits last, and fails its build i
   }
 });
 
+test("every image upgrades its base's system packages before it installs its own (goal 125)", () => {
+  for (const image of ["control", "harness", "supervisor", "rig"]) {
+    const text = readFileSync(
+      join(import.meta.dirname, "..", "..", "containers", image, "Containerfile"),
+      "utf8",
+    );
+    const final = text.slice(text.lastIndexOf("\nFROM "));
+    const upgrade = final.indexOf("apt-get upgrade -y");
+    assert.ok(upgrade > 0, `${image} upgrades its packages`);
+    assert.ok(upgrade < final.indexOf("apt-get install"), `${image} upgrades first`);
+  }
+});
+
 test("the probe's lines are read by name, each value trimmed", () => {
   assert.deepEqual(probeValues("claude=\nsetid=/a /b \nnoise\n"), { claude: "", setid: "/a /b" });
 });

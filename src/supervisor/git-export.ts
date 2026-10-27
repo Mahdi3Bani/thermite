@@ -4,6 +4,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync } f
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { shellQuote } from "../common/exec.ts";
 
 /**
  * The supervisor's git exporter. The harness writes exports into the outbox (read-only here):
@@ -76,15 +77,14 @@ function sha256(path: string): string {
 }
 
 /** A single-quoted shell word (GIT_SSH_COMMAND is run by a shell). */
-const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 
 /** The ssh command for the results remote: the deploy key, and the host's key when pinned. */
 export function sshCommand(keyFile?: string, knownHostsFile?: string): Record<string, string> {
   if (!keyFile) return {};
   const hostKey = knownHostsFile
-    ? `-o UserKnownHostsFile=${shq(knownHostsFile)} -o StrictHostKeyChecking=yes`
+    ? `-o UserKnownHostsFile=${shellQuote(knownHostsFile)} -o StrictHostKeyChecking=yes`
     : "-o StrictHostKeyChecking=accept-new";
-  return { GIT_SSH_COMMAND: `ssh -i ${shq(keyFile)} -o IdentitiesOnly=yes ${hostKey}` };
+  return { GIT_SSH_COMMAND: `ssh -i ${shellQuote(keyFile)} -o IdentitiesOnly=yes ${hostKey}` };
 }
 
 const Manifest = z.object({

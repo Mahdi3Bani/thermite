@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { redact } from "../../common/env.ts";
-import { shq } from "./ssh.ts";
+import { shellQuote } from "../../common/exec.ts";
 
 /**
  * A rig on a machine control reaches over SSH, as files and Podman Quadlet units: the same two
@@ -223,7 +223,7 @@ export function deployScript(p: RigPlan, secrets: RigSecrets): string {
       writeFile(q(`${units}/${name}`), text, "0644"),
     ),
     `${systemctl} daemon-reload`,
-    `for image in ${shq(p.images.harness)} ${shq(p.images.supervisor)}; do podman image exists "$image" || podman pull -q "$image" >/dev/null; done`,
+    `for image in ${shellQuote(p.images.harness)} ${shellQuote(p.images.supervisor)}; do podman image exists "$image" || podman pull -q "$image" >/dev/null; done`,
     `${systemctl} start ${unitName(p.rig, "harness")}.service ${unitName(p.rig, "supervisor")}.service`,
     `echo started`,
   ];
@@ -247,7 +247,7 @@ export function updateScript(p: UnitPlan): string {
     ...userSession(p.root),
     "umask 077",
     `if [ ! -d ${q(dir)} ]; then echo "rig ${p.rig} is not on this machine" >&2; exit 3; fi`,
-    `for image in ${shq(p.images.harness)} ${shq(p.images.supervisor)}; do podman pull -q "$image" >/dev/null || podman image exists "$image"; done`,
+    `for image in ${shellQuote(p.images.harness)} ${shellQuote(p.images.supervisor)}; do podman pull -q "$image" >/dev/null || podman image exists "$image"; done`,
     ...containers.map(([name, text]) => writeFile(q(`${units}/${name}`), text, "0644")),
     `${systemctl} daemon-reload`,
     `${systemctl} restart ${unitName(p.rig, "harness")}.service ${unitName(p.rig, "supervisor")}.service`,
@@ -270,7 +270,7 @@ export function checkScript(p: Pick<RigPlan, "rig" | "root">): string {
     ...userSession(p.root),
     `echo "harness=$(${systemctl} is-active ${h}.service 2>/dev/null || true)"`,
     `echo "supervisor=$(${systemctl} is-active ${s}.service 2>/dev/null || true)"`,
-    `podman ps -a --filter name=${shq(`^(${h}|${s})$`)} --format 'ps={{.Names}}|{{.Status}}' 2>/dev/null || true`,
+    `podman ps -a --filter name=${shellQuote(`^(${h}|${s})$`)} --format 'ps={{.Names}}|{{.Status}}' 2>/dev/null || true`,
     `podman logs --tail 3 ${s} 2>&1 | tail -n 3 | sed 's/^/log=/' || true`,
   ].join("\n");
 }

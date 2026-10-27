@@ -1,3 +1,4 @@
+import { shellQuote } from "../common/exec.ts";
 import { asList, type ClusterRigPlan, clusterRigObjects } from "./clusters/manifests.ts";
 import { deployScript, manageScript, type RigPlan, type RigSecrets } from "./machines/deploy.ts";
 
@@ -66,18 +67,16 @@ export function joinNamespaceManifest(p: Omit<ClusterRigPlan, "placement">, s: R
   return asList(clusterRigObjects({ ...p, placement: "joined" }, s));
 }
 
-const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
-
 /** The one command the owner runs where the rig goes. */
 export function joinCommand(
   form: JoinForm,
   o: { controlUrl: string; rig: string; token: string; namespace?: string | undefined },
 ): string {
   const base = `${o.controlUrl.replace(/\/$/, "")}/v1/join/${o.rig}`;
-  const auth = shq(`authorization: Bearer ${o.token}`);
+  const auth = shellQuote(`authorization: Bearer ${o.token}`);
   return form === "machine"
     ? `f=$(mktemp) && curl -fsS -H ${auth} "${base}/script?uid=$(id -u)" -o "$f" && sh "$f"; rm -f "$f"`
-    : `curl -fsS -H ${auth} ${shq(`${base}/manifest`)} | kubectl apply -n ${o.namespace} -f -`;
+    : `curl -fsS -H ${auth} ${shellQuote(`${base}/manifest`)} | kubectl apply -n ${o.namespace} -f -`;
 }
 
 /** Commands for a joined rig, which control can't run itself. */

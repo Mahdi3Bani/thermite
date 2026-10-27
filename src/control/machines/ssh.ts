@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { shellQuote } from "../../common/exec.ts";
 
 /**
  * Control's way into a machine it sets rigs up on: the OpenSSH client in control's image, with
@@ -29,9 +30,6 @@ export const ADDRESS =
   /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$|^\[?[0-9A-Fa-f:.]+\]?$/;
 /** A Unix account name. */
 export const USER = /^[a-z_][a-z0-9_-]{0,31}$/;
-
-/** One shell word, single-quoted. */
-export const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 
 /** `SHA256:…` as ssh prints it, from a known_hosts or public key line's base64 key. */
 export function fingerprint(keyBase64: string): string {
@@ -136,7 +134,7 @@ export async function sshScript(
       t.user,
       "--",
       t.address,
-      ["sh", "-s", "--", ...args].map(shq).join(" "),
+      ["sh", "-s", "--", ...args].map(shellQuote).join(" "),
     ];
     return new Promise<SshResult>((resolve, reject) => {
       const child = spawn("ssh", argv, { stdio: ["pipe", "pipe", "pipe"] });

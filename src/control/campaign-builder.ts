@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { shellQuote } from "../common/exec.ts";
 import { agentsContextRefusal } from "../core/compaction.ts";
 import {
   CommitSchema,
@@ -261,7 +262,6 @@ function webAddress(x: string): boolean {
 export const kitName = (campaign: string) => `${campaign.slice(0, 59)}-kit`;
 
 /** A shell word: single-quoted, with any single quote closed, escaped and reopened. */
-const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /**
  * A command as written on the page, with its placeholders as shell variables: {build}, {out}
@@ -304,10 +304,10 @@ while IFS='=' read -r k v; do
 done < "$PARAMS"
 ${
   kind === "run"
-    ? `exec sh -c ${sq(command)}`
+    ? `exec sh -c ${shellQuote(command)}`
     : `# The judge reads one JSON line: pass when the command exits 0.
 tail_file="$(mktemp)"
-sh -c ${sq(command)} > "$tail_file" 2>&1
+sh -c ${shellQuote(command)} > "$tail_file" 2>&1
 status=$?
 last="$(tail -n 1 "$tail_file")"
 if [ "$status" -eq 0 ]; then
