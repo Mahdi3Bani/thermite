@@ -82,13 +82,16 @@ async function control(
   const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
   const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
   const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
-  const post = async (path: string, form: Record<string, string>) =>
+  const post = async (path: string, form: Record<string, string> | [string, string][]) =>
     decodeURIComponent(
       String(
         (
           await api.request(path, {
             method: "POST",
-            body: new URLSearchParams({ csrf, ...form }),
+            body: new URLSearchParams([
+              ["csrf", csrf],
+              ...(Array.isArray(form) ? form : Object.entries(form)),
+            ]),
             headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
           })
         ).headers.get("location"),
@@ -316,6 +319,13 @@ describe("machines in Providers", () => {
       await s.post("/ui/rigs/add", { machine: "box", rig: "box-a", gpus: "0" }),
       /needs NVIDIA's container toolkit first/,
     );
+    const twice: [string, string][] = [
+      ["machine", "box"],
+      ["rig", "box-a"],
+      ["gpus", "0"],
+      ["gpus", "0"],
+    ];
+    assert.match(await s.post("/ui/rigs/add", twice), /Name each GPU once/);
     assert.match(
       await s.post("/ui/rigs/add", { machine: "box", rig: "Box A" }),
       /lowercase letters/,

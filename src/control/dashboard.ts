@@ -45,6 +45,7 @@ import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
   asksNothing,
   type ClusterResourcesRequest,
+  judgeShareOf,
   planClusterResize,
   quotaRefusal,
   type ResizeRefusal,
@@ -5380,14 +5381,8 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       )
       .join(", ");
   /** The judge's share of `n` GPUs from a form field: a number from 1 to n-1, or the default. */
-  const judgeShare = (raw: string, n: number): number | string | undefined => {
-    if (n < 2) return undefined;
-    if (!raw) return Math.ceil(n / 2);
-    const j = Number(raw);
-    if (!Number.isInteger(j) || j < 1 || j > n - 1 || j > 8 || n - j > 8)
-      return `With ${n} GPUs the judge takes 1 to ${Math.min(8, n - 1)} of them, and the agents at most 8.`;
-    return j;
-  };
+  // The judge's share as typed in a form, by the one rule of cluster-resources.ts.
+  const judgeShare = (raw: string, n: number) => judgeShareOf(raw ? Number(raw) : undefined, n);
   /** The images control deploys for a rig with these GPUs, or why it has none. */
   const controlImages = (gpus: number): ClusterRig["spec"]["images"] | string => {
     if (!opts.rigImages) return "Control has no rig images configured.";
@@ -5824,6 +5819,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (!facts.gpus.some((x) => x.index === g)) return fail(`${m.name} has no GPU ${g}.`);
       if (used.has(g)) return fail(`GPU ${g} is used by rig ${used.get(g)}.`);
     }
+    if (new Set(gpus).size !== gpus.length) return fail("Name each GPU once.");
     if (gpus.length > MAX_RIG_GPUS) return fail(`A rig takes at most ${MAX_RIG_GPUS} GPUs.`);
     const judge = judgeShare(String(f.judge_gpus ?? "").trim(), gpus.length);
     if (typeof judge === "string") return fail(judge);
