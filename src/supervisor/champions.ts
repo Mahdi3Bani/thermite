@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { log } from "../common/env.ts";
+import { git } from "../common/git.ts";
 import { buildHeaders } from "../core/version.ts";
-
-const run = promisify(execFile);
 
 /**
  * Champions' patches go to control, so an operator can download a run's result from the
@@ -53,10 +50,9 @@ export async function uploadChampions(
   const again: ChampionUpload[] = [];
   for (const c of queue) {
     try {
-      const { stdout } = await run(
-        "git",
+      const patch = await git(
         ["-C", cfg.resultsRepo, "show", `refs/heads/thermite/${cfg.rig}/attempts:${c.path}`],
-        { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 },
+        { maxBytes: 64 * 1024 * 1024 },
       );
       const res = await f(
         `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/champions/${encodeURIComponent(c.run)}/${c.seq}/patch`,
@@ -67,7 +63,7 @@ export async function uploadChampions(
             "content-type": "application/octet-stream",
             ...buildHeaders(),
           },
-          body: new Uint8Array(stdout),
+          body: new Uint8Array(patch),
         },
       );
       if (res.status === 201) {

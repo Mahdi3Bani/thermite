@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { z } from "zod";
 import { shellQuote } from "../common/exec.ts";
+import { gitText } from "../common/git.ts";
 
 /**
  * The supervisor's git exporter. The harness writes exports into the outbox (read-only here):
@@ -19,8 +18,6 @@ import { shellQuote } from "../common/exec.ts";
  * and pushes them with the rig's deploy key. Git work is deterministic code only; no model
  * ever runs git here.
  */
-
-const run = promisify(execFile);
 
 export interface ExportConfig {
   rig: string;
@@ -50,26 +47,20 @@ export interface ExportState {
   lastError?: string | undefined;
 }
 
+/** The results repository's identity: who commits the exports. */
+const IDENTITY = {
+  GIT_AUTHOR_NAME: "thermite",
+  GIT_AUTHOR_EMAIL: "thermite@localhost",
+  GIT_COMMITTER_NAME: "thermite",
+  GIT_COMMITTER_EMAIL: "thermite@localhost",
+};
+
 async function git(
   repo: string,
   args: string[],
-  opts: { env?: Record<string, string>; input?: string } = {},
+  opts: { env?: Record<string, string> } = {},
 ): Promise<string> {
-  const { stdout } = await run("git", ["-C", repo, ...args], {
-    encoding: "utf8",
-    maxBuffer: 512 * 1024 * 1024,
-    env: {
-      ...process.env,
-      GIT_CONFIG_NOSYSTEM: "1",
-      GIT_TERMINAL_PROMPT: "0",
-      GIT_AUTHOR_NAME: "thermite",
-      GIT_AUTHOR_EMAIL: "thermite@localhost",
-      GIT_COMMITTER_NAME: "thermite",
-      GIT_COMMITTER_EMAIL: "thermite@localhost",
-      ...opts.env,
-    },
-  });
-  return stdout.trim();
+  return (await gitText(["-C", repo, ...args], { env: { ...IDENTITY, ...opts.env } })).trim();
 }
 
 function sha256(path: string): string {

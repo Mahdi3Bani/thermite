@@ -1,13 +1,10 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { git as gitRun, gitText } from "../common/git.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { HarnessService } from "./service.ts";
-
-const run = promisify(execFile);
 
 /**
  * The smoke check: a judge-only campaign on the rig's own target, from the smoke kit and project
@@ -45,12 +42,8 @@ const FIXED = {
 };
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
-  const { stdout } = await run("git", ["-c", "commit.gpgsign=false", ...args], {
-    cwd,
-    env: { ...process.env, ...FIXED },
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return stdout.trim();
+  const out = await gitText(["-c", "commit.gpgsign=false", ...args], { cwd, env: FIXED });
+  return out.trim();
 }
 
 async function seedRepo(from: string, to: string, skip: string[]): Promise<string> {
@@ -173,11 +166,7 @@ export async function smokeCheck(o: {
     await git(work, "clone", "--quiet", join(work, "project"), wt);
     cpSync(join(kitDir, "candidates", name), wt, { recursive: true });
     await git(wt, "add", "-A");
-    const { stdout } = await run("git", ["diff", "--cached", "--binary"], {
-      cwd: wt,
-      encoding: "buffer",
-      maxBuffer: 64 * 1024 * 1024,
-    });
+    const stdout = await gitRun(["diff", "--cached", "--binary"], { cwd: wt });
     rmSync(wt, { recursive: true, force: true });
     const r = await o.service.submitAttempt(
       {

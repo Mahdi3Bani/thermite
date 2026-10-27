@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   createReadStream,
@@ -12,8 +11,8 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { promisify } from "node:util";
 import { log } from "../common/env.ts";
+import { git as gitRun } from "../common/git.ts";
 import { type GitAuth, withGitAuth } from "../common/git-auth.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import { buildHeaders } from "../core/version.ts";
@@ -32,8 +31,6 @@ import { downloadModel, ModelDownloads } from "./model-download.ts";
  * tree the command signs. Fetches run in the background, and the command waits for them.
  * Deterministic code only: no model ever runs git here.
  */
-
-const run = promisify(execFile);
 
 export interface StagingConfig {
   rig: string;
@@ -63,18 +60,8 @@ function sshEnv(cfg: StagingConfig): Record<string, string> {
   return sshCommand(cfg.sshKeyFile, cfg.knownHostsFile);
 }
 
-async function git(
-  repo: string,
-  args: string[],
-  env: Record<string, string> = {},
-): Promise<Buffer> {
-  const { stdout } = await run("git", ["-C", repo, ...args], {
-    encoding: "buffer",
-    maxBuffer: 512 * 1024 * 1024,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0", ...env },
-  });
-  return stdout;
-}
+const git = (repo: string, args: string[], env: Record<string, string> = {}) =>
+  gitRun(["-C", repo, ...args], { env });
 
 const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 

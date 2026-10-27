@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { gitSync, gitText } from "../common/git.ts";
 import { KitSchema } from "../harness/kit.ts";
 
 /**
@@ -56,20 +57,14 @@ export interface KitAdded {
 }
 
 const ZERO = "0".repeat(40);
-const run = promisify(execFile);
-const gitEnv = (home: string) => ({
-  PATH: process.env.PATH ?? "/usr/bin:/bin",
-  GIT_CONFIG_NOSYSTEM: "1",
-  HOME: home,
-});
+const _run = promisify(execFile);
+/** Control's repositories' git: PATH and HOME alone of control's environment. */
+const gitEnv = (home: string) => ({ only: true, env: { HOME: home } });
 /** Git, asynchronously; its standard output, trimmed. Throws with git's own words. */
-const gitAsync = async (gitDir: string, args: string[], home = gitDir): Promise<string> => {
-  const r = await run("git", ["--git-dir", gitDir, ...args], {
-    env: gitEnv(home),
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  return r.stdout.trim();
-};
+const gitAsync = async (gitDir: string, args: string[], home = gitDir): Promise<string> =>
+  (
+    await gitText(["--git-dir", gitDir, ...args], { ...gitEnv(home), maxBytes: 16 * 1024 * 1024 })
+  ).trim();
 /**
  * Git's words on standard error, on one line, with the bundle's temporary file called "the
  * bundle" and no other temporary path.
@@ -90,18 +85,17 @@ const SERVED =
   /^(?:HEAD|info\/refs|objects\/info\/packs|objects\/[0-9a-f]{2}\/[0-9a-f]{38,62}|objects\/pack\/pack-[0-9a-f]{40,64}\.(?:pack|idx))$/;
 
 const git = (gitDir: string, args: string[], input?: Buffer | string) =>
-  execFileSync("git", ["--git-dir", gitDir, ...args], {
+  gitSync(["--git-dir", gitDir, ...args], {
     input,
+    only: true,
     env: {
-      PATH: process.env.PATH ?? "/usr/bin:/bin",
-      GIT_CONFIG_NOSYSTEM: "1",
       HOME: gitDir,
       GIT_AUTHOR_NAME: "Thermite control",
       GIT_AUTHOR_EMAIL: "control@thermite.invalid",
       GIT_COMMITTER_NAME: "Thermite control",
       GIT_COMMITTER_EMAIL: "control@thermite.invalid",
     },
-    maxBuffer: 64 * 1024 * 1024,
+    maxBytes: 64 * 1024 * 1024,
   });
 
 export class KitRepos {
@@ -124,7 +118,7 @@ export class KitRepos {
     const gitDir = this.path(name);
     if (!existsSync(join(gitDir, "HEAD"))) {
       mkdirSync(gitDir, { recursive: true });
-      execFileSync("git", ["init", "--quiet", "--bare", "--initial-branch=main", gitDir]);
+      gitSync(["init", "--quiet", "--bare", "--initial-branch=main", gitDir], { only: true });
     }
     // A tree per folder, from its files' blobs and its subfolders' trees.
     interface Dir {
@@ -203,15 +197,10 @@ export class KitRepos {
     if (!NAME.test(name) || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) return undefined;
     if (!existsSync(join(this.path(name), "HEAD"))) return undefined;
     try {
-      const text = execFileSync(
-        "git",
-        ["--git-dir", this.path(name), "show", `${commit}:kit.json`],
-        {
-          env: { PATH: process.env.PATH ?? "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1" },
-          stdio: ["ignore", "pipe", "ignore"],
-          maxBuffer: 4 * 1024 * 1024,
-        },
-      );
+      const text = gitSync(["--git-dir", this.path(name), "show", `${commit}:kit.json`], {
+        only: true,
+        maxBytes: 4 * 1024 * 1024,
+      });
       return JSON.parse(text.toString());
     } catch {
       // not a commit of this kit, or not JSON: control cannot read it
@@ -323,7 +312,7 @@ export class KitRepos {
       // A repository of its own, which sees the kit's objects (for a bundle that builds on them)
       // but writes nothing into the kit's repository until every check passed.
       const scratch = join(work, "check.git");
-      await run("git", ["init", "--quiet", "--bare", scratch], { env: gitEnv(work) });
+      await gitText(["init", "--quiet", "--bare", scratch], gitEnv(work));
       if (exists)
         writeFileSync(
           join(scratch, "objects", "info", "alternates"),
@@ -432,9 +421,10 @@ export class KitRepos {
       // refs/kept/, then the head moved only if no one moved it since.
       if (!exists) {
         mkdirSync(gitDir, { recursive: true });
-        await run("git", ["init", "--quiet", "--bare", "--initial-branch=main", gitDir], {
-          env: gitEnv(gitDir),
-        });
+        await gitText(
+          ["init", "--quiet", "--bare", "--initial-branch=main", gitDir],
+          gitEnv(gitDir),
+        );
       }
       try {
         await gitAsync(gitDir, [
