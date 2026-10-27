@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { createControlApi } from "../../src/control/api.ts";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Progress } from "../../src/control/command-progress.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
-import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
+import { ADMIN, controlStack, mcpClient, signIn } from "../helpers/control-stack.ts";
+import { FAST_KERNEL } from "../helpers/judge-env.ts";
 
 /**
  * The owner closes a run by hand (goal 087): Close run in the ⋯ of a run's page sends close_run,
@@ -16,49 +12,15 @@ import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
  * real; the supervisor's relay is called by hand.
  */
 
-const ADMIN = "admin-token-abcdef";
 const OPERATOR = "operator-token-abcdef";
 const AGENT = "agent-token-abcdef";
 type Answer = Progress & { follow?: string };
 
 async function stack() {
-  const env = makeJudgeEnv();
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(
-    store,
-    { admin: ADMIN, operator: OPERATOR, agent: AGENT, rigs: { "rig-a": "rig-token-abcdef" } },
-    env.keys.privateKeyPem,
-    { staleAfterMs: 180_000 },
-  );
-  const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
-  const cfg = {
-    rig: "rig-a",
-    harnessUrl: "http://harness",
-    harnessToken: "sup-token-abcdef",
-    controlUrl: "http://control",
-    controlToken: "rig-token-abcdef",
-    fetchImpl,
-  };
-  let state = { cursor: 0 } as Awaited<ReturnType<typeof relayOnce>>;
-  /** One round of the supervisor: the rig's report, then control's pending commands. */
-  const relay = async () => {
-    state = await relayOnce(cfg, state);
-  };
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+  const { env, store, control, relay } = controlStack({
+    tokens: { operator: OPERATOR, agent: AGENT },
   });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) =>
-    (await control.request(path, { headers: { cookie } })).text();
+  const { cookie, page } = await signIn(control);
   await env.service.applyCommand(env.assign);
   await relay();
   const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/rigs/rig-a"))?.[1] ?? "";
@@ -94,21 +56,6 @@ const closeFormOf = (html: string) =>
   /<form method="post" action="\/ui\/commands" class="stack close-run">[\s\S]*?<\/form>/.exec(
     html,
   )?.[0] ?? "";
-
-/** An MCP client talking to control in-process, as an agent would over HTTP. */
-async function connect(control: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
-}
 
 describe("Close run on a run's page (goal 087)", () => {
   test("⋯ has Close run with a reason and a typed confirmation; the page then shows the run closed with the reason", async () => {
@@ -243,14 +190,14 @@ describe("close_run over REST and MCP (goal 087)", () => {
       }
     };
     for (const token of [OPERATOR, AGENT]) {
-      const client = await connect(s.control, token);
+      const client = await mcpClient(s.control, token);
       const tool = (await client.listTools()).tools.find((t) => t.name === "issue_command");
       assert.doesNotMatch(String(tool?.description), /close_run/, token);
       assert.equal(await issue(client, { run: "js-1", reason: "x" }), undefined, token);
       await client.close();
     }
     assert.equal(s.store.listCommands(10).filter((c) => c.kind === "close_run").length, 0);
-    const owner = await connect(s.control, ADMIN);
+    const owner = await mcpClient(s.control, ADMIN);
     const tool = (await owner.listTools()).tools.find((t) => t.name === "issue_command");
     assert.match(String(tool?.description), /close_run \{run, reason\} \(the owner's token only/);
     const viaMcp = await issue(owner, { run: "js-1", reason: "closed over MCP" });
@@ -361,7 +308,7 @@ describe("A closed run's waiting decisions (goal 087; the owner, 2026-10-22)", (
       })
     ).json()) as { runs: { id: string; pending_promotions: string[] }[] };
     assert.deepEqual(view.runs.find((r) => r.id === "js-1")?.pending_promotions, []);
-    const owner = await connect(s.control, ADMIN);
+    const owner = await mcpClient(s.control, ADMIN);
     const listed = (await owner.callTool({ name: "list_rigs", arguments: {} })) as {
       content: { text: string }[];
     };
