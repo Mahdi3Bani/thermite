@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BRIEF_PARTS, briefChange } from "../core/brief.ts";
 import { type AgentsContext, agentsContextRefusal } from "../core/compaction.ts";
 import { IdSchema, parseContract } from "../core/contract.ts";
+import { NAME_WORDS } from "../core/ids.ts";
 import { type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { researchMcpRefusal } from "./mcp-servers.ts";
 import type { CampaignSources, ControlStore, CopiedFrom } from "./store.ts";
@@ -74,7 +75,7 @@ export const copyCampaignFields = {
   name: z
     .string()
     .describe(
-      "The copy's name, as on the New campaign page: lowercase letters, digits, dots, dashes and underscores, at most 64. No campaign may have it yet",
+      `The copy's name, as on the New campaign page: ${NAME_WORDS}. No campaign may have it yet`,
     ),
   mcp_servers: McpUses.optional().describe(
     'Research campaigns only: the MCP servers the copy\'s agents use, in place of the source\'s, as the New campaign page names them. Each is {name, agents, tools?}: a server\'s name in Settings; the kinds of agent that get it ("workers", "advisors": a research run has no planner); and, only to narrow it, the tools each kind may call, such as {"workers": ["search"]}. [] names none. Left out: the source\'s servers',
@@ -161,11 +162,7 @@ export function copyCampaign(
       `Control has no saved version or earlier assignment of ${from}. There is nothing to copy.`,
       404,
     );
-  if (!IdSchema.safeParse(name).success)
-    return refuse(
-      "A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.",
-      400,
-    );
+  if (!IdSchema.safeParse(name).success) return refuse(`A campaign's name is ${NAME_WORDS}.`, 400);
   if (isRigCheck(name))
     return refuse(
       "A name that starts with rig-check- is for rig checks. Choose another name.",

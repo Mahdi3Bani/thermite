@@ -10,6 +10,7 @@ import { z } from "zod";
 import { canonicalJson } from "./canonical.ts";
 import { CommitSchema, IdSchema, MAX_LANES, MAX_LANES_REASON, Sha256Schema } from "./contract.ts";
 import { DirectionRef, directionName } from "./directions.ts";
+import { RunId } from "./ids.ts";
 import { McpUses } from "./mcp.ts";
 
 /**
@@ -217,7 +218,7 @@ export const QueueSeed = z.strictObject({
   why: z.string().max(2000).optional(),
   by: z.string().min(1).max(80),
   state: z.enum(["queued", "proposed"]),
-  from: z.object({ run: IdSchema, id: z.string().min(1).max(64) }),
+  from: z.object({ run: RunId, id: z.string().min(1).max(64) }),
 });
 export type QueueSeed = z.infer<typeof QueueSeed>;
 
@@ -231,7 +232,7 @@ export const BriefingSeed = z.strictObject({
     campaign: z.string().min(1).max(200),
     /** The rig the run ran on: a run's name is unique on its rig only (goal 162). */
     rig: z.string().min(1).max(200).optional(),
-    run: IdSchema,
+    run: RunId,
     kind: z.string().min(1).max(40),
     ref: z.string().min(1).max(200),
   }),
@@ -265,7 +266,7 @@ export type AskOwner = z.infer<typeof AskOwner>;
 
 export const CommandPayloads = {
   assign_campaign: z.object({
-    run: IdSchema,
+    run: RunId,
     /** The full contract; the harness validates it and checks contract_sha. */
     contract: z.unknown(),
     contract_sha: Sha256Schema,
@@ -304,21 +305,21 @@ export const CommandPayloads = {
     /** Isolation and smoke want an idle rig; force runs them anyway (trials may be killed). */
     force: z.boolean().optional(),
   }),
-  pause_run: z.object({ run: IdSchema, reason: z.string().min(1) }),
-  resume_run: z.object({ run: IdSchema }),
+  pause_run: z.object({ run: RunId, reason: z.string().min(1) }),
+  resume_run: z.object({ run: RunId }),
   /**
    * The owner closes a run by hand (goal 087, owner only): it ends for good, as a run that met its
    * goals does, with the owner's reason. Its trials stop, nothing new starts, its jobs waiting for
    * the judge never run, and it can't be resumed. Its records stay.
    */
-  close_run: z.object({ run: IdSchema, reason: z.string().trim().min(1).max(2000) }),
+  close_run: z.object({ run: RunId, reason: z.string().trim().min(1).max(2000) }),
   /** A directive set; by default it replaces this author's previous set. */
   redirect: z.object({
-    run: IdSchema,
+    run: RunId,
     directives: z.array(StructuredDirective).min(1).max(40),
     replace: z.boolean().default(true),
   }),
-  reset_workers: z.object({ run: IdSchema, reseed_commit: CommitSchema.optional() }),
+  reset_workers: z.object({ run: RunId, reseed_commit: CommitSchema.optional() }),
   /**
    * The owner's message to the run's agents (owner only). `to`: everyone working (`all`: every
    * lane, and the planner of a hill-climb or goal run), a lane, a running worker's trial, the
@@ -328,7 +329,7 @@ export const CommandPayloads = {
    */
   message_agent: z
     .object({
-      run: IdSchema,
+      run: RunId,
       to: z.string().regex(MESSAGE_TARGET),
       text: z.string().min(1).max(4000),
       keep: z.boolean().optional(),
@@ -338,24 +339,24 @@ export const CommandPayloads = {
       path: ["keep"],
     }),
   /** The owner ends a message kept in force (owner only): new briefs no longer carry it. */
-  unkeep_message: z.object({ run: IdSchema, message: z.number().int().positive() }),
+  unkeep_message: z.object({ run: RunId, message: z.number().int().positive() }),
   /**
    * The run's experiment queue (goal 064), the owner's changes (owner only; an operator may issue
    * them for the owner). Add an experiment (by default at the end of up next), move a queued one,
    * edit or drop one still waiting, or queue a lane's proposed idea.
    */
   queue_add: z.strictObject({
-    run: IdSchema,
+    run: RunId,
     title: ExperimentText.title,
     details: ExperimentText.details.optional(),
     family: ExperimentText.family.optional(),
     why: ExperimentText.why.optional(),
     position: QueuePosition.default("end"),
   }),
-  queue_move: z.strictObject({ run: IdSchema, id: ExperimentId, position: QueuePosition }),
+  queue_move: z.strictObject({ run: RunId, id: ExperimentId, position: QueuePosition }),
   queue_edit: z
     .strictObject({
-      run: IdSchema,
+      run: RunId,
       id: ExperimentId,
       title: ExperimentText.title.optional(),
       details: ExperimentText.details.optional(),
@@ -371,24 +372,24 @@ export const CommandPayloads = {
       { message: "change at least one of title, details, family and why" },
     ),
   queue_drop: z.strictObject({
-    run: IdSchema,
+    run: RunId,
     id: ExperimentId,
     why: z.string().trim().min(1).max(2000),
   }),
   queue_accept: z.strictObject({
-    run: IdSchema,
+    run: RunId,
     id: ExperimentId,
     position: QueuePosition.optional(),
   }),
   /** The owner removes a rule for the plan in force (a directive), whoever set it. */
-  drop_directive: z.strictObject({ run: IdSchema, id: z.number().int().positive() }),
+  drop_directive: z.strictObject({ run: RunId, id: z.number().int().positive() }),
   /**
    * A research run's hypothesis (goal 117), the owner's to change: promote one of the pool, so it
    * needs a verdict from the review panel as the author's do; return a promoted one to the pool;
    * or retire one; each with why. The author's hypotheses can't be changed this way.
    */
   hypothesis_status: z.strictObject({
-    run: IdSchema,
+    run: RunId,
     id: z.string().trim().min(1).max(64),
     status: z.enum(["promoted", "pool", "retired"]),
     reason: z.string().trim().min(1).max(2000),
@@ -398,9 +399,9 @@ export const CommandPayloads = {
    * against its own champion. The supervisor stages the file from the results repository.
    */
   propagate: z.object({
-    run: IdSchema,
+    run: RunId,
     source_rig: z.string().min(1),
-    source_run: IdSchema,
+    source_run: RunId,
     source_seq: z.number().int().positive(),
     import: ImportSpec,
   }),
@@ -408,7 +409,7 @@ export const CommandPayloads = {
    * A full export (a full reset's) also carries the research archive and the ledger snapshot.
    * With `run`, an export of that run alone (goal 103), outside the rig's chain of exports.
    */
-  export_now: z.object({ full: z.boolean().default(false), run: IdSchema.optional() }),
+  export_now: z.object({ full: z.boolean().default(false), run: RunId.optional() }),
   /**
    * The rig drains before its images change (goal 079): no new trial, plan or judge job starts,
    * and those running end as they would. The rig's report says what still runs; control restarts
@@ -426,7 +427,7 @@ export const CommandPayloads = {
    * Nothing else stops.
    */
   stop_trial: z.strictObject({
-    run: IdSchema,
+    run: RunId,
     trial: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "a trial's id"),
     reason: z.string().trim().min(1).max(500).optional(),
   }),
@@ -443,7 +444,7 @@ export const CommandPayloads = {
    * The owner approves a confirmed win waiting for promotion (the rig's promotion policy), or overrides
    * an audit that is pending or blocked. The judge's verdict must still be promotable.
    */
-  approve_promotion: z.object({ run: IdSchema, attempt: z.string().min(1).max(64) }),
+  approve_promotion: z.object({ run: RunId, attempt: z.string().min(1).max(64) }),
   /** The rig's own settings from its Edit page (owner only): only the fields that change. */
   rig_settings: z.strictObject({
     judge: z.boolean().optional(),
@@ -468,20 +469,20 @@ export const CommandPayloads = {
    * blocked by) an audit: it never becomes the champion, and stays in the record as declined.
    */
   decline_promotion: z.object({
-    run: IdSchema,
+    run: RunId,
     attempt: z.string().min(1).max(64),
     note: z.string().max(2000).optional(),
   }),
   /** The owner's final acceptance (or rejection) of a goal the review panel passed. */
   accept_review: z.object({
-    run: IdSchema,
+    run: RunId,
     review: z.number().int().positive(),
     accept: z.boolean(),
     note: z.string().max(2000).optional(),
   }),
   /** The owner accepts or rejects the harness's "not possible" conclusion for a goal campaign. */
   conclude: z.object({
-    run: IdSchema,
+    run: RunId,
     proposal: z.number().int().positive(),
     accept: z.boolean(),
     note: z.string().max(2000).optional(),

@@ -50,7 +50,7 @@ Run `thermite assign` as in the example at the top. Control signs the command an
 | Option | What it does |
 | --- | --- |
 | `--contract F` | The contract file. Required |
-| `--run ID` | The new run's name: lowercase letters, digits, dots, dashes and underscores. It must be new on control: a name used on any rig, also by a run from before a full reset, is refused. Required |
+| `--run ID` | The new run's name: up to 64 lowercase letters, digits, dashes and underscores, starting with a letter or a digit. It must be new on control: a name used on any rig, also by a run from before a full reset, is refused. Required |
 | `--seed GIT_URL@COMMIT` | Where the project comes from, and the full commit to start from. Without `@COMMIT`, the contract's `project.commit`. The rig keeps the project under the contract's `project.repo` name |
 | `--seed-commit C` | Instead of `--seed`: a full commit already on the rig, such as an earlier run's champion |
 | `--kit GIT_URL` | Where the kit comes from. Its commit comes from the contract. Leave it out when the rig already has that kit commit |

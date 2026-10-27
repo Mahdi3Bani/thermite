@@ -24,6 +24,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 - Every log line has a `level`: `debug`, `info`, `warn` or `error`, and the lines that say something failed are `error`, the ones about a refusal, a retry or a fallback `warn`. `THERMITE_LOG_LEVEL` sets the lowest level a service writes (`info` unless set; a bad value stops it at start), and `SIGUSR2` switches a running service to `debug` and back; a rig's broker passes it on to the harness and the supervisor (goal 125).
 - A rig's name follows one rule everywhere: 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit. Add a rig on a machine took up to 63 characters before, which a cluster's namespace can't hold (goal 125).
 - The harness answers a command it refuses (a closed run, a run that exists, not now) with HTTP 409 and a payload it can't use (an invalid contract) with 400, where both answered 500; the command is `failed` with the reason, as before (goal 125).
+- A campaign's and a run's name take no dot: up to 64 lowercase letters, digits, dashes and underscores, starting with a letter or a digit. A campaign with a dot in its name is copied under a new name to go on; repositories, kits and cases keep their dots (goal 170).
 - Two checks join `npm run check`: the size check (`npm run check:sizes`: no file over 800 lines grows) and the import-rule check (`npm run check:imports`: the parts of `src/` never import each other), from the rules of shape added to CONVENTIONS.md (goal 125).
 
 ## [0.1.0] 2026-10-26: the first public release

@@ -451,7 +451,7 @@ describe("Copy on a campaign's page (goal 069)", () => {
     await refused("old-sweep", "There is a campaign named old-sweep already. Choose another name.");
     await refused(
       "Web Survey",
-      "A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.",
+      "A campaign's name is lowercase letters, digits, dashes and underscores, at most 64, starting with a letter or a digit.",
     );
     await refused(
       "rig-check-mine",

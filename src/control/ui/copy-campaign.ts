@@ -1,5 +1,5 @@
 import type { AgentsContext } from "../../core/compaction.ts";
-import { ID_PATTERN } from "../../core/contract.ts";
+import { NAME_PATTERN, NAME_WORDS } from "../../core/ids.ts";
 import { AGENT_KINDS, type AgentKind, type McpUse, McpUses, sameUses } from "../../core/mcp.ts";
 import type { McpServer } from "../mcp-servers.ts";
 import { contextFields, fieldValues } from "./campaign-context.ts";
@@ -60,7 +60,7 @@ export function suggestCopyName(base: string, taken: ReadonlySet<string>): strin
   const stem = m?.[1] ?? base;
   for (let c = m?.[2] ? m[2].charCodeAt(0) + 1 : 98; c <= 122; c++) {
     const name = `${stem}-${String.fromCharCode(c)}`;
-    if (!taken.has(name) && ID_PATTERN.test(name) && !name.startsWith("rig-check-")) return name;
+    if (!taken.has(name) && NAME_PATTERN.test(name) && !name.startsWith("rig-check-")) return name;
   }
   return "";
 }
@@ -185,7 +185,7 @@ export function copyDrawer(p: CopyPanel): string {
 <div class="drawer-body"><input type="hidden" name="csrf" value="${esc(p.csrf)}">
 ${p.error ? `<div class="card warn" data-c-error><b class="bad">Not copied.</b> ${esc(p.error)}</div>` : ""}
 <p class="cp-why">Copy it to start from zero: the copy gets its own empty folder in the knowledge base, so its runs read nothing that the runs of <b>${esc(p.campaign)}</b> recorded.</p>
-<label class="sfd"><span class="lb">Name of the copy<i class="ii" tabindex="0" data-tip="${esc("As on the New campaign page: lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit. No campaign can have it yet: not one with runs, a saved one, or a folder in the knowledge base. The copy's runs are named after it: name-1, name-2.")}">i</i></span><input name="name" value="${esc(p.name)}" data-c-name required spellcheck="false" autocapitalize="off" maxlength="90">${
+<label class="sfd"><span class="lb">Name of the copy<i class="ii" tabindex="0" data-tip="${esc(`As on the New campaign page: ${NAME_WORDS}. No campaign can have it yet: not one with runs, a saved one, or a folder in the knowledge base. The copy's runs are named after it: name-1, name-2.`)}">i</i></span><input name="name" value="${esc(p.name)}" data-c-name required spellcheck="false" autocapitalize="off" maxlength="90">${
     // The name the panel offers is free; after a refusal, the card above says why not.
     p.error
       ? `<span class="cp-say" data-c-name-say aria-live="polite"></span>`

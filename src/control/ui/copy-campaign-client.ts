@@ -1,4 +1,4 @@
-import { ID_PATTERN } from "../../core/contract.ts";
+import { NAME_PATTERN, NAME_WORDS } from "../../core/ids.ts";
 import { CC_CORE_JS } from "./campaign-context-client.ts";
 
 /**
@@ -20,10 +20,10 @@ import { CC_CORE_JS } from "./campaign-context-client.ts";
  * - `mcpProblems(uses)`: what stops the copy: a server with no agent, a kind with no tool.
  */
 export const COPY_CORE_JS = `
-const NAME_RX = new RegExp(${JSON.stringify(ID_PATTERN.source)});
+const NAME_RX = new RegExp(${JSON.stringify(NAME_PATTERN.source)});
 const ALL_KINDS = ["workers", "planner", "advisors"];
 const fixName = (v) => {
-  const f = String(v).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 64);
+  const f = String(v).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 64);
   return NAME_RX.test(f) ? f : "";
 };
 // Control's own checks, in its order and its words (copy-campaign.ts).
@@ -32,7 +32,7 @@ const nameCheck = (value, taken, folderOnly) => {
   if (!v) return { ok: false, cls: "", say: "Write a name for the copy.", fix: "" };
   if (!NAME_RX.test(v)) {
     const f = fixName(v);
-    return { ok: false, cls: "bad", say: "A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.", fix: f && !taken.includes(f) && !f.startsWith("rig-check-") ? f : "" };
+    return { ok: false, cls: "bad", say: "A campaign's name is ${NAME_WORDS}.", fix: f && !taken.includes(f) && !f.startsWith("rig-check-") ? f : "" };
   }
   if (v.startsWith("rig-check-")) return { ok: false, cls: "bad", say: "A name that starts with rig-check- is for rig checks. Choose another name.", fix: "" };
   if (taken.includes(v)) return { ok: false, cls: "bad", say: "There is a campaign named " + v + " already." + (folderOnly.includes(v) ? " It has no runs now, but its folder is in the knowledge base." : "") + " Choose another name.", fix: "" };

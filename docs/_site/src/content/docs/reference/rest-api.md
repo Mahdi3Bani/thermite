@@ -392,7 +392,7 @@ Control refuses, and saves nothing:
 | --- | --- |
 | 404 | `Control has no saved version or earlier assignment of <campaign>. There is nothing to copy.` |
 | 400 | `<campaign> is a rig check's campaign. A rig check cannot be copied.` |
-| 400 | `A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.` |
+| 400 | `A campaign's name is lowercase letters, digits, dashes and underscores, at most 64, starting with a letter or a digit.` |
 | 400 | `A name that starts with rig-check- is for rig checks. Choose another name.` |
 | 400 | `bad request: <field>: <message>`: a body without `name`, with other fields, or with an `mcp_servers` that is not a list of servers |
 | 400 | `This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.`: `mcp_servers` for a hill-climb or goal campaign |

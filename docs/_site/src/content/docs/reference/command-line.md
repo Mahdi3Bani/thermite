@@ -590,7 +590,7 @@ It prints control's answer on one line, such as `{"campaign":"sort-speed-b","ver
 | Option | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `FROM` | Yes | | The campaign to copy, as on its page |
-| `NAME` | Yes | | The copy's name: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. No campaign may have it yet |
+| `NAME` | Yes | | The copy's name: lowercase letters, digits, dashes and underscores, at most 64, starting with a letter or a digit. No campaign may have it yet |
 | `--mcp-servers-json FILE` | No | the source's | A research campaign only: a file with the MCP servers the copy's agents use instead of the source's, as a JSON list, sent as the request's `mcp_servers` ([Copy a campaign](rest-api.md#copy-a-campaign)). `[]` names none |
 | `--context-window TOKENS` | No | the source's | The copy's own context window for its runs' agents, 4,096 to 100,000,000, sent in the request's `agents_context`. With it or `--compact-at`, the copy's context settings are these, in place of the source's |
 | `--compact-at PERCENT` | No | the source's | The copy's own compaction point, 50 to 95, sent in the request's `agents_context` |

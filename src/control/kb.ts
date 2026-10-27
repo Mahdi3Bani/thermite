@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { BriefingSeed, QueueSeed } from "../core/commands.ts";
-import { IdSchema } from "../core/contract.ts";
+import { RunId } from "../core/ids.ts";
 import type { KbItemWire, KbKind, KbSync } from "../core/kb.ts";
 import {
   clip,
@@ -763,7 +763,7 @@ export const PICKABLE: Partial<Record<KbKind, "queue" | "briefing">> = {
  * why, and what it gave in its run. Undefined when its run's name is not an id a seed can carry.
  */
 export function queueSeedOf(x: KbItem, result: string | null): QueueSeed | undefined {
-  if (x.kind !== "experiment" || !IdSchema.safeParse(x.run).success) return undefined;
+  if (x.kind !== "experiment" || !RunId.safeParse(x.run).success) return undefined;
   const details = [
     x.meta.details ?? "",
     result ? `In ${x.run} (${x.campaign}) it was ${result}.` : `From ${x.run} (${x.campaign}).`,
@@ -783,7 +783,7 @@ export function queueSeedOf(x: KbItem, result: string | null): QueueSeed | undef
 
 /** A past finding, claim, note or report the owner picked, as background for every brief. */
 export function briefingSeedOf(x: KbItem): BriefingSeed | undefined {
-  if (PICKABLE[x.kind] !== "briefing" || !IdSchema.safeParse(x.run).success) return undefined;
+  if (PICKABLE[x.kind] !== "briefing" || !RunId.safeParse(x.run).success) return undefined;
   const text = clip(
     x.kind === "report" || x.body.startsWith(x.title.replace(/…$/, ""))
       ? x.body

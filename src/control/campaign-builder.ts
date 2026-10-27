@@ -10,6 +10,7 @@ import {
   MAX_LANES_REASON,
   parseContract,
 } from "../core/contract.ts";
+import { CampaignId } from "../core/ids.ts";
 import { type McpUse, McpUses } from "../core/mcp.ts";
 import { KitSchema, kitProblems } from "../harness/kit.ts";
 
@@ -36,7 +37,7 @@ const Glob = z.string().min(1).max(500);
 
 /** One test case: a name and what makes its run different, all optional. */
 const Case = z.strictObject({
-  name: IdSchema,
+  name: CampaignId,
   /** Added to the run command as {args}. */
   args: z.string().max(2000).optional(),
   /** One of the kit's input files, given to the run as {input}. */

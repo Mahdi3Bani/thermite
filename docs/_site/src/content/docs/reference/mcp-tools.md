@@ -807,7 +807,7 @@ It does what [`POST /v1/campaigns/<campaign>/copy`](rest-api.md#copy-a-campaign)
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `from` | string | | The campaign to copy, as on its page: one saved on control, or one assigned before over the API, MCP or the command line. Not a rig check's |
-| `name` | string | | The copy's name, as on the **New campaign** page: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. No campaign, folder or grant may have it yet |
+| `name` | string | | The copy's name, as on the **New campaign** page: lowercase letters, digits, dashes and underscores, at most 64, starting with a letter or a digit. No campaign, folder or grant may have it yet |
 | `mcp_servers` | array | the source's | A research campaign only: the MCP servers the copy's agents use, in place of the source's. Each is `{name, agents, tools?}`, as the contract's [`mcp_servers`](kit-manifest.md) has it: a server's name in Settings, the kinds of agent that get it (`workers`, `advisors`; a research run's planner takes no servers) and, only to narrow it, the tools each kind may call, such as `{"workers": ["search"]}`. `[]` names none |
 | `agents_context` | `{context_window?, compact_at?}` or `null` | the source's | The copy's own [context settings](#set_campaign_context) for all its runs' agents, in place of the source's. `null` or `{}`: none |
 | `notes` | string or `null` | the source's | The copy's own additional information, in Markdown, in place of the source's: background, links, what was tried, limits, what good looks like. No length limit of its own. `""` or `null`: none. See [The campaign's brief](contract.md#the-campaigns-brief) |
@@ -821,7 +821,7 @@ Errors:
 
 - `Control has no saved version or earlier assignment of <campaign>. There is nothing to copy.`
 - `<campaign> is a rig check's campaign. A rig check cannot be copied.`
-- `A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.`
+- `A campaign's name is lowercase letters, digits, dashes and underscores, at most 64, starting with a letter or a digit.`
 - `A name that starts with rig-check- is for rig checks. Choose another name.`
 - `There is a campaign named <name> already. Choose another name.`
 - `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors

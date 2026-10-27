@@ -2,6 +2,7 @@ import { z } from "zod";
 import { canonicalSha } from "./canonical.ts";
 import { AgentsContext } from "./compaction.ts";
 import { DURATION_PATTERN, parseDuration } from "./duration.ts";
+import { CampaignId } from "./ids.ts";
 import { McpUses } from "./mcp.ts";
 
 /**
@@ -111,7 +112,7 @@ export const FolderSchema = z
 
 const Common = {
   schema_version: z.literal(1),
-  campaign: IdSchema,
+  campaign: CampaignId,
   version: z.number().int().positive(),
   title: z.string().min(1),
   project: z.strictObject({

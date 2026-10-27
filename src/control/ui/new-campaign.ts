@@ -160,7 +160,7 @@ ${choice("mode", "hill_climb", "Hill climb", "Improve one measured number: speed
 ${choice("mode", "goal", "Reach a list of goals", "Say what the result must do, as checks: it builds, it loads the model, its answers match. The campaign ends when the goals are met.<br><i>For example: support a new quantized format.</i>", mode === "goal")}
 ${choice("mode", "research", "Research a question", "Agents read sources and report findings, each backed by quotes Thermite checks. No code changes.<br><i>For example: which papers improve 2-bit decoding?</i>", mode === "research")}
 </div></div>
-<div class="g2" style="max-width:760px">${field("Campaign name", "A short name: lowercase letters, digits, dots, dashes. Its runs are named after it (name-1, name-2). Using a name again makes a new version of that campaign.", `<input name="campaign" required placeholder="matmul-speed">`)}${field("Title", "A sentence for people about what this campaign is for. Agents read it too.", `<input name="title" required placeholder="Make the GPU matrix multiply faster">`)}</div>
+<div class="g2" style="max-width:760px">${field("Campaign name", "A short name: lowercase letters, digits, dashes and underscores. Its runs are named after it (name-1, name-2). Using a name again makes a new version of that campaign.", `<input name="campaign" required placeholder="matmul-speed">`)}${field("Title", "A sentence for people about what this campaign is for. Agents read it too.", `<input name="title" required placeholder="Make the GPU matrix multiply faster">`)}</div>
 <div class="act"><button class="primary" data-next>Next</button></div></section>
 
 ${briefPane(d)}

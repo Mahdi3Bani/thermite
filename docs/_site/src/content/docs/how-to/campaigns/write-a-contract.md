@@ -20,7 +20,7 @@ A contract is frozen: to change anything, you write a new version. The [contract
 | Field | What to write |
 | --- | --- |
 | `schema_version` | `1` |
-| `campaign` | The campaign's name: lowercase letters, digits, dots, dashes and underscores |
+| `campaign` | The campaign's name: up to 64 lowercase letters, digits, dashes and underscores, starting with a letter or a digit. No dot |
 | `version` | `1` for a new campaign. Raise it for every change |
 | `title` | One sentence for people. Agents see it too |
 | `mode` | `hill_climb`, `goal` or `research` |
@@ -199,7 +199,7 @@ A valid contract prints `ok <mode> <campaign> v<version> sha256=<hash>`. Otherwi
 
 - `lanes.count: Invalid input: expected number, received undefined`: add `count` to `lanes`.
 - `(root): Unrecognized key: "<field>"`: remove the field or fix its spelling. Contracts accept only known fields.
-- `campaign: lowercase id`: use lowercase letters, digits, dots, dashes and underscores.
+- `campaign: a campaign's name is lowercase letters, digits, dashes and underscores, …`: use only those, with no dot.
 
 The [contract reference](../../reference/contract.md#validation-messages) lists every message. Validation checks the contract alone. When a run starts, the rig also checks it against the kit: every cell, metric and verifier it names must be in the kit, and the kit's target must be the rig's. [If it is refused](start-from-command-line.md#if-it-is-refused) says what to do when that check fails.
 

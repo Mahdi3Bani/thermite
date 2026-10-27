@@ -57,7 +57,7 @@ describe("the Copy panel's script (goal 069)", () => {
 
   test("a name that is not valid gets control's words and a fixed name to use, when one is free", () => {
     const words =
-      "A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.";
+      "A campaign's name is lowercase letters, digits, dashes and underscores, at most 64, starting with a letter or a digit.";
     assert.deepEqual(core.nameCheck("Q4 GEMV b", TAKEN, []), {
       ok: false,
       cls: "bad",
