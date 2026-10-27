@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { log } from "../common/env.ts";
+import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import { openDatabase, transaction } from "../common/sqlite.ts";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
@@ -72,7 +70,6 @@ export class Ledger {
   /** The events, read by kind (the one module that queries the event table). */
   readonly events: LedgerEvents;
   private readonly clock: () => Date;
-  private depth = 0;
 
   private constructor(db: DatabaseSync, clock: () => Date) {
     this.db = db;
@@ -81,10 +78,7 @@ export class Ledger {
   }
 
   static open(path: string, clock: () => Date = () => new Date()): Ledger {
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-    const db = new DatabaseSync(path);
-    // The busy timeout first: switching to WAL needs a lock another process may hold briefly.
-    db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal; pragma foreign_keys = on;");
+    const db = openDatabase(path);
     const ledger = new Ledger(db, clock);
     migrateLedger(
       db,
@@ -112,26 +106,7 @@ export class Ledger {
 
   /** Runs fn in an immediate transaction. Nested calls become savepoints of the outer one. */
   tx<T>(fn: () => T): T {
-    const savepoint = this.depth > 0 ? `sp${this.depth}` : undefined;
-    this.db.exec(savepoint ? `savepoint ${savepoint}` : "begin immediate");
-    this.depth++;
-    try {
-      const out = fn();
-      this.db.exec(savepoint ? `release ${savepoint}` : "commit");
-      return out;
-    } catch (err) {
-      try {
-        this.db.exec(savepoint ? `rollback to ${savepoint}; release ${savepoint}` : "rollback");
-      } catch (rollback) {
-        // A failed commit may have ended the transaction already: the first error is the one
-        // to report, and the rollback's is logged beside it, never in its place (goal 163).
-        log("ledger", "rollback failed", { error: String(rollback), after: String(err) }, "error");
-      }
-      throw err;
-    } finally {
-      // Once, whatever failed: a failed commit must not leave every later transaction nested.
-      this.depth--;
-    }
+    return transaction(this.db, fn);
   }
 
   private get<T>(sql: string, ...params: SQLInputValue[]): T | undefined {

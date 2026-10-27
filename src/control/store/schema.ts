@@ -1,5 +1,6 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { copyBeforeMigration, newerSchemaWords } from "../../common/db-copy.ts";
+import { transaction } from "../../common/sqlite.ts";
 import { runRegistryTable } from "./runs.ts";
 
 /**
@@ -491,8 +492,7 @@ function renameUnitsToRigs(db: DatabaseSync): void {
       db.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]
     ).map((t) => t.name);
   if (!tables().includes("unit")) return;
-  db.exec("begin immediate");
-  try {
+  transaction(db, () => {
     for (const name of ["unit", "unit_event", "unit_ledger", "unit_report", "unit_live"]) {
       if (tables().includes(name))
         db.exec(`alter table ${name} rename to ${name.replace(/^unit/, "rig")}`);
@@ -508,11 +508,7 @@ function renameUnitsToRigs(db: DatabaseSync): void {
       .prepare("select name from sqlite_master where type = 'index' and name like 'unit%'")
       .all() as { name: string }[];
     for (const i of indexes) db.exec(`drop index if exists ${i.name}`);
-    db.exec("commit");
-  } catch (err) {
-    db.exec("rollback");
-    throw err;
-  }
+  });
 }
 
 /**
@@ -527,8 +523,7 @@ function renameAgentRoles(db: DatabaseSync): void {
     .get() as { sql?: string } | undefined;
   if (!table?.sql?.includes("'combiner'")) return;
   const cols = "rig, role, provider, model, effort, assigned_at, harness, context_cap, compact_at";
-  db.exec("begin immediate");
-  try {
+  transaction(db, () => {
     db.exec(`create table rig_role_model_074 (
   rig text not null,
   role text not null check (role in ('planner', 'teachers', 'second_teacher', 'merged_by', 'auditor', 'review_panel')),
@@ -543,17 +538,13 @@ function renameAgentRoles(db: DatabaseSync): void {
 )`);
     db.exec(`insert into rig_role_model_074 (${cols})
   select rig, case role when 'combiner' then 'merged_by' when 'panel' then 'review_panel' else role end,
-    provider, model, effort, assigned_at, harness, context_cap, compact_at from rig_role_model`);
+  provider, model, effort, assigned_at, harness, context_cap, compact_at from rig_role_model`);
     db.exec(`insert into rig_role_model_074 (${cols})
   select rig, 'second_teacher', provider, model, effort, assigned_at, harness, context_cap, compact_at
-    from rig_role_model where role = 'teachers'`);
+  from rig_role_model where role = 'teachers'`);
     db.exec("drop table rig_role_model");
     db.exec("alter table rig_role_model_074 rename to rig_role_model");
-    db.exec("commit");
-  } catch (err) {
-    db.exec("rollback");
-    throw err;
-  }
+  });
 }
 
 /**
@@ -735,10 +726,12 @@ export function migrateStore(db: DatabaseSync, path: string): void {
     .get() as { n: number };
   if (path !== ":memory:" && tables.n > 0) copyBeforeMigration(db, path, current, known);
   db.exec("create table if not exists schema_migrations (version integer primary key)");
-  for (let version = current + 1; version <= known; version++) {
-    STORE_MIGRATIONS[version - 1]?.(db);
-    db.prepare("insert into schema_migrations (version) values (?)").run(version);
-  }
+  // Each migration in a transaction of its own, as the ledger's: all of it, or none.
+  for (let version = current + 1; version <= known; version++)
+    transaction(db, () => {
+      STORE_MIGRATIONS[version - 1]?.(db);
+      db.prepare("insert into schema_migrations (version) values (?)").run(version);
+    });
 }
 
 /**

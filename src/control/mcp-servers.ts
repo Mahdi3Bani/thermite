@@ -22,6 +22,7 @@ import {
   mcpConnect,
   mcpUrlProblem,
 } from "../common/mcp-client.ts";
+import { transaction } from "../common/sqlite.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
   AGENT_KINDS,
@@ -895,8 +896,7 @@ export class McpServers {
           .prepare("select campaign, reads from kb_read where reads like 'outside:%'")
           .all() as Row[])
       : [];
-    this.db.exec("begin");
-    try {
+    transaction(this.db, () => {
       for (const k of rows) {
         const old = str(k.name);
         let name =
@@ -925,8 +925,8 @@ export class McpServers {
         this.db
           .prepare(
             `insert into mcp_server (name, url, auth, header, secret_sealed, secret_hint, status, last_error,
-               tools, tools_at, migrated_from, created_at, created_by, updated_at)
-             values (?, ?, 'key', 'Authorization', ?, ?, ?, ?, ?, ?, 'outside_kb', ?, ?, ?)`,
+             tools, tools_at, migrated_from, created_at, created_by, updated_at)
+           values (?, ?, 'key', 'Authorization', ?, ?, ?, ?, ?, ?, 'outside_kb', ?, ?, ?)`,
           )
           .run(
             name,
@@ -959,11 +959,7 @@ export class McpServers {
       }
       this.db.exec("drop table if exists outside_kb_copy");
       this.db.exec("drop table outside_kb");
-      this.db.exec("commit");
-    } catch (err) {
-      this.db.exec("rollback");
-      throw err;
-    }
+    });
   }
 }
 

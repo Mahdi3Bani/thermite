@@ -1,7 +1,6 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { Refusal } from "../common/errors.ts";
+import { openDatabase, transaction } from "../common/sqlite.ts";
 import {
   EFFORTS,
   type Effort,
@@ -591,9 +590,7 @@ export class ControlStore {
   private knowledge: KnowledgeBase | undefined;
 
   constructor(path: string) {
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-    this.db = new DatabaseSync(path);
-    this.db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal;");
+    this.db = openDatabase(path);
     migrateStore(this.db, path);
   }
 
@@ -1175,15 +1172,7 @@ export class ControlStore {
   }
 
   private tx<T>(fn: () => T): T {
-    this.db.exec("begin immediate");
-    try {
-      const out = fn();
-      this.db.exec("commit");
-      return out;
-    } catch (err) {
-      this.db.exec("rollback");
-      throw err;
-    }
+    return transaction(this.db, fn);
   }
 
   createUiSession(idHash: string, tokenFp: string, expiresAt: number): void {

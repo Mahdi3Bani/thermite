@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { transaction } from "../common/sqlite.ts";
 import type { BriefingSeed, QueueSeed } from "../core/commands.ts";
 import { RunId } from "../core/ids.ts";
 import type { KbItemWire, KbKind, KbSync } from "../core/kb.ts";
@@ -119,15 +120,7 @@ export class KnowledgeBase {
 
   /** Runs fn in one transaction: all of it is kept, or none of it. */
   private tx<T>(fn: () => T): T {
-    this.db.exec("begin");
-    try {
-      const out = fn();
-      this.db.exec("commit");
-      return out;
-    } catch (err) {
-      this.db.exec("rollback");
-      throw err;
-    }
+    return transaction(this.db, fn);
   }
 
   /** The next n item seqs (returns the last of them). */
