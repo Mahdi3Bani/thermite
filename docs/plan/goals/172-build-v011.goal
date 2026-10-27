@@ -21,7 +21,7 @@ The goals it completes:
 | Goal | What |
 | --- | --- |
 | [125](125-code-to-the-conventions.goal) | The code to its conventions: the size check, the rules of shape, the guide's themes T1 to T15 |
-| [161](_completed/161-control-bugs-from-the-audit.goal), [162](_completed/162-research-and-knowledge-bugs.goal), [163](_completed/163-harness-bugs-from-the-audit.goal), [164](_completed/164-settings-that-fail-loudly.goal), [165](165-results-kept-through-remove-and-reset.goal), [171](_completed/171-bugs-on-the-wire.goal) | The bugs the audit found, each with a regression test |
+| [161](_completed/161-control-bugs-from-the-audit.goal), [162](_completed/162-research-and-knowledge-bugs.goal), [163](_completed/163-harness-bugs-from-the-audit.goal), [164](_completed/164-settings-that-fail-loudly.goal), [165](_completed/165-results-kept-through-remove-and-reset.goal), [171](_completed/171-bugs-on-the-wire.goal) | The bugs the audit found, each with a regression test |
 | [166](166-agent-definitions.goal) | Agent definitions in code, the prompt each run gives each role, shown everywhere |
 | [168](168-message-bus.goal) | NATS JetStream as the event log, the delivery and the queues between control, the supervisors and the dashboard |
 | [169](169-agents-in-their-terminal.goal) | Every role that takes the owner's messages in its program's own terminal, session logs as events, the Pi view, usage windows |
@@ -108,6 +108,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 - 2026-10-27 06:59 UTC: Goal 162 is verified and moved to `_completed/` (full fast checks on e33b4436, steering acceptance on 16030a14). Goal 163: items 3 to 7 are fixed; items 1, 2, 9 and the owner's questions on item 8 are next.
 - 2026-10-27 08:39 UTC: Step 2's code is in: goals 163, 164, 165 and 171 (9a538bc9, 53c7e30e), and goal 170's first steps (7675b11b: run names used once on control, the champion patch by ledger, a run's export with its verdicts). The full fast checks, the compose smoke and the judge acceptance passed on 53c7e30e; the agents, Claude Code, steering, rig deploy, cluster and RunPod acceptance checks are running. The machines acceptance waits for the owner's yes: it installs Podman with apt in its stand-in, a download. The image package upgrade is written and waits for its build. Step 3 starts with T3's `errorText` and T1's issuer tables.
 - 2026-10-27 09:12 UTC: Every check of step 2's batch passed on 53c7e30e: the full fast checks, the compose smoke, and the judge, agents, Claude Code, steering, rig deploy, cluster and RunPod acceptance checks. Goals 163, 164 and 171 are verified and moved to `_completed/`. Goal 165 waits for the machines acceptance, which needs the owner's yes to download Podman's packages into its stand-in. Step 3 goes on: `errorText`, `writeAtomic`, `sameSecret`, `shellQuote` and one git runner are in `common` (eefff17d to 4a183cb3); the supervisor's auth headers are left to T2's typed clients.
+- 2026-10-27 15:45 UTC: The images upgrade their base's packages when built (2f94621a); built again, they passed the judge, compose smoke and RunPod checks. The owner said yes to the machines acceptance's download, and it passed: goal 165 is verified and moved to `_completed/`. Step 2 is done, but for goal 170's later steps, which come in step 5.
 
 ---
 
