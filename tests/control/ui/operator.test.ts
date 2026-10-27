@@ -122,3 +122,11 @@ describe("an audit the rig's auditor will decide (goal 079)", () => {
     assert.equal(outcome(run(held), attempt).word, "Needs you");
   });
 });
+
+describe("an attempt whose judge's job was set aside (goal 161)", () => {
+  test("it shows Errored, not Judging", () => {
+    const run = { champion: [], audits: [], pending_promotions: [] } as unknown as RunView;
+    const errored = { id: "a-2", lifecycle: "errored", verdict: null } as unknown as AttemptView;
+    assert.deepEqual(outcome(run, errored), { word: "Errored", tone: "" });
+  });
+});

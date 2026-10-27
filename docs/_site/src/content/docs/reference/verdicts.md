@@ -226,6 +226,7 @@ Attempt lists show one word for each attempt, in this order of precedence:
 | **Judging** | It is `queued`, `building`, `screening`, `confirming` or `verifying`, or it has only a screening verdict |
 | **Duplicate** | The same change as an earlier attempt |
 | **Not judged** | `not_judged`: its run closed while it waited for the judge |
+| **Errored** | `errored`: the judge's job for it lost its lease 3 times in a row (`MAX_LEASE_EXPIRIES`) and was set aside, so its lane goes on. An infrastructure failure, never a research loss: a start of the harness queues the job again |
 | **Won** | `win_confirmed` or `goal_progress` |
 | **Broken** | `invalid` or `crash_candidate` |
 | **Unclear** | `crash_infra` or `inconclusive` |

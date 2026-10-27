@@ -26,6 +26,10 @@ import {
 } from "./components.ts";
 import type { LaneExtra } from "./drain.ts";
 import { gainChip, measuredWords } from "./gains.ts";
+import { hasAdvisors, outcome } from "./operator/outcome.ts";
+
+export { outcome };
+
 import { card } from "./need-card.ts";
 import { stuckChip, stuckNeeds, stuckTrials } from "./stuck.ts";
 import {
@@ -95,16 +99,6 @@ export interface Need {
 const champSeq = (r: RunView) => r.champion.filter((c) => !c.reopened).at(-1)?.seq ?? 1;
 const nextSeq = (r: RunView) => Math.max(1, ...r.champion.map((c) => c.seq)) + 1;
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 8) : "?");
-
-/**
- * Whether the rig has an auditor to decide its audits. A supervisor that reports its roles says
- * so exactly; an older one only says whether any advisors run (null: none are configured).
- */
-const hasAdvisors = (u: RigView) => {
-  const advisors = (u.supervisor as { advisors?: { roles?: { auditor?: boolean } } | null } | null)
-    ?.advisors;
-  return advisors?.roles ? advisors.roles.auditor === true : Boolean(advisors);
-};
 
 /** What the judge found about an attempt, in a sentence. */
 export function evidence(r: RunView, a: AttemptView): string {
@@ -1177,48 +1171,6 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
       ? `${esc(r.campaign || r.id)} › ${esc(r.id)}`
       : `${esc(r.id)} <span class="muted small">on ${esc(u.id)}${reportingTag(u)}</span>`;
   return `<a class="rr" href="${runHref(u.id, r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
-}
-
-/**
- * An attempt's outcome as one word a person scans for, with its tone. With its rig: an audit the
- * rig's auditor will decide is "Auditing", not "Needs you" (goal 079).
- */
-export function outcome(r: RunView, a: AttemptView, u?: RigView): { word: string; tone: string } {
-  const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
-  if (champ) return { word: `Champion #${champ.seq}`, tone: "ok" };
-  const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
-  if (audit?.decision === "block" || a.lifecycle === "audit_blocked")
-    return { word: "Blocked", tone: "bad" };
-  const auditing = a.lifecycle === "awaiting_audit" || (audit && audit.decision === null);
-  // A change that waited when its run closed (goal 087): no one decides it now.
-  if (r.status === "closed" && (auditing || a.lifecycle === "awaiting_approval"))
-    return { word: "Run closed", tone: "" };
-  if (
-    auditing &&
-    u &&
-    hasAdvisors(u) &&
-    !r.pending_promotions.includes(a.id) &&
-    a.lifecycle !== "awaiting_approval"
-  )
-    return { word: "Auditing", tone: "info" };
-  if (r.pending_promotions.includes(a.id) || a.lifecycle === "awaiting_approval" || auditing)
-    return { word: "Needs you", tone: "warn" };
-  if (a.lifecycle === "declined") return { word: "Declined", tone: "" };
-  if (a.lifecycle === "promoted") return { word: "Promoted", tone: "ok" };
-  if (["queued", "building", "screening", "confirming", "verifying"].includes(a.lifecycle))
-    return { word: "Judging", tone: "info" };
-  if (a.lifecycle === "duplicate") return { word: "Duplicate", tone: "" };
-  // Its run closed before the judge got to it (goal 087).
-  if (a.lifecycle === "not_judged") return { word: "Not judged", tone: "" };
-  const v = a.verdict ?? "";
-  if (v === "win_confirmed" || v === "goal_progress") return { word: "Won", tone: "ok" };
-  if (v === "win_screened" || v === "goal_screened") return { word: "Judging", tone: "info" };
-  if (["invalid", "rejected_v0", "crash_candidate"].includes(v))
-    return { word: "Broken", tone: "bad" };
-  if (["crash_infra", "inconclusive", "invalidated"].includes(v))
-    return { word: "Unclear", tone: "" };
-  if (!v) return { word: "Judging", tone: "info" };
-  return { word: "Lost", tone: "" };
 }
 
 /** Attempts as rows: the outcome word, the change, where it stands, its effect, lane and age. */

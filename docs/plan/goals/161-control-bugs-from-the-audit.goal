@@ -1,7 +1,7 @@
 ---
 id: "161"
 title: "Control's bugs found by the v0.1.1 audit: wrong states on the pages, refusals answered as server errors, errors that vanish"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-26
@@ -10,7 +10,7 @@ updated: 2026-10-26
 
 # 161 · Control's bugs found by the v0.1.1 audit: wrong states on the pages, refusals answered as server errors, errors that vanish
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
@@ -42,6 +42,7 @@ CONVENTIONS.md: "Every bug that is found gets a regression test", "Nothing stops
 ## Progress
 
 - 2026-10-26: Goal written from the v0.1.1 audit's control report.
+- 2026-10-27 05:48 UTC: Started by goal 172, step 2. Bug 1 fixed: an attempt whose judge's job was set aside (`errored`) shows **Errored**, not **Judging** (`tests/control/ui/operator.test.ts`, which fails without the fix). `outcome()` moved to `src/control/ui/operator/outcome.ts`, so `operator.ts` doesn't grow.
 
 ---
 
