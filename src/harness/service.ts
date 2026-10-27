@@ -107,31 +107,10 @@ import {
   type Work,
   workNow,
 } from "./service/drain.ts";
+import { conflictCheck, unknownIn } from "./service/rules.ts";
 import { type ReplyNow, TrialWatch, tellStreak } from "./service/watch.ts";
 import { ModelUsage } from "./usage.ts";
 import { checkV0, violationsOf } from "./v0.ts";
-
-/** A directive set may not both avoid a direction and ask for it. */
-function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
-  const avoid = new Set(set.filter((d) => d.kind === "avoid" && d.family).map((d) => d.family));
-  const both = set.filter(
-    (d) => (d.kind === "try" || d.kind === "mandate") && d.family && avoid.has(d.family),
-  );
-  if (both.length) {
-    throw new LedgerError(
-      "invalid",
-      `the set both avoids and asks for ${both.map((d) => d.family).join(", ")}`,
-    );
-  }
-}
-
-/** The directions a set of rules names that the run does not have (goal 066), in order. */
-function unknownIn(set: { family?: string | undefined }[], known: readonly string[]): string[] {
-  const out: string[] = [];
-  for (const d of set)
-    if (d.family && !known.includes(d.family) && !out.includes(d.family)) out.push(d.family);
-  return out;
-}
 
 /**
  * Why a closed run's waiting decision is refused, by kind (goal 087; the owner, 2026-10-22: a
@@ -972,10 +951,12 @@ export class HarnessService {
       if (prior) return { status: "replayed", ...prior };
     }
     if (!verified.ok) {
-      const kind = (input as { envelope?: { kind?: unknown } })?.envelope?.kind;
+      // Its id when it has one, so control can match the refusal to the command it sent.
+      const e = (input as { envelope?: { kind?: unknown; id?: unknown } })?.envelope;
       this.ledger.appendEvent(actor, "command_rejected", null, {
         reason: verified.reason,
-        kind: typeof kind === "string" ? kind : null,
+        kind: typeof e?.kind === "string" ? e.kind : null,
+        id: typeof e?.id === "string" ? e.id : null,
       });
       return { status: "rejected", reason: verified.reason };
     }
@@ -990,6 +971,7 @@ export class HarnessService {
       this.ledger.appendEvent(actor, "command_rejected", null, {
         reason: "issued before this rig's state was wiped",
         kind: envelope.kind,
+        id: envelope.id,
       });
       return { status: "rejected", reason: "issued before this rig's state was wiped" };
     }
@@ -1305,7 +1287,7 @@ export class HarnessService {
       }
       case "model": {
         const stored = await importFile({
-          inboxDir: this.paths.inboxDir,
+          inboxDir,
           rel: spec.path,
           expectedSha256: spec.sha256,
           storeDir: join(this.paths.stateDir, "models"),

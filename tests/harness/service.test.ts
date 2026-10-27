@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -95,6 +96,45 @@ describe("harness service and API", () => {
     writeFileSync(join(env.service.paths.inboxDir, "models", "m.bin"), "tampered after import");
     const stored = env.service.ledger.findImport("model", { sha256: good }) as string;
     assert.equal(readFileSync(stored, "utf8"), "weights-v1");
+  });
+
+  test("a run on the harness's own content takes its model from that content, not the inbox (goal 163)", async () => {
+    const env = makeHarnessEnv();
+    const own = mkdtempSync(join(tmpdir(), "thermite-own-"));
+    cpSync(join(env.service.paths.inboxDir, "repos"), join(own, "repos"), { recursive: true });
+    mkdirSync(join(own, "models"));
+    writeFileSync(join(own, "models", "m.bin"), "own weights");
+    const sha = createHash("sha256").update("own weights").digest("hex");
+    const base = env.assignPayload();
+    const contract = { ...(base.contract as object), models: [{ name: "m.bin", sha256: sha }] };
+    await env.service.assignLocal(
+      {
+        run: "own-1",
+        contract,
+        seed: base.seed as { repo: string; commit: string },
+        bundles: [
+          ...(base.imports as never[]),
+          { kind: "model", path: "models/m.bin", name: "m.bin", sha256: sha },
+        ],
+        dir: own,
+      },
+      "rig-check",
+    );
+    const stored = env.service.ledger.findImport("model", { sha256: sha }) as string;
+    assert.equal(readFileSync(stored, "utf8"), "own weights");
+  });
+
+  test("a refused command's event names its id, so control can match it (goal 163)", async () => {
+    const env = makeHarnessEnv();
+    const signed = env.sign("pause_run", { run: "smoke-1", reason: "x" });
+    const forged = { ...signed, signature: "AAAA" };
+    const out = await env.service.applyCommand(forged);
+    assert.equal(out.status, "rejected");
+    const [rejected] = env.service.ledger
+      .eventsAfter(0, 100)
+      .events.filter((e) => e.kind === "command_rejected");
+    assert.ok(rejected);
+    assert.equal((rejected.body as { id?: string }).id, signed.envelope.id);
   });
 
   test("forged, replayed and misdirected commands are handled safely", async () => {

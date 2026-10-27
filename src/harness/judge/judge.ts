@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "../../common/env.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
@@ -7,7 +7,7 @@ import { Audits, auditTrigger } from "../audits.ts";
 import { builderRole, runRole } from "../broker/devices.ts";
 import type { Runner } from "../broker/runner.ts";
 import { Conclusions } from "../conclusions.ts";
-import { exportTree, patchBetween } from "../git.ts";
+import { patchBetween } from "../git.ts";
 import { type Kit, loadKit } from "../kit.ts";
 import type { JobRow, Ledger } from "../ledger.ts";
 import { Reviews } from "../reviews.ts";
@@ -54,6 +54,7 @@ import {
   heldOutWords,
   meetsThreshold,
 } from "./held-out.ts";
+import { exportKit } from "./kits.ts";
 import { whileLeased } from "./lease.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
 import { olderChampion, type PortFound, parentScreened, queuePort } from "./ports.ts";
@@ -428,14 +429,8 @@ export class Judge {
   private async kitFor(contract: Contract): Promise<{ kit: Kit; dir: string; commit: string }> {
     const ref = contract.project.kit;
     if (!ref) throw new InfraError(`contract ${contract.campaign} names no kit`);
-    const dir = join(this.o.service.paths.stateDir, "kits", ref.commit);
-    if (!existsSync(join(dir, "kit.json"))) {
-      const tmp = `${dir}.tmp-${process.pid}`;
-      rmSync(tmp, { recursive: true, force: true });
-      await exportTree(this.o.service.mirrorFor(`kit-${ref.repo}`), ref.commit, tmp);
-      rmSync(dir, { recursive: true, force: true });
-      renameSync(tmp, dir);
-    }
+    const mirror = this.o.service.mirrorFor(`kit-${ref.repo}`);
+    const dir = await exportKit(this.o.service.paths.stateDir, mirror, ref.commit);
     const kit = loadKit(dir);
     if (kit.target !== this.o.driver.type) {
       throw new InfraError(

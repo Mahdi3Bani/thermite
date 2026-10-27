@@ -799,7 +799,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       );
     case "command_rejected":
       return s(
-        `A command${b.kind ? ` ("${commandText(String(b.kind))}")` : ""} was refused: ${String(b.reason ?? "")}.`,
+        `A command${b.kind ? ` ("${commandText(String(b.kind))}")` : ""}${b.id ? `, ${String(b.id).slice(0, 8)},` : ""} was refused: ${String(b.reason ?? "")}.`,
         "bad",
       );
     // The MCP servers a run's kit names (goal 068): which agents get each, and when one fails.
