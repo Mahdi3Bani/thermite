@@ -1622,9 +1622,7 @@ export class HarnessService {
 
   /** A trial's submission, once it has one: its attempt and where the attempt stands. */
   trialSubmission(trialId: string): { attempt: string; lifecycle: string } | undefined {
-    const t = this.ledger.db.prepare("select attempt from trial where id = ?").get(trialId) as
-      | { attempt: string | null }
-      | undefined;
+    const t = this.ledger.trials.get(trialId);
     if (!t?.attempt) return undefined;
     const a = this.ledger.attempts.get(t.attempt);
     return { attempt: t.attempt, lifecycle: String(a?.lifecycle ?? "recorded") };
@@ -2023,11 +2021,7 @@ export class HarnessService {
     const contract = this.contractFor(run);
     const registry = new Registry(this.ledger);
     const champion = this.ledger.champions.current(run);
-    const epochs = (
-      this.ledger.db
-        .prepare("select * from epoch where run = ? order by n desc limit 5")
-        .all(run) as Record<string, unknown>[]
-    ).map((e) => ({
+    const epochs = this.ledger.trials.newestEpochs(run, 5).map((e) => ({
       n: Number(e.n),
       // A research run's rounds: by its planner (goals 047 and 117), or by its research plan in code.
       source:
@@ -2741,17 +2735,7 @@ export class HarnessService {
       this.trialProgress.set(trial.id, r.progress);
       // Kept in the trial's record too, so a restart that interrupts it keeps its counters
       // (goal 079).
-      this.ledger.db
-        .prepare(
-          "update trial set turns = ?, tool_calls = ?, tokens_in = ?, tokens_out = ? where id = ? and ended_at is null",
-        )
-        .run(
-          r.progress.turns,
-          r.progress.tool_calls,
-          r.progress.tokens_in,
-          r.progress.tokens_out,
-          trial.id,
-        );
+      this.ledger.trials.setCounters(trial.id, r.progress);
     }
     for (const e of r.entries ?? [])
       this.live.append({

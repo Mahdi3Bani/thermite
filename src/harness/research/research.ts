@@ -1128,10 +1128,10 @@ export class Research {
    * goal 117: their changes are 0 for now. Undefined for a trial the ledger does not have.
    */
   trialYield(run: string, trial: string, until = new Date().toISOString()): TaskYield | undefined {
-    const t = this.get("select lane, started_at from trial where id = ? and run = ?", trial, run);
-    if (!t) return undefined;
-    const lane = String(t.lane);
-    const since = String(t.started_at);
+    const t = this.ledger.trials.get(trial);
+    if (t?.run !== run) return undefined;
+    const lane = t.lane;
+    const since = t.started_at;
     const domainOf = new Map(
       this.all("select id, domain from source where run = ?", run).map((s) => [
         String(s.id),

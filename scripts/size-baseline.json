@@ -49,7 +49,7 @@
       "lines": 1277
     },
     "src/harness/agents/scheduler.ts": {
-      "lines": 2939
+      "lines": 2927
     },
     "src/harness/agents/worker.ts": {
       "lines": 832
@@ -88,7 +88,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2919
+      "lines": 2903
     },
     "src/supervisor/advise.ts": {
       "lines": 1366

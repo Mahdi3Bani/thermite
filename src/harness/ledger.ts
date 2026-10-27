@@ -22,6 +22,7 @@ import { migrateLedger } from "./ledger/migrate.ts";
 import { LedgerError, type Row } from "./ledger/part.ts";
 import type { LedgerEvent } from "./ledger/rows.ts";
 import { eventRun, LedgerRuns } from "./ledger/runs.ts";
+import { LedgerTrials } from "./ledger/trials.ts";
 import { LedgerVerdicts } from "./ledger/verdicts.ts";
 
 /**
@@ -57,6 +58,7 @@ export class Ledger {
   readonly goals: LedgerGoals;
   readonly imports: LedgerImports;
   readonly exports: LedgerExports;
+  readonly trials: LedgerTrials;
   private readonly clock: () => Date;
 
   private constructor(db: DatabaseSync, clock: () => Date) {
@@ -78,6 +80,7 @@ export class Ledger {
     this.goals = new LedgerGoals(this, db, clock);
     this.imports = new LedgerImports(this, db, clock);
     this.exports = new LedgerExports(this, db, clock);
+    this.trials = new LedgerTrials(this, db, clock);
   }
 
   static open(path: string, clock: () => Date = () => new Date()): Ledger {

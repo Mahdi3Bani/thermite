@@ -183,10 +183,8 @@ export class ExperimentQueue {
       const d = x.family ? directionOf(x.family) : undefined;
       if (d) names.add(d);
     }
-    const families = this.ledger.db.prepare("select id from family where run = ?").all(run) as {
-      id: string;
-    }[];
-    for (const name of [...families.map((f) => f.id), ...this.ledger.attempts.families(run)])
+    const families = this.ledger.trials.families(run).map((f) => f.id);
+    for (const name of [...families, ...this.ledger.attempts.families(run)])
       if (DIRECTION_NAME.test(name)) names.add(name);
     if (this.ledger.runs.get(run)?.mode === "research")
       for (const k of RESEARCH_TASK_KINDS) names.add(k);

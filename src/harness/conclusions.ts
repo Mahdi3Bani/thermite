@@ -50,13 +50,10 @@ export class Conclusions {
   /** Approach families with enough judged attempts and no progress, with their receipts. */
   refuted(run: string): RefutedApproach[] {
     const out: RefutedApproach[] = [];
-    const families = this.ledger.db
-      .prepare("select id, description from family where run = ?")
-      .all(run) as Row[];
-    for (const f of families) {
+    for (const f of this.ledger.trials.familyDescriptions(run)) {
       const attempts: RefutedApproach["attempts"] = [];
       let promising = false;
-      for (const id of this.ledger.attempts.ofFamily(run, String(f.id))) {
+      for (const id of this.ledger.attempts.ofFamily(run, f.id)) {
         const v = this.ledger.verdicts.current(id);
         if (!v) continue;
         if (PROMISING.has(v.verdict)) promising = true;
@@ -70,7 +67,7 @@ export class Conclusions {
         });
       }
       if (!promising && attempts.length >= REFUTE_ATTEMPTS) {
-        out.push({ family: String(f.id), description: String(f.description), attempts });
+        out.push({ family: f.id, description: f.description, attempts });
       }
     }
     return out;
@@ -116,12 +113,7 @@ export class Conclusions {
         .run(run, canonicalJson(evidence), new Date().toISOString());
       const id = Number(r.lastInsertRowid);
       for (const a of refuted) {
-        const r = this.ledger.db
-          .prepare(
-            "update family set status = 'exhausted' where run = ? and id = ? and status = 'live'",
-          )
-          .run(run, a.family);
-        if (Number(r.changes)) {
+        if (this.ledger.trials.setFamilyStatus(run, a.family, "exhausted", "live")) {
           this.ledger.appendEvent(by, "family_status", run, {
             family: a.family,
             status: "exhausted",
@@ -172,12 +164,7 @@ export class Conclusions {
         const families = (JSON.parse(String(row.evidence)) as { approaches: { family: string }[] })
           .approaches;
         for (const f of families) {
-          const r = this.ledger.db
-            .prepare(
-              "update family set status = 'live' where run = ? and id = ? and status = 'exhausted'",
-            )
-            .run(run, f.family);
-          if (Number(r.changes)) {
+          if (this.ledger.trials.setFamilyStatus(run, f.family, "live", "exhausted")) {
             this.ledger.appendEvent(by, "family_status", run, {
               family: f.family,
               status: "live",

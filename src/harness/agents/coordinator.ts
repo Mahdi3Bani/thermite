@@ -160,13 +160,7 @@ export class Coordinator {
     const out: Record<string, { direction: string | null; experiment: string | null }> = {};
     for (const lane of lanes) {
       const x = this.ledger.experiments.lastOfLane(run, lane);
-      const t = x
-        ? undefined
-        : (this.ledger.db
-            .prepare(
-              "select family from trial where run = ? and lane = ? order by started_at desc limit 1",
-            )
-            .get(run, lane) as { family: string | null } | undefined);
+      const t = x ? undefined : this.ledger.trials.lastOfLane(run, lane);
       out[lane] = {
         direction: x ? x.family || null : (t?.family ?? null),
         experiment: x?.title ?? null,

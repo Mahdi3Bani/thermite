@@ -494,16 +494,8 @@ export class Scheduler {
       for (const a of this.aborts.values()) a.abort();
       await this.idle();
       if (r.subject === null) continue;
-      for (const lane of this.ledger.db
-        .prepare("select id from lane where run = ?")
-        .all(r.subject) as { id: string }[]) {
-        this.registry.clearLaneBest(
-          r.subject,
-          lane.id.slice(r.subject.length + 1),
-          this.o.owner,
-          "workers reset",
-        );
-      }
+      for (const lane of this.ledger.trials.lanes(r.subject))
+        this.registry.clearLaneBest(r.subject, lane, this.o.owner, "workers reset");
       const epoch = this.registry.currentEpoch(r.subject);
       if (epoch && !epoch.ended_at) this.registry.endEpoch(r.subject, epoch.n, this.o.owner);
     }
@@ -728,17 +720,13 @@ export class Scheduler {
       due = n > 1 && (n - 1) % 20 === 0;
     }
     if (!due) return;
-    const lanes = this.ledger.db.prepare("select id from lane where run = ?").all(run) as {
-      id: string;
-    }[];
-    for (const lane of lanes) {
+    for (const lane of this.ledger.trials.lanes(run))
       this.registry.clearLaneBest(
         run,
-        lane.id.slice(run.length + 1),
+        lane,
         this.o.owner,
         "fork round: every lane starts from the champion",
       );
-    }
     this.ledger.appendEvent(this.o.owner, "fork_round", run, { epoch: n, round: rounds + 1 });
   }
 

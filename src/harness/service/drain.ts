@@ -120,10 +120,8 @@ export function workNow(
   draining: Draining | undefined,
   facts: FactsOf = NO_FACTS,
 ): Work {
-  const n = (sql: string, ...params: string[]) =>
-    Number((ledger.db.prepare(sql).get(...params) as { n: number } | undefined)?.n ?? 0);
   return {
-    trials: n("select count(*) as n from trial where ended_at is null"),
+    trials: ledger.trials.countOpen(),
     judge_jobs: ledger.jobs.leasedAt(at),
     draining: draining ? { ...draining } : null,
     open: openTrials(ledger, facts),
@@ -135,27 +133,7 @@ export function workNow(
  * what the harness's watch knows of it.
  */
 export function openTrials(ledger: Ledger, facts: FactsOf = NO_FACTS): OpenTrial[] {
-  const rows = ledger.db
-    .prepare(
-      `select t.id, t.run, t.lane, t.started_at, t.turns, t.tool_calls, t.tokens_in,
-         r.mode, x.title, x.question
-       from trial t left join run r on r.id = t.run
-         left join experiment x on x.trial = t.id
-       where t.ended_at is null order by t.started_at limit ?`,
-    )
-    .all(OPEN_MAX) as {
-    id: string;
-    run: string;
-    lane: string;
-    started_at: string;
-    turns: number | null;
-    tool_calls: number | null;
-    tokens_in: number | null;
-    mode: string | null;
-    title: string | null;
-    question: number | null;
-  }[];
-  return rows.map((t) => ({
+  return ledger.trials.openWithTasks(OPEN_MAX).map((t) => ({
     trial: t.id,
     run: t.run,
     lane: t.lane,
@@ -235,9 +213,7 @@ export function askStop(
   p: { run: string; trial: string; reason?: string | undefined },
   by: string,
 ): { run: string; trial: string; lane: string; stopping: true } {
-  const t = ledger.db.prepare("select run, lane, ended_at from trial where id = ?").get(p.trial) as
-    | { run: string; lane: string; ended_at: string | null }
-    | undefined;
+  const t = ledger.trials.get(p.trial);
   if (!t || t.run !== p.run)
     throw new LedgerError("not_found", `run ${p.run} has no trial ${p.trial}`);
   if (t.ended_at) throw new LedgerError("conflict", `trial ${p.trial} has ended already`);

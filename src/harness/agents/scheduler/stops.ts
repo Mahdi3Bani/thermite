@@ -42,9 +42,8 @@ export function stopTrials(ledger: Ledger, o: Stopping): number {
     const ctrl = o.aborts.get(b.lane);
     // Only the trial asked for, while it runs: a lane runs one trial at a time, so an open trial
     // on the lane is the one its abort stops. One that ended meanwhile is left as it ended.
-    const open = ledger.db
-      .prepare("select 1 from trial where id = ? and lane = ? and ended_at is null")
-      .get(b.trial, b.lane);
+    const t = ledger.trials.get(b.trial);
+    const open = t?.lane === b.lane && t.ended_at === null;
     if (!ctrl || ctrl.signal.aborted || o.laneRun.get(b.lane) !== e.subject || !open) continue;
     ledger.appendEvent(e.actor, "trial_stopped", e.subject, {
       lane: b.lane,

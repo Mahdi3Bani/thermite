@@ -105,10 +105,8 @@ export class DevRuns {
   }
 
   private trialOpen(trial: string): boolean {
-    const r = this.ledger.db.prepare("select ended_at from trial where id = ?").get(trial) as
-      | { ended_at: string | null }
-      | undefined;
-    return r !== undefined && r.ended_at === null;
+    const t = this.ledger.trials.get(trial);
+    return t !== undefined && t.ended_at === null;
   }
 
   /** A dev run for an open trial; one that waited past its trial's end never runs. */

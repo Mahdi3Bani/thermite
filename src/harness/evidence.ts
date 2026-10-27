@@ -178,11 +178,7 @@ export function triedCauses(
         cause: clipReason(`${e.verdict ?? e.lifecycle}: ${said}`, o.causeChars),
       };
     }
-    const t = x.trial
-      ? (ledger.db.prepare("select stopped, error from trial where id = ?").get(x.trial) as
-          | { stopped: string | null; error: string | null }
-          | undefined)
-      : undefined;
+    const t = x.trial ? ledger.trials.get(x.trial) : undefined;
     const how = x.result ?? t?.stopped ?? "ended";
     return {
       ...base,

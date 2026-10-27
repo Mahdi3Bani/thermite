@@ -190,10 +190,9 @@ export class OwnerMessages {
         throw new LedgerError("invalid", `run ${run} has ${lanes} lane${lanes === 1 ? "" : "s"}`);
       return { readers: [to] };
     }
-    const trial = this.ledger.db
-      .prepare("select lane, ended_at from trial where id = ? and run = ?")
-      .get(to.slice("trial:".length), run) as { lane: string; ended_at: string | null } | undefined;
-    if (!trial) throw new LedgerError("not_found", `no ${to.replace(":", " ")} in run ${run}`);
+    const trial = this.ledger.trials.get(to.slice("trial:".length));
+    if (trial?.run !== run)
+      throw new LedgerError("not_found", `no ${to.replace(":", " ")} in run ${run}`);
     return {
       readers: [trial.lane],
       ...(trial.ended_at
