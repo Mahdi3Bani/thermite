@@ -33,6 +33,10 @@ export const RUN_DETAIL_INPUT = {
   full_report: z.boolean().default(false),
 };
 
+/** What get_run gives of a research run (goals 112, 116 and 117), for both of its descriptions. */
+export const RESEARCH_DETAIL =
+  "for a research run its newest digest (research), its answer cards (cards: each question's newest card the harness kept, by index from 0, with version, certainty, answer, claims cited and gaps of kind evidence or measurement; card_refusals: the newest refused card of a question since its card, with the problems), its hypotheses (each with its question, an index from 0 or null for the whole run; its status: author, pool, promoted, merged with merged_into, or retired; the verified claims supporting it; and status_change: the newest change of its status by the owner or the plan, with why), the review panel's decisions (decisions: each item's decision in each review, oldest first, with its certainty and each dissenting reviewer; standing: each item's newest decision, with stands false when the question's card has a newer version than the one decided on, newer_card), its reviews (each with requested_at, posted_at, what it saw when asked, the owner's decision and note, reviewers: each reviewer's answer on each item with its verdict, certainty, reasons, the claims it cites and the problems code found; decided: the review panel's decision on each item in that review; counts; tries when the rig says), and the progress rule's state at the newest digest (progress: the open questions, those of them that are saturated, the last improvement, since_ms without one and needed_ms, a quarter of the running time)";
+
 /** The arguments' words, for the tool's description. */
 export const RUN_DETAIL_WORDS = `Each list that grows with the run (journal, timeline, queue, hypotheses, trials, reviews and the others) gives its newest ${RUN_LIST_LIMIT} entries by default (limit sets how many), and the research report its first ${REPORT_CHARS} characters (full_report: true gives it whole); cut says what was left out. list names one list and gives only it, its newest entries first skipped by offset, to page back through it`;
 

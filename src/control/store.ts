@@ -12,6 +12,7 @@ import {
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
+import { RIG_ID } from "../core/ids.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
 import { PodConfig } from "../core/tunnel.ts";
@@ -590,8 +591,7 @@ export interface RigRefusal {
   last_at: string | null;
 }
 
-/** A rig's name: what the lifecycle drivers accept (a Kubernetes namespace part, a compose name). */
-export const RIG_ID = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
+export { RIG_ID };
 
 /** How many of each open trial's newest live lines control keeps past the rig's window. */
 export const OPEN_TRIAL_LINES = 400;

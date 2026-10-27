@@ -500,7 +500,7 @@ No inputs. Returns:
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `rig` | string | | The new rig's name: "Lowercase letters, digits and dashes" |
+| `rig` | string | | The new rig's name: "A rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit." |
 | `cluster` | string | | The cluster's name in **Providers** |
 | `slot` | string, optional | | For a cluster of pre-made slots: a free slot's namespace |
 | `gpus` | whole number, 0 or more | 0 | GPUs for the rig. 0 measures on the CPU |
@@ -518,7 +518,7 @@ It refuses with the same words as **Add a rig**:
 
 - `Control has no rig images configured.`
 - `Control's address for rigs is not set.`
-- `A rig's name is lowercase letters, digits and dashes.`
+- `A rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit.`
 - `There is a rig named <rig> already.`
 - `Choose a machine or a cluster.` (no cluster by that name)
 - `<cluster> is not ready: check it under Providers.`

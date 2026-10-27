@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { redact } from "../../common/env.ts";
 import { shellQuote } from "../../common/exec.ts";
+import { RIG_ID, RIG_ID_WORDS } from "../../core/ids.ts";
 
 /**
  * A rig on a machine control reaches over SSH, as files and Podman Quadlet units: the same two
@@ -34,8 +35,6 @@ export interface RigSecrets {
   /** Shared by the rig's harness and supervisor. */
   harnessSupervisorToken: string;
 }
-
-export const RIG_NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /** At most 8 judge GPUs and 8 for the agents (the harness image has users for that many). */
 export const MAX_RIG_GPUS = 16;
@@ -200,8 +199,7 @@ function writeFile(path: string, content: string, mode: string): string {
 
 /** The deploy script: the rig's files and units, then images pulled and services started. */
 export function deployScript(p: RigPlan, secrets: RigSecrets): string {
-  if (!RIG_NAME.test(p.rig))
-    throw new Error("a rig's name is lowercase letters, digits and dashes");
+  if (!RIG_ID.test(p.rig)) throw new Error(RIG_ID_WORDS);
   const { dir, units, systemctl } = rigPaths(p);
   const q = (path: string) => `"${path}"`;
   const lines = [
@@ -237,8 +235,7 @@ export function deployScript(p: RigPlan, secrets: RigSecrets): string {
  * An image the registry no longer serves but the machine holds is used as it is.
  */
 export function updateScript(p: UnitPlan): string {
-  if (!RIG_NAME.test(p.rig))
-    throw new Error("a rig's name is lowercase letters, digits and dashes");
+  if (!RIG_ID.test(p.rig)) throw new Error(RIG_ID_WORDS);
   const { dir, units, systemctl } = rigPaths(p);
   const q = (path: string) => `"${path}"`;
   const containers = Object.entries(rigUnits(p)).filter(([name]) => name.endsWith(".container"));
@@ -260,8 +257,7 @@ export function updateScript(p: UnitPlan): string {
  * and the supervisor's last log lines, which say why a rig that runs does not report.
  */
 export function checkScript(p: Pick<RigPlan, "rig" | "root">): string {
-  if (!RIG_NAME.test(p.rig))
-    throw new Error("a rig's name is lowercase letters, digits and dashes");
+  if (!RIG_ID.test(p.rig)) throw new Error(RIG_ID_WORDS);
   const { systemctl } = rigPaths(p);
   const h = unitName(p.rig, "harness");
   const s = unitName(p.rig, "supervisor");
@@ -311,8 +307,7 @@ export type RigAction = "stop" | "start" | "restart" | "remove" | "status";
 
 /** Managing a rig control set up: its services, and removing its units, files and volumes. */
 export function manageScript(p: Pick<RigPlan, "rig" | "root">, action: RigAction): string {
-  if (!RIG_NAME.test(p.rig))
-    throw new Error("a rig's name is lowercase letters, digits and dashes");
+  if (!RIG_ID.test(p.rig)) throw new Error(RIG_ID_WORDS);
   const { dir, units, systemctl } = rigPaths(p);
   const services = `${unitName(p.rig, "supervisor")}.service ${unitName(p.rig, "harness")}.service`;
   const body: Record<RigAction, string[]> = {

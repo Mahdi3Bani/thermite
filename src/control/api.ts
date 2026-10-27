@@ -7,6 +7,7 @@ import { answerOf, errorText, jsonBody } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
+import { RIG_ID_WORDS } from "../core/ids.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
@@ -1030,12 +1031,7 @@ export function createControlApi(
     .export({ type: "spki", format: "pem" })
     .toString();
   const RigName = z.strictObject({
-    rig: z
-      .string()
-      .regex(
-        RIG_ID,
-        "a rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit",
-      ),
+    rig: z.string().regex(RIG_ID, RIG_ID_WORDS),
   });
   const inFile = (rig: string) =>
     tokens.rigs[rig] !== undefined

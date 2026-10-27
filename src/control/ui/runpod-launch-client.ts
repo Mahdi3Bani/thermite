@@ -1,3 +1,5 @@
+import { RIG_ID, RIG_ID_SENTENCE } from "../../core/ids.ts";
+
 /**
  * The Launch on RunPod page's script, served from control (/ui/assets/runpod-launch.js; no inline
  * script runs under the dashboard's CSP). The price follows every choice, choices that cannot apply
@@ -48,7 +50,7 @@ export const RUNPOD_LAUNCH_JS = `
     if (!(Number.isInteger(gb) && gb >= 10 && gb <= 10000)) bad.push("The volume is 10 to 10000 GB.");
     if (lim && !(limN > 0)) bad.push("The spend limit is an amount in US dollars, such as 40.");
     if (idle && !(Number.isInteger(idleN) && idleN >= minIdle)) bad.push("The idle stop is a whole number of minutes, " + minIdle + " or more.");
-    if (nm && !/^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/.test(nm)) bad.push("A rig's name is 2 to 40 lowercase letters, digits and dashes.");
+    if (nm && !/${RIG_ID.source}/.test(nm)) bad.push("${RIG_ID_SENTENCE}");
     if (own && !$("own").value.trim()) bad.push("Give your image's name and tag.");
     const hour = row ? price : 0;
     $("sum").innerHTML = row

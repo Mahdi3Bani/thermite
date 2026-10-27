@@ -94,7 +94,7 @@ All three need sudo without a password; otherwise the row says "the user can't s
 1. Open **Rigs** in the sidebar, then press **Add a rig**.
 2. Under **1 · Where**, choose **gpu-host-1 · a machine over SSH**. A machine that is not ready says why, for example "Not ready: Podman is missing. Fix it under Settings › Providers."
 3. Under **2 · GPUs and resources**, tick the GPUs the rig uses. None: the rig measures on the CPU. One: the judge and the agents share it. Several: the lowest-numbered are the judge's, half by default; set **GPUs for the judge** to change that. A GPU another rig uses shows "used by rig …". See [Give a rig several GPUs](several-gpus.md).
-4. Under **3 · Name and start**, give a **Rig name**: lowercase letters, digits and dashes. It can't change later. **Images** shows what control will run.
+4. Under **3 · Name and start**, give a **Rig name**: 2 to 40 lowercase letters, digits and dashes, starting and ending with a letter or digit. It can't change later. **Images** shows what control will run.
 5. Press **Create the rig**.
 
 ## 6. Watch it start

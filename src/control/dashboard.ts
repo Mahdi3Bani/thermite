@@ -18,6 +18,7 @@ import {
   compactAtWords,
 } from "../core/compaction.ts";
 import { FolderSchema, MAX_LANES, parseContract } from "../core/contract.ts";
+import { RIG_ID_SENTENCE } from "../core/ids.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { queueTarget, queueTargetNote } from "../core/queue-target.ts";
 import { RESEARCH_REVIEW } from "../core/research-check.ts";
@@ -142,7 +143,6 @@ import {
   deployScript,
   MAX_RIG_GPUS,
   manageScript,
-  RIG_NAME,
   type RigAction,
   readCheck,
   updateScript,
@@ -5742,7 +5742,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       }</div></div>
 <div class="sec"><h2>2 · GPUs and resources</h2><p class="lead">As control last read the place. One GPU is shared by the judge and the agents. With more, some are the judge's and the rest the agents': half each by default, and on a machine the lowest-numbered GPUs are the judge's.</p>${gpuLists}<label class="fd" id="judge-pick" hidden style="max-width:280px;margin-top:10px">${infoLabel("GPUs for the judge", "How many of the chosen GPUs the judge measures on: the lowest-numbered ones. The rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. Default: half, rounded up.")}<input name="judge_gpus" inputmode="numeric" maxlength="2" placeholder="half"></label>${clusterSections}${joinSections}<div class="nc-does" id="gpu-note"></div></div>
 <div class="sec"><h2>3 · Name and start</h2><div class="g3">
-<label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: lowercase letters, digits and dashes. It names the rig's runs, history and files, so it can't change later.")}<input name="rig" required maxlength="63" placeholder="gpu-box-1-a"></label>
+<label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: 2 to 40 lowercase letters, digits and dashes, starting and ending with a letter or digit. It names the rig's runs, history and files, so it can't change later.")}<input name="rig" required maxlength="40" placeholder="gpu-box-1-a"></label>
 <label class="fd" style="grid-column:span 2">${infoLabel("Images", "The Thermite images control deploys, as set where control is deployed. A GPU rig uses the CUDA harness image.")}<span class="mono small">${images ? `${esc(images.harness)}${images.harnessCuda ? `<br>${esc(images.harnessCuda)} (GPU rigs)` : ""}<br>${esc(images.supervisor)}` : "none configured"}</span></label>
 </div>
 <div class="card hl"><p class="sum" id="add-sum">Control will enroll the rig, write its files and services on the machine, start it, and wait for its first report.</p><div class="act"><button class="primary big"${blocked ? " disabled" : ""}>Create the rig</button></div></div></div>
@@ -5764,7 +5764,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       .sort((a, b) => a - b);
     if (!opts.rigImages) return fail("Control has no rig images configured.");
     if (!opts.publicUrl) return fail("Control's address for rigs is not set.");
-    if (!RIG_NAME.test(rig)) return fail("A rig's name is lowercase letters, digits and dashes.");
+    if (!RIG_ID.test(rig)) return fail(RIG_ID_SENTENCE);
     if (rigTaken(rig)) return fail(`There is a rig named ${rig} already.`);
     if (!m) return fail("Choose a machine.");
     const why = notReady(m);
@@ -5820,7 +5820,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const k = store.cluster(i.cluster);
     if (!opts.rigImages) return fail("Control has no rig images configured.");
     if (!opts.publicUrl) return fail("Control's address for rigs is not set.");
-    if (!RIG_NAME.test(rig)) return fail("A rig's name is lowercase letters, digits and dashes.");
+    if (!RIG_ID.test(rig)) return fail(RIG_ID_SENTENCE);
     if (rigTaken(rig)) return fail(`There is a rig named ${rig} already.`);
     if (!k) return fail("Choose a machine or a cluster.");
     const facts = k.facts as ClusterFacts | null;
@@ -6612,7 +6612,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     };
     if (!opts.rigImages) return fail("Control has no rig images configured.");
     if (!opts.publicUrl) return fail("Control's address for rigs is not set.");
-    if (!RIG_NAME.test(rig)) return fail("A rig's name is lowercase letters, digits and dashes.");
+    if (!RIG_ID.test(rig)) return fail(RIG_ID_SENTENCE);
     if (rigTaken(rig)) return fail(`There is a rig named ${rig} already.`);
     if (form !== "machine" && form !== "namespace") return fail("Choose where the rig runs.");
     const cuda = "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).";

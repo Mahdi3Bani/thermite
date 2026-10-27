@@ -17,6 +17,7 @@ import {
   CONTEXT_WINDOW_MAX,
   CONTEXT_WINDOW_MIN,
 } from "../core/compaction.ts";
+import { RIG_ID_SENTENCE } from "../core/ids.ts";
 import { KbKind as KbKindSchema } from "../core/kb.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { USAGE_PERIODS } from "../core/usage.ts";
@@ -89,6 +90,7 @@ import {
   setRigSettings,
 } from "./rig-settings.ts";
 import {
+  RESEARCH_DETAIL,
   RUN_DETAIL_INPUT,
   RUN_DETAIL_WORDS,
   type RunDetailArgs,
@@ -116,10 +118,6 @@ import { campaignModes, currentChampion, leaderboard, rigView } from "./views.ts
  * commands; a read token (optional) may only read. Every call is written to the audit log.
  * The same views and the same signed-command path as the dashboard and the REST API.
  */
-
-/** What get_run gives of a research run (goals 112, 116 and 117), for both of its descriptions. */
-const RESEARCH_DETAIL =
-  "for a research run its newest digest (research), its answer cards (cards: each question's newest card the harness kept, by index from 0, with version, certainty, answer, claims cited and gaps of kind evidence or measurement; card_refusals: the newest refused card of a question since its card, with the problems), its hypotheses (each with its question, an index from 0 or null for the whole run; its status: author, pool, promoted, merged with merged_into, or retired; the verified claims supporting it; and status_change: the newest change of its status by the owner or the plan, with why), the review panel's decisions (decisions: each item's decision in each review, oldest first, with its certainty and each dissenting reviewer; standing: each item's newest decision, with stands false when the question's card has a newer version than the one decided on, newer_card), its reviews (each with requested_at, posted_at, what it saw when asked, the owner's decision and note, reviewers: each reviewer's answer on each item with its verdict, certainty, reasons, the claims it cites and the problems code found; decided: the review panel's decision on each item in that review; counts; tries when the rig says), and the progress rule's state at the newest digest (progress: the open questions, those of them that are saturated, the last improvement, since_ms without one and needed_ms, a quarter of the running time)";
 
 type Role = "owner" | "operator" | "agent" | "reader";
 
@@ -666,7 +664,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           description:
             "Adds a rig on a Kubernetes cluster in Providers, as Rigs › Add a rig does, with the same checks, and sets it up in the background (follow it with list_rigs and the rig's setup events). For a cluster of slots, name a free slot. CPUs and memory default to what the slot's quota allows. The rig's first key may wait for the owner's acceptance.",
           inputSchema: {
-            rig: z.string().min(1).describe("Lowercase letters, digits and dashes"),
+            rig: z.string().min(1).describe(RIG_ID_SENTENCE),
             cluster: z.string().min(1),
             slot: z.string().min(1).optional(),
             gpus: z.number().int().min(0).default(0),
@@ -1478,7 +1476,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
               image: z.string().min(1).optional(),
               container_disk_gb: z.number().int().min(10).max(2000).optional(),
               volume_gb: z.number().int().min(10).max(10_000).optional(),
-              rig: z.string().min(1).optional().describe("Lowercase letters, digits and dashes"),
+              rig: z.string().min(1).optional().describe(RIG_ID_SENTENCE),
               enroll_within_minutes: z
                 .number()
                 .positive()

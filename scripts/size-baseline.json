@@ -10,7 +10,7 @@
       "lines": 1327
     },
     "src/control/api.ts": {
-      "lines": 1693
+      "lines": 1689
     },
     "src/control/dashboard.ts": {
       "lines": 8784
@@ -19,7 +19,7 @@
       "lines": 996
     },
     "src/control/mcp.ts": {
-      "lines": 1652
+      "lines": 1650
     },
     "src/control/store.ts": {
       "lines": 3711

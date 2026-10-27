@@ -1,6 +1,7 @@
 import { createPublicKey, randomBytes } from "node:crypto";
 import { log, redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
+import { RIG_ID_WORDS } from "../core/ids.ts";
 import {
   controlCodeProof,
   EnrollAnswer,
@@ -197,10 +198,7 @@ export class ControlTunnels {
       this.store.rigs({ withRetired: true }).some((u) => u.id === r);
     let rig = o.rig;
     if (rig !== undefined) {
-      if (!RIG_ID.test(rig))
-        throw new Error(
-          "a rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit",
-        );
+      if (!RIG_ID.test(rig)) throw new Error(RIG_ID_WORDS);
       if (taken(rig)) throw new Error(`rig ${rig} exists already`);
     } else {
       do rig = `rp-${randomBytes(4).toString("hex")}`;

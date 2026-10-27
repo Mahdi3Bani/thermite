@@ -328,7 +328,7 @@ describe("machines in Providers", () => {
     assert.match(await s.post("/ui/rigs/add", twice), /Name each GPU once/);
     assert.match(
       await s.post("/ui/rigs/add", { machine: "box", rig: "Box A" }),
-      /lowercase letters/,
+      /A rig's name is 2 to 40 characters of a-z, 0-9 and -/,
     );
     assert.equal(s.store.machineRigs().length, 0);
     assert.equal(await s.post("/ui/rigs/add", { machine: "box", rig: "box-a" }), "/ui/rigs/box-a");

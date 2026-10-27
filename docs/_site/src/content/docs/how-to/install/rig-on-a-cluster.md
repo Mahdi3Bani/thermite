@@ -119,7 +119,7 @@ To change the slots later, edit **Slots** on the cluster's row and press **Save 
    - **Storage class** and **Volume size (GB)**: the rig's one volume, 100 GB by default. It holds the rig's state, builds, inbox and outbox.
    - **CPUs** and **Memory (GiB)**: both or neither. At least 1.5 CPUs and 6 GiB; the supervisor takes half a CPU and 2 GiB of that, the harness the rest. Empty: the namespace's defaults apply.
    - **Slot** (slots): one of the free slots. For created namespaces, **Namespace** shows the pattern control names it by, such as `thermite-{rig}`.
-4. Under **3 · Name and start**, give a **Rig name**: lowercase letters, digits and dashes. It can't change later.
+4. Under **3 · Name and start**, give a **Rig name**: 2 to 40 lowercase letters, digits and dashes, starting and ending with a letter or digit. It can't change later.
 5. Press **Create the rig**.
 
 In a slot whose network rules don't keep the harness off the cluster, control refuses with "Refused: in the slot thermite-slot-1, …" and says why. Ask the cluster's operators for a rule like the [example above](#what-a-slot-needs).

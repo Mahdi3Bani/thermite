@@ -3,6 +3,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { log } from "../common/env.ts";
 import { errorText, Refusal } from "../common/errors.ts";
+import { RIG_ID } from "../core/ids.ts";
 import { harnessConfirmed, issueCommand } from "./issue.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -128,7 +129,7 @@ export class KubernetesDriver implements DeploymentDriver {
   }
 
   async restart(rig: string, components: Component[]): Promise<string[]> {
-    if (!/^[a-z0-9-]{1,40}$/.test(rig)) throw new Error(`not a rig name: ${rig}`);
+    if (!RIG_ID.test(rig)) throw new Error(`not a rig name: ${rig}`);
     // {unit} is the placeholder's name before the 2026-10-15 rename.
     const ns = this.o.namespaceTemplate.replace("{rig}", rig).replace("{unit}", rig);
     const token = typeof this.o.token === "function" ? this.o.token() : this.o.token;
