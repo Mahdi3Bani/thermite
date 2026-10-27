@@ -267,7 +267,7 @@ describe("Start a run over REST (goal 029)", () => {
     assert.deepEqual(fromApi.briefing, [
       {
         text: "Self-training helps only where a verifier exists\n6 supporting claims",
-        from: { campaign: "survey-study", run: "sv-2", kind: "finding", ref: "f-1" },
+        from: { campaign: "survey-study", rig: "rig-b", run: "sv-2", kind: "finding", ref: "f-1" },
       },
     ]);
     assert.equal(fromApi.promotion, "owner_approval");

@@ -54,7 +54,7 @@ export function copiedFromRecords(
     if (!rec || !source || typeof run !== "string" || typeof id !== "string")
       return { ...x, by: "copied" };
     // What became of it in that run, as Start a run says (queueSeedOf), when the folder has it.
-    const item = kb.byOrigin(source, run, "experiment", id);
+    const item = kb.byOrigin({ campaign: source, rig: rec.rig, run, kind: "experiment", ref: id });
     const result = item ? kb.resultOf(item) : null;
     const details = [rec.details ?? "", result ? `In ${run} (${source}) it was ${result}.` : ""]
       .filter(Boolean)

@@ -229,6 +229,8 @@ export const BriefingSeed = z.strictObject({
   text: z.string().trim().min(1).max(4000),
   from: z.object({
     campaign: z.string().min(1).max(200),
+    /** The rig the run ran on: a run's name is unique on its rig only (goal 162). */
+    rig: z.string().min(1).max(200).optional(),
     run: IdSchema,
     kind: z.string().min(1).max(40),
     ref: z.string().min(1).max(200),

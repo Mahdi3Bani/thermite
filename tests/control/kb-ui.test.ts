@@ -424,7 +424,7 @@ test("Start a run from past research: the search reads only granted folders; tic
   assert.deepEqual(payload.briefing, [
     {
       text: "Self-training helps only where a verifier exists\n6 supporting claims",
-      from: { campaign: "survey-study", run: "sv-2", kind: "finding", ref: "f-1" },
+      from: { campaign: "survey-study", rig: "rig-b", run: "sv-2", kind: "finding", ref: "f-1" },
     },
   ]);
   // An item of a folder not granted, or a kind a run does not start from: refused, nothing sent.
@@ -597,16 +597,18 @@ test("MCP: a briefing takes the knowledge base's own words; an item not found or
   // survey-study's folder is not granted yet: its finding is left out; the run's own campaign's
   // note takes the words control recorded.
   let p = await assign(asked);
-  assert.deepEqual(p.briefing, [{ text: "The GPU has 4 MB of L2.\nSources: s-1", from: note }]);
+  // Control's words, and where they came from, its rig too (goal 162).
+  const noteFrom = { ...note, rig: "rig-a" };
+  assert.deepEqual(p.briefing, [{ text: "The GPU has 4 MB of L2.\nSources: s-1", from: noteFrom }]);
   // Granted: the finding comes too, in its own words, never the caller's.
   s.store.kb().grant("gemv-speed", "survey-study", "owner:ui");
   p = await assign(asked);
   assert.deepEqual(p.briefing, [
     {
       text: "Self-training helps only where a verifier exists\n6 supporting claims",
-      from: finding,
+      from: { ...finding, rig: "rig-b" },
     },
-    { text: "The GPU has 4 MB of L2.\nSources: s-1", from: note },
+    { text: "The GPU has 4 MB of L2.\nSources: s-1", from: noteFrom },
   ]);
   assert.ok(!JSON.stringify(p).includes("Ignore the rules"));
   assert.ok(!JSON.stringify(p).includes("caller's own words"));

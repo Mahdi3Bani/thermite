@@ -197,7 +197,7 @@ Each item in `briefing` has these fields:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `text` | text, 1 to 4000 characters, trimmed | The item's words |
-| `from` | `{campaign, run, kind, ref}` | Where it came from: the campaign's folder (1 to 200 characters), the run (a lowercase id), the item's kind (1 to 40 characters, such as `finding`) and its `ref` in that run (1 to 200 characters) |
+| `from` | `{campaign, rig?, run, kind, ref}` | Where it came from: the campaign's folder (1 to 200 characters), the rig the run ran on (1 to 200 characters; control always gives it, since a run's name is unique on its rig only), the run (a lowercase id), the item's kind (1 to 40 characters, such as `finding`) and its `ref` in that run (1 to 200 characters) |
 
 Over MCP, control does not keep the caller's words for a briefing either. It looks up the knowledge base's item that `from` names and puts that item's words in `text`. It leaves out an item it cannot find, one it finds more than once (run names are unique on one rig only), and one from a folder the new run's campaign may not read. With none left, it sends no `briefing`. It does this before it looks up the copied experiments. The REST API (`POST /v1/commands`) and `thermite command` send `briefing` and `queue` as given: control looks nothing up. `thermite assign` has no option for a briefing. Its `--queue-from` fills `queue` with a past run's untried experiments, as **Start a run** does below, and takes them from control first (`GET /v1/rigs/<rig>/runs/<run>/untried`), with the words and authors control's records hold, as over MCP. See [the command line](command-line.md#copy-a-past-runs-untried-experiments).
 

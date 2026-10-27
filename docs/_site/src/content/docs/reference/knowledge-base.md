@@ -268,7 +268,7 @@ A **briefing** is background for every agent of a new run: findings, claims, not
   "briefing": [
     {
       "text": "A gain far above the rig's noise needs a fresh input on every call before it can count.",
-      "from": { "campaign": "sum-speed", "run": "sum-1", "kind": "note", "ref": "4" }
+      "from": { "campaign": "sum-speed", "rig": "rig-1", "run": "sum-1", "kind": "note", "ref": "4" }
     }
   ]
 }

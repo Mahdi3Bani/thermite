@@ -582,12 +582,19 @@ export class KnowledgeBase {
    * The item a briefing names by where it came from (campaign, run, kind, ref). Undefined when
    * control has none, or more than one (run names are unique per rig only).
    */
-  byOrigin(campaign: string, run: string, kind: string, ref: string): KbItem | undefined {
+  byOrigin(o: {
+    campaign: string;
+    rig?: string;
+    run: string;
+    kind: string;
+    ref: string;
+  }): KbItem | undefined {
     const rows = this.db
       .prepare(
-        "select * from kb_item where campaign = ? and run = ? and kind = ? and ref = ? limit 2",
+        `select * from kb_item where campaign = ? and run = ? and kind = ? and ref = ?${o.rig ? " and rig = ?" : ""} limit 2`,
       )
-      .all(campaign, run, kind, ref) as Row[];
+      .all(o.campaign, o.run, o.kind, o.ref, ...(o.rig ? [o.rig] : [])) as Row[];
+    // Two rigs may each have run a run of this name: without its rig, which one is not known.
     return rows.length === 1 && rows[0] ? itemOf(rows[0]) : undefined;
   }
 
@@ -780,6 +787,6 @@ export function briefingSeedOf(x: KbItem): BriefingSeed | undefined {
   if (!text) return undefined;
   return {
     text,
-    from: { campaign: x.campaign, run: x.run, kind: x.kind, ref: x.ref },
+    from: { campaign: x.campaign, rig: x.rig, run: x.run, kind: x.kind, ref: x.ref },
   };
 }
