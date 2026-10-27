@@ -16,34 +16,9 @@ import { knowledgePart } from "./kb-part.ts";
 import type { Ledger } from "./ledger.ts";
 import { championFiles } from "./propagation.ts";
 
-/**
- * Whether an event is a run's (goal 170): it names the run, or its subject is one of the run's
- * attempts (its verdicts, lifecycle, audits) or one of the judge's jobs for the run. An event about
- * an attempt or a job does not name its run, so a run's export finds those through its attempts
- * and jobs.
- */
-export function runEvents(
-  ledger: Ledger,
-  run: string,
-): (e: { kind: string; subject: string | null; body: unknown }) => boolean {
-  const ids = (sql: string, ...params: string[]) =>
-    new Set(
-      (ledger.db.prepare(sql).all(...params) as { id: string | number }[]).map((r) => String(r.id)),
-    );
-  const attempts = ids("select id from attempt where run = ?", run);
-  const jobs = ids(
-    `select j.id from job j left join attempt a on a.id = j.attempt
-      where a.run = ? or json_extract(j.spec, '$.run') = ?`,
-    run,
-    run,
-  );
-  // A job's events: the job_ kinds and crash_infra, whose subject is the job's number.
-  const jobKind = (kind: string) => kind.startsWith("job_") || kind === "crash_infra";
-  return (e) =>
-    e.subject === run ||
-    (e.body as { run?: unknown } | null)?.run === run ||
-    (e.subject !== null && attempts.has(e.subject)) ||
-    (e.subject !== null && jobKind(e.kind) && jobs.has(e.subject));
+/** Whether an event is a run's (goal 170): the run the ledger recorded with it. */
+export function runEvents(run: string): (e: { run: string | null }) => boolean {
+  return (e) => e.run === run;
 }
 
 /**
@@ -99,7 +74,7 @@ export async function writeExport(input: {
   const final = join(input.outboxDir, name);
   mkdirSync(join(tmp, "attempts"), { recursive: true });
   try {
-    const ofRun = only ? runEvents(ledger, only) : () => true;
+    const ofRun = only ? runEvents(only) : () => true;
     const events = ledger
       .eventsAfter(since, Number.MAX_SAFE_INTEGER)
       .events.filter((e) => e.id <= through && ofRun(e));

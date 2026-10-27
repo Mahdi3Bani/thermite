@@ -10,7 +10,7 @@
       "lines": 1327
     },
     "src/control/api.ts": {
-      "lines": 1685
+      "lines": 1684
     },
     "src/control/dashboard.ts": {
       "lines": 8780
@@ -22,7 +22,7 @@
       "lines": 1650
     },
     "src/control/store.ts": {
-      "lines": 3711
+      "lines": 3698
     },
     "src/control/ui/operator.ts": {
       "lines": 1485
@@ -67,7 +67,7 @@
       "lines": 2046
     },
     "src/harness/ledger.ts": {
-      "lines": 1594
+      "lines": 1589
     },
     "src/harness/main.ts": {
       "lines": 882

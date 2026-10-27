@@ -214,7 +214,7 @@ Of the kinds the description names, the agent's token can issue only `redirect`.
 | `rig` | string | | The rig |
 | `limit` | whole number, 1 to 500 | 50 | How many events |
 
-Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest first. It returns at most 50, whatever `limit` says. The agents' model calls (`model_call`) are left out: [`model_usage`](#model_usage) sums them. For the agent's token, a `held_out_checked` event's body is `{run, pass, kinds, words}` (and `champion_seq` for a goal run's champion), its kinds of failure and their words with no case named, and a `goal_checks` event's body lists no held-out case, as in [`get_run`](#get_run). Error: `no rig <rig>`.
+Returns events `{seq, ledger_id, id, at, actor, kind, subject, body, run}`, newest first, where `run` is the run the event is about (`null` for the rig's own). It returns at most 50, whatever `limit` says. The agents' model calls (`model_call`) are left out: [`model_usage`](#model_usage) sums them. For the agent's token, a `held_out_checked` event's body is `{run, pass, kinds, words}` (and `champion_seq` for a goal run's champion), its kinds of failure and their words with no case named, and a `goal_checks` event's body lists no held-out case, as in [`get_run`](#get_run). Error: `no rig <rig>`.
 
 ### leaderboard
 

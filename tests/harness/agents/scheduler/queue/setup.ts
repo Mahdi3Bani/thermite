@@ -10,7 +10,7 @@ import { type CommandKind, signEnvelope } from "../../../../../src/core/commands
 import { Scheduler } from "../../../../../src/harness/agents/scheduler.ts";
 import type { TrialResult, TrialSpec } from "../../../../../src/harness/agents/worker.ts";
 import { LocalRunner } from "../../../../../src/harness/broker/runner.ts";
-import type { LedgerEvent } from "../../../../../src/harness/ledger.ts";
+import type { LedgerEvent } from "../../../../../src/harness/ledger/rows.ts";
 import { startFakeModel } from "../../../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../../../helpers/judge-env.ts";
 

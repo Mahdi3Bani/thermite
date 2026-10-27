@@ -687,6 +687,16 @@ function schemaFour(db: DatabaseSync): void {
 }
 
 /**
+ * Each event's run as the rig's ledger recorded it (goal 170), for the views by run. Events
+ * received before keep none: their readers work their run out as before.
+ */
+function schemaFive(db: DatabaseSync): void {
+  const columns = db.prepare("pragma table_info(rig_event)").all() as { name: string }[];
+  if (!columns.some((c) => c.name === "run")) db.exec("alter table rig_event add column run text");
+  db.exec("create index if not exists rig_event_run on rig_event (run, seq)");
+}
+
+/**
  * Control's migrations, in order: the store's schema version is how many have run. A change to
  * the schema is a new function at the end, never an edit of one that has run.
  */
@@ -695,6 +705,7 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   schemaTwo,
   schemaThree,
   schemaFour,
+  schemaFive,
 ];
 
 /**

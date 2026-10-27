@@ -5,6 +5,18 @@ type Row = Record<string, SQLInputValue>;
 
 /** The ledger's rows as its reads give them, and an attempt as its writer gives it (moved out of ledger.ts). */
 
+/** An event of the ledger, as it is read: its kind, what it is about, its body and its run. */
+export interface LedgerEvent {
+  id: number;
+  at: string;
+  actor: string;
+  kind: string;
+  subject: string | null;
+  body: unknown;
+  /** The run it is about, or null for the rig's own (goal 170). */
+  run: string | null;
+}
+
 export interface RunRow {
   id: string;
   campaign: string;

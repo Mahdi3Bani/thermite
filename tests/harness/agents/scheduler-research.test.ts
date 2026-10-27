@@ -3,7 +3,7 @@ import { describe, type TestContext, test } from "node:test";
 import { parseContract, type ResearchContract } from "../../../src/core/contract.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
-import type { LedgerEvent } from "../../../src/harness/ledger.ts";
+import type { LedgerEvent } from "../../../src/harness/ledger/rows.ts";
 import { Research } from "../../../src/harness/research/research.ts";
 import { GAP_LINE } from "../../../src/harness/research/shares.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";

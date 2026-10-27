@@ -52,7 +52,7 @@ test("a run's export takes its attempts' verdicts and its judge's jobs, and no o
     });
   }
   const events = ledger.eventsAfter(0, 10_000).events;
-  const ofRun = runEvents(ledger, "r-1");
+  const ofRun = runEvents("r-1");
   const kept = events.filter(ofRun).map((e) => `${e.kind} ${e.subject}`);
   for (const kind of ["run_created r-1", "attempt_recorded r-1-a", "verdict r-1-a"])
     assert.ok(kept.includes(kind), `${kind} in ${kept.join(", ")}`);
@@ -63,7 +63,7 @@ test("a run's export takes its attempts' verdicts and its judge's jobs, and no o
     );
   assert.ok(!kept.some((k) => k.includes("r-2")), kept.join(", "));
   // r-2's job events are not r-1's: each run's export has its own.
-  const theirs = events.filter(runEvents(ledger, "r-2")).map((e) => `${e.kind} ${e.subject}`);
+  const theirs = events.filter(runEvents("r-2")).map((e) => `${e.kind} ${e.subject}`);
   assert.equal(
     kept.filter((k) => k.startsWith("job_")).length,
     theirs.filter((k) => k.startsWith("job_")).length,

@@ -37,7 +37,7 @@ A run's folder in a full export goes beside the place its end exports to, under 
 
 | Part | A run's export |
 | --- | --- |
-| Events, attempts, field notes, research notes, briefing and knowledge items | The run's alone, from its start. Its events include those about its attempts (each `verdict`, its lifecycle, audits) and about the judge's jobs for it |
+| Events, attempts, field notes, research notes, briefing and knowledge items | The run's alone, from its start: the events whose `run` is the run, which include those about its attempts (each `verdict`, its lifecycle, audits) and about the judge's jobs for it |
 | `research/<run>/folder-<export>/…` | The run's research folder as it stands, with its paper as `paper.md` when it has one |
 | `research/<run>/…`, other files | The run's archive of the web pages it fetched |
 | `ledger.sqlite` | No: the ledger holds every run |

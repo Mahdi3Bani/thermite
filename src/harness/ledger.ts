@@ -18,11 +18,13 @@ import {
   type BriefingItem,
   type ExperimentRow,
   type JobRow,
+  type LedgerEvent,
   type RunRow,
   toExperiment,
   toJob,
   toRun,
 } from "./ledger/rows.ts";
+import { eventRun } from "./ledger/runs.ts";
 import { shownViolations, violationsOf } from "./v0.ts";
 
 /**
@@ -47,15 +49,6 @@ export class LedgerError extends Error {
     super(message);
     this.code = code;
   }
-}
-
-export interface LedgerEvent {
-  id: number;
-  at: string;
-  actor: string;
-  kind: string;
-  subject: string | null;
-  body: unknown;
 }
 
 export type { AttemptInput, BriefingItem, ExperimentRow, JobRow, RunRow } from "./ledger/rows.ts";
@@ -154,12 +147,13 @@ export class Ledger {
 
   appendEvent: AppendEvent = (actor, kind, subject, body) =>
     this.run(
-      "insert into event (at, actor, kind, subject, body) values (?, ?, ?, ?, ?)",
+      "insert into event (at, actor, kind, subject, body, run) values (?, ?, ?, ?, ?, ?)",
       this.now(),
       actor,
       kind,
       subject,
       canonicalJson(body ?? {}),
+      eventRun(this.db, kind, subject, body),
     ).id;
 
   /** The body of the newest event of a kind about a subject, if any. */
@@ -176,7 +170,7 @@ export class Ledger {
   /** Events strictly after the cursor, in order. The next cursor is the last id returned. */
   eventsAfter(cursor: number, limit = 500): { events: LedgerEvent[]; next: number } {
     const rows = this.all<Row>(
-      "select id, at, actor, kind, subject, body from event where id > ? order by id limit ?",
+      "select id, at, actor, kind, subject, body, run from event where id > ? order by id limit ?",
       cursor,
       limit,
     );
@@ -189,6 +183,7 @@ export class Ledger {
         kind: String(r.kind),
         subject: r.subject === null ? null : String(r.subject),
         body: JSON.parse(String(r.body)),
+        run: r.run === null ? null : String(r.run),
       }),
     );
     return { events, next: events.length ? (events[events.length - 1] as LedgerEvent).id : cursor };

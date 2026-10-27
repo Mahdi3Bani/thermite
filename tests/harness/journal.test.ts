@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import { LenientNotes } from "../../src/core/journal.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
-import type { LedgerEvent } from "../../src/harness/ledger.ts";
+import type { LedgerEvent } from "../../src/harness/ledger/rows.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 
 const RUN = "smoke-1";

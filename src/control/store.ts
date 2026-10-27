@@ -29,6 +29,7 @@ import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
 import { KnowledgeBase } from "./kb.ts";
 import { fingerprint } from "./store/keys.ts";
+import type { IngestReport } from "./store/report.ts";
 import { migrateStore } from "./store/schema.ts";
 
 /**
@@ -93,23 +94,7 @@ function rigExportOf(r: Row): RigExport {
   };
 }
 
-export interface IngestReport {
-  generated_at?: string | undefined;
-  rig: string;
-  ledger_id: string;
-  cursor: number;
-  next: number;
-  events: {
-    id: number;
-    at: string;
-    actor: string;
-    kind: string;
-    subject: string | null;
-    body: unknown;
-  }[];
-  summary: unknown;
-}
-
+export type { IngestReport };
 export { EFFORTS, type Effort, HARNESSES, type Harness, type ProviderType };
 /** A harness from a form or a row; anything else is Pi, the default. */
 export const harnessOf = (v: unknown): Harness => HARNESSES.find((h) => h === v) ?? "pi";
@@ -1286,7 +1271,7 @@ export class ControlStore {
       let added = 0;
       const insert = this.db.prepare(
         `insert or ignore into rig_event (rig, ledger_id, event_id, at, actor, kind, subject, body,
-           received_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           received_at, run) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       // A harness's own record of a command it applied is authoritative (it is signed with the
       // rig's key); the supervisor's acknowledgement is only the fast path.
@@ -1353,6 +1338,7 @@ export class ControlStore {
             e.subject,
             canonicalJson(e.body ?? {}),
             now,
+            e.run ?? null,
           ).changes,
         );
       }
@@ -1912,7 +1898,7 @@ export class ControlStore {
     return (
       this.db
         .prepare(
-          `select seq, ledger_id, event_id, at, actor, kind, subject, ${body} as body from rig_event
+          `select seq, ledger_id, event_id, at, actor, kind, subject, ${body} as body, run from rig_event
              where rig = ?${byLedger}${calls} and seq > ? order by seq limit ?`,
         )
         .all(...(ledgerId ? [rig, ledgerId, after, limit] : [rig, after, limit])) as Row[]
@@ -1927,6 +1913,7 @@ export class ControlStore {
         kind: String(r.kind),
         subject: r.subject === null ? null : String(r.subject),
         body: JSON.parse(String(r.body)),
+        run: r.run === null ? null : String(r.run),
       }),
     );
   }

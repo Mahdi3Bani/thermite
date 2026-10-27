@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "../schema.ts";
+import { eventRunColumn } from "./runs.ts";
 
 /**
  * Every ledger migration, in order: schema.ts's, then the ones since, here, so schema.ts no longer
@@ -15,4 +16,6 @@ export const LEDGER_MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))
   update agent_message set target = 'review_panel' where target = 'panel';
   update agent_message_read set reader = 'review_panel' where reader = 'panel';
   `,
+  // 23: each event's run (goal 170), worked out for the events already recorded.
+  eventRunColumn,
 ];

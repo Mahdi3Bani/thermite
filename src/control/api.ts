@@ -153,6 +153,7 @@ const IngestBody = z.object({
       kind: z.string(),
       subject: z.string().nullable(),
       body: z.unknown(),
+      run: z.string().nullable().optional(),
     }),
   ),
   summary: z.unknown(),
@@ -1026,9 +1027,7 @@ export function createControlApi(
   const publicKeyPem = createPublicKey(privateKeyPem)
     .export({ type: "spki", format: "pem" })
     .toString();
-  const RigName = z.strictObject({
-    rig: z.string().regex(RIG_ID, RIG_ID_WORDS),
-  });
+  const RigName = z.strictObject({ rig: z.string().regex(RIG_ID, RIG_ID_WORDS) });
   const inFile = (rig: string) =>
     tokens.rigs[rig] !== undefined
       ? `rig ${rig} has its token in control's rig tokens file; change it there`
