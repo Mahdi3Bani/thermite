@@ -25,21 +25,26 @@ async function stack(t: TestContext, o: { kitJson?: unknown } = {}) {
   t.after(() => fake.close());
   const secrets = SecretBox.ephemeral();
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
+  let servers: McpServers | undefined;
   const { env, store, control, relay } = controlStack({
     env: makeJudgeEnv({ promotion: "auto" }),
-    options: {
-      kits,
-      secrets,
-      publicUrl: "https://control.example.com",
-      probeRepo: async () => ({ commit: C, files: 10, suggest: ["src/**"] }),
-      readKit: async (url, commit) => {
-        if (url.includes("broken")) throw new Error("the kit's commit has no kit.json at its top");
-        return o.kitJson ?? { name: "q4-gemv-kit", commit, mcp_servers: [] };
-      },
+    // Control's own MCP servers, which the tests also hold.
+    options: (store) => {
+      servers = new McpServers(store, secrets);
+      return {
+        mcpServers: servers,
+        kits,
+        secrets,
+        publicUrl: "https://control.example.com",
+        probeRepo: async () => ({ commit: C, files: 10, suggest: ["src/**"] }),
+        readKit: async (url, commit) => {
+          if (url.includes("broken"))
+            throw new Error("the kit's commit has no kit.json at its top");
+          return o.kitJson ?? { name: "q4-gemv-kit", commit, mcp_servers: [] };
+        },
+      };
     },
   });
-  // Control makes its own MCP servers on the same store and secrets: this is the tests' hand on them.
-  const servers = new McpServers(store, secrets);
   env.service.hardware = {
     collected_at: new Date().toISOString(),
     target: { type: "cpu", class: "generic-cpu", id: "cpu-a" },
@@ -58,7 +63,7 @@ async function stack(t: TestContext, o: { kitJson?: unknown } = {}) {
   const csrf = session.csrfOf(await page("/ui/settings"));
   const post = (path: string, form: Record<string, string>) =>
     session.post(path, { csrf, ...form });
-  return { fake, store, servers, kits, control, get, page, post };
+  return { fake, store, servers: servers as McpServers, kits, control, get, page, post };
 }
 
 /** The part of a page from one marker to the next, to look at one block alone. */
