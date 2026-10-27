@@ -1,8 +1,10 @@
+import { registerAssignment } from "../../src/control/store/runs.ts";
 import type { ControlStore } from "../../src/control/store.ts";
 
 /**
- * Control's own record that it assigned a run of a campaign to a rig (a delivered command), with
- * any other fields of the assignment a test needs (its MCP servers, say).
+ * Control's own record that it assigned a run of a campaign to a rig (a delivered command, in
+ * the run registry as control's signing puts it there), with any other fields of the assignment
+ * a test needs (its MCP servers, say).
  */
 export function assigned(
   store: ControlStore,
@@ -11,14 +13,13 @@ export function assigned(
   campaign: string,
   extra: Record<string, unknown> = {},
 ) {
+  const id = `cmd-${rig}-${run}`;
+  const at = new Date().toISOString();
+  const payload = { run, contract: { campaign }, ...extra };
   store.db
     .prepare(
       "insert into command (id, rig, kind, signed, issued_by, issued_at, status) values (?, ?, 'assign_campaign', ?, 'owner:ui', ?, 'delivered')",
     )
-    .run(
-      `cmd-${rig}-${run}`,
-      rig,
-      JSON.stringify({ envelope: { payload: { run, contract: { campaign }, ...extra } } }),
-      new Date().toISOString(),
-    );
+    .run(id, rig, JSON.stringify({ envelope: { payload } }), at);
+  registerAssignment(store.db, { id, rig, kind: "assign_campaign", issued_at: at, payload });
 }

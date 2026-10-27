@@ -1,3 +1,4 @@
+import { rigOfRunName, usedRunNames } from "./store/runs.ts";
 import type { ControlStore } from "./store.ts";
 
 /**
@@ -7,38 +8,12 @@ import type { ControlStore } from "./store.ts";
  * was used, on every path that starts a run.
  */
 
-/**
- * The run names used so far that start with `prefix`: every run a rig reported, and every
- * assignment control signed that did not fail, expire or get refused (on its way, or delivered).
- */
-function usedNames(store: ControlStore, prefix = ""): Set<string> {
-  const like = `${prefix.replace(/[\\%_]/g, "\\$&")}%`;
-  const rows = store.db
-    .prepare(
-      `select subject as run from rig_event
-         where kind = 'run_created' and subject like ? escape '\\'
-       union
-       select json_extract(signed, '$.envelope.payload.run') from command
-         where kind = 'assign_campaign' and status in ('pending', 'delivered')
-           and json_extract(signed, '$.envelope.payload.run') like ? escape '\\'`,
-    )
-    .all(like, like) as { run: string | null }[];
-  return new Set(rows.flatMap((r) => (r.run ? [r.run] : [])));
-}
+/** The run names used so far that start with `prefix`, from control's run registry. */
+const usedNames = (store: ControlStore, prefix = ""): Set<string> => usedRunNames(store.db, prefix);
 
 /** The rig a run name was used on, or undefined while it is free. */
-export function runNameUsed(store: ControlStore, run: string): string | undefined {
-  const row = store.db
-    .prepare(
-      `select rig from rig_event where kind = 'run_created' and subject = ?
-       union all
-       select rig from command where kind = 'assign_campaign' and status in ('pending', 'delivered')
-         and json_extract(signed, '$.envelope.payload.run') = ?
-       limit 1`,
-    )
-    .get(run, run) as { rig: string } | undefined;
-  return row?.rig;
-}
+export const runNameUsed = (store: ControlStore, run: string): string | undefined =>
+  rigOfRunName(store.db, run);
 
 /** A name for a campaign's next run: the campaign's name and the next number used nowhere. */
 export function nextRunName(store: ControlStore, campaign: string): string {

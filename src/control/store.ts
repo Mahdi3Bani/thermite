@@ -30,6 +30,7 @@ import type { JoinedSpec, JoinForm } from "./join.ts";
 import { KnowledgeBase } from "./kb.ts";
 import { fingerprint } from "./store/keys.ts";
 import type { IngestReport } from "./store/report.ts";
+import { assignedCampaignsOf, registerAssignment, registerRunCreated } from "./store/runs.ts";
 import { migrateStore } from "./store/schema.ts";
 
 /**
@@ -944,25 +945,7 @@ export class ControlStore {
    * the rig's own events claim.
    */
   assignedCampaigns(rig: string): Map<string, string> {
-    const out = new Map<string, string>();
-    for (const r of this.db
-      .prepare(
-        "select signed from command where rig = ? and kind = 'assign_campaign' and status not in ('failed', 'rejected', 'expired') order by issued_at",
-      )
-      .all(rig) as { signed: string }[]) {
-      try {
-        const p = (
-          JSON.parse(r.signed) as {
-            envelope?: { payload?: { run?: unknown; contract?: { campaign?: unknown } } };
-          }
-        ).envelope?.payload;
-        if (typeof p?.run === "string" && typeof p.contract?.campaign === "string")
-          out.set(p.run, p.contract.campaign);
-      } catch {
-        // not a command this store wrote
-      }
-    }
-    return out;
+    return assignedCampaignsOf(this.db, rig);
   }
 
   /** One run's newest live lines, newest last (for the Live page's first view). */
@@ -1288,6 +1271,7 @@ export class ControlStore {
            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const e of report.events) {
+        registerRunCreated(this.db, report.rig, report.ledger_id, e);
         if (e.kind === "command" && e.subject) {
           const b = (e.body ?? {}) as { accepted?: boolean };
           confirm.run(
@@ -1925,6 +1909,7 @@ export class ControlStore {
         "insert into command (id, rig, kind, signed, issued_by, issued_at, status) values (?, ?, ?, ?, ?, ?, 'pending')",
       )
       .run(e.id, e.rig, e.kind, canonicalJson(signed), e.issued_by, e.issued_at);
+    registerAssignment(this.db, e);
     this.audit(e.issued_by, "command_issued", { id: e.id, rig: e.rig, kind: e.kind });
   }
 

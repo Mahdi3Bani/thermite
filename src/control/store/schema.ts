@@ -1,5 +1,6 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { copyBeforeMigration, newerSchemaWords } from "../../common/db-copy.ts";
+import { runRegistryTable } from "./runs.ts";
 
 /**
  * Control's store's schema and its migrations, moved out of store.ts (goal 173). The store's
@@ -706,6 +707,8 @@ const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
   schemaThree,
   schemaFour,
   schemaFive,
+  // Control's run registry (goal 170), with its rows from what the store already holds.
+  runRegistryTable,
 ];
 
 /**
