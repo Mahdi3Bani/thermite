@@ -13,7 +13,7 @@
       "lines": 1719
     },
     "src/control/dashboard.ts": {
-      "lines": 8866
+      "lines": 8857
     },
     "src/control/kb.ts": {
       "lines": 825
@@ -103,7 +103,7 @@
       "lines": 2747
     },
     "tests/control/clusters-ui.test.ts": {
-      "lines": 1435
+      "lines": 1194
     },
     "tests/control/dashboard.test.ts": {
       "lines": 2497

@@ -53,6 +53,7 @@ import {
   sizeOf,
   sizeWords,
 } from "./cluster-resources.ts";
+import { deploymentEnv } from "./clusters/deployment.ts";
 import {
   type ClusterFacts,
   type ClusterSlot,
@@ -6110,21 +6111,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         undefined,
         30_000,
       );
-      const env = (() => {
-        try {
-          const d = JSON.parse(now.stdout) as {
-            spec?: {
-              template?: { spec?: { containers?: { env?: { name: string; value?: string }[] }[] } };
-            };
-          };
-          return d.spec?.template?.spec?.containers?.[0]?.env ?? [];
-        } catch {
-          return [];
-        }
-      })();
-      if (now.code !== 0)
+      // An answer that is not a deployment is no answer: never take it for an unchanged rig.
+      const env = now.code === 0 ? deploymentEnv(now.stdout) : null;
+      if (!env)
         return {
-          error: `Control could not read ${rig}'s deployment to compare control's address: ${kubeError(now)}`,
+          error: `Control could not read ${rig}'s deployment to compare control's address: ${now.code === 0 ? "kubectl's answer is not a deployment" : kubeError(now)}`,
         };
       const was = env.find((x) => x.name === "CONTROL_URL")?.value;
       if (was === undefined || was === opts.publicUrl.replace(/\/$/, ""))

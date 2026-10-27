@@ -1035,7 +1035,7 @@ Errors:
 - `Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).`
 - `The cluster <cluster> is no longer in Providers.`
 - `<rig> is being updated: wait until its page shows it running, or failed.`, or `<rig> is starting: …`: another update, or a start, is still waiting for its pods
-- `Control could not read <rig>'s deployment to compare control's address: <kubectl's error>`: the same images, and the supervisor's deployment could not be read
+- `Control could not read <rig>'s deployment to compare control's address: <kubectl's error>` (or `kubectl's answer is not a deployment`): the same images, and the supervisor's deployment could not be read
 - kubectl's own error
 
 Besides `mcp:update_rig_images`, the audit log records `cluster_rig_drain` when the rig drains first, and `cluster_rig_images` with the old and the new images. A rig on a machine moves onto control's images only with **Update to** control's version on its page; one joined with a join command has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). During a drain for a new number of GPUs, CPUs or memory, an update is refused: `<rig> is draining for a change to its GPUs, CPUs or memory: wait until its page shows it running, or call the change off first.`

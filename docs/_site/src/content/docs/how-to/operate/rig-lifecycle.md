@@ -185,7 +185,7 @@ When you move control to a new address, set `THERMITE_CONTROL_PUBLIC_URL` to it 
 
    The page says `rig-1's pods restart with control's new address.`, and the status says `updating`. Control waits for the pods and a report, as after an update. For a stopped rig, the page says `rig-1 gets control's new address when it starts again.` The new step "Its deployments applied with new images" has the detail `control's address for rigs →` and the new address.
 
-Before it restarts anything, control reads the address in the rig's supervisor deployment. When it is already the new one, the answer is `rig-1 already runs control's images.` and nothing changes. When control can't read the deployment, it refuses with `Control could not read rig-1's deployment to compare control's address:` and kubectl's error: check that the cluster is reachable and that the deployment is still there.
+Before it restarts anything, control reads the address in the rig's supervisor deployment. When it is already the new one, the answer is `rig-1 already runs control's images.` and nothing changes. When control can't read the deployment, it refuses with `Control could not read rig-1's deployment to compare control's address:` and kubectl's error, or `kubectl's answer is not a deployment` when kubectl printed something else, never taking it for an unchanged rig: check that the cluster is reachable and that the deployment is still there.
 
 Control records the address it gives each rig. A rig set up by a control too old to record it shows no button. On the dashboard, it gets the new address with its next **Update to these images**. To give it the address now, call `update_rig_images` over MCP: control reads the deployment in the same way and applies it again with the new address.
 
