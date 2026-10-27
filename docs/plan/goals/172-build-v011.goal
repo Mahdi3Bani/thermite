@@ -1,0 +1,95 @@
+---
+id: "172"
+title: "Build v0.1.1: every goal the audit planned, in one order, to verified"
+status: READY
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-27
+updated: 2026-10-27
+---
+
+# 172 · Build v0.1.1: every goal the audit planned, in one order, to verified
+
+**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+
+## What
+
+One goal that builds everything the v0.1.1 audit planned (goal [160](_completed/160-v010-audit.goal) and its second part), from the first commit to the last goal verified. Each goal below keeps its own file: what it delivers, its design, the owner's decisions and its "done when". This goal adds what none of them says alone: the order, the gates where the owner decides, and the rules of working. Launching this goal is the owner's word to build: the planning phase is over.
+
+The goals it completes:
+
+| Goal | What |
+| --- | --- |
+| [125](125-code-to-the-conventions.goal) | The code to its conventions: the size check, the rules of shape, the guide's themes T1 to T15 |
+| [161](161-control-bugs-from-the-audit.goal), [162](162-research-and-knowledge-bugs.goal), [163](163-harness-bugs-from-the-audit.goal), [164](164-settings-that-fail-loudly.goal), [165](165-results-kept-through-remove-and-reset.goal), [171](171-bugs-on-the-wire.goal) | The bugs the audit found, each with a regression test |
+| [166](166-agent-definitions.goal) | Agent definitions in code, the prompt each run gives each role, shown everywhere |
+| [168](168-message-bus.goal) | NATS JetStream as the event log, the delivery and the queues between control, the supervisors and the dashboard |
+| [169](169-agents-in-their-terminal.goal) | Every role that takes the owner's messages in its program's own terminal, session logs as events, the Pi view, usage windows |
+| [170](170-one-hierarchy.goal) | One hierarchy: run IDs unique across rigs, a run registry, run-scoped addresses |
+
+The [code clean-up guide](../code-clean-up-guide.md) holds the map of the code, the themes, the rules of shape, what to leave and the review guide; its section 8 places goals 166 to 171 in its order.
+
+### The order
+
+Each line is a set of small steps, each green on its own. A later step may start before an earlier one ends only where the two touch different files.
+
+1. **The rules of shape** go into [CONVENTIONS.md](../../../CONVENTIONS.md), in a commit of their own that the owner reviews (gate A), with the rule of goal 170 (a thing is addressed through what owns it). Then **the size check** (goal 125, step 2) and **the import-rule check** (a script in `npm run check` that fails, with today's exceptions listed by file).
+2. **The bugs:** goals 161, 162, 163, 164, 165 and 171, each fix with its regression test; the upgrade of each image's system packages (goal 125's decision), with the images built again; and goal 170's first steps: run IDs unique across rigs, a used name refused on every path, the champion's patch kept by ledger, and a run's export with its verdicts.
+3. **The shared homes:** `core` words (T1: event kinds with schemas in `core/events/`, `core/ids.ts`, verdicts, the agents' and roles' names), the toolkit in `common` (T3), and settings, errors and the logger (T4).
+4. **The tests' scaffolding** (T10), and golden tests of every role's whole prompt (goal 166), before the code they hold moves.
+5. **The foundations:** the link's contract in `core/link/` (T2: one module for each message, with its subject, schema, byte limit and signer); goal 168's spike in compose and its commands queue (its steps 0 and 1); the domain modules out of the dashboard (T5); the ledger's owners and one promotion (T6); the run on every event and control's run registry (goal 170); the table of agent programs with the roles and the tools (T7, goal 166).
+6. **The splits** (T8), the largest and most-changed first, with control's views by run and kept up to date as events arrive (goals 168 and 170) when `control/views.ts` splits, and `control/store.ts` last.
+7. **The folder moves** (T9), with run-scoped addresses under their campaign (goal 170) and the moves out of the harness into `src/agents/`.
+8. **The rest of the bus** (goal 168, steps 2 to 5: live lines and the dashboard's push, config and the knowledge base, the queues and the end of control's own copies, then every placement with RunPod's leaf node); **the record of every prompt and its surfaces** (goal 166); **the terminals** (goal 169: the session-log adapters and hook signals first, then the terminal host, the terminal mode, the signed steering, the live view, the Pi view, usage windows, the stand-ins and acceptance checks, and the token measurement, gate C).
+9. **Knowledge** (T11, with the knowledge base keyed by run), **growth** (T12), **dead code** (T13), **containers and CI** (T14).
+10. **The audit's private security items:** each fixed, or kept with a recorded reason, as [SECURITY.md](../../../SECURITY.md) says. Their plan and their record stay in `.internal/`; no public file, issue or commit message describes a gap.
+11. **The end:** the full checks of [AGENTS.md](../../../AGENTS.md#checks) on the last commit, every acceptance check the changed parts need, CI green, and the goals verified.
+
+### The gates: where the owner decides
+
+- **A. The rules of shape.** The owner reviews CONVENTIONS.md's new rules before the steps that follow them start.
+- **B. Downloads.** The owner approved, pinned and credited: the NATS server's image, the `@nats-io` client libraries, `@xterm/xterm` and `@xterm/headless` with their addons, `node-pty`, `@earendil-works/pi-tui`, and Claude Code for the terminal tests. Each version is at least two weeks old, installed through `npm` (sfw), and in [CREDITS.md](../../../CREDITS.md) in the same commit. Anything else asks first.
+- **C. Plan quota.** The paired runs that measure Claude Code's TUI against `-p` spend the owner's subscription: the owner says yes, and when, first. The offline measurement needs no yes.
+- **D. Shared machines.** No campaign, long run or GPU workload on a shared machine, and no change to a host, without its owners' yes.
+- **E. The network rules.** A change to what a container may reach is the owner's decision, recorded in [decisions.md](../decisions.md).
+
+At a gate, or when a step can't go on without the owner, ask with the inline question (keep running, or pause) and wait; never loop on a block.
+
+## Why
+
+The owner, 2026-10-27: "write a single .goal that outlines how to complete the actions of the audit, plans, etc that we just created so we have a single `/goal` to launch and finish it all."
+
+## Constraints
+
+- **Each goal's own design and decisions hold.** Where the code differs from a goal, record it there and correct the goal or the guide.
+- **The design invariants and the rules for every goal hold,** and **no default caps**: nothing adds a turn, trial, time or spending limit unless one is configured.
+- **v0.1.1 breaks compatibility with v0.1.0** (owner, 2026-10-26): old ledgers and databases are kept, never deleted, and the changelog says what an upgrade needs.
+- **Small steps, each green.** Before each commit: the typecheck, the lint, the public check and the tests the change touches; the docs build and check when the docs or what they describe change; the acceptance checks of AGENTS.md that the change needs. A behaviour change goes in its own commit, with its golden or regression test.
+- **In the main checkout, on `v0.1.1`,** committed and pushed after each step, so the owner's checkout always has the latest. Commit messages name no host, rig or gap.
+- **Files over 800 lines don't grow;** a split moves its tests with it.
+- **Docs, credits and goals as you go:** a change updates its pages and CREDITS.md in the same commit; each goal's progress is written as it moves, with times from the clock; a verified goal moves to `_completed/` with every link to it fixed.
+- **The lab:** a roll to the lab follows the local checks (it doesn't wait for CI), through Thermite's control, as AGENTS.md says.
+
+## Done when
+
+- [ ] Gate A is passed: the rules of shape are in CONVENTIONS.md, reviewed by the owner.
+- [ ] Goals 161, 162, 163, 164, 165 and 171 are verified.
+- [ ] Goals 166, 168, 169 and 170 are verified.
+- [ ] Goal 125 is verified: every theme of the guide is done or has a recorded reason.
+- [ ] The audit's private security items are each fixed or have a recorded reason, in `.internal/`.
+- [ ] The full checks, the docs build and check, and every acceptance check the changed parts need pass on the last commit, and CI is green.
+- [ ] Every page describes what the code does, and CREDITS.md lists every new dependency.
+
+## Decisions
+
+- 2026-10-27, owner: one goal to launch and finish all the v0.1.1 work the audit planned.
+
+## Open questions
+
+## Progress
+
+- 2026-10-27 00:19 UTC: Goal written from the owner's words, from the audit's goals, the clean-up guide's order (section 8) and the owner's decisions.
+
+---
+
+Run with `/goal Complete docs/plan/goals/172-build-v011.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
