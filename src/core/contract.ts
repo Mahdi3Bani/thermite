@@ -240,7 +240,7 @@ const Guard = z.strictObject({
 const HardConstraint = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("min"), metric: MetricSchema, value: z.number() }),
   z.strictObject({ kind: z.literal("max"), metric: MetricSchema, value: z.number() }),
-  /** A named check in the project kit that must pass. */
+  /** Refused by parseContract (goal 163); kept here so a contract stored before still reads. */
   z.strictObject({ kind: z.literal("check"), check: z.string().min(1) }),
 ]);
 
@@ -466,8 +466,22 @@ export function parseContract(input: unknown): ContractParse {
       errors: r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
     };
   }
+  // A `check` hard constraint was accepted and never checked; it is refused (the owner,
+  // 2026-10-27, goal 163). A contract stored before keeps it, and nothing reads it.
+  const checks = ("hard_constraints" in r.data ? r.data.hard_constraints : []).flatMap((h, i) =>
+    h.kind === "check" ? [i] : [],
+  );
+  if (checks.length)
+    return {
+      ok: false,
+      errors: checks.map((i) => `hard_constraints.${i}: ${CHECK_CONSTRAINT_REFUSED}`),
+    };
   return { ok: true, contract: r.data, sha: contractSha(r.data) };
 }
+
+/** Why a `check` hard constraint is refused, and what to use. */
+export const CHECK_CONSTRAINT_REFUSED =
+  "a `check` hard constraint is not supported: the kit's own checks run on every candidate anyway. Remove it, or bound a metric with `min` or `max`";
 
 export interface LaneLimitValues {
   /** Unset: a lane command runs until it ends (no default time limit; owner, 2026-10-16). */

@@ -223,7 +223,7 @@ A hard constraint is one of:
 | --- | --- |
 | `{"kind": "min", "metric": "<m>", "value": <number>}` | The candidate's mean of `<m>` on each cell must be at least `value`, or the verdict is `infeasible` |
 | `{"kind": "max", "metric": "<m>", "value": <number>}` | The mean must be at most `value`, or the verdict is `infeasible` |
-| `{"kind": "check", "check": "<name>"}` | Accepted, not used yet. The kit's check runs on every run anyway |
+| `{"kind": "check", "check": "<name>"}` | Refused when the contract is checked, with `hard_constraints.<i>` and the reason: the kit's own checks run on every candidate anyway. Bound a metric with `min` or `max` instead. A contract stored before v0.1.1 that has one keeps it, and nothing checks it |
 
 `acceptance`:
 

@@ -12,7 +12,6 @@ export const hillClimbFixture = {
   guards: [
     { metric: "max_abs_error", direction: "min", max_step_regression: 0, max_total_regression: 0 },
   ],
-  hard_constraints: [{ kind: "check", check: "correctness" }],
   cells: ["n256", "n512"],
   editable_paths: ["src/kernel/**"],
   forbidden_patterns: ["clock_gettime", "gettimeofday"],

@@ -147,7 +147,7 @@ A kind comes from how the judge saw the run fail, never from what the run or the
 | Verdict | Meaning | Dashboard says |
 | --- | --- | --- |
 | `invalid` | The change's build failed, or its build or run left files the judge refuses, or the kit's check failed, or a measured value was impossible (for example not a number) | "broken: it failed a correctness check or did not build" |
-| `crash_candidate` | The change's run exited with an error or was stopped at a kit limit, or its build was stopped at a kit limit | "crashed when run" |
+| `crash_candidate` | The change's run exited with an error or was stopped at a kit limit, or its build was stopped at a kit limit for the second time: the first time, the build may have met a busy host, so the job is an infrastructure failure (`crash_infra`, `build killed (timeout); tried once more`) and runs once more | "crashed when run" |
 | `crash_infra` | Something failed that was not the change's fault, such as the champion's own run or a busy device. The judge tries once more. It never counts against the research | "the rig failed while measuring it (not the change's fault)" |
 
 The [kit manifest reference](kit-manifest.md) lists which kit failure gives which verdict.

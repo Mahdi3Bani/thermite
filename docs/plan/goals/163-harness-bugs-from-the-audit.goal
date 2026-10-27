@@ -33,17 +33,16 @@ Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": 
 ## Done when
 
 - [x] Each bug is fixed, with a regression test that fails without the fix. Item 1's test throws after the champion moves and checks the attempt's lifecycle and events.
-- [ ] Item 8 is decided by the owner and done, and the contract reference says what holds.
+- [x] Item 8 is decided by the owner and done, and the contract reference says what holds.
 - [ ] The fast checks pass, and the judge, agents and steering acceptance checks.
 
 ## Decisions
 
+- 2026-10-27, owner, on item 8: a `check` hard constraint is refused at validation; a contract stored before keeps it, and nothing checks it.
+- 2026-10-27, owner: a candidate's build killed for time or memory is tried once more as an infrastructure failure (`crash_infra`) before it counts against the change (`crash_candidate`).
 - 2026-10-26, owner: v0.1.1 breaks compatibility with v0.1.0 ([decisions](../decisions.md#releases-and-planning)). Where goal 125 has already removed the old event names, an item here that reads them is done by that removal.
 
 ## Open questions
-
-- Item 8: refuse `check` hard constraints at validation, or implement them as named kit checks?
-- A build killed for time or memory is `crash_candidate` today (`judge.ts:504`), while a kit check that times out is `invalid`. Retry a transient kill once as `crash_infra` before it counts against the change?
 
 ## Progress
 
@@ -55,6 +54,7 @@ Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": 
 - 2026-10-27 07:02 UTC: Item 9 fixed: a run on the harness's own content (a rig check's) takes its model from that content, not the inbox; a refused command's `command_rejected` event names its id, and control's words show it (`tests/harness/service.test.ts`, whose two new tests fail without the fix); and each kit export goes through a folder of its own, the first one in keeping its copy (`exportKit` in `src/harness/judge/kits.ts`; `tests/harness/judge/kits.test.ts`). The rule-set checks moved to `src/harness/service/rules.ts`, so `service.ts` shrinks.
 - 2026-10-27 07:05 UTC: Item 2 fixed: an OpenCode code trial ends at Turns per trial, as its research trials and the other programs' do (one `turnsUp` for both loops; `tests/harness/agents/opencode/turns.test.ts`, where without the fix the trial runs to its wall). The limits page already said so. OpenCode's event reading moved to `src/harness/agents/opencode/events.ts`, so `opencode.ts` shrinks.
 - 2026-10-27 07:14 UTC: Item 1 fixed: one `ledger.promote` writes the champion, its event, the acceptance of declared flaws (`acceptFlaws`), and the lifecycle in one transaction; the service's promotion adds a goal run's validation and what its caller records (an audit the owner overrides) to that transaction, and the git ref follows. The judge, the auditor's clear and the owner's approval all use it (`tests/harness/judge/promotion.test.ts` fails the ref after the champion moves: without the fix the change stays `awaiting_audit` with no `flaws_accepted`). The row converters moved to `src/harness/ledger/rows.ts`. The verdicts reference says so.
+- 2026-10-27 07:22 UTC: The owner decided both questions. Item 8 done: `parseContract` refuses a `check` hard constraint with what to use instead; the sample smoke contract and the test fixture lose theirs, and their pinned hashes change once (`tests/core/core.test.ts`); the judge's comment says such a constraint in a stored contract is not checked. A build killed for time or memory is retried once as `crash_infra` before it is `crash_candidate` (`tests/harness/judge/build-kill.test.ts`, which fails without the change). The contract and verdicts references follow. `rng` moved to `src/harness/judge/rng.ts`.
 
 ---
 

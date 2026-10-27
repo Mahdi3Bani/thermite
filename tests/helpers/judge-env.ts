@@ -257,6 +257,8 @@ export function makeJudgeEnv(
     kitCells?: Record<string, unknown> | undefined;
     /** The MCP servers the kit's kit.json names (goal 068). */
     kitMcpServers?: unknown[] | undefined;
+    /** Fields merged over the kit's build (its command or its time limit). */
+    kitBuild?: Record<string, unknown> | undefined;
     share?: { root: string; seed: string; kitCommit: string } | undefined;
     /** More fields for the assignment's payload (for example a briefing). */
     assign?: Record<string, unknown> | undefined;
@@ -311,6 +313,7 @@ export function makeJudgeEnv(
           ...(opts.kitMetrics ? { metrics: opts.kitMetrics } : {}),
           ...(opts.kitCells ? { cells: opts.kitCells } : {}),
           ...(opts.kitMcpServers ? { mcp_servers: opts.kitMcpServers } : {}),
+          ...(opts.kitBuild ? { build: { ...KIT.build, ...opts.kitBuild } } : {}),
         },
         null,
         2,

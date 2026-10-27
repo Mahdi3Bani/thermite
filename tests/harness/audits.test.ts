@@ -19,10 +19,7 @@ describe("the auditor's package says what the judge checked (goal 137)", () => {
             max_total_regression: 0.03,
           },
         ],
-        hard_constraints: [
-          { kind: "min", metric: "ops_per_s", value: 1 },
-          { kind: "check", check: "lint" },
-        ],
+        hard_constraints: [{ kind: "min", metric: "ops_per_s", value: 1 }],
       },
     });
     await env.start();

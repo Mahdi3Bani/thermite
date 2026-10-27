@@ -16,7 +16,7 @@ import {
   agentsContextWords,
   contextApplied,
 } from "../../src/core/compaction.ts";
-import { parseContract } from "../../src/core/contract.ts";
+import { CHECK_CONSTRAINT_REFUSED, parseContract } from "../../src/core/contract.ts";
 import { parseDuration } from "../../src/core/duration.ts";
 import { globToRegExp, matchesAny } from "../../src/core/glob.ts";
 import { goalFixture, hillClimbFixture, researchFixture } from "../helpers/fixtures.ts";
@@ -52,6 +52,18 @@ describe("contracts", () => {
       assert.equal(hc.contract.acceptance.alpha_screen, 0.1);
       assert.deepEqual(hc.contract.acceptance.looks, [3, 6, 9]);
     }
+  });
+
+  test("a check hard constraint is refused, with what to use instead (goal 163)", () => {
+    const r = parseContract({
+      ...hillClimbFixture,
+      hard_constraints: [
+        { kind: "min", metric: "ops_per_s", value: 1 },
+        { kind: "check", check: "correctness" },
+      ],
+    });
+    assert.deepEqual(r.ok ? [] : r.errors, [`hard_constraints.1: ${CHECK_CONSTRAINT_REFUSED}`]);
+    assert.match(CHECK_CONSTRAINT_REFUSED, /Remove it, or bound a metric with `min` or `max`/);
   });
 
   test("an edit changes the content hash", () => {
@@ -169,7 +181,9 @@ describe("contracts", () => {
   });
 
   test("a campaign's brief (goal 078): notes, ideas and hypotheses are optional, in the hash only when set; old contracts keep their hashes", () => {
-    // The hashes of the example contracts and the fixtures before goal 078: unchanged.
+    // The hashes of the example contracts and the fixtures before goal 078: unchanged. The smoke
+    // contract's and the hill-climb fixture's changed once since, when goal 163 removed their
+    // `check` hard constraint, which is refused now.
     const examples = join(import.meta.dirname, "..", "..", "examples", "contracts");
     const before: [unknown, string][] = [
       [
@@ -182,13 +196,13 @@ describe("contracts", () => {
       ],
       [
         readJson(join(examples, "smoke-cpu.json")),
-        "301a7cebe3defd6e5d91bc31e2951bf3f84f14ea0ea906d440edbae207c33c92",
+        "27b211d2e3514fe2c2eec61c246dde7d7cc9a84b0629e456bd8c43230f091402",
       ],
       [
         readJson(join(examples, "smoke-cpu-goal.json")),
         "d3a0b62d381fa2d834cabdf2f9e99dc490e9ef9a618144c5bcf2d83aa9a88f15",
       ],
-      [hillClimbFixture, "5a040613c0e9ea9f4e277978f4fb229d0fced4493348fac4a0cef2e095ee94d9"],
+      [hillClimbFixture, "c459fd271bff175c50f9f4dd32a613a725d39699a0c04e6d568051555369ab8b"],
       [goalFixture, "eb289201617fdeea3212e273e5925ed2bff2b6951b1e11d1525aaca7f36a72d2"],
       [researchFixture, "198706ecb4cc39015c6ef2515efd800182f6b60fdf8b6bbc1c2de78a14dab945"],
     ];

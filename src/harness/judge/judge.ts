@@ -59,6 +59,7 @@ import { whileLeased } from "./lease.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
 import { olderChampion, type PortFound, parentScreened, queuePort } from "./ports.ts";
 import { clipReason, REASONS_CHARS } from "./reasons.ts";
+import { rng } from "./rng.ts";
 
 /**
  * The judge: the only code that measures, decides verdicts and moves champions. It leases
@@ -188,17 +189,6 @@ class Stop extends Error {
     this.verdict = verdict;
     this.reason = reason;
   }
-}
-
-function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 const pct = (x: number) => `${(toFraction(x) * 100).toFixed(2)}%`;
@@ -454,8 +444,11 @@ export class Judge {
       // means it can't be measured yet.
       if (name !== "candidate" && name !== "baseline")
         throw new InfraError(`${name} build failed: ${b.reason}`);
-      // A build killed for time or memory is the candidate's crash (not cached: it may have been
-      // load); a build that fails or produces refused outputs is invalid.
+      // A build killed for time or memory may be the host's load (never cached): its first kill is
+      // no verdict and the job is tried once more; a second is the candidate's crash (the owner,
+      // 2026-10-27, goal 163). A build that fails or produces refused outputs is invalid.
+      const again = this.holding !== undefined && Number(this.spec(this.holding).retries ?? 0) >= 1;
+      if (b.transient && !again) throw new InfraError(`build: ${b.reason}; tried once more`);
       throw new Stop(
         b.transient ? "crash_candidate" : "invalid",
         `build: ${b.reason}\n${b.log.slice(-1500)}`,
