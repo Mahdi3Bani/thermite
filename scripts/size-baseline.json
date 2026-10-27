@@ -49,7 +49,7 @@
       "lines": 1277
     },
     "src/harness/agents/scheduler.ts": {
-      "lines": 3034
+      "lines": 2980
     },
     "src/harness/agents/worker.ts": {
       "lines": 832
@@ -64,7 +64,7 @@
       "lines": 1241
     },
     "src/harness/judge/judge.ts": {
-      "lines": 2046
+      "lines": 2044
     },
     "src/harness/ledger.ts": {
       "lines": 1587
@@ -73,13 +73,13 @@
       "lines": 882
     },
     "src/harness/research/paper.ts": {
-      "lines": 1183
+      "lines": 1181
     },
     "src/harness/research/research.ts": {
       "lines": 1603
     },
     "src/harness/research/review.ts": {
-      "lines": 1189
+      "lines": 1185
     },
     "src/harness/run-research.ts": {
       "lines": 831
@@ -91,7 +91,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2936
+      "lines": 2924
     },
     "src/supervisor/advise.ts": {
       "lines": 1366

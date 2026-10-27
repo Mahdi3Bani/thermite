@@ -220,11 +220,10 @@ export async function championFiles(input: {
     if (inst.mode === "research") continue;
     const champ = input.ledger.currentChampion(inst.id);
     if (champ.seq <= 1 || !champ.attempt) continue;
-    const published = input.ledger.db
-      .prepare(
-        "select 1 from event where kind = 'champion_published' and subject = ? and json_extract(body, '$.seq') = ? limit 1",
-      )
-      .get(inst.id, champ.seq);
+    const published = input.ledger.events.newest("champion_published", {
+      subject: inst.id,
+      body: { seq: champ.seq },
+    });
     if (published) continue;
     const mirror = input.mirrorFor(inst.seed_repo);
     const patch = await patchBytes(mirror, inst.seed_commit, champ.commit_sha);

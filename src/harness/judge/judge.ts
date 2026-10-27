@@ -1953,13 +1953,11 @@ export class Judge {
     // With several judge cards, each card's own noise: a verdict uses the floor of the card it
     // was measured on.
     const mine = this.cards > 1 ? this.o.card?.uuid : undefined;
-    const r = this.ledger.db
-      .prepare(
-        `select body from event where kind = 'calibration' and subject = ?
-           ${mine ? "and json_extract(body, '$.card') = ?" : ""} order by id desc limit 1`,
-      )
-      .get(run, ...(mine ? [mine] : [])) as { body: string } | undefined;
-    const sigma = r ? Number((JSON.parse(r.body) as { sigma?: unknown }).sigma) : 0;
+    const e = this.ledger.events.newest("calibration", {
+      subject: run,
+      body: mine ? { card: mine } : undefined,
+    });
+    const sigma = e ? Number(e.body.sigma) : 0;
     return Number.isFinite(sigma) && sigma > 0 ? sigma : 0;
   }
 

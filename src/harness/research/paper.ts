@@ -688,11 +688,9 @@ export class Papers {
   requested(run: string): { review: number; figures: PaperFigures; at: string } | undefined {
     const end = researchEnd(this.ledger, run);
     if (!end) return undefined;
-    const row = this.ledger.db
-      .prepare("select at, body from event where kind = ? and subject = ? order by id desc limit 1")
-      .get(PAPER_REQUESTED, run) as { at: string; body: string } | undefined;
+    const row = this.ledger.events.newest(PAPER_REQUESTED, { subject: run });
     if (!row) return undefined;
-    const b = JSON.parse(row.body) as PaperRequest;
+    const b = row.body as PaperRequest;
     return forEnd(b, end) ? { review: b.review, figures: b.figures, at: row.at } : undefined;
   }
 
@@ -884,11 +882,11 @@ export class Papers {
     const cards = new Map(cardsOf(this.ledger, id).map((c) => [c.question, c]));
     const counts = verifiedByQuestion(this.ledger, id);
     const proposed = this.proposed(id);
-    const refused = this.ledger.db
-      .prepare(
-        "select at, body from event where kind = ? and subject = ? and id > (select max(id) from event where kind = ? and subject = ?) order by id desc limit 1",
-      )
-      .get(PAPER_REFUSED, id, PAPER_REQUESTED, id) as { at: string; body: string } | undefined;
+    // The newest refusal since the newest request, if there is one.
+    const request = this.ledger.events.lastId(PAPER_REQUESTED, { subject: id });
+    const refused = request
+      ? this.ledger.events.newest(PAPER_REFUSED, { subject: id, after: request })
+      : undefined;
     const toClaim = (c: ClaimRow, quotes: boolean): PackageClaim => {
       const shown = quotes ? c.quotes.slice(0, PACKAGE_QUOTES) : [];
       return {
@@ -1002,7 +1000,7 @@ export class Papers {
           ? {
               last_refusal: {
                 at: refused.at,
-                problems: (JSON.parse(refused.body) as { problems?: string[] }).problems ?? [],
+                problems: refused.body.problems ?? [],
               },
             }
           : {}),

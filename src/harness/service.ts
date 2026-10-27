@@ -1539,14 +1539,12 @@ export class HarnessService {
       throw new Refusal(`export ${p.export} is not a full export`);
     if (exp.through_event < p.through_event)
       throw new Refusal("the export does not cover the events");
-    const since = (
-      this.ledger.db
-        .prepare("select kind, count(*) as n from event where id > ? group by kind")
-        .all(exp.through_event) as { kind: string; n: number }[]
-    ).filter((r) => !HarnessService.HOUSEKEEPING.has(r.kind));
+    const since = Object.entries(this.ledger.events.countsByKind(exp.through_event)).filter(
+      ([kind]) => !HarnessService.HOUSEKEEPING.has(kind),
+    );
     if (since.length) {
       throw new Refusal(
-        `research was recorded after the export (${since.map((r) => `${r.kind} ${r.n}`).join(", ")}): export again`,
+        `research was recorded after the export (${since.map(([kind, n]) => `${kind} ${n}`).join(", ")}): export again`,
       );
     }
     for (const inst of this.ledger.listRuns()) {
@@ -1667,15 +1665,10 @@ export class HarnessService {
    */
   reconcileRigChecks(): void {
     const open = new Map<string, string>();
-    const rows = this.ledger.db
-      .prepare(
-        "select kind, body from event where kind in ('rig_check_started', 'rig_check_finished') order by id",
-      )
-      .all() as { kind: string; body: string }[];
-    for (const e of rows) {
-      const b = JSON.parse(e.body) as { id?: string; check?: string };
-      if (e.kind === "rig_check_started" && b.id) open.set(b.id, String(b.check ?? ""));
-      if (e.kind === "rig_check_finished" && b.id) open.delete(b.id);
+    for (const e of this.ledger.events.list(["rig_check_started", "rig_check_finished"])) {
+      const { id, check } = e.body;
+      if (e.kind === "rig_check_started" && id) open.set(id, check ?? "");
+      if (e.kind === "rig_check_finished" && id) open.delete(id);
     }
     for (const [id, check] of open) {
       this.ledger.appendEvent("harness", "rig_check_finished", null, {
@@ -1951,19 +1944,14 @@ export class HarnessService {
   ): { event: number; at: string; round: number; ready: number; target: number } | null {
     const inst = this.ledger.getRun(run);
     if (inst?.status !== "running" || !inst.agents || inst.mode === "research") return null;
-    const e = this.ledger.db
-      .prepare(
-        "select id, at, body from event where kind = 'queue_low' and subject = ? order by id desc limit 1",
-      )
-      .get(run) as { id: number; at: string; body: string } | undefined;
+    const e = this.ledger.events.newest("queue_low", { subject: run });
     if (!e) return null;
     const now = this.queueState(run);
     if (now.ready >= now.target) return null;
-    const b = JSON.parse(e.body) as { round?: number };
     return {
-      event: Number(e.id),
+      event: e.id,
       at: e.at,
-      round: Number(b.round ?? 0),
+      round: e.body.round ?? 0,
       ready: now.ready,
       target: now.target,
     };

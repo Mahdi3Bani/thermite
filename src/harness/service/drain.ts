@@ -35,10 +35,7 @@ export function drainAfter(
 
 /** At start: a drain the ledger leaves open was ended by the restart. Records its end. */
 export function endDrainAtStart(ledger: Ledger, by: string): boolean {
-  const last = ledger.db
-    .prepare("select body from event where kind = 'rig_drain' order by id desc limit 1")
-    .get() as { body: string } | undefined;
-  if (!last || (JSON.parse(last.body) as { drain?: unknown }).drain !== true) return false;
+  if (ledger.events.newest("rig_drain")?.body.drain !== true) return false;
   ledger.appendEvent(by, "rig_drain", null, { drain: false, reason: RESTARTED });
   return true;
 }
@@ -50,21 +47,14 @@ export function endDrainAtStart(ledger: Ledger, by: string): boolean {
  * A drain still under way runs to `now`.
  */
 export function drainSpans(ledger: Ledger, now: number): [number, number][] {
-  const first = ledger.db
-    .prepare("select min(id) as id from event where kind = 'rig_drain'")
-    .get() as { id: number | null } | undefined;
-  if (first?.id == null) return [];
+  const first = ledger.events.list("rig_drain")[0];
+  if (!first) return [];
   const spans: [number, number][] = [];
   let since: number | null = null;
-  for (const e of ledger.db
-    .prepare(
-      "select kind, at, body from event where kind in ('rig_drain', 'trial_started') and id >= ? order by id",
-    )
-    .all(first.id) as { kind: string; at: string; body: string }[]) {
+  for (const e of ledger.events.list(["rig_drain", "trial_started"], { after: first.id - 1 })) {
     const at = Date.parse(e.at);
     // Asked again while it drains: the same drain.
-    if (e.kind === "rig_drain" && (JSON.parse(e.body) as { drain?: unknown }).drain === true)
-      since ??= at;
+    if (e.kind === "rig_drain" && "drain" in e.body && e.body.drain === true) since ??= at;
     else if (since !== null) {
       spans.push([since, at]);
       since = null;
@@ -208,15 +198,13 @@ function refusedAgain(
     )
     .get(t.run, t.lane, t.started_at) as { times: number; id: number | null };
   if (!again.id) return null;
-  const e = ledger.db.prepare("select at, body from event where id = ?").get(again.id) as {
-    at: string;
-    body: string;
-  };
-  const b = JSON.parse(e.body) as { url?: unknown; reason?: unknown; asked?: unknown };
+  // That event, by its id.
+  const e = ledger.events.newest("fetch_refused", { after: again.id - 1, through: again.id });
+  if (!e) return null;
   return {
-    url: String(b.url ?? ""),
-    reason: String(b.reason ?? ""),
-    asked: Number(b.asked ?? 0),
+    url: e.body.url,
+    reason: e.body.reason,
+    asked: e.body.asked ?? 0,
     at: e.at,
     times: Number(again.times),
   };

@@ -137,14 +137,9 @@ export function plannerHypotheses(ledger: Ledger, run: string): PlannerHypothese
     .map((x) => x.h);
   let promoted = 0;
   const last = new Map<string, string>();
-  for (const e of ledger.db
-    .prepare(
-      "select actor, body from event where kind = 'hypothesis_status' and subject = ? order by id",
-    )
-    .all(run) as { actor: string; body: string }[]) {
-    const b = JSON.parse(e.body) as { hypothesis?: string; status?: string };
-    if (e.actor === "planner" && b.status === "promoted") promoted++;
-    if (b.hypothesis) last.set(b.hypothesis, e.actor);
+  for (const e of ledger.events.list("hypothesis_status", { subject: run })) {
+    if (e.actor === "planner" && e.body.status === "promoted") promoted++;
+    if (e.body.hypothesis) last.set(e.body.hypothesis, e.actor);
   }
   return {
     required: [

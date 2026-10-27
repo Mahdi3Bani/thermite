@@ -135,14 +135,9 @@ export function limitsInForce(ledger: Ledger, run: string, contract: Contract): 
 
 /** The experiments the run's newest hand-out gave its lanes. */
 export function handedOut(ledger: Ledger, run: string): Set<string> {
-  const e = ledger.db
-    .prepare(
-      "select body from event where kind = 'planner_handout' and subject = ? order by id desc limit 1",
-    )
-    .get(run) as { body: string } | undefined;
-  const b = (e ? JSON.parse(e.body) : {}) as { assignments?: { experiment?: unknown }[] };
+  const b = ledger.events.newest("planner_handout", { subject: run })?.body;
   return new Set(
-    (b.assignments ?? []).flatMap((a) => (typeof a.experiment === "string" ? [a.experiment] : [])),
+    (b?.assignments ?? []).flatMap((a) => (typeof a.experiment === "string" ? [a.experiment] : [])),
   );
 }
 

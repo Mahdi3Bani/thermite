@@ -123,17 +123,12 @@ export function startingPoint(ledger: Ledger, run: string): StartingPoint {
 
 function newest<T>(
   ledger: Ledger,
-  kind: string,
+  kind: "baseline" | "baseline_failed",
   run: string,
   seq: number,
 ): (T & { id: number; at: string }) | undefined {
-  const r = ledger.db
-    .prepare(
-      `select id, at, body from event where kind = ? and subject = ?
-         and json_extract(body, '$.champion_seq') = ? order by id desc limit 1`,
-    )
-    .get(kind, run, seq) as { id: number; at: string; body: string } | undefined;
-  return r ? { ...(JSON.parse(r.body) as T), id: Number(r.id), at: String(r.at) } : undefined;
+  const e = ledger.events.newest(kind, { subject: run, body: { champion_seq: seq } });
+  return e && { ...(e.body as T), id: e.id, at: e.at };
 }
 
 /** The run's baseline: the judge's values of its starting point, if it measured them. */

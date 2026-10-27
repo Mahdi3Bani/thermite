@@ -73,11 +73,10 @@ export async function queuePort(
 ): Promise<string | undefined> {
   const ledger = service.ledger;
   const champion = ledger.currentChampion(p.run);
-  const done = ledger.db
-    .prepare(
-      "select 1 from event where kind = 'port_queued' and subject = ? and json_extract(body, '$.onto_seq') = ?",
-    )
-    .get(p.attempt, champion.seq);
+  const done = ledger.events.newest("port_queued", {
+    subject: p.attempt,
+    body: { onto_seq: champion.seq },
+  });
   // The current champion's change is in it already.
   if (done || p.attempt === champion.attempt) return undefined;
   const a = ledger.getAttempt(p.attempt);

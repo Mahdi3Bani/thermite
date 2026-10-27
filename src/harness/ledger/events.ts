@@ -9,16 +9,18 @@ import { currentEvent, eventKinds } from "../../core/names.ts";
  * 2026-10-15 rename under the new kinds and keys (core/names.ts), as the ledger's own reads do.
  */
 
-/** An event of one of `K`'s kinds, as read. */
-export interface ReadEvent<K extends EventKind> {
-  id: number;
-  at: string;
-  actor: string;
-  kind: K;
-  subject: string | null;
-  body: EventBodies[K];
-  run: string | null;
-}
+/** An event of one of `K`'s kinds, as read: one type for each kind, so its `kind` narrows it. */
+export type ReadEvent<K extends EventKind> = K extends EventKind
+  ? {
+      id: number;
+      at: string;
+      actor: string;
+      kind: K;
+      subject: string | null;
+      body: EventBodies[K];
+      run: string | null;
+    }
+  : never;
 
 /**
  * Which events: about `subject` (null: none), after an event (`after`, its id), or up to one

@@ -12,21 +12,20 @@ import { drainSpans } from "../service/drain.ts";
 export function blockedSpans(ledger: Ledger, run: string, now: number): [number, number][] {
   const spans: [number, number][] = drainSpans(ledger, now);
   let stoppedAt: number | null = null;
-  for (const e of ledger.db
-    .prepare(
-      "select kind, at, body from event where kind in ('agents_stopped', 'agents_resumed', 'agents_wait_for_limit', 'mcp_servers_wait') and subject = ? order by id",
-    )
-    .all(run) as { kind: string; at: string; body: string }[]) {
+  for (const e of ledger.events.list(
+    ["agents_stopped", "agents_resumed", "agents_wait_for_limit", "mcp_servers_wait"],
+    { subject: run },
+  )) {
     const at = Date.parse(e.at);
     if (e.kind === "agents_stopped") stoppedAt ??= at;
     else if (e.kind === "agents_resumed") {
       if (stoppedAt !== null) spans.push([stoppedAt, at]);
       stoppedAt = null;
     } else if (e.kind === "mcp_servers_wait") {
-      const since = Date.parse(String((JSON.parse(e.body) as { since?: string }).since));
+      const since = Date.parse(String(e.body.since));
       if (!Number.isNaN(since) && since < at) spans.push([since, at]);
     } else {
-      const until = Date.parse(String((JSON.parse(e.body) as { until?: string }).until));
+      const until = Date.parse(String(e.body.until));
       if (!Number.isNaN(until) && until > at) spans.push([at, Math.min(until, now)]);
     }
   }

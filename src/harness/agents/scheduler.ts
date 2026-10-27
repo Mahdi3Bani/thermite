@@ -355,15 +355,8 @@ export class Scheduler {
     // experiments those trials had go back to the queue.
     this.registry.interruptUnfinished(opts.owner);
     this.coordinator.finishOrphans(opts.owner);
-    this.resetSeen = this.lastReset();
+    this.resetSeen = this.ledger.events.lastId("workers_reset");
     this.stopSeen = lastStopAsked(this.ledger);
-  }
-
-  private lastReset(): number {
-    const r = this.ledger.db
-      .prepare("select max(id) as id from event where kind = 'workers_reset'")
-      .get() as { id: number | null };
-    return Number(r.id ?? 0);
   }
 
   /**
@@ -502,13 +495,11 @@ export class Scheduler {
    * epoch ended, so the next tick plans afresh.
    */
   private async applyResets(): Promise<void> {
-    const resets = this.ledger.db
-      .prepare("select id, subject from event where kind = 'workers_reset' and id > ? order by id")
-      .all(this.resetSeen) as { id: number; subject: string }[];
-    for (const r of resets) {
+    for (const r of this.ledger.events.list("workers_reset", { after: this.resetSeen })) {
       this.resetSeen = r.id;
       for (const a of this.aborts.values()) a.abort();
       await this.idle();
+      if (r.subject === null) continue;
       for (const lane of this.ledger.db
         .prepare("select id from lane where run = ?")
         .all(r.subject) as { id: string }[]) {
@@ -549,19 +540,15 @@ export class Scheduler {
    * this rig until it resets. The agents wait; nothing pays for more (the owner's rule).
    */
   private waitingForLimit(run: string): boolean {
-    const r = this.ledger.db
-      .prepare(
-        "select json_extract(body, '$.until') as until from event where kind = 'agents_wait_for_limit' order by id desc limit 1",
-      )
-      .get() as { until: string | null } | undefined;
-    const until = r?.until ? Date.parse(r.until) : 0;
+    const resetAt = this.ledger.events.newest("agents_wait_for_limit")?.body.until;
+    const until = resetAt ? Date.parse(resetAt) : 0;
     if (Date.now() >= until) return false;
-    if (this.limitNoted !== r?.until) {
-      this.limitNoted = r?.until ?? undefined;
+    if (this.limitNoted !== resetAt) {
+      this.limitNoted = resetAt;
       this.o.service.live.append({
         source: "planner",
         kind: "status",
-        text: `agents wait for the subscription's usage window to reset at ${r?.until}`,
+        text: `agents wait for the subscription's usage window to reset at ${resetAt}`,
         run,
       });
     }
@@ -621,39 +608,17 @@ export class Scheduler {
     return false;
   }
 
-  /** The newest event of these kinds (for this subject, when given). */
-  private newest(
-    kinds: string[],
-    subject?: string,
-  ): { id: number; at: string; body: Record<string, unknown> } | undefined {
-    const r = this.ledger.db
-      .prepare(
-        `select id, at, body from event where kind in (${kinds.map(() => "?").join(",")})${subject !== undefined ? " and subject = ?" : ""} order by id desc limit 1`,
-      )
-      .get(...kinds, ...(subject !== undefined ? [subject] : [])) as
-      | { id: number; at: string; body: string }
-      | undefined;
-    return r
-      ? {
-          id: Number(r.id),
-          at: String(r.at),
-          body: JSON.parse(r.body) as Record<string, unknown>,
-        }
-      : undefined;
-  }
-
   /** The workers' model checks finished after event `after`, newest first. */
   private modelChecks(after: number): { id: number; at: string; ok: boolean; summary: string }[] {
-    return (
-      this.ledger.db
-        .prepare(
-          "select id, at, body from event where kind = 'rig_check_finished' and id > ? and json_extract(body, '$.check') = 'model' order by id desc",
-        )
-        .all(after) as { id: number; at: string; body: string }[]
-    ).map((r) => {
-      const b = JSON.parse(r.body) as { ok?: boolean; summary?: string };
-      return { id: Number(r.id), at: String(r.at), ok: b.ok === true, summary: String(b.summary) };
-    });
+    return this.ledger.events
+      .list("rig_check_finished", { after, body: { check: "model" } })
+      .reverse()
+      .map((e) => ({
+        id: e.id,
+        at: e.at,
+        ok: e.body.ok === true,
+        summary: String(e.body.summary),
+      }));
   }
 
   /**
@@ -665,8 +630,8 @@ export class Scheduler {
     run: string,
     why: { kind: AgentsStopped["kind"]; words: string; by: string; said?: string | undefined },
   ): void {
-    const stop = this.newest(["agents_stopped", "agents_resumed"], run);
-    if (stop && this.ledgerKind(stop.id) === "agents_stopped") return;
+    const stop = this.ledger.events.newest(["agents_stopped", "agents_resumed"], { subject: run });
+    if (stop?.kind === "agents_stopped") return;
     const said =
       why.said ?? (why.kind === "check" ? "the workers' model check fails" : KIND_WORDS[why.kind]);
     this.ledger.appendEvent(this.o.owner, "agents_stopped", run, {
@@ -683,13 +648,6 @@ export class Scheduler {
     });
   }
 
-  private ledgerKind(id: number): string {
-    return String(
-      (this.ledger.db.prepare("select kind from event where id = ?").get(id) as { kind: string })
-        .kind,
-    );
-  }
-
   /**
    * Why the run's agents are stopped now, if they are (goal 079). A failing model check of the
    * workers' route (newer than the route) stops them; so does a trial that found no credits, a
@@ -698,13 +656,13 @@ export class Scheduler {
    * minute to 30 minutes; at once after the owner resumes the run.
    */
   private agentsStopped(run: string): AgentsStopped | undefined {
-    const stop = this.newest(["agents_stopped", "agents_resumed"], run);
-    const change = this.newest(["model_route_set", "model_route_cleared"]);
-    const open = stop && this.ledgerKind(stop.id) === "agents_stopped" ? stop : undefined;
+    const stop = this.ledger.events.newest(["agents_stopped", "agents_resumed"], { subject: run });
+    const change = this.ledger.events.lastId(["model_route_set", "model_route_cleared"]);
+    const open = stop?.kind === "agents_stopped" ? stop : undefined;
     if (open) {
       const checks = this.modelChecks(open.id);
       const passed = checks.find((c) => c.ok);
-      const changed = change && change.id > open.id;
+      const changed = change > open.id;
       if (passed || changed) {
         this.ledger.appendEvent(this.o.owner, "agents_resumed", run, {
           why: passed ? "a model check passed" : "the rig's model route changed",
@@ -727,7 +685,7 @@ export class Scheduler {
     }
     // A failing model check of the workers' route, newer than the route and than the last time
     // the agents went on: no trial starts on a model that fails it.
-    const last = this.modelChecks(Math.max(change?.id ?? 0, stop?.id ?? 0))[0];
+    const last = this.modelChecks(Math.max(change, stop?.id ?? 0))[0];
     if (last && !last.ok) {
       const kind = classifyProviderError(last.summary).kind;
       this.stopAgents(run, {
@@ -765,13 +723,7 @@ export class Scheduler {
    * from the champion. With a wall budget, at 33% and 66% of it; without one, every 20 epochs.
    */
   private maybeForkRound(run: string, contract: Contract, n: number): void {
-    const rounds = Number(
-      (
-        this.ledger.db
-          .prepare("select count(*) as k from event where kind = 'fork_round' and subject = ?")
-          .get(run) as { k: number }
-      ).k,
-    );
+    const rounds = this.ledger.events.count("fork_round", { subject: run });
     const w = contract.budget.wall_hours;
     let due = false;
     if (w !== undefined) {
@@ -919,11 +871,7 @@ export class Scheduler {
         }
       }
       // After a fork round, only work done since the round may become a lane's best again.
-      const round = this.ledger.db
-        .prepare(
-          "select at from event where kind = 'fork_round' and subject = ? order by id desc limit 1",
-        )
-        .get(run) as { at: string } | undefined;
+      const round = this.ledger.events.newest("fork_round", { subject: run });
       const current = (id: string) => {
         const a = this.ledger.getAttempt(id);
         return (
@@ -947,13 +895,11 @@ export class Scheduler {
 
   /** The judge's latest goal report on this champion (its validation), if there is one. */
   private goalReport(run: string, seq: number): GoalReport | undefined {
-    const row = this.ledger.db
-      .prepare(
-        "select body from event where kind = 'goal_report' and subject = ? and json_extract(body, '$.champion_seq') = ? order by id desc limit 1",
-      )
-      .get(run, seq) as { body: string } | undefined;
-    if (!row) return undefined;
-    const body = JSON.parse(row.body) as GoalReport;
+    const body = this.ledger.events.newest("goal_report", {
+      subject: run,
+      body: { champion_seq: seq },
+    })?.body;
+    if (!body) return undefined;
     return {
       champion_seq: seq,
       goals: body.goals.map((g) => ({

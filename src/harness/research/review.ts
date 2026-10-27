@@ -405,13 +405,9 @@ export function researchEnd(ledger: Ledger, run: string): ResearchEnd | undefine
       at: String(accepted.owner_at ?? accepted.panel_at ?? ""),
       open: { questions: [], hypotheses: [] },
     };
-  const stopped = ledger.db
-    .prepare("select at, body from event where kind = ? and subject = ? order by id desc limit 1")
-    .get(RESEARCH_STOPPED, run) as { at: string; body: string } | undefined;
+  const stopped = ledger.events.newest(RESEARCH_STOPPED, { subject: run });
   if (!stopped) return undefined;
-  const b = JSON.parse(stopped.body) as {
-    open?: { questions?: unknown[]; hypotheses?: unknown[] };
-  };
+  const b = stopped.body;
   return {
     reason: PROGRESS_STOPPED,
     review: researchReviews(ledger, run).find((r) => r.panel_result !== null),

@@ -381,14 +381,6 @@ export class Cards {
     return c;
   }
 
-  private event(kind: string, run: string, question: number): Row | undefined {
-    return this.ledger.db
-      .prepare(
-        "select id, at, body from event where kind = ? and subject = ? and json_extract(body, '$.question') = ? order by id desc limit 1",
-      )
-      .get(kind, run, question) as Row | undefined;
-  }
-
   /**
    * Where a question's new claims start: the newest claim a kept card of it was given (by time,
    * then id), or nothing when no card was given one: then every verified claim is new.
@@ -427,15 +419,13 @@ export class Cards {
 
   /** The newest refusal of a card for a question, when it came after the question's card. */
   lastRefusal(run: string, question: number): { at: string; problems: string[] } | undefined {
-    const refused = this.event(CARD_REFUSED, run, question);
+    const q = { subject: run, body: { question } };
+    const refused = this.ledger.events.newest(CARD_REFUSED, q);
     if (!refused) return undefined;
-    const written = this.event(CARD_WRITTEN, run, question);
-    if (written && Number(written.id) > Number(refused.id)) return undefined;
-    const b = JSON.parse(String(refused.body)) as { problems?: unknown };
-    return {
-      at: String(refused.at),
-      problems: (Array.isArray(b.problems) ? b.problems : []).map(String),
-    };
+    const written = this.ledger.events.newest(CARD_WRITTEN, q);
+    if (written && written.id > refused.id) return undefined;
+    const p = refused.body.problems;
+    return { at: refused.at, problems: (Array.isArray(p) ? p : []).map(String) };
   }
 
   /** The questions of a run whose evidence changed since their card, as one request. */

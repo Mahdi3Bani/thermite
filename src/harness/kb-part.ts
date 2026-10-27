@@ -8,7 +8,6 @@ import {
   metaOf,
   sameItem,
 } from "../core/kb-index.ts";
-import { eventKinds } from "../core/names.ts";
 import type { Ledger } from "./ledger.ts";
 
 /**
@@ -45,7 +44,7 @@ interface Held {
   changed: number;
 }
 
-/** Events read per query while reading the ledger. */
+/** Event ids read per query while reading the ledger: at most this many events at once. */
 const PAGE = 5000;
 
 /**
@@ -97,34 +96,21 @@ export function knowledgePart(
       if (kind === "attempt") attempts.set(ref, run);
     },
   };
-  const kinds = KB_EVENT_KINDS.flatMap((k) => eventKinds(k));
-  const query = ledger.db.prepare(
-    `select id, at, actor, kind, subject, body from event
-     where id > ? and id <= ? and kind in (${kinds.map(() => "?").join(", ")})
-     order by id limit ?`,
-  );
-  for (let after = 0; ; ) {
-    const rows = query.all(after, through, ...kinds, PAGE) as Record<string, unknown>[];
-    for (const r of rows) {
-      current = Number(r.id);
-      let body: unknown;
-      try {
-        body = JSON.parse(String(r.body));
-      } catch {
-        // the ledger writes every body as JSON; anything else adds no item
-        continue;
-      }
-      if (!body || typeof body !== "object") continue;
+  // A page of ids at a time, up to the last event that may change an item.
+  const last = ledger.events.lastId(KB_EVENT_KINDS, { through });
+  for (let after = 0; after < last; after += PAGE) {
+    const page = { after, through: Math.min(after + PAGE, last) };
+    for (const e of ledger.events.list(KB_EVENT_KINDS, page)) {
+      current = e.id;
+      if (!e.body || typeof e.body !== "object") continue;
       indexEvent(target, {
-        at: String(r.at),
-        actor: String(r.actor),
-        kind: String(r.kind),
-        subject: r.subject === null ? "" : String(r.subject),
-        body: body as Record<string, unknown>,
+        at: e.at,
+        actor: e.actor,
+        kind: e.kind,
+        subject: e.subject ?? "",
+        body: e.body as Record<string, unknown>,
       });
     }
-    if (rows.length < PAGE) break;
-    after = current;
   }
   return [...items.values()]
     .filter((x) => x.changed > since)
