@@ -13,7 +13,7 @@ import { log } from "../../common/env.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
-import { KB_BODY_MAX } from "../../core/kb-index.ts";
+import { cutSaid, KB_BODY_MAX } from "../../core/kb-index.ts";
 import {
   HYPOTHESES_RULE,
   hypothesisStatusWords,
@@ -1525,7 +1525,7 @@ export class Research {
           ...(kind === "final" ? { paper: paper !== undefined } : {}),
           ...(noPaper ? { no_paper: noPaper } : {}),
           unsupported_numbers: unsupported.length,
-          report: body.slice(0, 60_000),
+          report: cutSaid(body, 60_000, "report"),
         },
       );
     });

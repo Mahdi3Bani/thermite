@@ -57,7 +57,7 @@ So the campaign that a rig's own event names counts only for a campaign that con
 
 ## Items
 
-Each item is one record of one run. Control builds it from the events the rig reported, and changes it when a later event adds to it, such as an attempt's verdict.
+Each item is one record of one run. Control builds it from the events the rig reported, and changes it when a later event adds to it, such as an attempt's verdict. An item's text holds at most 20,000 characters; a longer one is cut and ends with `(Cut: the <report, paper or answer card> has <n> characters; the run's research folder keeps it whole.)`. The report's own event keeps at most 60,000 characters, and says its cut the same way.
 
 | Field | Meaning |
 | --- | --- |
@@ -92,6 +92,9 @@ Each item is one record of one run. Control builds it from the events the rig re
 | Hypothesis | `hypothesis_added`, then `hypothesis_revised`, `hypothesis_merged` and `hypothesis_status` | Its id in the run, `h-…` | The hypothesis | The hypothesis; `Question <n> (index <i>)` when it is about one question; `Status: …`: `the author's, which needs a verdict`, `promoted, which needs a verdict`, `in the pool`, `merged into <id>` or `retired`; then `Supporting claims: <claim ids>`, the verified claims of the run it rests on, or `No verified claim supports it yet.` A revision or a merge gives its new words, question and claims, and ends `Changed by <lane>.`; `by` stays who proposed it. A status the owner or the planner set (`hypothesis_status`) changes the `Status: …` line and adds `Status set by <who>: <reason>`. A hypothesis recorded before statuses has neither the question nor the status line |
 | Finding | `finding_added` | Its id in the run | Its statement | The statement, its summary, `Why it matters: …` and `<n> supporting claims`, with ` (not all verified)` when the harness kept the finding as a draft |
 | Report | `research_final`, `research_digest` | `final` or `digest` | "Final report" or "Latest digest" | The report. Each new digest replaces the last. A final report starts with the run's research paper when it has one. `by` is `research` |
+| Report: the paper | `research_paper_accepted` | `paper` | "Research paper" | The run's research paper, an item of its own, so a later run reads it whole and not at the end of a cut report. `by` is `writer:<name>` |
+| Report: an answer card | `card_written` | `card-q<index>` | `Answer card: Question <n> (index <i>), version <v>` | The card's answer, `Certainty: …`, and `Claims cited: <n>; gaps: <n>`. A newer version of the card replaces it |
+| Report: a decision of the review panel | `item_decided` | `decision-question-<index>` or `decision-hypothesis-<id>` | `The review panel on Question <n> (index <i>): <decision>` | `Decision: <decision>, <certainty> certainty`, the answer card's version it was made on, how many reviewers dissented, and the review's id. `by` is `review_panel` |
 
 Search results and **From past research** show an experiment's result as `tried: attempt <id> (<result>), <verdict>` or `dropped: <why>`.
 
@@ -101,7 +104,7 @@ Search results and **From past research** show an experiment's result as `tried:
 - **Only the rig's current ledger.** Control reads the events of each rig's current ledger. After a rig's full reset, the items from its earlier ledger stay in their folders.
 - **Only from the rigs' events.** No agent, and no person, writes an item. Control never deletes one.
 - **An unchanged event changes nothing:** the item keeps its `seq`, so no rig receives it again.
-- **Once, after an upgrade:** a control whose knowledge base was built before runs, trials, documents and hypotheses were items reads the events it had indexed once more for those kinds, from each rig's current ledger, so the runs before the upgrade have their run and trial items too. Each run stays in its folder, and the items it had stay as they were. Sources read before the upgrade keep only their address: their events carried no text. A knowledge base built before v0.1.1 likewise reads its experiments' and attempts' events once more, with the edits of experiments, so an item that lost part of its words to an earlier reading is whole again.
+- **Once, after an upgrade:** a control whose knowledge base was built before runs, trials, documents and hypotheses were items reads the events it had indexed once more for those kinds, from each rig's current ledger, so the runs before the upgrade have their run and trial items too. Each run stays in its folder, and the items it had stay as they were. Sources read before the upgrade keep only their address: their events carried no text. A knowledge base built before v0.1.1 likewise reads its experiments', attempts' and research runs' events once more, with the edits of experiments, so an item that lost part of its words to an earlier reading is whole again, and the papers, answer cards and panel decisions of earlier runs become items too.
 
 ## Search
 

@@ -22,6 +22,16 @@ export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 
 /** The longest item text, in characters (a source's text and a document are cut to it). */
 export const KB_BODY_MAX = 20_000;
 
+/**
+ * A text cut to `n` characters, with a line that says so: a cut is never silent (goal 162). The
+ * line says how long the whole is, and that the run's research folder keeps it whole.
+ */
+export function cutSaid(text: string, n: number, what: string): string {
+  if (text.length <= n) return text;
+  const said = `\n\n(Cut: the ${what} has ${text.length} characters; the run's research folder keeps it whole.)`;
+  return `${text.slice(0, Math.max(0, n - said.length))}${said}`;
+}
+
 /** What a change gives an item; a field left out keeps what the item had. */
 export interface KbFields {
   title?: string | undefined;
@@ -132,6 +142,8 @@ export const KB_EVENT_KINDS = [
   "research_final",
   "research_digest",
   PAPER_ACCEPTED,
+  "card_written",
+  "item_decided",
 ] as const;
 
 const lines = (xs: string[]) => xs.filter(Boolean).join("\n");
@@ -608,6 +620,19 @@ export function indexEvent(t: KbIndexTarget, event: KbEvent): void {
     // experiment of the campaign's folder, which a goal or hill-climb run can take into its queue.
     // Its details say what it rests on, in words: a run that takes it cannot read this run.
     case PAPER_ACCEPTED: {
+      // The paper itself, an item of its own (the owner, goal 162).
+      if (str(b.paper))
+        t.put(
+          run,
+          "report",
+          "paper",
+          {
+            title: "Research paper",
+            body: cutSaid(str(b.paper), KB_BODY_MAX, "paper"),
+            by: `writer:${str(b.writer) || "final writer"}`,
+          },
+          e.at,
+        );
       const xs = Array.isArray(b.experiments) ? b.experiments : [];
       for (const x of xs) {
         if (!x || typeof x !== "object" || !str((x as Row).id)) continue;
@@ -661,11 +686,61 @@ export function indexEvent(t: KbIndexTarget, event: KbEvent): void {
           e.kind === "research_final" ? "final" : "digest",
           {
             title: e.kind === "research_final" ? "Final report" : "Latest digest",
-            body: str(b.report),
+            body: cutSaid(str(b.report), KB_BODY_MAX, "report"),
             by: "research",
           },
           e.at,
         );
       return;
+    // Each answer card and the review panel's decisions are items of their own, as the paper is
+    // (the owner, goal 162), so a later run reads them whole, not at the end of a cut report.
+    case "card_written":
+      if (typeof b.question === "number" && str(b.answer))
+        t.put(
+          run,
+          "report",
+          `card-q${b.question}`,
+          {
+            title: `Answer card: ${questionLabel(b.question)}, version ${str(b.version)}`,
+            body: cutSaid(
+              lines([
+                str(b.answer),
+                `Certainty: ${str(b.certainty)}`,
+                `Claims cited: ${n(b.claims)}; gaps: ${n(b.gaps)}`,
+              ]),
+              KB_BODY_MAX,
+              "answer card",
+            ),
+            by: str(b.by) || e.actor,
+          },
+          e.at,
+        );
+      return;
+    case "item_decided": {
+      const about =
+        str(b.kind) === "question" && /^\d+$/.test(str(b.key))
+          ? questionLabel(Number(b.key))
+          : `${str(b.kind)} ${str(b.key)}`;
+      const dissent = Array.isArray(b.dissent) ? b.dissent.length : 0;
+      t.put(
+        run,
+        "report",
+        `decision-${str(b.kind)}-${str(b.key)}`,
+        {
+          title: `The review panel on ${about}: ${str(b.decision)}`,
+          body: lines([
+            `Decision: ${str(b.decision)}${str(b.certainty) ? `, ${str(b.certainty)} certainty` : ""}`,
+            b.card_version !== undefined && b.card_version !== null
+              ? `On answer card version ${str(b.card_version)}`
+              : "",
+            dissent ? `Dissent: ${dissent} reviewer${dissent === 1 ? "" : "s"}` : "",
+            `Review: ${str(b.review)}`,
+          ]),
+          by: "review_panel",
+        },
+        e.at,
+      );
+      return;
+    }
   }
 }

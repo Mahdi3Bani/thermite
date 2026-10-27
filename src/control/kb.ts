@@ -80,7 +80,8 @@ export const SYNC_PAGE = 500;
  * The reading's version, and the kinds each reading read anew: a store built by an earlier
  * reading reads those events once more, so the runs before an upgrade have them too. Reading 2
  * added runs, trials, documents and hypotheses; reading 3 keeps an experiment's result and an
- * attempt's verdict in fields, and an experiment's edits (goal 162), so their items are rebuilt.
+ * attempt's verdict in fields, and an experiment's edits, says a cut, and gives the paper, each
+ * answer card and the review panel's decisions items of their own (goal 162).
  */
 const READING = "3";
 const READ_ANEW: Record<string, string[]> = {
@@ -100,6 +101,11 @@ const READ_ANEW: Record<string, string[]> = {
     "experiment_dropped",
     "attempt_recorded",
     "verdict",
+    "research_final",
+    "research_digest",
+    "research_paper_accepted",
+    "card_written",
+    "item_decided",
   ],
 };
 

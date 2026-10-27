@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  cutSaid,
   indexEvent,
   type KbFields,
   type KbHeld,
@@ -78,5 +79,57 @@ describe("the knowledge base keeps the agents' own words whole (goal 162)", () =
       x?.body,
       "new details\nWhy: a new reason\nDirection: f\nResult: attempt a-2 (submitted)",
     );
+  });
+});
+
+describe("a research run's report, paper, cards and decisions (goal 162)", () => {
+  test("a cut always says so, and how long the whole is", () => {
+    assert.equal(cutSaid("short", 100, "report"), "short");
+    const cut = cutSaid("x".repeat(500), 200, "report");
+    assert.equal(cut.length, 200);
+    assert.match(
+      cut,
+      /\(Cut: the report has 500 characters; the run's research folder keeps it whole\.\)$/,
+    );
+  });
+
+  test("the paper, each answer card and each decision of the panel are items of their own", () => {
+    const { items, ev } = memory();
+    const paper = `# The paper\n${"Words. ".repeat(4000)}`;
+    ev("research_paper_accepted", { paper, writer: "writer-1", experiments: [] });
+    ev("card_written", {
+      question: 0,
+      version: 2,
+      certainty: "high",
+      claims: 4,
+      gaps: 1,
+      answer: "Yes, when a verifier exists.",
+      by: "synth",
+    });
+    ev("item_decided", {
+      review: "rv-1",
+      kind: "question",
+      key: "0",
+      card_version: 2,
+      decision: "accepted",
+      certainty: "high",
+      dissent: [],
+    });
+    ev("research_final", { report: `${paper}\n# Supplementary material` });
+    const p = items.get("report:paper");
+    assert.equal(p?.title, "Research paper");
+    assert.match(p?.body ?? "", /\(Cut: the paper has \d+ characters/);
+    assert.equal(
+      items.get("report:card-q0")?.body,
+      "Yes, when a verifier exists.\nCertainty: high\nClaims cited: 4; gaps: 1",
+    );
+    assert.match(items.get("report:card-q0")?.title ?? "", /^Answer card: Question 1 .*version 2$/);
+    const d = items.get("report:decision-question-0");
+    assert.match(d?.title ?? "", /^The review panel on Question 1 .*: accepted$/);
+    assert.equal(
+      d?.body,
+      "Decision: accepted, high certainty\nOn answer card version 2\nReview: rv-1",
+    );
+    assert.match(items.get("report:final")?.body ?? "", /\(Cut: the report has \d+ characters/);
   });
 });
