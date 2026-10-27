@@ -10,12 +10,15 @@ import { Scheduler } from "../../src/harness/agents/scheduler.ts";
 import { runTrial } from "../../src/harness/agents/worker.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
+import { researchPackage, researchReviewDue } from "../../src/harness/research/review.ts";
+import { Reviews } from "../../src/harness/reviews.ts";
 import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
 import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
 import { type Script, startFakeModel } from "../helpers/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
-import { seedClaims, seedSources } from "../helpers/research-cards.ts";
-import { makeResearchRun } from "../helpers/research-run.ts";
+import { cardsUpToDate, seedClaims, seedSources } from "../helpers/research-cards.ts";
+import { answeredResearchRun } from "../helpers/research-paper.ts";
+import { fillResearch, makeResearchRun, writeCards } from "../helpers/research-run.ts";
 
 /**
  * Every role's whole prompt today, for a sample run (goal 166): what the role's model is sent,
@@ -83,7 +86,8 @@ function normal(s: string, paths: string[]): string {
   return (
     out
       .replace(/\b[0-9a-f]{40}\b/g, "<commit>")
-      .replace(/\b([atx])-[0-9a-f]{12,16}\b/g, "<$1-id>")
+      .replace(/\b[0-9a-f]{64}\b/g, "<sha256>")
+      .replace(/\b([a-z]{1,2})-[0-9a-f]{8,16}\b/g, "<$1-id>")
       .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?Z/g, "<time>")
       .replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>")
       .replace(/\b\d+\.\d\d h elapsed/g, "<hours> h elapsed")
@@ -408,5 +412,67 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     const { stateDir, scratchDir } = r.env.service.paths;
     const paths = [scratchDir, stateDir, r.env.root, r.base, keys, tmpdir()];
     golden("synthesizer.pi", sent.get("synthesizer"), paths);
+  });
+  test("a goal run's reviewer, in Pi, on a goal the review panel checks", async () => {
+    const env = makeJudgeEnv({
+      goal: { opsPerSecond: 1e12 },
+      contract: {
+        notes: "The kernel sums an array of numbers. Keep its exported function's name.",
+      },
+    });
+    await env.start();
+    await env.drain();
+    assert.ok(env.service.reviewPackages()[0], "a review waits for the panel");
+    const { sent, script } = recorder(() => ({ text: "done" }));
+    const keys = await adviseRound(env, script, (runtime) => ({
+      review_panel: [runtime("reviewer-1"), runtime("reviewer-2")],
+    }));
+    const paths = [env.paths.scratchDir, env.paths.stateDir, env.root, keys, tmpdir()];
+    golden("reviewer.pi", sent.get("reviewer"), paths);
+  });
+  test("a research run's reviewer, in Pi, once its review is due", async () => {
+    const r = await makeResearchRun("r-1");
+    const ids = await fillResearch(r);
+    writeCards(r, ids);
+    const ledger = r.env.service.ledger;
+    ledger.db
+      .prepare("update run set created_at = ? where id = ?")
+      .run(new Date(Date.now() - 3 * 3_600_000).toISOString(), "r-1");
+    const contract = r.env.service.contractFor("r-1") as Parameters<typeof researchPackage>[2];
+    const due = researchReviewDue(ledger, "r-1", contract, r.research.clock("r-1"));
+    assert.ok(due.due);
+    new Reviews(ledger).requestResearch({
+      run: "r-1",
+      marker: due.marker,
+      pkg: researchPackage(ledger, "r-1", contract),
+      by: "s",
+    });
+    cardsUpToDate(r.env.service, "r-1");
+    const { sent, script } = recorder(() => ({ text: "done" }));
+    const keys = await adviseRound(r.env, script, (runtime) => ({
+      review_panel: [runtime("reviewer-1"), runtime("reviewer-2")],
+    }));
+    await r.close();
+    const { stateDir, scratchDir } = r.env.service.paths;
+    const paths = [scratchDir, stateDir, r.env.root, r.base, keys, tmpdir()];
+    golden("research-reviewer.pi", sent.get("research-reviewer"), paths);
+  });
+
+  test("a research run's final writer, in Pi, once its review passed, with no STE checker", async () => {
+    const s = await answeredResearchRun("r-1");
+    await s.env.service.setAdvisors(
+      { auditor: false, review_panel: 0, writer: true },
+      "supervisor",
+    );
+    assert.ok(s.env.service.papers.request("r-1", "s"));
+    cardsUpToDate(s.env.service, "r-1");
+    const { sent, script } = recorder(() => ({ text: "done" }));
+    const keys = await adviseRound(s.env, script, (runtime) => ({
+      teachers: [runtime("teacher-1")],
+    }));
+    await s.close();
+    const { stateDir, scratchDir } = s.env.service.paths;
+    const paths = [scratchDir, stateDir, s.env.root, s.base, keys, tmpdir()];
+    golden("final-writer.pi", sent.get("final-writer"), paths);
   });
 });
