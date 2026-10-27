@@ -360,10 +360,10 @@ export class Research {
 
   private contract(run: string): ResearchContract {
     const inst = this.ledger.getRun(run);
-    if (!inst) throw new Error(`no run ${run}`);
+    if (!inst) throw new LedgerError("not_found", `no run ${run}`);
     const c = this.ledger.getContract(inst.campaign, inst.version);
-    if (c?.mode !== "research") throw new Error(`${run} is not a research campaign`);
-    return c;
+    if (c?.mode === "research") return c;
+    throw new LedgerError("invalid", `${run} is not a research campaign`);
   }
 
   private fetcher(run: string): Fetcher {
@@ -1218,7 +1218,7 @@ export class Research {
 
   updateSection(run: string, by: string | null, name: string, body: string) {
     if (!/^[a-z0-9][a-z0-9 _-]{0,59}$/i.test(name))
-      throw new Error("section names are short words");
+      throw new LedgerError("invalid", "section names are short words");
     this.ledger.db
       .prepare(
         `insert into report_section (run, name, body, updated_by, updated_at) values (?, ?, ?, ?, ?)

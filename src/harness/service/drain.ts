@@ -1,5 +1,5 @@
 import { MAX_LANES } from "../../core/contract.ts";
-import type { Ledger } from "../ledger.ts";
+import { type Ledger, LedgerError } from "../ledger.ts";
 import type { TrialFacts } from "./watch.ts";
 
 /**
@@ -253,8 +253,9 @@ export function askStop(
   const t = ledger.db.prepare("select run, lane, ended_at from trial where id = ?").get(p.trial) as
     | { run: string; lane: string; ended_at: string | null }
     | undefined;
-  if (!t || t.run !== p.run) throw new Error(`run ${p.run} has no trial ${p.trial}`);
-  if (t.ended_at) throw new Error(`trial ${p.trial} has ended already`);
+  if (!t || t.run !== p.run)
+    throw new LedgerError("not_found", `run ${p.run} has no trial ${p.trial}`);
+  if (t.ended_at) throw new LedgerError("conflict", `trial ${p.trial} has ended already`);
   ledger.appendEvent(by, "trial_stop_asked", p.run, {
     trial: p.trial,
     lane: t.lane,

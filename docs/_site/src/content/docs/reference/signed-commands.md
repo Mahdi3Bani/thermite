@@ -120,7 +120,7 @@ The harness checks every command in this order. A command that fails a check mar
 
 The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `close_run`, `wipe_state`, `message_agent`, `unkeep_message`, `rig_settings`, the six kinds that change a run's experiment queue and its rules: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`, `hypothesis_status`, which changes a research run's hypothesis, and `stop_trial`, which stops one trial. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
 
-A command that passes these checks and that the harness then refuses is `failed`, with the reason. The harness answers such a refusal with HTTP 409, such as `run <run> is closed` or `not now: …`, and a payload it can't use with HTTP 400, such as `invalid contract: …`.
+A command that passes these checks and that the harness then refuses is `failed`, with the reason, such as `run <run> is closed`, `not now: …`, `trial <trial> has ended already` or `invalid contract: …`. The harness records it as applied and not accepted, and answers the supervisor `{"status":"applied","accepted":false,"result":{"error":"<why>"}}`.
 
 ## Who may issue each kind
 

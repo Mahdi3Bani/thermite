@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { z } from "zod";
+import { BadInput, Refusal } from "../common/errors.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import type { CommandPayloads } from "../core/commands.ts";
 import { FINAL_LIFECYCLES } from "../core/verdicts.ts";
@@ -32,17 +33,17 @@ export async function receivePropagation(
 ): Promise<unknown> {
   const inst = svc.ledger.getRun(p.run);
   if (!inst) throw new LedgerError("not_found", `no run ${p.run}`);
-  if (inst.mode === "research") throw new Error("research campaigns do not take propagations");
+  if (inst.mode === "research") throw new Refusal("research campaigns do not take propagations");
   const spec = p.import;
   if (spec.kind !== "champion_patch") {
-    throw new Error("propagate takes a champion_patch import (a published champion)");
+    throw new BadInput("propagate takes a champion_patch import (a published champion)");
   }
   if (spec.repo !== inst.seed_repo) {
-    throw new Error(`the champion is in ${spec.repo}; this run works on ${inst.seed_repo}`);
+    throw new Refusal(`the champion is in ${spec.repo}; this run works on ${inst.seed_repo}`);
   }
   const mirror = svc.mirrorFor(inst.seed_repo);
   if (!(await hasCommit(mirror, spec.base_commit))) {
-    throw new Error(`base commit ${spec.base_commit} is not in this rig's repository`);
+    throw new Refusal(`base commit ${spec.base_commit} is not in this rig's repository`);
   }
   // Copied into the harness's own store and hashed as copied; the sha256 is the signed one.
   const stored = await importFile({
@@ -64,14 +65,14 @@ export async function receivePropagation(
       refPrefix: "refs/thermite/propagations",
     });
   } catch (err) {
-    throw new Error(
+    throw new Refusal(
       `the champion patch does not apply to the base: ${err instanceof GitError ? err.message : String(err)}`,
     );
   }
   const tree = await treeOf(mirror, rebuilt.commit);
   if (tree !== spec.tree) {
     await deleteRef(mirror, rebuilt.ref).catch(() => undefined);
-    throw new Error(`tree mismatch: the signed tree is ${spec.tree}, the patch gives ${tree}`);
+    throw new Refusal(`tree mismatch: the signed tree is ${spec.tree}, the patch gives ${tree}`);
   }
   svc.ledger.recordImport({
     kind: "champion_patch",

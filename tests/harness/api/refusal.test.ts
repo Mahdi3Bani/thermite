@@ -181,3 +181,16 @@ describe("an agent sees why its claim was refused (goal 143)", () => {
     );
   });
 });
+
+describe("a worker's bad input is a 400, never the harness's 500 (goal 125, T4)", () => {
+  test("a report section's name it can't take", async (t) => {
+    const s = await trialApi(t);
+    await assert.rejects(
+      s.call("POST", "/v1/research/section", { name: "../summary", body: "y" }),
+      /^Error: 400: \{"error":"section names are short words"\}$/,
+    );
+    assert.deepEqual(await s.call("POST", "/v1/research/section", { name: "summary", body: "y" }), {
+      section: "summary",
+    });
+  });
+});
