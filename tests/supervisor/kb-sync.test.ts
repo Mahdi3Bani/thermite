@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { type KbItemWire, untoldKinds } from "../../src/core/kb.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
+import { itemPath } from "../../src/harness/knowledge.ts";
 import {
   emptyKbSyncState,
   type KbSyncConfig,
   syncKnowledgeOnce,
 } from "../../src/supervisor/kb-sync.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
+import { kbFile } from "../helpers/kb-file.ts";
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };
 const RUN = "smoke-1";
@@ -102,7 +104,10 @@ describe("past research, synced from control into the run's folder", () => {
       "/v1/rigs/rig-a/kb?run=smoke-1&after=0",
       "/v1/rigs/rig-a/kb?run=smoke-1&after=2",
     ]);
-    const note = readFileSync(join(s.dir, "kernels", "notes", "rig-b--kernels-7--1.md"), "utf8");
+    const note = readFileSync(
+      join(s.dir, "kernels", "notes", `${kbFile("rig-b", "kernels-7", "1")}`),
+      "utf8",
+    );
     assert.equal(
       note,
       [
@@ -126,10 +131,15 @@ describe("past research, synced from control into the run's folder", () => {
       ].join("\n"),
     );
     assert.ok(
-      existsSync(join(s.dir, "kernels", "experiments", "rig-b--kernels-7--x-0123456789ab.md")),
+      existsSync(
+        join(s.dir, "kernels", "experiments", `${kbFile("rig-b", "kernels-7", "x-0123456789ab")}`),
+      ),
     );
     assert.match(
-      readFileSync(join(s.dir, "kernels", "sources", "rig-b--kernels-7--s-1.md"), "utf8"),
+      readFileSync(
+        join(s.dir, "kernels", "sources", `${kbFile("rig-b", "kernels-7", "s-1")}`),
+        "utf8",
+      ),
       /url: "https:\/\/example.org\/guide"/,
     );
     const readme = readFileSync(join(s.dir, "README.md"), "utf8");
@@ -157,9 +167,9 @@ describe("past research, synced from control into the run's folder", () => {
     assert.equal(second.items, 1);
     assert.deepEqual(second.state.cursors, { [RUN]: 5 });
     const notes = join(s.dir, "kernels", "notes");
-    assert.deepEqual(readdirSync(notes), ["rig-b--kernels-7--1.md"]);
+    assert.deepEqual(readdirSync(notes), [`${kbFile("rig-b", "kernels-7", "1")}`]);
     assert.match(
-      readFileSync(join(notes, "rig-b--kernels-7--1.md"), "utf8"),
+      readFileSync(join(notes, `${kbFile("rig-b", "kernels-7", "1")}`), "utf8"),
       /The body, corrected\./,
     );
     assert.equal(s.env.service.knowledge.summary(RUN)?.total, 1);
@@ -171,7 +181,10 @@ describe("past research, synced from control into the run's folder", () => {
       ]),
       { written: 1, updated: 1, removed: [], skipped: 0 },
     );
-    assert.deepEqual(readdirSync(notes), ["rig-b--kernels-7--1.md", "rig-c--kernels-7--1.md"]);
+    assert.deepEqual(readdirSync(notes), [
+      `${kbFile("rig-b", "kernels-7", "1")}`,
+      `${kbFile("rig-c", "kernels-7", "1")}`,
+    ]);
   });
 
   test("a folder the campaign may no longer read is removed, from the folder and the harness's copy", async () => {
@@ -186,7 +199,9 @@ describe("past research, synced from control into the run's folder", () => {
     assert.deepEqual(second.errors, []);
     assert.equal(second.items, 0);
     assert.ok(!existsSync(join(s.dir, "kernels")), "the revoked folder is gone");
-    assert.ok(existsSync(join(s.dir, "smoke-matmul", "notes", "rig-b--smoke-0--9.md")));
+    assert.ok(
+      existsSync(join(s.dir, "smoke-matmul", "notes", `${kbFile("rig-b", "smoke-0", "9")}`)),
+    );
     const readme = readFileSync(join(s.dir, "README.md"), "utf8");
     assert.doesNotMatch(readme, /## kernels\//);
     assert.match(readme, /## smoke-matmul\//);
@@ -208,8 +223,8 @@ describe("past research, synced from control into the run's folder", () => {
     items.push(item(2));
     await syncKnowledgeOnce(s.cfg, first.state);
     assert.deepEqual(readdirSync(join(s.dir, "kernels", "notes")).sort(), [
-      "rig-b--kernels-7--1.md",
-      "rig-b--kernels-7--2.md",
+      `${kbFile("rig-b", "kernels-7", "1")}`,
+      `${kbFile("rig-b", "kernels-7", "2")}`,
     ]);
   });
 
@@ -220,7 +235,10 @@ describe("past research, synced from control into the run's folder", () => {
     ]);
     const folders = readdirSync(s.dir).filter((f) => f !== "README.md");
     assert.deepEqual(folders, ["escape"]);
-    assert.deepEqual(readdirSync(join(s.dir, "escape", "notes")), ["r--up--x.md"]);
+    assert.deepEqual(readdirSync(join(s.dir, "escape", "notes")), [
+      kbFile("../r", "../up", "../../../x"),
+    ]);
+    assert.match(kbFile("../r", "../up", "../../../x"), /^r--up--x--[0-9a-f]{8}\.md$/);
   });
 
   test("each kind has its folder, and the README counts each", async () => {
@@ -325,8 +343,8 @@ describe("past research, synced from control into the run's folder", () => {
     // The cursor moved past them: the sync never sticks on what it cannot read.
     assert.deepEqual(r.state.cursors, { [RUN]: 4 });
     assert.deepEqual(r.state.unknown_kinds, ["verdict"]);
-    assert.ok(existsSync(join(s.dir, "kernels", "notes", "rig-b--kernels-7--1.md")));
-    assert.ok(existsSync(join(s.dir, "kernels", "notes", "rig-b--kernels-7--4.md")));
+    assert.ok(existsSync(join(s.dir, "kernels", "notes", `${kbFile("rig-b", "kernels-7", "1")}`)));
+    assert.ok(existsSync(join(s.dir, "kernels", "notes", `${kbFile("rig-b", "kernels-7", "4")}`)));
     assert.ok(!existsSync(join(s.dir, "kernels", "verdicts")));
     // The supervisor left them out, so the harness never saw one.
     assert.equal(logged.filter((l) => l.includes("unknown kind")).length, 0);
@@ -429,5 +447,15 @@ describe("past research, synced from control into the run's folder", () => {
       "an item names its rig",
     );
     assert.equal((await post({ run: RUN, items: [item(1)] }, tokens.supervisor)).status, 200);
+  });
+});
+
+describe("two documents never share one file in knowledge/ (goal 162)", () => {
+  test("names that read the same once cleaned or cut get files of their own", () => {
+    const at = (ref: string) => itemPath({ campaign: "c", kind: "doc", rig: "r", run: "u", ref });
+    assert.notEqual(at("lane-1/a-b.md"), at("lane-1/a/b.md"));
+    const long = "x".repeat(150);
+    assert.notEqual(at(`${long}-1`), at(`${long}-2`));
+    assert.equal(at("lane-1/a-b.md"), at("lane-1/a-b.md"), "the same item, the same file");
   });
 });

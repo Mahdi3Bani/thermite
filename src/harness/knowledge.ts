@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -20,7 +20,7 @@ import type { BriefingItem } from "./ledger.ts";
  * writes each as a Markdown file under the run's folder:
  *
  *   knowledge/README.md                                    the folders, with the count of each kind
- *   knowledge/<campaign>/<kind>s/<rig>--<run>--<ref>.md    one item: a front block, then its text
+ *   knowledge/<campaign>/<kind>s/<rig>--<run>--<ref>--<hash>.md  one item: a front block, then its text
  *
  * (A run's name is unique per rig only, so the rig is part of the name.) An updated item
  * overwrites its file. A folder the campaign may no longer read (the owner revoked the grant) is
@@ -78,10 +78,15 @@ export function itemMarkdown(i: KbItemWire): string {
 
 /** Where an item's file goes, relative to knowledge/. */
 export function itemPath(i: Pick<KbItemWire, "campaign" | "kind" | "rig" | "run" | "ref">): string {
+  // The names are cleaned and cut, so two items could share one: `lane-1/a-b.md` and
+  // `lane-1/a/b.md` both read `lane-1-a-b.md`. A short hash of the whole name keeps them apart.
+  const whole = createHash("sha256")
+    .update(JSON.stringify([i.rig, i.run, i.ref]))
+    .digest("hex");
   return join(
     part(i.campaign),
     kbPlural(i.kind),
-    `${part(i.rig)}--${part(i.run)}--${part(i.ref)}.md`,
+    `${part(i.rig)}--${part(i.run)}--${part(i.ref)}--${whole.slice(0, 8)}.md`,
   );
 }
 

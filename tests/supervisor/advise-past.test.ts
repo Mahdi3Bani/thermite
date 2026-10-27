@@ -20,6 +20,7 @@ import { AdvisorsConfig, auditOne, reviewOne } from "../../src/supervisor/adviso
 import { PAST_MCP_TOOL, servePastSearch } from "../../src/supervisor/past-mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
+import { kbFile } from "../helpers/kb-file.ts";
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };
 const RUN = "js-1";
@@ -133,7 +134,7 @@ describe("the planner's and the advisors' search of past research", () => {
     assert.deepEqual(found.folders, ["kernels"]);
     assert.equal(found.matched, 1);
     assert.deepEqual(found.items[0], {
-      file: "knowledge/kernels/notes/rig-b--kernels-7--1.md",
+      file: `knowledge/kernels/notes/${kbFile("rig-b", "kernels-7", "1")}`,
       campaign: "kernels",
       rig: "rig-b",
       run: "kernels-7",
