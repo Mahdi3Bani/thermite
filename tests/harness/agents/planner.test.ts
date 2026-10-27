@@ -13,7 +13,6 @@ import {
   validatePlan,
 } from "../../../src/harness/agents/planner.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
-import { kbFile } from "../../helpers/kb-file.ts";
 
 const base: PlannerInput = {
   run: "i",
@@ -634,7 +633,7 @@ describe("planner", () => {
           matched: 1,
           items: [
             {
-              file: `knowledge/kernels/experiments/${kbFile("rig-b", "kernels-7", "x-1")}`,
+              file: "knowledge/kernels/experiments/rig-b--kernels-7--x-1.md",
               campaign: "kernels",
               rig: "rig-b",
               run: "kernels-7",
