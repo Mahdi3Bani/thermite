@@ -12,7 +12,6 @@ import {
   type AskOwner,
   CommandPayloads,
   type Envelope,
-  ExperimentId,
   ExperimentText,
   type ImportSpec,
   type KeyPairPem,
@@ -26,6 +25,7 @@ import {
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import { isLegacyRule, researchDirectionRefusal } from "../core/directions.ts";
 import type { Hardware } from "../core/hardware.ts";
+import { ExperimentId, newAttemptId } from "../core/ids.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { ideaWords, queueTarget, ruleRefusal } from "../core/queue-target.ts";
@@ -2535,7 +2535,7 @@ export class HarnessService {
     const mirror = this.mirrorFor(inst.seed_repo);
     if (!(await hasCommit(mirror, parent)))
       throw new LedgerError("invalid", `unknown parent ${parent}`);
-    const id = `a-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const id = newAttemptId();
     let made: Awaited<ReturnType<typeof createAttemptCommit>>;
     try {
       made = await createAttemptCommit({

@@ -10,6 +10,7 @@ import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief
 import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
 import type { Contract, ResearchContract } from "../../core/contract.ts";
 import { asToken } from "../../core/directions.ts";
+import { newTrialId } from "../../core/ids.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { queueTarget } from "../../core/queue-target.ts";
@@ -2359,11 +2360,10 @@ export class Scheduler {
 
   /**
    * A new task of the gap-driven plan for one question (goal 117): its title names the question,
-   * its details the gap it closes (nextGap: the first of its card's open evidence gaps that no
-   * task waiting for it names), and its task kind comes in turn. When novelty fell, primary
-   * sources and contradictions come first. Directives steer it by structure only: MANDATE and TRY
-   * name task kinds to put first, AVOID removes a task kind. Directive text never reaches a
-   * worker's brief.
+   * its details the gap it closes (nextGap: the first of its card's open evidence gaps that no task
+   * waiting for it names), and its task kind comes in turn. When novelty fell, primary sources and
+   * contradictions come first. Directives steer it by structure only: MANDATE and TRY name task
+   * kinds to put first, AVOID removes a task kind. Directive text never reaches a worker's brief.
    */
   private fillResearch(
     run: string,
@@ -2439,7 +2439,7 @@ export class Scheduler {
       why: got.why,
     };
     const research = this.o.research as Research;
-    const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const id = newTrialId();
     const stats = research.stats(run);
     const frontier = research.frontier(run, 30);
     const brief = [
@@ -2570,7 +2570,7 @@ export class Scheduler {
       why: got.why,
     };
     const lane = a.lane as Role;
-    const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const id = newTrialId();
     const token = randomBytes(32).toString("hex");
     const abort = new AbortController();
     this.aborts.set(a.lane, abort);

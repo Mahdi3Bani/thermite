@@ -348,7 +348,7 @@ The owner's message to the run's agents. The judge is code and takes no messages
 | --- | --- |
 | `all` | Everyone working: each lane at work, and the planner while it is on, a research run's too. The lanes at work are the contract's `lanes.count`, or fewer when the newest `lane_count` rule in force says so, the owner's before an advisor's, as the scheduler counts them |
 | `lane-1` to `lane-16` | That [lane](glossary.md) |
-| `trial:t-` and 8 to 32 hexadecimal characters | That trial. If it ends before it reads the message, its lane's next trial reads it, with a note that it was sent to an earlier trial |
+| `trial:t-` and 16 hexadecimal characters, a trial's ID | That trial. If it ends before it reads the message, its lane's next trial reads it, with a note that it was sent to an earlier trial |
 | `planner` | The planner, at its next plan that is used, a research run's too |
 | `advisors` | The teachers, the auditor and the review panel, each once, except those that a refusal below names |
 | `teachers` | The teachers |

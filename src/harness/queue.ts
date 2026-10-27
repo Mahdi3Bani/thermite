@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { ExperimentText, type QueuePosition } from "../core/commands.ts";
 import { DIRECTION_NAME, directionOf, RESEARCH_TASK_KINDS } from "../core/directions.ts";
+import { newExperimentId } from "../core/ids.ts";
 import { labelledQuestion } from "../core/research-check.ts";
 import { type ExperimentRow, type Ledger, LedgerError } from "./ledger.ts";
 
@@ -33,11 +33,6 @@ export const ExperimentInput = z.object({
   why: ExperimentText.why.optional(),
 });
 export type ExperimentInput = z.infer<typeof ExperimentInput>;
-
-/** A new experiment's id: `x-` and 12 hex characters. */
-export function newExperimentId(): string {
-  return `x-${randomBytes(6).toString("hex")}`;
-}
 
 export { directionOf };
 

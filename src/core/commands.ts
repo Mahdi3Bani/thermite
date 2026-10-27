@@ -10,7 +10,7 @@ import { z } from "zod";
 import { canonicalJson } from "./canonical.ts";
 import { CommitSchema, IdSchema, MAX_LANES, MAX_LANES_REASON, Sha256Schema } from "./contract.ts";
 import { DirectionRef, directionName } from "./directions.ts";
-import { RunId } from "./ids.ts";
+import { ExperimentId, inner, RunId, TRIAL_ID } from "./ids.ts";
 import { McpUses } from "./mcp.ts";
 
 /**
@@ -173,8 +173,7 @@ export type StoredRule = StructuredDirective & {
   converted_from?: { rule: number; words: string } | undefined;
 };
 
-/** An experiment in a run's queue (goal 064): `x-` and 12 hex characters. */
-export const ExperimentId = z.string().regex(/^x-[0-9a-f]{12}$/, "an experiment id (x-...)");
+export { ExperimentId };
 
 /** Where an experiment goes among the queued ones: first, last, or at an index (0 first). */
 export const QueuePosition = z.union([
@@ -244,8 +243,9 @@ export type BriefingSeed = z.infer<typeof BriefingSeed>;
  * (all of them, the teachers, the auditor or the review panel), a lane or a worker's trial.
  * The lanes stop at MAX_LANES (lanes.test.ts checks it).
  */
-export const MESSAGE_TARGET =
-  /^(all|planner|advisors|teachers|auditor|review_panel|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/;
+export const MESSAGE_TARGET = new RegExp(
+  `^(all|planner|advisors|teachers|auditor|review_panel|lane-([1-9]|1[0-6])|trial:${inner(TRIAL_ID)})$`,
+);
 
 /**
  * What a run asks the owner about (goal 079). Thermite is hands-off by default: a win the judge

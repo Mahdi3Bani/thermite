@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ResearchContract } from "../../core/contract.ts";
+import { newExperimentId } from "../../core/ids.ts";
 import {
   PAPER_ACCEPTED,
   PAPER_PARTS,
@@ -8,7 +9,6 @@ import {
   PAPER_REQUESTED,
 } from "../../core/research-check.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
-import { newExperimentId } from "../queue.ts";
 import { type CardGap, cardsOf, verifiedByQuestion } from "./cards.ts";
 import { checkCited, numbersIn, withoutReferences } from "./checks.ts";
 import {

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 /**
@@ -27,3 +28,22 @@ export const NAME_WORDS =
   "lowercase letters, digits, dashes and underscores, at most 64, starting with a letter or a digit";
 export const CampaignId = z.string().regex(NAME_PATTERN, `a campaign's name is ${NAME_WORDS}`);
 export const RunId = z.string().regex(NAME_PATTERN, `a run's name is ${NAME_WORDS}`);
+
+/**
+ * A run's things, each with its own ID that is unique where it is used (goal 170): an attempt
+ * (`a-`), a trial (`t-`) and an experiment in the run's queue (`x-`), each minted where it is
+ * made, from random bytes.
+ */
+export const newAttemptId = (): string => `a-${randomBytes(8).toString("hex")}`;
+
+/** A trial's ID: `t-` and 16 hex digits. */
+export const TRIAL_ID = /^t-[0-9a-f]{16}$/;
+export const newTrialId = (): string => `t-${randomBytes(8).toString("hex")}`;
+
+/** An experiment's ID in a run's queue (goal 064): `x-` and 12 hex digits. */
+export const EXPERIMENT_ID = /^x-[0-9a-f]{12}$/;
+export const ExperimentId = z.string().regex(EXPERIMENT_ID, "an experiment id (x-...)");
+export const newExperimentId = (): string => `x-${randomBytes(6).toString("hex")}`;
+
+/** A pattern's body without its anchors, to match it inside another one. */
+export const inner = (pattern: RegExp): string => pattern.source.replace(/^\^|\$$/g, "");
