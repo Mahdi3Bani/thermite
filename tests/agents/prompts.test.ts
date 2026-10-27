@@ -13,7 +13,7 @@ import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
 import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
 import { type Script, startFakeModel } from "../helpers/fake-model.ts";
-import { makeJudgeEnv } from "../helpers/judge-env.ts";
+import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 import { makeResearchRun } from "../helpers/research-run.ts";
 
 /**
@@ -79,12 +79,17 @@ function normal(s: string, paths: string[]): string {
   let out = s;
   for (const p of paths.filter(Boolean).sort((a, b) => b.length - a.length))
     out = out.split(p).join("<path>");
-  return out
-    .replace(/\b[0-9a-f]{40}\b/g, "<commit>")
-    .replace(/\b([atx])-[0-9a-f]{12,16}\b/g, "<$1-id>")
-    .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?Z/g, "<time>")
-    .replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>")
-    .replace(/\b\d+\.\d\d h elapsed/g, "<hours> h elapsed");
+  return (
+    out
+      .replace(/\b[0-9a-f]{40}\b/g, "<commit>")
+      .replace(/\b([atx])-[0-9a-f]{12,16}\b/g, "<$1-id>")
+      .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?Z/g, "<time>")
+      .replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>")
+      .replace(/\b\d+\.\d\d h elapsed/g, "<hours> h elapsed")
+      // What the judge measured varies with the machine's load: its gains, deltas and intervals.
+      .replace(/-?\b\d+\.\d{4,}(e-?\d+)?/g, "<measured>")
+      .replace(/gain -?\d+(\.\d+)?% above/g, "gain <measured>% above")
+  );
 }
 
 /** Holds `sent` to its golden file, or writes the file under UPDATE_GOLDEN=1. */
@@ -106,6 +111,44 @@ function golden(name: string, sent: Sent | undefined, paths: string[]): void {
     return;
   }
   assert.equal(body, readFileSync(file, "utf8"), `${name}: the prompt changed; see the diff`);
+}
+
+/**
+ * One round of the supervisor's advisors against `env`'s harness, as on a rig, with each advisor
+ * a Pi runtime on a fake model that `script` plays. Returns the folder of the runtimes' key file.
+ */
+async function adviseRound(
+  env: { service: Parameters<typeof createHarnessApi>[0] },
+  script: Script,
+  roles: (runtime: (name: string) => Record<string, unknown>) => Record<string, unknown>,
+): Promise<string> {
+  const fake = await startFakeModel(script);
+  const keys = mkdtempSync(join(tmpdir(), "thermite-prompts-"));
+  writeFileSync(join(keys, "key"), "test-key\n");
+  const runtime = (name: string) => ({
+    name,
+    runtime: "openai",
+    base_url: fake.url,
+    model: name,
+    api_key_file: join(keys, "key"),
+  });
+  const tokens = { supervisor: "sup-token" };
+  const api = createHarnessApi(env.service, tokens);
+  await adviseOnce(
+    {
+      harnessUrl: "http://harness",
+      harnessToken: tokens.supervisor,
+      home: mkdtempSync(join(tmpdir(), "thermite-prompts-sup-")),
+      advisors: AdvisorsConfig.parse(roles(runtime)),
+      fetchImpl: async (input, init) => {
+        const url = new URL(String(input));
+        return await api.request(`${url.pathname}${url.search}`, init as RequestInit);
+      },
+    },
+    emptyAdviseState(),
+  );
+  await fake.close();
+  return keys;
 }
 
 describe("every role's whole prompt for a sample run (goal 166)", () => {
@@ -286,37 +329,44 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
         ],
       };
     });
-    const fake = await startFakeModel(script);
-    const keys = mkdtempSync(join(tmpdir(), "thermite-prompts-"));
-    writeFileSync(join(keys, "key"), "test-key\n");
-    const runtime = (name: string) => ({
-      name,
-      runtime: "openai",
-      base_url: fake.url,
-      model: name,
-      api_key_file: join(keys, "key"),
-    });
-    const tokens = { supervisor: "sup-token" };
-    const api = createHarnessApi(env.service, tokens);
-    await adviseOnce(
-      {
-        harnessUrl: "http://harness",
-        harnessToken: tokens.supervisor,
-        home: mkdtempSync(join(tmpdir(), "thermite-prompts-sup-")),
-        advisors: AdvisorsConfig.parse({
-          teachers: [runtime("teacher-a"), runtime("teacher-b")],
-          merged_by: runtime("merged-by"),
-        }),
-        fetchImpl: async (input, init) => {
-          const url = new URL(String(input));
-          return await api.request(`${url.pathname}${url.search}`, init as RequestInit);
-        },
-      },
-      emptyAdviseState(),
-    );
-    await fake.close();
+    const keys = await adviseRound(env, script, (runtime) => ({
+      teachers: [runtime("teacher-a"), runtime("teacher-b")],
+      merged_by: runtime("merged-by"),
+    }));
     const paths = [env.paths.scratchDir, env.paths.stateDir, env.root, keys, tmpdir()];
     golden("teacher.pi", sent.get("teacher"), paths);
     golden("merged-by.pi", sent.get("merged-by"), paths);
+  });
+  test("a hill-climb run's auditor, in Pi, on a win that asks for an audit", async () => {
+    const env = makeJudgeEnv({
+      contract: {
+        notes: "The kernel sums an array of numbers. Keep its exported function's name.",
+        acceptance: {
+          looks: [3, 6],
+          confirm_blocks: 4,
+          audit: { ratio_to_median: 3, absolute: 0.15 },
+        },
+      },
+    });
+    await env.service.applyCommand(env.assign);
+    const { attempt } = await env.service.submitAttempt(
+      {
+        run: "js-1",
+        patch_base64: env.patch(FAST_KERNEL),
+        hypothesis: "drop the waste",
+        known_flaws: [],
+      },
+      "t",
+    );
+    await env.drain();
+    assert.equal(String(env.ledger.getAttempt(attempt)?.lifecycle), "awaiting_audit");
+    const { sent, script } = recorder(() => ({
+      toolCalls: [
+        { name: "answer", args: { decision: "needs_owner", reasons: "unsure", citations: [] } },
+      ],
+    }));
+    const keys = await adviseRound(env, script, (runtime) => ({ auditor: runtime("auditor") }));
+    const paths = [env.paths.scratchDir, env.paths.stateDir, env.root, keys, tmpdir()];
+    golden("auditor.pi", sent.get("auditor"), paths);
   });
 });
