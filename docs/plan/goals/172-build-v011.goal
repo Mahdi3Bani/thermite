@@ -29,6 +29,7 @@ The goals it completes:
 | [173](173-recovery-and-health.goal) | Recovery and health: a copy before every migration, backup and restore, a disk floor, drains that end, bounded logs, health that checks |
 | [174](174-invalidate-evidence.goal) | Invalidate evidence: the owner withdraws bad evidence, and what depended on it follows |
 | [175](175-knowledge-base.goal) | The knowledge base on control: one collection for each campaign, every agent on MCP, each writer in its own slot, writes as durable events on NATS |
+| [176](176-knowledge-explorer.goal) | The knowledge explorer: the owner reads, searches and sees what the knowledge base stores |
 
 The [code clean-up guide](../code-clean-up-guide.md) holds the map of the code, the themes, the rules of shape, what to leave and the review guide; its section 8 places goals 166 to 171 in its order.
 
@@ -44,7 +45,7 @@ Each line is a set of small steps, each green on its own. A later step may start
 6. **The splits** (T8), the largest and most-changed first, with control's views by run and kept up to date as events arrive (goals 168 and 170) when `control/views.ts` splits, and `control/store.ts` last.
 7. **The folder moves** (T9), with run-scoped addresses under their campaign (goal 170) and the moves out of the harness into `src/agents/`.
 8. **The rest of the bus** (goal 168, steps 2 to 5: live lines and the dashboard's push, config and the knowledge base, the queues and the end of control's own copies, then every placement with RunPod's leaf node); **the record of every prompt and its surfaces** (goal 166); **the terminals** (goal 169: the session-log adapters and hook signals first, then the terminal host, the terminal mode, the signed steering, the live view, the Pi view, usage windows, the stand-ins and acceptance checks, and the token measurement, gate C).
-9. **Knowledge** (T11, and goal 175: the knowledge base's hierarchy on control, its writes on NATS, MCP for every agent, search by words, then search by meaning after its measured spike, gate B), **growth** (T12), **dead code** (T13), **containers and CI** (T14); the rest of **recovery and health** (goal 173: backup and restore, the disk floor, drains that end, bounded logs, health routes that check and the probes that use them); and **invalidating evidence** (goal 174), once the ledger's owners and one promotion are in (step 5).
+9. **Knowledge** (T11, and goal 175: the knowledge base's hierarchy on control, its writes on NATS, MCP for every agent, search by words, then search by meaning after its measured spike, gate B; and goal 176, the Knowledge page as an explorer of it, in the layout the owner picks from its mockup), **growth** (T12), **dead code** (T13), **containers and CI** (T14); the rest of **recovery and health** (goal 173: backup and restore, the disk floor, drains that end, bounded logs, health routes that check and the probes that use them); and **invalidating evidence** (goal 174), once the ledger's owners and one promotion are in (step 5).
 10. **The audit's private security items:** each fixed, or kept with a recorded reason, as [SECURITY.md](../../../SECURITY.md) says. Their plan and their record stay in `.internal/`; no public file, issue or commit message describes a gap.
 11. **The end:** the full checks of [AGENTS.md](../../../AGENTS.md#checks) on the last commit, every acceptance check the changed parts need, CI green, and the goals verified.
 
@@ -79,7 +80,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 
 - [ ] Gate A is passed: the rules of shape are in CONVENTIONS.md, reviewed by the owner.
 - [ ] Goals 161, 162, 163, 164, 165 and 171 are verified.
-- [ ] Goals 166, 168, 169, 170, 173, 174 and 175 are verified.
+- [ ] Goals 166, 168, 169, 170, 173, 174, 175 and 176 are verified.
 - [ ] Goal 125 is verified: every theme of the guide is done or has a recorded reason.
 - [ ] The audit's private security items are each fixed or have a recorded reason, in `.internal/`.
 - [ ] The full checks, the docs build and check, and every acceptance check the changed parts need pass on the last commit, and CI is green.
@@ -97,6 +98,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 - 2026-10-27 00:24 UTC: The owner asked whether this goal covers every finding of the audit. Three did not have a goal: backups and health (the guide's questions 13 and 15) and invalidating evidence (question 25), with the operations findings on a full disk, drains, log size and probes. They are now goals 173 and 174, in the list and the order above, and the open questions are asked when their step comes up.
 - 2026-10-27 00:57 UTC: The owner found the knowledge base is a store of blurbs, not a real knowledge base, and asked for a local model and search by zvec-grep. The audit's lane 15 designed it as goal 175, now in the list, step 9 and gate B.
 - 2026-10-27 01:42 UTC: The owner rejected goal 175's first design and set the knowledge base's: on control, one collection for each campaign, every agent on MCP, each writer in its own slot, writes as durable events on NATS. Goal 175 is rewritten (now `175-knowledge-base.goal`), and its line above and step 9 follow it.
+- 2026-10-27 04:51 UTC: The owner asked for an explorer of the knowledge base on the dashboard. It is goal 176, mocked up, in the list and step 9.
 
 ---
 
