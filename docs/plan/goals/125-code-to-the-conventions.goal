@@ -66,14 +66,14 @@ Then: "not only file sizes and restructure stuff, but also looking for DRY, etc 
 
 ## Done when
 
-- [ ] The size check, with tests, runs in `npm run check` and in CI.
+- [x] The size check, with tests, runs in `npm run check` and in CI.
 - [ ] The audit covers every area in scope, recorded below.
 - [ ] Every file in scope over 800 lines is split into a folder named for it, or has a recorded reason to stay.
 - [ ] No group of files is named in place of a folder, unless it has a recorded reason.
 - [ ] Every finding is fixed, or has a recorded reason to stay.
 - [ ] Every theme of goal 127's guide is done, or has a recorded reason to stay.
 - [ ] `npm run check`, the docs checks and the acceptance checks that the changes need pass, and the goal records which ran.
-- [ ] [CONTRIBUTING.md](../../../CONTRIBUTING.md) and the site's Contributing page name the size check.
+- [x] [CONTRIBUTING.md](../../../CONTRIBUTING.md) and the site's Contributing page name the size check.
 
 ## Audit
 
@@ -152,6 +152,7 @@ Known at the start, 2026-10-24:
 - 2026-10-26 20:41 UTC: The owner answered the guide's questions; the answers are under Decisions. v0.1.1 breaks compatibility with v0.1.0.
 - 2026-10-26 20:56 UTC: The owner named the knowledge base's folders collections, accepted the rules of shape, and put an upgrade of the images' system packages into v0.1.1's first code changes.
 - 2026-10-27 05:09 UTC: Started by goal 172. The accepted rules of shape are added to CONVENTIONS.md, with the owner's answers to the guide's questions 1, 4, 10, 18, 19 and 22 and goal 170's rule of address, for the owner's review (gate A).
+- 2026-10-27 05:17 UTC: The owner approved the rules of shape (gate A). The size check is built (`npm run check:sizes`, `scripts/lib/sizes.ts`, tests in `tests/scripts/sizes.test.ts`), in `npm run check` and CI, with its first baseline: 597 files in scope, 124 over 500 lines, 49 over 800 (`scripts/size-baseline.json`).
 
 ---
 

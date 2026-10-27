@@ -78,7 +78,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 
 ## Done when
 
-- [ ] Gate A is passed: the rules of shape are in CONVENTIONS.md, reviewed by the owner.
+- [x] Gate A is passed: the rules of shape are in CONVENTIONS.md, reviewed by the owner.
 - [ ] Goals 161, 162, 163, 164, 165 and 171 are verified.
 - [ ] Goals 166, 168, 169, 170, 173, 174, 175 and 176 are verified.
 - [ ] Goal 125 is verified: every theme of the guide is done or has a recorded reason.
@@ -100,6 +100,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 - 2026-10-27 01:42 UTC: The owner rejected goal 175's first design and set the knowledge base's: on control, one collection for each campaign, every agent on MCP, each writer in its own slot, writes as durable events on NATS. Goal 175 is rewritten (now `175-knowledge-base.goal`), and its line above and step 9 follow it.
 - 2026-10-27 04:51 UTC: The owner asked for an explorer of the knowledge base on the dashboard. It is goal 176, mocked up, in the list and step 9.
 - 2026-10-27 05:09 UTC: The owner launched this goal: the planning phase is over. Step 1 starts: the accepted rules of shape go into CONVENTIONS.md, in a commit of their own for the owner to review (gate A).
+- 2026-10-27 05:17 UTC: Gate A passed: the owner approved the rules of shape. The size check is in `npm run check` and CI (goal 125); the import-rule check is next.
 
 ---
 
