@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ROLES } from "../../src/agents/roles/index.ts";
+import { runClaudeTrial } from "../../src/harness/agents/claude-code.ts";
+import { runCodexTrial } from "../../src/harness/agents/codex.ts";
 import { checkModel } from "../../src/harness/agents/model-check.ts";
+import { runOpencodeTrial } from "../../src/harness/agents/opencode.ts";
 import { runResearchTrial } from "../../src/harness/agents/research-worker.ts";
 import { Scheduler } from "../../src/harness/agents/scheduler.ts";
-import { runTrial } from "../../src/harness/agents/worker.ts";
+import { runTrial, type TrialSpec } from "../../src/harness/agents/worker.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
-import { LocalRunner } from "../../src/harness/broker/runner.ts";
+import {
+  LocalRunner,
+  type Runner,
+  type RunOutcome,
+  type RunRequest,
+} from "../../src/harness/broker/runner.ts";
 import { researchPackage, researchReviewDue } from "../../src/harness/research/review.ts";
 import { Reviews } from "../../src/harness/reviews.ts";
 import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
@@ -101,15 +109,16 @@ function normal(s: string, paths: string[]): string {
 /** Holds `sent` to its golden file, or writes the file under UPDATE_GOLDEN=1. */
 function golden(name: string, sent: Sent | undefined, paths: string[]): void {
   assert.ok(sent, `${name}: no request was sent`);
-  const body = [
-    "# system",
-    normal(sent.system, paths),
-    "# first message",
-    normal(sent.first, paths),
-    "# tools",
-    sent.tools.join(", ") || "(none)",
-    "",
-  ].join("\n");
+  sections(name, paths, [
+    ["system", sent.system],
+    ["first message", sent.first],
+    ["tools", sent.tools.join(", ") || "(none)"],
+  ]);
+}
+
+/** Holds labelled sections to the golden file `name`; the home folder is a path like the rest. */
+function sections(name: string, paths: string[], parts: [string, string][]): void {
+  const body = `${parts.map(([label, t]) => `# ${label}\n${normal(t, [...paths, homedir()])}`).join("\n")}\n`;
   const file = join(GOLDEN, `${name}.txt`);
   if (UPDATE) {
     mkdirSync(GOLDEN, { recursive: true });
@@ -537,5 +546,136 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     assert.ok(check);
     const word = (t: string) => t.replace(/thermite-[a-z0-9]+/g, "thermite-<word>");
     golden("model-check.pi", { ...check, first: word(check.first) }, [tmpdir()]);
+  });
+  test("a hill-climb run's worker in OpenCode, Claude Code and Codex: what each program is given", async () => {
+    const env = makeJudgeEnv({
+      lanes: { count: 1, trials_per_epoch: 1 },
+      contract: {
+        notes: "The kernel sums an array of numbers. Keep its exported function's name.",
+      },
+    });
+    await env.start();
+    const run = (env.assign.envelope.payload as { run: string }).run;
+    await env.service.applyCommand(
+      env.sign("message_agent", {
+        run,
+        to: "all",
+        text: "Prefer a change a reader can follow.",
+        keep: true,
+      }),
+    );
+    // The trial the scheduler starts for the sample run, as every program gets it.
+    let spec: TrialSpec | undefined;
+    const { script } = recorder(() => PLAN);
+    const fake = await startFakeModel(script);
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: { baseUrl: fake.url, model: "m", apiKey: "k", contextWindow: 32000, maxTokens: 2000 },
+      owner: "prompts-test",
+      runTrial: async (s) => {
+        spec ??= s;
+        return { stopped: "no_submission", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
+      },
+    });
+    await scheduler.tick();
+    await scheduler.idle();
+    await scheduler.shutdown("test over");
+    await fake.close();
+    assert.ok(spec);
+    /** Every run the trial asks for, answered as a program that did nothing. */
+    const recording = () => {
+      const runs: RunRequest[] = [];
+      const runner = {
+        run: async (req: RunRequest) => {
+          runs.push(req);
+          return {
+            exitCode: 0,
+            signal: null,
+            killedFor: null,
+            stdout: "",
+            stderr: "",
+          } as RunOutcome;
+        },
+        killRole: async () => 0,
+      } as unknown as Runner;
+      return { runs, runner };
+    };
+    const common = {
+      apiUrl: "http://127.0.0.1:8700",
+      live: () => undefined,
+      progress: () => undefined,
+      submitted: () => undefined,
+      pollMs: 5,
+      afterSubmitMs: 5,
+    };
+    const programs = [
+      [
+        "worker.opencode",
+        (runner: Runner, s: TrialSpec) =>
+          runOpencodeTrial(s, {
+            ...common,
+            runner,
+            model: {
+              baseUrl: "http://127.0.0.1:9",
+              model: "m",
+              apiKey: "k",
+              contextWindow: 32000,
+              maxTokens: 2000,
+            },
+          }),
+      ],
+      [
+        "worker.claude-code",
+        (runner: Runner, s: TrialSpec) =>
+          runClaudeTrial(s, {
+            ...common,
+            runner,
+            model: {
+              api: "claude" as const,
+              harness: "claude-code" as const,
+              baseUrl: "https://api.anthropic.com",
+              model: "claude-test",
+              apiKey: "token",
+              contextWindow: 1_000_000,
+              maxTokens: 0,
+            },
+          }),
+      ],
+      [
+        "worker.codex",
+        (runner: Runner, s: TrialSpec) =>
+          runCodexTrial(s, {
+            ...common,
+            runner,
+            model: {
+              api: "chatgpt" as const,
+              harness: "codex" as const,
+              baseUrl: "https://api.openai.com/v1",
+              model: "gpt-test",
+              apiKey: "access",
+              contextWindow: 0,
+              maxTokens: 0,
+              reasoning: "off" as const,
+            },
+          }),
+      ],
+    ] as const;
+    const paths = [env.paths.scratchDir, env.paths.stateDir, env.root, tmpdir()];
+    for (const [name, start] of programs) {
+      const { runs, runner } = recording();
+      await start(runner, spec);
+      // The program's own run: the one whose input is the brief.
+      const given = runs.find((r) => String(r.stdin ?? "").includes("# Assignment"));
+      assert.ok(given, `${name}: no run was given the brief`);
+      // Where the program is installed differs from machine to machine.
+      const command = given.argv
+        .join(" ")
+        .replace(/\S*\/(opencode|codex|claude)(?=\s|$)/g, "<bin>/$1");
+      sections(name, paths, [
+        ["command", command],
+        ["standard input", String(given.stdin)],
+      ]);
+    }
   });
 });
