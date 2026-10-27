@@ -1,5 +1,6 @@
 import type { Agent } from "@earendil-works/pi-agent-core";
-import { type LiveKind, summarizeArgs } from "../../core/live.ts";
+import { log } from "../../common/env.ts";
+import { type LiveKind, liveText, summarizeArgs } from "../../core/live.ts";
 
 /**
  * Links an agent session to control's live view: its turns go to the live log, and the owner's
@@ -76,9 +77,20 @@ function resultText(result: unknown): string {
 }
 
 export function linkSession(agent: Agent, link: SessionLink): void {
+  // A long line is cut and marked, as the harness's own are; a refusal is logged, the first of
+  // a streak (goal 171).
+  let refused = false;
   const send = (kind: LiveKind, text: string) => {
     if (!link.live || !text) return;
-    link.live([{ kind, text }]).catch(() => undefined);
+    link.live([{ kind, text: liveText(text) }]).then(
+      () => {
+        refused = false;
+      },
+      (err) => {
+        if (!refused) log("worker", "a live line was not taken", { kind, error: String(err) });
+        refused = true;
+      },
+    );
   };
   const counted: TrialProgress = { turns: 0, tool_calls: 0, tokens_in: 0, tokens_out: 0 };
   const reply = replyReports(link);

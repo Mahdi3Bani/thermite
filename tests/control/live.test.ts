@@ -75,6 +75,34 @@ describe("the live view", () => {
     assert.equal(s.store.liveTail("rig-a", 10).at(-1)?.text, "lane-1: tiling");
   });
 
+  test("a line of a kind control does not know is left out, the rest kept, and said once (goal 171)", async (t) => {
+    const s = setup();
+    await relayOnce(s.cfg, { cursor: 0 });
+    for (const text of ["before", "a newer harness's line", "after"])
+      s.env.service.live.append({ source: "planner", kind: "status", text });
+    // A newer harness's kind, signed with the batch like the others.
+    const kept = (s.env.service.live as unknown as { entries: { kind: string }[] }).entries;
+    (kept[1] as { kind: string }).kind = "diff";
+    const said: string[] = [];
+    t.mock.method(process.stdout, "write", (chunk: string) => said.push(chunk));
+    let st = await relayLiveOnce(s.cfg, { cursor: 0, ownCursor: 0 });
+    s.env.service.live.append({ source: "planner", kind: "status", text: "later" });
+    (kept[3] as { kind: string }).kind = "diff";
+    st = await relayLiveOnce(s.cfg, st);
+    t.mock.restoreAll();
+    assert.equal(st.cursor, 4);
+    assert.deepEqual(
+      s.store
+        .liveTail("rig-a", 10)
+        .filter((e) => e.source === "planner")
+        .map((e) => e.text),
+      ["before", "after"],
+    );
+    const told = said.filter((l) => l.includes("control left out live lines it does not know"));
+    assert.equal(told.length, 1);
+    assert.match(told[0] ?? "", /"what":"kind diff","lines":1/);
+  });
+
   test("before the rig's key is accepted, live lines are refused", async () => {
     const s = setup();
     s.env.service.live.append({ source: "judge", kind: "log", text: "x" });

@@ -1,14 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { modelCheckProgramPrompt } from "../../agents/roles/model-check.ts";
 import { WORKER_CLAUDE_CODE_SYSTEM } from "../../agents/roles/worker.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { laneLimits } from "../../core/contract.ts";
-import { type LiveKind, summarizeArgs } from "../../core/live.ts";
+import { type LiveKind, liveText, summarizeArgs } from "../../core/live.ts";
 import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
+import {
+  CLAUDE_BASE_ENV,
+  CLAUDE_PROMPT,
+  claudeBin,
+  claudeExe,
+  claudeShell,
+  PROMPT_VAR,
+  writeClaudePrompt,
+} from "./claude-code/shell.ts";
 import {
   CliCompactions,
   type FoundCompaction,
@@ -70,9 +79,6 @@ import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } fro
  * (rate_limit_event); a full window ends the trial with the time it resets.
  */
 
-/** Claude Code's binary: THERMITE_CLAUDE_BIN, else `claude` on the PATH (read when used). */
-export const claudeBin = () => process.env.THERMITE_CLAUDE_BIN ?? "claude";
-
 /** What to say when the image has no Claude Code: it is in an image only when built with it. */
 export const NO_CLAUDE_CODE =
   "this rig's harness image has no Claude Code: build the image with the Claude Code option (CLAUDE_CODE_VERSION), or give the rig another harness on Edit rig";
@@ -89,44 +95,14 @@ export function claudeExitWords(code: number | string | null, note: string, outp
   return `Claude Code exited ${code}: ${own ?? note}`;
 }
 
-/** The file descriptor Claude Code reads the sign-in token from, once, when it starts. */
-export const CLAUDE_TOKEN_FD = 3;
-
-/**
- * What every Claude Code run here has in its environment, the agents' and the supervisor's
- * advisors': where the token is (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR), never the token, and no
- * update checks, reports or other traffic. Never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: it would turn on
- * Claude Code's own sandbox, which cannot start in a rig (this file's opening comment says why).
- */
-export const CLAUDE_BASE_ENV: Readonly<Record<string, string>> = {
-  CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: String(CLAUDE_TOKEN_FD),
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-  DISABLE_AUTOUPDATER: "1",
-};
-
-/**
- * Claude Code's command line behind `sh`, which moves the run's stdin, the token, to file
- * descriptor 3 (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) and gives Claude Code /dev/null for its
- * own. Claude Code reads the token from there once, so it is in no environment: not Claude Code's,
- * nor its commands'. `after` is more of the shell line, after the redirection (where the output
- * goes). The broker gives a run only its stdin; the supervisor, which starts an advisor's Claude
- * Code itself, opens descriptor 3 directly and keeps stdin for the prompt.
- */
-export function claudeShell(argv: string[], after = ""): string[] {
-  return ["sh", "-c", `exec ${CLAUDE_TOKEN_FD}<&0 && exec "$@" < /dev/null${after}`, "sh", ...argv];
-}
-
-/** Claude Code's executable as an absolute path (found on PATH), or undefined if it is not there. */
-export function claudeExe(): string | undefined {
-  const bin = claudeBin();
-  if (bin.startsWith("/")) return bin;
-  for (const dir of (process.env.PATH ?? "").split(":")) {
-    const p = join(dir, bin);
-    if (dir && existsSync(p)) return p;
-  }
-  return undefined;
-}
-
+export {
+  CLAUDE_BASE_ENV,
+  CLAUDE_PROMPT,
+  CLAUDE_TOKEN_FD,
+  claudeBin,
+  claudeExe,
+  claudeShell,
+} from "./claude-code/shell.ts";
 export type { UsageWindow } from "./plan-windows.ts";
 export { mergeUsage } from "./plan-windows.ts";
 
@@ -324,14 +300,14 @@ export function readClaudeEvents(
         for (const b of Array.isArray(m.content) ? m.content : []) {
           if (b.type === "text" && b.text) {
             t.lastText = b.text;
-            live.push({ kind: "text", text: b.text.slice(0, 8000) });
+            live.push({ kind: "text", text: liveText(b.text) });
           } else if (b.type === "thinking" && b.thinking) {
-            live.push({ kind: "thinking", text: b.thinking.slice(0, 8000) });
+            live.push({ kind: "thinking", text: liveText(b.thinking) });
           } else if (b.type === "tool_use") {
             t.toolCalls++;
             const tool = String(b.name ?? "tool");
             if (b.id) t.toolNames.set(b.id, tool);
-            live.push({ kind: "tool", text: `${tool} ${summarizeArgs(b.input)}`.slice(0, 8000) });
+            live.push({ kind: "tool", text: liveText(`${tool} ${summarizeArgs(b.input)}`) });
           }
         }
         let inSum = 0;
@@ -585,6 +561,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     THERMITE_EDITABLE_PATHS: JSON.stringify(spec.editablePaths),
     THERMITE_WORKSPACE: spec.workspace,
     THERMITE_CLAUDE_EVENTS: events,
+    [PROMPT_VAR]: join(area, CLAUDE_PROMPT),
   };
   const title = `Trial ${spec.trialId} (${spec.lane})`;
   // Before each compaction, Claude Code's hook copies its transcript into the run's own area and
@@ -670,6 +647,13 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     const callsBefore = tally.toolCalls;
     const runStarted = Date.now();
     const exe = claudeExe() ?? claudeBin();
+    // The prompt, written by the lane into its own area, for Claude Code's stdin.
+    const unwritten = await writeClaudePrompt(deps.runner, spec.lane, area, message);
+    if (unwritten) {
+      result.stopped = "error";
+      result.error = unwritten;
+      break;
+    }
     const running = deps.runner.run({
       role: spec.lane,
       // Its output goes to a file the harness follows while it runs; the token comes on stdin.
@@ -677,7 +661,6 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
         [
           exe,
           "-p",
-          message,
           ...claudeArgs(deps.model, { session: tally.session, mcpConfig: mcpFile, settings }),
         ],
         ' >> "$THERMITE_CLAUDE_EVENTS" 2>&1',
@@ -859,6 +842,8 @@ export async function claudeOnce(
   chmodSync(parent, 0o711);
   const dir = join(parent, randomUUID());
   mkdirSync(dir, { mode: 0o700 });
+  // The prompt for Claude Code's stdin, handed over with the folder.
+  writeFileSync(join(dir, CLAUDE_PROMPT), prompt, { mode: 0o600 });
   await deps.runner.handOver(dir, role);
   const tally = newClaudeTally();
   const kill = () => void deps.runner.killRole(role).catch(() => 0);
@@ -889,7 +874,6 @@ export async function claudeOnce(
       argv: claudeShell([
         claudeExe() ?? claudeBin(),
         "-p",
-        prompt,
         ...claudeArgs(model, {
           tools: o.tools,
           mcpConfig: mcp ? join(dir, "home", "mcp.json") : undefined,
@@ -910,6 +894,7 @@ export async function claudeOnce(
         }),
         // A planner's call compacts as the workers' trials do (goal 070).
         ...claudeCompactionEnv(model),
+        [PROMPT_VAR]: join(dir, CLAUDE_PROMPT),
       },
       // The token, which the shell gives Claude Code on file descriptor 3.
       stdin: model.apiKey,

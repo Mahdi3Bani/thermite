@@ -95,6 +95,8 @@ async function main(): Promise<void> {
     harnessToken,
     controlUrl,
     controlToken,
+    held: new Map(),
+    staging: new Set<string>(),
     stage: (cmd: Parameters<typeof stageCommand>[1]) =>
       stageCommand(
         {

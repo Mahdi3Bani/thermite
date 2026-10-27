@@ -94,7 +94,9 @@ Once control has the harness's own record of an applied command (step 6), the ou
 | A full reset's steps (`pause_run`, `export_now`, `wipe_state`) | 30 minutes each |
 | Clock difference the harness allows between control and the rig | 5 minutes |
 
-- **Expiry at control.** When the supervisor next asks for commands, control marks each pending command past its `expires_at` as `expired` and does not hand it over. Time spent fetching a command's content counts toward its time to live.
+- **Expiry at control.** When the supervisor next asks for commands, control marks each pending command past its `expires_at` as `expired` and does not hand it over.
+- **Kept alive while its content is fetched.** While the supervisor fetches a command's content (a repository bundle, a kit, a model download), it tells control so with each request. Within 10 minutes of the command's `expires_at`, control signs it again with an `expires_at` an hour later, and the audit log records `command_renewed`. It does so at most 24 hours after `issued_at`: a fetch that takes longer lets the command expire.
+- **Each command's content crosses once.** The supervisor names the commands it holds already, and control answers those with their ids alone. A command signed again is sent whole once more.
 - **Expiry at the harness.** The harness refuses a command whose `expires_at` has passed by the rig's clock (`expired`), or whose `issued_at` is more than 5 minutes ahead of it (`issued in the future`).
 - **Cancelling.** The owner can cancel a command while it is `pending`, with `POST /v1/commands/<id>/cancel` and the owner's token. The command becomes `failed` with the outcome `{"cancelled_by": "owner:api"}`. A command that is not pending gives `404 {"error":"no such pending command"}`. The dashboard, the command line and MCP have no way to cancel. See [Cancel a pending command](../how-to/operate/cancel-a-command.md).
 

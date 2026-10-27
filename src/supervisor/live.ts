@@ -1,3 +1,5 @@
+import { log } from "../common/env.ts";
+import { untoldKinds } from "../core/kb.ts";
 import { LiveLog } from "../core/live.ts";
 import { buildHeaders } from "../core/version.ts";
 
@@ -61,5 +63,12 @@ export async function relayLiveOnce(
   });
   if (!res.ok)
     throw new Error(`control live -> ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  // Lines this control does not know (a newer harness's) are left out there: said once each.
+  const answer = (await res.json().catch(() => ({}))) as { left_out?: Record<string, number> };
+  for (const [what, n] of untoldKinds(toldLeftOut, answer.left_out ?? {}))
+    log("supervisor", "control left out live lines it does not know", { what, lines: n });
   return { logId: batch.log_id, cursor: batch.next, ownCursor: own.next };
 }
+
+/** What control left out of the live view and was logged already. */
+const toldLeftOut = new Set<string>();

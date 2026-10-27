@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { modelCheckProgramPrompt } from "../../agents/roles/model-check.ts";
 import { WORKER_CODEX_SYSTEM } from "../../agents/roles/worker.ts";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
-import { type LiveKind, summarizeArgs } from "../../core/live.ts";
+import { type LiveKind, liveText, summarizeArgs } from "../../core/live.ts";
 import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import {
@@ -281,7 +281,7 @@ export function readCodexEvents(
         const tool = toolOf(i);
         if (!tool) break;
         if (i.id) t.started.add(i.id);
-        live.push({ kind: "tool", text: tool.call.slice(0, 8000) });
+        live.push({ kind: "tool", text: liveText(tool.call) });
         break;
       }
       case "item.completed": {
@@ -290,12 +290,12 @@ export function readCodexEvents(
           t.turns++;
           if (i.text) {
             t.lastText = i.text;
-            live.push({ kind: "text", text: i.text.slice(0, 8000) });
+            live.push({ kind: "text", text: liveText(i.text) });
           }
           break;
         }
         if (i.type === "reasoning") {
-          if (i.text) live.push({ kind: "thinking", text: i.text.slice(0, 8000) });
+          if (i.text) live.push({ kind: "thinking", text: liveText(i.text) });
           break;
         }
         if (i.type === "error") {
@@ -316,7 +316,7 @@ export function readCodexEvents(
         t.toolCalls++;
         // A file change is only ever completed; an item may also end without having started.
         if (!i.id || !t.started.delete(i.id))
-          live.push({ kind: "tool", text: tool.call.slice(0, 8000) });
+          live.push({ kind: "tool", text: liveText(tool.call) });
         const r = resultOf(i);
         t.tools.push({ tool: tool.tool, output: r.output.slice(0, 4000), ok: r.ok });
         live.push({

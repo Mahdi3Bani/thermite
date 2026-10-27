@@ -32,6 +32,10 @@ import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import { newTally, type OpencodeTally, readNew, readOpencodeEvents } from "./opencode/events.ts";
+import { OPENCODE_BIN, startInArea } from "./opencode/run.ts";
+
+export { OPENCODE_BIN, opencodeBin, opencodeExe } from "./opencode/run.ts";
+
 import {
   afterProgramFailure,
   type FailureCount,
@@ -55,9 +59,6 @@ import { type SubmitOutcome, stopNudging, type TrialResult, type TrialSpec } fro
  * checks the trial's token and adds the key. OpenCode's own models (its free ones) need no key.
  */
 
-/** OpenCode's binary: THERMITE_OPENCODE_BIN, else `opencode` on the PATH (read when used). */
-export const opencodeBin = () => process.env.THERMITE_OPENCODE_BIN ?? "opencode";
-export const OPENCODE_BIN = opencodeBin();
 export const TRIAL_CLI = "thermite-trial";
 
 /** This module's own extension: `.js` when built, `.ts` when run from the source. */
@@ -166,17 +167,6 @@ const turnsUp = (spec: { maxTurns?: number | undefined }, tally: OpencodeTally) 
 /** The lane's limits, as the agent must know them: OpenCode and its commands share them. */
 export function limitsNote(limits: LaneLimitValues): string {
   return `Memory: ${limits.runRssMib} MiB for everything your lane runs at once, OpenCode itself included (it uses about 500 MiB). A command that takes it over the limit is killed (your shell tool reports "Killed by SIGKILL"): run it again with less parallelism (for example make -j2) or a smaller input, or as a development run, which has its own limit. Disk: ${limits.workspaceMib} MiB, and at most 50,000 files, for this trial's directory, OpenCode's own files included; going over ends the trial.`;
-}
-
-/** OpenCode's executable as an absolute path (found on PATH), or undefined if it is not there. */
-export function opencodeExe(): string | undefined {
-  const bin = opencodeBin();
-  if (bin.startsWith("/")) return bin;
-  for (const dir of (process.env.PATH ?? "").split(":")) {
-    const p = join(dir, bin);
-    if (dir && existsSync(p)) return p;
-  }
-  return undefined;
 }
 
 /** Why the broker stopped OpenCode, when a memory or disk limit did. */
@@ -344,42 +334,6 @@ async function setUpInArea(
     : `could not set OpenCode up: ${setup.stderr.slice(-300)}`;
 }
 
-/** One `opencode run` as the lane, under its limits; its output goes to the events file. */
-function startInArea(
-  runner: Runner,
-  role: Role,
-  area: string,
-  cwd: string,
-  env: Record<string, string>,
-  args: string[],
-  o: { remaining: number; limits: LaneLimitValues },
-): Promise<RunOutcome> {
-  return runner.run({
-    role,
-    // Its output goes to a file the harness follows while it runs.
-    argv: [
-      "sh",
-      "-c",
-      'exec "$@" >> "$THERMITE_OPENCODE_EVENTS" 2>&1',
-      "sh",
-      // By its full path, so the broker knows OpenCode's processes from its commands'.
-      opencodeExe() ?? OPENCODE_BIN,
-      ...args,
-    ],
-    cwd,
-    env,
-    // No time limit unless the trial has one (goal 079).
-    ...(Number.isFinite(o.remaining) ? { timeoutMs: o.remaining } : {}),
-    rssLimitBytes: o.limits.runRssMib * 1024 * 1024,
-    // Over the memory limit, OpenCode's commands are killed and OpenCode carries on, as a
-    // lane command under Pi would be; the trial ends only if OpenCode alone is over.
-    ...(opencodeExe() ? { spareExe: opencodeExe() } : {}),
-    disk: { path: area, limitBytes: o.limits.workspaceMib * 1024 * 1024 },
-    nproc: o.limits.processes,
-    captureBytes: 4096,
-  });
-}
-
 /**
  * One worker trial in OpenCode: its home and configuration in the lane's own area, then
  * `opencode run` in the workspace until the agent submits or the trial's time ends. A run that
@@ -480,9 +434,9 @@ export async function runOpencodeTrial(
       "--model",
       opencodeModelId(deps.model),
       ...(tally.session ? ["--session", tally.session] : ["--title", `trial ${spec.trialId}`]),
-      message,
     ];
     const running = startInArea(deps.runner, spec.lane, area, spec.workspace, env, args, {
+      prompt: message,
       remaining,
       limits,
     });
@@ -744,9 +698,8 @@ export async function runOpencodeResearchTrial(
         "--model",
         opencodeModelId(deps.model),
         ...(tally.session ? ["--session", tally.session] : ["--title", `trial ${spec.trialId}`]),
-        message,
       ],
-      { remaining, limits },
+      { remaining, limits, prompt: message },
     );
     let done = false;
     void running.finally(() => {
@@ -903,8 +856,9 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
         "json",
         "--model",
         opencodeModelId(deps.model),
-        prompt,
       ],
+      // The prompt on stdin, as a trial's.
+      stdin: prompt,
       cwd: deps.dir,
       env,
       ...(deps.timeoutMs !== undefined ? { timeoutMs: deps.timeoutMs } : {}),

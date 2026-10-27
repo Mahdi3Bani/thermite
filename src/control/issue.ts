@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Refusal } from "../common/errors.ts";
+import { canonicalJson } from "../core/canonical.ts";
 import {
   type CommandKind,
   CommandPayloads,
@@ -216,6 +217,63 @@ function withMcpServers(store: ControlStore, payload: unknown): unknown {
   const why = uses.success ? mcpRefusal(store.db, uses.data) : "";
   if (why) throw new Error(why);
   return out;
+}
+
+/** A command whose sources still stage is renewed this long before it expires, for this long. */
+const RENEW_BEFORE_MS = 10 * 60_000;
+const RENEW_FOR_MS = 60 * 60_000;
+/** How long after it was issued a command may stay alive while its sources stage. */
+export const STAGING_HOLD_HOURS = 24;
+
+/**
+ * A rig's pending commands, as its supervisor fetches them every few seconds (goal 171):
+ * - the ones it holds already (`have`, ids joined by commas) come back as ids alone, under
+ *   `held`, so a command's content, a few MiB with its sources, crosses once; an older supervisor
+ *   names none and gets each whole, as before;
+ * - the ones whose sources it is still fetching (`staging`), such as a model download, are signed
+ *   again with a later expiry before theirs comes, and sent whole again: a download longer than a
+ *   command's life no longer expires its assignment. At most STAGING_HOLD_HOURS after it was
+ *   issued, and each renewal is in the audit log.
+ */
+export function pendingFor(
+  store: ControlStore,
+  privateKeyPem: string,
+  rig: string,
+  query: Record<string, string>,
+) {
+  const ids = (v: string | undefined) => new Set((v ?? "").split(",").filter(Boolean));
+  const have = ids(query.have);
+  const staging = ids(query.staging);
+  const now = Date.now();
+  const pending = store.pendingCommands(rig).map((c) => {
+    const e = c.envelope;
+    const until = Math.min(
+      now + RENEW_FOR_MS,
+      Date.parse(e.issued_at) + STAGING_HOLD_HOURS * 3_600_000,
+    );
+    const expires = Date.parse(e.expires_at);
+    if (!staging.has(e.id) || expires - now > RENEW_BEFORE_MS || until <= expires) return { c };
+    const renewed = signEnvelope(
+      { ...e, expires_at: new Date(until).toISOString() },
+      privateKeyPem,
+    );
+    store.db
+      .prepare("update command set signed = ? where id = ? and status = 'pending'")
+      .run(canonicalJson(renewed), e.id);
+    store.audit("control", "command_renewed", {
+      id: e.id,
+      rig,
+      expires_at: renewed.envelope.expires_at,
+      why: "its sources are still being fetched",
+    });
+    return { c: renewed, renewed: true };
+  });
+  const whole = (p: { c: SignedCommand; renewed?: boolean }) =>
+    p.renewed || !have.has(p.c.envelope.id);
+  return {
+    commands: pending.filter(whole).map((p) => p.c),
+    held: pending.filter((p) => !whole(p)).map((p) => p.c.envelope.id),
+  };
 }
 
 /** A command outcome that came from the harness's signed report, not from the supervisor. */

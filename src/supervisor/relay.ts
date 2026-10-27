@@ -14,13 +14,19 @@ export interface RelayConfig {
   controlUrl?: string | undefined;
   controlToken?: string | undefined;
   fetchImpl?: typeof fetch | undefined;
-  /** Makes a command's content available first (propagation); "wait" holds it for a later round. */
   /** True: relayOnce leaves commands to relayCommandsOnce, run on its own shorter interval. */
   skipCommands?: boolean | undefined;
   /** Content a command brings: relay it, wait for it, or report that it could not be had. */
   stage?: ((cmd: SignedCommand) => Promise<"ready" | "wait" | { failed: string }>) | undefined;
   /** Told about each relayed command's outcome (a full reset's wipe acts on it). */
   onDelivered?: ((kind: string, accepted: boolean) => void) | undefined;
+  /**
+   * The pending commands fetched already, by id: control sends each one's content once, and then
+   * only its id while it waits, such as for its sources (goal 171).
+   */
+  held?: Map<string, SignedCommand> | undefined;
+  /** Of those, the ones whose sources are still being fetched: control keeps them alive. */
+  staging?: Set<string> | undefined;
 }
 
 export interface RelayState {
@@ -168,18 +174,29 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
 export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
   const f = cfg.fetchImpl ?? fetch;
   if (cfg.controlUrl && cfg.controlToken) {
+    const held = cfg.held ?? new Map<string, SignedCommand>();
+    const staging = cfg.staging ?? new Set<string>();
+    const list = (ids: Iterable<string>) => encodeURIComponent([...ids].join(","));
+    const have = held.size ? `?have=${list(held.keys())}&staging=${list(staging)}` : "";
     const pending = must(
       await call(
         f,
-        `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/pending`,
+        `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/pending${have}`,
         cfg.controlToken,
         toControl(),
       ),
       "pending commands",
-    ) as { commands: SignedCommand[] };
-    for (const cmd of pending.commands) {
+    ) as { commands: SignedCommand[]; held?: string[] };
+    // What control still holds pending, oldest first; a control that names none sent all whole.
+    const still = new Set(pending.held ?? []);
+    for (const id of [...held.keys()]) if (!still.has(id)) held.delete(id);
+    for (const cmd of pending.commands) held.set(cmd.envelope.id, cmd);
+    for (const id of [...staging]) if (!held.has(id)) staging.delete(id);
+    for (const cmd of [...held.values()]) {
       try {
         const staged = cfg.stage ? await cfg.stage(cmd) : "ready";
+        if (staged === "wait") staging.add(cmd.envelope.id);
+        else staging.delete(cmd.envelope.id);
         if (staged === "wait") continue;
         if (staged !== "ready") {
           // The content never arrived: the harness would only refuse it, without the reason.

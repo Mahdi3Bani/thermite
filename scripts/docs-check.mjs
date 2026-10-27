@@ -321,6 +321,7 @@ const internalSettings = new Map([
   ["THERMITE_WORKSPACE", "the controller tells thermite-trial where the trial's workspace is"],
   ["THERMITE_OPENCODE_EVENTS", "the controller's event log path for an OpenCode trial"],
   ["THERMITE_CLAUDE_EVENTS", "the controller's event log path for a Claude Code trial"],
+  ["THERMITE_CLAUDE_PROMPT", "the controller tells the shell where a Claude Code run's prompt is"],
   ["THERMITE_CODEX_EVENTS", "the controller's event log path for a Codex trial"],
   [
     "THERMITE_COMPACTION_DROPS",

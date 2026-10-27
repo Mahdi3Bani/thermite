@@ -6,7 +6,6 @@ import { log, redact } from "../common/env.ts";
 import { answerOf, jsonBody } from "../common/errors.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
-import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
@@ -35,7 +34,7 @@ import { CopyCampaignBody, copyCampaignAnswer } from "./copy-campaign.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
-import { issueWaking, propagateChampion, WakeRefused } from "./issue.ts";
+import { issueWaking, pendingFor, propagateChampion, WakeRefused } from "./issue.ts";
 import { addKit, kitAnswer, kitsAnswer } from "./kit-add.ts";
 import { KIT_BUNDLE_MAX, type KitRepos } from "./kit-repos.ts";
 import {
@@ -45,6 +44,7 @@ import {
   type DeploymentDriver,
   RunpodDriver,
 } from "./lifecycle.ts";
+import { takeLive } from "./live-in.ts";
 import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
 import { mountMcpServerRoutes } from "./mcp-server-routes.ts";
@@ -562,7 +562,7 @@ export function createControlApi(
   });
 
   app.get("/v1/rigs/:rig/commands/pending", rigAuth, (c) =>
-    c.json({ commands: store.pendingCommands(c.req.param("rig")) }),
+    c.json(pendingFor(store, privateKeyPem, c.req.param("rig"), c.req.query())),
   );
 
   app.post("/v1/commands/:id/cancel", admin, (c) =>
@@ -594,32 +594,10 @@ export function createControlApi(
     return c.json({ ok: true });
   });
 
-  // The live view: the harness's lines, signed with the rig's pinned key (the supervisor relays
-  // them but cannot forge them), and the supervisor's own lines, stored as unsigned.
+  // The live view: the harness's signed lines, and the supervisor's own (live-in.ts).
   app.post("/v1/rigs/:rig/live", rigAuth, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
-    const rig = c.req.param("rig");
-    const body = z
-      .object({
-        batch: LiveBatch,
-        supervisor: z
-          .object({ log_id: z.string().min(1).max(64), entries: z.array(LiveEntry).max(500) })
-          .optional(),
-      })
-      .parse(await jsonBody(c.req));
-    const b = body.batch;
-    if (b.rig !== rig) return c.json({ error: "rig mismatch" }, 403);
-    const pinned = store.rigKey(rig).pubkey;
-    if (!pinned) return c.json({ error: "the rig's report key is not accepted yet" }, 409);
-    if (!b.signature || !b.rig_pubkey || b.rig_pubkey.trim() !== pinned.trim())
-      return c.json({ error: "live lines must be signed with the rig's pinned key" }, 409);
-    if (!verifyJson(liveBody(b), b.signature, pinned))
-      return c.json({ error: "bad live signature" }, 403);
-    let added = store.addLive(rig, b.log_id, b.entries, true);
-    if (body.supervisor) {
-      const own = body.supervisor.entries.filter((e) => e.source === "supervisor");
-      added += store.addLive(rig, `supervisor:${body.supervisor.log_id}`, own, false);
-    }
-    return c.json({ added });
+    const [status, answer] = takeLive(store, c.req.param("rig"), await jsonBody(c.req));
+    return c.json(answer, status);
   });
 
   // The provider and model this rig's agents use, with the provider's key, for the rig's supervisor

@@ -542,7 +542,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       await new Promise((r) => setTimeout(r, 5_200));
       const res = await s.pump(pending);
       assert.equal(res.status, 200);
-      assert.deepEqual(await res.json(), { commands: [] });
+      assert.deepEqual(await res.json(), { commands: [], held: [] });
     } finally {
       await s.stop();
     }

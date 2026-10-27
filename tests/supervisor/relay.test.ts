@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
 import { createControlApi } from "../../src/control/api.ts";
+import { issueCommand } from "../../src/control/issue.ts";
 import { ControlStore, fingerprint } from "../../src/control/store.ts";
 import { generateSigningKeys, signEnvelope } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
@@ -137,6 +138,109 @@ describe("supervisor relay between control and harness", () => {
     assert.match(JSON.stringify(cmd.outcome), /staging: the repository has no commit/);
     assert.equal(harnessCalls, 0);
     assert.equal(env.service.ledger.getRun("smoke-1"), undefined);
+  });
+
+  test("a command that waits for its sources is fetched whole once, then by its id (goal 171)", async () => {
+    const env = makeHarnessEnv("rig-a");
+    const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      env.keys.privateKeyPem,
+    );
+    // What each fetch of the pending commands carried, in bytes.
+    const sizes: number[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const app = url.host === "harness" ? harness : control;
+      const res = await app.request(`${url.pathname}${url.search}`, init as RequestInit);
+      if (!url.pathname.endsWith("/commands/pending")) return res;
+      const body = await res.text();
+      sizes.push(body.length);
+      return new Response(body, { status: res.status, headers: res.headers });
+    };
+    const issued = await control.request("/v1/commands", {
+      method: "POST",
+      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({ rig: "rig-a", kind: "assign_campaign", payload: env.assignPayload() }),
+    });
+    const { id } = (await issued.json()) as { id: string };
+    let ready = false;
+    const cfg = {
+      rig: "rig-a",
+      harnessUrl: "http://harness",
+      harnessToken: "sup-token-abcdef",
+      controlUrl: "http://control",
+      controlToken: "rig-token-abcdef",
+      fetchImpl,
+      held: new Map(),
+      stage: async () => (ready ? ("ready" as const) : ("wait" as const)),
+    };
+    let state = await relayOnce(cfg, { cursor: 0 });
+    state = await relayOnce(cfg, state);
+    state = await relayOnce(cfg, state);
+    assert.equal(store.command(id)?.status, "pending", "it waits for its sources");
+    const [whole = 0, ...ids] = sizes;
+    assert.ok(whole > 1000, `the first fetch carries the command (${whole} bytes)`);
+    assert.deepEqual(ids, [ids[0], ids[0]]);
+    assert.ok((ids[0] ?? 0) < 100, `then only its id (${ids[0]} bytes)`);
+    // Its sources arrive: the command it holds is delivered, and leaves what it holds.
+    ready = true;
+    state = await relayOnce(cfg, state);
+    assert.equal(store.command(id)?.status, "delivered");
+    assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
+    await relayOnce(cfg, state);
+    assert.equal(cfg.held.size, 0);
+  });
+
+  test("an assignment whose sources take longer than its life stays alive while they stage (goal 171)", async () => {
+    const env = makeHarnessEnv("rig-a");
+    const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      env.keys.privateKeyPem,
+    );
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const app = url.host === "harness" ? harness : control;
+      return app.request(`${url.pathname}${url.search}`, init as RequestInit);
+    };
+    // A life of under two seconds stands in for an hour, and a slow model download for longer.
+    const { id } = issueCommand(store, env.keys.privateKeyPem, {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: env.assignPayload(),
+      ttlMinutes: 0.03,
+      issuedBy: "owner:test",
+    });
+    let ready = false;
+    const cfg = {
+      rig: "rig-a",
+      harnessUrl: "http://harness",
+      harnessToken: "sup-token-abcdef",
+      controlUrl: "http://control",
+      controlToken: "rig-token-abcdef",
+      fetchImpl,
+      held: new Map(),
+      staging: new Set<string>(),
+      stage: async () => (ready ? ("ready" as const) : ("wait" as const)),
+    };
+    let state = await relayOnce(cfg, { cursor: 0 });
+    state = await relayOnce(cfg, state);
+    await new Promise((r) => setTimeout(r, 2000));
+    state = await relayOnce(cfg, state);
+    assert.equal(store.command(id)?.status, "pending", "alive while its sources stage");
+    assert.ok(
+      store.listAudit(20).some((a) => a.action === "command_renewed"),
+      "the renewal is in the audit log",
+    );
+    ready = true;
+    await relayOnce(cfg, state);
+    assert.equal(store.command(id)?.status, "delivered");
+    assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
   });
 
   test("a reset harness ledger restarts the cursor, and control keeps both ledgers' events", async () => {

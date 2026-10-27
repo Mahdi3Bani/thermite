@@ -218,7 +218,7 @@ describe("the OpenCode harness", () => {
         runs.push(req);
         if (req.argv[1] === "run") during?.();
         // The model's shell call prints the word the check asked for.
-        const word = /echo (thermite-[a-z0-9]+)/.exec(req.argv.join(" "))?.[1] ?? "";
+        const word = /echo (thermite-[a-z0-9]+)/.exec(String(req.stdin))?.[1] ?? "";
         const out =
           req.argv[1] === "run" ? EVENTS.join("\n").replace('"ok\\n"', `"${word}\\n"`) : "";
         return {
@@ -446,7 +446,7 @@ describe("the OpenCode harness", () => {
         runner: {
           ...runner,
           run: (req: RunRequest) => {
-            runs.push(req.argv.join(" "));
+            runs.push(`${req.argv.join(" ")} ${req.stdin ?? ""}`);
             if (req.argv.includes("run")) nprocs.push(req.nproc);
             return runner.run(req);
           },
@@ -523,8 +523,8 @@ describe("the OpenCode harness", () => {
     assert.equal(calls.length, 6);
     assert.ok(opencodeRuns[1]?.argv.includes("ses_1"));
     // The message waiting when the first run ended went into the first continuation, once.
-    assert.match(String(opencodeRuns[1]?.argv.at(-1)), /owner: try the other loop/);
-    assert.doesNotMatch(String(opencodeRuns[2]?.argv.at(-1)), /owner:/);
+    assert.match(String(opencodeRuns[1]?.stdin), /owner: try the other loop/);
+    assert.doesNotMatch(String(opencodeRuns[2]?.stdin), /owner:/);
     assert.deepEqual(owner.given, [1]);
     assert.equal(r.stopped, "no_submission");
   });
@@ -578,7 +578,7 @@ describe("the OpenCode harness", () => {
     assert.equal(runs.filter((x) => x.argv.includes("run")).length, 5);
     assert.equal(r.stopped, "no_submission");
     // No trial length: the prompt says to submit once the change works, and names no minutes.
-    const first = String(runs.find((x) => x.argv.includes("run"))?.argv.at(-1));
+    const first = String(runs.find((x) => x.argv.includes("run"))?.stdin);
     assert.match(first, /Submit once your change works\./);
     assert.doesNotMatch(first, /This trial lasts/);
   });
@@ -631,7 +631,9 @@ describe("the OpenCode harness", () => {
     assert.equal(run.env?.THERMITE_TRIAL_AUTH, "trial.tok");
     assert.equal(run.env?.THERMITE_WORKSPACE, undefined, "nothing to submit");
     assert.ok(run.argv.includes("opencode/glm-5.3-flash-free"));
-    const prompt = String(run.argv.at(-1));
+    // On stdin: one argument holds at most 128 KiB on Linux (goal 171).
+    const prompt = String(run.stdin);
+    assert.ok(!run.argv.some((x) => x.includes("Topic: 2-bit decoding")));
     assert.ok(prompt.startsWith(RESEARCH_WORKER_SYSTEM));
     assert.match(prompt, /thermite-trial research add_claim - <<'EOF'/);
     assert.match(prompt, /only archived sources can verify a claim/);
@@ -719,7 +721,7 @@ describe("the OpenCode harness", () => {
       );
       return {
         r,
-        prompts: runs.filter((x) => x.argv.includes("run")).map((x) => String(x.argv.at(-1))),
+        prompts: runs.filter((x) => x.argv.includes("run")).map((x) => String(x.stdin)),
         killed,
         given: owner.given,
       };

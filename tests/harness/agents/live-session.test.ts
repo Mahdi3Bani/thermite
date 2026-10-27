@@ -93,4 +93,35 @@ describe("a Pi session's link to the owner's messages", () => {
     await s.emit({ type: "message_end", message: s.steered[0] }, live.signal);
     assert.deepEqual(reads, [], "a message the agent never answered stays waiting");
   });
+
+  test("a long reply reaches Live cut and marked; a line the harness refuses is logged once (goal 171)", async (t) => {
+    const s = standIn();
+    const lines: { kind: string; text: string }[] = [];
+    let refuse = false;
+    linkSession(s.agent, {
+      // As the trial API: a line over 8,000 characters is refused.
+      live: async (entries) => {
+        if (refuse || entries.some((e) => e.text.length > 8000)) throw new Error("400 refused");
+        lines.push(...entries);
+      },
+    });
+    const reply = (text: string) => ({
+      type: "message_end",
+      message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text }] },
+    });
+    await s.emit(reply("x".repeat(20_000)));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0]?.text.length, 7996);
+    assert.match(lines[0]?.text ?? "", /x \[cut\]$/);
+    const said: string[] = [];
+    t.mock.method(process.stdout, "write", (chunk: string) => said.push(chunk));
+    refuse = true;
+    await s.emit(reply("one"));
+    await s.emit(reply("two"));
+    await new Promise((r) => setImmediate(r));
+    t.mock.restoreAll();
+    assert.equal(said.filter((l) => l.includes("a live line was not taken")).length, 1);
+    assert.match(said[0] ?? "", /"error":"Error: 400 refused"/);
+  });
 });

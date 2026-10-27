@@ -175,6 +175,7 @@ The dashboard calls an epoch a **round**.
 | Reports to control, exports pushed, champion uploads | Every 60 s | `THERMITE_POLL_SECONDS` |
 | Commands fetched from control | Every 5 s | `THERMITE_COMMAND_POLL_SECONDS` |
 | Live view lines sent to control | Every 3,000 ms | `THERMITE_LIVE_INTERVAL_MS` |
+| One line of the live view | 8,000 characters: a longer line, such as a long reply, is cut and ends with `[cut]` | Fixed |
 | The model route checked on control | Every 30 s | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
 | A rig shown as stale | After 180 s without a report | `THERMITE_CONTROL_STALE_SECONDS` |
 | A rig shown as offline on **Rigs**, in the REST API, MCP and `thermite rig list` | After 900 s without a report, never before it is stale | `THERMITE_CONTROL_OFFLINE_SECONDS` |

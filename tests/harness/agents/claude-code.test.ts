@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../src/agents/roles/worker.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
@@ -290,8 +290,15 @@ describe("Claude Code", () => {
     assert.deepEqual(run.argv.slice(0, 3), [
       "sh",
       "-c",
-      'exec 3<&0 && exec "$@" < /dev/null >> "$THERMITE_CLAUDE_EVENTS" 2>&1',
+      'exec 3<&0 && exec "$@" < "$THERMITE_CLAUDE_PROMPT" >> "$THERMITE_CLAUDE_EVENTS" 2>&1',
     ]);
+    // The prompt, written by the lane into its own area, is Claude Code's stdin: no argument
+    // carries it (goal 171).
+    const wrote = f.runs.find((x) => x.argv.join(" ").includes("cat > claude-prompt.txt"));
+    assert.equal(wrote?.cwd, a);
+    assert.match(String(wrote?.stdin), /Make it faster\./);
+    assert.equal(run.env?.THERMITE_CLAUDE_PROMPT, join(a, "claude-prompt.txt"));
+    assert.ok(!run.argv.some((x) => x.includes("Make it faster")));
     assert.equal(run.env?.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR, "3");
     assert.equal(run.env?.CLAUDE_CODE_OAUTH_TOKEN, undefined);
     assert.ok(
@@ -380,7 +387,9 @@ describe("Claude Code", () => {
         },
       );
       const runs = f.runs.filter((x) => x.argv.includes("-p"));
-      const prompts = runs.map((x) => String(x.argv[x.argv.indexOf("-p") + 1]));
+      const prompts = f.runs
+        .filter((x) => x.argv.join(" ").includes("cat > claude-prompt.txt"))
+        .map((x) => String(x.stdin));
       return { r, runs, prompts, given: owner.given };
     };
     const open = await run({ submit: false });
@@ -430,7 +439,9 @@ describe("Claude Code", () => {
     const runner = {
       run: async (req: RunRequest): Promise<RunOutcome> => {
         runs.push(req);
-        const word = /echo (thermite-[a-z0-9]+)/.exec(req.argv.join(" "))?.[1] ?? "";
+        const prompt = req.env?.THERMITE_CLAUDE_PROMPT;
+        const asked = prompt ? readFileSync(prompt, "utf8") : "";
+        const word = /echo (thermite-[a-z0-9]+)/.exec(asked)?.[1] ?? "";
         const out = req.argv.includes("-p")
           ? events()
               .join("\n")
@@ -458,7 +469,11 @@ describe("Claude Code", () => {
     const call = runs.find((x) => x.argv.includes("-p")) as RunRequest;
     assert.equal(call.argv[call.argv.indexOf("--tools") + 1], "Bash");
     assert.equal(call.stdin, TOKEN, "the token on stdin, for file descriptor 3");
-    assert.deepEqual(call.argv.slice(0, 3), ["sh", "-c", 'exec 3<&0 && exec "$@" < /dev/null']);
+    assert.deepEqual(call.argv.slice(0, 3), [
+      "sh",
+      "-c",
+      'exec 3<&0 && exec "$@" < "$THERMITE_CLAUDE_PROMPT"',
+    ]);
     assert.equal(call.env?.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR, "3");
     assert.ok(!Object.values(call.env ?? {}).some((v) => v.includes("sk-ant")));
     assert.equal(call.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, undefined);
@@ -487,7 +502,7 @@ describe("Claude Code", () => {
     );
   });
 
-  test("the shell gives Claude Code the token on file descriptor 3, and /dev/null for its stdin", () => {
+  test("the shell gives Claude Code the token on file descriptor 3, and its prompt's file for its stdin (goal 171)", () => {
     // A stand-in for Claude Code: what it reads on 0 and on 3, and whether its environment has it.
     const probe = `const fs = require("node:fs");
 const fd3 = fs.readFileSync(3, "utf8");
@@ -496,21 +511,26 @@ const inEnv = Object.values(process.env).some((v) => v.includes("made-up"));
 console.log(JSON.stringify({ fd3, fd0, inEnv, args: process.argv.slice(2) }));`;
     const file = join(mkdtempSync(join(tmpdir(), "thermite-cc-fd-")), "claude.cjs");
     writeFileSync(file, probe);
-    const argv = claudeShell([process.execPath, file, "-p", "the prompt"]);
+    // A prompt longer than one argument may be on Linux (128 KiB).
+    const prompt = `the prompt ${"x".repeat(200_000)}`;
+    const promptFile = join(dirname(file), "claude-prompt.txt");
+    writeFileSync(promptFile, prompt);
+    const argv = claudeShell([process.execPath, file, "-p"]);
     const r = spawnSync(argv[0] as string, argv.slice(1), {
       input: "made-up-token",
       encoding: "utf8",
       env: {
         PATH: process.env.PATH ?? "/usr/bin:/bin",
         CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3",
+        THERMITE_CLAUDE_PROMPT: promptFile,
       },
     });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(JSON.parse(r.stdout), {
       fd3: "made-up-token",
-      fd0: "",
+      fd0: prompt,
       inEnv: false,
-      args: ["-p", "the prompt"],
+      args: ["-p"],
     });
   });
 

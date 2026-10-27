@@ -1,5 +1,5 @@
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
-import { type LiveKind, summarizeArgs } from "../../../core/live.ts";
+import { type LiveKind, liveText, summarizeArgs } from "../../../core/live.ts";
 import { type CallUsage, callUsage } from "../../../core/usage.ts";
 
 /** OpenCode's JSON output, read into a tally of turns, calls and usage (moved out of opencode.ts). */
@@ -127,7 +127,7 @@ export function readOpencodeEvents(
         partAt(t, p.time?.start);
         if (p.text) {
           t.lastText = p.text;
-          live.push({ kind: "text", text: p.text.slice(0, 8000) });
+          live.push({ kind: "text", text: liveText(p.text) });
         }
         break;
       case "reasoning":
@@ -142,7 +142,7 @@ export function readOpencodeEvents(
         const ok = st.status === "completed";
         const output = String(st.output ?? st.error ?? "");
         t.tools.push({ tool, output: output.slice(0, 4000), ok });
-        live.push({ kind: "tool", text: `${tool} ${summarizeArgs(st.input)}`.slice(0, 8000) });
+        live.push({ kind: "tool", text: liveText(`${tool} ${summarizeArgs(st.input)}`) });
         live.push({
           kind: "result",
           text: `${tool}${ok ? "" : " failed"}: ${output.slice(0, 1200)}`,
