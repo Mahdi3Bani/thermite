@@ -61,6 +61,7 @@ import {
   took,
 } from "../research/shares.ts";
 import { Reviews } from "../reviews.ts";
+import { statusEvents } from "../run-status.ts";
 import type { HarnessService } from "../service.ts";
 import { routeOf } from "../usage.ts";
 import { violationsOf, violationsText } from "../v0.ts";
@@ -749,15 +750,11 @@ export class Scheduler {
     checks: { id: number; at: string }[],
   ): void {
     if (this.o.service.modelCheckRunning()) return;
-    const resumed = this.ledger.db
-      .prepare(
-        `select max(id) as id from event where kind = 'run_status' and subject = ? and id > ?
-           and json_extract(body, '$.status') = 'running'`,
-      )
-      .get(run, Math.max(open.id, checks[0]?.id ?? 0)) as { id: number | null };
+    const after = Math.max(open.id, checks[0]?.id ?? 0);
+    const resumed = statusEvents(this.ledger, run, after).some((e) => e.status === "running");
     const pause = Math.min(RECHECK_MAX_MS, RECHECK_FIRST_MS * 2 ** checks.length);
     const due = Date.parse(checks[0]?.at ?? open.at) + pause;
-    if (!resumed.id && Date.now() < due) return;
+    if (!resumed && Date.now() < due) return;
     this.o.service.checkModelNow("scheduler");
   }
 

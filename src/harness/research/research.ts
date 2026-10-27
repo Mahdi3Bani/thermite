@@ -22,6 +22,7 @@ import {
 } from "../../core/research-check.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import type { TaskYield } from "../queue.ts";
+import { statusEvents } from "../run-status.ts";
 import { blockedSpans } from "./blocked.ts";
 import { answersSection } from "./cards.ts";
 import {
@@ -1242,12 +1243,9 @@ export class Research {
     const created = String(this.get("select created_at from run where id = ?", run)?.created_at);
     const running: [number, number][] = [];
     let since: number | null = Date.parse(created);
-    for (const e of this.all(
-      "select at, body from event where kind in ('run_status', 'instance_status') and subject = ? order by id",
-      run,
-    )) {
-      const status = (JSON.parse(String(e.body)) as { status?: string }).status;
-      const at = Date.parse(String(e.at));
+    for (const e of statusEvents(this.ledger, run)) {
+      const status = e.status;
+      const at = Date.parse(e.at);
       if (at > now) break;
       if (status === "running") since ??= at;
       else if (since !== null) {

@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import type { Ledger } from "../ledger.ts";
+import { statusEvents } from "../run-status.ts";
 
 /**
  * A hill climb's baseline (goal 115): the judge's first job for a run measures its starting point
@@ -229,12 +230,7 @@ export function baselineDue(ledger: Ledger, run: string, now = Date.now()): Star
   // again records a newer failure, so each resume gives one try.
   if (
     s.state === "setup" &&
-    !ledger.db
-      .prepare(
-        `select 1 from event where kind = 'run_status' and subject = ? and id > ?
-           and json_extract(body, '$.status') = 'running' limit 1`,
-      )
-      .get(run, s.failure.id)
+    !statusEvents(ledger, run, s.failure.id).some((e) => e.status === "running")
   )
     return false;
   if (
