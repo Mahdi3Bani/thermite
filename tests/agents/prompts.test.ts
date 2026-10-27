@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { ROLES } from "../../src/agents/roles/index.ts";
 import { runResearchTrial } from "../../src/harness/agents/research-worker.ts";
 import { Scheduler } from "../../src/harness/agents/scheduler.ts";
 import { runTrial } from "../../src/harness/agents/worker.ts";
+import { createHarnessApi } from "../../src/harness/api.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
+import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
+import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
 import { type Script, startFakeModel } from "../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 import { makeResearchRun } from "../helpers/research-run.ts";
@@ -45,17 +49,25 @@ const text = (content: unknown): string =>
       ? content.map((p) => (p as { text?: string }).text ?? "").join("")
       : JSON.stringify(content);
 
-/** The first request of each role, by a key `roleOf` gives it; `answer` replies to every one. */
-function recorder(roleOf: (tools: string[]) => string, answer: Script) {
+/** The role whose fixed text a system text starts with (src/agents/roles). */
+function roleOf(system: string): string {
+  const role = ROLES.find((r) =>
+    r.texts.some((t) => t.text.length >= 80 && system.startsWith(t.text.slice(0, 80))),
+  );
+  return role?.id ?? `unknown: ${system.slice(0, 60)}`;
+}
+
+/** The first request of each role, by the role's id; `answer` replies to every request. */
+function recorder(answer: Script) {
   const sent = new Map<string, Sent>();
   const script: Script = (req) => {
-    const tools = req.tools.map((t) => t.function.name);
-    const role = roleOf(tools);
+    const system = text(req.messages.find((m) => m.role === "system")?.content);
+    const role = roleOf(system);
     if (!sent.has(role))
       sent.set(role, {
-        system: text(req.messages.find((m) => m.role === "system")?.content),
+        system,
         first: text(req.messages.find((m) => m.role === "user")?.content),
-        tools,
+        tools: req.tools.map((t) => t.function.name),
       });
     return answer(req);
   };
@@ -121,29 +133,27 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
       family: "loops",
       why: "the loop does one add per step",
     });
-    const { sent, script } = recorder(
-      (tools) => (tools.includes("submit_plan") ? "planner" : "worker"),
-      ({ tools }) =>
-        tools.some((t) => t.function.name === "submit_plan")
-          ? {
-              toolCalls: [
-                {
-                  name: "submit_plan",
-                  args: {
-                    new_families: [{ id: "loops", description: "simplify the inner loop" }],
-                    assignments: [
-                      {
-                        lane: "lane-1",
-                        family: "loops",
-                        focus: "remove wasted work",
-                        parent: "champion",
-                      },
-                    ],
-                  },
+    const { sent, script } = recorder(({ tools }) =>
+      tools.some((t) => t.function.name === "submit_plan")
+        ? {
+            toolCalls: [
+              {
+                name: "submit_plan",
+                args: {
+                  new_families: [{ id: "loops", description: "simplify the inner loop" }],
+                  assignments: [
+                    {
+                      lane: "lane-1",
+                      family: "loops",
+                      focus: "remove wasted work",
+                      parent: "champion",
+                    },
+                  ],
                 },
-              ],
-            }
-          : { text: "done" },
+              },
+            ],
+          }
+        : { text: "done" },
     );
     const fake = await startFakeModel(script);
     const runner = new LocalRunner(env.paths.scratchDir);
@@ -195,10 +205,7 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     );
     // Every role answers in words only: the planner's plan is then the fallback, and the worker's
     // trial ends with nothing recorded. Only the first request of each is kept.
-    const { sent, script } = recorder(
-      (tools) => (tools.includes("submit_plan") ? "planner" : "worker"),
-      () => ({ text: "done" }),
-    );
+    const { sent, script } = recorder(() => ({ text: "done" }));
     const fake = await startFakeModel(script);
     const model = {
       baseUrl: fake.url,
@@ -236,7 +243,80 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     await r.close();
     const { stateDir, scratchDir } = r.env.service.paths;
     const paths = [scratchDir, stateDir, r.env.root, r.base, tmpdir()];
-    golden("research-planner.pi", sent.get("planner"), paths);
-    golden("research-worker.pi", sent.get("worker"), paths);
+    golden("research-planner.pi", sent.get("research-planner"), paths);
+    golden("research-worker.pi", sent.get("research-worker"), paths);
+  });
+  test("a hill-climb run's two teachers and their merged by model, in Pi", async () => {
+    const env = makeJudgeEnv({
+      contract: {
+        notes: "The kernel sums an array of numbers. Keep its exported function's name.",
+      },
+    });
+    await env.service.applyCommand(env.assign);
+    const run = (env.assign.envelope.payload as { run: string }).run;
+    await env.service.applyCommand(
+      env.sign("message_agent", { run, to: "teachers", text: "Look at memory traffic first." }),
+    );
+    // A teacher reads its brief, then answers; the merged by model answers at once.
+    const { sent, script } = recorder(({ messages }) => {
+      const system = text(messages.find((m) => m.role === "system")?.content);
+      if (roleOf(system) === "merged-by")
+        return {
+          toolCalls: [
+            {
+              name: "answer",
+              args: {
+                directives: [{ kind: "try", family: "loops", rationale: "both", citations: ["a"] }],
+                experiments: [],
+              },
+            },
+          ],
+        };
+      if (!messages.some((m) => m.role === "tool"))
+        return { toolCalls: [{ name: "brief", args: {} }] };
+      return {
+        toolCalls: [
+          {
+            name: "answer",
+            args: {
+              summary: "the loop does wasted work",
+              recommendations: [{ kind: "try", family: "loops", rationale: "r", citations: ["a"] }],
+            },
+          },
+        ],
+      };
+    });
+    const fake = await startFakeModel(script);
+    const keys = mkdtempSync(join(tmpdir(), "thermite-prompts-"));
+    writeFileSync(join(keys, "key"), "test-key\n");
+    const runtime = (name: string) => ({
+      name,
+      runtime: "openai",
+      base_url: fake.url,
+      model: name,
+      api_key_file: join(keys, "key"),
+    });
+    const tokens = { supervisor: "sup-token" };
+    const api = createHarnessApi(env.service, tokens);
+    await adviseOnce(
+      {
+        harnessUrl: "http://harness",
+        harnessToken: tokens.supervisor,
+        home: mkdtempSync(join(tmpdir(), "thermite-prompts-sup-")),
+        advisors: AdvisorsConfig.parse({
+          teachers: [runtime("teacher-a"), runtime("teacher-b")],
+          merged_by: runtime("merged-by"),
+        }),
+        fetchImpl: async (input, init) => {
+          const url = new URL(String(input));
+          return await api.request(`${url.pathname}${url.search}`, init as RequestInit);
+        },
+      },
+      emptyAdviseState(),
+    );
+    await fake.close();
+    const paths = [env.paths.scratchDir, env.paths.stateDir, env.root, keys, tmpdir()];
+    golden("teacher.pi", sent.get("teacher"), paths);
+    golden("merged-by.pi", sent.get("merged-by"), paths);
   });
 });
