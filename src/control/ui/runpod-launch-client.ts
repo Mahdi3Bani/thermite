@@ -1,3 +1,4 @@
+import { judgeGpusByDefault } from "../../core/hardware.ts";
 import { RIG_ID, RIG_ID_SENTENCE } from "../../core/ids.ts";
 
 /**
@@ -28,7 +29,7 @@ export const RUNPOD_LAUNCH_JS = `
     const jRaw = $("judge").value.trim();
     const jNum = Number(jRaw);
     const jOk = n < 2 || !jRaw || (Number.isInteger(jNum) && jNum >= 1 && jNum < n);
-    const j = n < 2 ? 1 : jRaw && jOk ? jNum : Math.ceil(n / 2);
+    const j = n < 2 ? 1 : jRaw && jOk ? jNum : (${judgeGpusByDefault})(n);
     $("split").innerHTML = n < 2
       ? "<b>One GPU.</b> The judge and the agents share it. While the judge measures, the agents' own test runs wait, so its timings stay clean."
       : (jOk ? "" : '<b class="bad">The judge needs 1 to ' + (n - 1) + " GPUs.</b> ") + "<b>GPU" + (j > 1 ? "s 0–" + (j - 1) : " 0") + "</b> for the judge, <b>GPU" + (n - j > 1 ? "s " + j + "–" + (n - 1) : " " + j) + "</b> for the agents.";

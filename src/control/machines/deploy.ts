@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { redact } from "../../common/env.ts";
 import { shellQuote } from "../../common/exec.ts";
+import { judgeGpusByDefault } from "../../core/hardware.ts";
 import { RIG_ID, RIG_ID_WORDS } from "../../core/ids.ts";
 
 /**
@@ -52,7 +53,7 @@ export function gpuSplit(
   if (n > MAX_RIG_GPUS) throw new Error(`a rig takes at most ${MAX_RIG_GPUS} GPUs`);
   if (n === 0) return {};
   if (n === 1) return { THERMITE_GPU_INDEX: "0" };
-  const j = judge ?? Math.ceil(n / 2);
+  const j = judge ?? judgeGpusByDefault(n);
   if (!Number.isInteger(j) || j < 1 || j > n - 1 || j > 8 || n - j > 8)
     throw new Error(
       `with ${n} GPUs the judge takes 1 to ${Math.min(8, n - 1)} of them, and the agents at most 8`,

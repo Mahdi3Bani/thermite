@@ -1,3 +1,5 @@
+import { judgeGpusByDefault } from "../../core/hardware.ts";
+
 /**
  * The Add a rig page's script, served from control (/ui/assets/add-rig.js; no inline script runs
  * under the dashboard's CSP). It shows the chosen place's GPU and resource choices and says, in a
@@ -11,7 +13,7 @@
 export const JUDGE_SHARE_JS = `(n, typed) => {
   if (n < 2) return undefined;
   const raw = String(typed ?? "").trim();
-  if (!raw) return Math.ceil(n / 2);
+  if (!raw) return (${judgeGpusByDefault})(n);
   const j = Number(raw);
   if (!Number.isInteger(j) || j < 1 || j > n - 1 || j > 8 || n - j > 8)
     return "With " + n + " GPUs the judge takes 1 to " + Math.min(8, n - 1) + " of them, and the agents at most 8.";

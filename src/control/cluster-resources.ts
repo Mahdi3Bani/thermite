@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { errorText } from "../common/errors.ts";
+import { judgeGpusByDefault } from "../core/hardware.ts";
 import type { ClusterFacts, SlotQuota } from "./clusters/facts.ts";
 import { rigResources } from "./clusters/manifests.ts";
 import { MAX_RIG_GPUS } from "./machines/deploy.ts";
@@ -34,7 +35,7 @@ export type ResizeRefusal = { error: string; status: 400 | 403 | 404 | 409 };
 /** The judge's share of `n` GPUs: given, else half rounded up; or why not. One GPU is shared. */
 export function judgeShareOf(given: number | undefined, n: number): number | undefined | string {
   if (n < 2) return undefined;
-  if (given === undefined) return Math.ceil(n / 2);
+  if (given === undefined) return judgeGpusByDefault(n);
   if (!Number.isInteger(given) || given < 1 || given > n - 1 || given > 8 || n - given > 8)
     return `With ${n} GPUs the judge takes 1 to ${Math.min(8, n - 1)} of them, and the agents at most 8.`;
   return given;
@@ -50,7 +51,7 @@ export const resourcesWords = (r: ClusterRigSize["resources"]) =>
 export const splitOf = (s: ClusterRigSize) =>
   s.gpus < 2
     ? ""
-    : `${s.judgeGpus ?? Math.ceil(s.gpus / 2)} for the judge, ${s.gpus - (s.judgeGpus ?? Math.ceil(s.gpus / 2))} for the agents`;
+    : `${s.judgeGpus ?? judgeGpusByDefault(s.gpus)} for the judge, ${s.gpus - (s.judgeGpus ?? judgeGpusByDefault(s.gpus))} for the agents`;
 
 /** A size in a sentence: "4 GPUs (2 for the judge, 2 for the agents), 16 CPUs and 52 GiB of memory". */
 export function sizeWords(s: ClusterRigSize): string {

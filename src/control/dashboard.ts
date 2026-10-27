@@ -18,6 +18,7 @@ import {
   compactAtWords,
 } from "../core/compaction.ts";
 import { FolderSchema, MAX_LANES, parseContract } from "../core/contract.ts";
+import { judgeGpusByDefault } from "../core/hardware.ts";
 import { RIG_ID_SENTENCE } from "../core/ids.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { queueTarget, queueTargetNote } from "../core/queue-target.ts";
@@ -400,16 +401,15 @@ import {
 } from "./views.ts";
 
 /**
- * The control dashboard: server-rendered pages over control's store, with forms that issue
- * signed commands. Login takes the admin token once and keeps a random session in an HttpOnly,
- * SameSite=Strict cookie. Sessions are kept in control's store (hashed), so a restart does not
- * sign the owner out; each use renews one, and a new admin token ends them all. Every form
- * carries a token derived from the session and the admin token (CSRF). The only
- * script is control's own (/ui/assets/app.js): it streams the live view, and follows the owner's
- * actions to their outcome (goal 080: it draws the page's parts again when one comes). Pages never
- * reload by themselves otherwise: the status bar says when the page was made and has a refresh
- * link.
- * The look follows Magnesium's design.
+ * The control dashboard: server-rendered pages over control's store, with forms that issue signed
+ * commands. Login takes the admin token once and keeps a random session in an HttpOnly,
+ * SameSite=Strict cookie. Sessions are kept in control's store (hashed), so a restart does not sign
+ * the owner out; each use renews one, and a new admin token ends them all. Every form carries a
+ * token derived from the session and the admin token (CSRF). The only script is control's own
+ * (/ui/assets/app.js): it streams the live view, and follows the owner's actions to their outcome
+ * (goal 080: it draws the page's parts again when one comes). Pages never reload by themselves
+ * otherwise: the status bar says when the page was made and has a refresh link. The look follows
+ * Magnesium's design.
  */
 
 /** How long a dashboard session lasts without use; each day of use renews it. */
@@ -5324,7 +5324,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
   /** How a rig's GPUs are used, in words: "2 for the judge, 2 for the agents", or shared. */
   const splitWords = (n: number, judge?: number | undefined) => {
     if (n < 2) return "shared by the judge and the agents";
-    const j = judge ?? Math.ceil(n / 2);
+    const j = judge ?? judgeGpusByDefault(n);
     return `${j} for the judge, ${n - j} for the agents`;
   };
   /** Which of a machine rig's GPUs are the judge's (the first ones) and which the agents'. */
@@ -5333,7 +5333,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       .map((g, i) =>
         gpus.length < 2
           ? `GPU ${g} (shared)`
-          : `GPU ${g} (${i < (judge ?? Math.ceil(gpus.length / 2)) ? "judge" : "agents"})`,
+          : `GPU ${g} (${i < (judge ?? judgeGpusByDefault(gpus.length)) ? "judge" : "agents"})`,
       )
       .join(", ");
   /** The judge's share of `n` GPUs from a form field: a number from 1 to n-1, or the default. */

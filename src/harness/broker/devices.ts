@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { optionalNumberSetting } from "../../common/settings.ts";
+import { judgeGpusByDefault } from "../../core/hardware.ts";
 import { IDS, type Role, roleIds } from "./runner.ts";
 
 /**
@@ -80,7 +81,7 @@ export function effectiveGpuLists(
     ? (savedJudge as number)
     : fits(fromEnv)
       ? (fromEnv as number)
-      : Math.ceil(cards.length / 2);
+      : judgeGpusByDefault(cards.length);
   return {
     judge: cards.slice(0, j).join(","),
     dev: cards.slice(j).join(","),

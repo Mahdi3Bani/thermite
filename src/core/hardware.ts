@@ -54,3 +54,10 @@ export function readHardware(x: unknown): Hardware | null {
   }
   return h as Hardware;
 }
+
+/**
+ * The judge's GPUs on a rig of `n` when no split is given: half, rounded up (the one GPU of a
+ * rig with one). Control's pages and the broker split the same way; a page's script takes this
+ * function's source.
+ */
+export const judgeGpusByDefault = (n: number): number => Math.ceil(n / 2);
