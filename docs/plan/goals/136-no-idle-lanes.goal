@@ -35,7 +35,7 @@ The owner, 2026-10-25, on a lane that had run its trials and waited: "wtf explai
 
 ## Done when
 
-- [x] Item 1: a round ends without waiting for other lanes' running trials, in hill-climb, goal and research runs, with the judge's wait kept; tests that fail on the old code (`tests/harness/agents/scheduler.test.ts`, `scheduler-research.test.ts`, `scheduler/rounds.test.ts`).
+- [x] Item 1: a round ends without waiting for other lanes' running trials, in hill-climb, goal and research runs, with the judge's wait kept; tests that fail on the old code (`tests/harness/agents/scheduler/epochs.test.ts`, `scheduler-research.test.ts`, `scheduler/rounds.test.ts`).
 - [x] Item 2: a lasting refusal is answered at once when asked again, with no download; the fetcher's size refusal is caught; a test (`tests/harness/research/research.test.ts`).
 - [x] Items 1 and 2 rolled to the lab, and a research run there shows no lane idle behind another's trial.
 - [x] Item 3, after the owner approved its mockup, with tests that fail on the old code (`tests/harness/service/drain.test.ts`, `tests/harness/agents/scheduler/stops.test.ts`, `tests/control/ui/drain.test.ts`).

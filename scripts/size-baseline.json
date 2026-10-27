@@ -98,42 +98,6 @@
     },
     "src/supervisor/advisors.ts": {
       "lines": 2724
-    },
-    "tests/control/dashboard.test.ts": {
-      "lines": 2388
-    },
-    "tests/control/rig-model.test.ts": {
-      "lines": 907
-    },
-    "tests/control/runpod-lifecycle.test.ts": {
-      "lines": 903
-    },
-    "tests/control/steering-ui.test.ts": {
-      "lines": 1251
-    },
-    "tests/control/ui/campaigns.test.ts": {
-      "lines": 824
-    },
-    "tests/harness/agents/planner.test.ts": {
-      "lines": 812
-    },
-    "tests/harness/agents/scheduler-queue.test.ts": {
-      "lines": 1318
-    },
-    "tests/harness/agents/scheduler.test.ts": {
-      "lines": 1376
-    },
-    "tests/harness/agents/worker.test.ts": {
-      "lines": 1294
-    },
-    "tests/harness/broker/snapshot.test.ts": {
-      "lines": 999
-    },
-    "tests/harness/queue.test.ts": {
-      "lines": 820
-    },
-    "tests/harness/research-review.test.ts": {
-      "lines": 866
     }
   }
 }
