@@ -1,20 +1,20 @@
 ---
 id: "162"
 title: "Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-26
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # 162 · Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.1](../../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
 
 ## What
 
-The harness and knowledge reviewers of the v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) found these bugs in research runs and in the knowledge base. Each fix comes with a regression test that fails without it.
+The harness and knowledge reviewers of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found these bugs in research runs and in the knowledge base. Each fix comes with a regression test that fails without it.
 
 1. **Error pages become sources.** No code checks the HTTP status of a fetch (`src/harness/research/fetcher.ts` `request` and `get`; `src/harness/research/research.ts` `fetch`). A 403 challenge page, a 404, a 429 or a 503 is archived as a source, and a claim that quotes it passes the verbatim check. A URL whose first fetch got a 429 or 503 is then "already archived" for the rest of the run. The fix: refuse a non-2xx answer before it is archived; 404 and 410 are lasting refusals, 429 and 5xx refusals that can pass. The campaign modes page states the rule.
 2. **Answer cards count hosts, not registrable domains.** `claimFor` in `src/harness/research/cards.ts` counts `source.domain`. The review package, the report and the teachers' reads count registrable domains since 94ebe1b; the cards came later the same day and missed it.
@@ -35,12 +35,12 @@ Experiment integrity: a claim counts only when its quotes are in the archived te
 - [x] Each of the nine bugs is fixed, with a regression test that fails without the fix.
 - [x] Control's knowledge items written before the fix of item 3 are rebuilt, and the rebuild is tested.
 - [x] The campaign modes page and the knowledge base reference say what changed.
-- [ ] The fast checks pass, and the steering acceptance check.
+- [x] The fast checks pass, and the steering acceptance check.
 
 ## Decisions
 
-- 2026-10-26, owner (the [guide](../code-clean-up-guide.md#7-the-owners-questions)'s question 23): the paper, each answer card and the review panel's decisions become knowledge-base items of their own.
-- 2026-10-26, owner: v0.1.1 breaks compatibility with v0.1.0 ([decisions](../decisions.md#releases-and-planning)). Where goal 125 has already removed the old event names, an item here that reads them is done by that removal.
+- 2026-10-26, owner (the [guide](../../code-clean-up-guide.md#7-the-owners-questions)'s question 23): the paper, each answer card and the review panel's decisions become knowledge-base items of their own.
+- 2026-10-26, owner: v0.1.1 breaks compatibility with v0.1.0 ([decisions](../../decisions.md#releases-and-planning)). Where goal 125 has already removed the old event names, an item here that reads them is done by that removal.
 
 ## Open questions
 
@@ -58,7 +58,8 @@ Experiment integrity: a claim counts only when its quotes are in the archived te
 - 2026-10-27 06:32 UTC: Item 7 fixed: a briefing item's origin carries its rig (`from.rig`, which control always gives), and control finds the item by it, so of two rigs' runs of one name the right item comes; an item left out is logged with which and why (`briefingFromKb`, moved to `src/control/briefing.ts`; `tests/control/briefing.test.ts`). The copy of a past experiment finds its result by its rig too. The signed commands, MCP tools and knowledge base references and two how-to pages follow.
 - 2026-10-27 06:36 UTC: Item 8 fixed: a cut is always said (`cutSaid` in `src/core/kb-index.ts`), in the final report's event (60,000 characters) and in every report, paper and card item (20,000); the paper, each answer card and each decision of the review panel are items of their own, of the kind `report` (refs `paper`, `card-q<index>`, `decision-<kind>-<key>`), as the owner decided; control's one-time reading again reads them for earlier runs (`tests/core/kb-index.test.ts`). The knowledge base reference lists the new items and the cut.
 - 2026-10-27 06:40 UTC: Item 9 fixed: one `lanesAtWork` in `src/harness/agents/coordinator.ts` counts the lanes at work for the scheduler and for a message's readers, the owner's lane count before an advisor's, so a message to everyone never waits for a lane that never runs (`tests/harness/messages.test.ts`, which fails without the fix). All nine items are fixed; the steering acceptance check is still to run.
+- 2026-10-27 06:59 UTC: Verified. The full fast checks passed on e33b4436, after its nine items, and the steering acceptance check passed on 16030a14. Moved to `_completed/`.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/162-research-and-knowledge-bugs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/162-research-and-knowledge-bugs.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

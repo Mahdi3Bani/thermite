@@ -21,7 +21,7 @@ The goals it completes:
 | Goal | What |
 | --- | --- |
 | [125](125-code-to-the-conventions.goal) | The code to its conventions: the size check, the rules of shape, the guide's themes T1 to T15 |
-| [161](_completed/161-control-bugs-from-the-audit.goal), [162](162-research-and-knowledge-bugs.goal), [163](163-harness-bugs-from-the-audit.goal), [164](164-settings-that-fail-loudly.goal), [165](165-results-kept-through-remove-and-reset.goal), [171](171-bugs-on-the-wire.goal) | The bugs the audit found, each with a regression test |
+| [161](_completed/161-control-bugs-from-the-audit.goal), [162](_completed/162-research-and-knowledge-bugs.goal), [163](163-harness-bugs-from-the-audit.goal), [164](164-settings-that-fail-loudly.goal), [165](165-results-kept-through-remove-and-reset.goal), [171](171-bugs-on-the-wire.goal) | The bugs the audit found, each with a regression test |
 | [166](166-agent-definitions.goal) | Agent definitions in code, the prompt each run gives each role, shown everywhere |
 | [168](168-message-bus.goal) | NATS JetStream as the event log, the delivery and the queues between control, the supervisors and the dashboard |
 | [169](169-agents-in-their-terminal.goal) | Every role that takes the owner's messages in its program's own terminal, session logs as events, the Pi view, usage windows |
@@ -105,6 +105,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 - 2026-10-27 05:42 UTC: Goal 173's copy before every migration is in, for the ledger and control's store. A judge test that failed since goal 166's brief became sections (CI's judge-test jobs failed on it from then on) now renders the brief to text; its file moved its setup to `tests/helpers/held-out-env.ts` and its champion check to `tests/harness/judge/held-out/champion.test.ts`, as the size check asks. Next: the bugs of goals 161 to 165 and 171.
 - 2026-10-27 06:24 UTC: Goal 161 is done in code (its eight bugs, each with a regression test) and the control acceptance check passed; the full fast checks on its last commit failed one timing test of research runs, under the load of other test runs on the same machine. That test now takes a 1-second wait off the clock, past any lag. Goal 162's items 1 to 4 are fixed.
 - 2026-10-27 06:49 UTC: Goal 161 is verified and moved to `_completed/` (full fast checks on e33b4436, control acceptance after its last bug). Goal 162's nine items are fixed; its steering acceptance check is running. Goal 163 is under way: items 3, 4 and 5 are fixed.
+- 2026-10-27 06:59 UTC: Goal 162 is verified and moved to `_completed/` (full fast checks on e33b4436, steering acceptance on 16030a14). Goal 163: items 3 to 7 are fixed; items 1, 2, 9 and the owner's questions on item 8 are next.
 
 ---
 

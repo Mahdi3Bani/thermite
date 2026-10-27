@@ -190,7 +190,7 @@ Each theme is a set of changes across the code. Sizes are in files. The checks a
   - An item has five identity shapes.
 - **Shape.** One word for each meaning, chosen by the owner ([Q23](#7-the-owners-questions)). One module that reads the corpus, which every renderer uses. The knowledge base's items keep structured fields, not `Label: value` lines in prose.
 - **Size.** About 20 files.
-- **Depends on.** T1, T6. Goal [162](goals/162-research-and-knowledge-bugs.goal) fixes the bugs here first.
+- **Depends on.** T1, T6. Goal [162](goals/_completed/162-research-and-knowledge-bugs.goal) fixes the bugs here first.
 - **Check.** The fast checks; the steering acceptance check.
 
 ### T12. Work that grows with history
@@ -273,7 +273,7 @@ A move or a split updates each of these in the same commit:
 Each line is a set of small steps, each one green on its own.
 
 1. **The size check and the rules of shape:** the size check, as goal 125's step 2 asks, so nothing gets worse while the rest goes on; and the accepted rules of shape added to CONVENTIONS.md, so every later step follows them.
-2. **The bugs, each with a regression test,** so the splits after them are pure moves: goals [161](goals/_completed/161-control-bugs-from-the-audit.goal), [162](goals/162-research-and-knowledge-bugs.goal), [163](goals/163-harness-bugs-from-the-audit.goal), [164](goals/164-settings-that-fail-loudly.goal) and [165](goals/165-results-kept-through-remove-and-reset.goal).
+2. **The bugs, each with a regression test,** so the splits after them are pure moves: goals [161](goals/_completed/161-control-bugs-from-the-audit.goal), [162](goals/_completed/162-research-and-knowledge-bugs.goal), [163](goals/163-harness-bugs-from-the-audit.goal), [164](goals/164-settings-that-fail-loudly.goal) and [165](goals/165-results-kept-through-remove-and-reset.goal).
 3. **The shared homes, small and with little churn:** T1's words, T3's toolkit, then T4's settings, errors and logger.
 4. **The test scaffolding** (T10), before control's splits.
 5. **The contracts and clients** (T2), the domain modules out of the dashboard (T5), the ledger's owners and one promotion (T6), and the table of agent programs (T7).
