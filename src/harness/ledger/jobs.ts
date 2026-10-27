@@ -7,6 +7,17 @@ import { type JobRow, toJob } from "./rows.ts";
 /** After this many lease expiries a job is blocked instead of re-queued (poison-pill guard). */
 export const MAX_LEASE_EXPIRIES = 3;
 
+/** A run's job, with its spec and result read. */
+export interface RunJob {
+  id: number;
+  attempt: string | null;
+  state: string;
+  spec: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** The `job` and `receipt` tables: the judge's jobs, their leases and receipts. */
 export class LedgerJobs extends LedgerPart {
   enqueue(input: {
@@ -247,5 +258,68 @@ export class LedgerJobs extends LedgerPart {
   states(): Record<string, number> {
     const rows = this.rows<Row>("select state, count(*) as n from job group by state");
     return Object.fromEntries(rows.map((r) => [String(r.state), Number(r.n)]));
+  }
+
+  /** A run's jobs of one kind (its spec names the run), oldest first, with spec and result read. */
+  ofRun(run: string, kind: string): RunJob[] {
+    return this.rows<Row>(
+      "select id, attempt, state, spec, result, created_at, updated_at from job where kind = ? and json_extract(spec, '$.run') = ? order by id",
+      kind,
+      run,
+    ).map((r) => ({
+      id: Number(r.id),
+      attempt: r.attempt === null ? null : String(r.attempt),
+      state: String(r.state),
+      spec: JSON.parse(String(r.spec)) as Record<string, unknown>,
+      result: r.result === null ? null : (JSON.parse(String(r.result)) as Record<string, unknown>),
+      created_at: String(r.created_at),
+      updated_at: String(r.updated_at),
+    }));
+  }
+
+  /** How many jobs of these kinds are queued or leased. */
+  open(kinds: readonly string[]): number {
+    const r = this.row<Row>(
+      `select count(*) as n from job where state in ('queued', 'leased') and kind in (${kinds.map(() => "?").join(", ")})`,
+      ...kinds,
+    );
+    return Number(r?.n ?? 0);
+  }
+
+  /** How many jobs hold a lease that has not run out at `at`. */
+  leasedAt(at: Date): number {
+    const r = this.row<Row>(
+      "select count(*) as n from job where state = 'leased' and lease_until > ?",
+      at.toISOString(),
+    );
+    return Number(r?.n ?? 0);
+  }
+
+  /**
+   * At the harness's start, each job blocked by lost leases is queued once more, one lost lease
+   * from blocked again, with a `job_unblocked` event, and its attempt, which ended when the job
+   * was blocked, waits for the judge again: a lease lost to a judge that could not renew it (an
+   * older harness, during a long build) gets its try on the new one, and a job that keeps killing
+   * its judge is blocked again after one more try. Returns their ids.
+   */
+  unblock(actor: string): number[] {
+    return this.tx(() => {
+      const rows = this.rows<Row>("select id, expiries, attempt from job where state = 'blocked'");
+      for (const r of rows) {
+        this.execute(
+          "update job set state = 'queued', expiries = ?, lease_owner = null, lease_until = null, updated_at = ? where id = ?",
+          MAX_LEASE_EXPIRIES - 1,
+          this.now(),
+          Number(r.id),
+        );
+        this.appendEvent(actor, "job_unblocked", String(r.id), {
+          expiries: Number(r.expiries),
+          reason: "queued again at the harness's start: one more lost lease blocks it again",
+        });
+        if (r.attempt !== null)
+          this.ledger.attempts.setLifecycle(String(r.attempt), "queued", actor);
+      }
+      return rows.map((r) => Number(r.id));
+    });
   }
 }

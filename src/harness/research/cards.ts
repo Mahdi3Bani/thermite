@@ -523,10 +523,7 @@ export class Cards {
 
   /** For each running research run whose evidence changed since a card, its request. */
   pending(now = Date.now()): CardsPackage[] {
-    const runs = this.ledger.db
-      .prepare("select id from run where mode = 'research' and status = 'running' order by id")
-      .all() as { id: string }[];
-    return runs.flatMap(({ id }) => {
+    return this.ledger.runs.ids("research", "running").flatMap((id) => {
       const pkg = this.package(id, now);
       return pkg ? [pkg] : [];
     });

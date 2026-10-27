@@ -106,19 +106,8 @@ export interface StartingPoint {
  * until then.
  */
 export function startingPoint(ledger: Ledger, run: string): StartingPoint {
-  const r = ledger.db
-    .prepare(
-      `select seq, commit_sha, attempt from champion where run = ? and reopened = 0
-         and (seq = 1 or promoted_by like ?) order by seq desc limit 1`,
-    )
-    .get(run, `%${SETUP_MARK}`) as
-    | { seq: number; commit_sha: string; attempt: string | null }
-    | undefined;
-  if (!r) {
-    const c = ledger.champions.current(run);
-    return { seq: c.seq, commit: c.commit_sha, attempt: c.attempt };
-  }
-  return { seq: Number(r.seq), commit: String(r.commit_sha), attempt: r.attempt ?? null };
+  const c = ledger.champions.newestMarked(run, SETUP_MARK) ?? ledger.champions.current(run);
+  return { seq: c.seq, commit: c.commit_sha, attempt: c.attempt };
 }
 
 function newest<T>(
@@ -178,36 +167,33 @@ export function baselineState(ledger: Ledger, run: string): BaselineState | unde
   };
 }
 
+/** The baseline jobs of a run's starting point (not a setup change's), oldest first. */
+const startJobs = (ledger: Ledger, run: string, seq: number) =>
+  ledger.jobs
+    .ofRun(run, "baseline")
+    .filter((j) => j.attempt === null && j.spec.champion_seq === seq);
+
 /** How many baseline jobs of a run's starting point failed in the judge itself. */
 function failedStartJobs(ledger: Ledger, run: string, seq: number): number {
-  return Number(
-    (
-      ledger.db
-        .prepare(
-          `select count(*) as n from job
-             where kind = 'baseline' and attempt is null and state = 'failed'
-               and json_extract(spec, '$.run') = ? and json_extract(spec, '$.champion_seq') = ?`,
-        )
-        .get(run, seq) as { n: number }
-    ).n,
-  );
+  return startJobs(ledger, run, seq).filter((j) => j.state === "failed").length;
 }
 
-/** The newest baseline job of a run's starting point (not a setup change's). */
+/** The newest baseline job of a run's starting point. */
 function lastStartJob(
   ledger: Ledger,
   run: string,
   seq: number,
 ): { id: number; state: string; updated_at: string; error: string | null } | undefined {
-  return ledger.db
-    .prepare(
-      `select id, state, updated_at, json_extract(result, '$.error') as error from job
-         where kind = 'baseline' and attempt is null and json_extract(spec, '$.run') = ?
-           and json_extract(spec, '$.champion_seq') = ? order by id desc limit 1`,
-    )
-    .get(run, seq) as
-    | { id: number; state: string; updated_at: string; error: string | null }
-    | undefined;
+  const j = startJobs(ledger, run, seq).at(-1);
+  const error = j?.result?.error;
+  return (
+    j && {
+      id: j.id,
+      state: j.state,
+      updated_at: j.updated_at,
+      error: error == null ? null : String(error),
+    }
+  );
 }
 
 /**
@@ -342,17 +328,8 @@ export function baselineValue(xs: readonly number[]): BaselineValue {
  */
 export function guardTotals(ledger: Ledger, run: string): Record<string, number> {
   const totals: Record<string, number> = {};
-  const rows = ledger.db
-    .prepare(
-      "select attempt from champion where run = ? and reopened = 0 and attempt is not null and seq > ?",
-    )
-    .all(run, startingPoint(ledger, run).seq) as { attempt: string }[];
-  for (const r of rows) {
-    const v = ledger.db
-      .prepare(
-        "select guards from verdict where attempt = ? and verdict = 'win_confirmed' order by id desc limit 1",
-      )
-      .get(r.attempt) as { guards: string } | undefined;
+  for (const attempt of ledger.champions.attemptsAfter(run, startingPoint(ledger, run).seq)) {
+    const v = ledger.verdicts.confirmedWin(attempt);
     for (const g of JSON.parse(v?.guards ?? "[]") as { metric: string; estimate: number }[]) {
       totals[g.metric] = (totals[g.metric] ?? 0) + g.estimate;
     }

@@ -124,10 +124,7 @@ export function workNow(
     Number((ledger.db.prepare(sql).get(...params) as { n: number } | undefined)?.n ?? 0);
   return {
     trials: n("select count(*) as n from trial where ended_at is null"),
-    judge_jobs: n(
-      "select count(*) as n from job where state = 'leased' and lease_until > ?",
-      at.toISOString(),
-    ),
+    judge_jobs: ledger.jobs.leasedAt(at),
     draining: draining ? { ...draining } : null,
     open: openTrials(ledger, facts),
   };

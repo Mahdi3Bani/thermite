@@ -150,15 +150,7 @@ export class Audits {
 
   /** Confirmed gains of earlier wins in the run (for the ratio-to-median trigger). */
   priorDeltas(run: string, except: string): number[] {
-    return (
-      this.ledger.db
-        .prepare(
-          `select v.delta as delta from verdict v join attempt a on a.id = v.attempt
-           where a.run = ? and a.id != ? and v.verdict = 'win_confirmed' and v.delta is not null
-             and not exists (select 1 from verdict s where s.supersedes = v.id)`,
-        )
-        .all(run, except) as { delta: number }[]
-    ).map((r) => r.delta);
+    return this.ledger.verdicts.confirmedDeltas(run, except);
   }
 
   /** Records an audit request; the caller holds the attempt in awaiting_audit (same transaction). */
@@ -239,9 +231,7 @@ export class Audits {
     if (!au) throw new LedgerError("not_found", `no audit ${id}`);
     const a = this.ledger.attempts.get(String(au.attempt)) as Row;
     const current = this.ledger.verdicts.current(String(au.attempt));
-    const v = this.ledger.db
-      .prepare("select verdict, delta, ci_low, ci_high, guards from verdict where id = ?")
-      .get(current?.id ?? -1) as Row | undefined;
+    const v = current ? this.ledger.verdicts.get(current.id) : undefined;
     const num = (x: unknown) => (typeof x === "number" ? x : null);
     return {
       id,

@@ -154,4 +154,72 @@ export class LedgerChampions extends LedgerPart {
       run,
     ).map((r) => Number(r.seq));
   }
+
+  /** The attempts of a run's champions after `seq` that stand, oldest first. */
+  attemptsAfter(run: string, seq: number): string[] {
+    return this.rows<Row>(
+      "select attempt from champion where run = ? and reopened = 0 and attempt is not null and seq > ? order by seq",
+      run,
+      seq,
+    ).map((r) => String(r.attempt));
+  }
+
+  /** When a run's champion `seq` was promoted, if it was. */
+  promotedAt(run: string, seq: number): string | undefined {
+    const r = this.row<Row>("select promoted_at from champion where run = ? and seq = ?", run, seq);
+    return r ? String(r.promoted_at) : undefined;
+  }
+
+  /** A run's newest champions that stand, the newest first. */
+  newest(run: string, n: number): { seq: number; attempt: string | null; commit_sha: string }[] {
+    return this.rows<Row>(
+      "select seq, attempt, commit_sha from champion where run = ? and reopened = 0 order by seq desc limit ?",
+      run,
+      n,
+    ).map((r) => ({
+      seq: Number(r.seq),
+      attempt: r.attempt === null ? null : String(r.attempt),
+      commit_sha: String(r.commit_sha),
+    }));
+  }
+
+  /** The newest of a run's champions from `from` up to (not with) `below` that is this commit. */
+  seqOfCommit(run: string, commit: string, from: number, below: number): number | undefined {
+    const r = this.row<Row>(
+      "select seq from champion where run = ? and commit_sha = ? and seq < ? and seq >= ? order by seq desc limit 1",
+      run,
+      commit,
+      below,
+      from,
+    );
+    return r ? Number(r.seq) : undefined;
+  }
+
+  /** Whether an attempt is one of its run's champions that stand: its change is in them. */
+  holds(attempt: string): boolean {
+    return !!this.row<Row>("select 1 from champion where attempt = ? and reopened = 0", attempt);
+  }
+
+  /**
+   * The newest champion that stands among the starting point (seq 1) and those promoted by a
+   * name ending in `mark`, if any.
+   */
+  newestMarked(
+    run: string,
+    mark: string,
+  ): { seq: number; commit_sha: string; attempt: string | null } | undefined {
+    const r = this.row<Row>(
+      `select seq, commit_sha, attempt from champion where run = ? and reopened = 0
+         and (seq = 1 or promoted_by like ?) order by seq desc limit 1`,
+      run,
+      `%${mark}`,
+    );
+    return r
+      ? {
+          seq: Number(r.seq),
+          commit_sha: String(r.commit_sha),
+          attempt: r.attempt === null ? null : String(r.attempt),
+        }
+      : undefined;
+  }
 }

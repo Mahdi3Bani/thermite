@@ -8,6 +8,36 @@ export interface InvalidationResult {
   championsReopened: { run: string; seq: number }[];
 }
 
+/** A verdict as recorded. */
+export interface VerdictRow {
+  id: number;
+  attempt: string;
+  verdict: string;
+  delta: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+  /** The guards' estimates, as JSON. */
+  guards: string;
+  reasons: string;
+  created_at: string;
+}
+
+const num = (x: unknown) => (x === null || x === undefined ? null : Number(x));
+
+function toVerdict(r: Row): VerdictRow {
+  return {
+    id: Number(r.id),
+    attempt: String(r.attempt),
+    verdict: String(r.verdict),
+    delta: num(r.delta),
+    ci_low: num(r.ci_low),
+    ci_high: num(r.ci_high),
+    guards: String(r.guards),
+    reasons: String(r.reasons),
+    created_at: String(r.created_at),
+  };
+}
+
 /** The `verdict` and `invalidation` tables: the verdicts, and invalidation. */
 export class LedgerVerdicts extends LedgerPart {
   record(v: {
@@ -64,12 +94,30 @@ export class LedgerVerdicts extends LedgerPart {
     return id;
   }
 
-  /** A verdict's change and reasons, by its id. */
-  get(id: number): { delta: number | null; reasons: string } | undefined {
-    const r = this.row<Row>("select delta, reasons from verdict where id = ?", id);
-    return r
-      ? { delta: r.delta === null ? null : Number(r.delta), reasons: String(r.reasons) }
-      : undefined;
+  /** A verdict, by its id. */
+  get(id: number): VerdictRow | undefined {
+    const r = this.row<Row>("select * from verdict where id = ?", id);
+    return r ? toVerdict(r) : undefined;
+  }
+
+  /** The newest confirmed win of an attempt, if it has one. */
+  confirmedWin(attempt: string): VerdictRow | undefined {
+    const r = this.row<Row>(
+      "select * from verdict where attempt = ? and verdict = 'win_confirmed' order by id desc limit 1",
+      attempt,
+    );
+    return r ? toVerdict(r) : undefined;
+  }
+
+  /** The changes of a run's confirmed wins that stand, but `except`'s. */
+  confirmedDeltas(run: string, except: string): number[] {
+    return this.rows<{ delta: number }>(
+      `select v.delta as delta from verdict v join attempt a on a.id = v.attempt
+       where a.run = ? and a.id != ? and v.verdict = 'win_confirmed' and v.delta is not null
+         and not exists (select 1 from verdict s where s.supersedes = v.id)`,
+      run,
+      except,
+    ).map((r) => Number(r.delta));
   }
 
   /** The newest verdict for an attempt that no later verdict supersedes. */

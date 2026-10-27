@@ -215,4 +215,19 @@ export class LedgerRuns extends LedgerPart {
       if (status === "closed") this.ledger.jobs.endClosedRuns(actor, id);
     });
   }
+
+  /** The ids of the runs in this mode and status, in id order. */
+  ids(mode: string, status: RunRow["status"]): string[] {
+    return this.rows<Row>(
+      "select id from run where mode = ? and status = ? order by id",
+      mode,
+      status,
+    ).map((r) => String(r.id));
+  }
+
+  /** When a run was created, if it was. */
+  createdAt(id: string): string | undefined {
+    const r = this.row<Row>("select created_at from run where id = ?", id);
+    return r ? String(r.created_at) : undefined;
+  }
 }

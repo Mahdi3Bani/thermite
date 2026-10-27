@@ -70,14 +70,8 @@ const str = (v: unknown) => (v === null || v === undefined ? null : String(v));
 /** The planner's evidence of an attempt, with the judge's reasons and its experiment. */
 function withReasons(ledger: Ledger, e: Evidence, reasonChars: number): AttemptEvidence {
   const v = ledger.verdicts.current(e.attempt);
-  const reasons = v
-    ? (ledger.db.prepare("select reasons from verdict where id = ?").get(v.id) as
-        | { reasons: string }
-        | undefined)
-    : undefined;
-  const x = ledger.db
-    .prepare("select id, title from experiment where attempt = ? order by updated_at desc limit 1")
-    .get(e.attempt) as { id: string; title: string } | undefined;
+  const reasons = v ? ledger.verdicts.get(v.id) : undefined;
+  const x = ledger.experiments.ofAttempt(e.attempt);
   return {
     ...e,
     experiment: x ? { id: x.id, title: x.title } : null,

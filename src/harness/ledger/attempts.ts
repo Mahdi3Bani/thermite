@@ -109,4 +109,52 @@ export class LedgerAttempts extends LedgerPart {
     );
     return Object.fromEntries(rows.map((r) => [String(r.lifecycle), Number(r.n)]));
   }
+
+  /** The ids of a run's attempts in a family, oldest first. */
+  ofFamily(run: string, family: string): string[] {
+    return this.rows<Row>(
+      "select id from attempt where run = ? and family = ? order by created_at",
+      run,
+      family,
+    ).map((r) => String(r.id));
+  }
+
+  /** The families a run's attempts were tagged with. */
+  families(run: string): string[] {
+    return this.rows<Row>(
+      "select distinct family from attempt where run = ? and family is not null",
+      run,
+    ).map((r) => String(r.family));
+  }
+
+  /** Tags an attempt with the family it was judged in. */
+  setFamily(attempt: string, family: string): void {
+    this.execute("update attempt set family = ? where id = ?", family, attempt);
+  }
+
+  /** A run's newest attempts (on one lane, when given), the newest first. */
+  newest(run: string, limit: number, lane?: string): Row[] {
+    return lane
+      ? this.rows<Row>(
+          "select * from attempt where run = ? and lane = ? order by created_at desc limit ?",
+          run,
+          lane,
+          limit,
+        )
+      : this.rows<Row>(
+          "select * from attempt where run = ? order by created_at desc limit ?",
+          run,
+          limit,
+        );
+  }
+
+  /** How many of a run's attempts are in these lifecycles. */
+  countIn(run: string, lifecycles: readonly string[]): number {
+    const r = this.row<Row>(
+      `select count(*) as n from attempt where run = ? and lifecycle in (${lifecycles.map(() => "?").join(",")})`,
+      run,
+      ...lifecycles,
+    );
+    return Number(r?.n ?? 0);
+  }
 }

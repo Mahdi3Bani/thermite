@@ -378,13 +378,10 @@ export class Scheduler {
    */
   private finishClosedResearch(): void {
     if (!this.o.research) return;
-    const closed = this.ledger.db
-      .prepare(
-        `select id from run where mode = 'research' and status = 'closed'
-           and not exists (select 1 from event where kind = 'research_final' and subject = run.id)`,
-      )
-      .all() as { id: string }[];
-    for (const { id } of closed) {
+    const closed = this.ledger.runs
+      .ids("research", "closed")
+      .filter((id) => !this.ledger.events.count("research_final", { subject: id }));
+    for (const id of closed) {
       // Its last trials end first; a report that failed is not tried again by this process.
       if ([...this.laneRun.values()].includes(id) || this.finalFailed.has(id)) continue;
       try {
@@ -409,11 +406,8 @@ export class Scheduler {
    */
   private finishEndedResearch(): void {
     if (!this.o.research) return;
-    const running = this.ledger.db
-      .prepare("select id from run where mode = 'research' and status = 'running'")
-      .all() as { id: string }[];
     const papers = this.o.service.papers;
-    for (const { id } of running) {
+    for (const id of this.ledger.runs.ids("research", "running")) {
       const end = researchEnd(this.ledger, id);
       if (!end) continue;
       let noPaper: string | undefined;
@@ -727,10 +721,8 @@ export class Scheduler {
     const w = contract.budget.wall_hours;
     let due = false;
     if (w !== undefined) {
-      const created = this.ledger.db
-        .prepare("select created_at from run where id = ?")
-        .get(run) as { created_at: string };
-      const used = (Date.now() - Date.parse(created.created_at)) / (w * 3_600_000);
+      const created = String(this.ledger.runs.createdAt(run));
+      const used = (Date.now() - Date.parse(created)) / (w * 3_600_000);
       due = (rounds < 1 && used >= 1 / 3) || (rounds < 2 && used >= 2 / 3);
     } else {
       due = n > 1 && (n - 1) % 20 === 0;
@@ -768,12 +760,7 @@ export class Scheduler {
   }
 
   private openAttempts(run: string): number {
-    const r = this.ledger.db
-      .prepare(
-        `select count(*) as n from attempt where run = ? and lifecycle in (${OPEN_LIFECYCLES.map(() => "?").join(",")})`,
-      )
-      .get(run, ...OPEN_LIFECYCLES) as { n: number };
-    return Number(r.n);
+    return this.ledger.attempts.countIn(run, OPEN_LIFECYCLES);
   }
 
   /** Trials still running (awaited by tests and on shutdown). */
@@ -826,19 +813,9 @@ export class Scheduler {
    */
   private championGain(run: string): number {
     let gain = 1;
-    const rows = this.ledger.db
-      .prepare(
-        "select attempt from champion where run = ? and reopened = 0 and attempt is not null and seq > ?",
-      )
-      .all(run, startingPoint(this.ledger, run).seq) as { attempt: string }[];
-    for (const r of rows) {
-      const v = this.ledger.db
-        .prepare(
-          "select delta from verdict where attempt = ? and verdict = 'win_confirmed' order by id desc limit 1",
-        )
-        .get(r.attempt) as { delta: number | null } | undefined;
-      gain *= 1 + (v?.delta ?? 0);
-    }
+    const start = startingPoint(this.ledger, run).seq;
+    for (const attempt of this.ledger.champions.attemptsAfter(run, start))
+      gain *= 1 + (this.ledger.verdicts.confirmedWin(attempt)?.delta ?? 0);
     return gain - 1;
   }
 
@@ -922,22 +899,10 @@ export class Scheduler {
   private awaitingGoalReport(run: string, n: number): boolean {
     const { seq } = this.ledger.champions.current(run);
     if (this.goalReport(run, seq)) return false;
-    const since = String(
-      (
-        this.ledger.db
-          .prepare("select promoted_at from champion where run = ? and seq = ?")
-          .get(run, seq) as { promoted_at: string } | undefined
-      )?.promoted_at ?? "",
-    );
-    const failed = Number(
-      (
-        this.ledger.db
-          .prepare(
-            "select count(*) as k from job where kind = 'validate' and state = 'failed' and json_extract(spec, '$.run') = ? and updated_at >= ?",
-          )
-          .get(run, since) as { k: number }
-      ).k,
-    );
+    const since = this.ledger.champions.promotedAt(run, seq) ?? "";
+    const failed = this.ledger.jobs
+      .ofRun(run, "validate")
+      .filter((j) => j.state === "failed" && j.updated_at >= since).length;
     const waited = since ? Date.now() - Date.parse(since) : Number.POSITIVE_INFINITY;
     const giveUp = failed >= 3 || waited >= this.o.goalReportWaitMs;
     const key = `${run}:${seq}:${n}:${giveUp}`;
@@ -964,14 +929,14 @@ export class Scheduler {
    */
   private waitingForConfirmation(run: string): boolean {
     const { seq } = this.ledger.champions.current(run);
-    const pending = this.ledger.db
-      .prepare(
-        `select count(*) as k from job where kind = 'validate' and state in ('queued', 'leased')
-           and json_extract(spec, '$.run') = ? and json_extract(spec, '$.confirm') = 1
-           and json_extract(spec, '$.champion_seq') = ?`,
-      )
-      .get(run, seq) as { k: number };
-    const waiting = Number(pending.k) > 0;
+    const waiting = this.ledger.jobs
+      .ofRun(run, "validate")
+      .some(
+        (j) =>
+          (j.state === "queued" || j.state === "leased") &&
+          j.spec.confirm === true &&
+          j.spec.champion_seq === seq,
+      );
     const noted = this.confirmNoted.get(run);
     if (waiting && noted !== seq) {
       this.confirmNoted.set(run, seq);
@@ -1650,13 +1615,11 @@ export class Scheduler {
     if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
     const wallHours = inst.contract.budget.wall_hours;
-    const created = this.ledger.db
-      .prepare("select created_at from run where id = ?")
-      .get(inst.id) as { created_at: string } | undefined;
+    const created = this.ledger.runs.createdAt(inst.id);
     if (
       wallHours !== undefined &&
       created &&
-      Date.now() - Date.parse(created.created_at) > wallHours * 3_600_000
+      Date.now() - Date.parse(created) > wallHours * 3_600_000
     ) {
       if (!this.running.size) {
         this.ledger.runs.setStatus(

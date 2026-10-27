@@ -921,10 +921,8 @@ export class HarnessService {
     const prior = this.ledger.commands.get(envelope.id);
     if (prior) return { status: "replayed", ...prior };
     // After a wipe, commands signed for the old ledger are not applied to the new one.
-    const notBefore = this.ledger.db
-      .prepare("select value from meta where key = 'not_before'")
-      .get() as { value: string } | undefined;
-    if (notBefore && Date.parse(envelope.issued_at) < Date.parse(notBefore.value)) {
+    const notBefore = this.ledger.notBefore();
+    if (notBefore && Date.parse(envelope.issued_at) < Date.parse(notBefore)) {
       this.ledger.appendEvent(actor, "command_rejected", null, {
         reason: "issued before this rig's state was wiped",
         kind: envelope.kind,

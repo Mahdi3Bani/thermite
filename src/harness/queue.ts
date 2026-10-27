@@ -183,12 +183,11 @@ export class ExperimentQueue {
       const d = x.family ? directionOf(x.family) : undefined;
       if (d) names.add(d);
     }
-    const rows = this.ledger.db
-      .prepare(
-        "select id as name from family where run = ? union select family as name from attempt where run = ? and family is not null",
-      )
-      .all(run, run) as { name: string }[];
-    for (const r of rows) if (DIRECTION_NAME.test(r.name)) names.add(r.name);
+    const families = this.ledger.db.prepare("select id from family where run = ?").all(run) as {
+      id: string;
+    }[];
+    for (const name of [...families.map((f) => f.id), ...this.ledger.attempts.families(run)])
+      if (DIRECTION_NAME.test(name)) names.add(name);
     if (this.ledger.runs.get(run)?.mode === "research")
       for (const k of RESEARCH_TASK_KINDS) names.add(k);
     return [...names].sort((a, b) => a.localeCompare(b));
@@ -196,11 +195,7 @@ export class ExperimentQueue {
 
   /** The experiment a trial works (or worked) on, if it had one. */
   forTrial(trial: string): Experiment | undefined {
-    const id = (
-      this.ledger.db
-        .prepare("select id from experiment where trial = ? order by updated_at desc limit 1")
-        .get(trial) as { id: string } | undefined
-    )?.id;
+    const id = this.ledger.experiments.ofTrial(trial)?.id;
     return id ? this.get(id) : undefined;
   }
 
@@ -223,10 +218,8 @@ export class ExperimentQueue {
     const judged = (attempt: string) => {
       const v = this.ledger.verdicts.current(attempt);
       if (!v) return { lifecycle: String(this.ledger.attempts.get(attempt)?.lifecycle ?? "") };
-      const d = this.ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as
-        | { delta: number | null }
-        | undefined;
-      return { verdict: v.verdict, ...(typeof d?.delta === "number" ? { delta: d.delta } : {}) };
+      const delta = this.ledger.verdicts.get(v.id)?.delta;
+      return { verdict: v.verdict, ...(typeof delta === "number" ? { delta } : {}) };
     };
     return {
       up_next: this.queued(run)

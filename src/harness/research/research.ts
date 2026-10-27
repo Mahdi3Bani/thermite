@@ -1240,7 +1240,7 @@ export class Research {
   /** The run's clock; with `now`, as it stood then (running time up to that moment). */
   clock(run: string, now = Date.now()) {
     const c = this.contract(run);
-    const created = String(this.get("select created_at from run where id = ?", run)?.created_at);
+    const created = String(this.ledger.runs.createdAt(run));
     const running: [number, number][] = [];
     let since: number | null = Date.parse(created);
     for (const e of statusEvents(this.ledger, run)) {

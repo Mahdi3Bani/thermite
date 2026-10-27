@@ -130,45 +130,18 @@ export function researchState(
   // The tasks given out: those handed to a lane for its next trial and not started yet (the
   // round's reserved ones), then those a trial took, the newest first.
   const reserved = (o.reserved ?? []).flatMap((id) => {
-    const r = ledger.db
-      .prepare("select question from experiment where id = ? and run = ? and state = 'queued'")
-      .get(id, run) as { question: number | null } | undefined;
-    return has(r?.question) ? [r.question] : [];
+    const x = ledger.experiments.get(id);
+    return x?.run === run && x.state === "queued" && has(x.question) ? [x.question] : [];
   });
-  const recent = [
-    ...reserved,
-    ...(
-      ledger.db
-        .prepare(
-          `select e.question as question from experiment e join trial t on t.id = e.trial
-             where e.run = ? and e.question is not null and e.state in ('assigned', 'done')
-           order by t.rowid desc limit ?`,
-        )
-        .all(run, window) as { question: number }[]
-    )
-      .map((r) => Number(r.question))
-      .filter(has),
-  ].slice(0, window);
-  const total = new Map<number, number>();
-  for (const r of ledger.db
-    .prepare(
-      `select question, count(*) as c from experiment where run = ? and question is not null
-         and state in ('queued', 'assigned', 'done') group by question`,
-    )
-    .all(run) as { question: number; c: number }[])
-    total.set(Number(r.question), Number(r.c));
+  const taken = ledger.experiments.takenQuestions(run, window).filter(has);
+  const recent = [...reserved, ...taken].slice(0, window);
+  const total = ledger.experiments.questionCounts(run);
   // The round's tasks: given to a trial of the round, or reserved for one.
   const round = new Map<number, number>();
   for (const q of reserved) round.set(q, (round.get(q) ?? 0) + 1);
   if (o.epoch !== undefined)
-    for (const r of ledger.db
-      .prepare(
-        `select e.question as question, count(*) as c from experiment e join trial t on t.id = e.trial
-           where e.run = ? and e.question is not null and t.epoch = ? and e.state in ('assigned', 'done')
-         group by e.question`,
-      )
-      .all(run, o.epoch) as { question: number; c: number }[])
-      round.set(Number(r.question), (round.get(Number(r.question)) ?? 0) + Number(r.c));
+    for (const [q, c] of ledger.experiments.questionCounts(run, o.epoch))
+      round.set(q, (round.get(q) ?? 0) + c);
   const questions: QuestionState[] = contract.questions.map((text, index) => {
     const c = cards.get(index);
     const card = c
@@ -214,12 +187,7 @@ export function researchState(
 
 /** What a question's last SATURATION_TASKS finished tasks added. */
 function lastYield(ledger: Ledger, run: string, question: number): QuestionState["yield"] {
-  const rows = ledger.db
-    .prepare(
-      `select yield from experiment where run = ? and question = ? and state = 'done' and yield is not null
-         order by updated_at desc, rowid desc limit ?`,
-    )
-    .all(run, question, SATURATION_TASKS) as { yield: string }[];
+  const rows = ledger.experiments.yields(run, question, SATURATION_TASKS);
   const out = { tasks: rows.length, verified_claims: 0, new_domain_claims: 0 };
   for (const r of rows) {
     let y: TaskYield | undefined;

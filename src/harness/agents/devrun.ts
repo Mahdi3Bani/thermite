@@ -89,12 +89,7 @@ export class DevRuns {
   }
 
   private judgeBusy(): boolean {
-    const r = this.ledger.db
-      .prepare(
-        "select count(*) as n from job where state in ('queued', 'leased') and kind in ('evaluate', 'confirm', 'calibrate', 'validate')",
-      )
-      .get() as { n: number };
-    return Number(r.n) > 0;
+    return this.ledger.jobs.open(["evaluate", "confirm", "calibrate", "validate"]) > 0;
   }
 
   /** Each lane's dev run still waiting for a device: how to give it up (its trial ended). */

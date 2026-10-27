@@ -56,19 +56,14 @@ export class Conclusions {
     for (const f of families) {
       const attempts: RefutedApproach["attempts"] = [];
       let promising = false;
-      for (const a of this.ledger.db
-        .prepare("select id from attempt where run = ? and family = ? order by created_at")
-        .all(run, String(f.id)) as Row[]) {
-        const v = this.ledger.verdicts.current(String(a.id));
+      for (const id of this.ledger.attempts.ofFamily(run, String(f.id))) {
+        const v = this.ledger.verdicts.current(id);
         if (!v) continue;
         if (PROMISING.has(v.verdict)) promising = true;
         if (!REFUTING.has(v.verdict)) continue;
-        const reasons = String(
-          (this.ledger.db.prepare("select reasons from verdict where id = ?").get(v.id) as Row)
-            .reasons,
-        );
+        const reasons = String(this.ledger.verdicts.get(v.id)?.reasons);
         attempts.push({
-          attempt: String(a.id),
+          attempt: id,
           verdict: v.verdict,
           verdict_id: v.id,
           reasons: reasons.slice(0, 500),

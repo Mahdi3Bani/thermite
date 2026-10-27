@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parseContract } from "../../../src/core/contract.ts";
-import { jobsAtStart, unblockAtStart, whileLeased } from "../../../src/harness/judge/lease.ts";
+import { jobsAtStart, whileLeased } from "../../../src/harness/judge/lease.ts";
 import { Ledger, MAX_LEASE_EXPIRIES } from "../../../src/harness/ledger.ts";
 import { hillClimbFixture } from "../../helpers/fixtures.ts";
 
@@ -105,8 +105,8 @@ test("a job blocked by lost leases ends its attempt, and gets one more try at th
   lose();
   assert.equal(ledger.jobs.get(job)?.state, "blocked");
   assert.equal(lifecycle(), "errored");
-  assert.deepEqual(unblockAtStart(ledger, "t"), [job]);
-  assert.deepEqual(unblockAtStart(ledger, "t"), []);
+  assert.deepEqual(ledger.jobs.unblock("t"), [job]);
+  assert.deepEqual(ledger.jobs.unblock("t"), []);
   ledger.close();
 });
 

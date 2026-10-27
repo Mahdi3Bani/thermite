@@ -11,6 +11,7 @@ import type { Runner } from "../broker/runner.ts";
 import { Conclusions } from "../conclusions.ts";
 import { patchBetween } from "../git.ts";
 import { type Kit, loadKit } from "../kit.ts";
+import type { RunJob } from "../ledger/jobs.ts";
 import type { JobRow, Ledger } from "../ledger.ts";
 import { Reviews } from "../reviews.ts";
 import type { HarnessService } from "../service.ts";
@@ -1691,26 +1692,16 @@ export class Judge {
       // Hands-off by default (goal 079): the evidence ends the campaign unless the run asks.
       if (proposal !== undefined && this.o.service.takeConclusion(inst.id, proposal)) continue;
       const seq = this.ledger.champions.current(inst.id).seq;
-      const jobs = this.ledger.db
-        .prepare(
-          `select state, updated_at, json_extract(result, '$.champion_seq') as done_seq,
-             json_extract(result, '$.confirming') as confirming,
-             json_extract(spec, '$.champion_seq') as spec_seq
-           from job where kind = 'validate' and json_extract(spec, '$.run') = ? order by id`,
-        )
-        .all(inst.id) as {
-        state: string;
-        updated_at: string;
-        done_seq: number | null;
-        confirming: number | null;
-        spec_seq: number | null;
-      }[];
+      const jobs = this.ledger.jobs.ofRun(inst.id, "validate");
       if (jobs.some((j) => j.state === "queued" || j.state === "leased")) continue;
       // Settled: a validation of this champion that did not leave a completion to confirm.
-      if (jobs.some((j) => j.state === "done" && Number(j.done_seq) === seq && !j.confirming))
-        continue;
+      const settles = (j: RunJob) =>
+        j.state === "done" && Number(j.result?.champion_seq) === seq && !j.result?.confirming;
+      if (jobs.some(settles)) continue;
       const failed = jobs.filter(
-        (j) => j.state === "failed" && (j.spec_seq === null || Number(j.spec_seq) === seq),
+        (j) =>
+          j.state === "failed" &&
+          (j.spec.champion_seq == null || Number(j.spec.champion_seq) === seq),
       );
       if (failed.length >= 3) continue;
       const lastFail = failed.at(-1);
@@ -1941,12 +1932,10 @@ export class Judge {
     for (const inst of this.ledger.runs.list()) {
       if (inst.status !== "running" || inst.mode !== "hill_climb") continue;
       if (waiting.includes(inst.id)) continue;
-      const last = this.ledger.db
-        .prepare(
-          `select created_at from job where kind = 'calibrate' and json_extract(spec, '$.run') = ?
-             ${mine ? "and json_extract(spec, '$.card') = ?" : ""} order by id desc limit 1`,
-        )
-        .get(inst.id, ...(mine ? [mine] : [])) as { created_at: string } | undefined;
+      const last = this.ledger.jobs
+        .ofRun(inst.id, "calibrate")
+        .filter((j) => !mine || j.spec.card === mine)
+        .at(-1);
       if (last && Date.now() - Date.parse(last.created_at) < this.o.calibrationEveryMs) continue;
       this.ledger.jobs.enqueue({
         kind: "calibrate",

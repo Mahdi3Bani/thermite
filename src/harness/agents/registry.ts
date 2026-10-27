@@ -72,10 +72,7 @@ const EVIDENCE_VIOLATIONS = 5;
  */
 export function evidenceOf(ledger: Ledger, r: Row): Evidence {
   const v = ledger.verdicts.current(String(r.id));
-  const d = v
-    ? (ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as Row | undefined)
-        ?.delta
-    : null;
+  const d = v ? ledger.verdicts.get(v.id)?.delta : null;
   const refused = violationsOf(r.v0);
   const heldOut = ledger.heldOut.failure(String(r.id));
   return {
@@ -153,18 +150,14 @@ export class Registry {
       "select id, description, status from family where run = ? order by created_at",
       run,
     ).map((f) => {
-      const attempts = this.all(
-        "select id from attempt where run = ? and family = ?",
-        run,
-        String(f.id),
-      ).map((a) => String(a.id));
+      const attempts = this.ledger.attempts.ofFamily(run, String(f.id));
       const verdicts: Record<string, number> = {};
       let best: number | null = null;
       for (const a of attempts) {
         const v = this.ledger.verdicts.current(a);
         const key = v?.verdict ?? String(this.ledger.attempts.get(a)?.lifecycle);
         verdicts[key] = (verdicts[key] ?? 0) + 1;
-        const d = this.get("select delta from verdict where id = ?", v?.id ?? -1)?.delta;
+        const d = v ? this.ledger.verdicts.get(v.id)?.delta : null;
         if (typeof d === "number" && (best === null || d > best)) best = d;
       }
       return {
@@ -179,24 +172,12 @@ export class Registry {
   }
 
   tagAttempt(attempt: string, family: string): void {
-    this.ledger.db.prepare("update attempt set family = ? where id = ?").run(family, attempt);
+    this.ledger.attempts.setFamily(attempt, family);
   }
 
   /** The newest judged evidence, for the planner and for briefs. */
   evidence(run: string, limit = 30, lane?: string): Evidence[] {
-    const rows = lane
-      ? this.all(
-          "select id, lane, family, hypothesis, lifecycle, v0 from attempt where run = ? and lane = ? order by created_at desc limit ?",
-          run,
-          lane,
-          limit,
-        )
-      : this.all(
-          "select id, lane, family, hypothesis, lifecycle, v0 from attempt where run = ? order by created_at desc limit ?",
-          run,
-          limit,
-        );
-    return rows.map((r) => evidenceOf(this.ledger, r));
+    return this.ledger.attempts.newest(run, limit, lane).map((r) => evidenceOf(this.ledger, r));
   }
 
   currentEpoch(run: string): EpochRecord | undefined {
@@ -549,10 +530,8 @@ export class Registry {
 
   /** Duplicate rate: attempts recorded as duplicates over all recorded attempts. */
   duplicateRate(run: string): { duplicates: number; attempts: number } {
-    const r = this.get(
-      "select sum(lifecycle = 'duplicate') as d, count(*) as n from attempt where run = ?",
-      run,
-    );
-    return { duplicates: Number(r?.d ?? 0), attempts: Number(r?.n ?? 0) };
+    const counts = this.ledger.attempts.lifecycles(run);
+    const attempts = Object.values(counts).reduce((a, b) => a + b, 0);
+    return { duplicates: counts.duplicate ?? 0, attempts };
   }
 }

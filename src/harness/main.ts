@@ -194,9 +194,7 @@ async function main(): Promise<void> {
   // After a wipe: commands issued before it belonged to the old ledger.
   const notBefore = join(paths.stateDir, "ledger", NOT_BEFORE_FILE);
   if (existsSync(notBefore)) {
-    ledger.db
-      .prepare("insert or replace into meta (key, value) values ('not_before', ?)")
-      .run(readFileSync(notBefore, "utf8").trim());
+    ledger.setNotBefore(readFileSync(notBefore, "utf8").trim());
     rmSync(notBefore, { force: true });
   }
   // The rig's report-signing key: created once, kept with the ledger (0700).

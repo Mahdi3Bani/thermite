@@ -854,10 +854,7 @@ export class Papers {
 
   /** The runs waiting for their paper, each as the final writer's package. */
   pending(): PaperPackage[] {
-    const runs = this.ledger.db
-      .prepare("select id from run where mode = 'research' and status = 'running' order by id")
-      .all() as { id: string }[];
-    return runs.flatMap(({ id }) => {
+    return this.ledger.runs.ids("research", "running").flatMap((id) => {
       const asked = this.requested(id);
       const end = researchEnd(this.ledger, id);
       if (!asked || !end || this.accepted(id)) return [];

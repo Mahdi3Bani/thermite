@@ -103,6 +103,16 @@ export class Ledger {
     return String(this.get<Row>("select value from meta where key = 'ledger_id'")?.value);
   }
 
+  /** After a wipe: commands issued before this time belonged to the old ledger. */
+  notBefore(): string | undefined {
+    const r = this.get<Row>("select value from meta where key = 'not_before'");
+    return r ? String(r.value) : undefined;
+  }
+
+  setNotBefore(at: string): void {
+    this.run("insert or replace into meta (key, value) values ('not_before', ?)", at);
+  }
+
   private now(): string {
     return this.clock().toISOString();
   }

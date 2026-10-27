@@ -43,23 +43,10 @@ export function olderChampion(
   attempt: string,
   currentSeq: number,
 ): number | undefined {
-  if (crowned(ledger, attempt)) return undefined;
+  if (ledger.champions.holds(attempt)) return undefined;
   const parentCommit = String(ledger.attempts.get(attempt)?.parent_commit ?? "");
-  const r = ledger.db
-    .prepare(
-      "select seq from champion where run = ? and commit_sha = ? and seq < ? and seq >= ? order by seq desc limit 1",
-    )
-    .get(run, parentCommit, currentSeq, startingPoint(ledger, run).seq) as
-    | { seq: number }
-    | undefined;
-  return r ? Number(r.seq) : undefined;
-}
-
-/** Whether a change is, or was, one of its run's champions: its change is in them already. */
-function crowned(ledger: Ledger, attempt: string): boolean {
-  return !!ledger.db
-    .prepare("select 1 from champion where attempt = ? and reopened = 0")
-    .get(attempt);
+  const from = startingPoint(ledger, run).seq;
+  return ledger.champions.seqOfCommit(run, parentCommit, from, currentSeq);
 }
 
 /**
@@ -130,11 +117,7 @@ export async function queuePort(
  * it replaced, the replaced champion's change is not in it, and is ported onto it.
  */
 export async function portReplaced(service: HarnessService, run: string): Promise<void> {
-  const [cur, prev] = service.ledger.db
-    .prepare(
-      "select seq, attempt, commit_sha from champion where run = ? and reopened = 0 order by seq desc limit 2",
-    )
-    .all(run) as { seq: number; attempt: string | null; commit_sha: string }[];
+  const [cur, prev] = service.ledger.champions.newest(run, 2);
   if (!cur?.attempt || !prev?.attempt) return;
   const parent = String(service.ledger.attempts.get(cur.attempt)?.parent_commit ?? "");
   if (parent === prev.commit_sha) return;
@@ -148,12 +131,7 @@ export async function portReplaced(service: HarnessService, run: string): Promis
 
 /** The gain a change was promoted with: its confirmed win's. */
 function winDelta(ledger: Ledger, attempt: string): number | undefined {
-  const r = ledger.db
-    .prepare(
-      "select delta from verdict where attempt = ? and verdict = 'win_confirmed' order by id desc limit 1",
-    )
-    .get(attempt) as { delta: number | null } | undefined;
-  return r?.delta ?? undefined;
+  return ledger.verdicts.confirmedWin(attempt)?.delta ?? undefined;
 }
 
 /**

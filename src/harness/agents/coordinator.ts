@@ -159,11 +159,7 @@ export class Coordinator {
   ): Record<string, { direction: string | null; experiment: string | null }> {
     const out: Record<string, { direction: string | null; experiment: string | null }> = {};
     for (const lane of lanes) {
-      const x = this.ledger.db
-        .prepare(
-          "select title, family from experiment where run = ? and lane = ? order by updated_at desc, rowid desc limit 1",
-        )
-        .get(run, lane) as { title: string; family: string } | undefined;
+      const x = this.ledger.experiments.lastOfLane(run, lane);
       const t = x
         ? undefined
         : (this.ledger.db
@@ -469,18 +465,7 @@ export class Coordinator {
    * their trial ended (interrupted), and go back to the queue.
    */
   finishOrphans(actor: string): void {
-    const rows = this.ledger.db
-      .prepare(
-        `select e.trial as trial, t.stopped as stopped, t.attempt as attempt, t.error as error
-         from experiment e left join trial t on t.id = e.trial
-         where e.state = 'assigned' and (t.id is null or t.ended_at is not null)`,
-      )
-      .all() as {
-      trial: string;
-      stopped: string | null;
-      attempt: string | null;
-      error: string | null;
-    }[];
+    const rows = this.ledger.experiments.orphans();
     for (const r of rows)
       this.finish(
         r.trial,

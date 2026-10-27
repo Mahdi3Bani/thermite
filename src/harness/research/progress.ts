@@ -114,13 +114,7 @@ export function questionEnded(d: StandingDecision | undefined): boolean {
  * not saturated.
  */
 export function questionSaturated(ledger: Ledger, run: string, question: number): boolean {
-  const tasks = ledger.db
-    .prepare(
-      `select yield, created_at from experiment
-         where run = ? and question = ? and state = 'done' and yield is not null
-         order by updated_at desc, rowid desc limit ?`,
-    )
-    .all(run, question, SATURATION_TASKS) as { yield: string; created_at: string }[];
+  const tasks = ledger.experiments.yields(run, question, SATURATION_TASKS);
   if (tasks.length < SATURATION_TASKS) return false;
   for (const t of tasks) {
     let y: TaskYield | undefined;
