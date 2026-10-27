@@ -1,13 +1,34 @@
 import { z } from "zod";
+import { errorText } from "../common/errors.ts";
+import type { BriefingSeed } from "../core/commands.ts";
 import { AskOwner } from "../core/commands.ts";
-import type { ContextApplies } from "./campaign-context.ts";
+import {
+  agentsModelMissing,
+  giveRigModel,
+  harnessKept,
+  opencodeOnlyModel,
+  researchNeedsOpencode,
+} from "./agent-models.ts";
+import {
+  type ContextApplies,
+  campaignContract,
+  contextApplies,
+  contextAppliesWords,
+} from "./campaign-context.ts";
+import { sendSplit, splitFor } from "./gpu-split.ts";
+import { briefingSeedOf, type KbItem, PICKABLE, queueSeedOf } from "./kb.ts";
+import type { KitRepos } from "./kit-repos.ts";
+import { type QueueSeed, startRun } from "./new-campaign.ts";
+import type { ControlParts } from "./parts.ts";
+import { sameModel } from "./providers.ts";
+import { untriedOf } from "./queue-copy.ts";
+import type { ControlStore } from "./store.ts";
 
 /**
- * Start a run of a campaign control keeps, from outside the dashboard (goal 029): REST's
- * `POST /v1/campaigns/<name>/runs`, MCP's `start_run` and `thermite run start`. They take what
- * the campaign page's Start a run panel takes, and call the dashboard's own code for it
- * (ControlActions.startRun, filled in by dashboard.ts), so the panel and its twins check and
- * refuse alike. This module holds what the twins share: the request's fields, and the answer.
+ * Start a run of a campaign control keeps (goal 029): the campaign page's Start a run panel,
+ * REST's `POST /v1/campaigns/<name>/runs`, MCP's `start_run` and `thermite run start` all call
+ * startARun, so they check and refuse alike. This module holds it, the request's fields, and the
+ * answer.
  */
 
 /** What Start a run takes: the panel's fields, in the dashboard's terms. */
@@ -148,5 +169,172 @@ export function startRunAnswer(
     ...(notes.length ? { notes } : {}),
     // What applies to the run's agents, when the campaign sets its own context (goal 070).
     ...(out.context ? { agents_context: out.context } : {}),
+  };
+}
+
+/**
+ * Whether control can start a run of a campaign: a saved version it can sign (with the kits it
+ * keeps, or an earlier assignment's imports), or an earlier assignment to assign again.
+ */
+export function startable(store: ControlStore, campaign: string, kits: unknown): boolean {
+  const v = store.campaignVersions(campaign)[0];
+  if (v && (kits || v.sources.assignment)) return true;
+  return store.latestAssignments().has(campaign);
+}
+
+/**
+ * Starts a run of a campaign on a rig, with every check and refusal in words. `by` is who asks;
+ * `owner`, whether the owner's token asks, which alone starts a stopped RunPod pod.
+ */
+export async function startARun(
+  parts: ControlParts,
+  req: StartRunRequest,
+  by: string,
+  owner: boolean,
+): Promise<StartRunOutcome> {
+  const { store } = parts;
+  const refuse = (error: string, status: 400 | 404 | 409 = 409): StartRunOutcome => ({
+    state: "refused",
+    error,
+    status,
+  });
+  const { campaign, agents } = req;
+  if (!startable(store, campaign, parts.kits))
+    return refuse("Control has no saved version or earlier assignment of this campaign.", 404);
+  const vs = parts.views();
+  const rig = vs.find((u) => u.id === req.rig);
+  if (!rig)
+    return req.rig
+      ? refuse(`No rig is called ${req.rig}. Choose a rig.`, 404)
+      : refuse("Choose a rig.", 400);
+  // The panel shows these only with agents on; a try (agents off) has no agents and no queue.
+  if (!agents && (req.model || req.queueFrom || req.past?.length))
+    return refuse(
+      "A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.",
+      400,
+    );
+  const chosen = req.model
+    ? `${encodeURIComponent(req.model.provider)}|${encodeURIComponent(req.model.model)}`
+    : "";
+  const mode =
+    (store.campaignVersions(campaign)[0]?.contract as { mode?: string } | undefined)?.mode ??
+    (store.latestAssignments().get(campaign)?.payload.contract as { mode?: string } | undefined)
+      ?.mode;
+  const researchModel =
+    mode === "research" && agents ? opencodeOnlyModel(store, rig, chosen || undefined) : undefined;
+  if (researchModel) return refuse(researchNeedsOpencode(rig.id, researchModel));
+  if (agents && req.model) {
+    // The rig gets the model first; it arrives within a minute, and the run starts after that.
+    const given = giveRigModel(
+      store,
+      rig.id,
+      chosen,
+      harnessKept(store, rig.id, chosen, ""),
+      undefined,
+      by,
+    );
+    if ("error" in given) return refuse(given.error, 400);
+    const model = req.model.model;
+    if (!sameModel(rig.model?.model, model))
+      return {
+        state: "model_given",
+        said: `${rig.id} takes ${model} within a minute; Settings › Providers shows it taking the model until then. Then start the run again.`,
+      };
+  }
+  // Control gave the rig a model it has not taken yet: the agents would start with none.
+  const given = store.rigModels()[rig.id];
+  if (agents && !req.model && given && !sameModel(rig.model?.model, given.model))
+    return refuse(
+      `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`,
+    );
+  if (agents && !req.model && agentsModelMissing(store, rig))
+    return refuse(
+      `${rig.id} has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`,
+    );
+  const split = splitFor(rig, String(req.judgeGpus ?? ""));
+  if (typeof split === "string") return refuse(split, 400);
+  // From past research (goal 065): only items of folders this campaign may read, looked up
+  // here by id. Experiments join the queue; findings, claims, notes and reports brief the agents.
+  const kb = store.kb();
+  const readable = new Set(kb.readable(campaign));
+  const picked = (req.past ?? []).map((x) => kb.item(x));
+  if (picked.some((x) => !x || !readable.has(x.campaign) || !PICKABLE[x.kind]))
+    return refuse(
+      "An item from past research is not one this campaign may read and start from: search again.",
+      400,
+    );
+  const past = picked.filter((x): x is KbItem => x !== undefined);
+  const pastQueue = past
+    .filter((x) => PICKABLE[x.kind] === "queue")
+    .map((x) => queueSeedOf(x, kb.resultOf(x)))
+    .filter((x): x is QueueSeed => x !== undefined);
+  const briefing = past
+    .filter((x) => PICKABLE[x.kind] === "briefing")
+    .map(briefingSeedOf)
+    .filter((x): x is BriefingSeed => x !== undefined);
+  // The untried experiments of another run of this campaign, as the panel lists them.
+  const notes: string[] = [];
+  let copied: QueueSeed[] = [];
+  if (req.queueFrom) {
+    const { rig: on, run } = req.queueFrom;
+    const from = vs
+      .find((u) => u.id === on)
+      ?.runs.find((r) => r.id === run && r.campaign === campaign);
+    if (!from)
+      return refuse(
+        `${on} has no run ${run} of ${campaign}: copy from a run of this campaign.`,
+        404,
+      );
+    copied = untriedOf(from);
+    if (!copied.length)
+      notes.push(`${run} on ${on} has no untried experiments: the new run's queue starts empty.`);
+  }
+  const busy = rig.runs.find((r) => r.status === "running");
+  let r: Awaited<ReturnType<typeof startRun>>;
+  try {
+    r = await startRun(
+      {
+        store,
+        kits: parts.kits as KitRepos,
+        privateKeyPem: parts.privateKeyPem,
+        runpodRigs: parts.runpodRigs,
+      },
+      {
+        campaign,
+        rig: rig.id,
+        target: rig.hardware?.target
+          ? { type: rig.hardware.target.type, class: rig.hardware.target.class }
+          : undefined,
+        agents,
+        promotion: req.promotion,
+        askOwner: req.askOwner,
+        by,
+        owner,
+        // A command carries at most 500 experiments.
+        queue:
+          copied.length + pastQueue.length ? [...copied, ...pastQueue].slice(0, 500) : undefined,
+        briefing: briefing.length ? briefing : undefined,
+      },
+    );
+  } catch (err) {
+    r = { ok: false, errors: [errorText(err)] };
+  }
+  if (!r.ok) return refuse(r.errors.join(" "));
+  if (split !== undefined) sendSplit(store, parts.privateKeyPem, rig.id, split, by);
+  // The campaign's own context settings, and what each agent works with on this rig (goal 070).
+  const context = agents
+    ? contextApplies(store, rig.id, campaignContract(store, campaign))
+    : undefined;
+  if (context) notes.push(contextAppliesWords(context, rig.id));
+  return {
+    state: "started",
+    campaign,
+    rig: rig.id,
+    run: r.run,
+    command: r.command,
+    woke: r.woke,
+    pauses: busy?.id,
+    notes,
+    ...(context ? { context } : {}),
   };
 }

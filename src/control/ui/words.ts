@@ -2,6 +2,7 @@ import { asToken } from "../../core/directions.ts";
 import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../core/held-out.ts";
 import { questionName, RESEARCH_REVIEW } from "../../core/research-check.ts";
 import { BROKEN_VERDICTS, WON_VERDICTS } from "../../core/verdicts.ts";
+import { listText } from "../../core/words.ts";
 import type { AttemptView, RigView, RunView, StoredEvent } from "../views.ts";
 import { jobText, portWords } from "./judge-words.ts";
 import { attemptState, signed, verdictText } from "./verdict-words.ts";
@@ -33,11 +34,7 @@ const COMMAND: Record<string, string> = {
 };
 export const commandText = (kind: string) => COMMAND[kind] ?? kind.replace(/_/g, " ");
 
-/** A goal list in words: "goldens, real-file and ops". */
-export function listText(xs: string[]): string {
-  if (xs.length <= 1) return xs.join("");
-  return `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`;
-}
+export { listText };
 
 /** Why a planner's try gave no plan, as the harness records it (goal 079). */
 const PLAN_CAUSE_WORDS: Record<string, string> = {

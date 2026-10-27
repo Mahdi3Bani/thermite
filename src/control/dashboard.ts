@@ -8,7 +8,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import { errorText } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
 import { KEY_PROVIDER_TYPES } from "../core/agents.ts";
-import { type BriefingSeed, COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
+import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import {
   type AgentsContext,
   COMPACT_AT_DEFAULT,
@@ -28,11 +28,20 @@ import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, goalChecks } from "../harness/goal-checks.ts";
 import { KitSchema } from "../harness/kit.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
+import {
+  type AgentModelPlan,
+  agentsModelMissing,
+  applyAgentModel,
+  checkAgentModel,
+  clearRigModel,
+  giveRigModel,
+  harnessKept,
+  opencodeOnlyModel,
+  researchNeedsOpencode,
+} from "./agent-models.ts";
 import { inBackground } from "./background.ts";
 import {
   campaignContract,
-  contextApplies,
-  contextAppliesWords,
   contractContext,
   ownModels,
   rigContext,
@@ -107,12 +116,13 @@ import {
   type CopyCampaignRequest,
   copiedFromWords,
   copiedMcpWords,
-  copyCampaign,
+  copyACampaign,
 } from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { archiveResponse, type ExportFiles } from "./exports.ts";
 import { makeDeployKey } from "./git-keys.ts";
+import { sendSplit, splitFor } from "./gpu-split.ts";
 import {
   issueCommand,
   issueWaking,
@@ -129,7 +139,7 @@ import {
   joinMachineScript,
   joinNamespaceManifest,
 } from "./join.ts";
-import { briefingSeedOf, type KbItem, type KbKind, PICKABLE, queueSeedOf } from "./kb.ts";
+import { type KbKind, PICKABLE } from "./kb.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import {
@@ -165,12 +175,12 @@ import {
 } from "./machines/ssh.ts";
 import { campaignMcpServers, McpServers } from "./mcp-servers.ts";
 import { mcpSettingsBlocks, mountMcpUi } from "./mcp-ui.ts";
-import { askOwnerFrom, type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
-import { PlanUsageReader, usageBlock, usageChips } from "./plan-usage.ts";
+import { askOwnerFrom, startCampaign } from "./new-campaign.ts";
+import type { ControlParts } from "./parts.ts";
+import { usageBlock, usageChips } from "./plan-usage.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
-  cappedWindow,
   capWords,
   contextCapRefusal,
   isOpencodeOwn,
@@ -178,20 +188,9 @@ import {
   providerBase,
   sameModel,
 } from "./providers.ts";
-import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { exportLeft, removeCheck, removeWords, resultsLeft } from "./results-left.ts";
-import {
-  advisorsFileOf,
-  agentModelsOf,
-  HARNESS_NAMES,
-  harnessRefusal,
-  neededHarness,
-  opencodeOnly,
-  ROLE_WORDS,
-  rigModelChanges,
-  rigModelShapeRefusal,
-} from "./rig-model.ts";
+import { advisorsFileOf, HARNESS_NAMES, neededHarness, opencodeOnly } from "./rig-model.ts";
 import {
   QUIET_TIP,
   quietField,
@@ -216,7 +215,7 @@ import {
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import { SESSION_DAYS } from "./settings.ts";
-import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
+import { type StartRunRequest, startARun } from "./start-run.ts";
 import {
   AGENT_ROLES,
   type AgentRole,
@@ -231,7 +230,6 @@ import {
   type Effort,
   fingerprint,
   HARNESSES,
-  type Harness,
   harnessOf,
   type JoinedRig,
   type Machine,
@@ -397,7 +395,6 @@ import {
   type RigView,
   type RunView,
   rigSettingsOf,
-  rigView,
 } from "./views.ts";
 
 /**
@@ -468,6 +465,8 @@ export interface DashboardOptions {
   runpodTests?: RunpodTests | undefined;
   /** Actions MCP offers too: the dashboard fills them in (actions.ts). */
   actions?: ControlActions | undefined;
+  /** What control is made of (parts.ts): the operations the dashboard, REST and MCP share. */
+  parts: ControlParts;
   /** MCP servers for the agents (goal 068; made by createControlApi). */
   mcpServers?: McpServers | undefined;
   /** Rigs the owner launches on GPU clouds (made by createControlApi): the launch form, their pods. */
@@ -494,9 +493,6 @@ export interface RigImages {
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
   const app = new Hono();
   const chatgpt = opts.chatgpt ?? new ChatGPTLogins(store, opts.secrets, opts.providerFetch);
-  // Subscriptions' usage windows (goal 151), on Providers and over MCP.
-  const planUsage = new PlanUsageReader(store, (p) => chatgpt.usage(p));
-  if (opts.actions) opts.actions.planUsage = (p) => planUsage.of(p);
   const mcpServers = opts.mcpServers ?? new McpServers(store, opts.secrets);
   // Control's own build, which each rig's is compared with, and the window after which a rig
   // that does not report is offline.
@@ -636,17 +632,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   const csrf = (c: Ctx) => csrfOf(sessionOf(c) ?? "");
   /** A rig that never reported (its first report may wait for its key): no last report time. */
   const neverReported = (u: RigView) => !(Date.parse(u.last_seen) > 0);
-  const views = (): RigView[] =>
-    store
-      .rigs()
-      .map((u) =>
-        rigView(store, u.id, {
-          staleAfterMs: opts.staleAfterMs,
-          offlineAfterMs: opts.offlineAfterMs,
-          control: opts.control,
-        }),
-      )
-      .filter((v): v is RigView => v !== undefined);
+  const parts = opts.parts;
+  const views = parts.views;
   /** A form that issues a command; `back` is where the owner lands afterwards. */
   const cmdForm = (
     c: Ctx,
@@ -1607,15 +1594,16 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     // Checked before the rig is given anything: OpenCode's free models work only in OpenCode.
     const researchModel =
       draft.mode === "research" && startValue === "start"
-        ? opencodeOnlyModel(rig, chosen || undefined, String(f.agents_harness ?? ""))
+        ? opencodeOnlyModel(store, rig, chosen || undefined, String(f.agents_harness ?? ""))
         : undefined;
     if (researchModel)
       return newCampaignPage(c, { draft, errors: [researchNeedsOpencode(rig.id, researchModel)] });
     if (chosen) {
       const given = giveRigModel(
+        store,
         rig.id,
         chosen,
-        harnessKept(rig.id, chosen, String(f.agents_harness ?? "")),
+        harnessKept(store, rig.id, chosen, String(f.agents_harness ?? "")),
       );
       if ("error" in given) return newCampaignPage(c, { draft, errors: [given.error] });
       const [, mRaw] = chosen.split("|");
@@ -1637,7 +1625,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       startValue = "save";
       modelNote = `${rig.id} has not taken ${pending.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then). Then start the run here.`;
     }
-    if (!chosen && startValue === "start" && agentsModelMissing(rig))
+    if (!chosen && startValue === "start" && agentsModelMissing(store, rig))
       return newCampaignPage(c, {
         draft,
         errors: [
@@ -1670,7 +1658,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       r = { ok: false, errors: [errorText(err)] };
     }
     if (!r.ok) return newCampaignPage(c, { draft, errors: r.errors });
-    if (r.run && split !== undefined) sendSplit(rig.id, split);
+    if (r.run && split !== undefined) sendSplit(store, opts.privateKeyPem, rig.id, split);
     return c.redirect(
       r.run
         ? `${campaignHref(r.campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}${r.woke ? `&ok=${encodeURIComponent(r.woke)}` : ""}`
@@ -1680,95 +1668,6 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       303,
     );
   });
-
-  /**
-   * A rig whose agents' model works only inside OpenCode (OpenCode's free models) while its
-   * research workers would run in Pi: a research run there could not work. From the model and
-   * harness chosen now, else control's record, else the rig's report.
-   */
-  const opencodeOnlyModel = (u: RigView, chosen?: string, picked = ""): string | undefined => {
-    let provider: ReturnType<typeof store.provider>;
-    let model: string | undefined;
-    let harness: Harness | undefined;
-    if (chosen) {
-      const [pRaw, mRaw] = chosen.split("|");
-      provider = store.provider(decodeURIComponent(pRaw ?? ""));
-      model = decodeURIComponent(mRaw ?? "");
-      harness = harnessKept(u.id, chosen, picked);
-    } else {
-      const given = store.rigModels()[u.id];
-      if (given) {
-        provider = store.provider(given.provider);
-        model = given.model;
-        harness = given.harness;
-      } else if (u.model?.model) {
-        const fake = { type: "openai" as const, base_url: u.model.base_url ?? "" };
-        return isOpencodeOwn(fake) &&
-          u.model.model.endsWith("-free") &&
-          u.model.harness !== "opencode"
-          ? u.model.model
-          : undefined;
-      }
-    }
-    if (!provider || !model || !isOpencodeOwn(provider) || harness === "opencode") return undefined;
-    return provider.type === "opencode" || !provider.key_sealed || model.endsWith("-free")
-      ? model
-      : undefined;
-  };
-  const researchNeedsOpencode = (rig: string, model: string) =>
-    `${model} is one of OpenCode's free models, which work only inside OpenCode, and ${rig}'s agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.`;
-  /** A rig whose agents have no model: none from control, and the rig reports none. */
-  const agentsModelMissing = (u: RigView) => !store.rigModels()[u.id] && u.model?.source === "none";
-  /**
-   * The harness a model needs when the owner leaves it to control: Claude Code for a Claude
-   * subscription, OpenCode for OpenCode's free models, else Pi (a ChatGPT sign-in too, unless the
-   * owner picks Codex).
-   */
-  const harnessFor = (choice: string, picked: string): Harness => {
-    if (picked === "opencode" || picked === "pi" || picked === "codex") return picked;
-    const [pRaw, mRaw] = choice.split("|");
-    const p = store.provider(decodeURIComponent(pRaw ?? ""));
-    return p ? neededHarness(p, decodeURIComponent(mRaw ?? "")) : "pi";
-  };
-  /**
-   * The harness to give a rig with a model, when the owner names none (New campaign and Start a
-   * run): the rig's own when control gave it this model already, so a rig on Codex or OpenCode
-   * stays there; else what the model needs (harnessFor).
-   */
-  const harnessKept = (rig: string, choice: string, picked: string): Harness => {
-    if (picked) return harnessFor(choice, picked);
-    const [pRaw, mRaw] = choice.split("|");
-    const had = store.rigModels()[rig];
-    return had &&
-      had.provider === decodeURIComponent(pRaw ?? "") &&
-      had.model === decodeURIComponent(mRaw ?? "")
-      ? had.harness
-      : harnessFor(choice, "");
-  };
-  /**
-   * The GPU split a campaign's deployment asks for on its rig (a rig is a set of GPUs; what is
-   * deployed on it decides how they are used): undefined when it asks for none or the rig has it
-   * already, the number to send, or why it can't be.
-   */
-  const splitFor = (rig: RigView, raw: string): number | string | undefined => {
-    if (!raw.trim()) return undefined;
-    const judge = Number(raw);
-    const g = rig.gpu_split;
-    if (!g || g.set < 2)
-      return `${rig.id} has no GPU set to split: its GPUs are set where it is deployed.`;
-    const top = Math.min(8, g.set - 1);
-    if (!Number.isInteger(judge) || judge < 1 || judge > top || g.set - judge > 8)
-      return `With ${g.set} GPUs the judge takes 1 to ${top} of them, and the agents at most 8.`;
-    return judge === g.judge ? undefined : judge;
-  };
-  /** Sends the rig its new GPU split, signed for the owner; the rig restarts its harness to apply it. */
-  const sendSplit = (rig: string, judge: number, by = "owner:ui") =>
-    issueCommand(store, opts.privateKeyPem, {
-      rig,
-      kind: "rig_settings",
-      payload: { judge_gpus: judge },
-      issuedBy: by,
-    });
 
   // ---------------------------------------------------------------- another run of a campaign
   /** Rigs for the Start a run panel: hardware, whether the campaign's kit fits, busy, the model. */
@@ -1888,160 +1787,6 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       copyPick: c.req.query("copy"),
     });
   };
-  /**
-   * Start a run: what the panel's form below, REST's POST /v1/campaigns/<name>/runs, MCP's
-   * start_run and `thermite run start` all do (actions.startRun), with the same checks and the
-   * same refusals in words. `by` is who asks; `owner`, whether the owner's token asks, which alone
-   * starts a stopped RunPod pod.
-   */
-  const startARun = async (
-    req: StartRunRequest,
-    by: string,
-    owner: boolean,
-  ): Promise<StartRunOutcome> => {
-    const refuse = (error: string, status: 400 | 404 | 409 = 409): StartRunOutcome => ({
-      state: "refused",
-      error,
-      status,
-    });
-    const { campaign, agents } = req;
-    if (!startFrom(campaign))
-      return refuse("Control has no saved version or earlier assignment of this campaign.", 404);
-    const vs = views();
-    const rig = vs.find((u) => u.id === req.rig);
-    if (!rig)
-      return req.rig
-        ? refuse(`No rig is called ${req.rig}. Choose a rig.`, 404)
-        : refuse("Choose a rig.", 400);
-    // The panel shows these only with agents on; a try (agents off) has no agents and no queue.
-    if (!agents && (req.model || req.queueFrom || req.past?.length))
-      return refuse(
-        "A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.",
-        400,
-      );
-    const chosen = req.model
-      ? `${encodeURIComponent(req.model.provider)}|${encodeURIComponent(req.model.model)}`
-      : "";
-    const mode =
-      (store.campaignVersions(campaign)[0]?.contract as { mode?: string } | undefined)?.mode ??
-      (store.latestAssignments().get(campaign)?.payload.contract as { mode?: string } | undefined)
-        ?.mode;
-    const researchModel =
-      mode === "research" && agents ? opencodeOnlyModel(rig, chosen || undefined) : undefined;
-    if (researchModel) return refuse(researchNeedsOpencode(rig.id, researchModel));
-    if (agents && req.model) {
-      // The rig gets the model first; it arrives within a minute, and the run starts after that.
-      const given = giveRigModel(rig.id, chosen, harnessKept(rig.id, chosen, ""), undefined, by);
-      if ("error" in given) return refuse(given.error, 400);
-      const model = req.model.model;
-      if (!sameModel(rig.model?.model, model))
-        return {
-          state: "model_given",
-          said: `${rig.id} takes ${model} within a minute; Settings › Providers shows it taking the model until then. Then start the run again.`,
-        };
-    }
-    // Control gave the rig a model it has not taken yet: the agents would start with none.
-    const given = store.rigModels()[rig.id];
-    if (agents && !req.model && given && !sameModel(rig.model?.model, given.model))
-      return refuse(
-        `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`,
-      );
-    if (agents && !req.model && agentsModelMissing(rig))
-      return refuse(
-        `${rig.id} has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`,
-      );
-    const split = splitFor(rig, String(req.judgeGpus ?? ""));
-    if (typeof split === "string") return refuse(split, 400);
-    // From past research (goal 065): only items of folders this campaign may read, looked up
-    // here by id. Experiments join the queue; findings, claims, notes and reports brief the agents.
-    const kb = store.kb();
-    const readable = new Set(kb.readable(campaign));
-    const picked = (req.past ?? []).map((x) => kb.item(x));
-    if (picked.some((x) => !x || !readable.has(x.campaign) || !PICKABLE[x.kind]))
-      return refuse(
-        "An item from past research is not one this campaign may read and start from: search again.",
-        400,
-      );
-    const past = picked.filter((x): x is KbItem => x !== undefined);
-    const pastQueue = past
-      .filter((x) => PICKABLE[x.kind] === "queue")
-      .map((x) => queueSeedOf(x, kb.resultOf(x)))
-      .filter((x): x is QueueSeed => x !== undefined);
-    const briefing = past
-      .filter((x) => PICKABLE[x.kind] === "briefing")
-      .map(briefingSeedOf)
-      .filter((x): x is BriefingSeed => x !== undefined);
-    // The untried experiments of another run of this campaign, as the panel lists them.
-    const notes: string[] = [];
-    let copied: QueueSeed[] = [];
-    if (req.queueFrom) {
-      const { rig: on, run } = req.queueFrom;
-      const from = vs
-        .find((u) => u.id === on)
-        ?.runs.find((r) => r.id === run && r.campaign === campaign);
-      if (!from)
-        return refuse(
-          `${on} has no run ${run} of ${campaign}: copy from a run of this campaign.`,
-          404,
-        );
-      copied = untriedOf(from);
-      if (!copied.length)
-        notes.push(`${run} on ${on} has no untried experiments: the new run's queue starts empty.`);
-    }
-    const busy = rig.runs.find((r) => r.status === "running");
-    let r: Awaited<ReturnType<typeof startRun>>;
-    try {
-      r = await startRun(
-        {
-          store,
-          kits: opts.kits as KitRepos,
-          privateKeyPem: opts.privateKeyPem,
-          runpodRigs: opts.runpodRigs,
-        },
-        {
-          campaign,
-          rig: rig.id,
-          target: rig.hardware?.target
-            ? { type: rig.hardware.target.type, class: rig.hardware.target.class }
-            : undefined,
-          agents,
-          promotion: req.promotion,
-          askOwner: req.askOwner,
-          by,
-          owner,
-          // A command carries at most 500 experiments.
-          queue:
-            copied.length + pastQueue.length ? [...copied, ...pastQueue].slice(0, 500) : undefined,
-          briefing: briefing.length ? briefing : undefined,
-        },
-      );
-    } catch (err) {
-      r = { ok: false, errors: [errorText(err)] };
-    }
-    if (!r.ok) return refuse(r.errors.join(" "));
-    if (split !== undefined) sendSplit(rig.id, split, by);
-    // The campaign's own context settings, and what each agent works with on this rig (goal 070).
-    const context = agents
-      ? contextApplies(store, rig.id, campaignContract(store, campaign))
-      : undefined;
-    if (context) notes.push(contextAppliesWords(context, rig.id));
-    return {
-      state: "started",
-      campaign,
-      rig: rig.id,
-      run: r.run,
-      command: r.command,
-      woke: r.woke,
-      pauses: busy?.id,
-      notes,
-      ...(context ? { context } : {}),
-    };
-  };
-  if (opts.actions) opts.actions.startRun = startARun;
-  // Copy a campaign (goal 069): the Copy panel on its page, REST, MCP and the command line.
-  const copyACampaign = (req: CopyCampaignRequest, by: string) =>
-    copyCampaign(store, req, by, campaignModes(store, views()));
-  if (opts.actions) opts.actions.copyCampaign = copyACampaign;
   /** Who copied a campaign, as its page says it: the dashboard is the owner's, so "you". */
   const copiedBy = (by: string) =>
     by === "owner:operator"
@@ -2188,7 +1933,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     }
     const out: CopyCampaignOutcome = problems.length
       ? { state: "refused", error: problems.join(" "), status: 400 }
-      : copyACampaign({ from, name, mcp_servers: mcp, agents_context: agentsContext }, "owner:ui");
+      : copyACampaign(
+          parts,
+          { from, name, mcp_servers: mcp, agents_context: agentsContext },
+          "owner:ui",
+        );
     if (out.state === "copied")
       return c.redirect(
         `${campaignHref(out.campaign)}?ok=${encodeURIComponent(`Copied ${copiedFromWords(out.from)} as ${out.campaign}.${agentsContext !== undefined ? ` Agents' context: ${contextShort(out.context)}.` : ""}`)}`,
@@ -2221,6 +1970,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const slash = key.indexOf("/");
     const pastIds = [(await c.req.parseBody({ all: true })).past ?? []].flat().map(Number);
     const out = await startARun(
+      parts,
       {
         campaign,
         rig: String(f.rig ?? ""),
@@ -4367,7 +4117,9 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const t = csrf(c);
     const providers = store.providers();
     const usage = new Map(
-      await Promise.all(providers.map(async (p) => [p.name, await planUsage.of(p)] as const)),
+      await Promise.all(
+        providers.map(async (p) => [p.name, await opts.parts.planUsage.of(p)] as const),
+      ),
     );
     const gitCount =
       store.gitAccessList().length +
@@ -4880,103 +4632,6 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     return await checkClusterNow(name);
   };
   if (opts.actions) opts.actions.setClusterSlots = setClusterSlots;
-  if (opts.actions) {
-    // One agent's model over MCP and REST (goal 029), through Edit rig's own code for its row.
-    opts.actions.setRigModel = async (rig, r, by) => {
-      if (!views().some((u) => u.id === rig)) return { error: `no rig ${rig}` };
-      const shape = rigModelShapeRefusal(r);
-      if (shape) return { error: shape };
-      const agent = r.agent ?? "workers";
-      const choice = r.clear
-        ? ""
-        : `${encodeURIComponent(r.provider ?? "")}|${encodeURIComponent(r.model ?? "")}`;
-      if (agent === "workers") {
-        if (!choice) {
-          clearRigModel(rig, by);
-          return {
-            ok: `${rig} goes back to its own settings within a minute.`,
-            contextWindow: null,
-            agents: agentModelsOf(store, rig),
-          };
-        }
-        // A harness named is refused in words when it cannot run the model (goal 073); none,
-        // what the model needs.
-        const wp = store.provider(r.provider ?? "");
-        if (wp && r.harness) {
-          const refused = harnessRefusal(wp, r.model ?? "", r.harness, "the workers");
-          if (refused) return { error: refused };
-        }
-        // MCP and REST set what they are asked: no context_window removes a cap, and no
-        // compact_at a compaction point (the default applies).
-        const given = giveRigModel(
-          rig,
-          choice,
-          r.harness ?? harnessFor(choice, ""),
-          r.effort,
-          by,
-          r.contextWindow ?? null,
-          r.compactAt ?? null,
-        );
-        if ("error" in given) return given;
-        return {
-          ok: given.ok,
-          contextWindow: given.contextWindow || null,
-          compactAt: given.compactAt ?? null,
-          agents: agentModelsOf(store, rig),
-        };
-      }
-      // The other agents (goal 074): each place the request changes, the teachers' second and
-      // merged by models too, all checked before any is saved. The harness named, else what the
-      // model needs (goal 073): MCP and REST set what they are asked. So are each model's own cap
-      // and point, set anew by each call as the workers' are (goal 070).
-      const plans: AgentModelPlan[] = [];
-      for (const change of rigModelChanges(r)) {
-        if (change.role === "workers") continue;
-        const c = change.choice;
-        const cp = c ? store.provider(c.provider) : undefined;
-        const plan = c
-          ? checkAgentModel(
-              rig,
-              change.role,
-              `${encodeURIComponent(c.provider)}|${encodeURIComponent(c.model)}`,
-              c.effort,
-              c.harness ?? (cp ? neededHarness(cp, c.model) : undefined),
-              c.contextWindow ?? null,
-              c.compactAt ?? null,
-            )
-          : checkAgentModel(rig, change.role, "", undefined);
-        if ("error" in plan) return plan;
-        plans.push(plan);
-      }
-      // A second teacher needs a first one: given in this call, or one the teachers have.
-      if (
-        plans.some((p) => p.role === "second_teacher" && !p.clear) &&
-        !plans.some((p) => p.role === "teachers" && !p.clear) &&
-        !store.roleModels(rig).teachers
-      )
-        return {
-          error:
-            "The teachers have no model of their own yet: give a provider and a model for the first teacher too.",
-        };
-      // Several models in one call: the words say whose window and point each one is.
-      const several = plans.filter((p) => !p.clear).length > 1;
-      const given = plans.map((p) =>
-        applyAgentModel(rig, p, by, several ? ROLE_WORDS[p.role].whose : "Its"),
-      );
-      // The model the call gave the agent itself (the first teacher's, for the teachers).
-      const own = r.clear || !r.provider ? undefined : given[0];
-      const said =
-        r.agent === "teachers" && r.clear ? [ROLE_WORDS.teachers.cleared] : given.map((g) => g.ok);
-      return {
-        ok: `Control sent ${listText(said)} to ${rig}. The rig takes the change in less than one minute.${given.map((g) => g.words).join("")}`,
-        contextWindow: own?.contextWindow || null,
-        compactAt: own?.compactAt ?? null,
-        agents: agentModelsOf(store, rig),
-      };
-    };
-    opts.actions.rigModels = (rig) =>
-      views().some((u) => u.id === rig) ? agentModelsOf(store, rig) : { error: `no rig ${rig}` };
-  }
   app.post("/ui/settings/clusters/:name/slots", async (c) => {
     const name = c.req.param("name");
     const f = await c.req.parseBody();
@@ -8058,218 +7713,12 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         : c.redirect(settingsUrl(k, m), 303);
     if (!store.rigs().some((x) => x.id === rig)) return answer("error", "No such rig.");
     if (!choice) {
-      clearRigModel(rig);
+      clearRigModel(store, rig);
       return answer("ok", `${rig} goes back to its own settings within a minute.`);
     }
-    const given = giveRigModel(rig, choice, harness);
+    const given = giveRigModel(store, rig, choice, harness);
     return "error" in given ? answer("error", given.error) : answer("ok", given.ok);
   });
-  /**
-   * Gives a rig a provider's model under a harness, as Providers and Edit rig both do. `cap`: a cap
-   * on the model's context window in tokens (goal 070), or null for none. Left out (Providers' form,
-   * which has no field for it, or a form without Edit rig's Context fields), a cap the rig has
-   * stays while it keeps the same model.
-   */
-  const giveRigModel = (
-    rig: string,
-    choice: string,
-    picked: Harness,
-    effort?: Effort | undefined,
-    by = "owner:ui",
-    cap?: number | null,
-    at?: number | null,
-  ): { ok: string; contextWindow: number; compactAt: number | undefined } | { error: string } => {
-    let harness = picked;
-    const [pRaw, mRaw] = choice.split("|");
-    let provider = "";
-    let model = "";
-    try {
-      provider = decodeURIComponent(pRaw ?? "");
-      model = decodeURIComponent(mRaw ?? "");
-    } catch {
-      // A malformed choice lists no model.
-    }
-    const p = store.provider(provider);
-    if (!p?.models.some((m) => m.id === model))
-      return { error: "That provider does not list that model." };
-    // A Claude subscription runs only in Claude Code, and Claude Code only on one.
-    if (p.type === "claude") harness = "claude-code";
-    else if (harness === "claude-code")
-      return {
-        // Codex too, where the provider is one Codex takes.
-        error: `Claude Code runs only with a Claude subscription here: choose ${codexTakes(p.type) ? "Pi, OpenCode v2 or Codex" : "Pi or OpenCode v2"} for this provider.`,
-      };
-    // The Codex CLI speaks only OpenAI's Responses API.
-    if (harness === "codex" && !codexTakes(p.type))
-      return {
-        error:
-          "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.",
-      };
-    // OpenCode's free models (and a keyless OpenCode provider) need its own client.
-    if (
-      harness !== "opencode" &&
-      isOpencodeOwn(p) &&
-      (p.type === "opencode" || !p.key_sealed || model.endsWith("-free"))
-    )
-      return {
-        error:
-          "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
-      };
-    const listed = p.models.find((m) => m.id === model)?.context_window ?? 0;
-    const had = store.rigModels()[rig];
-    const contextCap =
-      cap === undefined
-        ? had?.provider === provider && had.model === model
-          ? had.contextCap
-          : undefined
-        : (cap ?? undefined);
-    if (typeof cap === "number") {
-      const refused = contextCapRefusal(model, listed, cap);
-      if (refused) return { error: refused };
-    }
-    // The compaction point (goal 070), kept as the cap is.
-    const compactAt =
-      at === undefined
-        ? had?.provider === provider && had.model === model
-          ? had.compactAt
-          : undefined
-        : (at ?? undefined);
-    if (typeof at === "number") {
-      const refused = compactAtRefusal(at);
-      if (refused) return { error: refused };
-    }
-    store.assignRigModel(rig, { provider, model, harness, effort, contextCap, compactAt });
-    store.audit(by, "rig_model_given", {
-      rig,
-      provider,
-      model,
-      harness,
-      effort: effort ?? null,
-      context_cap: contextCap ?? null,
-      compact_at: compactAt ?? null,
-    });
-    const capped = capWords(listed, contextCap);
-    return {
-      ok: `${rig} takes ${model} from "${provider}" under ${HARNESS_NAMES[harness]} within a minute, and checks it.${capped ? ` Its context window: ${capped}.` : ""}${compactAt ? ` Its conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
-      contextWindow: cappedWindow(listed, contextCap),
-      compactAt,
-    };
-  };
-  /** Returns a rig's workers to the rig's own settings, as Providers and Edit rig both do. */
-  const clearRigModel = (rig: string, by = "owner:ui") => {
-    store.assignRigModel(rig, null);
-    store.audit(by, "rig_model_given", { rig, provider: null, model: null });
-  };
-  /**
-   * Checks a model for one of a rig's other agents (or one of the teachers' models), as its row on
-   * Edit rig does, or (an empty choice) its default again: the workers' model for the planner,
-   * the one in the rig's advisors file for an advisor. Nothing changes here: applyAgentModel saves what this
-   * allows. `harness` (goal 073): where it runs; left out (a line's Runs in on its empty choice, or
-   * a form without it), the one it has while it keeps the same model, else what the model needs.
-   * `cap` and `at`: the agent's own cap on its model's window and its compaction point (goal 070),
-   * or null for none; left out (a form without the line's Context fields), the agent keeps its own
-   * while it keeps the same model, as giveRigModel does for the workers.
-   */
-  type AgentModelPlan =
-    | { role: AgentRole; clear: true }
-    | {
-        role: AgentRole;
-        clear: false;
-        provider: string;
-        model: string;
-        effort: Effort | undefined;
-        harness: Harness;
-        contextCap: number | undefined;
-        compactAt: number | undefined;
-        listed: number;
-      };
-  const checkAgentModel = (
-    rig: string,
-    role: AgentRole,
-    choice: string,
-    effort: Effort | undefined,
-    picked?: Harness | undefined,
-    cap?: number | null,
-    at?: number | null,
-  ): AgentModelPlan | { error: string } => {
-    if (!choice) return { role, clear: true };
-    const [pRaw, mRaw] = choice.split("|");
-    let provider = "";
-    let model = "";
-    try {
-      provider = decodeURIComponent(pRaw ?? "");
-      model = decodeURIComponent(mRaw ?? "");
-    } catch {
-      // A malformed choice lists no model.
-    }
-    const p = store.provider(provider);
-    if (!p?.models.some((m) => m.id === model))
-      return { error: `That provider does not list that model (${ROLE_WORDS[role].label}).` };
-    const had = store.roleModels(rig)[role];
-    const same = had?.provider === provider && had.model === model;
-    const harness = picked ?? (had?.harness && same ? had.harness : neededHarness(p, model));
-    const refusedHarness = harnessRefusal(p, model, harness, ROLE_WORDS[role].who);
-    if (refusedHarness) return { error: refusedHarness };
-    // The agent's own cap and compaction point (goal 070), checked and kept as the workers' are.
-    const listed = p.models.find((m) => m.id === model)?.context_window ?? 0;
-    const contextCap = cap === undefined ? (same ? had.contextCap : undefined) : (cap ?? undefined);
-    if (typeof cap === "number") {
-      const refused = contextCapRefusal(model, listed, cap);
-      if (refused) return { error: refused };
-    }
-    const compactAt = at === undefined ? (same ? had.compactAt : undefined) : (at ?? undefined);
-    if (typeof at === "number") {
-      const refused = compactAtRefusal(at);
-      if (refused) return { error: refused };
-    }
-    return {
-      role,
-      clear: false,
-      provider,
-      model,
-      effort,
-      harness,
-      contextCap,
-      compactAt,
-      listed,
-    };
-  };
-  /**
-   * Saves what checkAgentModel allowed, with its record in the audit log. `ok` is Edit rig's words
-   * for the change; `words` say the window and point in sentences, of `whose` model ("Its").
-   */
-  const applyAgentModel = (
-    rig: string,
-    plan: AgentModelPlan,
-    by = "owner:ui",
-    whose = "Its",
-  ): { ok: string; contextWindow: number; compactAt: number | undefined; words: string } => {
-    const role = plan.role;
-    if (plan.clear) {
-      store.assignRoleModel(rig, role, null);
-      store.audit(by, "agent_model_given", { rig, role, provider: null, model: null });
-      return { ok: ROLE_WORDS[role].cleared, contextWindow: 0, compactAt: undefined, words: "" };
-    }
-    const { provider, model, effort, harness, contextCap, compactAt, listed } = plan;
-    store.assignRoleModel(rig, role, { provider, model, effort, harness, contextCap, compactAt });
-    store.audit(by, "agent_model_given", {
-      rig,
-      role,
-      provider,
-      model,
-      effort: effort ?? null,
-      harness,
-      context_cap: contextCap ?? null,
-      compact_at: compactAt ?? null,
-    });
-    const capped = capWords(listed, contextCap);
-    return {
-      ok: ROLE_WORDS[role].given,
-      contextWindow: cappedWindow(listed, contextCap),
-      compactAt,
-      words: `${capped ? ` ${whose} context window: ${capped}.` : ""}${compactAt ? ` ${whose} conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
-    };
-  };
   /** A model as a form's choice names it: "provider|model", each part URI-encoded. */
   const modelValue = (provider: string, model: string) =>
     `${encodeURIComponent(provider)}|${encodeURIComponent(model)}`;
@@ -8567,7 +8016,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         )
           continue;
       }
-      const plan = checkAgentModel(rig, role, raw, roleEffort, picked, ctx.cap, ctx.at);
+      const plan = checkAgentModel(store, rig, role, raw, roleEffort, picked, ctx.cap, ctx.at);
       if ("error" in plan) return refuse(role, plan.error);
       plans.push(plan);
     }
@@ -8663,17 +8112,26 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     // Everything is checked: save the models, then send the settings.
     if (workersChange) {
       if (!choice) {
-        clearRigModel(rig);
+        clearRigModel(store, rig);
         said.push("its own model settings");
       } else {
-        const given = giveRigModel(rig, choice, harness, effort, "owner:ui", wCtx.cap, wCtx.at);
+        const given = giveRigModel(
+          store,
+          rig,
+          choice,
+          harness,
+          effort,
+          "owner:ui",
+          wCtx.cap,
+          wCtx.at,
+        );
         if ("error" in given) return refuse("workers", given.error);
         said.push("a new model");
       }
     }
     const teachersCleared = plans.some((p) => p.role === "teachers" && p.clear);
     for (const plan of plans) {
-      const ok = applyAgentModel(rig, plan).ok;
+      const ok = applyAgentModel(store, rig, plan).ok;
       // The teachers back to the advisors file: said once, for their three models.
       if (!(teachersCleared && plan.clear && plan.role !== "teachers")) said.push(ok);
     }

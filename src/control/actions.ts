@@ -1,9 +1,4 @@
 import type { ClusterResourcesRequest, ResizeRefusal } from "./cluster-resources.ts";
-import type { CopyCampaignOutcome, CopyCampaignRequest } from "./copy-campaign.ts";
-import type { PlanUsage } from "./plan-usage.ts";
-import type { AgentModels, RigModelOutcome, RigModelRequest } from "./rig-model.ts";
-import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
-import type { ModelProvider } from "./store.ts";
 
 /**
  * Actions the dashboard carries out that MCP offers too, so an agent can do what the owner does
@@ -32,24 +27,10 @@ export interface ClusterRigRequest {
 }
 
 export interface ControlActions {
-  /** A subscription's usage windows (goal 151); undefined for another provider. */
-  planUsage?: (p: ModelProvider) => Promise<PlanUsage | undefined>;
   addClusterRig?: (
     r: ClusterRigRequest,
     by: string,
   ) => Promise<{ rig: string } | { error: string }>;
-  /**
-   * Gives one of a rig's agents a model from a provider, or (clear) its default again, as that
-   * agent's row on Edit rig does (goal 029); the workers' harness default: the model's. A cap on
-   * the workers' context window (goal 070) is set anew by each call for them: none when left out.
-   */
-  setRigModel?: (
-    rig: string,
-    r: RigModelRequest,
-    by: string,
-  ) => Promise<RigModelOutcome | { error: string }>;
-  /** Each of a rig's agents' models on control (MCP's rig_models, REST's GET of the same route). */
-  rigModels?: (rig: string) => AgentModels | { error: string };
   /**
    * Moves a rig control set up on a cluster onto control's current images, keeping its volume and
    * tokens (the rig's page, or MCP's update_rig_images). It drains the rig first (goal 079):
@@ -86,15 +67,4 @@ export interface ControlActions {
    * What it found is a step in the rig's history. Null when control can't reach where it runs.
    */
   checkRigPlace?: (rig: string, by: string) => Promise<{ ok: boolean; words: string } | null>;
-  /**
-   * Starts a run of a campaign control keeps, as a campaign page's Start a run does, with its
-   * checks and its refusals in words (REST, MCP's start_run and `thermite run start`). `owner`:
-   * whether the owner's token asks, which alone starts a stopped RunPod pod.
-   */
-  startRun?: (r: StartRunRequest, by: string, owner: boolean) => Promise<StartRunOutcome>;
-  /**
-   * Copies a campaign control keeps under a new name, with its own empty folder in the knowledge
-   * base and no runs (REST, MCP's copy_campaign and `thermite campaign copy`; goal 069).
-   */
-  copyCampaign?: (r: CopyCampaignRequest, by: string) => CopyCampaignOutcome;
 }

@@ -11,7 +11,6 @@ import {
   MCP_OWNER_KINDS,
 } from "../core/commands.ts";
 import {
-  COMPACT_AT_DEFAULT,
   COMPACT_AT_MAX,
   COMPACT_AT_MIN,
   CONTEXT_WINDOW_MAX,
@@ -48,6 +47,7 @@ import {
 } from "./cluster-resources.ts";
 import {
   type CopyCampaignRequest,
+  copyACampaign,
   copyCampaignAnswer,
   copyCampaignFields,
 } from "./copy-campaign.ts";
@@ -70,18 +70,13 @@ import {
   type DeploymentDriver,
   type RunpodDriver,
 } from "./lifecycle.ts";
+import { registerRigModels } from "./mcp-rig-models.ts";
 import { registerRigReads } from "./mcp-rig-reads.ts";
 import { redirectUriOf, ServerBody, serverJson } from "./mcp-server-routes.ts";
 import type { McpServers } from "./mcp-servers.ts";
+import type { ControlParts } from "./parts.ts";
 import { providersWithUsage } from "./plan-usage.ts";
 import { queueFromRecords } from "./queue-copy.ts";
-import {
-  type RigModelBody,
-  rigModelAnswer,
-  rigModelFields,
-  rigModelRequest,
-  rigModelsAnswer,
-} from "./rig-model.ts";
 import {
   type RigSettingsBody,
   rigSettingsAnswer,
@@ -108,7 +103,13 @@ import {
 } from "./runpod-rigs.ts";
 import type { RunpodTests } from "./runpod-tests.ts";
 import { keyHint } from "./secrets.ts";
-import { type StartRunBody, startRunAnswer, startRunFields, startRunRequest } from "./start-run.ts";
+import {
+  type StartRunBody,
+  startARun,
+  startRunAnswer,
+  startRunFields,
+  startRunRequest,
+} from "./start-run.ts";
 import type { ControlStore } from "./store.ts";
 import { modelPrices, modelUsage, setModelPrice } from "./usage.ts";
 import { campaignModes, currentChampion, leaderboard, rigView } from "./views.ts";
@@ -142,6 +143,8 @@ export interface McpOptions {
   driver?: DeploymentDriver | undefined;
   /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
   actions?: ControlActions | undefined;
+  /** What control is made of (parts.ts): the operations MCP shares with the dashboard and REST. */
+  parts: ControlParts;
   /** MCP servers for the agents (goal 068): the owner manages them here too. */
   mcpServers?: McpServers | undefined;
   /** Control's address as the owner reaches it: where a server's sign-in page sends the browser back. */
@@ -614,7 +617,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         inputSchema: {},
       },
       audited("providers", async () => ({
-        model_providers: await providersWithUsage(store, opts.actions?.planUsage),
+        model_providers: await providersWithUsage(store, (p) => opts.parts.planUsage.of(p)),
         // The prices model usage costs calls at: the providers' listed ones and the owner's.
         model_prices: modelPrices(store),
         git_access: store.gitAccessList().map((g) => ({
@@ -716,40 +719,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     }
     // Each agent's model, as Edit rig's section "2 · The agents" (goal 029): read by every
     // token but the agent's, as Providers is; set by the owner's and an operator's.
-    if (actions?.rigModels) {
-      const read = actions.rigModels;
-      server.registerTool(
-        "rig_models",
-        {
-          title: "Each agent's model on a rig",
-          description: `Each agent's model on a rig: the work (workers, planner) and the advisors (teachers, auditor, review_panel). A model is {provider, model, effort, harness, context_cap, compact_at} (harness: where it runs, pi, opencode, claude-code or codex; context_cap null: the provider's window; compact_at null: the default, ${COMPACT_AT_DEFAULT}% of the window). workers, planner, auditor and review_panel are each a model, or null for the default: the workers use the rig's own settings, the planner the workers' model, an advisor the one in the rig's advisors file (off when the file names none). teachers is {models, merged_by}: models holds one teacher's model or two teachers' (empty: the teachers in the advisors file), and merged_by the model that merges the advice of two teachers (null: the one in the advisors file). agents is what control gives the rig; set it with set_rig_model. advisors_file is what the rig's advisors file sets up, as its supervisor reports it: {teachers, merged_by, auditor, review_panel}, each advisor {harness, model, provider, api, context_window, compact_at} (harness: pi, claude-code, opencode, codex, or cli for a command-line agent, whose model is null; provider: the provider's name the file gives, or null; api: the provider's kind, such as openai, anthropic, chatgpt, opencode or claude; context_window null: none; compact_at null: the default). An empty list or null: the file names none, so that advisor is off until control gives it a model. advisors_file is null when the supervisor has not reported it: none yet, or an older supervisor. It never holds a key, a token or an address.`,
-          inputSchema: { rig: z.string().min(1) },
-        },
-        audited("rig_models", (a: { rig: string }) => {
-          const agents = read(a.rig);
-          if ("error" in agents) throw new Error(agents.error);
-          return rigModelsAnswer(store, a.rig, agents);
-        }),
-      );
-    }
-    if (canCommand && actions?.setRigModel) {
-      const give = actions.setRigModel;
-      server.registerTool(
-        "set_rig_model",
-        {
-          title: "Give a rig's agents a model",
-          description: `As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers, auditor or review_panel; the other agents keep their models. The teachers take one or two models: provider and model give the first teacher's; second_model, {provider, model, harness?, effort?, context_window?, compact_at?}, gives a second teacher (null: one teacher only); merged_by, the same shape, gives the model that merges the advice of two teachers into one set (null: the one in the rig's advisors file). Two teachers without a merged by model: the first review that comes back is the set. A call may give second_model or merged_by alone; a second teacher needs a first. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the one in the rig's advisors file (off when the file names none; rig_models shows the file's); for the teachers, their second and merged by models too. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. harness, for any agent: where it runs, pi, opencode (OpenCode v2), claude-code or codex (the Codex CLI); left out, what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). A Claude subscription runs only in claude-code and claude-code only with one; codex only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in opencode: another harness is refused in words. A planner with no model of its own follows the workers' (in Codex when the workers run in Codex). Advisors run in the supervisor: in pi with read-only tools; in claude-code, opencode or codex with none of the program's own tools, only the search of the run's past research and the kit's MCP tools. Every agent takes context_window and compact_at, kept with its model; a planner with no model of its own uses the workers'. context_window caps the agent's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one; an advisor's one-call package is cut to fit it. compact_at is the share of the window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}; default ${COMPACT_AT_DEFAULT}), at which the agent's conversation is compacted: the conversation is kept as a document, summarized, and the agent goes on. It never ends a trial. Each call sets the agent's cap and compact_at anew: a call without them removes a cap and returns to the default point. A campaign may set its own (set_campaign_context): the lower window wins. Returns context_window, the window the agent's model route carries (for the teachers, the first teacher's; null: the provider lists none, the model was cleared, or the call gave only second_model or merged_by), compact_at (null: the default), and agents, each agent's model after the change, as rig_models reads them.`,
-          inputSchema: { rig: z.string().min(1), ...rigModelFields },
-        },
-        audited("set_rig_model", async (a: RigModelBody & { rig: string }) => {
-          const { rig, ...body } = a;
-          const req = rigModelRequest(body);
-          const r = await give(rig, req, actor);
-          if ("error" in r) throw new Error(r.error);
-          return rigModelAnswer(rig, req, r);
-        }),
-      );
-    }
+    registerRigModels(server, audited, store, actor, canCommand);
     // The rest of Edit rig (goal 029): the settings a rig reports, read by every token but the
     // agent's, as rig_models; changed by the owner's token and an operator's, through the same
     // checks as Save changes. The promotion rule and the GPU split stay the owner's: the rule
@@ -809,10 +779,9 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         }),
       );
     }
-    // Start a run, as a campaign page's Start a run does, through the dashboard's own code: the
-    // owner's token and an operator's, which may assign runs with issue_command too.
-    if (canCommand && actions?.startRun) {
-      const start = actions.startRun;
+    // Start a run, as a campaign page's Start a run does (start-run.ts): the owner's token and an
+    // operator's, which may assign runs with issue_command too.
+    if (canCommand) {
       server.registerTool(
         "start_run",
         {
@@ -830,15 +799,19 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             throw new Error(
               "Only the owner's token changes a rig's GPU split: leave out judge_gpus.",
             );
-          const out = await start(startRunRequest(campaign, body), actor, role === "owner");
+          const out = await startARun(
+            opts.parts,
+            startRunRequest(campaign, body),
+            actor,
+            role === "owner",
+          );
           if (out.state === "refused") throw new Error(out.error);
           return startRunAnswer(out);
         }),
       );
     }
     // Copy a campaign (goal 069): the owner's token and an operator's, as for start_run.
-    if (canCommand && actions?.copyCampaign) {
-      const copy = actions.copyCampaign;
+    if (canCommand) {
       server.registerTool(
         "copy_campaign",
         {
@@ -851,7 +824,8 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           },
         },
         audited("copy_campaign", (a: CopyCampaignRequest) => {
-          const out = copy(
+          const out = copyACampaign(
+            opts.parts,
             {
               from: a.from,
               name: a.name,

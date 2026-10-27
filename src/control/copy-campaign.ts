@@ -5,8 +5,10 @@ import { IdSchema, parseContract } from "../core/contract.ts";
 import { NAME_WORDS } from "../core/ids.ts";
 import { type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { researchMcpRefusal } from "./mcp-servers.ts";
+import type { ControlParts } from "./parts.ts";
 import type { CampaignSources, ControlStore, CopiedFrom } from "./store.ts";
 import { isRigCheck } from "./ui/campaigns.ts";
+import { campaignModes } from "./views.ts";
 
 /**
  * Copy a campaign (goal 069): a new campaign with another name, the same contract and the same
@@ -263,6 +265,13 @@ export function copyCampaign(
     ...(parsed.contract.agents_context ? { context: parsed.contract.agents_context } : {}),
   };
 }
+
+/**
+ * Copies a campaign (goal 069): the Copy panel on its page, REST, MCP's copy_campaign and
+ * `thermite campaign copy`, with the campaigns control knows from its rigs' reports too.
+ */
+export const copyACampaign = (parts: ControlParts, req: CopyCampaignRequest, by: string) =>
+  copyCampaign(parts.store, req, by, campaignModes(parts.store, parts.views()));
 
 /** The answer REST and MCP give: the copy, its contract's hash and where it came from. */
 export function copyCampaignAnswer(

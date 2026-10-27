@@ -11,6 +11,7 @@ import { RIG_ID_WORDS } from "../core/ids.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
+import { rigModels, setRigModel } from "./agent-models.ts";
 import { runRoutes } from "./api/runs.ts";
 import {
   CampaignContextBody,
@@ -29,30 +30,25 @@ import {
   type ShelfOutcome,
   unarchiveCampaign,
 } from "./campaign-folders.ts";
-import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
+import { CHATGPT_API } from "./chatgpt.ts";
 import { ClusterResourcesBody, clusterResourcesRequest } from "./cluster-resources.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
-import { CopyCampaignBody, copyCampaignAnswer } from "./copy-campaign.ts";
+import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "./copy-campaign.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
 import { issueWaking, pendingFor, propagateChampion, WakeRefused } from "./issue.ts";
 import { addKit, kitAnswer, kitsAnswer } from "./kit-add.ts";
 import { KIT_BUNDLE_MAX, type KitRepos } from "./kit-repos.ts";
-import {
-  advanceResets,
-  cancelReset,
-  confirmReset,
-  type DeploymentDriver,
-  RunpodDriver,
-} from "./lifecycle.ts";
+import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { takeLive } from "./live-in.ts";
 import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
 import { mountMcpServerRoutes } from "./mcp-server-routes.ts";
-import { McpServers } from "./mcp-servers.ts";
+import type { McpServers } from "./mcp-servers.ts";
 import { metricsText } from "./metrics.ts";
 import { modelSteps } from "./model-steps.ts";
+import { controlParts } from "./parts.ts";
 import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
@@ -73,10 +69,21 @@ import {
 } from "./rig-settings.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
-import { type LaunchRequest, type LimitsChange, podLogQuery, RunpodRigs } from "./runpod-rigs.ts";
-import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
-import { SecretBox } from "./secrets.ts";
-import { bodyRefusal, StartRunBody, startRunAnswer, startRunRequest } from "./start-run.ts";
+import {
+  type LaunchRequest,
+  type LimitsChange,
+  podLogQuery,
+  type RunpodRigs,
+} from "./runpod-rigs.ts";
+import type { RunpodTests, TestRequest } from "./runpod-tests.ts";
+import type { SecretBox } from "./secrets.ts";
+import {
+  bodyRefusal,
+  StartRunBody,
+  startARun,
+  startRunAnswer,
+  startRunRequest,
+} from "./start-run.ts";
 import {
   type AgentRole,
   type ControlStore,
@@ -89,7 +96,7 @@ import {
   type ModelProvider,
   RIG_ID,
 } from "./store.ts";
-import { ControlTunnels } from "./tunnel.ts";
+import type { ControlTunnels } from "./tunnel.ts";
 import { modelPrices, modelUsage, setModelPrice, usageQueryRefusal } from "./usage.ts";
 import { checkRig, recheckRefusals, rigVersions } from "./versions.ts";
 import { leaderboard, reportingState, rigView } from "./views.ts";
@@ -356,29 +363,11 @@ export function createControlApi(
   };
 
   const owner = Credential.from(tokens.admin);
-  const secrets = opts.secrets ?? SecretBox.ephemeral();
-  // ChatGPT subscriptions' logins: control alone renews them (the dashboard signs them in).
-  const chatgpt = new ChatGPTLogins(store, secrets, opts.providerFetch);
   // Filled in by the dashboard, offered by MCP too.
   const actions: ControlActions = opts.actions ?? {};
-  const runpodTests =
-    opts.runpodTests ??
-    new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
-  // MCP servers: made first, so an older control's outside knowledge bases become servers now.
-  const mcpServers = opts.mcpServers ?? new McpServers(store, secrets);
-  // A rig in pull mode makes the same calls as any rig; control's end of the tunnel brings them
-  // here in-process, bound to the rig whose signed answer carried them.
-  const tunnels = opts.tunnels ?? new ControlTunnels(store, secrets, privateKeyPem);
-  const runpodRigs =
-    opts.runpodRigs ??
-    new RunpodRigs(store, secrets, tunnels, {
-      fetch: opts.cloudFetch,
-      image: opts.runpodRigImage,
-      staleAfterMs: opts.staleAfterMs,
-      privateKeyPem,
-    });
-  // Rigs on RunPod have their own driver, beside the one THERMITE_LIFECYCLE names for the others.
-  const runpodDriver = new RunpodDriver(runpodRigs);
+  // What the dashboard, REST and MCP share, made once (parts.ts).
+  const parts = controlParts(store, privateKeyPem, opts, viewOpts);
+  const { secrets, chatgpt, runpodTests, mcpServers, tunnels, runpodRigs, runpodDriver } = parts;
   tunnels.serveWith((rig, call) =>
     Promise.resolve(
       app.request(
@@ -1227,16 +1216,14 @@ export function createControlApi(
   );
 
   // Start a run of a campaign control keeps (goal 029): the twin of a campaign page's Start a
-  // run, through the dashboard's own code (actions.startRun), with its refusals in words. The
-  // owner's token, as on the dashboard; MCP's start_run takes an operator's too.
+  // run (start-run.ts), with its refusals in words. The owner's token, as on the dashboard; MCP's
+  // start_run takes an operator's too.
   app.post("/v1/campaigns/:campaign/runs", admin, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
-    const start = actions.startRun;
-    if (!start) return c.json({ error: "this control starts no runs" }, 404);
     const campaign = c.req.param("campaign");
     const raw: unknown = await c.req.json().catch(() => undefined);
     const body = StartRunBody.safeParse(raw);
     const out = body.success
-      ? await start(startRunRequest(campaign, body.data), "owner:api", true)
+      ? await startARun(parts, startRunRequest(campaign, body.data), "owner:api", true)
       : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
     if (out.state === "refused") {
       // In the audit log, as the dashboard's and MCP's refusals are.
@@ -1257,13 +1244,11 @@ export function createControlApi(
     admin,
     bodyLimit({ maxSize: 4 * 1024 * 1024 }),
     async (c) => {
-      const copy = actions.copyCampaign;
-      if (!copy) return c.json({ error: "this control copies no campaigns" }, 404);
       const from = c.req.param("campaign");
       const raw: unknown = await c.req.json().catch(() => undefined);
       const body = CopyCampaignBody.safeParse(raw);
       const out = body.success
-        ? copy({ from, ...body.data }, "owner:api")
+        ? copyACampaign(parts, { from, ...body.data }, "owner:api")
         : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
       if (out.state === "refused") {
         store.audit("owner:api", "refused", {
@@ -1379,12 +1364,9 @@ export function createControlApi(
   });
 
   // Give one of a rig's agents a model, or clear it (goals 029 and 070): the twin of MCP's
-  // set_rig_model, through the dashboard's own code (actions.setRigModel), with Edit rig's
-  // refusals in words. Each call sets the agent's context window cap and compaction point anew:
-  // none given, none kept.
+  // set_rig_model, through Edit rig's own code (agent-models.ts), with its refusals in words.
+  // Each call sets the agent's context window cap and compaction point anew: none given, none kept.
   app.post("/v1/rigs/:rig/model", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
-    const give = actions.setRigModel;
-    if (!give) return c.json({ error: "this control gives no models" }, 404);
     const rig = c.req.param("rig");
     const raw: unknown = await c.req.json().catch(() => undefined);
     const refuse = (error: string) => {
@@ -1394,17 +1376,15 @@ export function createControlApi(
     const body = RigModelBody.safeParse(raw);
     if (!body.success) return refuse(bodyRefusal(body.error));
     const req = rigModelRequest(body.data);
-    const out = await give(rig, req, "owner:api");
+    const out = await setRigModel(store, rig, req, "owner:api");
     if ("error" in out) return refuse(out.error);
     return c.json(rigModelAnswer(rig, req, out));
   });
 
   // Each of a rig's agents' models on control: the twin of MCP's rig_models.
   app.get("/v1/rigs/:rig/model", admin, (c) => {
-    const read = actions.rigModels;
-    if (!read) return c.json({ error: "this control gives no models" }, 404);
     const rig = c.req.param("rig");
-    const agents = read(rig);
+    const agents = rigModels(store, rig);
     if ("error" in agents) return c.json({ error: agents.error }, 404);
     return c.json(rigModelsAnswer(store, rig, agents));
   });
@@ -1651,6 +1631,7 @@ export function createControlApi(
       cloudFetch: opts.cloudFetch,
       runpodTests,
       actions,
+      parts,
       mcpServers,
       runpodRigs,
       runpodDriver,
@@ -1675,6 +1656,7 @@ export function createControlApi(
     runpodDriver,
     driver: opts.driver,
     actions,
+    parts,
     mcpServers,
     publicUrl: opts.publicUrl,
     kits: opts.kits,
