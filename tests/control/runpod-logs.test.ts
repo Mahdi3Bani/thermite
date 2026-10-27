@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { POD_LOG_MAX_TAIL, POD_LOG_TAIL, podLogs, SseParser } from "../../src/control/runpod.ts";
 import { type PodLogRead, RunpodRigs } from "../../src/control/runpod-rigs.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { mcpClient, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 
 /** A pod log read stops this soon after the last line here, so the tests take little time. */
@@ -41,12 +40,11 @@ async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
     privateKeyPem: keys.privateKeyPem,
     logTimes: FAST,
   });
-  const api = createControlApi(store, tokens, keys.privateKeyPem, {
-    staleAfterMs: 180_000,
-    secrets,
-    tunnels,
-    runpodRigs: rigs,
-    cloudFetch: cloud.fetch,
+  const { control: api } = controlOnly({
+    store,
+    keys,
+    tokens,
+    options: { secrets, tunnels, runpodRigs: rigs, cloudFetch: cloud.fetch },
   });
   const v = await rigs.launch("runpod", { gpu: "RTX A4000", rig: "rp-log-1" }, "owner:api");
   // What the pod printed before anyone read it: RunPod's own steps and the rig image's lines.
@@ -278,18 +276,10 @@ describe("a RunPod rig's pod log over REST and MCP", () => {
 describe("a RunPod rig's pod log on its page", () => {
   /** The rig's page, signed in as the owner, with the form token. */
   async function signedIn(s: Awaited<ReturnType<typeof setup>>) {
-    const { cookie, page, csrfOf } = await signIn(s.api, tokens.admin);
+    const { page, csrfOf, post } = await signIn(s.api, tokens.admin);
     const csrf = csrfOf(await page("/ui/settings"));
     const read = (json: boolean) =>
-      s.api.request("/ui/rigs/rp-log-1/runpod/logs", {
-        method: "POST",
-        body: new URLSearchParams({ csrf }),
-        headers: {
-          cookie,
-          "content-type": "application/x-www-form-urlencoded",
-          ...(json ? { accept: "application/json" } : {}),
-        },
-      });
+      post("/ui/rigs/rp-log-1/runpod/logs", { csrf }, json ? { accept: "application/json" } : {});
     return { page, read };
   }
 

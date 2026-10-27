@@ -1,49 +1,23 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
-import { ControlStore, fingerprint } from "../../src/control/store.ts";
+import { fingerprint } from "../../src/control/store.ts";
 import { generateSigningKeys, signEnvelope } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
 import { relayOnce } from "../../src/supervisor/relay.ts";
+import { controlOnly, controlStack } from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
 describe("supervisor relay between control and harness", () => {
   test("commands flow control -> supervisor -> harness and events flow back exactly once", async () => {
-    const env = makeHarnessEnv("rig-a");
-    const harnessTokens = { supervisor: "sup-token-abcdef", proposer: "prop-token-abcdef" };
-    const harness = createHarnessApi(env.service, harnessTokens);
-    const store = new ControlStore(":memory:");
-    const controlTokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
-    const control = createControlApi(store, controlTokens, env.keys.privateKeyPem);
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const app = url.host === "harness" ? harness : control;
-      return app.request(`${url.pathname}${url.search}`, init as RequestInit);
-    };
-    const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: harnessTokens.supervisor,
-      controlUrl: "http://control",
-      controlToken: controlTokens.rigs["rig-a"],
-      fetchImpl,
-    };
-    const adminHeaders = {
-      authorization: `Bearer ${controlTokens.admin}`,
-      "content-type": "application/json",
-    };
+    const { env, store, cfg, api } = controlStack({ env: makeHarnessEnv("rig-a") });
 
-    const issued = await control.request("/v1/commands", {
-      method: "POST",
-      headers: adminHeaders,
-      body: JSON.stringify({
-        rig: "rig-a",
-        kind: "assign_campaign",
-        payload: env.assignPayload(),
-      }),
+    const issued = await api("POST", "/v1/commands", {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: env.assignPayload(),
     });
     assert.equal(issued.status, 201);
     const { id } = (await issued.json()) as { id: string };
@@ -99,34 +73,23 @@ describe("supervisor relay between control and harness", () => {
   });
 
   test("a command whose content could not be fetched fails with the reason, and never reaches the harness", async () => {
-    const env = makeHarnessEnv("rig-a");
-    const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
-      env.keys.privateKeyPem,
-    );
+    const s = controlStack({ env: makeHarnessEnv("rig-a") });
+    const { env, store } = s;
     let harnessCalls = 0;
     const fetchImpl: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.host === "harness" && url.pathname === "/v1/commands") harnessCalls++;
-      const app = url.host === "harness" ? harness : control;
-      return app.request(`${url.pathname}${url.search}`, init as RequestInit);
+      return s.fetchImpl(input, init);
     };
-    const issued = await control.request("/v1/commands", {
-      method: "POST",
-      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
-      body: JSON.stringify({ rig: "rig-a", kind: "assign_campaign", payload: env.assignPayload() }),
+    const issued = await s.api("POST", "/v1/commands", {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: env.assignPayload(),
     });
     const { id } = (await issued.json()) as { id: string };
     let asked = 0;
     const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
+      ...s.cfg,
       fetchImpl,
       stage: async () =>
         ++asked === 1 ? ("wait" as const) : { failed: "staging: the repository has no commit" },
@@ -142,38 +105,26 @@ describe("supervisor relay between control and harness", () => {
   });
 
   test("a command that waits for its sources is fetched whole once, then by its id (goal 171)", async () => {
-    const env = makeHarnessEnv("rig-a");
-    const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
-      env.keys.privateKeyPem,
-    );
+    const s = controlStack({ env: makeHarnessEnv("rig-a") });
+    const { env, store } = s;
     // What each fetch of the pending commands carried, in bytes.
     const sizes: number[] = [];
     const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const app = url.host === "harness" ? harness : control;
-      const res = await app.request(`${url.pathname}${url.search}`, init as RequestInit);
-      if (!url.pathname.endsWith("/commands/pending")) return res;
+      const res = await s.fetchImpl(input, init);
+      if (!new URL(String(input)).pathname.endsWith("/commands/pending")) return res;
       const body = await res.text();
       sizes.push(body.length);
       return new Response(body, { status: res.status, headers: res.headers });
     };
-    const issued = await control.request("/v1/commands", {
-      method: "POST",
-      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
-      body: JSON.stringify({ rig: "rig-a", kind: "assign_campaign", payload: env.assignPayload() }),
+    const issued = await s.api("POST", "/v1/commands", {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: env.assignPayload(),
     });
     const { id } = (await issued.json()) as { id: string };
     let ready = false;
     const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
+      ...s.cfg,
       fetchImpl,
       held: new Map(),
       stage: async () => (ready ? ("ready" as const) : ("wait" as const)),
@@ -196,19 +147,8 @@ describe("supervisor relay between control and harness", () => {
   });
 
   test("an assignment whose sources take longer than its life stays alive while they stage (goal 171)", async () => {
-    const env = makeHarnessEnv("rig-a");
-    const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
-      env.keys.privateKeyPem,
-    );
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const app = url.host === "harness" ? harness : control;
-      return app.request(`${url.pathname}${url.search}`, init as RequestInit);
-    };
+    const s = controlStack({ env: makeHarnessEnv("rig-a") });
+    const { env, store } = s;
     // A life of under two seconds stands in for an hour, and a slow model download for longer.
     const { id } = issueCommand(store, env.keys.privateKeyPem, {
       rig: "rig-a",
@@ -219,12 +159,7 @@ describe("supervisor relay between control and harness", () => {
     });
     let ready = false;
     const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl,
+      ...s.cfg,
       held: new Map(),
       staging: new Set<string>(),
       stage: async () => (ready ? ("ready" as const) : ("wait" as const)),
@@ -245,9 +180,8 @@ describe("supervisor relay between control and harness", () => {
   });
 
   test("a reset harness ledger restarts the cursor, and control keeps both ledgers' events", async () => {
-    const store = new ControlStore(":memory:");
     const controlTokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
-    const control = createControlApi(store, controlTokens, generateSigningKeys().privateKeyPem);
+    const { store, control } = controlOnly({ tokens: controlTokens });
     const harnessTokens = { supervisor: "sup-token-abcdef" };
     let harness = createHarnessApi(makeHarnessEnv("rig-a").service, harnessTokens);
     const fetchImpl: typeof fetch = async (input, init) => {
@@ -290,9 +224,8 @@ describe("supervisor relay between control and harness", () => {
 
   test("a supervisor cannot forge or alter a harness report", async () => {
     const env = makeHarnessEnv("rig-a");
-    const store = new ControlStore(":memory:");
     const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
-    const control = createControlApi(store, tokens, env.keys.privateKeyPem);
+    const { store, control } = controlOnly({ keys: env.keys, tokens });
     appendOther(env.service.ledger, "t", "real", null, {});
     const snap = env.service.snapshot(0, 100) as Record<string, unknown>;
     const post = (body: unknown) =>
@@ -326,12 +259,11 @@ describe("supervisor relay between control and harness", () => {
   });
 
   test("a rig token cannot report for another rig or read admin views", async () => {
-    const store = new ControlStore(":memory:");
     const tokens = {
       admin: "admin-token-abcdef",
       rigs: { "rig-a": "rig-token-aaaaaa", "rig-b": "rig-token-bbbbbb" },
     };
-    const control = createControlApi(store, tokens, generateSigningKeys().privateKeyPem);
+    const { control } = controlOnly({ tokens });
     const asA = { authorization: "Bearer rig-token-aaaaaa", "content-type": "application/json" };
     const body = JSON.stringify({
       rig: "rig-b",

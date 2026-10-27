@@ -6,7 +6,6 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { McpServers } from "../../src/control/mcp-servers.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
@@ -27,7 +26,7 @@ import { syncMcpServers } from "../../src/supervisor/mcp-sync.ts";
 import { relayCommandsOnce, relayOnce } from "../../src/supervisor/relay.ts";
 import { PodTunnel, pullModeOptions, startPullMode } from "../../src/supervisor/tunnel-pod.ts";
 import { assigned } from "../helpers/assignments.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -118,10 +117,11 @@ async function setup(
     fetch: proxy,
     ...(o.now ? { now: o.now } : {}),
   });
-  const api = createControlApi(store, { admin: ADMIN, rigs: {} }, control.privateKeyPem, {
-    staleAfterMs: 180_000,
-    secrets,
-    tunnels,
+  const { control: api } = controlOnly({
+    store,
+    keys: control,
+    tokens: { rigs: {} },
+    options: { secrets, tunnels },
   });
   const minted = tunnels.mint({
     by: "owner:ui",

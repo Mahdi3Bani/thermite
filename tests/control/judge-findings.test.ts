@@ -3,15 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { type GoalContract, parseContract } from "../../src/core/contract.ts";
 import { goalChecks } from "../../src/harness/goal-checks.ts";
 import { KitSchema } from "../../src/harness/kit.ts";
 import { seedDemo } from "../helpers/control-demo.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 082 on control's side: what the judge found about an attempt, from the rig's events, on
@@ -19,13 +16,10 @@ import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
  */
 
 async function control(kits?: KitRepos) {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "t-a-abcdef" } },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000, ...(kits ? { kits } : {}) },
-  );
+  const { store, control: api } = controlOnly({
+    tokens: { rigs: { "rig-a": "t-a-abcdef" } },
+    options: kits ? { kits } : {},
+  });
   const { page } = await signIn(api);
   const rest = async (path: string) =>
     (await api.request(path, { headers: { authorization: `Bearer ${ADMIN}` } })).json();

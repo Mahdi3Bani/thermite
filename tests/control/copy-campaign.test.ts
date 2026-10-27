@@ -3,18 +3,16 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { assignedMcpServers, McpServers } from "../../src/control/mcp-servers.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import { usesFor } from "../../src/core/mcp.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Copy a campaign (goal 069): REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign. The copy
@@ -63,10 +61,11 @@ const CPU = { type: "cpu", class: "generic-cpu" };
  * gemv-speed is known only by an assignment over the API (gs-3 on rig-a). rig-b ran a rig check.
  */
 async function stack() {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-  const api = createControlApi(store, TOKENS, keys.privateKeyPem, { staleAfterMs: 600_000, kits });
+  const { keys, store, control, api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000, kits },
+  });
   const next = new Map<string, number>();
   /** A rig's report of these events, after the ones it reported before. */
   const ingest = (rig: string, events: Ev[]) => {
@@ -173,18 +172,10 @@ async function stack() {
     issuedBy: "owner:api",
   });
 
-  const rest = (from: string, body: unknown, token = TOKENS.admin) =>
-    api.request(`/v1/campaigns/${from}/copy`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  const rest = (from: string, body: unknown, token?: string) =>
+    api("POST", `/v1/campaigns/${from}/copy`, body, token);
   const startRun = (campaign: string, body: unknown) =>
-    api.request(`/v1/campaigns/${campaign}/runs`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${TOKENS.admin}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    api("POST", `/v1/campaigns/${campaign}/runs`, body);
   /** Every assign_campaign control signed, oldest first. */
   const assigned = () =>
     (
@@ -199,8 +190,8 @@ async function stack() {
           }
         ).envelope,
     );
-  const page = async (path: string) => (await signIn(api)).page(path);
-  return { store, api, rest, startRun, assigned, ingest, page, gemv, gemvImports };
+  const page = async (path: string) => (await signIn(control)).page(path);
+  return { store, control, rest, startRun, assigned, ingest, page, gemv, gemvImports };
 }
 
 const text = (r: unknown) =>
@@ -358,12 +349,12 @@ describe("Copy a campaign over MCP (goal 069)", () => {
   test("copy_campaign for the owner and an operator; a campaign known only by an assignment; start_run on the copy", async () => {
     const s = await stack();
     const tools = async (token: string) =>
-      (await (await mcpClient(s.api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(s.control, token)).listTools()).tools.map((t) => t.name);
     assert.ok((await tools(TOKENS.admin)).includes("copy_campaign"));
     assert.ok((await tools(TOKENS.operator)).includes("copy_campaign"));
     assert.ok(!(await tools(TOKENS.agent)).includes("copy_campaign"));
     assert.ok(!(await tools(TOKENS.read)).includes("copy_campaign"));
-    const operator = await mcpClient(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.control, TOKENS.operator);
     const out = JSON.parse(
       text(
         await operator.callTool({
@@ -418,7 +409,7 @@ describe("Copy a campaign over MCP (goal 069)", () => {
     });
 
     // Refused in words, and in the audit log.
-    const owner = await mcpClient(s.api, TOKENS.admin);
+    const owner = await mcpClient(s.control, TOKENS.admin);
     const refused = await owner.callTool({
       name: "copy_campaign",
       arguments: { from: "gemv-speed", name: "gemv-speed-b" },
@@ -541,7 +532,7 @@ describe("A research copy's MCP servers (goals 069 and 068)", () => {
     assert.deepEqual(usesFor(given, "workers"), [{ name: "paper-search", tools: ["find"] }]);
 
     // Over MCP, with an operator's token: [] names none.
-    const operator = await mcpClient(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.control, TOKENS.operator);
     const out = JSON.parse(
       text(
         await operator.callTool({

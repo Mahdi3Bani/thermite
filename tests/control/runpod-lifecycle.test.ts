@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { advanceResets, confirmReset } from "../../src/control/lifecycle.ts";
 import { RunpodRefused } from "../../src/control/runpod.ts";
@@ -11,7 +10,7 @@ import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { mcpClient, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod, NO_FREE_GPU } from "../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -54,11 +53,11 @@ function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
     now,
     privateKeyPem: control.privateKeyPem,
   });
-  const api = createControlApi(store, TOKENS, control.privateKeyPem, {
-    staleAfterMs: 180_000,
-    secrets,
-    tunnels,
-    runpodRigs: rigs,
+  const { control: api } = controlOnly({
+    store,
+    keys: control,
+    tokens: TOKENS,
+    options: { secrets, tunnels, runpodRigs: rigs },
   });
   const call = (path: string, body?: unknown, token = TOKENS.admin) =>
     api.request(path, {

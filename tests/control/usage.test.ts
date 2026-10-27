@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { modelUsage } from "../../src/control/usage.ts";
 import { rigView } from "../../src/control/views.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { callUsage } from "../../src/core/usage.ts";
-import { ADMIN, mcpClient } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient } from "../helpers/control-stack.ts";
 
 /**
  * Model usage on control (goal 075): the rigs' model_call events become rows the sums read, for a
@@ -128,8 +126,10 @@ function stack() {
       }),
     ],
   ]);
-  const api = createControlApi(store, TOKENS, generateSigningKeys().privateKeyPem, {
-    staleAfterMs: 600_000,
+  const { control: api } = controlOnly({
+    store,
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000 },
   });
   const get = (q: string, token = TOKENS.admin) =>
     api.request(`/v1/usage${q}`, { headers: { authorization: `Bearer ${token}` } });

@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, type TestContext, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { McpServers, mcpRefusal } from "../../src/control/mcp-servers.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { assigned } from "../helpers/assignments.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 import { type FakeAuth, type FakeMcp, startFakeMcp } from "../helpers/fake-mcp.ts";
 
 /** Made-up secrets: each must reach only the fake server's headers, never a page, log or audit. */
@@ -315,20 +314,14 @@ describe("a campaign whose kit names a server Settings lacks can't start", () =>
 
 describe("what a rig gets", () => {
   async function api(t: TestContext, fake: FakeMcp) {
-    const keys = generateSigningKeys();
     const store = new ControlStore(":memory:");
     const secrets = SecretBox.ephemeral();
     const servers = new McpServers(store, secrets);
-    const app = createControlApi(
+    const { control: app } = controlOnly({
       store,
-      { admin: ADMIN, rigs: { "rig-a": RIG_TOKEN, "rig-b": "rig-token-bbbbbb" } },
-      keys.privateKeyPem,
-      {
-        staleAfterMs: 180_000,
-        secrets,
-        mcpServers: servers,
-      },
-    );
+      tokens: { rigs: { "rig-a": RIG_TOKEN, "rig-b": "rig-token-bbbbbb" } },
+      options: { secrets, mcpServers: servers },
+    });
     t.after(() => undefined);
     void fake;
     return { store, servers, app };
@@ -512,16 +505,14 @@ describe("the update from goal 065's outside knowledge base", () => {
 describe("control's log lines", () => {
   test("a failing server, a refused page and a rig's share are logged and audited without a secret", async (t) => {
     const fake = await fakeOf(t, { kind: "bearer", token: "not-the-key-given" });
-    const keys = generateSigningKeys();
     const store = new ControlStore(":memory:");
     const secrets = SecretBox.ephemeral();
     const servers = new McpServers(store, secrets);
-    const app = createControlApi(
+    const { control: app } = controlOnly({
       store,
-      { admin: ADMIN, rigs: { "rig-a": RIG_TOKEN } },
-      keys.privateKeyPem,
-      { staleAfterMs: 180_000, secrets, mcpServers: servers },
-    );
+      tokens: { rigs: { "rig-a": RIG_TOKEN } },
+      options: { secrets, mcpServers: servers },
+    });
     {
       const owner = { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" };
       await app.request("/v1/mcp-servers", {
@@ -552,14 +543,10 @@ describe("control's log lines", () => {
 describe("MCP servers over control's own MCP", () => {
   test("the owner adds, lists and deletes one; the audit holds the secret's last four characters only", async (t) => {
     const fake = await fakeOf(t, { kind: "header", header: "Authorization", value: KEY });
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: ADMIN, operator: "operator-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-      { staleAfterMs: 180_000, secrets: SecretBox.ephemeral() },
-    );
+    const { store, control } = controlOnly({
+      tokens: { operator: "operator-token-abcdef", rigs: {} },
+      options: { secrets: SecretBox.ephemeral() },
+    });
     const owner = await mcpClient(control);
     const added = await owner.callTool({
       name: "mcp_server_add",

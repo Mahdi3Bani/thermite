@@ -7,16 +7,16 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
 const EXAMPLES = join(import.meta.dirname, "../../examples/contracts");
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+/** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
+const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 
 /** Runs the command line; a refusal comes back with its exit code instead of throwing. */
 async function cli(...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -121,13 +121,7 @@ describe("a campaign's brief on the command line (goal 078)", () => {
   });
 
   test("campaign copy keeps the brief, or gives the copy its own", async () => {
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-    );
+    const { keys, store, control: api } = controlOnly({ tokens: TOKENS });
     const goal = JSON.parse(readFileSync(join(EXAMPLES, "goal-example.json"), "utf8")) as Record<
       string,
       unknown

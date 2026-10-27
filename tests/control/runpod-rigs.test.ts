@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { podPortUrl } from "../../src/control/runpod.ts";
 import type { RunpodRigView } from "../../src/control/runpod-rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "../../src/control/runpod-rigs.ts";
@@ -9,7 +8,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { keySha256 } from "../../src/core/tunnel.ts";
-import { mcpClient } from "../helpers/control-stack.ts";
+import { controlOnly, mcpClient } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -526,11 +525,11 @@ describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
 
   test("REST: the owner launches, lists, reads and sets limits; another token is refused", async () => {
     const s = setup();
-    const api = createControlApi(s.store, tokens, s.control.privateKeyPem, {
-      staleAfterMs: 180_000,
-      secrets: s.secrets,
-      tunnels: s.tunnels,
-      runpodRigs: s.rigs,
+    const { control: api } = controlOnly({
+      store: s.store,
+      keys: s.control,
+      tokens,
+      options: { secrets: s.secrets, tunnels: s.tunnels, runpodRigs: s.rigs },
     });
     const call = (path: string, token: string, body?: unknown) =>
       api.request(path, {
@@ -605,11 +604,11 @@ describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
 
   test("MCP: only the owner may launch or set limits; the operator, readers and the owner see the rigs; agents nothing", async () => {
     const s = setup();
-    const api = createControlApi(s.store, tokens, s.control.privateKeyPem, {
-      staleAfterMs: 180_000,
-      secrets: s.secrets,
-      tunnels: s.tunnels,
-      runpodRigs: s.rigs,
+    const { control: api } = controlOnly({
+      store: s.store,
+      keys: s.control,
+      tokens,
+      options: { secrets: s.secrets, tunnels: s.tunnels, runpodRigs: s.rigs },
     });
     const names = async (token: string) =>
       (await (await mcpClient(api, token)).listTools()).tools.map((t) => t.name);

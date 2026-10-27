@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { PROBE_CMD, PROBE_JS } from "../../src/control/runpod-probe.ts";
 import { findings, RunpodTests } from "../../src/control/runpod-tests.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 const KEY = "rpa_test-key-0123456789abcdef";
 const IMAGE = "ghcr.io/example/thermite-harness:test-cuda";
@@ -257,18 +255,16 @@ describe("RunPod test pods", () => {
       key_hint: "…cdef",
       by: "owner:ui",
     });
-    const api = createControlApi(
+    const { control: api } = controlOnly({
       store,
-      {
-        admin: ADMIN,
+      tokens: {
         operator: "operator-token-abcdef",
         agent: "agent-token-abcdef",
         read: "read-token-abcdef",
         rigs: {},
       },
-      generateSigningKeys().privateKeyPem,
-      { staleAfterMs: 180_000, secrets, cloudFetch: cloud.f, runpodTestImage: IMAGE },
-    );
+      options: { secrets, cloudFetch: cloud.f, runpodTestImage: IMAGE },
+    });
     const text = (r: unknown) =>
       JSON.parse((r as { content: { text: string }[] }).content[0]?.text ?? "null");
     const operator = await mcpClient(api, "operator-token-abcdef");

@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 099 on control's side, from a rig's events: a goal run that met its goals reads Completed,
@@ -12,16 +9,9 @@ import { ADMIN, signIn } from "../helpers/control-stack.ts";
  */
 
 async function control() {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "t-a-abcdef" } },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000 },
-  );
-  const { page } = await signIn(api);
-  const rest = async (path: string) =>
-    (await api.request(path, { headers: { authorization: `Bearer ${ADMIN}` } })).json();
+  const { store, control, api } = controlOnly({ tokens: { rigs: { "rig-a": "t-a-abcdef" } } });
+  const { page } = await signIn(control);
+  const rest = async (path: string) => (await api("GET", path)).json();
   let id = 0;
   // Each event a minute after the one before, so the runs' starts have an order.
   const t0 = Date.now() - 24 * 3600_000;

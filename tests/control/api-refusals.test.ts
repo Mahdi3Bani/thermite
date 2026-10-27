@@ -1,19 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { answerOf, BadInput, Refusal } from "../../src/common/errors.ts";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-
-const ADMIN = "admin-token-abcdef";
+import { ADMIN, controlOnly } from "../helpers/control-stack.ts";
 
 function control() {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-aaaaaa", "rig-b": "rig-token-bbbbbb" } },
-    generateSigningKeys().privateKeyPem,
-  );
+  const { store, control: api } = controlOnly({
+    tokens: { rigs: { "rig-a": "rig-token-aaaaaa", "rig-b": "rig-token-bbbbbb" } },
+  });
+  // The body as given, not as JSON: some tests send one that isn't.
   const post = async (path: string, body: string) => {
     const r = await api.request(path, {
       method: "POST",

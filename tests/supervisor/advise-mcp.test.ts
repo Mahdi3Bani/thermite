@@ -3,19 +3,16 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { McpServers } from "../../src/control/mcp-servers.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import type { McpUse } from "../../src/core/mcp.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
 import { McpGateway } from "../../src/harness/mcp-gateway.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
 import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
 import { syncMcpServers } from "../../src/supervisor/mcp-sync.ts";
 import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
 import { assigned } from "../helpers/assignments.ts";
+import { controlStack, SUPERVISOR_TOKEN } from "../helpers/control-stack.ts";
 import { startFakeMcp } from "../helpers/fake-mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
@@ -23,8 +20,6 @@ import { makeJudgeEnv } from "../helpers/judge-env.ts";
 /** A made-up key: it reaches the fake server's headers only, never a model or the harness's disk. */
 const KEY = "Bearer advisorkeyforthetestsonly";
 const RUN = "js-1";
-const ADMIN = "admin-token-abcdef";
-const tokens = { supervisor: "sup-token-abcdef" };
 const USES: McpUse[] = [
   { name: "gbrain", agents: ["workers", "advisors"] },
   { name: "papers", agents: ["advisors"], tools: { advisors: ["search"] } },
@@ -33,33 +28,19 @@ const USES: McpUse[] = [
 async function world(t: TestContext) {
   const fake = await startFakeMcp({ kind: "bearer", token: KEY.slice(7) });
   t.after(() => fake.close());
-  const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  const servers = new McpServers(store, secrets);
-  servers.put({ name: "gbrain", url: fake.url, auth: "key", secret: KEY }, "owner:test");
-  servers.put({ name: "papers", url: fake.url, auth: "key", secret: KEY }, "owner:test");
-  const keys = generateSigningKeys();
-  const control = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-aaaaaa" } },
-    keys.privateKeyPem,
-    {
-      staleAfterMs: 180_000,
-      secrets,
-      mcpServers: servers,
+  const { env, store, harness, fetchImpl } = controlStack({
+    env: makeJudgeEnv({ kitMcpServers: USES, assign: { mcp_servers: USES } }),
+    tokens: { rigs: { "rig-a": "rig-token-aaaaaa" } },
+    options: (store) => {
+      const servers = new McpServers(store, secrets);
+      servers.put({ name: "gbrain", url: fake.url, auth: "key", secret: KEY }, "owner:test");
+      servers.put({ name: "papers", url: fake.url, auth: "key", secret: KEY }, "owner:test");
+      return { secrets, mcpServers: servers };
     },
-  );
+  });
   assigned(store, "rig-a", RUN, "js", { mcp_servers: USES });
-  const env = makeJudgeEnv({ kitMcpServers: USES, assign: { mcp_servers: USES } });
   await env.service.applyCommand(env.assign);
-  const harness = createHarnessApi(env.service, tokens);
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
   return { fake, env, harness, fetchImpl };
 }
 
@@ -72,7 +53,7 @@ describe("the supervisor and the MCP servers control gives the rig", () => {
         controlUrl: "http://control",
         controlToken: "rig-token-aaaaaa",
         harnessUrl: "http://harness",
-        harnessToken: tokens.supervisor,
+        harnessToken: SUPERVISOR_TOKEN,
         fetchImpl,
       });
     const r = await sync();
@@ -86,7 +67,7 @@ describe("the supervisor and the MCP servers control gives the rig", () => {
     );
     const held = await (
       await harness.request("/v1/mcp-servers", {
-        headers: { authorization: `Bearer ${tokens.supervisor}` },
+        headers: { authorization: `Bearer ${SUPERVISOR_TOKEN}` },
       })
     ).text();
     assert.deepEqual(
@@ -138,7 +119,7 @@ describe("the supervisor and the MCP servers control gives the rig", () => {
     writeFileSync(join(dir, "key"), "test-key\n");
     const config = (fetch_domains: string[]): AdviseConfig => ({
       harnessUrl: "http://harness",
-      harnessToken: tokens.supervisor,
+      harnessToken: SUPERVISOR_TOKEN,
       home: mkdtempSync(join(tmpdir(), "thermite-sup-")),
       advisors: AdvisorsConfig.parse({
         teachers: [

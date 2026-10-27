@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 112 on control's side, from a rig's events: a research run's Overview says in one line
@@ -15,13 +12,7 @@ import { ADMIN, signIn } from "../helpers/control-stack.ts";
 const PAGE = "/ui/campaigns/survey?run=rig-a%2Fs-1";
 
 async function control() {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "t-a-abcdef" } },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000 },
-  );
+  const { store, control: api } = controlOnly({ tokens: { rigs: { "rig-a": "t-a-abcdef" } } });
   const { page } = await signIn(api);
   let id = 0;
   const t0 = Date.now() - 3600_000;

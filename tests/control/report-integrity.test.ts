@@ -3,17 +3,15 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { ControlStore, fingerprint } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
 import { verifyExport } from "../../src/supervisor/git-export.ts";
 import { relayOnce } from "../../src/supervisor/relay.ts";
+import { ADMIN, controlOnly, controlStack } from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
-const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
 const rigHeaders = {
   authorization: "Bearer rig-token-abcdef",
   "content-type": "application/json",
@@ -22,8 +20,7 @@ const rigHeaders = {
 describe("signed reports at control", () => {
   test("stale reports, gaps and reports from a ledger the rig left are refused", async () => {
     const env = makeHarnessEnv("rig-a");
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(store, tokens, env.keys.privateKeyPem);
+    const { store, control } = controlOnly({ keys: env.keys });
     const post = (body: unknown) =>
       control.request("/v1/rigs/rig-a/ingest", {
         method: "POST",
@@ -78,10 +75,9 @@ describe("signed reports at control", () => {
 
   test("with owner acceptance required, a rig's first key is held, and only the checked one is accepted", async () => {
     const env = makeHarnessEnv("rig-a");
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(store, tokens, env.keys.privateKeyPem, {
-      staleAfterMs: 180_000,
-      requireKeyAcceptance: true,
+    const { store, control } = controlOnly({
+      keys: env.keys,
+      options: { requireKeyAcceptance: true },
     });
     const snap = env.service.snapshot(0, 100);
     const post = () =>
@@ -94,13 +90,13 @@ describe("signed reports at control", () => {
     assert.equal(store.rigKey("rig-a").pubkey, null);
     const wrong = await control.request("/v1/rigs/rig-a/key/accept?fingerprint=0000", {
       method: "POST",
-      headers: { authorization: `Bearer ${tokens.admin}` },
+      headers: { authorization: `Bearer ${ADMIN}` },
     });
     assert.equal(wrong.status, 404);
     const fp = fingerprint(String(store.rigKey("rig-a").pending));
     const ok = await control.request(`/v1/rigs/rig-a/key/accept?fingerprint=${fp}`, {
       method: "POST",
-      headers: { authorization: `Bearer ${tokens.admin}` },
+      headers: { authorization: `Bearer ${ADMIN}` },
     });
     assert.equal(ok.status, 200);
     assert.equal((await post()).status, 200);
@@ -109,10 +105,7 @@ describe("signed reports at control", () => {
 
 describe("the command queue", () => {
   test("expired commands are not relayed; the owner can cancel one; commands go through when reporting fails", async () => {
-    const env = makeHarnessEnv("rig-a");
-    const store = new ControlStore(":memory:");
-    store.setConfiguredRigs(["rig-a"]);
-    const control = createControlApi(store, tokens, env.keys.privateKeyPem);
+    const { env, store, control, cfg } = controlStack({ env: makeHarnessEnv("rig-a") });
     const expired = issueCommand(store, env.keys.privateKeyPem, {
       rig: "rig-a",
       kind: "export_now",
@@ -133,7 +126,7 @@ describe("the command queue", () => {
     });
     const r = await control.request(`/v1/commands/${cancel.id}/cancel`, {
       method: "POST",
-      headers: { authorization: `Bearer ${tokens.admin}` },
+      headers: { authorization: `Bearer ${ADMIN}` },
     });
     assert.equal(r.status, 200);
     const keep = issueCommand(store, env.keys.privateKeyPem, {
@@ -148,26 +141,11 @@ describe("the command queue", () => {
     );
     assert.equal(store.command(expired.id)?.status, "expired");
     // Reporting fails (control refuses every report), yet the command is relayed and applied.
-    const harness = createHarnessApi(env.service, { supervisor: "sup" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      if (url.pathname.endsWith("/ingest")) return new Response("{}", { status: 500 });
-      const app = url.host === "harness" ? harness : control;
-      return app.request(`${url.pathname}${url.search}`, init as RequestInit);
-    };
-    await assert.rejects(
-      relayOnce(
-        {
-          rig: "rig-a",
-          harnessUrl: "http://harness",
-          harnessToken: "sup",
-          controlUrl: "http://control",
-          controlToken: "rig-token-abcdef",
-          fetchImpl,
-        },
-        { cursor: 0 },
-      ),
-    );
+    const fetchImpl: typeof fetch = async (input, init) =>
+      new URL(String(input)).pathname.endsWith("/ingest")
+        ? new Response("{}", { status: 500 })
+        : await cfg.fetchImpl(input, init);
+    await assert.rejects(relayOnce({ ...cfg, fetchImpl }, { cursor: 0 }));
     assert.equal(store.command(keep.id)?.status, "delivered");
   });
 

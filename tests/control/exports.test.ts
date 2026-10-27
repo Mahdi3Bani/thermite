@@ -13,12 +13,9 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import { tunnelRouteAllowed } from "../../src/control/tunnel.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { uploadExportsOnce } from "../../src/supervisor/export-upload.ts";
-import { signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 const OWNER = "owner-token-abcdef";
 const RIG_A = "rig-a-token-abcdef";
@@ -49,13 +46,10 @@ function setup() {
   const root = mkdtempSync(join(tmpdir(), "thermite-exports-"));
   const outbox = join(root, "outbox");
   mkdirSync(outbox);
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(
-    store,
-    { admin: OWNER, rigs: { "rig-a": RIG_A, "rig-b": RIG_B } },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000, exportsDir: join(root, "control-exports") },
-  );
+  const { store, control } = controlOnly({
+    tokens: { admin: OWNER, rigs: { "rig-a": RIG_A, "rig-b": RIG_B } },
+    options: { exportsDir: join(root, "control-exports") },
+  });
   let pieces = 0;
   let pieceBytes = 0;
   let breakAfter = Number.POSITIVE_INFINITY;

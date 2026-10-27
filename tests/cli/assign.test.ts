@@ -7,19 +7,21 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
 import { RunpodRigs } from "../../src/control/runpod-rigs.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
 const CONTRACT = join(import.meta.dirname, "../../examples/contracts/smoke-cpu.json");
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+/** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
+const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 
 /** Runs the command line; a refusal comes back with its exit code instead of throwing. */
 async function cli(...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -59,13 +61,7 @@ function report(store: ControlStore, events: [string, string, string, Record<str
 
 describe("thermite assign --queue-from (goal 067)", () => {
   test("copies a past run's untried experiments from control's records, as Start a run does; off unless asked", async () => {
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-    );
+    const { store, control: api } = controlOnly({ tokens: TOKENS });
     const past = "smoke-cpu-1";
     const add = (id: string, by: string, more: Record<string, unknown> = {}) =>
       [past, "harness", "experiment_added", { id, title: `try ${id}`, by, ...more }] as [
@@ -357,12 +353,12 @@ describe("thermite command on a RunPod rig whose pod is stopped (goal 022)", () 
     assert.ok(store.pinTunnelRig(v.rig, "sign", "box"));
     // Its harness never reported, so it holds no result: the stop is at once.
     assert.equal((await rigs.stop(v.rig, "owner:api")).status, "EXITED");
-    const api = createControlApi(
+    const { control: api } = controlOnly({
       store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-      { staleAfterMs: 180_000, secrets, tunnels, runpodRigs: rigs },
-    );
+      keys,
+      tokens: TOKENS,
+      options: { secrets, tunnels, runpodRigs: rigs },
+    });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     try {

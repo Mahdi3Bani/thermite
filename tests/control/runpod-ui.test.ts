@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { formatRunpodRigs } from "../../src/cli/runpod.ts";
-import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import type { RunpodRigView } from "../../src/control/runpod-rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "../../src/control/runpod-rigs.ts";
@@ -13,7 +12,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { assigned } from "../helpers/assignments.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, signIn } from "../helpers/control-stack.ts";
 import { FAKE_GPUS, FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -61,14 +60,18 @@ async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
     now,
     privateKeyPem: keys.privateKeyPem,
   });
-  const api = createControlApi(store, { admin: ADMIN, rigs: {} }, keys.privateKeyPem, {
-    staleAfterMs: 180_000,
-    secrets,
-    tunnels,
-    runpodRigs: rigs,
-    cloudFetch: cloud.fetch,
-    // Kits kept on control: the New campaign page needs them.
-    kits: new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-"))),
+  const { control: api } = controlOnly({
+    store,
+    keys,
+    tokens: { rigs: {} },
+    options: {
+      secrets,
+      tunnels,
+      runpodRigs: rigs,
+      cloudFetch: cloud.fetch,
+      // Kits kept on control: the New campaign page needs them.
+      kits: new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-"))),
+    },
   });
   const ui = await signIn(api);
   const { page } = ui;

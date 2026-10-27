@@ -3,7 +3,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
 import {
   campaignContextRefusal,
@@ -17,9 +16,8 @@ import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { CAMPAIGN_CONTEXT_JS, CC_CORE_JS } from "../../src/control/ui/campaign-context-client.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { agentsContextRefusal } from "../../src/core/compaction.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A campaign's Agents' context on the screens (goal 070, as the owner approved the revised
@@ -27,7 +25,6 @@ import { ADMIN, signIn } from "../helpers/control-stack.ts";
  * line, the Copy panel and New campaign's step 4. Forms are posted as a browser posts them.
  */
 
-const TOKENS = { admin: ADMIN, rigs: {} };
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 const CPU = { type: "cpu", class: "generic-cpu" };
 const draft: CampaignDraft = {
@@ -72,14 +69,11 @@ const hardware = (type: string) => ({
  * signed in.
  */
 async function stack() {
-  const keys = generateSigningKeys();
   const secrets = SecretBox.ephemeral();
-  const store = new ControlStore(":memory:");
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-  const api = createControlApi(store, TOKENS, keys.privateKeyPem, {
-    staleAfterMs: 600_000,
-    kits,
-    secrets,
+  const { keys, store, control } = controlOnly({
+    tokens: { rigs: {} },
+    options: { staleAfterMs: 600_000, kits, secrets },
   });
   for (const [rig, type, model] of [
     ["rig-a", "cpu", "wide-model"],
@@ -117,7 +111,7 @@ async function stack() {
     { draft, rig: "rig-a", target: CPU, start: false, by: "owner:ui" },
   );
   assert.ok(saved.ok);
-  const session = await signIn(api);
+  const session = await signIn(control);
   const { page } = session;
   const csrf = session.csrfOf(await page("/ui/campaigns/matmul-speed"));
   /** Posts a form as the page does: with the page's token. */

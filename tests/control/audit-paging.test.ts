@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /** Every entry, one page at a time, following one cursor until it ends. */
 function walk(
@@ -82,17 +80,10 @@ describe("paging through control's audit log (goal 015)", () => {
   });
 
   test("REST pages with before and after, and refuses a cursor that is not a number", async () => {
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: ADMIN, rigs: {} },
-      generateSigningKeys().privateKeyPem,
-    );
+    const { store, api } = controlOnly({ tokens: { rigs: {} } });
     for (let i = 1; i <= 5; i++) store.audit("owner:api", `step_${i}`, { i });
     const get = async (query: string) => {
-      const r = await api.request(`/v1/audit?${query}`, {
-        headers: { authorization: `Bearer ${ADMIN}` },
-      });
+      const r = await api("GET", `/v1/audit?${query}`);
       return { status: r.status, body: (await r.json()) as Record<string, unknown> };
     };
     type Page = { audit: { action: string }[]; older: number | null; newer: number | null };
@@ -122,14 +113,9 @@ describe("paging through control's audit log (goal 015)", () => {
   });
 
   test("the Audit log page shows 300 entries at a time, with Older and Newer links", async () => {
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: ADMIN, rigs: {} },
-      generateSigningKeys().privateKeyPem,
-    );
+    const { store, control } = controlOnly({ tokens: { rigs: {} } });
     for (let i = 1; i <= 650; i++) store.audit("owner:api", `step_${i}`, { i });
-    const { page } = await signIn(api);
+    const { page } = await signIn(control);
     const shown = (html: string) =>
       [...html.matchAll(/<span class="muted xs">(step_\d+)<\/span>/g)].map((m) => m[1]);
     const link = (html: string, word: string) =>

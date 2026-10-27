@@ -3,9 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import {
   BRIEF_CORE_JS,
   briefPane,
@@ -13,8 +11,7 @@ import {
 } from "../../src/control/ui/campaign-brief.ts";
 import { MD_CORE_JS, mdHtml } from "../../src/control/ui/markdown.ts";
 import { NEW_CAMPAIGN_JS } from "../../src/control/ui/new-campaign-client.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A campaign's brief on the screens and over the APIs (goal 078): New campaign takes it for every
@@ -23,7 +20,6 @@ import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
  */
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
-const TOKENS = { admin: ADMIN, rigs: {} };
 const CPU = { type: "cpu", class: "generic-cpu" };
 
 /** The brief's page-free part, as the browser runs it. */
@@ -42,13 +38,13 @@ const core = new Function(
 
 /** Control with kits, a CPU rig that reported its hardware, and the owner signed in. */
 async function stack() {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
-  const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-  const api = createControlApi(store, TOKENS, keys.privateKeyPem, {
-    staleAfterMs: 600_000,
-    kits,
-    probeRepo: async () => ({ commit: C, files: 3, suggest: ["src/**"] }),
+  const { store, control, api } = controlOnly({
+    tokens: { rigs: {} },
+    options: {
+      staleAfterMs: 600_000,
+      kits: new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-"))),
+      probeRepo: async () => ({ commit: C, files: 3, suggest: ["src/**"] }),
+    },
   });
   store.ingest({
     rig: "rig-a",
@@ -72,7 +68,7 @@ async function stack() {
       },
     },
   } as Parameters<typeof store.ingest>[0]);
-  const { page: get, csrfOf, post } = await signIn(api);
+  const { page: get, csrfOf, post } = await signIn(control);
   const csrf = csrfOf(await get("/ui/campaigns/new"));
   /** New campaign's form, posted as the browser posts it: the draft as JSON, and the rig. */
   const submit = (draft: Record<string, unknown>, start = "save") =>
@@ -82,15 +78,10 @@ async function stack() {
       rig: "rig-a",
       start_value: start,
     });
-  const rest = (from: string, body: unknown) =>
-    api.request(`/v1/campaigns/${from}/copy`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  const rest = (from: string, body: unknown) => api("POST", `/v1/campaigns/${from}/copy`, body);
   const contract = (campaign: string) =>
     store.campaignVersions(campaign)[0]?.contract as Record<string, unknown> | undefined;
-  return { store, api, get, submit, rest, contract };
+  return { store, control, get, submit, rest, contract };
 }
 
 /** The fields of the first step as the owner fills them, and the rest of a hill climb or goal. */
@@ -450,7 +441,7 @@ describe("a campaign's brief on the screens (goal 078)", () => {
       ],
     );
     // Over MCP: other hypotheses; and a research campaign takes no ideas.
-    const client = await mcpClient(s.api);
+    const client = await mcpClient(s.control);
     const out = await client.callTool({
       name: "copy_campaign",
       arguments: {

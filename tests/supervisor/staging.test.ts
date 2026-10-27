@@ -8,13 +8,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys, type SignedCommand } from "../../src/core/commands.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
+import type { SignedCommand } from "../../src/core/commands.ts";
 import { relayOnce } from "../../src/supervisor/relay.ts";
 import { type StageResult, stageCommand } from "../../src/supervisor/staging.ts";
+import { controlOnly, controlStack } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 const git = (cwd: string, ...args: string[]) =>
@@ -71,12 +69,10 @@ describe("staging sources by reference", () => {
       { "kit.json": Buffer.from("{}\n"), "run/run.sh": Buffer.from("echo run\n") },
       "written on the page",
     );
-    const control = createControlApi(
-      new ControlStore(":memory:"),
-      { admin: "owner-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
-      generateSigningKeys().privateKeyPem,
-      { staleAfterMs: 180_000, kits },
-    );
+    const { control } = controlOnly({
+      tokens: { admin: "owner-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      options: { kits },
+    });
     const server = serve({ fetch: control.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     const controlUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -206,21 +202,8 @@ describe("staging sources by reference", () => {
   });
 
   test("a project in a folder of its repository: the rig fetches the repository and starts from the folder", async () => {
-    const env = makeJudgeEnv({ folder: "examples/sum" });
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
-      env.keys.privateKeyPem,
-    );
-    const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      return (url.host === "harness" ? harness : control).request(
-        `${url.pathname}${url.search}`,
-        init as RequestInit,
-      );
-    };
+    const s = controlStack({ env: makeJudgeEnv({ folder: "examples/sum" }) });
+    const { env, store } = s;
     const payload = (env.assign as unknown as SignedCommand).envelope.payload as Record<
       string,
       unknown
@@ -229,32 +212,28 @@ describe("staging sources by reference", () => {
       (payload.contract as { project: { folder?: string } }).project.folder,
       "examples/sum",
     );
-    const r = await control.request("/v1/commands", {
-      method: "POST",
-      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
-      body: JSON.stringify({
-        rig: "rig-a",
-        kind: "assign_campaign",
-        payload: {
-          ...payload,
-          imports: [
-            {
-              kind: "repo_bundle",
-              path: "repos/folder-project.bundle",
-              repo: "proj",
-              commit: env.seed,
-              source: { git: `file://${join(env.root, "project")}` },
-            },
-            {
-              kind: "kit_bundle",
-              path: "repos/folder-kit.bundle",
-              repo: "js-kit",
-              commit: env.kitCommit,
-              source: { git: `file://${join(env.root, "kit")}` },
-            },
-          ],
-        },
-      }),
+    const r = await s.api("POST", "/v1/commands", {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: {
+        ...payload,
+        imports: [
+          {
+            kind: "repo_bundle",
+            path: "repos/folder-project.bundle",
+            repo: "proj",
+            commit: env.seed,
+            source: { git: `file://${join(env.root, "project")}` },
+          },
+          {
+            kind: "kit_bundle",
+            path: "repos/folder-kit.bundle",
+            repo: "js-kit",
+            commit: env.kitCommit,
+            source: { git: `file://${join(env.root, "kit")}` },
+          },
+        ],
+      },
     });
     assert.equal(r.status, 201, await r.clone().text());
     const id = ((await r.json()) as { id: string }).id;
@@ -264,15 +243,7 @@ describe("staging sources by reference", () => {
       resultsRepo: join(env.root, "supervisor", "results.git"),
       sourcesDir: join(env.root, "supervisor", "sources"),
     };
-    const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "s-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl,
-      stage: (cmd: SignedCommand) => stageCommand(stagingCfg, cmd),
-    };
+    const cfg = { ...s.cfg, stage: (cmd: SignedCommand) => stageCommand(stagingCfg, cmd) };
     let state = { cursor: 0 };
     for (let i = 0; i < 200 && store.command(id)?.status === "pending"; i++) {
       state = await relayOnce(cfg, state);
@@ -299,30 +270,17 @@ describe("staging sources by reference", () => {
   });
 
   test("an assignment that names its project and kit by URL starts a run, with nothing put in the inbox by hand", async () => {
-    const env = makeJudgeEnv();
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
-      env.keys.privateKeyPem,
-    );
-    const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      return (url.host === "harness" ? harness : control).request(
-        `${url.pathname}${url.search}`,
-        init as RequestInit,
-      );
-    };
+    const s = controlStack();
+    const { env, store } = s;
     const payload = (env.assign as unknown as SignedCommand).envelope.payload as Record<
       string,
       unknown
     >;
     const issue = async (body: Record<string, unknown>) => {
-      const r = await control.request("/v1/commands", {
-        method: "POST",
-        headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
-        body: JSON.stringify({ rig: "rig-a", kind: "assign_campaign", payload: body }),
+      const r = await s.api("POST", "/v1/commands", {
+        rig: "rig-a",
+        kind: "assign_campaign",
+        payload: body,
       });
       assert.equal(r.status, 201, await r.clone().text());
       return ((await r.json()) as { id: string }).id;
@@ -353,15 +311,7 @@ describe("staging sources by reference", () => {
       resultsRepo: join(env.root, "supervisor", "results.git"),
       sourcesDir: join(env.root, "supervisor", "sources"),
     };
-    const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "s-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl,
-      stage: (cmd: SignedCommand) => stageCommand(stagingCfg, cmd),
-    };
+    const cfg = { ...s.cfg, stage: (cmd: SignedCommand) => stageCommand(stagingCfg, cmd) };
     let state = { cursor: 0 };
     for (let i = 0; i < 200 && store.command(id)?.status === "pending"; i++) {
       state = await relayOnce(cfg, state);

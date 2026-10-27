@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
+import type { ControlOptions } from "../../src/control/api.ts";
 import { makeDeployKey } from "../../src/control/git-keys.ts";
 import { CHECK_SCRIPT } from "../../src/control/machines/facts.ts";
 import { type MachineSsh, parseHostKeys, type SshTarget } from "../../src/control/machines/ssh.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 const HOST = makeDeployKey("host").publicKey.split(" ")[1] as string;
 const OTHER = makeDeployKey("other").publicKey.split(" ")[1] as string;
@@ -56,38 +54,24 @@ function fakeMachine() {
   return { state, ssh };
 }
 
-async function control(
-  ssh: MachineSsh,
-  extra: Partial<Parameters<typeof createControlApi>[3]> = {},
-) {
-  const store = new ControlStore(":memory:");
+async function control(ssh: MachineSsh, extra: Partial<ControlOptions> = {}) {
   const secrets = SecretBox.ephemeral();
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: {} },
-    generateSigningKeys().privateKeyPem,
-    {
-      staleAfterMs: 180_000,
+  const { store, control: api } = controlOnly({
+    tokens: { rigs: {} },
+    options: {
       secrets,
       machineSsh: ssh,
       publicUrl: "https://control.example.com",
       ...extra,
     },
-  );
-  const { cookie, page, csrfOf } = await signIn(api);
+  });
+  const { page, csrfOf, post: send } = await signIn(api);
   const csrf = csrfOf(await page("/ui/settings"));
   const post = async (path: string, form: Record<string, string> | [string, string][]) =>
     decodeURIComponent(
       String(
         (
-          await api.request(path, {
-            method: "POST",
-            body: new URLSearchParams([
-              ["csrf", csrf],
-              ...(Array.isArray(form) ? form : Object.entries(form)),
-            ]),
-            headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-          })
+          await send(path, [["csrf", csrf], ...(Array.isArray(form) ? form : Object.entries(form))])
         ).headers.get("location"),
       ),
     );

@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import type { ControlStore } from "../../src/control/store.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Start a run's twins (goal 029): REST's POST /v1/campaigns/<name>/runs and MCP's start_run take
@@ -61,9 +59,14 @@ const hardware = (type: string) => ({
  * cuda. The owner is signed in on the dashboard.
  */
 async function stack() {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(store, TOKENS, keys.privateKeyPem, { staleAfterMs: 600_000 });
+  const {
+    keys,
+    store,
+    control: api,
+  } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000 },
+  });
   // The assignment that started gs-3, before the rig reported it.
   store.setConfiguredRigs(["rig-a"]);
   issueCommand(store, keys.privateKeyPem, {
@@ -154,16 +157,12 @@ async function stack() {
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  const { cookie, page, csrfOf } = await signIn(api);
+  const { page, csrfOf, post } = await signIn(api);
   const csrf = csrfOf(await page("/ui/campaigns/gemv-speed"));
   assert.ok(csrf);
   /** A dashboard form, sent as the browser sends it: to a path, with the page's token. */
   const send = (path: string, fields: [string, string][]) =>
-    api.request(path, {
-      method: "POST",
-      body: new URLSearchParams([["csrf", csrf], ...fields]),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    post(path, [["csrf", csrf], ...fields]);
   const form = (campaign: string, fields: [string, string][]) =>
     send(`/ui/campaigns/${campaign}/runs`, fields);
   /** Every assign_campaign control signed, oldest first: who issued it, and its payload. */

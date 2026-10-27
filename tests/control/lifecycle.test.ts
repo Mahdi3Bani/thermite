@@ -17,9 +17,8 @@ import {
 import { ControlStore } from "../../src/control/store.ts";
 import { leaderboard } from "../../src/control/views.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
 import { WIPE_MARKER, wipeIfRequested } from "../../src/harness/service.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { controlStack } from "../helpers/control-stack.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 
 function fakeServer(
@@ -126,30 +125,8 @@ describe("full reset", () => {
     env.service.onWipe = () => {
       wiped = true;
     };
-    const harnessTokens = { supervisor: "sup", proposer: "prop" };
-    const harness = createHarnessApi(env.service, harnessTokens);
-    const store = new ControlStore(":memory:");
-    store.setConfiguredRigs(["rig-a"]);
-    const { createControlApi } = await import("../../src/control/api.ts");
-    const control = createControlApi(
-      store,
-      { admin: "adm", rigs: { "rig-a": "rig-tok" } },
-      env.keys.privateKeyPem,
-    );
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const app = url.host === "harness" ? harness : control;
-      return app.request(`${url.pathname}${url.search}`, init as RequestInit);
-    };
-    const relay = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "sup",
-      controlUrl: "http://control",
-      controlToken: "rig-tok",
-      fetchImpl,
-    };
-    let rs = await relayOnce(relay, { cursor: 0 });
+    const { store, relay } = controlStack({ env });
+    await relay();
     const restarts: string[] = [];
     const driver: DeploymentDriver = {
       kind: "fake",
@@ -169,18 +146,18 @@ describe("full reset", () => {
     const id = store.createReset("rig-a", "owner:test");
     await step();
     assert.equal(state(), "quiescing");
-    rs = await relayOnce(relay, rs); // the pause reaches the harness; the rig reports idle
+    await relay(); // the pause reaches the harness; the rig reports idle
     assert.equal(env.ledger.getRun("js-1")?.status, "paused");
     await step();
     assert.equal(state(), "quiescing", "its queued job counts until control sees the run paused");
-    rs = await relayOnce(relay, rs); // the harness's report of the pause
+    await relay(); // the harness's report of the pause
     await step();
     assert.equal(state(), "exporting");
     assert.equal(env.ledger.jobById(queued)?.state, "queued");
-    rs = await relayOnce(relay, rs); // the full export (the supervisor's acknowledgement)
+    await relay(); // the full export (the supervisor's acknowledgement)
     await step();
     assert.equal(state(), "exporting", "waits for the harness's own record of the export");
-    rs = await relayOnce(relay, rs); // the harness's signed report carries it
+    await relay(); // the harness's signed report carries it
     await step();
     assert.equal(state(), "verifying");
     const name = String(store.openReset("rig-a")?.export_name);
@@ -195,9 +172,9 @@ describe("full reset", () => {
     confirmReset(store, id, "owner:test");
     await step();
     assert.equal(state(), "wiping");
-    rs = await relayOnce(relay, rs);
+    await relay();
     assert.ok(existsSync(join(env.paths.stateDir, WIPE_MARKER)));
-    rs = await relayOnce(relay, rs); // the harness's record of the wipe
+    await relay(); // the harness's record of the wipe
     await step();
     assert.equal(state(), "done");
     assert.deepEqual(restarts, ["rig-a:harness,supervisor"]);

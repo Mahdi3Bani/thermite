@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import type { ControlStore } from "../../src/control/store.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 type Ev = [string, string, string, Record<string, unknown>];
 
@@ -33,8 +31,6 @@ function ingest(store: ControlStore, rig: string, events: Ev[], from = 0) {
  * started again (control signed an assignment of it before).
  */
 async function stack() {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
   const tokens = {
     admin: ADMIN,
     operator: "operator-token-abcdef",
@@ -42,7 +38,7 @@ async function stack() {
     read: "read-token-abcdef",
     rigs: { "rig-a": "rig-a-token-abcd", "rig-b": "rig-b-token-abcd" },
   };
-  const control = createControlApi(store, tokens, keys.privateKeyPem, { staleAfterMs: 600_000 });
+  const { keys, store, control } = controlOnly({ tokens, options: { staleAfterMs: 600_000 } });
   // The assignment that started gs-3, before the rig reported it.
   store.setConfiguredRigs(["rig-a"]);
   issueCommand(store, keys.privateKeyPem, {
@@ -151,14 +147,7 @@ async function stack() {
       { finding: "f-1", claims: 6, statement: "Self-training helps only where a verifier exists" },
     ],
   ]);
-  const { cookie, get, page, csrfOf } = await signIn(control);
-  /** A form posted as the browser posts it; a list of pairs repeats a field. */
-  const post = (path: string, form: Record<string, string> | [string, string][]) =>
-    control.request(path, {
-      method: "POST",
-      body: new URLSearchParams(form),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+  const { get, page, csrfOf, post } = await signIn(control);
   const csrf = csrfOf(await page("/ui/campaigns/gemv-speed"));
   assert.ok(csrf);
   const where = (r: Response) => decodeURIComponent(r.headers.get("location") ?? "");

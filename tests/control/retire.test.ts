@@ -1,21 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, signIn } from "../helpers/control-stack.ts";
 
 const RIG_TOKEN = "rig-token-in-the-file-0001";
 
 describe("retiring a rig that is gone", () => {
   test("any rig, even one from the tokens file: out of the lists and Needs you, its reports refused, back on request", async () => {
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: ADMIN, rigs: { "rig-a": RIG_TOKEN } },
-      generateSigningKeys().privateKeyPem,
-      { staleAfterMs: 180_000 },
-    );
+    const { store, control: api } = controlOnly({ tokens: { rigs: { "rig-a": RIG_TOKEN } } });
     // A rig that reported once, long ago: it shows as not reporting.
     store.db
       .prepare(

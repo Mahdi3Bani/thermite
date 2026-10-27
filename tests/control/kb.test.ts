@@ -3,12 +3,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { KnowledgeBase } from "../../src/control/kb.ts";
 import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { KbSync } from "../../src/core/kb.ts";
 import { assigned } from "../helpers/assignments.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 
 type Ev = [string, string, string, Record<string, unknown>];
 
@@ -351,16 +350,9 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
 });
 
 test("the rigs' route: the rig's own token, its own runs, a KbSync", async () => {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(
-    store,
-    {
-      admin: "admin-token-abcdef",
-      rigs: { "rig-a": "rig-a-token-abcd", "rig-b": "rig-b-token-abcd" },
-    },
-    keys.privateKeyPem,
-  );
+  const { store, control } = controlOnly({
+    tokens: { rigs: { "rig-a": "rig-a-token-abcd", "rig-b": "rig-b-token-abcd" } },
+  });
   twoCampaigns(store);
   const get = (path: string, token: string) =>
     control.request(path, { headers: { authorization: `Bearer ${token}` } });

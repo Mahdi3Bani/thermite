@@ -2,11 +2,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { createControlApi } from "../../src/control/api.ts";
 import { Credential } from "../../src/control/credential.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { ADMIN, controlStack, mcpClient } from "../helpers/control-stack.ts";
-import { makeJudgeEnv } from "../helpers/judge-env.ts";
+import { ADMIN, controlOnly, controlStack, mcpClient } from "../helpers/control-stack.ts";
 
 const text = (r: unknown) =>
   JSON.parse(((r as { content: { text: string }[] }).content[0] as { text: string }).text);
@@ -240,13 +237,7 @@ describe("control over MCP", () => {
   });
 
   test("metrics are bounded series with the admin token", async () => {
-    const env = makeJudgeEnv();
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: "admin-token-abcdef", rigs: {} },
-      env.keys.privateKeyPem,
-    );
+    const { control } = controlOnly({ tokens: { rigs: {} } });
     assert.equal((await control.request("/metrics")).status, 401);
     const r = await control.request("/metrics", {
       headers: { authorization: "Bearer admin-token-abcdef" },
@@ -256,18 +247,14 @@ describe("control over MCP", () => {
   });
 
   test("whoever runs control reads its log and its providers over MCP; no key in either; agents don't", async () => {
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      {
-        admin: "admin-token-abcdef",
+    const { store, control } = controlOnly({
+      tokens: {
         operator: "operator-token-abcdef",
         agent: "agent-token-abcdef",
         read: "read-token-abcdef",
         rigs: {},
       },
-      makeJudgeEnv().keys.privateKeyPem,
-    );
+    });
     store.addGpuCloud({
       name: "runpod",
       kind: "runpod",
@@ -348,12 +335,9 @@ describe("control over MCP", () => {
   });
 
   test("an operator gives a rig's agents a model over MCP, as Edit rig does; a wrong model is refused", async () => {
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: "admin-token-abcdef", operator: "operator-token-abcdef", rigs: {} },
-      makeJudgeEnv().keys.privateKeyPem,
-    );
+    const { store, control } = controlOnly({
+      tokens: { operator: "operator-token-abcdef", rigs: {} },
+    });
     store.db
       .prepare(
         "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",

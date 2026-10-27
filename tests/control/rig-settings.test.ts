@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { createControlApi } from "../../src/control/api.ts";
 import { quietField, rigSettingsChange } from "../../src/control/rig-settings.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, controlStack, mcpClient, RIG_TOKEN } from "../helpers/control-stack.ts";
+import {
+  ADMIN,
+  controlOnly,
+  controlStack,
+  mcpClient,
+  RIG_TOKEN,
+} from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 /**
@@ -49,9 +52,9 @@ const DEFAULTS = {
  * GPU set, and rig-old, whose older harness reports no settings.
  */
 function stack() {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(store, TOKENS, generateSigningKeys().privateKeyPem, {
-    staleAfterMs: 600_000,
+  const { store, control: api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000 },
   });
   const report = (rig: string, summary: Record<string, unknown>) =>
     store.ingest({

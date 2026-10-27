@@ -7,22 +7,17 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore, fingerprint } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
+import { fingerprint } from "../../src/control/store.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+/** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
+const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 
 describe("thermite rig", () => {
   test("add enrolls a rig and writes its files; token replaces its token; retire shuts it out", async () => {
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-    );
+    const { keys, store, control: api } = controlOnly({ tokens: TOKENS });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     const control = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -88,17 +83,12 @@ describe("thermite rig", () => {
   });
 
   test("list shows each rig's state and versions against control's, with what to do", async () => {
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-      {
-        staleAfterMs: 180_000,
+    const { store, control: api } = controlOnly({
+      tokens: TOKENS,
+      options: {
         build: { version: "0.2.0", commit: "1a2b3c4d5e6f7a8b", protocol: 2, oldest_protocol: 1 },
       },
-    );
+    });
     // rig-old reports from an older, compatible build; rig-new never reported; rig-x is refused.
     const report = { cursor: 0, next: 0, events: [], summary: {}, ledger_id: "l1" };
     store.ingest({ rig: "rig-old", ...report, generated_at: new Date().toISOString() });

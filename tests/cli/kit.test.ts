@@ -7,10 +7,8 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
@@ -55,13 +53,10 @@ describe("thermite kit (goal 096)", () => {
     const readFile = join(root, "read");
     writeFileSync(readFile, "read-token-abcdef\n");
 
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", read: "read-token-abcdef", rigs: {} },
-      generateSigningKeys().privateKeyPem,
-      { staleAfterMs: 180_000, kits: new KitRepos(join(root, "kits")) },
-    );
+    const { control: api } = controlOnly({
+      tokens: { admin: "owner-token-abcdef", read: "read-token-abcdef", rigs: {} },
+      options: { kits: new KitRepos(join(root, "kits")) },
+    });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

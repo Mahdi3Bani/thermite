@@ -1,8 +1,6 @@
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
+import type { ControlStore } from "../../src/control/store.ts";
 import { callUsage } from "../../src/core/usage.ts";
-import { ADMIN, mcpClient, signIn } from "./control-stack.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "./control-stack.ts";
 
 /**
  * A research run as control sees it from a rig's events (goals 116 and 117), for control's tests:
@@ -22,15 +20,9 @@ export const at = (h: number) => new Date(t0 + h * 3_600_000).toISOString();
 export type Ev = { kind: string; subject: string; body: Record<string, unknown>; at?: string };
 
 export async function researchControl() {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": RIG_TOKEN } },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000 },
-  );
+  const { store, control: api } = controlOnly({ tokens: { rigs: { "rig-a": RIG_TOKEN } } });
   const ui = await signIn(api);
-  const { cookie, page } = ui;
+  const { page } = ui;
   const mcp = async (tool: string, args: Record<string, unknown>) => {
     const client = await mcpClient(api);
     const r = (await client.callTool({ name: tool, arguments: args })) as {
@@ -59,15 +51,7 @@ export async function researchControl() {
   /** A form as the page's script sends it: with fetch, asking for JSON. */
   const send = async (form: Record<string, string>) => {
     const csrf = ui.csrfOf(await page(RUN));
-    const r = await api.request("/ui/commands", {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: {
-        cookie,
-        accept: "application/json",
-        "content-type": "application/x-www-form-urlencoded",
-      },
-    });
+    const r = await ui.post("/ui/commands", { csrf, ...form }, { accept: "application/json" });
     return { status: r.status, answer: JSON.parse(await r.text()) as Record<string, unknown> };
   };
   /** A form posted as the browser posts it, without the page's script: the answer as it comes. */

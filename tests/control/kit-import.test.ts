@@ -6,13 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
 import { MCP_KIT_BASE64_MAX } from "../../src/control/kit-add.ts";
 import { KIT_BUNDLE_MAX, KitRefused, KitRepos } from "../../src/control/kit-repos.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys, type SignedCommand } from "../../src/core/commands.ts";
+import type { SignedCommand } from "../../src/core/commands.ts";
 import { type StageResult, stageCommand } from "../../src/supervisor/staging.ts";
-import { mcpClient } from "../helpers/control-stack.ts";
+import { controlOnly, mcpClient } from "../helpers/control-stack.ts";
 
 /**
  * A kit written elsewhere, given to control as a git bundle of its repository (goal 096): kept
@@ -111,12 +109,8 @@ const TOKENS = {
 };
 
 function control() {
-  const store = new ControlStore(":memory:");
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-  const api = createControlApi(store, TOKENS, generateSigningKeys().privateKeyPem, {
-    staleAfterMs: 180_000,
-    kits,
-  });
+  const { store, control: api } = controlOnly({ tokens: TOKENS, options: { kits } });
   return { store, kits, api };
 }
 
@@ -149,12 +143,10 @@ describe("a kit written elsewhere, given to control as a git bundle", () => {
 
     // A rig's supervisor fetches the commit a contract names (not the head) from control, over
     // the route that serves kept kits, with git itself.
-    const api = createControlApi(
-      new ControlStore(":memory:"),
-      { admin: "owner-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
-      generateSigningKeys().privateKeyPem,
-      { staleAfterMs: 180_000, kits },
-    );
+    const { control: api } = controlOnly({
+      tokens: { admin: "owner-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      options: { kits },
+    });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     try {

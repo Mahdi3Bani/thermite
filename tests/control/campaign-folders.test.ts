@@ -2,13 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import { STYLE } from "../../src/control/ui/style.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
-import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Archive a campaign, and folders for campaigns in the left navigation (goal 077): over REST, MCP
@@ -32,9 +29,10 @@ const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
  * to rig-a and the rig has not taken it yet.
  */
 async function stack() {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(store, TOKENS, keys.privateKeyPem, { staleAfterMs: 600_000 });
+  const { keys, store, control, api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000 },
+  });
   const next = new Map<string, number>();
   const ingest = (rig: string, events: Ev[]) => {
     const from = next.get(rig) ?? 0;
@@ -94,13 +92,8 @@ async function stack() {
       issuedBy: "owner:api",
     });
   assign("gemv-speed", "gemv-speed-1");
-  const rest = (method: string, path: string, body?: unknown, token = TOKENS.admin) =>
-    api.request(path, {
-      method,
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-  const { cookie, get, csrfOf } = await signIn(api);
+  const session = await signIn(control);
+  const { get, csrfOf } = session;
   const page = async (path: string) => {
     const r = await get(path);
     assert.equal(r.status, 200, path);
@@ -108,21 +101,17 @@ async function stack() {
   };
   const csrf = async () => csrfOf(await page("/ui/campaigns"));
   const post = async (path: string, fields: Record<string, string>, json = false) =>
-    api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf: await csrf(), ...fields }),
-      headers: {
-        cookie,
-        "content-type": "application/x-www-form-urlencoded",
-        ...(json ? { accept: "application/json" } : {}),
-      },
-    });
+    session.post(
+      path,
+      { csrf: await csrf(), ...fields },
+      json ? { accept: "application/json" } : {},
+    );
   const audit = (action: string) =>
     store.listAudit(500).filter((a) => a.action === action) as {
       actor: string;
       body: Record<string, unknown>;
     }[];
-  return { store, api, rest, page, post, get, assign, resume, audit, ingest };
+  return { store, control, rest: api, page, post, get, assign, resume, audit, ingest };
 }
 
 const text = (r: unknown) =>
@@ -336,7 +325,7 @@ describe("Archive and folders over MCP (goal 077)", () => {
   test("the owner and an operator change them, a reader reads them, an agent has neither; refusals in words", async () => {
     const s = await stack();
     const names = async (token: string) =>
-      (await (await mcpClient(s.api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(s.control, token)).listTools()).tools.map((t) => t.name);
     const tools = [
       "archive_campaign",
       "unarchive_campaign",
@@ -355,7 +344,7 @@ describe("Archive and folders over MCP (goal 077)", () => {
     const agent = await names(TOKENS.agent);
     for (const t of [...tools, "campaign_folders"]) assert.ok(!agent.includes(t), t);
 
-    const op = await mcpClient(s.api, TOKENS.operator);
+    const op = await mcpClient(s.control, TOKENS.operator);
     const call = (name: string, args: Record<string, unknown>) =>
       op.callTool({ name, arguments: args });
     const refused = await call("archive_campaign", { campaign: "survey" });
@@ -386,7 +375,7 @@ describe("Archive and folders over MCP (goal 077)", () => {
       /Kernels is not empty\. Move its campaign out first: fast-sort\./,
     );
     JSON.parse(text(await call("rename_campaign_folder", { folder: "Kernels", name: "Sorts" })));
-    const read = await mcpClient(s.api, TOKENS.read);
+    const read = await mcpClient(s.control, TOKENS.read);
     const listed = JSON.parse(
       text(await read.callTool({ name: "campaign_folders", arguments: {} })),
     );

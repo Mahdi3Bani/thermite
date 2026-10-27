@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, controlOnly } from "../helpers/control-stack.ts";
 
 /**
  * Goal 117: control signs a hypothesis_status only for a research run. A run its rig reports as
@@ -10,16 +8,9 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
  * in the words the harness would use. A run the rig has not reported yet is the rig's to check.
  */
 
-const ADMIN = "admin-token-abcdef";
-
 describe("hypothesis_status at control (goal 117)", () => {
   test("refused for a run the rig reports as no research run; signed for a research run", async () => {
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: ADMIN, rigs: {} },
-      generateSigningKeys().privateKeyPem,
-    );
+    const { store, control } = controlOnly({ tokens: { rigs: {} } });
     const created = (id: number, run: string, mode: string) => ({
       id,
       at: new Date().toISOString(),

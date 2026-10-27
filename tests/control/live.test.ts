@@ -1,41 +1,23 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import { runEntryHtml } from "../../src/control/ui/live.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
 import { relayLiveOnce, supervisorLive } from "../../src/supervisor/live.ts";
 import { relayOnce } from "../../src/supervisor/relay.ts";
+import { ADMIN, controlStack } from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 
-const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
-
 function setup() {
-  const env = makeHarnessEnv("rig-a");
-  const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(store, tokens, env.keys.privateKeyPem);
+  const { env, store, control, cfg: plain } = controlStack({ env: makeHarnessEnv("rig-a") });
   let tamper: ((body: string) => string) | undefined;
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
-    const app = url.host === "harness" ? harness : control;
     const body =
       tamper && url.pathname.endsWith("/live") && init?.body
         ? tamper(String(init.body))
         : init?.body;
-    return app.request(`${url.pathname}${url.search}`, {
-      ...(init as RequestInit),
-      body,
-    } as RequestInit);
+    return plain.fetchImpl(input, { ...(init as RequestInit), body } as RequestInit);
   };
-  const cfg = {
-    rig: "rig-a",
-    harnessUrl: "http://harness",
-    harnessToken: "sup-token-abcdef",
-    controlUrl: "http://control",
-    controlToken: tokens.rigs["rig-a"],
-    fetchImpl,
-  };
+  const cfg = { ...plain, fetchImpl };
   return { env, store, control, cfg, setTamper: (t: typeof tamper) => (tamper = t) };
 }
 
@@ -50,7 +32,7 @@ describe("the live view", () => {
     const st = await relayLiveOnce(s.cfg, { cursor: 0, ownCursor: 0 });
     assert.equal(st.cursor, 2);
     const r = await s.control.request("/v1/rigs/rig-a/live", {
-      headers: { authorization: `Bearer ${tokens.admin}` },
+      headers: { authorization: `Bearer ${ADMIN}` },
     });
     const body = (await r.json()) as {
       entries: { source: string; text: string; signed: boolean }[];
@@ -113,7 +95,7 @@ describe("the live view", () => {
 describe("the owner's messages to agents", () => {
   test("a message to a lane reaches its trial once; the planner's waits for the next plan; agents cannot send one", async () => {
     const s = setup();
-    const issue = (body: unknown, token = tokens.admin) =>
+    const issue = (body: unknown, token = ADMIN) =>
       s.control.request("/v1/commands", {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },

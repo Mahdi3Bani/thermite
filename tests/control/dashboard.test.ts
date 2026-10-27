@@ -4,7 +4,6 @@ import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { Credential } from "../../src/control/credential.ts";
 import { RunpodRigs } from "../../src/control/runpod-rigs.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
@@ -15,7 +14,7 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
 import { ModelSource } from "../../src/harness/agents/model-source.ts";
 import { syncModelRoute } from "../../src/supervisor/model-route.ts";
 import { seedDemo } from "../helpers/control-demo.ts";
-import { ADMIN, controlStack, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, controlStack, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 import {
@@ -878,20 +877,12 @@ describe("control dashboard", () => {
 
   test("sign-in is required, and a wrong token gets nowhere", async () => {
     const s = await stack();
-    const login = await s.control.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: ADMIN }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
+    const { login } = await signIn(s.control);
     assert.equal(login.status, 303);
     const anon = await s.control.request("/ui");
     assert.equal(anon.status, 303);
     assert.equal(anon.headers.get("location"), "/ui/login");
-    const bad = await s.control.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: "wrong" }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
+    const { login: bad } = await signIn(s.control, "wrong");
     assert.equal(bad.headers.get("set-cookie"), null);
   });
 
@@ -954,34 +945,22 @@ describe("control dashboard", () => {
     const { control } = controlStack({
       tokens: { admin: Credential.ofHash(sha256(ADMIN)), rigs: {} },
     });
-    const signIn = (token: string) =>
-      control.request("/ui/login", {
-        method: "POST",
-        body: new URLSearchParams({ token }),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-      });
-    const ok = await signIn("admin-token-abcdef");
+    const { login: ok, cookie } = await signIn(control, "admin-token-abcdef");
     assert.equal(ok.headers.get("location"), "/ui");
-    const cookie = (ok.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
     assert.equal((await control.request("/ui", { headers: { cookie } })).status, 200);
-    const hash = await signIn(sha256("admin-token-abcdef"));
+    const { login: hash } = await signIn(control, sha256("admin-token-abcdef"));
     assert.equal(hash.headers.get("location"), "/ui/login");
   });
 
   test("a session survives a restart of control, renews in use, and ends with a new token", async () => {
+    // Each control is started again over the same store, with the same signing key.
     const store = new ControlStore(":memory:");
-    const keys = makeJudgeEnv().keys;
-    const control = (admin: string) =>
-      createControlApi(store, { admin, rigs: { "rig-a": "rig-token-abcdef" } }, keys.privateKeyPem);
+    const keys = generateSigningKeys();
+    const control = (admin: string) => controlOnly({ store, keys, tokens: { admin } }).control;
     const first = control("admin-token-abcdef");
-    const login = await first.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: "admin-token-abcdef" }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
+    const { login, cookie } = await signIn(first, "admin-token-abcdef");
     const set = login.headers.get("set-cookie") ?? "";
     assert.match(set, /Max-Age=2592000/);
-    const cookie = set.split(";")[0] ?? "";
     // Only a hash of the session id is stored.
     const rows = store.db.prepare("select id_hash from ui_session").all() as { id_hash: string }[];
     assert.equal(rows.length, 1);
@@ -996,11 +975,11 @@ describe("control dashboard", () => {
     const restarted = control("admin-token-abcdef");
     assert.equal(await formToken(restarted), before);
     // Deployed with only the token's hash, control knows the same session.
-    const hashed = createControlApi(
+    const hashed = controlOnly({
       store,
-      { admin: Credential.ofHash(sha256("admin-token-abcdef")), rigs: {} },
-      keys.privateKeyPem,
-    );
+      keys,
+      tokens: { admin: Credential.ofHash(sha256("admin-token-abcdef")), rigs: {} },
+    }).control;
     assert.equal(await formToken(hashed), before);
     // A session older than a day is renewed when used.
     store.db.prepare("update ui_session set expires_at = ?").run(Date.now() + 3_600_000);
@@ -1747,11 +1726,10 @@ describe("control dashboard", () => {
 async function demo() {
   const store = new ControlStore(":memory:");
   seedDemo(store);
-  const control = createControlApi(
+  const { control } = controlOnly({
     store,
-    { admin: ADMIN, rigs: { "rig-a": "t-a-abcdef", "rig-b": "t-b-abcdef", "rig-c": "t-c-abcdef" } },
-    makeJudgeEnv().keys.privateKeyPem,
-  );
+    tokens: { rigs: { "rig-a": "t-a-abcdef", "rig-b": "t-b-abcdef", "rig-c": "t-c-abcdef" } },
+  });
   const { page: get, post } = await signIn(control);
   return { store, get, post };
 }
@@ -2088,14 +2066,19 @@ async function rigsStack() {
     now,
     privateKeyPem: keys.privateKeyPem,
   });
-  const control = createControlApi(store, { admin: ADMIN, rigs: {} }, keys.privateKeyPem, {
-    staleAfterMs: 3 * MIN,
-    offlineAfterMs: 15 * MIN,
-    build: CONTROL,
-    secrets,
-    tunnels,
-    runpodRigs: pods,
-    cloudFetch: cloud.fetch,
+  const { control } = controlOnly({
+    store,
+    keys,
+    tokens: { rigs: {} },
+    options: {
+      staleAfterMs: 3 * MIN,
+      offlineAfterMs: 15 * MIN,
+      build: CONTROL,
+      secrets,
+      tunnels,
+      runpodRigs: pods,
+      cloudFetch: cloud.fetch,
+    },
   });
   const { page: get } = await signIn(control);
   const cursors = new Map<string, number>();
@@ -2399,11 +2382,7 @@ describe("the Rigs list", () => {
     assert.match(list, /<span class="summary">1 rig · 0 runs at work<\/span>/);
     assert.doesNotMatch(list, /Per hour|Launch on RunPod/);
     assert.match(list, /Set up by you/);
-    const empty = createControlApi(
-      new ControlStore(":memory:"),
-      { admin: ADMIN, rigs: {} },
-      generateSigningKeys().privateKeyPem,
-    );
+    const { control: empty } = controlOnly({ tokens: { rigs: {} } });
     assert.match(await (await signIn(empty)).page("/ui/rigs"), /No rig has reported yet\./);
   });
 });

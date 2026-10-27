@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { mcpClient, signIn } from "../helpers/control-stack.ts";
-import { ADMIN, control, fakeCluster, KUBECONFIG } from "../helpers/fake-cluster.ts";
+import { mcpClient } from "../helpers/control-stack.ts";
+import { control, fakeCluster, KUBECONFIG } from "../helpers/fake-cluster.ts";
 
 describe("clusters in Providers and Add a rig", () => {
   test("a cluster is added and checked; a rig is applied into a namespace of its own and managed", async () => {
@@ -579,27 +575,7 @@ describe("clusters in Providers and Add a rig", () => {
       ruled: ["thermite-slot-2", "thermite-slot-3"],
       quota: { "thermite-slot-2": quota, "thermite-slot-3": quota },
     });
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: ADMIN, operator: "operator-token-abcdef", rigs: {} },
-      generateSigningKeys().privateKeyPem,
-      {
-        staleAfterMs: 180_000,
-        secrets: SecretBox.ephemeral(),
-        clusterKubectl: f.k,
-        publicUrl: "https://control.example.com",
-        rigImages: {
-          harness: "registry.example.com/harness:1",
-          harnessCuda: "registry.example.com/harness-cuda:1",
-          supervisor: "registry.example.com/supervisor:1",
-        },
-      },
-    );
-    const { page, csrfOf, post: send } = await signIn(api);
-    const csrf = csrfOf(await page("/ui/settings"));
-    const post = async (path: string, form: Record<string, string>) =>
-      decodeURIComponent(String((await send(path, { csrf, ...form })).headers.get("location")));
+    const { store, page, post, api } = await control(f.k);
     await post("/ui/settings/add", {
       type: "k8s",
       name: "lab",

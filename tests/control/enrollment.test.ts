@@ -1,17 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore, fingerprint } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
+import { fingerprint } from "../../src/control/store.ts";
+import { ADMIN, controlOnly } from "../helpers/control-stack.ts";
 
-const ADMIN = "admin-token-abcdef";
-const tokens = { admin: ADMIN, rigs: { "rig-file": "file-rig-token-abcdef" } };
 const owner = { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" };
 
 function setup() {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(store, tokens, keys.privateKeyPem);
+  const { keys, store, control } = controlOnly({
+    tokens: { rigs: { "rig-file": "file-rig-token-abcdef" } },
+  });
   const enroll = (rig: string, headers: Record<string, string> = owner) =>
     control.request("/v1/rigs", { method: "POST", headers, body: JSON.stringify({ rig }) });
   const asRig = (rig: string, token: string) =>

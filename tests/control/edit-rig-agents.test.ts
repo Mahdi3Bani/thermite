@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { agentModelsOf } from "../../src/control/rig-model.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import { EDIT_RIG_JS } from "../../src/control/ui/edit-rig-client.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { AdvisorsConfig, advisorsFileReport } from "../../src/supervisor/advisors.ts";
-import { ADMIN, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Edit rig's section "2 · The agents" (goals 070, 073 and 074, as the owner approved its revised
@@ -24,13 +21,7 @@ import { ADMIN, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
  */
 async function stack() {
   const secrets = SecretBox.ephemeral();
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": RIG_TOKEN } },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 600_000, secrets },
-  );
+  const { store, control: api } = controlOnly({ options: { staleAfterMs: 600_000, secrets } });
   store.ingest({
     rig: "rig-a",
     ledger_id: "ledger-rig-a",

@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { cappedWindow, capWords, contextCapRefusal } from "../../src/control/providers.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, mcpClient, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A cap on the context window of a rig's model (goal 070): REST's POST /v1/rigs/<rig>/model and
@@ -26,10 +23,9 @@ const TOKENS = {
  */
 async function stack() {
   const secrets = SecretBox.ephemeral();
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(store, TOKENS, generateSigningKeys().privateKeyPem, {
-    staleAfterMs: 600_000,
-    secrets,
+  const { store, control, api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000, secrets },
   });
   store.ingest({
     rig: "rig-a",
@@ -53,23 +49,15 @@ async function stack() {
     { id: "narrow-model", context_window: 131_072 },
     { id: "open-model" },
   ]);
-  const json = { "content-type": "application/json" };
-  const give = (body: Record<string, unknown>) =>
-    api.request("/v1/rigs/rig-a/model", {
-      method: "POST",
-      headers: { authorization: `Bearer ${TOKENS.admin}`, ...json },
-      body: JSON.stringify(body),
-    });
+  const give = (body: Record<string, unknown>) => api("POST", "/v1/rigs/rig-a/model", body);
   const route = async () =>
     (
-      (await (
-        await api.request("/v1/rigs/rig-a/model-route", {
-          headers: { authorization: `Bearer ${RIG_TOKEN}` },
-        })
-      ).json()) as { route: { context_window: number; revision: string } }
+      (await (await api("GET", "/v1/rigs/rig-a/model-route", undefined, RIG_TOKEN)).json()) as {
+        route: { context_window: number; revision: string };
+      }
     ).route;
-  const { page, post } = await signIn(api);
-  return { store, api, give, route, page, post };
+  const { page, post } = await signIn(control);
+  return { store, control, give, route, page, post };
 }
 
 const text = (r: unknown) =>
@@ -156,13 +144,13 @@ describe("a cap on a rig's model context window", () => {
     const strange = await s.give({ provider: "lab", model: "wide-model", context_window: "big" });
     assert.equal(strange.status, 400);
     assert.match(JSON.stringify(await strange.json()), /bad request: context_window/);
-    const noRig = await s.api.request("/v1/rigs/rig-z/model", {
+    const noRig = await s.control.request("/v1/rigs/rig-z/model", {
       method: "POST",
       headers: { authorization: `Bearer ${TOKENS.admin}`, "content-type": "application/json" },
       body: JSON.stringify({ provider: "lab", model: "wide-model" }),
     });
     assert.equal(noRig.status, 404);
-    const operator = await s.api.request("/v1/rigs/rig-a/model", {
+    const operator = await s.control.request("/v1/rigs/rig-a/model", {
       method: "POST",
       headers: { authorization: `Bearer ${TOKENS.operator}`, "content-type": "application/json" },
       body: JSON.stringify({ provider: "lab", model: "wide-model" }),
@@ -176,7 +164,7 @@ describe("a cap on a rig's model context window", () => {
 
   test("MCP: set_rig_model takes context_window, refuses one above the provider's, and drops the cap when left out", async () => {
     const s = await stack();
-    const mcp = await mcpClient(s.api, TOKENS.operator);
+    const mcp = await mcpClient(s.control, TOKENS.operator);
     const r = text(
       await mcp.callTool({
         name: "set_rig_model",
@@ -260,7 +248,7 @@ describe("the compaction point of a rig's model (goal 070)", () => {
     assert.equal(route.compact_at, 70);
     assert.notEqual(route.revision, before.revision, "the rig takes the new point");
     const read = (await (
-      await s.api.request("/v1/rigs/rig-a/model", {
+      await s.control.request("/v1/rigs/rig-a/model", {
         headers: { authorization: `Bearer ${TOKENS.admin}` },
       })
     ).json()) as { agents: { workers: { compact_at: number | null } } };
@@ -300,7 +288,7 @@ describe("the compaction point of a rig's model (goal 070)", () => {
 
   test("MCP: set_rig_model takes compact_at, and rig_models shows it", async () => {
     const s = await stack();
-    const mcp = await mcpClient(s.api, TOKENS.operator);
+    const mcp = await mcpClient(s.control, TOKENS.operator);
     const r = text(
       await mcp.callTool({
         name: "set_rig_model",
@@ -365,7 +353,7 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
   const routes = async (s: Awaited<ReturnType<typeof stack>>) => {
     const get = async (path: string) =>
       (await (
-        await s.api.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } })
+        await s.control.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } })
       ).json()) as Record<string, { context_window: number; compact_at?: number } | null>;
     return {
       model: await get("/v1/rigs/rig-a/model-route"),
@@ -424,7 +412,7 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
     assert.equal(r.advisors.review_panel?.compact_at, 90);
     assert.equal(r.advisors.merged_by, null);
     const read = (await (
-      await s.api.request("/v1/rigs/rig-a/model", {
+      await s.control.request("/v1/rigs/rig-a/model", {
         headers: { authorization: `Bearer ${TOKENS.admin}` },
       })
     ).json()) as {
@@ -496,7 +484,7 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
 
   test("MCP: set_rig_model sets an advisor's own, and rig_models shows it", async () => {
     const s = await stack();
-    const mcp = await mcpClient(s.api, TOKENS.operator);
+    const mcp = await mcpClient(s.control, TOKENS.operator);
     const r = text(
       await mcp.callTool({
         name: "set_rig_model",

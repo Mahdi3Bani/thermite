@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import {
   advisorsFileOf,
   agentModelsOf,
@@ -12,8 +11,7 @@ import {
 } from "../../src/control/rig-model.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, mcpClient, RIG_TOKEN } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient, RIG_TOKEN } from "../helpers/control-stack.ts";
 
 /**
  * Each agent's model over REST and MCP (goal 029): POST /v1/rigs/<rig>/model and set_rig_model
@@ -36,10 +34,9 @@ const TOKENS = {
  */
 async function stack() {
   const secrets = SecretBox.ephemeral();
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(store, TOKENS, generateSigningKeys().privateKeyPem, {
-    staleAfterMs: 600_000,
-    secrets,
+  const { store, control: api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000, secrets },
   });
   store.ingest({
     rig: "rig-a",

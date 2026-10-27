@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ControlActions } from "../../src/control/actions.ts";
-import { createControlApi } from "../../src/control/api.ts";
 import type { ClusterKubectl } from "../../src/control/clusters/kubectl.ts";
 import type { MachineSsh, SshTarget } from "../../src/control/machines/ssh.ts";
 import { RigUpdates } from "../../src/control/rig-update.ts";
@@ -11,7 +10,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { rigView } from "../../src/control/views.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import type { BuildInfo } from "../../src/core/version.ts";
-import { ADMIN, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 
 const CONTROL: BuildInfo = { version: "0.1.0", commit: null, protocol: 1, oldest_protocol: 1 };
 const OLD = { version: "0.0.9", commit: null, protocol: 1, oldest_protocol: 1 };
@@ -64,11 +63,11 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     waits: { pause: 2000, report: 4000, isolation: 4000 },
     pollMs: 10,
   });
-  const api = createControlApi(
+  const { control: api } = controlOnly({
     store,
-    { admin: ADMIN, rigs: { "cpu-9": RIG_TOKEN } },
-    keys.privateKeyPem,
-    {
+    keys,
+    tokens: { rigs: { "cpu-9": RIG_TOKEN } },
+    options: {
       staleAfterMs: 3 * MIN,
       offlineAfterMs: 15 * MIN,
       build: CONTROL,
@@ -80,7 +79,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
       rigUpdates: updates,
       actions,
     },
-  );
+  });
   store.addMachine({
     name: "gpu-host-1",
     address: "gpu-host-1.example.com",
@@ -102,21 +101,13 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     by: "owner:ui",
   });
   const ui = await signIn(api);
-  const { cookie, page } = ui;
+  const { page } = ui;
   const csrf = ui.csrfOf(await page("/ui/settings"));
   const post = async (path: string, form: Record<string, string> = {}) =>
     decodeURIComponent(String((await ui.post(path, { csrf, ...form })).headers.get("location")));
   /** A form as the page's script sends it (goal 080): with fetch, asking for JSON. */
   const send = async (path: string, form: Record<string, string> = {}) => {
-    const r = await api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: {
-        cookie,
-        accept: "application/json",
-        "content-type": "application/x-www-form-urlencoded",
-      },
-    });
+    const r = await ui.post(path, { csrf, ...form }, { accept: "application/json" });
     return { status: r.status, body: (await r.json()) as Record<string, unknown> };
   };
   // Each rig's next report, with events numbered on from its last.

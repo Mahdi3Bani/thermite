@@ -8,13 +8,14 @@ import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
 import { runStartBody, runStartSaid } from "../../src/cli/run.ts";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
+import type { ControlStore } from "../../src/control/store.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+/** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
+const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 
 /** Runs the command line; a refusal comes back with its exit code instead of throwing. */
 async function cli(...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -59,13 +60,7 @@ function report(
 
 describe("thermite run start (goal 029)", () => {
   test("starts a run as the campaign page's Start a run does, and says its refusals", async () => {
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-    );
+    const { keys, store, control: api } = controlOnly({ tokens: TOKENS });
     store.setConfiguredRigs(["rig-a"]);
     // sort-speed was assigned over the API before: Start a run assigns it again.
     issueCommand(store, keys.privateKeyPem, {

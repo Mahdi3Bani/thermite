@@ -4,7 +4,6 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import {
   joinCommand,
   joinedCommands,
@@ -12,9 +11,7 @@ import {
   joinNamespaceManifest,
 } from "../../src/control/join.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 const SECRETS = { controlToken: "rig-token-123", harnessSupervisorToken: "hs-token-456" };
 const IMAGES = {
@@ -122,13 +119,9 @@ describe("join a rig yourself: what control renders", () => {
 });
 
 async function control() {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: {} },
-    generateSigningKeys().privateKeyPem,
-    {
-      staleAfterMs: 180_000,
+  const { store, control: api } = controlOnly({
+    tokens: { rigs: {} },
+    options: {
       secrets: SecretBox.ephemeral(),
       publicUrl: "https://control.example.com",
       rigImages: {
@@ -137,7 +130,7 @@ async function control() {
         supervisor: IMAGES.supervisor,
       },
     },
-  );
+  });
   const { page, csrfOf, post: send } = await signIn(api);
   const csrf = csrfOf(await page("/ui/rigs/add"));
   const post = (path: string, form: Record<string, string>) => send(path, { csrf, ...form });

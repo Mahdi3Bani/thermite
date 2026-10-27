@@ -3,15 +3,13 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { McpServers } from "../../src/control/mcp-servers.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Copy on a campaign's page (goal 069), driven as a browser drives it without the page's script:
@@ -63,7 +61,6 @@ const research: Omit<CampaignDraft, "target"> = {
  * web-survey once; signed in to the dashboard.
  */
 async function stack() {
-  const keys = generateSigningKeys();
   const store = new ControlStore(":memory:");
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
   const secrets = SecretBox.ephemeral();
@@ -83,11 +80,10 @@ async function stack() {
     servers.put({ name, url: `https://${name}.example.com/mcp`, auth: "none" }, "owner:test");
     assert.equal(await servers.check(name), null);
   }
-  const api = createControlApi(store, { admin: ADMIN, rigs: {} }, keys.privateKeyPem, {
-    staleAfterMs: 600_000,
-    kits,
-    secrets,
-    mcpServers: servers,
+  const { keys, control } = controlOnly({
+    store,
+    tokens: { rigs: {} },
+    options: { staleAfterMs: 600_000, kits, secrets, mcpServers: servers },
   });
   store.ingest({
     rig: "rig-a",
@@ -122,18 +118,12 @@ async function stack() {
     });
     assert.ok(saved.ok, JSON.stringify(saved));
   }
-  const { cookie, get } = await signIn(api);
+  const { get, post } = await signIn(control);
   const page = async (path: string) => {
     const r = await get(path);
     assert.equal(r.status, 200, path);
     return r.text();
   };
-  const post = (path: string, body: URLSearchParams) =>
-    api.request(path, {
-      method: "POST",
-      body,
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
   return { store, get, page, post };
 }
 

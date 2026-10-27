@@ -7,27 +7,24 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 import { startFakeMcp } from "../helpers/fake-mcp.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+/** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
+const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 /** A made-up key, read from a file: never on the command line, never printed back. */
 const KEY = "Bearer clikeyforthetestsonly";
 
 describe("thermite mcp", () => {
   test("add reads the secret from a file and reads the tools; list shows the hint; delete forgets it", async () => {
     const fake = await startFakeMcp({ kind: "bearer", token: KEY.slice(7) });
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      generateSigningKeys().privateKeyPem,
-      { staleAfterMs: 180_000, secrets: SecretBox.ephemeral() },
-    );
+    const { control: api } = controlOnly({
+      tokens: TOKENS,
+      options: { secrets: SecretBox.ephemeral() },
+    });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     const control = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

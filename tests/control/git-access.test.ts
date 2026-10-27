@@ -7,28 +7,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
+import type { ControlOptions } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { stageCommand } from "../../src/supervisor/staging.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 
-async function control(extra: Partial<Parameters<typeof createControlApi>[3]> = {}) {
-  const keys = generateSigningKeys();
-  const store = new ControlStore(":memory:");
+async function control(extra: Partial<ControlOptions> = {}) {
   const secrets = SecretBox.ephemeral();
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-  const api = createControlApi(
+  const {
+    keys,
     store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-aaaaaa", "rig-b": "rig-token-bbbbbb" } },
-    keys.privateKeyPem,
-    { staleAfterMs: 180_000, kits, secrets, ...extra },
-  );
+    control: api,
+  } = controlOnly({
+    tokens: { rigs: { "rig-a": "rig-token-aaaaaa", "rig-b": "rig-token-bbbbbb" } },
+    options: { kits, secrets, ...extra },
+  });
   const { page, csrfOf, post: send } = await signIn(api);
   const csrf = csrfOf(await page("/ui/settings"));
   const post = (path: string, form: Record<string, string>) => send(path, { csrf, ...form });

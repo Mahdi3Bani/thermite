@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { createPod, readRunpod, runpodLine } from "../../src/control/runpod.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod as runpodFake } from "../helpers/fake-runpod.ts";
 
 const KEY = "rpa_test-key-0123456789abcdef";
@@ -151,14 +148,11 @@ describe("RunPod reader", () => {
 });
 
 async function control(f: typeof fetch) {
-  const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: {} },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000, secrets, cloudFetch: f },
-  );
+  const { store, control: api } = controlOnly({
+    tokens: { rigs: {} },
+    options: { secrets, cloudFetch: f },
+  });
   const ui = await signIn(api);
   const { page } = ui;
   const csrf = ui.csrfOf(await page("/ui/settings"));

@@ -3,12 +3,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { advanceResets } from "../../src/control/lifecycle.ts";
 import { exportLeft, resultsLeft } from "../../src/control/results-left.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 const NAME = "20261020T120000Z-0123abcd";
 const OWNER = "owner-token-abcdef";
@@ -127,12 +126,7 @@ describe("have all results left this rig?", () => {
   });
 
   test("the owner asks over REST", async () => {
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: OWNER, rigs: { "rig-a": RIG } },
-      generateSigningKeys().privateKeyPem,
-    );
+    const { store, control } = controlOnly({ tokens: { admin: OWNER, rigs: { "rig-a": RIG } } });
     store.setSupervisor("rig-a", figures({}));
     startExport(store);
     const ask = (token: string) =>
@@ -194,13 +188,10 @@ describe("a full reset of a rig without a results repository", () => {
 
 describe("model downloads in the rig's report and history", () => {
   test("each download that starts and ends is a step; the rig's page shows how far it is", async () => {
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: OWNER, rigs: { "rig-a": RIG } },
-      generateSigningKeys().privateKeyPem,
-      { staleAfterMs: 180_000, exportsDir: mkdtempSync(join(tmpdir(), "thermite-rl-")) },
-    );
+    const { store, control } = controlOnly({
+      tokens: { admin: OWNER, rigs: { "rig-a": RIG } },
+      options: { exportsDir: mkdtempSync(join(tmpdir(), "thermite-rl-")) },
+    });
     const model = (o: Record<string, unknown>) => ({
       name: "llama-8b",
       path: `models/${"d".repeat(64)}`,

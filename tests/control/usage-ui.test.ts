@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
+import type { ControlStore } from "../../src/control/store.ts";
 import { PRICE_CORE_JS } from "../../src/control/ui/providers-client.ts";
 import { bars, dayEdges, PRICE_WORDS } from "../../src/control/ui/usage.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { callUsage, startOfDay } from "../../src/core/usage.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Model use and cost on the screens (goal 075, as the owner approved the mockup v010-usage): the
@@ -84,12 +82,10 @@ function ingest(
  * the auditor in OpenCode, which does not report the cache. rig-b ran r-2 of gemv long ago.
  */
 async function stack() {
-  const keys = generateSigningKeys();
   const secrets = SecretBox.ephemeral();
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(store, TOKENS, keys.privateKeyPem, {
-    staleAfterMs: 600_000,
-    secrets,
+  const { store, control: api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000, secrets },
   });
   for (const [name, type] of [
     ["lab", "openai"],

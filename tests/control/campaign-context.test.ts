@@ -3,16 +3,13 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
-import { ADMIN, mcpClient } from "../helpers/control-stack.ts";
+import { ADMIN, controlOnly, mcpClient } from "../helpers/control-stack.ts";
 
 /**
  * A campaign's own context settings for all its runs' agents (goal 070): REST's POST
@@ -60,14 +57,11 @@ const CPU = { type: "cpu", class: "generic-cpu" };
  * 3).
  */
 async function stack() {
-  const keys = generateSigningKeys();
   const secrets = SecretBox.ephemeral();
-  const store = new ControlStore(":memory:");
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-  const api = createControlApi(store, TOKENS, keys.privateKeyPem, {
-    staleAfterMs: 600_000,
-    kits,
-    secrets,
+  const { keys, store, control, api } = controlOnly({
+    tokens: TOKENS,
+    options: { staleAfterMs: 600_000, kits, secrets },
   });
   store.ingest({
     rig: "rig-a",
@@ -124,12 +118,7 @@ async function stack() {
     },
     issuedBy: "owner:api",
   });
-  const post = (path: string, body: unknown, token = TOKENS.admin) =>
-    api.request(path, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  const post = (path: string, body: unknown, token?: string) => api("POST", path, body, token);
   const setContext = (campaign: string, body: unknown) =>
     post(`/v1/campaigns/${campaign}/context`, body);
   const give = (body: Record<string, unknown>) => post("/v1/rigs/rig-a/model", body);
@@ -144,7 +133,7 @@ async function stack() {
         (JSON.parse(x.signed) as { envelope: { payload: Record<string, unknown> } }).envelope
           .payload,
     );
-  return { store, api, keys, post, setContext, give, assigned, gemv };
+  return { store, control, keys, post, setContext, give, assigned, gemv };
 }
 
 const text = (r: unknown) =>
@@ -195,7 +184,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     assert.equal(newest(s, "matmul-speed").version, 2);
 
     // MCP: each call sets them anew, so a point alone drops the window.
-    const client = await mcpClient(s.api, TOKENS.operator);
+    const client = await mcpClient(s.control, TOKENS.operator);
     const point = text(
       await client.callTool({
         name: "set_campaign_context",
@@ -223,7 +212,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     }
     assert.equal(newest(s, "matmul-speed").version, 3);
     await client.close();
-    const reader = await mcpClient(s.api, TOKENS.read);
+    const reader = await mcpClient(s.control, TOKENS.read);
     assert.ok(!(await reader.listTools()).tools.some((t) => t.name === "set_campaign_context"));
     await reader.close();
 
@@ -326,7 +315,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     assert.deepEqual(sent.contract.agents_context, { context_window: 100_000, compact_at: 70 });
 
     // MCP's start_run gives the same; a try (no agents) says nothing of it.
-    const client = await mcpClient(s.api, TOKENS.operator);
+    const client = await mcpClient(s.control, TOKENS.operator);
     const viaMcp = text(
       await client.callTool({
         name: "start_run",
@@ -364,7 +353,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     );
     // The same over issue_command, with the campaign's contract: nothing signed.
     const v = newest(s, "matmul-speed");
-    const client = await mcpClient(s.api, TOKENS.operator);
+    const client = await mcpClient(s.control, TOKENS.operator);
     const issued = await client.callTool({
       name: "issue_command",
       arguments: {
@@ -412,7 +401,7 @@ describe("a campaign's own context settings (goal 070)", () => {
       compact_at: 70,
     });
     // Its own, in place of the source's.
-    const client = await mcpClient(s.api, TOKENS.operator);
+    const client = await mcpClient(s.control, TOKENS.operator);
     const own = text(
       await client.callTool({
         name: "copy_campaign",

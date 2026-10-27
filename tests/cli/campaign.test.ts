@@ -7,14 +7,14 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
+import { controlOnly } from "../helpers/control-stack.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
+/** Control's tokens: the owner's, as the token files below hold it, and no rigs. */
+const TOKENS = { admin: "owner-token-abcdef", rigs: {} };
 
 /** Runs the command line; a refusal comes back with its exit code instead of throwing. */
 async function cli(...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -34,13 +34,7 @@ async function cli(...args: string[]): Promise<{ code: number; stdout: string; s
 
 describe("thermite campaign copy (goal 069)", () => {
   test("copies a campaign through control, and says its refusals", async () => {
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-    );
+    const { keys, store, control: api } = controlOnly({ tokens: TOKENS });
     // sort-speed was assigned over the API before, with a real contract, and the rig ran it.
     store.setConfiguredRigs(["rig-a"]);
     const goal = JSON.parse(
@@ -179,13 +173,7 @@ describe("thermite campaign copy (goal 069)", () => {
 
 describe("thermite campaign context, and campaign copy's context options (goal 070)", () => {
   test("sets a campaign's own context settings through control, removes them, and gives a copy its own", async () => {
-    const keys = generateSigningKeys();
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(
-      store,
-      { admin: "owner-token-abcdef", rigs: {} },
-      keys.privateKeyPem,
-    );
+    const { keys, store, control: api } = controlOnly({ tokens: TOKENS });
     const goal = JSON.parse(
       readFileSync(join(import.meta.dirname, "../../examples/contracts/goal-example.json"), "utf8"),
     ) as Record<string, unknown>;

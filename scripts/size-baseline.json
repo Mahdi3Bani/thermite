@@ -100,13 +100,13 @@
       "lines": 2724
     },
     "tests/control/dashboard.test.ts": {
-      "lines": 2409
+      "lines": 2388
     },
     "tests/control/rig-model.test.ts": {
-      "lines": 910
+      "lines": 907
     },
     "tests/control/runpod-lifecycle.test.ts": {
-      "lines": 904
+      "lines": 903
     },
     "tests/control/steering-ui.test.ts": {
       "lines": 1251

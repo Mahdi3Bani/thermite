@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, signIn } from "../helpers/control-stack.ts";
+import { controlOnly, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A research run's Overview, from its rig's research digest: each question's words beside its
@@ -12,13 +9,7 @@ import { ADMIN, signIn } from "../helpers/control-stack.ts";
  */
 
 async function control() {
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "t-a-abcdef" } },
-    generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000 },
-  );
+  const { store, control: api } = controlOnly({ tokens: { rigs: { "rig-a": "t-a-abcdef" } } });
   const { page } = await signIn(api);
   let id = 0;
   const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>

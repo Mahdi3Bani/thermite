@@ -4,7 +4,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import type { RigVersions } from "../../src/control/versions.ts";
 import { reportingState, rigView } from "../../src/control/views.ts";
@@ -20,6 +19,7 @@ import {
 import { RelayError, relayOnce } from "../../src/supervisor/relay.ts";
 import {
   ADMIN,
+  controlOnly,
   controlStack,
   mcpClient,
   RIG_TOKEN,
@@ -269,9 +269,11 @@ describe("versions between control and its rigs", () => {
       oldest_protocol: 1,
     });
     store.setRigRefusal("rig-a", "an older control's reason");
-    createControlApi(store, tokens, env.keys.privateKeyPem, {
-      staleAfterMs: 180_000,
-      build: { version: "0.2.0", commit: null, protocol: 2, oldest_protocol: 1 },
+    controlOnly({
+      store,
+      keys: env.keys,
+      tokens,
+      options: { build: { version: "0.2.0", commit: null, protocol: 2, oldest_protocol: 1 } },
     });
     assert.equal(store.rigRefusal("rig-a"), undefined);
     assert.equal(store.listAudit(100).filter((a) => a.action === "rig_refusal_ended").length, 1);
@@ -433,10 +435,9 @@ describe("a newer rig's fields that control does not know", () => {
   });
 
   test("a newer supervisor's export is taken with a field control does not know", async () => {
-    const store = new ControlStore(":memory:");
-    const api = createControlApi(store, tokens, makeHarnessEnv("rig-a").keys.privateKeyPem, {
-      staleAfterMs: 180_000,
-      exportsDir: join(mkdtempSync(join(tmpdir(), "thermite-versions-")), "exports"),
+    const { control: api } = controlOnly({
+      tokens,
+      options: { exportsDir: join(mkdtempSync(join(tmpdir(), "thermite-versions-")), "exports") },
     });
     const bytes = Buffer.from("one\n");
     const r = await api.request("/v1/rigs/rig-a/exports/20261020T120000Z-0123abcd", {

@@ -1,10 +1,8 @@
-import { createControlApi } from "../../src/control/api.ts";
 import type { ClusterKubectl } from "../../src/control/clusters/kubectl.ts";
 import { PRIVATE_RANGES } from "../../src/control/clusters/netcheck.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { generateSigningKeys } from "../../src/core/commands.ts";
-import { ADMIN, mcpClient, signIn } from "./control-stack.ts";
+import type { ControlStore } from "../../src/control/store.ts";
+import { ADMIN, controlOnly, mcpClient, type Requester, signIn } from "./control-stack.ts";
 
 /**
  * Control over a fake Kubernetes cluster, for the tests of clusters in Providers, Add a rig and
@@ -189,15 +187,12 @@ export async function control(
     drainWatchMs?: number;
   } = {},
 ) {
-  const store = o.store ?? new ControlStore(":memory:");
   const secrets = o.secrets ?? SecretBox.ephemeral();
   const tag = o.tag ?? "1";
-  const api = createControlApi(
-    store,
-    { admin: ADMIN, operator: OPERATOR, rigs: {} },
-    generateSigningKeys().privateKeyPem,
-    {
-      staleAfterMs: 180_000,
+  const { store, control: api } = controlOnly({
+    store: o.store,
+    tokens: { operator: OPERATOR, rigs: {} },
+    options: {
       secrets,
       clusterKubectl: k,
       ...(o.drainWatchMs ? { drainWatchMs: o.drainWatchMs } : {}),
@@ -208,7 +203,7 @@ export async function control(
         supervisor: `registry.example.com/supervisor:${tag}`,
       },
     },
-  );
+  });
   const ui = await signIn(api);
   const { page } = ui;
   const csrf = ui.csrfOf(await page("/ui/settings"));
@@ -218,7 +213,7 @@ export async function control(
 }
 
 /** An MCP client on control with a token: each call's error flag and its JSON answer. */
-export async function mcpWith(api: ReturnType<typeof createControlApi>, token: string) {
+export async function mcpWith(api: Requester, token: string) {
   const client = await mcpClient(api, token);
   const call = async (name: string, args: Record<string, unknown>) => {
     const r = (await client.callTool({ name, arguments: args })) as {
