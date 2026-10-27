@@ -134,9 +134,6 @@
     },
     "tests/harness/research-review.test.ts": {
       "lines": 866
-    },
-    "tests/harness/research/research.test.ts": {
-      "lines": 853
     }
   }
 }

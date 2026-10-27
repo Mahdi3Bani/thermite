@@ -48,10 +48,14 @@ export async function servePages(): Promise<{ base: string; close: () => Promise
 /**
  * A research run "r-1" on a fresh harness, with no web and no folder: its contract is the
  * fixture's with `over`. The fetcher may reach this machine's addresses unless `allowPrivate` is
- * false.
+ * false. `clock` is the harness's and the ledger's time, for a test that moves it by hand.
  */
-export async function researchEnv(over: Record<string, unknown> = {}, allowPrivate = true) {
-  const env = makeHarnessEnv("rig-r");
+export async function researchEnv(
+  over: Record<string, unknown> = {},
+  allowPrivate = true,
+  clock?: () => Date,
+) {
+  const env = makeHarnessEnv("rig-r", clock);
   const parsed = parseContract({ ...researchFixture, ...over });
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
   const out = await env.service.applyCommand(

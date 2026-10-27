@@ -13,7 +13,6 @@ import {
   htmlToText,
   registrableDomain,
 } from "../../../src/harness/research/fetcher.ts";
-import { endDrainAtStart } from "../../../src/harness/service/drain.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import type { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { researchEnv } from "../../helpers/research-run.ts";
@@ -661,88 +660,6 @@ describe("research integrity", () => {
       skip = next.next_skip;
     }
     assert.equal(new Set(seen.map((m) => m.source)).size, 40, "every match once, page by page");
-  });
-
-  test("paused time does not count on the research clock", async () => {
-    const { env, research } = await researchEnv({ min_duration: "1h", max_duration: "2h" });
-    env.service.ledger.setRunStatus("r-1", "paused", "t", "t");
-    await new Promise((r) => setTimeout(r, 300));
-    const paused = research.clock("r-1").elapsed_ms;
-    await new Promise((r) => setTimeout(r, 300));
-    assert.equal(research.clock("r-1").elapsed_ms, paused);
-  });
-
-  test("time the agents could not run does not count, and the minimum is never a stop (goal 079)", async () => {
-    // No maximum: the minimum is a floor; the run never ends by its clock.
-    const { env, research } = await researchEnv({ min_duration: "1s", max_duration: undefined });
-    const ledger = env.service.ledger;
-    await new Promise((r) => setTimeout(r, 1100));
-    const c0 = research.clock("r-1");
-    assert.ok(c0.elapsed_ms >= 1000);
-    assert.equal(c0.max_ms, null);
-    assert.equal(c0.done, false, "past its minimum, a run with no maximum goes on");
-    // The agents stop (no credits): the clock stops with them, until they go on.
-    ledger.appendEvent("scheduler", "agents_stopped", "r-1", {
-      kind: "credits",
-      words: "402",
-      by: "trial t-1",
-      said: "no credits",
-    });
-    await new Promise((r) => setTimeout(r, 300));
-    const stopped = research.clock("r-1");
-    assert.ok(stopped.elapsed_ms - c0.elapsed_ms < 150, "the clock stopped");
-    assert.ok(stopped.waited_ms >= 250);
-    ledger.appendEvent("scheduler", "agents_resumed", "r-1", { why: "a model check passed" });
-    await new Promise((r) => setTimeout(r, 200));
-    const going = research.clock("r-1");
-    assert.ok(going.elapsed_ms - stopped.elapsed_ms >= 150, "it runs again");
-    // A wait for the provider's rate limit does not count either, until the time it named.
-    ledger.appendEvent("scheduler", "agents_wait_for_limit", "r-1", {
-      until: new Date(Date.now() + 60_000).toISOString(),
-      trial: "t-1",
-      reason: "rate limit",
-    });
-    await new Promise((r) => setTimeout(r, 300));
-    assert.ok(research.clock("r-1").elapsed_ms - going.elapsed_ms < 150, "waiting: stopped");
-    // A 1 s wait for the MCP servers (goal 068) doesn't count: long enough that no lag hides it.
-    const { env: e3, research: r3 } = await researchEnv({
-      min_duration: "1s",
-      max_duration: undefined,
-    });
-    await new Promise((r) => setTimeout(r, 1200));
-    const before = r3.clock("r-1");
-    e3.service.ledger.appendEvent("scheduler", "mcp_servers_wait", "r-1", {
-      since: new Date(Date.now() - 1000).toISOString(),
-      waited_s: 0,
-      missing: [],
-    });
-    const after = r3.clock("r-1");
-    assert.ok(before.elapsed_ms - after.elapsed_ms >= 600, "the wait is taken off the clock");
-    assert.ok(after.waited_ms >= 950, String(after.waited_ms));
-    // With a maximum, the clock (not the minimum) ends it.
-    const { research: r2 } = await researchEnv({ min_duration: "1s", max_duration: "2s" });
-    assert.equal(r2.clock("r-1").done, false);
-    assert.equal(r2.clock("r-1").max_ms, 2000);
-  });
-
-  test("time the rig drained does not count, nor in the progress rule's time since (goal 136)", async () => {
-    const { env, research } = await researchEnv({ min_duration: "1s", max_duration: undefined });
-    const ledger = env.service.ledger;
-    await new Promise((r) => setTimeout(r, 300));
-    const before = Date.now();
-    const c0 = research.clock("r-1");
-    // The rig drains for an image update: no trial or plan starts, so the clock stops.
-    ledger.appendEvent("owner", "rig_drain", null, { drain: true, reason: "new images" });
-    await new Promise((r) => setTimeout(r, 300));
-    const drained = research.clock("r-1");
-    assert.ok(drained.elapsed_ms - c0.elapsed_ms < 150, "the clock stopped while it drained");
-    assert.ok(drained.waited_ms >= 250, String(drained.waited_ms));
-    // The progress rule's time since a moment is the clock's difference: the drain is not in it.
-    assert.ok(drained.elapsed_ms - research.clock("r-1", before).elapsed_ms < 150);
-    // The harness starts again, which ends the drain: the clock runs again.
-    endDrainAtStart(ledger, "harness");
-    await new Promise((r) => setTimeout(r, 200));
-    assert.ok(research.clock("r-1").elapsed_ms - drained.elapsed_ms >= 150, "it runs again");
   });
 });
 
