@@ -918,22 +918,10 @@ export class HarnessService {
       });
       return { effect: "waiting for the owner", reason: ask };
     }
-    const flaws = (JSON.parse(String(a.known_flaws ?? "[]")) as unknown[]).length > 0;
-    const before = (a.flaws_cleared_by as string | null) ?? null;
-    if (flaws && !before)
-      this.ledger.db
-        .prepare("update attempt set flaws_cleared_by = ? where id = ?")
-        .run(`${by} (${cleared})`, attempt);
-    const r = await this.promoteAttempt({ run, attempt, expectedSeq, by });
-    if (r.promoted) {
-      if (flaws && !before)
-        this.ledger.appendEvent(by, "flaws_accepted", attempt, { by: `${by} (${cleared})` });
-      return { effect: "promoted", seq: r.seq };
-    }
-    if (flaws && !before)
-      this.ledger.db
-        .prepare("update attempt set flaws_cleared_by = null where id = ?")
-        .run(attempt);
+    // Declared flaws are accepted by this step, in the promotion's own transaction.
+    const acceptFlaws = `${by} (${cleared})`;
+    const r = await this.promoteAttempt({ run, attempt, expectedSeq, by, acceptFlaws });
+    if (r.promoted) return { effect: "promoted", seq: r.seq };
     return this.rescreen(attempt, r.currentSeq, by) as Record<string, unknown>;
   }
 
@@ -1505,33 +1493,40 @@ export class HarnessService {
    * Moves the champion to a confirmed attempt by compare-and-swap and points the champion ref
    * at it. Returns the current seq instead when the champion moved since the attempt was judged.
    */
+  /**
+   * The champion by compare-and-swap, as the judge promotes (goal 163): the champion, the flaws'
+   * acceptance, the lifecycle, a goal run's validation and `also` (what the caller records with
+   * it) in one transaction; the champion's git ref follows from the ledger.
+   */
   async promoteAttempt(input: {
     run: string;
     attempt: string;
     expectedSeq: number;
     by: string;
+    acceptFlaws?: string | undefined;
+    also?: () => void;
   }): Promise<{ promoted: true; seq: number } | { promoted: false; currentSeq: number }> {
     const a = this.ledger.getAttempt(input.attempt);
     if (!a) throw new LedgerError("not_found", `no attempt ${input.attempt}`);
-    const r = this.ledger.promote({
-      run: input.run,
-      expectedSeq: input.expectedSeq,
-      attempt: input.attempt,
-      commitSha: String(a.commit_sha),
-      by: input.by,
+    const goal = this.contractFor(input.run).mode === "goal";
+    const r = this.ledger.tx(() => {
+      const { run, expectedSeq, attempt, by, acceptFlaws } = input;
+      const commitSha = String(a.commit_sha);
+      const p = this.ledger.promote({ run, expectedSeq, attempt, commitSha, by, acceptFlaws });
+      if (!p.ok) return p;
+      // A new goal-campaign champion is validated afresh, so the goal tree reflects it.
+      if (goal)
+        this.ledger.enqueueJob({
+          kind: "validate",
+          priority: 60,
+          spec: { run: input.run },
+          actor: input.by,
+        });
+      input.also?.();
+      return p;
     });
     if (!r.ok) return { promoted: false, currentSeq: r.currentSeq };
     await this.syncChampionRef(input.run);
-    this.ledger.setAttemptLifecycle(input.attempt, "promoted", input.by);
-    // A new goal-campaign champion is validated afresh, so the goal tree reflects it.
-    if (this.contractFor(input.run).mode === "goal") {
-      this.ledger.enqueueJob({
-        kind: "validate",
-        priority: 60,
-        spec: { run: input.run },
-        actor: input.by,
-      });
-    }
     return { promoted: true, seq: r.seq };
   }
 
@@ -2252,27 +2247,19 @@ export class HarnessService {
       throw new Error(`attempt ${p.attempt} is ${lifecycle}, not awaiting approval`);
     }
     if (!Number.isInteger(expectedSeq)) throw new Error(`no pending promotion for ${p.attempt}`);
-    const flaws = (JSON.parse(String(a.known_flaws)) as unknown[]).length > 0;
-    const setCleared = (v: string | null) =>
-      this.ledger.db
-        .prepare("update attempt set flaws_cleared_by = ? where id = ?")
-        .run(v, p.attempt);
-    // The owner's approval accepts declared flaws, but only if the promotion happens.
-    if (flaws) setCleared(by);
-    let r: Awaited<ReturnType<HarnessService["promoteAttempt"]>>;
-    try {
-      r = await this.promoteAttempt({ ...p, expectedSeq, by });
-    } catch (err) {
-      if (flaws) setCleared((a.flaws_cleared_by as string | null) ?? null);
-      throw err;
-    }
-    if (r.promoted) {
-      if (lifecycle !== "awaiting_approval")
-        this.ledger.appendEvent(by, "audit_overridden", p.attempt, { lifecycle });
-      if (flaws) this.ledger.appendEvent(by, "flaws_accepted", p.attempt, {});
-      return r;
-    }
-    if (flaws) setCleared((a.flaws_cleared_by as string | null) ?? null);
+    // The owner's approval accepts declared flaws, in the promotion's own transaction, and an
+    // audit it overrides is recorded there too.
+    const r = await this.promoteAttempt({
+      ...p,
+      expectedSeq,
+      by,
+      acceptFlaws: by,
+      also: () => {
+        if (lifecycle !== "awaiting_approval")
+          this.ledger.appendEvent(by, "audit_overridden", p.attempt, { lifecycle });
+      },
+    });
+    if (r.promoted) return r;
     return this.rescreen(p.attempt, r.currentSeq, by);
   }
 

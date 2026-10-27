@@ -1,4 +1,7 @@
-import type { AskOwner } from "../../core/commands.ts";
+import type { SQLInputValue } from "node:sqlite";
+import { AskOwner } from "../../core/commands.ts";
+
+type Row = Record<string, SQLInputValue>;
 
 /** The ledger's rows as its reads give them, and an attempt as its writer gives it (moved out of ledger.ts). */
 
@@ -98,4 +101,59 @@ export interface ExperimentRow {
 export interface BriefingItem {
   text: string;
   from: { campaign: string; run: string; kind: string; ref: string };
+}
+
+export function toRun(r: Row): RunRow {
+  return {
+    id: String(r.id),
+    campaign: String(r.campaign),
+    version: Number(r.version),
+    contract_sha: String(r.contract_sha),
+    mode: String(r.mode),
+    seed_repo: String(r.seed_repo),
+    seed_commit: String(r.seed_commit),
+    direction: r.direction === null ? null : String(r.direction),
+    status: String(r.status) as RunRow["status"],
+    pause_reason: r.pause_reason === null ? null : String(r.pause_reason),
+    agents: r.agents === undefined || Number(r.agents) !== 0,
+    promotion: r.promotion === "auto" || r.promotion === "owner_approval" ? r.promotion : null,
+    ask_owner: askOwnerOf(r.ask_owner),
+  };
+}
+
+/** A run's stored switches; anything unreadable asks nothing (a run from before goal 079). */
+function askOwnerOf(raw: unknown): AskOwner {
+  if (typeof raw !== "string" || !raw) return {};
+  try {
+    const p = AskOwner.safeParse(JSON.parse(raw));
+    return p.success ? p.data : {};
+  } catch {
+    return {};
+  }
+}
+
+export function toExperiment(r: ExperimentRow): ExperimentRow {
+  return {
+    ...r,
+    place: r.place === null ? null : Number(r.place),
+    cause: r.cause ?? null,
+    returns: Number(r.returns ?? 0),
+    question: r.question === null || r.question === undefined ? null : Number(r.question),
+    yield: r.yield ?? null,
+  };
+}
+
+export function toJob(r: Row): JobRow {
+  return {
+    id: Number(r.id),
+    attempt: r.attempt === null ? null : String(r.attempt),
+    kind: String(r.kind),
+    state: String(r.state),
+    priority: Number(r.priority),
+    lease_owner: r.lease_owner === null ? null : String(r.lease_owner),
+    lease_until: r.lease_until === null ? null : String(r.lease_until),
+    fence: Number(r.fence),
+    expiries: Number(r.expiries),
+    spec: String(r.spec),
+  };
 }

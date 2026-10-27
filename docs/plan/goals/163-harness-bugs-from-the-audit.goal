@@ -32,7 +32,7 @@ Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": 
 
 ## Done when
 
-- [ ] Each bug is fixed, with a regression test that fails without the fix. Item 1's test throws after the champion moves and checks the attempt's lifecycle and events.
+- [x] Each bug is fixed, with a regression test that fails without the fix. Item 1's test throws after the champion moves and checks the attempt's lifecycle and events.
 - [ ] Item 8 is decided by the owner and done, and the contract reference says what holds.
 - [ ] The fast checks pass, and the judge, agents and steering acceptance checks.
 
@@ -54,6 +54,7 @@ Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": 
 - 2026-10-27 06:58 UTC: Items 6 and 7 fixed. A contract the judge can't read stops the job as an infrastructure failure, never measuring with no held-out mask (`tests/harness/judge/failure.test.ts` fails only that read, and fails without the fix). A failed job is recorded by `recordInfraFailure` (`src/harness/judge/failure.ts`, moved out of `judge.ts`), which logs a failure to record apart from a lost lease; the outcome, the champion's ref sync and the port each log their own failure; a lost lease renewal is logged with its job; and a GPU whose compute processes `nvidia-smi` can't list is not ready for timing (`tests/harness/targets/cuda.test.ts`). The limits page says so.
 - 2026-10-27 07:02 UTC: Item 9 fixed: a run on the harness's own content (a rig check's) takes its model from that content, not the inbox; a refused command's `command_rejected` event names its id, and control's words show it (`tests/harness/service.test.ts`, whose two new tests fail without the fix); and each kit export goes through a folder of its own, the first one in keeping its copy (`exportKit` in `src/harness/judge/kits.ts`; `tests/harness/judge/kits.test.ts`). The rule-set checks moved to `src/harness/service/rules.ts`, so `service.ts` shrinks.
 - 2026-10-27 07:05 UTC: Item 2 fixed: an OpenCode code trial ends at Turns per trial, as its research trials and the other programs' do (one `turnsUp` for both loops; `tests/harness/agents/opencode/turns.test.ts`, where without the fix the trial runs to its wall). The limits page already said so. OpenCode's event reading moved to `src/harness/agents/opencode/events.ts`, so `opencode.ts` shrinks.
+- 2026-10-27 07:14 UTC: Item 1 fixed: one `ledger.promote` writes the champion, its event, the acceptance of declared flaws (`acceptFlaws`), and the lifecycle in one transaction; the service's promotion adds a goal run's validation and what its caller records (an audit the owner overrides) to that transaction, and the git ref follows. The judge, the auditor's clear and the owner's approval all use it (`tests/harness/judge/promotion.test.ts` fails the ref after the champion moves: without the fix the change stays `awaiting_audit` with no `flaws_accepted`). The row converters moved to `src/harness/ledger/rows.ts`. The verdicts reference says so.
 
 ---
 

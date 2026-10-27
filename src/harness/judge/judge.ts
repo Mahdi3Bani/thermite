@@ -319,37 +319,13 @@ export class Judge {
       if (fin.promote) {
         const { clearFlaws, ...promote } = fin.promote;
         // Declared flaws nothing asks the owner about are accepted by this promotion (goal 079),
-        // and only if it happens.
-        const flawed =
-          (
-            JSON.parse(
-              String(this.ledger.getAttempt(promote.attempt)?.known_flaws ?? "[]"),
-            ) as unknown[]
-          ).length > 0;
-        const accepting =
-          clearFlaws !== undefined &&
-          flawed &&
-          Number(
-            this.ledger.db
-              .prepare(
-                "update attempt set flaws_cleared_by = ? where id = ? and flaws_cleared_by is null",
-              )
-              .run(clearFlaws, promote.attempt).changes,
-          ) > 0;
-        const r = this.ledger.promote({ ...promote, by: this.o.owner });
+        // and only if it happens: in its own transaction.
+        const r = this.ledger.promote({ ...promote, by: this.o.owner, acceptFlaws: clearFlaws });
         if (r.ok) {
           lifecycle = "promoted";
           movedRun = fin.promote.run;
           result.promoted = { seq: r.seq };
-          if (accepting)
-            this.ledger.appendEvent(this.o.owner, "flaws_accepted", promote.attempt, {
-              by: clearFlaws,
-            });
         } else {
-          if (accepting)
-            this.ledger.db
-              .prepare("update attempt set flaws_cleared_by = null where id = ?")
-              .run(promote.attempt);
           // Lost the compare-and-swap: screen again against the new champion.
           lifecycle = "queued";
           enqueue = { attempt: fin.promote.attempt, kind: "evaluate", actor: this.o.owner };

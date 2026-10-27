@@ -4,14 +4,23 @@ import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { log } from "../common/env.ts";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
-import { AskOwner } from "../core/commands.ts";
+import type { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
 import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
 import { migrateLedger } from "./ledger/migrate.ts";
-import type { AttemptInput, BriefingItem, ExperimentRow, JobRow, RunRow } from "./ledger/rows.ts";
+import {
+  type AttemptInput,
+  type BriefingItem,
+  type ExperimentRow,
+  type JobRow,
+  type RunRow,
+  toExperiment,
+  toJob,
+  toRun,
+} from "./ledger/rows.ts";
 import { shownViolations, violationsOf } from "./v0.ts";
 
 /**
@@ -446,12 +455,18 @@ export class Ledger {
    * the seq the judge measured against. A lost race returns the current seq so the caller can
    * re-evaluate. The attempt itself must be promotable, or a LedgerError is thrown.
    */
+  /**
+   * Promotes an attempt by compare-and-swap on the run's champion: the champion, its event, the
+   * acceptance of its declared flaws by `acceptFlaws` (who accepts them, when nobody has yet)
+   * and its lifecycle, in one transaction (goal 163). Nothing changes when the champion moved.
+   */
   promote(input: {
     run: string;
     expectedSeq: number;
     attempt: string;
     commitSha: string;
     by: string;
+    acceptFlaws?: string | undefined;
   }): PromoteResult {
     return this.tx(() => {
       const a = this.getAttempt(input.attempt);
@@ -474,11 +489,21 @@ export class Ledger {
           `attempt ${input.attempt} has verdict ${verdict ?? "none"}`,
         );
       }
-      if ((JSON.parse(String(a.known_flaws)) as unknown[]).length > 0 && !a.flaws_cleared_by) {
+      const open =
+        (JSON.parse(String(a.known_flaws)) as unknown[]).length > 0 && !a.flaws_cleared_by;
+      if (open && !input.acceptFlaws) {
         throw new LedgerError("invalid", `attempt ${input.attempt} has open known flaws`);
       }
       const current = this.currentChampion(input.run).seq;
       if (current !== input.expectedSeq) return { ok: false, currentSeq: current };
+      if (open) {
+        this.run(
+          "update attempt set flaws_cleared_by = ? where id = ?",
+          input.acceptFlaws ?? null,
+          input.attempt,
+        );
+        this.appendEvent(input.by, "flaws_accepted", input.attempt, { by: input.acceptFlaws });
+      }
       const top = this.get<Row>("select max(seq) as m from champion where run = ?", input.run);
       const seq = Number(top?.m) + 1;
       this.run(
@@ -495,6 +520,7 @@ export class Ledger {
         attempt: input.attempt,
         commit: input.commitSha,
       });
+      this.setAttemptLifecycle(input.attempt, "promoted", input.by);
       return { ok: true, seq };
     });
   }
@@ -1577,59 +1603,4 @@ export class Ledger {
       latest_event: this.latestEventId(),
     };
   }
-}
-
-function toRun(r: Row): RunRow {
-  return {
-    id: String(r.id),
-    campaign: String(r.campaign),
-    version: Number(r.version),
-    contract_sha: String(r.contract_sha),
-    mode: String(r.mode),
-    seed_repo: String(r.seed_repo),
-    seed_commit: String(r.seed_commit),
-    direction: r.direction === null ? null : String(r.direction),
-    status: String(r.status) as RunRow["status"],
-    pause_reason: r.pause_reason === null ? null : String(r.pause_reason),
-    agents: r.agents === undefined || Number(r.agents) !== 0,
-    promotion: r.promotion === "auto" || r.promotion === "owner_approval" ? r.promotion : null,
-    ask_owner: askOwnerOf(r.ask_owner),
-  };
-}
-
-/** A run's stored switches; anything unreadable asks nothing (a run from before goal 079). */
-function askOwnerOf(raw: unknown): AskOwner {
-  if (typeof raw !== "string" || !raw) return {};
-  try {
-    const p = AskOwner.safeParse(JSON.parse(raw));
-    return p.success ? p.data : {};
-  } catch {
-    return {};
-  }
-}
-
-function toExperiment(r: ExperimentRow): ExperimentRow {
-  return {
-    ...r,
-    place: r.place === null ? null : Number(r.place),
-    cause: r.cause ?? null,
-    returns: Number(r.returns ?? 0),
-    question: r.question === null || r.question === undefined ? null : Number(r.question),
-    yield: r.yield ?? null,
-  };
-}
-
-function toJob(r: Row): JobRow {
-  return {
-    id: Number(r.id),
-    attempt: r.attempt === null ? null : String(r.attempt),
-    kind: String(r.kind),
-    state: String(r.state),
-    priority: Number(r.priority),
-    lease_owner: r.lease_owner === null ? null : String(r.lease_owner),
-    lease_until: r.lease_until === null ? null : String(r.lease_until),
-    fence: Number(r.fence),
-    expiries: Number(r.expiries),
-    spec: String(r.spec),
-  };
 }
