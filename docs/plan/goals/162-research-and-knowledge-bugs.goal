@@ -1,7 +1,7 @@
 ---
 id: "162"
 title: "Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-26
@@ -10,7 +10,7 @@ updated: 2026-10-26
 
 # 162 · Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
@@ -50,6 +50,7 @@ Experiment integrity: a claim counts only when its quotes are in the archived te
 ## Progress
 
 - 2026-10-26: Goal written from the v0.1.1 audit's harness and knowledge reports.
+- 2026-10-27 06:06 UTC: Started by goal 172, step 2. Item 1 fixed: the fetcher refuses an answer that is not a 2xx before anything is archived (`statusRefusal` in `src/harness/research/fetcher.ts`): a 404, a 410 or another 4xx for good, a 408, a 429 or a 5xx as a failure that can pass (`tests/harness/research/fetch-status.test.ts`, which fails without the fix). The campaign modes page states the rule.
 
 ---
 

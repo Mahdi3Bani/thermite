@@ -43,6 +43,22 @@ export interface Fetched {
 
 export class FetchRefused extends Error {}
 
+/** The answers that can pass: a timeout, too many requests, a server's own failure. */
+const PASSING = (status: number) => status === 408 || status === 429 || status >= 500;
+
+/**
+ * An answer that is not a 2xx is never archived (goal 162): an error page is not a source, and a
+ * claim that quotes one must not pass. A 404, a 410 or another 4xx is refused for good (the run
+ * gets the same answer at once if it asks again); a 408, a 429 or a 5xx is a failure that can
+ * pass, so the next ask fetches again.
+ */
+export function statusRefusal(status: number): void {
+  if (status >= 200 && status < 300) return;
+  const words = `the site answered HTTP ${status}: an error page is not a source`;
+  if (PASSING(status)) throw new Error(`${words}; it may pass, so a later ask fetches it again`);
+  throw new FetchRefused(words);
+}
+
 const USER_AGENT = "thermite-research/1.0";
 
 function v4Bytes(ip: string): number[] {
@@ -492,6 +508,7 @@ export class Fetcher {
       throw new FetchRefused(`robots.txt disallows ${u.pathname}`);
     await this.rate(u.hostname);
     const r = await this.get(u, this.policy.maxBytes, 0);
+    statusRefusal(r.status);
     const sha256 = createHash("sha256").update(r.body).digest("hex");
     const type = r.type?.split(";")[0]?.trim().toLowerCase() ?? null;
     const raw = r.body.toString("utf8");
