@@ -1,7 +1,7 @@
 ---
 id: "163"
 title: "Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-26
@@ -10,7 +10,7 @@ updated: 2026-10-26
 
 # 163 · Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
@@ -48,6 +48,7 @@ Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": 
 ## Progress
 
 - 2026-10-26: Goal written from the v0.1.1 audit's harness and operations reports.
+- 2026-10-27 06:43 UTC: Started by goal 172, step 2. Item 4 fixed: the ledger's `tx()` lowers its depth once, in a `finally`, so a failed commit leaves later transactions, nested ones too, working; a failed rollback is logged beside the first error, never in its place (`tests/harness/ledger.test.ts`, with a deferred foreign key that fails the commit). The ledger's row types moved to `src/harness/ledger/rows.ts`, so `ledger.ts` doesn't grow.
 
 ---
 

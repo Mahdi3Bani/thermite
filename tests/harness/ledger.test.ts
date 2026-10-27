@@ -111,6 +111,22 @@ describe("ledger", () => {
     assert.throws(() => Ledger.open(path), /the copy made then: .*ledger\.db\.v\d+\..*\.copy/);
   });
 
+  test("a commit that fails leaves later transactions, nested ones too, working (goal 163)", () => {
+    const { ledger } = setup();
+    // A deferred foreign key is checked at commit: the commit fails, as on a full disk.
+    ledger.db.exec(`create table t_parent (id integer primary key);
+      create table t_child (p integer references t_parent(id) deferrable initially deferred)`);
+    assert.throws(
+      () => ledger.tx(() => ledger.db.exec("insert into t_child (p) values (7)")),
+      /FOREIGN KEY constraint failed/,
+    );
+    assert.equal(ledger.db.prepare("select count(*) as n from t_child").get()?.n, 0);
+    const got = ledger.tx(() => ledger.tx(() => "nested"));
+    assert.equal(got, "nested");
+    ledger.tx(() => ledger.db.exec("insert into t_parent (id) values (1)"));
+    assert.equal(ledger.db.prepare("select count(*) as n from t_parent").get()?.n, 1);
+  });
+
   test("a new ledger is not copied", () => {
     const { ledger, path } = setup();
     ledger.close();
