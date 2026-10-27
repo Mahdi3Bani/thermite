@@ -50,7 +50,6 @@ import {
 } from "./broker/devices.ts";
 import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
 import { Compactions, compactionOf } from "./compactions.ts";
-import { harnessNumbers } from "./env-numbers.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { jobsAtStart } from "./judge/lease.ts";
@@ -67,6 +66,7 @@ import {
   oneContainerTargets,
 } from "./selftest.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
+import { harnessNumbers } from "./settings.ts";
 import { checksDir, smokeCheck } from "./smoke-check.ts";
 import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver, smiAs, smiAsRun } from "./targets/cuda.ts";

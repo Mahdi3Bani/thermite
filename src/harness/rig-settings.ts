@@ -1,19 +1,16 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { z } from "zod";
 import { log } from "../common/env.ts";
-import { numberSetting, optionalNumberSetting } from "../common/settings.ts";
+import { readNumber } from "../common/settings.ts";
 import type { CommandPayloads } from "../core/commands.ts";
-import { MAX_LANES } from "../core/contract.ts";
+import { HARNESS_NUMBERS } from "./settings.ts";
 
 /**
  * A trial's length from THERMITE_TRIAL_MINUTES (goal 079): unset or empty, none; else whole
  * minutes from 1 to 1,440, as a contract's `lanes.limits.trial_minutes`.
  */
 export function trialMinutesFromEnv(raw: string | undefined): number | null {
-  const rule = { unit: "minutes", integer: true, min: 1, max: 1440 };
-  return (
-    optionalNumberSetting({ THERMITE_TRIAL_MINUTES: raw }, "THERMITE_TRIAL_MINUTES", rule) ?? null
-  );
+  return readNumber({ THERMITE_TRIAL_MINUTES: raw }, HARNESS_NUMBERS.trialMinutes) ?? null;
 }
 
 /**
@@ -22,8 +19,7 @@ export function trialMinutesFromEnv(raw: string | undefined): number | null {
  * Edit rig; anything else stops the harness at start with the reason.
  */
 export function lanesFromEnv(raw: string | undefined): number {
-  const rule = { integer: true, max: MAX_LANES, zeroMeans: "no trials" };
-  return numberSetting({ THERMITE_MAX_TRIALS: raw }, "THERMITE_MAX_TRIALS", 1, rule);
+  return readNumber({ THERMITE_MAX_TRIALS: raw }, HARNESS_NUMBERS.maxTrials);
 }
 
 /**

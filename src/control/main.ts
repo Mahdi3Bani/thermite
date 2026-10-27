@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
-import { optionalNumberSetting, secondsSetting } from "../common/settings.ts";
+import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
@@ -17,6 +17,7 @@ import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
+import { CONTROL_NUMBERS } from "./settings.ts";
 import { ControlStore } from "./store.ts";
 import { ControlTunnels } from "./tunnel.ts";
 
@@ -76,9 +77,9 @@ async function main(): Promise<void> {
   const store = new ControlStore(join(dir, "control.db"));
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
   // A rig is stale after 3 missed reports (the supervisor reports every 60 s by default).
-  const staleAfterMs = secondsSetting(env, "THERMITE_CONTROL_STALE_SECONDS", 180);
+  const staleAfterMs = readNumber(env, CONTROL_NUMBERS.staleSeconds) * 1000;
   // Offline after 15 minutes without a report (never before it is stale).
-  const offlineAfterMs = secondsSetting(env, "THERMITE_CONTROL_OFFLINE_SECONDS", 900);
+  const offlineAfterMs = readNumber(env, CONTROL_NUMBERS.offlineSeconds) * 1000;
   const driver = driverFromEnv(env);
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
@@ -111,10 +112,7 @@ async function main(): Promise<void> {
       driver,
       // Optional: the owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
-      sessionDays: optionalNumberSetting(env, "THERMITE_CONTROL_SESSION_DAYS", {
-        unit: "days",
-        aboveMin: true,
-      }),
+      sessionDays: readNumber(env, CONTROL_NUMBERS.sessionDays),
       secrets,
       runpodTests,
       mcpServers,

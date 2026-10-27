@@ -13,7 +13,7 @@
       "lines": 1689
     },
     "src/control/dashboard.ts": {
-      "lines": 8784
+      "lines": 8783
     },
     "src/control/mcp-servers.ts": {
       "lines": 996
@@ -58,10 +58,10 @@
       "lines": 1007
     },
     "src/harness/broker.ts": {
-      "lines": 1205
+      "lines": 1203
     },
     "src/harness/broker/snapshot.ts": {
-      "lines": 1250
+      "lines": 1241
     },
     "src/harness/judge/judge.ts": {
       "lines": 2046

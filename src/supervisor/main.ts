@@ -10,7 +10,6 @@ import {
 import { basename, dirname, join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
-import { numberSetting, secondsSetting } from "../common/settings.ts";
 import { untoldKinds } from "../core/kb.ts";
 import type { McpUse } from "../core/mcp.ts";
 import { buildHeaders, buildInfo } from "../core/version.ts";
@@ -30,6 +29,7 @@ import { ModelDownloads } from "./model-download.ts";
 import { syncModelRouteRound } from "./model-route.ts";
 import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
 import { dailyReport } from "./report.ts";
+import { SUPERVISOR_NUMBERS, supervisorMs } from "./settings.ts";
 import { stageCommand } from "./staging.ts";
 import { waitForHarness } from "./startup.ts";
 import { startPullMode } from "./tunnel-pod.ts";
@@ -49,9 +49,6 @@ function notYetExported(outboxDir: string, state: ExportState): number {
   const done = new Set(state.done);
   return readdirSync(outboxDir).filter((n) => !n.startsWith(".") && !done.has(n)).length;
 }
-
-/** An interval whose 0 turns its loop off. */
-const OFF_AT_ZERO = { aboveMin: false, zeroMeans: "off" };
 
 /**
  * Supervisor entry point: the 60-second report and command relay loop (with content staging,
@@ -120,7 +117,7 @@ async function main(): Promise<void> {
       if (kind === "wipe_state" && accepted) wipeRequested = true;
     },
   };
-  const intervalMs = secondsSetting(env, "THERMITE_POLL_SECONDS", 60);
+  const intervalMs = supervisorMs(env, SUPERVISOR_NUMBERS.pollSeconds);
   const exportPath = join(home, "export-state.json");
   let exportState: ExportState = load(exportPath, { done: [] });
   // Champion patches waiting to reach control (kept across restarts).
@@ -339,10 +336,7 @@ async function main(): Promise<void> {
 
   // The live view: the harness's live log (signed) and the supervisor's own lines, every few
   // seconds. Independent of the 60 s report relay.
-  const liveMs = numberSetting(env, "THERMITE_LIVE_INTERVAL_MS", 3000, {
-    unit: "ms",
-    zeroMeans: "off",
-  });
+  const liveMs = supervisorMs(env, SUPERVISOR_NUMBERS.liveIntervalMs);
   const living = async () => {
     let liveState: LiveRelayState = { cursor: 0, ownCursor: 0 };
     let failing = false;
@@ -365,10 +359,7 @@ async function main(): Promise<void> {
 
   // Commands on their own short interval: a pause or a message should not wait for the next
   // report. The report loop below leaves commands to this one.
-  const commandMs = secondsSetting(env, "THERMITE_COMMAND_POLL_SECONDS", 5, {
-    aboveMin: false,
-    zeroMeans: "with each report",
-  });
+  const commandMs = supervisorMs(env, SUPERVISOR_NUMBERS.commandPollSeconds);
   const commanding = async () => {
     let failing = false;
     while (!stopping && controlUrl && commandMs > 0) {
@@ -388,7 +379,7 @@ async function main(): Promise<void> {
   const commandingDone = commanding();
 
   // The agents' model route, from control's settings page: checked every half minute.
-  const routeMs = secondsSetting(env, "THERMITE_MODEL_ROUTE_POLL_SECONDS", 30, OFF_AT_ZERO);
+  const routeMs = supervisorMs(env, SUPERVISOR_NUMBERS.modelRoutePollSeconds);
   const pause = async (ms: number) => {
     const until = Date.now() + ms;
     while (!stopping && !wipeRequested && Date.now() < until)
@@ -443,7 +434,7 @@ async function main(): Promise<void> {
   // folder (knowledge/), every few minutes. The cursor of each run is kept here.
   const kbPath = join(home, "kb-state.json");
   let kbState: KbSyncState = load(kbPath, emptyKbSyncState());
-  const kbMs = secondsSetting(env, "THERMITE_KB_SYNC_SECONDS", 180, OFF_AT_ZERO);
+  const kbMs = supervisorMs(env, SUPERVISOR_NUMBERS.kbSyncSeconds);
   const syncingKb = async () => {
     let failing = false;
     // Kinds of item from a newer control that this build left out: each is logged once.

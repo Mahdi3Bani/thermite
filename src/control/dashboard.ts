@@ -216,6 +216,7 @@ import {
 } from "./runpod-rigs.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
+import { SESSION_DAYS } from "./settings.ts";
 import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
 import {
   AGENT_ROLES,
@@ -412,8 +413,6 @@ import {
  * Magnesium's design.
  */
 
-/** How long a dashboard session lasts without use; each day of use renews it. */
-const SESSION_DAYS = 30;
 const DAY_MS = 24 * 3_600_000;
 const CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";

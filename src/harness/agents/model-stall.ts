@@ -1,5 +1,6 @@
 import { log } from "../../common/env.ts";
-import { numberSetting } from "../../common/settings.ts";
+import { readNumber } from "../../common/settings.ts";
+import { HARNESS_NUMBERS } from "../settings.ts";
 
 /**
  * A model call whose stream goes silent (goal 079). A provider can keep a call open and send
@@ -16,19 +17,14 @@ import { numberSetting } from "../../common/settings.ts";
  * and pings of an event stream are not data. `0` turns it off.
  */
 
-export const STALL_SETTING = "THERMITE_MODEL_STALL_SECONDS";
-/** The default, in seconds. */
-export const STALL_DEFAULT_S = 600;
+export const STALL_SETTING = HARNESS_NUMBERS.modelStallSeconds.name;
 
 /**
  * How long a model call's stream may be silent (ms), from THERMITE_MODEL_STALL_SECONDS: a number
  * of seconds, 600 when unset. Undefined: `0`, the detector is off.
  */
 export function modelStallMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
-  const s = numberSetting(env, STALL_SETTING, STALL_DEFAULT_S, {
-    unit: "seconds",
-    zeroMeans: "off",
-  });
+  const s = readNumber(env, HARNESS_NUMBERS.modelStallSeconds);
   return s === 0 ? undefined : s * 1000;
 }
 

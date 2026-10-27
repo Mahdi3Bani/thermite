@@ -2,13 +2,9 @@ import { createModels, createProvider, type Model } from "@earendil-works/pi-ai"
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
-import { numberSetting, optionalNumberSetting } from "../../common/settings.ts";
-import {
-  type AgentsContext,
-  COMPACT_AT_MAX,
-  COMPACT_AT_MIN,
-  contextApplied,
-} from "../../core/compaction.ts";
+import { readNumber } from "../../common/settings.ts";
+import { type AgentsContext, contextApplied } from "../../core/compaction.ts";
+import { HARNESS_NUMBERS } from "../settings.ts";
 import { logStall, modelStallMs, stallGuard } from "./model-stall.ts";
 
 /**
@@ -114,12 +110,7 @@ export function withAgentsContext(
 
 /** A compaction point from the environment: unset, or a whole percent in range. */
 export function compactAtFromEnv(raw: string | undefined): number | undefined {
-  const rule = { unit: "percent", integer: true, min: COMPACT_AT_MIN, max: COMPACT_AT_MAX };
-  return optionalNumberSetting(
-    { THERMITE_MODEL_COMPACT_AT: raw },
-    "THERMITE_MODEL_COMPACT_AT",
-    rule,
-  );
+  return readNumber({ THERMITE_MODEL_COMPACT_AT: raw }, HARNESS_NUMBERS.compactAt);
 }
 
 /**
@@ -143,9 +134,6 @@ export const MODEL_SETTINGS = {
 export const MODEL_ENV_NAMES: string[] = Object.values(MODEL_SETTINGS);
 
 /** A setting's value; empty counts as not set. */
-/** A count of tokens, as the model's context window and its replies' limit take one. */
-const TOKENS = { unit: "tokens", integer: true, zeroMeans: "unknown, none sent" };
-
 function setting(env: NodeJS.ProcessEnv, name: string): string | undefined {
   const v = env[name];
   return v === undefined || v === "" ? undefined : v;
@@ -203,10 +191,10 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
     // The model's per-request context. Unset is "unknown" (0): replies are then not clamped to an
     // estimate of the room left, because a wrong guess (it was 131072) shrinks every reply to one
     // token once a conversation nears it.
-    contextWindow: numberSetting(env, MODEL_SETTINGS.contextWindow, 0, TOKENS),
+    contextWindow: readNumber(env, HARNESS_NUMBERS.contextWindow),
     compactAt: compactAtFromEnv(setting(env, MODEL_SETTINGS.compactAt)),
     // Unset: 0, none is sent and the provider's own limit applies (goal 079).
-    maxTokens: numberSetting(env, MODEL_SETTINGS.maxTokens, 0, TOKENS),
+    maxTokens: readNumber(env, HARNESS_NUMBERS.maxTokens),
     reasoning: reasoningFromEnv(setting(env, MODEL_SETTINGS.reasoning)),
   };
 }

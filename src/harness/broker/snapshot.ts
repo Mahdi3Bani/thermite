@@ -24,7 +24,7 @@ import { backup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { errorText } from "../../common/errors.ts";
 import { sameSecret } from "../../common/secrets.ts";
-import { minutesSetting, numberSetting, secondsSetting } from "../../common/settings.ts";
+import { readNumber } from "../../common/settings.ts";
 import { oneContainer, supervisorPaths } from "./one-container.ts";
 import { IDS } from "./runner.ts";
 import {
@@ -39,6 +39,7 @@ import {
   seal,
   unseal,
 } from "./seal.ts";
+import { BROKER_NUMBERS } from "./settings.ts";
 
 /**
  * The rig's state over a stop of a host that empties the container's own disk, such as a RunPod
@@ -107,16 +108,6 @@ export function snapshotDir(env: Env): string | undefined {
   return env.THERMITE_STATE_SNAPSHOT_DIR || undefined;
 }
 
-/** How often a snapshot is taken (THERMITE_STATE_SNAPSHOT_MINUTES, 5 by default). */
-export function snapshotEveryMs(env: Env): number {
-  return minutesSetting(env, "THERMITE_STATE_SNAPSHOT_MINUTES", 5);
-}
-
-/** How long a stop waits for its snapshot (THERMITE_STATE_SNAPSHOT_STOP_SECONDS, 8). */
-export function stopBudgetMs(env: Env): number {
-  return secondsSetting(env, "THERMITE_STATE_SNAPSHOT_STOP_SECONDS", 8);
-}
-
 /**
  * The parts a snapshot holds: the harness's state and the outbox; in the one-container rig image
  * also the inbox, the supervisor's state (its pull mode keys and enrollment among it) and root's
@@ -135,7 +126,7 @@ export function snapshotAreas(env: Env): SnapshotArea[] {
       name: "outbox",
       live: env.THERMITE_OUTBOX_DIR ?? "/outbox",
       uid: t.uid,
-      gid: numberSetting(env, "THERMITE_OUTBOX_GID", 10001, { integer: true }),
+      gid: readNumber(env, BROKER_NUMBERS.outboxGid),
     },
   ];
   if (oneContainer(env)) {

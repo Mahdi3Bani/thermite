@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { optionalNumberSetting } from "../../common/settings.ts";
+import { readNumber } from "../../common/settings.ts";
 import { judgeGpusByDefault } from "../../core/hardware.ts";
+import { HARNESS_NUMBERS } from "../settings.ts";
 import { IDS, type Role, roleIds } from "./runner.ts";
 
 /**
@@ -76,7 +77,7 @@ export function effectiveGpuLists(
     j <= cards.length - 1 &&
     j <= IDS.maxCards &&
     cards.length - j <= IDS.maxCards;
-  const fromEnv = optionalNumberSetting(env, "THERMITE_JUDGE_GPUS", { integer: true, min: 1 });
+  const fromEnv = readNumber(env, HARNESS_NUMBERS.judgeGpus);
   const j = fits(savedJudge)
     ? (savedJudge as number)
     : fits(fromEnv)

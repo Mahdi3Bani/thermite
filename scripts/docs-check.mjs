@@ -395,6 +395,44 @@ if (settingsPage) {
       problem(settingsPage.file, `${name} is read by the code but not documented here`);
 } else problems.push("docs/_site/src/content/docs/reference/settings.md: missing");
 
+// Each part's number settings are kept in one table (goal 125, T4). The settings page's Type and
+// Default cells must say what the table says: the range, whole numbers, the unit, the default.
+const numberTables = [
+  (await import("../src/control/settings.ts")).CONTROL_NUMBERS,
+  (await import("../src/harness/settings.ts")).HARNESS_NUMBERS,
+  (await import("../src/harness/broker/settings.ts")).BROKER_NUMBERS,
+  (await import("../src/supervisor/settings.ts")).SUPERVISOR_NUMBERS,
+  (await import("../src/cli/settings.ts")).CLI_NUMBERS,
+];
+function checkNumberRow(spec, cells) {
+  const where = `${spec.name} (${cells.length >= 5 ? "Type, Default" : "Default"})`;
+  const shown = cells.length >= 5 ? cells[2] : cells[1];
+  const shownNumber = /^`(-?[\d.]+)`/.exec(shown)?.[1];
+  if (spec.fallback !== undefined && shownNumber !== String(spec.fallback))
+    problem(settingsPage.file, `${where}: the code's default is ${spec.fallback}, not "${shown}"`);
+  if (spec.fallback === undefined && shownNumber !== undefined)
+    problem(settingsPage.file, `${where}: the code has no default, the page says ${shownNumber}`);
+  if (cells.length < 5) return;
+  const type = cells[1].replace(/(\d),(\d)/g, "$1$2");
+  const { min = 0, max, aboveMin, integer, unit } = spec.rule;
+  const range =
+    max !== undefined ? `${min} to ${max}` : aboveMin ? `above ${min}` : `${min} or more`;
+  if (!type.includes(range)) problem(settingsPage.file, `${where}: the range is ${range}`);
+  if (Boolean(integer) !== /integer|whole/.test(type))
+    problem(settingsPage.file, `${where}: ${integer ? "whole numbers only" : "fractions work"}`);
+  if (unit && !type.includes(unit)) problem(settingsPage.file, `${where}: the unit is ${unit}`);
+}
+if (settingsPage)
+  for (const table of numberTables)
+    for (const spec of Object.values(table)) {
+      const rows = settingsPage.text
+        .split("\n")
+        .filter((line) => line.startsWith(`| \`${spec.name}\` |`))
+        .map((line) => line.split(" | ").map((cell) => cell.replace(/^\| |\s*\|$/g, "").trim()));
+      if (!rows.length) problem(settingsPage.file, `${spec.name}: no row in a table`);
+      for (const cells of rows) checkNumberRow(spec, cells);
+    }
+
 // --- The Credits page ------------------------------------------------------------------------
 
 // CREDITS.md is the one copy: the site's page is it below its heading (scripts/credits-page.mjs).

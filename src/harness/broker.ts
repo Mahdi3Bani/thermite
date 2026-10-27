@@ -57,7 +57,7 @@ import { killScope, SETPRIV } from "./broker/process.ts";
 import { IDS, type Role, roleIds } from "./broker/runner.ts";
 import { deriveKeys, SnapshotRefused, takeSnapshotKey } from "./broker/seal.ts";
 import { ALL_ROLES, startBrokerServer, timedRunsAtWork } from "./broker/server.ts";
-import { brokerNumbers } from "./broker/settings.ts";
+import { brokerNumbers, snapshotEveryMs, stopBudgetMs } from "./broker/settings.ts";
 import {
   CLOSED_PROBE_JS,
   closedTo,
@@ -72,8 +72,6 @@ import {
   Snapshotter,
   snapshotAreas,
   snapshotDir,
-  snapshotEveryMs,
-  stopBudgetMs,
   type TakeJob,
 } from "./broker/snapshot.ts";
 

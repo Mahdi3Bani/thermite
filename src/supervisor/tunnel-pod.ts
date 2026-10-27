@@ -6,7 +6,7 @@ import { log } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
 import { writeAtomic } from "../common/fs.ts";
 import { sameSecret } from "../common/secrets.ts";
-import { numberSetting } from "../common/settings.ts";
+import { readNumber } from "../common/settings.ts";
 import {
   controlCodeProof,
   ENROLLED_FILES,
@@ -30,6 +30,7 @@ import {
   verifyRequest,
 } from "../core/tunnel.ts";
 import { BUILD_HEADERS } from "../core/version.ts";
+import { SUPERVISOR_NUMBERS } from "./settings.ts";
 
 /**
  * The rig's end of the tunnel, for a rig in pull mode: one control connects to, through a public
@@ -561,7 +562,7 @@ export function pullModeOptions(
     if (!v) throw new Error(`pull mode needs ${name}`);
     return v;
   };
-  const port = numberSetting(env, "THERMITE_TUNNEL_PORT", 0, { integer: true, min: 1, max: 65535 });
+  const port = readNumber(env, SUPERVISOR_NUMBERS.tunnelPort) ?? 0;
   const until = env.THERMITE_TUNNEL_ENROLL_UNTIL
     ? Date.parse(env.THERMITE_TUNNEL_ENROLL_UNTIL)
     : Number.NaN;
