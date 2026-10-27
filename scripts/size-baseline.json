@@ -25,7 +25,7 @@
       "lines": 1712
     },
     "src/control/store.ts": {
-      "lines": 4380
+      "lines": 3727
     },
     "src/control/ui/operator.ts": {
       "lines": 1589
@@ -70,7 +70,7 @@
       "lines": 2131
     },
     "src/harness/ledger.ts": {
-      "lines": 1742
+      "lines": 1722
     },
     "src/harness/main.ts": {
       "lines": 886
@@ -134,9 +134,6 @@
     },
     "tests/harness/broker/snapshot.test.ts": {
       "lines": 999
-    },
-    "tests/harness/judge/held-out.test.ts": {
-      "lines": 841
     },
     "tests/harness/queue.test.ts": {
       "lines": 820

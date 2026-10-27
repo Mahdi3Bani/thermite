@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
+import { copiesOf } from "../../src/common/db-copy.ts";
 import { sha256Hex } from "../../src/core/canonical.ts";
 import { type Contract, parseContract } from "../../src/core/contract.ts";
 import { Ledger, LedgerError, MAX_LEASE_EXPIRIES } from "../../src/harness/ledger.ts";
@@ -81,6 +82,39 @@ describe("ledger", () => {
       .run(MIGRATIONS.length + 1);
     ledger.close();
     assert.throws(() => Ledger.open(path), /newer than this code/);
+  });
+
+  test("a ledger with a record is copied before its migrations run, and only then", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "thermite-ledger-")), "ledger.db");
+    const older = MIGRATIONS.length - 1;
+    const db = new DatabaseSync(path);
+    db.exec("create table schema_migrations (version integer primary key)");
+    MIGRATIONS.slice(0, older).forEach((sql, i) => {
+      if (typeof sql === "string") db.exec(sql);
+      else sql(db);
+      db.prepare("insert into schema_migrations (version) values (?)").run(i + 1);
+    });
+    db.close();
+
+    Ledger.open(path).close();
+    const copies = copiesOf(path);
+    assert.deepEqual(
+      copies.map((c) => c.version),
+      [older],
+    );
+    Ledger.open(path).close();
+    assert.equal(copiesOf(path).length, 1, "a ledger at this code's version is not copied again");
+
+    const newer = new DatabaseSync(path);
+    newer.prepare("insert into schema_migrations (version) values (?)").run(MIGRATIONS.length + 1);
+    newer.close();
+    assert.throws(() => Ledger.open(path), /the copy made then: .*ledger\.db\.v\d+\..*\.copy/);
+  });
+
+  test("a new ledger is not copied", () => {
+    const { ledger, path } = setup();
+    ledger.close();
+    assert.deepEqual(copiesOf(path), []);
   });
 
   test("migrations are idempotent across reopen", () => {

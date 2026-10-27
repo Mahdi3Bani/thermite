@@ -215,9 +215,16 @@ To have control apply the images again and wait once more, press **Try the updat
 
 ### The harness stops at start: the ledger is newer
 
-- **You see:** the harness keeps restarting, and its log has a `fatal` line with `this ledger is at schema version 13, newer than this code's 12: run a newer Thermite, or restore the ledger from before the upgrade` (the numbers vary).
+- **You see:** the harness keeps restarting, and its log has a `fatal` line with `this ledger is at schema version 13, newer than this code's 12: run a newer Thermite, or restore the ledger from before the upgrade (the copy made then: /var/lib/thermite/ledger/ledger.db.v12.2026-10-27T05-30-00-000Z.copy)` (the numbers and the time vary).
 - **Why:** a newer harness opened the rig's ledger and upgraded it. An older harness never opens a newer ledger, so that it can't damage the record.
-- **Do:** run the newer harness image again: on the compose stack, rebuild from the newer commit; on a rig on a cluster, set control's images to the newer ones and press **Update to these images**. The older harness changed nothing, so the rig goes on from where it was. Going back to an older version needs the ledger from before the upgrade ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+- **Do:** run the newer harness image again: on the compose stack, rebuild from the newer commit; on a rig on a cluster, set control's images to the newer ones and press **Update to these images**. The older harness changed nothing, so the rig goes on from where it was.
+- **Or go back:** the newer harness copied the ledger before it upgraded it, and the message names that copy. With the harness stopped, rename `ledger.db` in the rig's state (with its `ledger.db-wal` and `ledger.db-shm` files, if they are there) to keep it, and copy the named `.copy` file to `ledger.db`. The rig then has its record as it was before the upgrade: what it did after the upgrade is in the ledger you kept, not in the copy.
+
+### Control stops at start: its store is newer
+
+- **You see:** control does not start, and its log has `this control store is at schema version 2, newer than this code's 1: run a newer Thermite, or restore the control store from before the upgrade (the copy made then: …)`.
+- **Why:** a newer control opened `control.db` and migrated it. An older control never opens a newer store.
+- **Do:** run the newer control image again. Or, to go back, stop control, rename `control.db` (with its `-wal` and `-shm` files) to keep it, and copy the named `.copy` file to `control.db`. What control recorded after the upgrade is in the store you kept.
 
 ### A join command stops at a check and then doesn't work
 

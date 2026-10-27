@@ -1,7 +1,7 @@
 ---
 id: "173"
 title: "Recovery and health: backups, a copy before every migration, a disk floor, drains that end, logs that are bounded, health that checks"
-status: READY
+status: IN_PROGRESS
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-27
@@ -10,7 +10,7 @@ updated: 2026-10-27
 
 # 173 · Recovery and health: backups, a copy before every migration, a disk floor, drains that end, logs that are bounded, health that checks
 
-**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
@@ -35,7 +35,7 @@ The owner took the review's recommendations on backups ("a copy of the ledger an
 
 ## Done when
 
-- [ ] A migration of the ledger or of `control.db` keeps a copy first, shown by a test that migrates a copy of a v0.1.0 database.
+- [x] A migration of the ledger or of `control.db` keeps a copy first, shown by a test that migrates a copy of a v0.1.0 database (`tests/control/store/schema.test.ts`, with a store v0.1.0's own code wrote; `tests/harness/ledger.test.ts`; `tests/common/db-copy.test.ts`).
 - [ ] `thermite backup` and `thermite restore` work on a compose stack, shown by a test, and the pages say how to back up each placement.
 - [ ] The disk floor holds new work at its limit and reports free disk, shown by a test with a full-disk stand-in.
 - [ ] A drain ends at its deadline with the owner's choice, shown by a test.
@@ -52,6 +52,7 @@ The owner took the review's recommendations on backups ("a copy of the ledger an
 ## Progress
 
 - 2026-10-27 00:24 UTC: Goal written from the audit's operations review and the owner's decisions, so that goal 172 holds every finding.
+- 2026-10-27 05:42 UTC: Item 1 is built: `src/common/db-copy.ts` copies a database before a migration (`vacuum into`, beside it, the two newest kept) and names the copy in a refusal of a newer schema. The ledger uses it (its migrate step moved to `src/harness/ledger/migrate.ts`, so `ledger.ts` doesn't grow); control's store gets ordered migrations and a version table (`src/control/store/schema.ts`, moved out of `store.ts`), with v0.1.0's schema as migration 1. The troubleshooting, compatibility and volumes pages say where the copies are and how to go back. Items 2 to 6 come in goal 172's step 9.
 
 ---
 

@@ -7,6 +7,8 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 ### Operate
 
 - The tests are in `tests/`, in folders that mirror `src/`, with their helpers, fakes and stand-ins in `tests/helpers/` (goal 160). `npm test` stops if it finds a test file in `src/`.
+- An update that migrates a database can be undone: the harness copies the ledger, and control copies `control.db`, beside themselves before a migration changes them (`<file>.v<version>.<time>.copy`, the two newest kept). A newer database met by older code is refused with the copy to restore. Control's store now has a schema version; a store v0.1.0 wrote counts as version 0, and is copied before its first migration (goal 173).
+- Two checks join `npm run check`: the size check (`npm run check:sizes`: no file over 800 lines grows) and the import-rule check (`npm run check:imports`: the parts of `src/` never import each other), from the rules of shape added to CONVENTIONS.md (goal 125).
 
 ## [0.1.0] 2026-10-26: the first public release
 

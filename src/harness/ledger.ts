@@ -9,7 +9,7 @@ import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
 import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
-import { MIGRATIONS } from "./schema.ts";
+import { migrateLedger } from "./ledger/migrate.ts";
 import { shownViolations, violationsOf } from "./v0.ts";
 
 /**
@@ -180,7 +180,12 @@ export class Ledger {
     // The busy timeout first: switching to WAL needs a lock another process may hold briefly.
     db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal; pragma foreign_keys = on;");
     const ledger = new Ledger(db, clock);
-    ledger.migrate();
+    migrateLedger(
+      db,
+      path,
+      (fn) => ledger.tx(fn),
+      (m) => new LedgerError("invalid", m),
+    );
     // A new ledger gets a fresh id, so readers can tell a reset ledger from the old one.
     db.prepare("insert or ignore into meta (key, value) values ('ledger_id', ?)").run(randomUUID());
     return ledger;
@@ -197,31 +202,6 @@ export class Ledger {
 
   private now(): string {
     return this.clock().toISOString();
-  }
-
-  private migrate(): void {
-    this.db.exec("create table if not exists schema_migrations (version integer primary key)");
-    const row = this.db.prepare("select max(version) as v from schema_migrations").get() as
-      | { v: number | null }
-      | undefined;
-    const current = row?.v ?? 0;
-    // A ledger written by newer code is never opened by older code: its new tables and columns
-    // would be ignored or broken, and a rollback must not damage the record.
-    if (current > MIGRATIONS.length) {
-      throw new LedgerError(
-        "invalid",
-        `this ledger is at schema version ${current}, newer than this code's ${MIGRATIONS.length}: run a newer Thermite, or restore the ledger from before the upgrade`,
-      );
-    }
-    MIGRATIONS.forEach((sql, i) => {
-      const version = i + 1;
-      if (version <= current) return;
-      this.tx(() => {
-        if (typeof sql === "string") this.db.exec(sql);
-        else sql(this.db);
-        this.db.prepare("insert into schema_migrations (version) values (?)").run(version);
-      });
-    });
   }
 
   /** Runs fn in an immediate transaction. Nested calls become savepoints of the outer one. */
