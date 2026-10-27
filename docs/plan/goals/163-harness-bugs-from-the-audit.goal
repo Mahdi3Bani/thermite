@@ -49,6 +49,7 @@ Design invariants 1 ("Agents propose; code judges"), 3 ("Nothing is destroyed": 
 
 - 2026-10-26: Goal written from the v0.1.1 audit's harness and operations reports.
 - 2026-10-27 06:43 UTC: Started by goal 172, step 2. Item 4 fixed: the ledger's `tx()` lowers its depth once, in a `finally`, so a failed commit leaves later transactions, nested ones too, working; a failed rollback is logged beside the first error, never in its place (`tests/harness/ledger.test.ts`, with a deferred foreign key that fails the commit). The ledger's row types moved to `src/harness/ledger/rows.ts`, so `ledger.ts` doesn't grow.
+- 2026-10-27 06:44 UTC: Item 5 fixed: the harness's start queues blocked jobs before it takes back the leases of the process that died, so a job whose third lost lease is that one stays blocked through the start instead of being retried for ever (`jobsAtStart` in `src/harness/judge/lease.ts`; `tests/harness/judge/lease.test.ts`, which fails without the fix). The verdicts reference says so.
 
 ---
 

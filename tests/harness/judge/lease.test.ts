@@ -44,7 +44,8 @@ test("a long build keeps its job's lease: renewed while it runs, and no more onc
   );
 });
 
-test("a job blocked by lost leases ends its attempt, and gets one more try at the harness's start", () => {
+/** A ledger with one run, one attempt and its job, on a clock the test moves. */
+function oneJob() {
   let now = new Date("2026-10-25T00:00:00Z");
   const dir = mkdtempSync(join(tmpdir(), "thermite-lease-"));
   const ledger = Ledger.open(join(dir, "ledger.db"), () => now);
@@ -76,12 +77,17 @@ test("a job blocked by lost leases ends its attempt, and gets one more try at th
     "t",
   );
   const job = ledger.enqueueJob({ attempt: "a-1", kind: "evaluate", actor: "t" });
-  const lifecycle = () => ledger.getAttempt("a-1")?.lifecycle;
   const lose = () => {
     assert.ok(ledger.leaseJob("executor-0", 1_000));
     now = new Date(now.getTime() + 2_000);
     ledger.expireLeases();
   };
+  return { ledger, job, lose };
+}
+
+test("a job blocked by lost leases ends its attempt, and gets one more try at the harness's start", () => {
+  const { ledger, job, lose } = oneJob();
+  const lifecycle = () => ledger.getAttempt("a-1")?.lifecycle;
   for (let i = 0; i < MAX_LEASE_EXPIRIES; i++) lose();
   assert.equal(ledger.jobById(job)?.state, "blocked");
   // Its attempt is settled, so the lane's round can end without it.
@@ -101,5 +107,19 @@ test("a job blocked by lost leases ends its attempt, and gets one more try at th
   assert.equal(lifecycle(), "errored");
   assert.deepEqual(unblockAtStart(ledger, "t"), [job]);
   assert.deepEqual(unblockAtStart(ledger, "t"), []);
+  ledger.close();
+});
+
+test("a job whose third lost lease is the start's own reclaim stays blocked (goal 163)", () => {
+  const { ledger, job, lose } = oneJob();
+  for (let i = 0; i < MAX_LEASE_EXPIRIES - 1; i++) lose();
+  // Its third try kills the controller: the harness starts again with the job still leased.
+  assert.ok(ledger.leaseJob("executor-0", 60_000));
+  jobsAtStart(ledger, ["executor-0"], () => {});
+  assert.equal(ledger.jobById(job)?.state, "blocked", "never retried for ever");
+  assert.equal(ledger.getAttempt("a-1")?.lifecycle, "errored");
+  // The next start gives it its one more try, as for any blocked job.
+  jobsAtStart(ledger, ["executor-0"], () => {});
+  assert.equal(ledger.jobById(job)?.state, "queued");
   ledger.close();
 });
