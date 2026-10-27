@@ -55,7 +55,7 @@
       "lines": 832
     },
     "src/harness/api.ts": {
-      "lines": 1010
+      "lines": 1007
     },
     "src/harness/broker.ts": {
       "lines": 1205
@@ -91,7 +91,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2938
+      "lines": 2936
     },
     "src/supervisor/advise.ts": {
       "lines": 1368

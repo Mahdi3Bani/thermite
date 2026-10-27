@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { z } from "zod";
 import { log } from "../common/env.ts";
-import { errorText } from "../common/errors.ts";
+import { BadInput, errorText, Refusal } from "../common/errors.ts";
 import type { McpConnect } from "../common/mcp-client.ts";
 import { type BriefData, briefData } from "../core/brief.ts";
 import { sha256Hex } from "../core/canonical.ts";
@@ -868,9 +868,8 @@ export class HarnessService {
 
   /**
    * A win with nothing left to hold it (an auditor's clear, or no auditor): the owner, where the
-   * run asks; else the champion by compare-and-swap, its declared flaws accepted by this step
-   * (goal 079: hands-off by default). A champion that moved meanwhile sends it to be screened
-   * again.
+   * run asks; else the champion by compare-and-swap, its declared flaws accepted by this step (goal
+   * 079: hands-off by default). A champion that moved meanwhile sends it to be screened again.
    */
   private async promoteOrAsk(
     attempt: string,
@@ -972,7 +971,7 @@ export class HarnessService {
       envelope.issued_by !== "owner" &&
       !envelope.issued_by.startsWith("owner:")
     ) {
-      throw new Error(`${envelope.kind} is the owner's to issue, not ${envelope.issued_by}'s`);
+      throw new Refusal(`${envelope.kind} is the owner's to issue, not ${envelope.issued_by}'s`);
     }
     switch (envelope.kind) {
       case "assign_campaign":
@@ -986,14 +985,14 @@ export class HarnessService {
       case "pause_run": {
         const p = CommandPayloads.pause_run.parse(payload);
         // A closed run stays closed: a pause would let a resume open it again.
-        if (this.requireRun(p.run).status === "closed") throw new Error(`run ${p.run} is closed`);
+        if (this.requireRun(p.run).status === "closed") throw new Refusal(`run ${p.run} is closed`);
         this.ledger.setRunStatus(p.run, "paused", p.reason, by);
         return { run: p.run, status: "paused" };
       }
       case "resume_run": {
         const p = CommandPayloads.resume_run.parse(payload);
         const inst = this.requireRun(p.run);
-        if (inst.status === "closed") throw new Error(`run ${p.run} is closed`);
+        if (inst.status === "closed") throw new Refusal(`run ${p.run} is closed`);
         // One running run per rig: resuming one pauses the others.
         this.ledger.tx(() => {
           this.pauseOthers(p.run, by);
@@ -1112,7 +1111,7 @@ export class HarnessService {
         const p = CommandPayloads.reset_workers.parse(payload);
         this.requireRun(p.run);
         if (p.reseed_commit)
-          throw new Error("re-seeding lanes is not available in this version; reset without it");
+          throw new Refusal("re-seeding lanes is not available in this version; reset without it");
         this.ledger.appendEvent(by, "workers_reset", p.run, {});
         return { run: p.run, reset: true };
       }
@@ -1266,7 +1265,7 @@ export class HarnessService {
         return { kind: "model", name: spec.name, sha256: spec.sha256 };
       }
       case "champion_patch":
-        throw new Error("a champion patch comes only with a propagate command");
+        throw new BadInput("a champion patch comes only with a propagate command");
     }
   }
 
@@ -1285,7 +1284,7 @@ export class HarnessService {
     by: string,
   ): Promise<unknown> {
     const parsed = parseContract(input.contract);
-    if (!parsed.ok) throw new Error(`invalid contract: ${parsed.errors.join("; ")}`);
+    if (!parsed.ok) throw new BadInput(`invalid contract: ${parsed.errors.join("; ")}`);
     return this.assignCampaign(
       {
         run: input.run,
@@ -1306,46 +1305,49 @@ export class HarnessService {
     inboxDir = this.paths.inboxDir,
   ): Promise<unknown> {
     const parsed = parseContract(p.contract);
-    if (!parsed.ok) throw new Error(`invalid contract: ${parsed.errors.join("; ")}`);
-    if (parsed.sha !== p.contract_sha) throw new Error("contract hash does not match contract_sha");
+    if (!parsed.ok) throw new BadInput(`invalid contract: ${parsed.errors.join("; ")}`);
+    if (parsed.sha !== p.contract_sha)
+      throw new BadInput("contract hash does not match contract_sha");
     const contract = parsed.contract;
     // Validate everything before changing anything: a refused assign leaves no trace but events.
-    if (this.ledger.getRun(p.run)) throw new Error(`run ${p.run} already exists`);
+    if (this.ledger.getRun(p.run)) throw new Refusal(`run ${p.run} already exists`);
     // A run without agents (a try) has no queue: nothing would take its experiments.
     if (p.agents === false && p.queue?.length)
-      throw new Error("a run without agents has no queue: leave out the experiments to copy");
+      throw new BadInput("a run without agents has no queue: leave out the experiments to copy");
     for (const [i, s] of (p.queue ?? []).entries()) {
       const ok = ExperimentInput.safeParse(s);
       if (!ok.success)
-        throw new Error(`queue experiment ${i + 1}: ${ok.error.issues[0]?.message ?? "invalid"}`);
+        throw new BadInput(
+          `queue experiment ${i + 1}: ${ok.error.issues[0]?.message ?? "invalid"}`,
+        );
     }
     // A run without agents (a try) has no briefs: nothing would read the background.
     if (p.agents === false && p.briefing?.length)
-      throw new Error(
+      throw new Refusal(
         "a run without agents has no briefs: leave out the background from past research",
       );
     const existing = this.ledger.getContract(contract.campaign, contract.version);
     if (existing && contractSha(existing) !== parsed.sha) {
-      throw new Error(
+      throw new Refusal(
         `contract ${contract.campaign} v${contract.version} exists with other content`,
       );
     }
     for (const spec of p.imports) {
       if (spec.kind === "model" && !contract.models.some((m) => m.sha256 === spec.sha256)) {
-        throw new Error(`model ${spec.name} is not listed in the contract`);
+        throw new BadInput(`model ${spec.name} is not listed in the contract`);
       }
     }
     // Research campaigns work on a corpus, not a repository: they have no seed commit.
     const seed =
       p.seed ??
       (contract.mode === "research" ? { repo: "research", commit: "0".repeat(40) } : undefined);
-    if (!seed) throw new Error(`a ${contract.mode} campaign needs a seed commit`);
+    if (!seed) throw new BadInput(`a ${contract.mode} campaign needs a seed commit`);
     const imported = [];
     for (const spec of p.imports)
       imported.push(await this.runImport(spec, seed.repo, by, inboxDir));
     for (const m of contract.models) {
       if (!this.ledger.findImport("model", { sha256: m.sha256 })) {
-        throw new Error(`model ${m.name} (${m.sha256}) has not been imported`);
+        throw new Refusal(`model ${m.name} (${m.sha256}) has not been imported`);
       }
     }
     // The kit is checked against the contract now, not when the judge first needs it.
@@ -1355,7 +1357,7 @@ export class HarnessService {
     if (kitRef) {
       const mirror = this.mirrorFor(`kit-${kitRef.repo}`);
       if (!(await hasCommit(mirror, kitRef.commit))) {
-        throw new Error(
+        throw new Refusal(
           `kit commit ${kitRef.commit} is not in kit ${kitRef.repo}; import its bundle first`,
         );
       }
@@ -1363,13 +1365,13 @@ export class HarnessService {
       try {
         kit = KitSchema.parse(JSON.parse(await showFile(mirror, kitRef.commit, "kit.json")));
       } catch (err) {
-        throw new Error(
+        throw new Refusal(
           `kit ${kitRef.repo} at ${kitRef.commit} has no valid kit.json: ${err instanceof Error ? err.message.slice(0, 500) : String(err)}`,
         );
       }
       const problems = kitProblems(contract, kit, this.targetType);
       if (problems.length)
-        throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
+        throw new Refusal(`the kit does not fit the contract: ${problems.join("; ")}`);
       named = kit.mcp_servers ?? [];
       checkedKit = kit;
     }
@@ -1377,7 +1379,7 @@ export class HarnessService {
     // control gives the rig only those servers, so the two must agree.
     if (contract.mode === "research") named = contract.mcp_servers ?? [];
     if (!sameUses(named, p.mcp_servers))
-      throw new Error(
+      throw new Refusal(
         `the ${contract.mode === "research" ? "contract" : "kit"} names the MCP servers ${usesWords(named)}, and the assignment names ${usesWords(p.mcp_servers)}: start the run from control, which reads the kit's servers, or give the kit's mcp_servers in the assignment`,
       );
     // A project in one folder of its repository starts from that folder: the run's first
@@ -1387,7 +1389,7 @@ export class HarnessService {
     if (contract.mode !== "research") {
       const mirror = this.mirrorFor(seed.repo);
       if (!(await hasCommit(mirror, seed.commit))) {
-        throw new Error(
+        throw new Refusal(
           `seed commit ${seed.commit} is not in ${seed.repo}; import its bundle first`,
         );
       }
@@ -1532,18 +1534,18 @@ export class HarnessService {
     const exp = this.ledger.db
       .prepare("select id, through_event, manifest from export where path = ?")
       .get(p.export) as { id: number; through_event: number; manifest: string } | undefined;
-    if (!exp) throw new Error(`no export ${p.export} in this rig`);
+    if (!exp) throw new Refusal(`no export ${p.export} in this rig`);
     if (!(JSON.parse(exp.manifest) as { full?: boolean }).full)
-      throw new Error(`export ${p.export} is not a full export`);
+      throw new Refusal(`export ${p.export} is not a full export`);
     if (exp.through_event < p.through_event)
-      throw new Error("the export does not cover the events");
+      throw new Refusal("the export does not cover the events");
     const since = (
       this.ledger.db
         .prepare("select kind, count(*) as n from event where id > ? group by kind")
         .all(exp.through_event) as { kind: string; n: number }[]
     ).filter((r) => !HarnessService.HOUSEKEEPING.has(r.kind));
     if (since.length) {
-      throw new Error(
+      throw new Refusal(
         `research was recorded after the export (${since.map((r) => `${r.kind} ${r.n}`).join(", ")}): export again`,
       );
     }
@@ -1641,7 +1643,7 @@ export class HarnessService {
     by: string,
     planner?: ControlRoute | null | undefined,
   ): ModelInfo {
-    if (!this.models) throw new Error("this harness runs no agents");
+    if (!this.models) throw new Refusal("this harness runs no agents");
     if (planner !== undefined) this.models.setPlanner(planner);
     if (route) this.models.set(route);
     else this.models.clear();
@@ -1692,11 +1694,11 @@ export class HarnessService {
 
   private startRigCheck(p: { check: RigCheckName; force?: boolean | undefined }, by: string) {
     const check = this.rigChecks[p.check];
-    if (!check) throw new Error(`this rig cannot run the ${p.check} check`);
-    if (this.checking) throw new Error(`the ${this.checking} check is still running`);
+    if (!check) throw new Refusal(`this rig cannot run the ${p.check} check`);
+    if (this.checking) throw new Refusal(`the ${this.checking} check is still running`);
     const force = p.force === true;
     const notNow = force ? undefined : check.notNow?.();
-    if (notNow) throw new Error(`not now: ${notNow}`);
+    if (notNow) throw new Refusal(`not now: ${notNow}`);
     const id = `chk-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     this.checking = p.check;
     this.ledger.appendEvent(by, "rig_check_started", null, { id, check: p.check, force });
@@ -1984,10 +1986,7 @@ export class HarnessService {
 
   /** The champion's commit and the run's project mirror, for the teachers' code reads (goal 081). */
   private championCode(run: string): { mirror: string; commit: string } {
-    return {
-      mirror: this.codeMirror(run),
-      commit: this.ledger.currentChampion(run).commit_sha,
-    };
+    return { mirror: this.codeMirror(run), commit: this.ledger.currentChampion(run).commit_sha };
   }
 
   /** The files of the champion's tree under a folder, for the teachers (goal 081). */
@@ -2206,7 +2205,7 @@ export class HarnessService {
     this.decidingRun(p.run, "approve_promotion");
     const a = this.ledger.getAttempt(p.attempt);
     if (!a || String(a.run) !== p.run) {
-      throw new Error(`attempt ${p.attempt} is not in ${p.run}`);
+      throw new Refusal(`attempt ${p.attempt} is not in ${p.run}`);
     }
     const lifecycle = String(a.lifecycle);
     let expectedSeq: number;
@@ -2217,9 +2216,9 @@ export class HarnessService {
     } else if (lifecycle === "awaiting_audit" || lifecycle === "audit_blocked") {
       expectedSeq = Number(new Audits(this.ledger).get(p.attempt)?.expected_seq);
     } else {
-      throw new Error(`attempt ${p.attempt} is ${lifecycle}, not awaiting approval`);
+      throw new Refusal(`attempt ${p.attempt} is ${lifecycle}, not awaiting approval`);
     }
-    if (!Number.isInteger(expectedSeq)) throw new Error(`no pending promotion for ${p.attempt}`);
+    if (!Number.isInteger(expectedSeq)) throw new Refusal(`no pending promotion for ${p.attempt}`);
     // The owner's approval accepts declared flaws, in the promotion's own transaction, and an
     // audit it overrides is recorded there too.
     const r = await this.promoteAttempt({
@@ -2244,10 +2243,10 @@ export class HarnessService {
     // A closed run's changes stay as they were (goal 087): its record does not change.
     this.decidingRun(p.run, "decline_promotion");
     const a = this.ledger.getAttempt(p.attempt);
-    if (!a || String(a.run) !== p.run) throw new Error(`attempt ${p.attempt} is not in ${p.run}`);
+    if (!a || String(a.run) !== p.run) throw new Refusal(`attempt ${p.attempt} is not in ${p.run}`);
     const lifecycle = String(a.lifecycle);
     if (!["awaiting_approval", "awaiting_audit", "audit_blocked"].includes(lifecycle))
-      throw new Error(`attempt ${p.attempt} is ${lifecycle}: there is nothing to decline`);
+      throw new Refusal(`attempt ${p.attempt} is ${lifecycle}: there is nothing to decline`);
     this.ledger.tx(() => {
       this.ledger.setAttemptLifecycle(p.attempt, "declined", by);
       this.ledger.appendEvent(by, "promotion_declined", p.attempt, {
@@ -2348,11 +2347,10 @@ export class HarnessService {
   }
 
   /**
-   * An advisor's additions and moves for a run's queue (the supervisor, for the teachers or
-   * the auditor; the review panel judges goals and has no way into the queue): each recorded
-   * with the role as who made it. Each move is
-   * applied on its own; one that is refused (an unknown id, an experiment no longer queued) is
-   * said in words and the others still apply.
+   * An advisor's additions and moves for a run's queue (the supervisor, for the teachers or the
+   * auditor; the review panel judges goals and has no way into the queue): each recorded with the
+   * role as who made it. Each move is applied on its own; one that is refused (an unknown id, an
+   * experiment no longer queued) is said in words and the others still apply.
    */
   advisorQueue(input: AdvisorQueueRequest): {
     added: string[];

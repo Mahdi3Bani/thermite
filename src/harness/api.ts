@@ -4,6 +4,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { log } from "../common/env.ts";
+import { answerOf } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
 import { laneLimits } from "../core/contract.ts";
 import { McpConnection, McpUnavailable } from "../core/mcp.ts";
@@ -59,17 +60,13 @@ function requireScope(tokens: ApiTokens, scopes: Scope[]): MiddlewareHandler {
 
 class Unauthorized extends Error {}
 
+/** A LedgerError's status: what the ledger could not find, or would not do. */
+const LEDGER_STATUS = { not_found: 404, conflict: 409, stale: 409, invalid: 400 } as const;
+
 function statusFor(err: unknown): 400 | 401 | 404 | 409 | 500 {
   if (err instanceof Unauthorized) return 401;
-  if (err instanceof LedgerError) {
-    return err.code === "not_found"
-      ? 404
-      : err.code === "conflict" || err.code === "stale"
-        ? 409
-        : 400;
-  }
-  if (err instanceof z.ZodError) return 400;
-  return 500;
+  if (err instanceof LedgerError) return LEDGER_STATUS[err.code];
+  return answerOf(err).status;
 }
 
 export interface HarnessApiExtras {
