@@ -3,6 +3,7 @@ import type { ResearchContract } from "../../core/contract.ts";
 import { MEASURES_NOTHING, questionLabel } from "../../core/research-check.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { checkCited } from "./checks.ts";
+import { registrableDomain } from "./fetcher.ts";
 
 export { questionLabel };
 
@@ -352,7 +353,8 @@ function claimFor(ledger: Ledger, run: string, cl: Row, min: number): CardClaim 
         | { domain: string }
         | undefined
     )?.domain;
-    if (d) domains.add(d);
+    // Registrable domains, as the review package and the report count them: one owner, one domain.
+    if (d) domains.add(registrableDomain(d));
   }
   return {
     id: String(cl.id),

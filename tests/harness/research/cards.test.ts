@@ -379,7 +379,12 @@ describe("the synthesizer's request: the questions whose evidence changed since 
     );
     assert.equal(q0?.through, s.ids.q0[shown - 1]);
     // Each claim with its words, its sources' domains and whether it is corroborated.
-    assert.deepEqual(q0?.new_claims[0]?.domains.sort(), [...DOMAINS].sort());
+    // Registrable domains, not hosts (goal 162).
+    assert.deepEqual(q0?.new_claims[0]?.domains.sort(), [
+      "example.com",
+      "example.net",
+      "example.org",
+    ]);
     assert.equal(q0?.new_claims[0]?.corroborated, true);
     const q1 = pkg.questions[1];
     assert.equal(q1?.new_claims[0]?.corroborated, false, "one domain only");
@@ -667,5 +672,29 @@ describe("the cards in the brief, the folder, the report and the teachers' brief
       () => s.env.service.runResearch.file(RUN, "cards/q9.md"),
       /no question with index 9/,
     );
+  });
+});
+
+describe("an answer card's claims count registrable domains (goal 162)", () => {
+  test("two hosts of one owner are one domain, so a claim citing both is not corroborated", async (t) => {
+    const r = await makeResearchRun(RUN);
+    t.after(() => r.close());
+    const ledger = r.env.service.ledger;
+    const src = seedSources(ledger, RUN, ["docs.example.com", "blog.example.com"]);
+    seedClaims(ledger, RUN, {
+      question: 0,
+      n: 1,
+      sources: [...src.values()],
+      from: Date.now(),
+      tag: "rd",
+    });
+    const api = createHarnessApi(r.env.service, tokens);
+    const res = await api.request("/v1/research/cards/pending", {
+      headers: { authorization: `Bearer ${tokens.supervisor}` },
+    });
+    const [pkg] = ((await res.json()) as { runs: CardsPackage[] }).runs;
+    const claim = pkg?.questions[0]?.new_claims[0];
+    assert.deepEqual(claim?.domains, ["example.com"]);
+    assert.equal(claim?.corroborated, false);
   });
 });
