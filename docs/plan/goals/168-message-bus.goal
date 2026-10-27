@@ -123,7 +123,7 @@ Each with the reviews' recommendation.
 6. **Should every reader of a signed batch keep what it knows and count the rest?** Recommended: yes, written once in `core` as the rule for every subject.
 7. **Counters for each channel and subject in the supervisor's figures?** Recommended: yes; they are cheap and show on the rig's page without a log store.
 
-The question of an assignment that expires while its models download is goal [171](171-bugs-on-the-wire.goal)'s item 5.
+The question of an assignment that expires while its models download is goal [171](_completed/171-bugs-on-the-wire.goal)'s item 5.
 
 ## Progress
 

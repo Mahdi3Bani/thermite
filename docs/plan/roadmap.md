@@ -135,12 +135,12 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [127](goals/_completed/127-clean-up-pre-audit.goal) Pre-audit for the code clean-up: a read-only look at the whole code, and a guide that sets up goal 125 · `VERIFIED`
 - [161](goals/_completed/161-control-bugs-from-the-audit.goal) Control's bugs found by the v0.1.1 audit: wrong states on the pages, refusals answered as server errors, errors that vanish · `VERIFIED`
 - [162](goals/_completed/162-research-and-knowledge-bugs.goal) Research and knowledge bugs found by the v0.1.1 audit: error pages as sources, domain counts, cut text in the knowledge base · `VERIFIED`
-- [163](goals/163-harness-bugs-from-the-audit.goal) Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures · `IN_PROGRESS`
-- [164](goals/164-settings-that-fail-loudly.goal) Settings that fail loudly: a bad value stops the part at start, and no failure passes as success · `PROPOSED`
-- [165](goals/165-results-kept-through-remove-and-reset.goal) Results kept through remove, reset and update: the remove guard on every placement, two reset bugs, an update that survives a restart · `PROPOSED`
-- [171](goals/171-bugs-on-the-wire.goal) Bugs on the wire: lost long replies, commands sent again in full, a live view stopped by one line, prompts too long for one argument · `PROPOSED`
+- [163](goals/_completed/163-harness-bugs-from-the-audit.goal) Harness bugs found by the v0.1.1 audit: promotion in one transaction, OpenCode's turn cap, the judge's quiet failures · `VERIFIED`
+- [164](goals/_completed/164-settings-that-fail-loudly.goal) Settings that fail loudly: a bad value stops the part at start, and no failure passes as success · `VERIFIED`
+- [165](goals/165-results-kept-through-remove-and-reset.goal) Results kept through remove, reset and update: the remove guard on every placement, two reset bugs, an update that survives a restart · `IN_PROGRESS`
+- [171](goals/_completed/171-bugs-on-the-wire.goal) Bugs on the wire: lost long replies, commands sent again in full, a live view stopped by one line, prompts too long for one argument · `VERIFIED`
 - [167](goals/_completed/167-how-the-parts-talk.goal) How the parts talk: a review of every interface between control, rigs, kits, campaigns, runs and agents · `VERIFIED`
-- [170](goals/170-one-hierarchy.goal) One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs · `READY`
+- [170](goals/170-one-hierarchy.goal) One hierarchy: each thing identified and addressed through what owns it, so a run's history stays whole wherever it runs · `IN_PROGRESS`
 - [166](goals/166-agent-definitions.goal) Agent definitions you can read and change: one definition for each role in code, and the prompt each run gives it · `IN_PROGRESS`
 - [168](goals/168-message-bus.goal) One message bus: NATS JetStream between control, rigs and agents, with fast storage and retrieval · `READY`
 - [169](goals/169-agents-in-their-terminal.goal) Agents in their own terminal: each agent program runs its TUI, the live view shows it, steering types into it, session logs become events · `READY`

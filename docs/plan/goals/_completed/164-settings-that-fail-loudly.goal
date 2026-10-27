@@ -1,7 +1,7 @@
 ---
 id: "164"
 title: "Settings that fail loudly: a bad value stops the part at start, and no failure passes as success"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-26
@@ -10,11 +10,11 @@ updated: 2026-10-27
 
 # 164 · Settings that fail loudly: a bad value stops the part at start, and no failure passes as success
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.1](../../roadmap.md#v011) · **Depends on:** [160](160-v010-audit.goal)
 
 ## What
 
-Four reviewers of the v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) found settings and readings whose failure passes as a valid value, with no line in the log. This goal makes each one fail at once, with words.
+Four reviewers of the v0.1.1 audit (goal [160](160-v010-audit.goal)) found settings and readings whose failure passes as a valid value, with no line in the log. This goal makes each one fail at once, with words.
 
 1. **Numeric settings read with no check.** 19 reads of the form `Number(env.X ?? "60") * 1000` with no check: `src/control/main.ts:76-78, 112`, `src/harness/main.ts:236, 358, 447, 766-769, 796`, `src/supervisor/main.ts:114, 363, 386, 406, 460`, `src/harness/broker.ts:129, 180`. From reading the code:
    - `THERMITE_EXPORT_MINUTES=6O` gives `NaN`, and the rig never exports again; an empty value gives 0 and an export every 5 seconds.
@@ -40,7 +40,7 @@ CONVENTIONS.md: "Validate every input that crosses a trust boundary", and "Nothi
 - [x] Every numeric setting in `src/` is read through the one helper, and a test for each kind shows a bad value stopping the part at start with words.
 - [x] Items 2 to 4 are fixed, each with a regression test.
 - [x] The pages that list settings say what each setting takes; the docs check passes.
-- [ ] The fast checks pass, and the compose smoke check.
+- [x] The fast checks pass, and the compose smoke check.
 
 ## Decisions
 
@@ -50,7 +50,8 @@ CONVENTIONS.md: "Validate every input that crosses a trust boundary", and "Nothi
 
 - 2026-10-26: Goal written from the v0.1.1 audit's harness, supervisor, cross-cutting and operations reports.
 - 2026-10-27 07:41 UTC: Items 1 to 4 fixed. Item 1: `src/common/settings.ts` reads every numeric setting by what it takes (a unit, bounds, whole or not, and what 0 means where it means something) and stops the part at start with `<NAME> takes <what it takes>, not "<value>"`; an empty value takes the default. Every `Number(env…)` read in `src/` uses it, the snapshot settings' `positive()` and the lanes and compaction readers included; the harness's and the broker's numbers are read in `src/harness/env-numbers.ts` and `src/harness/broker/settings.ts` (`tests/common/settings.test.ts`). The supervisor's intervals whose 0 turns a loop off keep that. Item 2: a settings file the harness can't read is renamed `rig-settings.json.unreadable-<time>`, logged and reported as `settings_unreadable` (`tests/harness/rig-settings.test.ts`). Item 3: `thermite status` exits 1 on an error answer (`tests/cli/status.test.ts`). Item 4: the supervisor's two calls to the harness about the advisors moved to `src/supervisor/harness-advisors.ts`, which logs the first failure of a streak with its status (`tests/supervisor/harness-advisors.test.ts`). Settings says what each number setting takes; the changelog says a bad value now stops the part at start. The fast checks and the compose smoke check are left, with goal 163's acceptance checks.
+- 2026-10-27 09:12 UTC: Verified on 53c7e30e: the full fast checks and the compose smoke check passed. Moved to `_completed/`.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/164-settings-that-fail-loudly.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/164-settings-that-fail-loudly.goal`. Follow the [rules for every goal](../../README.md#rules-for-every-goal).

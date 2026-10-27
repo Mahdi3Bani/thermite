@@ -42,7 +42,7 @@ The audit's lane 10 (`.internal/reviews/v0.1.1-audit/10-communication.md`, with 
 
 - **Every channel between control and a rig is a poll, and the polls chain.** 35 polling loops run in five processes and the browser. An agent's step reaches the dashboard's live view 0–5 s later; a command reaches the harness 0–5 s after it is issued; its effect, and every verdict, reaches control's pages only with the next report, 0–60 s later; the browser shows it only on a reload or a redraw. The dashboard has no push.
 - **Polling costs delay, not CPU.** Measured at control: an empty report round 0.6 ms, an empty command poll 0.06 ms, 500 live lines 3–7 ms, a page of 1,000 events 16–47 ms. An idle rig makes about 19 calls a minute to control. The slow paths are the views' full replays (the clean-up guide's T12), which two waits call every few seconds.
-- **Bugs on the wire,** now goal [171](../171-bugs-on-the-wire.goal): a Pi worker's long reply lost from Live, a waiting command sent again in full every 5 s, and one unknown live line that stops a rig's live view for good.
+- **Bugs on the wire,** now goal [171](171-bugs-on-the-wire.goal): a Pi worker's long reply lost from Live, a waiting command sent again in full every 5 s, and one unknown live line that stops a rig's live view for good.
 - **An audit waits behind the teachers.** The advisors run one role after another in one loop, so a promotion held for its audit waits for every teacher call of the round.
 - **Answers mostly have no schema.** Of 45 channels, 6 have one schema that both ends import, 20 are checked only by the receiver, 10 have none, and 9 are formats of other programs. The supervisor parses 2 of about 16 answer shapes it acts on with a schema.
 - **A rig's configuration comes in three polls,** with three rules for what changed: the model route, the MCP servers and the advisors' routes.
@@ -59,7 +59,7 @@ Moved to goal [168](../168-message-bus.goal), whose first part builds what they 
 ## Progress
 
 - 2026-10-26 21:03 UTC: Goal written from the owner's words. Lane 10 of the audit makes the review.
-- 2026-10-26 21:46 UTC: The review and its catalogue of 45 channels are in the audit's folder, with an entry in its index. The bugs it found are goal [171](../171-bugs-on-the-wire.goal); its other findings are in goal 168's design and the clean-up guide's section 8. The explanation page, [How the parts talk](../../../_site/src/content/docs/explanation/how-the-parts-talk.md), is on the docs site; the docs build and check pass. Its seven questions moved to goal 168. Verified.
+- 2026-10-26 21:46 UTC: The review and its catalogue of 45 channels are in the audit's folder, with an entry in its index. The bugs it found are goal [171](171-bugs-on-the-wire.goal); its other findings are in goal 168's design and the clean-up guide's section 8. The explanation page, [How the parts talk](../../../_site/src/content/docs/explanation/how-the-parts-talk.md), is on the docs site; the docs build and check pass. Its seven questions moved to goal 168. Verified.
 
 ---
 

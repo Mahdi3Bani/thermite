@@ -231,7 +231,7 @@ Each theme is a set of changes across the code. Sizes are in files. The checks a
 
 ### Operations
 
-The operations reviewer's findings that are bugs are in goals [164](goals/164-settings-that-fail-loudly.goal) and [165](goals/165-results-kept-through-remove-and-reset.goal). The ones that need the owner's choice first are questions [Q12–Q15](#7-the-owners-questions): backups and a copy of each database before a migration, retention, the remove guard, and health checks that test something. Today the health routes always answer `ok`, and no deployment has a healthcheck or a probe.
+The operations reviewer's findings that are bugs are in goals [164](goals/_completed/164-settings-that-fail-loudly.goal) and [165](goals/165-results-kept-through-remove-and-reset.goal). The ones that need the owner's choice first are questions [Q12–Q15](#7-the-owners-questions): backups and a copy of each database before a migration, retention, the remove guard, and health checks that test something. Today the health routes always answer `ok`, and no deployment has a healthcheck or a probe.
 
 ### Where the tests went
 
@@ -273,7 +273,7 @@ A move or a split updates each of these in the same commit:
 Each line is a set of small steps, each one green on its own.
 
 1. **The size check and the rules of shape:** the size check, as goal 125's step 2 asks, so nothing gets worse while the rest goes on; and the accepted rules of shape added to CONVENTIONS.md, so every later step follows them.
-2. **The bugs, each with a regression test,** so the splits after them are pure moves: goals [161](goals/_completed/161-control-bugs-from-the-audit.goal), [162](goals/_completed/162-research-and-knowledge-bugs.goal), [163](goals/163-harness-bugs-from-the-audit.goal), [164](goals/164-settings-that-fail-loudly.goal) and [165](goals/165-results-kept-through-remove-and-reset.goal).
+2. **The bugs, each with a regression test,** so the splits after them are pure moves: goals [161](goals/_completed/161-control-bugs-from-the-audit.goal), [162](goals/_completed/162-research-and-knowledge-bugs.goal), [163](goals/_completed/163-harness-bugs-from-the-audit.goal), [164](goals/_completed/164-settings-that-fail-loudly.goal) and [165](goals/165-results-kept-through-remove-and-reset.goal).
 3. **The shared homes, small and with little churn:** T1's words, T3's toolkit, then T4's settings, errors and logger.
 4. **The test scaffolding** (T10), before control's splits.
 5. **The contracts and clients** (T2), the domain modules out of the dashboard (T5), the ledger's owners and one promotion (T6), and the table of agent programs (T7).
@@ -469,7 +469,7 @@ After the owner answered section 7, they asked for four more things, and then fo
 | [168](goals/168-message-bus.goal) | The message bus: NATS JetStream as the event log, the delivery and the queues between control, the rigs' supervisors and the dashboard, chosen by the owner on 2026-10-26; the harness and the agents stay off it, bridged by the supervisor | T2 becomes the link's contract in `core/link/` (subjects, schemas, limits, signers). T12's views kept up to date are JetStream consumers. |
 | [169](goals/169-agents-in-their-terminal.goal) | Workers in their program's own terminal UI, session logs as events, steering inside a turn | Comes after goal 166 and T7's one trial loop; its terminal mode is a field of each program's entry. |
 | [170](goals/170-one-hierarchy.goal) | One hierarchy: run IDs unique across rigs, a run registry on control, views and addresses by run (`/ui/runs/<run>/attempts/<attempt>`), the run on every event | A new theme, T15. Its rule of shape: a thing is addressed through what owns it; where it ran is an attribute. |
-| [171](goals/171-bugs-on-the-wire.goal) | Bugs on the wire: a lost long reply, a command sent again in full, a live view stopped by one line, a prompt too long for one argument | Joins goals 161 to 165 in step 2 of the order of work. |
+| [171](goals/_completed/171-bugs-on-the-wire.goal) | Bugs on the wire: a lost long reply, a command sent again in full, a live view stopped by one line, a prompt too long for one argument | Joins goals 161 to 165 in step 2 of the order of work. |
 
 **The order of work, with part 2:**
 

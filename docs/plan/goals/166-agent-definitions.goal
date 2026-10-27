@@ -49,7 +49,7 @@ The audit's lane 9 (`.internal/reviews/v0.1.1-audit/09-agent-definitions.md`) ma
 - **Each answer and tool schema is written two or three times** (zod, TypeBox, the prompt's example).
 - **A prompt can't be previewed:** building one also reads the ledger by hand and has side effects (it marks the owner's messages as given and writes `BRIEF.md`).
 - **Names:** the code worker calls itself a research worker; the final writer's calls are recorded as the teachers'; the synthesizer and the final writer have no model slot of their own.
-- **A bug,** in goal [171](171-bugs-on-the-wire.goal): OpenCode and Claude Code get the whole prompt as one command-line argument.
+- **A bug,** in goal [171](_completed/171-bugs-on-the-wire.goal): OpenCode and Claude Code get the whole prompt as one command-line argument.
 
 ## Design (proposed by the review)
 
