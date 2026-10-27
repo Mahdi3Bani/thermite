@@ -675,3 +675,14 @@ test("a store built by an earlier reading rebuilds its experiments and attempts 
   };
   assert.equal(reading.value, "3");
 });
+
+test("control reads a run recorded under its names from before 2026-10-15, as the harness does (goal 162)", () => {
+  const store = new ControlStore(":memory:");
+  ingest(store, "rig-a", [
+    ["harness", "instance_created", "old-1", { campaign: "old-speed", mode: "goal" }],
+    ["harness", "instance_status", "old-1", { status: "paused", reason: "the owner paused it" }],
+  ]);
+  const [run] = store.kb().search("", ["old-speed"], { kinds: ["run"] });
+  assert.equal(run?.run, "old-1");
+  assert.match(String(run?.body), /Mode: goal[\s\S]*Status: paused \(the owner paused it\)/);
+});

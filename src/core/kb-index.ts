@@ -1,4 +1,5 @@
 import type { KbKind } from "./kb.ts";
+import { currentEvent } from "./names.ts";
 import { hypothesisStatusWords, PAPER_ACCEPTED, questionLabel } from "./research-check.ts";
 
 /**
@@ -178,7 +179,9 @@ const MODE_WORD: Record<string, string> = {
 const n = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US") : str(v));
 
 /** Reads one event into the items it adds or changes. */
-export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
+export function indexEvent(t: KbIndexTarget, event: KbEvent): void {
+  // Events written before the 2026-10-15 renames, read under their new names, for every caller.
+  const e = currentEvent(event);
   const b = e.body;
   const run = str(b.run) || e.subject;
   const ref = (x: unknown) => clip(str(x), 200);

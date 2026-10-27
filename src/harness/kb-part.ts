@@ -8,7 +8,7 @@ import {
   metaOf,
   sameItem,
 } from "../core/kb-index.ts";
-import { currentEvent, eventKinds } from "../core/names.ts";
+import { eventKinds } from "../core/names.ts";
 import type { Ledger } from "./ledger.ts";
 
 /**
@@ -115,14 +115,13 @@ export function knowledgePart(
         continue;
       }
       if (!body || typeof body !== "object") continue;
-      const e = currentEvent({
+      indexEvent(target, {
         at: String(r.at),
         actor: String(r.actor),
         kind: String(r.kind),
         subject: r.subject === null ? "" : String(r.subject),
         body: body as Record<string, unknown>,
       });
-      indexEvent(target, e);
     }
     if (rows.length < PAGE) break;
     after = current;

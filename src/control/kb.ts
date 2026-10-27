@@ -13,6 +13,7 @@ import {
   sameItem,
   str,
 } from "../core/kb-index.ts";
+import { eventKinds } from "../core/names.ts";
 import { KB_SCHEMA } from "./kb/schema.ts";
 
 /**
@@ -194,7 +195,9 @@ export class KnowledgeBase {
     const through = Number(
       (this.db.prepare("select seq from kb_cursor where id = 1").get() as { seq: number }).seq,
     );
-    const anew = Object.entries(READ_ANEW).flatMap(([v, k]) => (v > (at ?? "1") ? k : []));
+    const anew = Object.entries(READ_ANEW)
+      .flatMap(([v, k]) => (v > (at ?? "1") ? k : []))
+      .flatMap((k) => eventKinds(k));
     const kinds = anew.map(() => "?").join(", ");
     for (let after = 0; ; ) {
       const rows = this.db
