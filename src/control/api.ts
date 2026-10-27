@@ -3,6 +3,7 @@ import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { log, redact } from "../common/env.ts";
+import { answerOf, jsonBody } from "../common/errors.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
@@ -450,12 +451,8 @@ export function createControlApi(
     await next();
   };
 
-  app.onError((err, c) =>
-    c.json(
-      { error: err instanceof z.ZodError ? "invalid request" : err.message },
-      err instanceof z.ZodError ? 400 : 500,
-    ),
-  );
+  // Every refusal and bad input is answered in its own words and status, the same as MCP's.
+  app.onError((err, c) => c.json({ error: answerOf(err).error }, answerOf(err).status));
 
   // What fails goes to control's output and its audit log: the dashboard says why only once, in
   // the page it sends back, and whoever debugs control reads it again over MCP (control_log).
@@ -484,7 +481,7 @@ export function createControlApi(
   app.get("/v1/health", (c) => c.json({ ok: true }));
 
   app.post("/v1/rigs/:rig/ingest", rigAuth, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
-    const body = IngestBody.parse(await c.req.json());
+    const body = IngestBody.parse(await jsonBody(c.req));
     const rig = c.req.param("rig");
     if (body.rig !== rig) return c.json({ error: "rig mismatch" }, 403);
     // Reports are signed by the harness: the supervisor relays them but cannot forge them.
@@ -579,7 +576,7 @@ export function createControlApi(
     rigAuth,
     bodyLimit({ maxSize: 256 * 1024 }),
     async (c) => {
-      const body = AckBody.parse(await c.req.json());
+      const body = AckBody.parse(await jsonBody(c.req));
       const ok = store.ackCommand(c.req.param("rig"), c.req.param("id"), body.status, body.outcome);
       return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
     },
@@ -589,7 +586,7 @@ export function createControlApi(
   // A model download that starts or ends is a step in the rig's history.
   app.post("/v1/rigs/:rig/supervisor", rigAuth, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
     const rig = c.req.param("rig");
-    const stats = SupervisorStats.parse(await c.req.json());
+    const stats = SupervisorStats.parse(await jsonBody(c.req));
     const before = store.supervisor(rig)?.models;
     store.setSupervisor(rig, stats);
     for (const s of modelSteps(before, stats.models))
@@ -608,7 +605,7 @@ export function createControlApi(
           .object({ log_id: z.string().min(1).max(64), entries: z.array(LiveEntry).max(500) })
           .optional(),
       })
-      .parse(await c.req.json());
+      .parse(await jsonBody(c.req));
     const b = body.batch;
     if (b.rig !== rig) return c.json({ error: "rig mismatch" }, 403);
     const pinned = store.rigKey(rig).pubkey;
@@ -945,7 +942,7 @@ export function createControlApi(
   app.post("/v1/rigs/:rig/reports", rigAuth, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
     const body = z
       .object({ kind: z.enum(["daily"]), body: z.string().min(1).max(200_000) })
-      .parse(await c.req.json());
+      .parse(await jsonBody(c.req));
     return c.json({ id: store.addReport(c.req.param("rig"), body.kind, body.body) }, 201);
   });
 
@@ -967,7 +964,7 @@ export function createControlApi(
         to_rig: z.string().min(1),
         to_run: z.string().min(1),
       })
-      .parse(await c.req.json());
+      .parse(await jsonBody(c.req));
     const r = propagateChampion(store, privateKeyPem, {
       fromRig: body.from_rig,
       run: body.run,
@@ -1005,7 +1002,7 @@ export function createControlApi(
 
   app.post("/v1/rigs/:rig/reset", admin, async (c) => {
     const rig = c.req.param("rig");
-    const body = z.object({ confirm: z.string() }).parse(await c.req.json());
+    const body = z.object({ confirm: z.string() }).parse(await jsonBody(c.req));
     if (body.confirm !== `reset ${rig}`)
       return c.json({ error: `confirm with "reset ${rig}"` }, 400);
     // A rig on RunPod: its pod must run, with no stop, start or terminate under way.
@@ -1071,7 +1068,7 @@ export function createControlApi(
       ? `rig ${rig} has its token in control's rig tokens file; change it there`
       : undefined;
   app.post("/v1/rigs", admin, async (c) => {
-    const { rig } = RigName.parse(await c.req.json());
+    const { rig } = RigName.parse(await jsonBody(c.req));
     const taken =
       inFile(rig) ?? (store.enrolledRig(rig) ? `rig ${rig} is already enrolled` : undefined);
     if (taken) return c.json({ error: taken }, 409);
@@ -1142,7 +1139,7 @@ export function createControlApi(
   // the owner's. The owner sets or clears a price for a model whose list gives none.
   app.get("/v1/model-prices", reader, (c) => c.json({ prices: modelPrices(store) }));
   app.post("/v1/model-prices", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
-    const out = setModelPrice(store, await c.req.json(), "owner:api");
+    const out = setModelPrice(store, await jsonBody(c.req), "owner:api");
     return out.ok ? c.json(out.answer) : c.json({ error: out.error }, out.status);
   });
 
@@ -1223,7 +1220,7 @@ export function createControlApi(
   });
 
   app.post("/v1/commands", admin, async (c) => {
-    const body = IssueBody.parse(await c.req.json());
+    const body = IssueBody.parse(await jsonBody(c.req));
     // A wipe goes only through the full reset (export, verified push, the owner's confirmation).
     if (body.kind === "wipe_state")
       return c.json({ error: "wipe_state is issued only by a full reset" }, 400);
@@ -1550,7 +1547,7 @@ export function createControlApi(
     c.json(runpodTests.list(c.req.param("name"))),
   );
   app.post("/v1/gpu-clouds/:name/tests", admin, async (c) => {
-    const body: TestRequest = TestBody.parse(await c.req.json());
+    const body: TestRequest = TestBody.parse(await jsonBody(c.req));
     try {
       return c.json(await runpodTests.start(c.req.param("name"), body, "owner:api"), 201);
     } catch (err) {
@@ -1579,7 +1576,7 @@ export function createControlApi(
   });
   app.get("/v1/gpu-clouds/:name/rigs", admin, (c) => c.json(runpodRigs.list(c.req.param("name"))));
   app.post("/v1/gpu-clouds/:name/rigs", admin, async (c) => {
-    const body: LaunchRequest = LaunchBody.parse(await c.req.json());
+    const body: LaunchRequest = LaunchBody.parse(await jsonBody(c.req));
     try {
       return c.json(await runpodRigs.launch(c.req.param("name"), body, "owner:api"), 201);
     } catch (err) {
@@ -1629,7 +1626,7 @@ export function createControlApi(
     }
   });
   app.post("/v1/rigs/:rig/runpod/terminate", admin, async (c) => {
-    const body = z.strictObject({ confirm: z.string() }).parse(await c.req.json());
+    const body = z.strictObject({ confirm: z.string() }).parse(await jsonBody(c.req));
     const rig = c.req.param("rig");
     if (body.confirm !== `terminate ${rig}`)
       return c.json({ error: `confirm with "terminate ${rig}"` }, 400);
@@ -1641,7 +1638,7 @@ export function createControlApi(
     }
   });
   app.post("/v1/rigs/:rig/runpod/limits", admin, async (c) => {
-    const body: LimitsChange = LimitsBody.parse(await c.req.json());
+    const body: LimitsChange = LimitsBody.parse(await jsonBody(c.req));
     try {
       return c.json(runpodRigs.limits(c.req.param("rig"), body, "owner:api"));
     } catch (err) {

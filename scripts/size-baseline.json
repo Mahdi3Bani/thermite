@@ -10,7 +10,7 @@
       "lines": 1330
     },
     "src/control/api.ts": {
-      "lines": 1722
+      "lines": 1719
     },
     "src/control/dashboard.ts": {
       "lines": 8866
@@ -25,7 +25,7 @@
       "lines": 1712
     },
     "src/control/store.ts": {
-      "lines": 3727
+      "lines": 3726
     },
     "src/control/ui/operator.ts": {
       "lines": 1541

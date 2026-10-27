@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Refusal } from "../common/errors.ts";
 import {
   type CommandKind,
   CommandPayloads,
@@ -386,26 +387,26 @@ export function propagateChampion(
     staleAfterMs: number;
   },
 ): { id: string; seq: number } {
-  if (input.fromRig === input.toRig) throw new Error("propagate between two different rigs");
+  if (input.fromRig === input.toRig) throw new Refusal("propagate between two different rigs");
   const from = rigView(store, input.fromRig, { staleAfterMs: input.staleAfterMs });
   const src = from?.runs.find((i) => i.id === input.run);
-  if (!src) throw new Error(`no run ${input.run} on ${input.fromRig}`);
+  if (!src) throw new Refusal(`no run ${input.run} on ${input.fromRig}`);
   const champ = src.champion.filter((c) => !c.reopened).at(-1);
   const pub = src.published;
-  if (!champ || champ.seq <= 1) throw new Error("the source run has no champion beyond its seed");
+  if (!champ || champ.seq <= 1) throw new Refusal("the source run has no champion beyond its seed");
   if (!pub || pub.seq !== champ.seq) {
-    throw new Error(
+    throw new Refusal(
       `champion seq ${champ.seq} is not published yet (it is published with the rig's next export)`,
     );
   }
   const to = rigView(store, input.toRig, { staleAfterMs: input.staleAfterMs });
   const dst = to?.runs.find((i) => i.id === input.toRun);
-  if (!dst) throw new Error(`no run ${input.toRun} on ${input.toRig}`);
+  if (!dst) throw new Refusal(`no run ${input.toRun} on ${input.toRig}`);
   if (dst.campaign !== src.campaign) {
-    throw new Error(`${input.toRun} runs ${dst.campaign}, not ${src.campaign}`);
+    throw new Refusal(`${input.toRun} runs ${dst.campaign}, not ${src.campaign}`);
   }
   if (!pub.repo || dst.seed_repo !== pub.repo) {
-    throw new Error(`the target works on ${dst.seed_repo}, the champion is in ${pub.repo}`);
+    throw new Refusal(`the target works on ${dst.seed_repo}, the champion is in ${pub.repo}`);
   }
   const { id } = issueCommand(store, privateKeyPem, {
     rig: input.toRig,

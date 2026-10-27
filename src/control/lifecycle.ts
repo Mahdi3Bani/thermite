@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { log } from "../common/env.ts";
+import { Refusal } from "../common/errors.ts";
 import { harnessConfirmed, issueCommand } from "./issue.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -456,18 +457,18 @@ async function advanceOnce(input: {
 /** The owner's confirmation of a reset waiting for it. */
 export function confirmReset(store: ControlStore, id: number, by: string): void {
   const r = store.resets(200).find((x) => Number(x.id) === id);
-  if (!r) throw new Error(`no reset ${id}`);
+  if (!r) throw new Refusal(`no reset ${id}`);
   if (String(r.state) !== "awaiting_owner")
-    throw new Error(`reset ${id} is ${String(r.state)}, not waiting for confirmation`);
+    throw new Refusal(`reset ${id} is ${String(r.state)}, not waiting for confirmation`);
   store.updateReset(id, { state: "confirmed", detail: `confirmed by ${by}` });
 }
 
 /** The owner cancels a reset that has not wiped yet. */
 export function cancelReset(store: ControlStore, id: number, by: string): void {
   const r = store.resets(200).find((x) => Number(x.id) === id);
-  if (!r) throw new Error(`no reset ${id}`);
+  if (!r) throw new Refusal(`no reset ${id}`);
   if (["wiping", "done", "failed", "cancelled"].includes(String(r.state)))
-    throw new Error(`reset ${id} is ${String(r.state)}`);
+    throw new Refusal(`reset ${id} is ${String(r.state)}`);
   store.updateReset(id, {
     state: "cancelled",
     detail: `cancelled by ${by}; the rig's campaigns stay paused until resumed`,

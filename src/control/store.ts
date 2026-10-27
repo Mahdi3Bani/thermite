@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { Refusal } from "../common/errors.ts";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
@@ -19,6 +20,7 @@ import type { ReportedBuild } from "../core/version.ts";
 import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
 import { KnowledgeBase } from "./kb.ts";
+import { fingerprint } from "./store/keys.ts";
 import { migrateStore } from "./store/schema.ts";
 
 /**
@@ -1127,7 +1129,7 @@ export class ControlStore {
   }
 
   createReset(rig: string, by: string): number {
-    if (this.openReset(rig)) throw new Error(`a reset of ${rig} is already in progress`);
+    if (this.openReset(rig)) throw new Refusal(`a reset of ${rig} is already in progress`);
     const now = new Date().toISOString();
     const r = this.db
       .prepare(
@@ -3721,7 +3723,4 @@ export function cursorOf(raw: string | undefined): number | undefined {
   return Number.isSafeInteger(n) && n >= 0 ? n : undefined;
 }
 
-/** A short fingerprint of a public key, for the dashboard and the audit log. */
-export function fingerprint(pubkeyPem: string): string {
-  return sha256Hex(pubkeyPem.trim()).slice(0, 16);
-}
+export { fingerprint };

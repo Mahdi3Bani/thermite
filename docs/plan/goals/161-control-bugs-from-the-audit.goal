@@ -45,6 +45,7 @@ CONVENTIONS.md: "Every bug that is found gets a regression test", "Nothing stops
 - 2026-10-27 05:48 UTC: Started by goal 172, step 2. Bug 1 fixed: an attempt whose judge's job was set aside (`errored`) shows **Errored**, not **Judging** (`tests/control/ui/operator.test.ts`, which fails without the fix). `outcome()` moved to `src/control/ui/operator/outcome.ts`, so `operator.ts` doesn't grow.
 - 2026-10-27 05:50 UTC: Bug 2 fixed: a cancelled command shows **cancelled** in a grey chip on the Commands page (`tests/control/ui/commands.test.ts`, through the store's own cancel). The page's row moved to `src/control/ui/commands.ts`, out of `dashboard.ts`.
 - 2026-10-27 05:51 UTC: Bug 3 fixed: the MCP server form takes `http://[::1]`. Its URL check is one piece of browser code (`MCP_URL_CHECK_JS`) given control's own list of local hosts (`LOCAL_HTTP_HOSTS` in `src/common/mcp-client.ts`), and a test holds it to control's `mcpUrlProblem` on each kind of URL (`tests/control/mcp-ui.test.ts`).
+- 2026-10-27 05:55 UTC: Bug 4 fixed: control's REST API answers a body that is not JSON with 400, and the refusals of `/v1/propagate`, a reset's confirm and cancel, and a second reset with 409, each in its own words (`tests/control/api-refusals.test.ts`; three of its tests fail without the fix). The first typed errors of the rules of shape are in `src/common/errors.ts` (`Refusal`, `BadInput`, and `answerOf`, which maps them to statuses in one place). The REST reference's statuses follow.
 
 ---
 
