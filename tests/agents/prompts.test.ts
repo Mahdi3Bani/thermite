@@ -14,6 +14,7 @@ import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advise.ts";
 import { AdvisorsConfig } from "../../src/supervisor/advisors.ts";
 import { type Script, startFakeModel } from "../helpers/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
+import { seedClaims, seedSources } from "../helpers/research-cards.ts";
 import { makeResearchRun } from "../helpers/research-run.ts";
 
 /**
@@ -387,5 +388,25 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     const paths = [scratchDir, stateDir, r.env.root, r.base, keys, tmpdir()];
     golden("research-teacher.pi", sent.get("research-teacher"), paths);
     golden("research-merged-by.pi", sent.get("research-merged-by"), paths);
+  });
+  test("a research run's synthesizer, in Pi, with verified claims to write cards from", async () => {
+    const r = await makeResearchRun("r-1");
+    const ledger = r.env.service.ledger;
+    const sources = [...seedSources(ledger, "r-1").values()];
+    const from = Date.now() - 24 * 3_600_000;
+    for (const [question, tag] of [
+      [0, "qa"],
+      [1, "qb"],
+    ] as const)
+      seedClaims(ledger, "r-1", { question, n: 3, sources, from, tag });
+    // Every role answers in words: only the first request of each is kept.
+    const { sent, script } = recorder(() => ({ text: "done" }));
+    const keys = await adviseRound(r.env, script, (runtime) => ({
+      teachers: [runtime("teacher-1")],
+    }));
+    await r.close();
+    const { stateDir, scratchDir } = r.env.service.paths;
+    const paths = [scratchDir, stateDir, r.env.root, r.base, keys, tmpdir()];
+    golden("synthesizer.pi", sent.get("synthesizer"), paths);
   });
 });
