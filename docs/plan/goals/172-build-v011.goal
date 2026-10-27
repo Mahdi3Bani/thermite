@@ -103,6 +103,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 - 2026-10-27 05:17 UTC: Gate A passed: the owner approved the rules of shape. The size check is in `npm run check` and CI (goal 125); the import-rule check is next.
 - 2026-10-27 05:23 UTC: The import-rule check is in `npm run check` and CI (`npm run check:imports`), with today's 62 exceptions in 32 files listed in `scripts/import-exceptions.json`: the supervisor's 32 imports of the harness, control's 14, the command line's 7 of control and the harness, 7 imports of page code by control's domain modules or its router, and core's one read of a file. Step 1 is done; step 2, the bugs, starts with goal 173's copy before every migration.
 - 2026-10-27 05:42 UTC: Goal 173's copy before every migration is in, for the ledger and control's store. A judge test that failed since goal 166's brief became sections (CI's judge-test jobs failed on it from then on) now renders the brief to text; its file moved its setup to `tests/helpers/held-out-env.ts` and its champion check to `tests/harness/judge/held-out/champion.test.ts`, as the size check asks. Next: the bugs of goals 161 to 165 and 171.
+- 2026-10-27 06:24 UTC: Goal 161 is done in code (its eight bugs, each with a regression test) and the control acceptance check passed; the full fast checks on its last commit failed one timing test of research runs, under the load of other test runs on the same machine. That test now takes a 1-second wait off the clock, past any lag. Goal 162's items 1 to 4 are fixed.
 
 ---
 

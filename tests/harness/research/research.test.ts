@@ -758,21 +758,21 @@ describe("research integrity", () => {
     });
     await new Promise((r) => setTimeout(r, 300));
     assert.ok(research.clock("r-1").elapsed_ms - going.elapsed_ms < 150, "waiting: stopped");
-    // A wait for the run's MCP servers before its first trial (goal 068) does not count either.
+    // A 1 s wait for the MCP servers (goal 068) doesn't count: long enough that no lag hides it.
     const { env: e3, research: r3 } = await researchEnv({
       min_duration: "1s",
       max_duration: undefined,
     });
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 1200));
     const before = r3.clock("r-1");
     e3.service.ledger.appendEvent("scheduler", "mcp_servers_wait", "r-1", {
-      since: new Date(Date.now() - 300).toISOString(),
+      since: new Date(Date.now() - 1000).toISOString(),
       waited_s: 0,
       missing: [],
     });
     const after = r3.clock("r-1");
-    assert.ok(before.elapsed_ms - after.elapsed_ms >= 200, "the wait is taken off the clock");
-    assert.ok(after.waited_ms >= 250, String(after.waited_ms));
+    assert.ok(before.elapsed_ms - after.elapsed_ms >= 600, "the wait is taken off the clock");
+    assert.ok(after.waited_ms >= 950, String(after.waited_ms));
     // With a maximum, the clock (not the minimum) ends it.
     const { research: r2 } = await researchEnv({ min_duration: "1s", max_duration: "2s" });
     assert.equal(r2.clock("r-1").done, false);
