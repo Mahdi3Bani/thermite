@@ -113,6 +113,35 @@ function golden(name: string, sent: Sent | undefined, paths: string[]): void {
   assert.equal(body, readFileSync(file, "utf8"), `${name}: the prompt changed; see the diff`);
 }
 
+/** A teacher reads its brief, then answers; the merged by model answers at once. */
+const teachersScript: Script = ({ messages }) => {
+  const system = text(messages.find((m) => m.role === "system")?.content);
+  if (roleOf(system).endsWith("merged-by"))
+    return {
+      toolCalls: [
+        {
+          name: "answer",
+          args: {
+            directives: [{ kind: "try", family: "loops", rationale: "both", citations: ["a"] }],
+            experiments: [],
+          },
+        },
+      ],
+    };
+  if (!messages.some((m) => m.role === "tool")) return { toolCalls: [{ name: "brief", args: {} }] };
+  return {
+    toolCalls: [
+      {
+        name: "answer",
+        args: {
+          summary: "the loop does wasted work",
+          recommendations: [{ kind: "try", family: "loops", rationale: "r", citations: ["a"] }],
+        },
+      },
+    ],
+  };
+};
+
 /**
  * One round of the supervisor's advisors against `env`'s harness, as on a rig, with each advisor
  * a Pi runtime on a fake model that `script` plays. Returns the folder of the runtimes' key file.
@@ -300,35 +329,7 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     await env.service.applyCommand(
       env.sign("message_agent", { run, to: "teachers", text: "Look at memory traffic first." }),
     );
-    // A teacher reads its brief, then answers; the merged by model answers at once.
-    const { sent, script } = recorder(({ messages }) => {
-      const system = text(messages.find((m) => m.role === "system")?.content);
-      if (roleOf(system) === "merged-by")
-        return {
-          toolCalls: [
-            {
-              name: "answer",
-              args: {
-                directives: [{ kind: "try", family: "loops", rationale: "both", citations: ["a"] }],
-                experiments: [],
-              },
-            },
-          ],
-        };
-      if (!messages.some((m) => m.role === "tool"))
-        return { toolCalls: [{ name: "brief", args: {} }] };
-      return {
-        toolCalls: [
-          {
-            name: "answer",
-            args: {
-              summary: "the loop does wasted work",
-              recommendations: [{ kind: "try", family: "loops", rationale: "r", citations: ["a"] }],
-            },
-          },
-        ],
-      };
-    });
+    const { sent, script } = recorder(teachersScript);
     const keys = await adviseRound(env, script, (runtime) => ({
       teachers: [runtime("teacher-a"), runtime("teacher-b")],
       merged_by: runtime("merged-by"),
@@ -368,5 +369,23 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     const keys = await adviseRound(env, script, (runtime) => ({ auditor: runtime("auditor") }));
     const paths = [env.paths.scratchDir, env.paths.stateDir, env.root, keys, tmpdir()];
     golden("auditor.pi", sent.get("auditor"), paths);
+  });
+  test("a research run's two teachers and their merged by model, in Pi", async () => {
+    const r = await makeResearchRun("r-1", {
+      contract: { notes: "Weigh the sources that measured more than one campaign." },
+    });
+    await r.env.service.applyCommand(
+      r.env.sign("message_agent", { run: r.run, to: "teachers", text: "Find primary sources." }),
+    );
+    const { sent, script } = recorder(teachersScript);
+    const keys = await adviseRound(r.env, script, (runtime) => ({
+      teachers: [runtime("teacher-a"), runtime("teacher-b")],
+      merged_by: runtime("merged-by"),
+    }));
+    await r.close();
+    const { stateDir, scratchDir } = r.env.service.paths;
+    const paths = [scratchDir, stateDir, r.env.root, r.base, keys, tmpdir()];
+    golden("research-teacher.pi", sent.get("research-teacher"), paths);
+    golden("research-merged-by.pi", sent.get("research-merged-by"), paths);
   });
 });
