@@ -150,7 +150,7 @@ async function main(): Promise<void> {
             run,
             server: body.server,
             ok: kind === "mcp_server_back",
-            ...(typeof body.error === "string" ? { error: body.error } : {}),
+            ...("error" in body ? { error: body.error } : {}),
           }),
         })
           .then((res) => {

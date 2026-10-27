@@ -558,7 +558,13 @@ describe("the teachers put ideas first (goal 081)", () => {
     let state = await adviseOnce(cfg, waiting);
     assert.equal(briefs, 0, "on the clock: no round yet");
     // The planner's round left the queue below its target.
-    env.ledger.appendEvent("planner", "queue_low", "js-1", { round: 3, ready: 0, target: 4 });
+    env.ledger.appendEvent("planner", "queue_low", "js-1", {
+      round: 3,
+      ready: 0,
+      target: 4,
+      lanes: 2,
+      source: "planner",
+    });
     assert.equal(await teachersCalled(cfg, state), true);
     state = await adviseOnce(cfg, state);
     assert.equal(briefs, 1);
@@ -572,7 +578,13 @@ describe("the teachers put ideas first (goal 081)", () => {
     state = await adviseOnce(cfg, state);
     assert.equal(briefs, 1);
     // A new low round starts another; a queue at its target starts none.
-    env.ledger.appendEvent("planner", "queue_low", "js-1", { round: 4, ready: 1, target: 4 });
+    env.ledger.appendEvent("planner", "queue_low", "js-1", {
+      round: 4,
+      ready: 1,
+      target: 4,
+      lanes: 2,
+      source: "planner",
+    });
     assert.equal(await teachersCalled(cfg, state), true);
     for (const title of ["b", "c", "d"]) env.service.queue.add("js-1", { title, by: "owner" }, "o");
     assert.equal(env.service.queueLow("js-1"), null, "4 of 4 ready");
@@ -600,11 +612,17 @@ describe("the teachers put ideas first (goal 081)", () => {
     );
     env.ledger.appendEvent("planner", "planner_handout", run, {
       round: 1,
-      assignments: [{ lane: "lane-1", experiment: plain[0]?.id, why: "first" }],
+      assignments: [{ lane: "lane-1", experiment: String(plain[0]?.id), why: "first" }],
       notes: "n",
     });
     assert.equal(env.service.queueState(run).ready, target - 1);
-    env.ledger.appendEvent("planner", "queue_low", run, { round: 1, ready: target - 1, target });
+    env.ledger.appendEvent("planner", "queue_low", run, {
+      round: 1,
+      ready: target - 1,
+      target,
+      lanes: 2,
+      source: "planner",
+    });
     assert.equal(env.service.queueLow(run)?.ready, target - 1, "still below its target");
     const brief = env.service.brief(run) as { queue_target: { ready: number; below: boolean } };
     assert.deepEqual(

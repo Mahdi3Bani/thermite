@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { AppendEvent } from "../../core/events/bodies.ts";
 import type { LiveEntry } from "../../core/live.ts";
 import type { ReplyNow } from "../agents/live-session.ts";
 import { SAME_ANSWER } from "../agents/repeats.ts";
@@ -166,9 +167,7 @@ function streakCalls(calls: Map<string, number>): { call: string; times: number 
 export function tellStreak(
   news: StreakNews | undefined,
   e: Pick<LiveEntry, "source" | "lane" | "run">,
-  ledger: {
-    appendEvent(actor: string, kind: string, subject: string | null, body: object): unknown;
-  },
+  ledger: { appendEvent: AppendEvent },
   live: {
     append(line: {
       source: string;

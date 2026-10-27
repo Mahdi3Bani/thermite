@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { errorText } from "../../common/errors.ts";
 import { log, logError, logWarn } from "../../common/log.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
-import type { EventToRecord } from "../../core/events/kinds.ts";
+import type { EventToRecord } from "../../core/events/bodies.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
 import { Audits, auditTrigger } from "../audits.ts";
 import { builderRole, runRole } from "../broker/devices.ts";

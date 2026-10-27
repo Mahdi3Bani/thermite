@@ -28,7 +28,7 @@ import { relayCommandsOnce, relayOnce } from "../../src/supervisor/relay.ts";
 import { PodTunnel, pullModeOptions, startPullMode } from "../../src/supervisor/tunnel-pod.ts";
 import { assigned } from "../helpers/assignments.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
-import { otherKind } from "../helpers/kinds.ts";
+import { appendOther } from "../helpers/kinds.ts";
 
 const MARKER = "a-made-up-secret-marker-0001";
 const MODEL_KEY = "a-made-up-model-key-0001";
@@ -572,7 +572,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
         fetchImpl,
       };
       // Reports: the harness's signed events reach control, which pins the harness's key.
-      henv.service.ledger.appendEvent("t", otherKind("first"), null, { note: MARKER });
+      appendOther(henv.service.ledger, "t", "first", null, { note: MARKER });
       const state = await s.pump(relayOnce({ ...cfg, skipCommands: true }, { cursor: 0 }));
       assert.ok(state.cursor > 0);
       const kinds = (s.store.events(s.rig, 0, 100) as { kind: string; body: unknown }[]).map(

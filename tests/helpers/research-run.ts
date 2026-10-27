@@ -46,6 +46,28 @@ export async function servePages(): Promise<{ base: string; close: () => Promise
 }
 
 /**
+ * A research run "r-1" on a fresh harness, with no web and no folder: its contract is the
+ * fixture's with `over`. The fetcher may reach this machine's addresses unless `allowPrivate` is
+ * false.
+ */
+export async function researchEnv(over: Record<string, unknown> = {}, allowPrivate = true) {
+  const env = makeHarnessEnv("rig-r");
+  const parsed = parseContract({ ...researchFixture, ...over });
+  if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+  const out = await env.service.applyCommand(
+    env.sign("assign_campaign", {
+      run: "r-1",
+      contract: parsed.contract,
+      contract_sha: parsed.sha,
+      imports: [],
+    }),
+  );
+  if (!(out.status === "applied" && out.accepted)) throw new Error(JSON.stringify(out));
+  const research = new Research(env.service.ledger, env.service.paths.stateDir, { allowPrivate });
+  return { env, research, contract: parsed.contract };
+}
+
+/**
  * A research run on a fresh harness, with the tiny local web served. `contract` adds to (or
  * replaces) the fixture's contract fields; `assign` to the assignment's (ask_owner, say).
  */

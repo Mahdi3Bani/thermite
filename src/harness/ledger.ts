@@ -7,6 +7,7 @@ import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
+import type { AppendEvent, EventOf } from "../core/events/bodies.ts";
 import { currentBody, currentEvent, type EventKind, eventKinds } from "../core/names.ts";
 import { PROMOTABLE_VERDICTS } from "../core/verdicts.ts";
 import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
@@ -151,8 +152,8 @@ export class Ledger {
 
   // ---------------------------------------------------------------- events
 
-  appendEvent(actor: string, kind: EventKind, subject: string | null, body: unknown): number {
-    return this.run(
+  appendEvent: AppendEvent = (actor, kind, subject, body) =>
+    this.run(
       "insert into event (at, actor, kind, subject, body) values (?, ?, ?, ?, ?)",
       this.now(),
       actor,
@@ -160,7 +161,6 @@ export class Ledger {
       subject,
       canonicalJson(body ?? {}),
     ).id;
-  }
 
   /** The body of the newest event of a kind about a subject, if any. */
   latestEventBody(kind: string, subject: string): Record<string, unknown> | undefined {
@@ -1402,12 +1402,7 @@ export class Ledger {
    */
   writeExperiments(
     rows: Omit<ExperimentRow, "created_at" | "updated_at">[],
-    event: {
-      actor: string;
-      kind: EventKind;
-      run: string;
-      body: { id: string } & Record<string, unknown>;
-    },
+    event: EventOf<Extract<EventKind, `experiment_${string}`>> & { actor: string; run: string },
   ): number {
     return this.tx(() => {
       const now = this.now();

@@ -5,22 +5,18 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { OUTPUT_MAX, READ_MAX, researchOutput } from "../../../src/agents/tools/research.ts";
-import { parseContract } from "../../../src/core/contract.ts";
-import { Registry } from "../../../src/harness/agents/registry.ts";
 import { runResearchTrial } from "../../../src/harness/agents/research-worker.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import {
   blockedAddress,
   htmlToText,
   registrableDomain,
 } from "../../../src/harness/research/fetcher.ts";
-import { Research } from "../../../src/harness/research/research.ts";
 import { endDrainAtStart } from "../../../src/harness/service/drain.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
-import { researchFixture } from "../../helpers/fixtures.ts";
-import { makeHarnessEnv } from "../../helpers/harness-env.ts";
+import type { makeHarnessEnv } from "../../helpers/harness-env.ts";
+import { researchEnv } from "../../helpers/research-run.ts";
 
 /** A tiny "web" for tests: two linked pages, a robots.txt and a disallowed path. */
 async function web() {
@@ -55,23 +51,6 @@ async function web() {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return { base, asked, close: () => new Promise<void>((r) => server.close(() => r())) };
-}
-
-async function researchEnv(over: Record<string, unknown> = {}, allowPrivate = true) {
-  const env = makeHarnessEnv("rig-r");
-  const parsed = parseContract({ ...researchFixture, ...over });
-  if (!parsed.ok) throw new Error(parsed.errors.join("; "));
-  const out = await env.service.applyCommand(
-    env.sign("assign_campaign", {
-      run: "r-1",
-      contract: parsed.contract,
-      contract_sha: parsed.sha,
-      imports: [],
-    }),
-  );
-  assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
-  const research = new Research(env.service.ledger, env.service.paths.stateDir, { allowPrivate });
-  return { env, research };
 }
 
 /** A source archived as the fetcher would keep it, with no web: its row and its text file. */
@@ -276,46 +255,6 @@ describe("fetcher safety", () => {
     };
     assert.match(r.refused, /private or local address/);
     await w.close();
-  });
-});
-
-describe("research API", () => {
-  test("a worker's calls go to its own trial's run and lane, whatever it asks", async () => {
-    const { env, research } = await researchEnv();
-    const registry = new Registry(env.service.ledger);
-    registry.startTrial({
-      id: "t-1",
-      run: "r-1",
-      lane: "lane-1",
-      epoch: 1,
-      family: "explore",
-      parent: "research",
-      token: "secret-token",
-    });
-    const api = createHarnessApi(env.service, { supervisor: "s", proposer: "p" }, { research });
-    const call = (token: string, body: unknown) =>
-      api.request("/v1/research/section", {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    const ok = await call("trial.secret-token", {
-      run: "someone-else",
-      lane: "owner",
-      name: "summary",
-      body: "text",
-    });
-    assert.equal(ok.status, 200);
-    const row = env.service.ledger.db.prepare("select run, updated_by from report_section").get();
-    assert.deepEqual({ ...row }, { run: "r-1", updated_by: "lane-1" });
-    assert.equal((await call("trial.wrong", { name: "x", body: "y" })).status, 401);
-    assert.equal((await call("p", { name: "x", body: "y" })).status, 401);
-    registry.finishTrial(
-      "t-1",
-      { stopped: "finished", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 },
-      "t",
-    );
-    assert.equal((await call("trial.secret-token", { name: "x", body: "y" })).status, 409);
   });
 });
 
@@ -743,7 +682,12 @@ describe("research integrity", () => {
     assert.equal(c0.max_ms, null);
     assert.equal(c0.done, false, "past its minimum, a run with no maximum goes on");
     // The agents stop (no credits): the clock stops with them, until they go on.
-    ledger.appendEvent("scheduler", "agents_stopped", "r-1", { kind: "credits", words: "402" });
+    ledger.appendEvent("scheduler", "agents_stopped", "r-1", {
+      kind: "credits",
+      words: "402",
+      by: "trial t-1",
+      said: "no credits",
+    });
     await new Promise((r) => setTimeout(r, 300));
     const stopped = research.clock("r-1");
     assert.ok(stopped.elapsed_ms - c0.elapsed_ms < 150, "the clock stopped");
@@ -755,6 +699,8 @@ describe("research integrity", () => {
     // A wait for the provider's rate limit does not count either, until the time it named.
     ledger.appendEvent("scheduler", "agents_wait_for_limit", "r-1", {
       until: new Date(Date.now() + 60_000).toISOString(),
+      trial: "t-1",
+      reason: "rate limit",
     });
     await new Promise((r) => setTimeout(r, 300));
     assert.ok(research.clock("r-1").elapsed_ms - going.elapsed_ms < 150, "waiting: stopped");

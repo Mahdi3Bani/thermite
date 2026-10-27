@@ -11,7 +11,7 @@ import { createHarnessApi } from "../../src/harness/api.ts";
 import { verifyExport } from "../../src/supervisor/git-export.ts";
 import { relayOnce } from "../../src/supervisor/relay.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
-import { otherKind } from "../helpers/kinds.ts";
+import { appendOther } from "../helpers/kinds.ts";
 
 const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
 const rigHeaders = {
@@ -30,10 +30,10 @@ describe("signed reports at control", () => {
         headers: rigHeaders,
         body: JSON.stringify(body),
       });
-    env.service.ledger.appendEvent("t", otherKind("one"), null, {});
+    appendOther(env.service.ledger, "t", "one", null, {});
     const old = env.service.snapshot(0, 100) as Record<string, unknown>;
     await new Promise((r) => setTimeout(r, 10));
-    env.service.ledger.appendEvent("t", otherKind("two"), null, {});
+    appendOther(env.service.ledger, "t", "two", null, {});
     const fresh = env.service.snapshot(0, 100) as Record<string, unknown>;
     // A cluster rig control marked failed (its wait ended) that reports again is running again.
     store.addClusterRig({
@@ -57,8 +57,8 @@ describe("signed reports at control", () => {
     const replay = await post(old);
     assert.equal(replay.status, 409);
     // A page that starts past what control has is a gap.
-    env.service.ledger.appendEvent("t", otherKind("three"), null, {});
-    env.service.ledger.appendEvent("t", otherKind("four"), null, {});
+    appendOther(env.service.ledger, "t", "three", null, {});
+    appendOther(env.service.ledger, "t", "four", null, {});
     const ahead = env.service.snapshot(Number(fresh.next) + 1, 100) as Record<string, unknown>;
     const gap = await post(ahead);
     assert.equal(gap.status, 409);

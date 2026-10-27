@@ -15,7 +15,7 @@ import { HarnessService } from "../../../src/harness/service.ts";
 import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
-import { otherKind } from "../../helpers/kinds.ts";
+import { appendOther } from "../../helpers/kinds.ts";
 
 const T0 = Date.parse("2026-10-25T00:00:00.000Z");
 const min = (m: number) => T0 + m * 60_000;
@@ -27,7 +27,7 @@ function ledgerAt() {
   const ledger = Ledger.open(path, () => new Date(now));
   const at = (m: number, kind: string, body: unknown = {}) => {
     now = min(m);
-    ledger.appendEvent("t", otherKind(kind), kind === "trial_started" ? "r-1" : null, body);
+    appendOther(ledger, "t", kind, kind === "trial_started" ? "r-1" : null, body);
   };
   return { ledger, at };
 }

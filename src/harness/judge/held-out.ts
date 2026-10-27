@@ -1,4 +1,4 @@
-import type { EventToRecord } from "../../core/events/kinds.ts";
+import type { EventToRecord } from "../../core/events/bodies.ts";
 import {
   HELD_OUT_KINDS,
   HELD_OUT_OWNER_WORDS,

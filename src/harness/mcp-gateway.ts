@@ -9,7 +9,7 @@ import {
   type McpSession,
   mcpConnect,
 } from "../common/mcp-client.ts";
-import type { EventKind } from "../core/events/kinds.ts";
+import type { EventBodies } from "../core/events/bodies.ts";
 import type { AgentKind, McpConnection, McpToolInfo, McpUnavailable, McpUse } from "../core/mcp.ts";
 
 /**
@@ -45,7 +45,11 @@ export interface McpGatewayDeps {
   /** The run's servers: what its kit names, from the run's signed assignment. */
   uses(run: string): McpUse[];
   /** One event in the run's history (mcp_server_failed or mcp_server_back). */
-  record(run: string, kind: EventKind, body: Record<string, unknown>): void;
+  record<K extends "mcp_server_failed" | "mcp_server_back">(
+    run: string,
+    kind: K,
+    body: EventBodies[K],
+  ): void;
   /** One line in the live view. */
   say?: ((source: string, run: string, text: string) => void) | undefined;
   connect?: McpConnect | undefined;

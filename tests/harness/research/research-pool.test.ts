@@ -3,39 +3,20 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { parseContract, type ResearchContract } from "../../../src/core/contract.ts";
+import type { ResearchContract } from "../../../src/core/contract.ts";
 import { indexEvent, type KbFields } from "../../../src/core/kb-index.ts";
 import { Registry } from "../../../src/harness/agents/registry.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { ResearchFolder, SAVED_LANES_DIR } from "../../../src/harness/research/folder.ts";
-import { NOTE_REPEATS, Research } from "../../../src/harness/research/research.ts";
+import { NOTE_REPEATS } from "../../../src/harness/research/research.ts";
 import { researchPackage } from "../../../src/harness/research/review.ts";
-import { researchFixture } from "../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../helpers/harness-env.ts";
+import { researchEnv } from "../../helpers/research-run.ts";
 
 /**
  * Goal 117's bounds on what research workers write: a note that repeats one of the run's newest
  * notes is refused, and hypotheses are a pool with a question, without twins.
  */
-
-async function researchEnv(over: Record<string, unknown> = {}) {
-  const env = makeHarnessEnv("rig-r");
-  const parsed = parseContract({ ...researchFixture, ...over });
-  if (!parsed.ok) throw new Error(parsed.errors.join("; "));
-  const out = await env.service.applyCommand(
-    env.sign("assign_campaign", {
-      run: "r-1",
-      contract: parsed.contract,
-      contract_sha: parsed.sha,
-      imports: [],
-    }),
-  );
-  assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
-  const research = new Research(env.service.ledger, env.service.paths.stateDir, {
-    allowPrivate: true,
-  });
-  return { env, research };
-}
 
 /** An open trial of a lane in run r-1, with its token. */
 function openTrial(env: ReturnType<typeof makeHarnessEnv>, lane: string, id: string): string {

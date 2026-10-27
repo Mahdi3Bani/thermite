@@ -127,10 +127,3 @@ export const EVENT_KINDS = [
   "workers_reset",
 ] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
-
-/** An event to record: its kind, what it is about, and its body. */
-export interface EventToRecord {
-  kind: EventKind;
-  subject: string;
-  body: unknown;
-}
