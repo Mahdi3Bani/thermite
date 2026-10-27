@@ -40,6 +40,7 @@ import {
   goalDelta,
   type StartValues,
 } from "./decide.ts";
+import { leaseLost, recordInfraFailure } from "./failure.ts";
 import { GOAL_VALUES_CELLS, type GoalCellValues, runValues, valuesText } from "./goal-values.ts";
 import {
   HELD_OUT_INFRA,
@@ -277,14 +278,24 @@ export class Judge {
       `${job.kind} ${subject}: ${fin.verdict ? `${fin.verdict.verdict}${typeof fin.verdict.delta === "number" ? ` ${(fin.verdict.delta * 100).toFixed(2)}%` : ""}` : (fin.lifecycle ?? "done")}`,
       this.jobRun(job),
     );
+    let promoted: string | undefined;
     try {
-      const promoted = this.finish(job, fin);
-      if (promoted) await this.o.service.syncChampionRef(promoted);
-      if (fin.port) await queuePort(this.o.service, fin.port);
+      promoted = this.finish(job, fin);
     } catch (err) {
       // Lost the lease (another holder owns the outcome now) or the ledger refused the write.
-      log("judge", "could not record the outcome", { job: job.id, error: String(err) });
+      const why = leaseLost(err) ? "its lease was lost: its new holder records it" : String(err);
+      log("judge", "could not record the outcome", { job: job.id, error: why });
+      return true;
     }
+    // The outcome is recorded: what follows from it is logged as its own step (goal 163).
+    if (promoted)
+      await this.o.service.syncChampionRef(promoted).catch((err: unknown) => {
+        log("judge", "the champion's ref was not synced", { run: promoted, error: String(err) });
+      });
+    if (fin.port)
+      await queuePort(this.o.service, fin.port).catch((err: unknown) => {
+        log("judge", "the port was not queued", { job: job.id, error: String(err) });
+      });
     return true;
   }
 
@@ -411,36 +422,7 @@ export class Judge {
 
   /** Infrastructure failures never count against the research: crash_infra, then one retry. */
   private infraFailure(job: JobRow, reason: string): void {
-    try {
-      this.ledger.tx(() => {
-        this.ledger.completeJob(job.id, job.fence, "failed", { error: clipReason(reason) });
-        // A parent screen's failure is no verdict on its change and leaves it as it is (goal 135).
-        if (!job.attempt || job.kind === "parent_screen") return;
-        const retries = Number(this.spec(job).retries ?? 0);
-        this.ledger.recordVerdict({
-          attempt: job.attempt,
-          verdict: "crash_infra",
-          dependsOnJobs: [job.id],
-          reasons: clipReason(reason),
-          judgedBy: this.o.owner,
-        });
-        if (retries < 1) {
-          this.ledger.enqueueJob({
-            attempt: job.attempt,
-            kind: job.kind,
-            // A setup change's baseline job keeps its place ahead of the run's other jobs.
-            ...(job.kind === "baseline" ? { priority: job.priority } : {}),
-            spec: { ...this.spec(job), retries: retries + 1 },
-            actor: this.o.owner,
-          });
-          this.ledger.setAttemptLifecycle(job.attempt, "queued", this.o.owner);
-        } else {
-          this.ledger.setAttemptLifecycle(job.attempt, "errored", this.o.owner);
-        }
-      });
-    } catch {
-      // the lease is gone: whoever holds it now owns the outcome
-    }
+    recordInfraFailure(this.ledger, job, reason, { owner: this.o.owner, spec: this.spec(job) });
   }
 
   private async kitFor(contract: Contract): Promise<{ kit: Kit; dir: string; commit: string }> {
@@ -481,7 +463,7 @@ export class Judge {
       });
     const h = this.holding;
     const renew = () => h && this.ledger.heartbeat(h.id, h.fence, this.o.leaseMs);
-    const b = await whileLeased(renew, this.o.leaseMs / 3, ensure);
+    const b = await whileLeased(renew, this.o.leaseMs / 3, ensure, { job: h?.id, commit });
     this.note(
       `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${clipReason(b.reason)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
       run,
@@ -527,12 +509,9 @@ export class Judge {
     chmodSync(join(this.o.service.paths.scratchDir, "runs"), 0o711);
     chmodSync(runsDir, 0o711);
     const run = this.jobRun(job);
-    let contract: Contract | undefined;
-    try {
-      contract = run ? this.o.service.contractFor(run) : undefined;
-    } catch {
-      contract = undefined;
-    }
+    // No contract, no held-out mask: the job stops as an infrastructure failure, never measuring
+    // on cells it would have hidden (goal 163).
+    const contract: Contract | undefined = run ? this.o.service.contractFor(run) : undefined;
     const held = new Set(contract && "held_out_cells" in contract ? contract.held_out_cells : []);
     let heldRuns = 0;
     const sealed = (() => {

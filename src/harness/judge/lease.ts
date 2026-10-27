@@ -1,3 +1,4 @@
+import { log } from "../../common/env.ts";
 import { type Ledger, MAX_LEASE_EXPIRIES } from "../ledger.ts";
 
 /**
@@ -9,18 +10,23 @@ import { type Ledger, MAX_LEASE_EXPIRIES } from "../ledger.ts";
  * job forever.
  */
 
-/** Runs `work`, calling `renew` every `everyMs` until it ends; a renewal that throws stops them. */
+/**
+ * Runs `work`, calling `renew` every `everyMs` until it ends; a renewal that throws stops them,
+ * and says why in the log (goal 163): `what` names the job.
+ */
 export async function whileLeased<T>(
   renew: () => void,
   everyMs: number,
   work: () => Promise<T>,
+  what: Record<string, unknown> = {},
 ): Promise<T> {
   const timer = setInterval(() => {
     try {
       renew();
-    } catch {
+    } catch (err) {
       // The lease is lost: whoever holds the job now owns its outcome; the work ends as it will.
       clearInterval(timer);
+      log("judge", "a lease renewal failed: the renewals stop", { ...what, error: String(err) });
     }
   }, everyMs);
   timer.unref();

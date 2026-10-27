@@ -81,6 +81,21 @@ describe("cuda-gpu driver", () => {
     assert.equal(id.class, "p100-pcie-16g");
   });
 
+  test("a GPU whose compute processes can't be read is not ready, never taken for an idle one (goal 163)", async () => {
+    const idle = fake(IDLE, "0x0000000000000001");
+    const d = new CudaDriver({
+      targetClass: "p100-pcie-16g",
+      smi: async (args) => {
+        if ((args[0] ?? "").startsWith("--query-compute-apps"))
+          throw new Error("nvidia-smi failed");
+        return idle(args);
+      },
+    });
+    const r = await d.readyForTiming();
+    assert.equal(r.ready, false);
+    assert.deepEqual(r.reasons, ["the GPU's compute processes could not be read"]);
+  });
+
   test("a busy, throttled GPU or one with compute processes is not ready", async () => {
     const d = new CudaDriver({
       targetClass: "p100-pcie-16g",
