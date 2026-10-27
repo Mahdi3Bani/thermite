@@ -3,8 +3,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { ControlStore } from "../../src/control/store.ts";
@@ -13,13 +11,12 @@ import { type GoalContract, parseContract } from "../../src/core/contract.ts";
 import { goalChecks } from "../../src/harness/goal-checks.ts";
 import { KitSchema } from "../../src/harness/kit.ts";
 import { seedDemo } from "../helpers/control-demo.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 082 on control's side: what the judge found about an attempt, from the rig's events, on
  * the attempt's page, in History, over REST and over MCP.
  */
-
-const ADMIN = "admin-token-abcdef";
 
 async function control(kits?: KitRepos) {
   const store = new ControlStore(":memory:");
@@ -29,26 +26,11 @@ async function control(kits?: KitRepos) {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000, ...(kits ? { kits } : {}) },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+  const { page } = await signIn(api);
   const rest = async (path: string) =>
     (await api.request(path, { headers: { authorization: `Bearer ${ADMIN}` } })).json();
   const mcp = async (tool: string, args: Record<string, unknown>) => {
-    const client = new Client({ name: "test", version: "1.0.0" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${ADMIN}`);
-      return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-    };
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-    );
+    const client = await mcpClient(api);
     const r = (await client.callTool({ name: tool, arguments: args })) as {
       content: { text: string }[];
     };

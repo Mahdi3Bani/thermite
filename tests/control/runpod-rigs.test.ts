@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { podPortUrl } from "../../src/control/runpod.ts";
 import type { RunpodRigView } from "../../src/control/runpod-rig-view.ts";
@@ -11,6 +9,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { keySha256 } from "../../src/core/tunnel.ts";
+import { mcpClient } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -516,21 +515,6 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
   });
 });
 
-/** An MCP client on control in-process, with this token. */
-async function connect(control: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
-}
-
 describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
   const tokens = {
     admin: "owner-token-abcdef",
@@ -628,7 +612,7 @@ describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
       runpodRigs: s.rigs,
     });
     const names = async (token: string) =>
-      (await (await connect(api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(api, token)).listTools()).tools.map((t) => t.name);
     const owner = await names(tokens.admin);
     assert.ok(owner.includes("runpod_launch") && owner.includes("runpod_rig_limits"));
     for (const t of [tokens.operator, tokens.read]) {
@@ -638,14 +622,14 @@ describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
     }
     const agent = await names(tokens.agent);
     assert.ok(!agent.some((n) => n.startsWith("runpod_")));
-    const operator = await connect(api, tokens.operator);
+    const operator = await mcpClient(api, tokens.operator);
     const tried = await operator.callTool({
       name: "runpod_launch",
       arguments: { cloud: "runpod", gpu: "RTX A4000" },
     });
     assert.equal(tried.isError, true);
     assert.deepEqual(s.created(), []);
-    const client = await connect(api, tokens.admin);
+    const client = await mcpClient(api, tokens.admin);
     const r = await client.callTool({
       name: "runpod_launch",
       arguments: { cloud: "runpod", gpu: "RTX A4000", idle_stop_minutes: 20 },

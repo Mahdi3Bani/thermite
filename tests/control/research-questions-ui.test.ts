@@ -3,14 +3,13 @@ import { describe, test } from "node:test";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A research run's Overview, from its rig's research digest: each question's words beside its
  * count of verified claims, what the bars measure, and the report's numbers with no source. The
  * rest of each question's row (goal 117) is in research-run-ui.test.ts.
  */
-
-const ADMIN = "admin-token-abcdef";
 
 async function control() {
   const store = new ControlStore(":memory:");
@@ -20,13 +19,7 @@ async function control() {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000 },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+  const { page } = await signIn(api);
   let id = 0;
   const ingest = (events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>
     store.ingest({

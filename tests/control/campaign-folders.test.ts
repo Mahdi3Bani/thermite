@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { STYLE } from "../../src/control/ui/style.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Archive a campaign, and folders for campaigns in the left navigation (goal 077): over REST, MCP
@@ -19,7 +18,7 @@ import { parseContract } from "../../src/core/contract.ts";
 type Ev = [string, string, string, Record<string, unknown>];
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
   agent: "agent-token-abcdef",
   read: "read-token-abcdef",
@@ -101,20 +100,13 @@ async function stack() {
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = (path: string) => api.request(path, { headers: { cookie } });
+  const { cookie, get, csrfOf } = await signIn(api);
   const page = async (path: string) => {
     const r = await get(path);
     assert.equal(r.status, 200, path);
     return r.text();
   };
-  const csrf = async () =>
-    /name="csrf" value="([^"]+)"/.exec(await page("/ui/campaigns"))?.[1] ?? "";
+  const csrf = async () => csrfOf(await page("/ui/campaigns"));
   const post = async (path: string, fields: Record<string, string>, json = false) =>
     api.request(path, {
       method: "POST",
@@ -133,20 +125,6 @@ async function stack() {
   return { store, api, rest, page, post, get, assign, resume, audit, ingest };
 }
 
-/** An MCP client talking to control in-process, with a token. */
-async function mcp(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
-}
 const text = (r: unknown) =>
   ((r as { content: { text: string }[] }).content[0] as { text: string }).text;
 const json = async <T>(r: Response) => (await r.json()) as T;
@@ -358,7 +336,7 @@ describe("Archive and folders over MCP (goal 077)", () => {
   test("the owner and an operator change them, a reader reads them, an agent has neither; refusals in words", async () => {
     const s = await stack();
     const names = async (token: string) =>
-      (await (await mcp(s.api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(s.api, token)).listTools()).tools.map((t) => t.name);
     const tools = [
       "archive_campaign",
       "unarchive_campaign",
@@ -377,7 +355,7 @@ describe("Archive and folders over MCP (goal 077)", () => {
     const agent = await names(TOKENS.agent);
     for (const t of [...tools, "campaign_folders"]) assert.ok(!agent.includes(t), t);
 
-    const op = await mcp(s.api, TOKENS.operator);
+    const op = await mcpClient(s.api, TOKENS.operator);
     const call = (name: string, args: Record<string, unknown>) =>
       op.callTool({ name, arguments: args });
     const refused = await call("archive_campaign", { campaign: "survey" });
@@ -408,7 +386,7 @@ describe("Archive and folders over MCP (goal 077)", () => {
       /Kernels is not empty\. Move its campaign out first: fast-sort\./,
     );
     JSON.parse(text(await call("rename_campaign_folder", { folder: "Kernels", name: "Sorts" })));
-    const read = await mcp(s.api, TOKENS.read);
+    const read = await mcpClient(s.api, TOKENS.read);
     const listed = JSON.parse(
       text(await read.callTool({ name: "campaign_folders", arguments: {} })),
     );

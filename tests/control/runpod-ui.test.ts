@@ -13,6 +13,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { assigned } from "../helpers/assignments.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 import { FAKE_GPUS, FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -23,7 +24,6 @@ import {
   supervisorReports,
 } from "../helpers/rig-results.ts";
 
-const ADMIN = "admin-token-abcdef";
 const IMAGE = "ghcr.io/example/thermite-rig:test-cuda";
 
 /** Control with a RunPod account (the fake RunPod), signed in, with a clock the test moves. */
@@ -70,21 +70,11 @@ async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
     // Kits kept on control: the New campaign page needs them.
     kits: new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-"))),
   });
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = (path: string) => api.request(path, { headers: { cookie } });
-  const page = async (path: string) => (await get(path)).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+  const ui = await signIn(api);
+  const { page } = ui;
+  const csrf = ui.csrfOf(await page("/ui/settings"));
   const send = (path: string, form: Record<string, string> = {}) =>
-    api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    ui.post(path, { csrf, ...form });
   const post = async (path: string, form: Record<string, string> = {}) =>
     decodeURIComponent(String((await send(path, form)).headers.get("location")));
   const advance = async (ms = 30_000) => {

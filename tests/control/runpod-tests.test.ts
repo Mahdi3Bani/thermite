@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { PROBE_CMD, PROBE_JS } from "../../src/control/runpod-probe.ts";
 import { findings, RunpodTests } from "../../src/control/runpod-tests.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 const KEY = "rpa_test-key-0123456789abcdef";
 const IMAGE = "ghcr.io/example/thermite-harness:test-cuda";
@@ -261,7 +260,7 @@ describe("RunPod test pods", () => {
     const api = createControlApi(
       store,
       {
-        admin: "admin-token-abcdef",
+        admin: ADMIN,
         operator: "operator-token-abcdef",
         agent: "agent-token-abcdef",
         read: "read-token-abcdef",
@@ -270,43 +269,25 @@ describe("RunPod test pods", () => {
       generateSigningKeys().privateKeyPem,
       { staleAfterMs: 180_000, secrets, cloudFetch: cloud.f, runpodTestImage: IMAGE },
     );
-    const connect = async (token: string) => {
-      const client = new Client({ name: "t", version: "1.0.0" });
-      const fetchImpl: typeof fetch = async (input, init) => {
-        const url = new URL(String(input));
-        const headers = new Headers(init?.headers);
-        headers.set("authorization", `Bearer ${token}`);
-        return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-      };
-      await client.connect(
-        new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-      );
-      return client;
-    };
     const text = (r: unknown) =>
       JSON.parse((r as { content: { text: string }[] }).content[0]?.text ?? "null");
-    const operator = await connect("operator-token-abcdef");
+    const operator = await mcpClient(api, "operator-token-abcdef");
     const started = text(
       await operator.callTool({ name: "runpod_test_start", arguments: { cloud: "runpod" } }),
     );
     assert.equal(started.gpu_name, "RTX A4000");
-    const reader = await connect("read-token-abcdef");
+    const reader = await mcpClient(api, "read-token-abcdef");
     const readerTools = (await reader.listTools()).tools.map((t) => t.name);
     assert.ok(readerTools.includes("runpod_tests") && !readerTools.includes("runpod_test_start"));
     const listed = text(
       await reader.callTool({ name: "runpod_tests", arguments: { cloud: "runpod" } }),
     );
     assert.equal(listed[0].id, started.id);
-    const agent = await connect("agent-token-abcdef");
+    const agent = await mcpClient(api, "agent-token-abcdef");
     assert.ok(!(await agent.listTools()).tools.some((t) => t.name.startsWith("runpod_")));
 
-    const login = await api.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: "admin-token-abcdef" }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    const page = await (await api.request("/ui/settings", { headers: { cookie } })).text();
+    const ui = await signIn(api);
+    const page = await ui.page("/ui/settings");
     assert.match(page, new RegExp(`Test ${started.id}</b> · RTX A4000, Secure`));
     assert.match(page, /End it now: remove the pod/);
     assert.match(page, /a test pod is running/);
@@ -317,7 +298,7 @@ describe("RunPod test pods", () => {
     );
     assert.equal(ended.active, false);
     assert.equal(cloud.pods.size, 0);
-    const after = await (await api.request("/ui/settings", { headers: { cookie } })).text();
+    const after = await ui.page("/ui/settings");
     assert.match(after, /Start a test pod/);
     assert.match(after, new RegExp(`value="${IMAGE}"`), "control's test image fills the form in");
     // The form and the MCP tool name both images a test pod can run.
@@ -330,9 +311,7 @@ describe("RunPod test pods", () => {
       String(tool?.description),
       /one pod of Thermite's CUDA harness image, or of the one-container rig image/,
     );
-    const json = await api.request(`/ui/settings/clouds/runpod/tests/${started.id}.json`, {
-      headers: { cookie },
-    });
+    const json = await ui.get(`/ui/settings/clouds/runpod/tests/${started.id}.json`);
     assert.equal(((await json.json()) as { id: string }).id, started.id);
     await Promise.all([operator.close(), reader.close(), agent.close()]);
   });

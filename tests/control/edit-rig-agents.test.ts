@@ -7,6 +7,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { EDIT_RIG_JS } from "../../src/control/ui/edit-rig-client.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { AdvisorsConfig, advisorsFileReport } from "../../src/supervisor/advisors.ts";
+import { ADMIN, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Edit rig's section "2 · The agents" (goals 070, 073 and 074, as the owner approved its revised
@@ -14,8 +15,6 @@ import { AdvisorsConfig, advisorsFileReport } from "../../src/supervisor/advisor
  * teachers with one or two models and a merged by model. The form is posted as a browser posts
  * it, from the page's own fields, and control keeps what it says or refuses it in words.
  */
-
-const TOKENS = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
 
 /**
  * Control with rig-a reporting, and the owner signed in. Providers: "lab" (an OpenAI-compatible
@@ -26,10 +25,12 @@ const TOKENS = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef
 async function stack() {
   const secrets = SecretBox.ephemeral();
   const store = new ControlStore(":memory:");
-  const api = createControlApi(store, TOKENS, generateSigningKeys().privateKeyPem, {
-    staleAfterMs: 600_000,
-    secrets,
-  });
+  const api = createControlApi(
+    store,
+    { admin: ADMIN, rigs: { "rig-a": RIG_TOKEN } },
+    generateSigningKeys().privateKeyPem,
+    { staleAfterMs: 600_000, secrets },
+  );
   store.ingest({
     rig: "rig-a",
     ledger_id: "ledger-rig-a",
@@ -74,25 +75,15 @@ async function stack() {
   store.setProviderModels("claude-sub", [{ id: "opus-5.5", context_window: 200_000 }]);
   store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
   store.setProviderModels("zen", [{ id: "big-pickle" }]);
-  const signIn = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (signIn.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path = "/ui/rigs/rig-a/edit") =>
-    (await api.request(path, { headers: { cookie } })).text();
+  const session = await signIn(api);
+  const page = async (path = "/ui/rigs/rig-a/edit") => await session.page(path);
   const post = async (form: Record<string, string>) => {
-    const r = await api.request("/ui/rigs/rig-a/edit", {
-      method: "POST",
-      body: new URLSearchParams(form),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    const r = await session.post("/ui/rigs/rig-a/edit", form);
     return decodeURIComponent(r.headers.get("location") ?? "");
   };
   const asRig = async (path: string) =>
     (await (
-      await api.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } })
+      await api.request(path, { headers: { authorization: `Bearer ${RIG_TOKEN}` } })
     ).json()) as Record<string, unknown>;
   return { store, api, page, post, asRig };
 }

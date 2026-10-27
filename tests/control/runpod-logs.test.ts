@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { POD_LOG_MAX_TAIL, POD_LOG_TAIL, podLogs, SseParser } from "../../src/control/runpod.ts";
 import { type PodLogRead, RunpodRigs } from "../../src/control/runpod-rigs.ts";
@@ -9,6 +7,7 @@ import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { mcpClient, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 
 /** A pod log read stops this soon after the last line here, so the tests take little time. */
@@ -57,20 +56,6 @@ async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
   const rest = (path: string, token = tokens.admin) =>
     api.request(path, { headers: { authorization: `Bearer ${token}` } });
   return { store, cloud, rigs, api, pod: v.pod, rest };
-}
-
-async function connect(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 describe("Server-Sent Events, read strictly", () => {
@@ -267,12 +252,12 @@ describe("a RunPod rig's pod log over REST and MCP", () => {
   test("MCP: runpod_rig_logs for the owner and the operator; not a reader's or an agent's", async () => {
     const s = await setup();
     const names = async (token: string) =>
-      (await (await connect(s.api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(s.api, token)).listTools()).tools.map((t) => t.name);
     for (const t of [tokens.admin, tokens.operator])
       assert.ok((await names(t)).includes("runpod_rig_logs"));
     for (const t of [tokens.read, tokens.agent])
       assert.ok(!(await names(t)).includes("runpod_rig_logs"));
-    const operator = await connect(s.api, tokens.operator);
+    const operator = await mcpClient(s.api, tokens.operator);
     const r = await operator.callTool({
       name: "runpod_rig_logs",
       arguments: { rig: "rp-log-1", tail: 2, source: "system" },
@@ -293,15 +278,8 @@ describe("a RunPod rig's pod log over REST and MCP", () => {
 describe("a RunPod rig's pod log on its page", () => {
   /** The rig's page, signed in as the owner, with the form token. */
   async function signedIn(s: Awaited<ReturnType<typeof setup>>) {
-    const login = await s.api.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: tokens.admin }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    const page = async (path: string) =>
-      (await s.api.request(path, { headers: { cookie } })).text();
-    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+    const { cookie, page, csrfOf } = await signIn(s.api, tokens.admin);
+    const csrf = csrfOf(await page("/ui/settings"));
     const read = (json: boolean) =>
       s.api.request("/ui/rigs/rp-log-1/runpod/logs", {
         method: "POST",

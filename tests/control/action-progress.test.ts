@@ -3,16 +3,13 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { elapsedWords, type Progress } from "../../src/control/command-progress.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import { FOLLOW_CORE_JS, FOLLOW_JS } from "../../src/control/ui/follow-client.ts";
 import type { RigCheckReport } from "../../src/harness/agents/model-check.ts";
 import { ModelSource } from "../../src/harness/agents/model-source.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { controlStack, signIn } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 /**
@@ -22,57 +19,20 @@ import { makeJudgeEnv } from "../helpers/judge-env.ts";
  * harness is real; the supervisor's relay is called by hand, so each step can be looked at.
  */
 
-const ADMIN = "admin-token-abcdef";
 type Answer = Progress & { follow?: string };
 
 async function stack() {
-  const env = makeJudgeEnv({ promotion: "owner_approval" });
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-abcdef" } },
-    env.keys.privateKeyPem,
-    { staleAfterMs: 180_000 },
-  );
-  const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
-  const cfg = {
-    rig: "rig-a",
-    harnessUrl: "http://harness",
-    harnessToken: "sup-token-abcdef",
-    controlUrl: "http://control",
-    controlToken: "rig-token-abcdef",
-    fetchImpl,
-  };
-  let state = { cursor: 0 } as Awaited<ReturnType<typeof relayOnce>>;
-  /** One round of the supervisor: the rig's report, then control's pending commands. */
-  const relay = async () => {
-    state = await relayOnce(cfg, state);
-  };
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+  const { env, store, control, relay } = controlStack({
+    env: makeJudgeEnv({ promotion: "owner_approval" }),
   });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) =>
-    (await control.request(path, { headers: { cookie } })).text();
+  const session = await signIn(control);
+  const { cookie, page } = session;
   await env.service.applyCommand(env.assign);
   await relay();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/rigs/rig-a"))?.[1] ?? "";
+  const csrf = session.csrfOf(await page("/ui/rigs/rig-a"));
   /** A form as a browser posts it without the page's script: the answer is a page to load. */
   const post = (path: string, form: Record<string, string>) =>
-    control.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    session.post(path, { csrf, ...form });
   /** A form as the page's script sends it: with fetch, asking for JSON. */
   const send = async (path: string, form: Record<string, string>) => {
     const r = await control.request(path, {

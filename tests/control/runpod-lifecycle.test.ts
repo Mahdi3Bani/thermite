@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { advanceResets, confirmReset } from "../../src/control/lifecycle.ts";
@@ -13,6 +11,7 @@ import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { mcpClient, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod, NO_FREE_GPU } from "../helpers/fake-runpod.ts";
 import {
   exportName,
@@ -511,21 +510,6 @@ describe("RunPod rigs: the full reset", () => {
   });
 });
 
-/** An MCP client on control in-process, with this token. */
-async function connect(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
-}
-
 /** A tool's answer: its text, JSON (an error is {"error": …}). */
 const text = (r: unknown) => (r as { content: { text: string }[] }).content[0]?.text ?? "";
 
@@ -559,10 +543,10 @@ describe("RunPod rigs' lifecycle: the owner's alone", () => {
     const s = setup();
     const rig = await working(s);
     for (const token of [TOKENS.operator, TOKENS.read, TOKENS.agent]) {
-      const tools = (await (await connect(s.api, token)).listTools()).tools.map((t) => t.name);
+      const tools = (await (await mcpClient(s.api, token)).listTools()).tools.map((t) => t.name);
       assert.ok(!tools.includes("runpod_rig"), token);
     }
-    const owner = await connect(s.api, TOKENS.admin);
+    const owner = await mcpClient(s.api, TOKENS.admin);
     const stopped = await owner.callTool({
       name: "runpod_rig",
       arguments: { rig, action: "stop" },
@@ -588,7 +572,7 @@ describe("RunPod rigs' lifecycle: the owner's alone", () => {
     // A full reset over MCP: started, then confirmed, by the owner.
     const t = setup();
     const other = await working(t);
-    const o = await connect(t.api, TOKENS.admin);
+    const o = await mcpClient(t.api, TOKENS.admin);
     const noConfirm = await o.callTool({
       name: "runpod_rig",
       arguments: { rig: other, action: "reset" },
@@ -639,20 +623,9 @@ const assignment = (run: string) => ({
 
 /** The owner signed in on the dashboard: a page's form token, and a form post. */
 async function signedIn(s: ReturnType<typeof setup>, path: string) {
-  const login = await s.api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = await (await s.api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(page)?.[1] ?? "";
-  return (to: string, form: Record<string, string>) =>
-    s.api.request(to, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+  const { page, csrfOf, post } = await signIn(s.api, TOKENS.admin);
+  const csrf = csrfOf(await page(path));
+  return (to: string, form: Record<string, string>) => post(to, { csrf, ...form });
 }
 
 const starts = (s: ReturnType<typeof setup>) =>
@@ -790,7 +763,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
   test("MCP: the owner's issue_command starts the pod; an operator's is refused and starts nothing", async () => {
     const s = setup();
     const rig = await stoppedRig(s);
-    const operator = await connect(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.api, TOKENS.operator);
     const refused = await operator.callTool({
       name: "issue_command",
       arguments: { rig, kind: "resume_run", payload: { run: "run-1" } },
@@ -799,7 +772,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     assert.match(text(refused), /pod on RunPod is stopped, and only the owner can start it/);
     assert.deepEqual(starts(s), []);
     assert.deepEqual(pendingOf(s.store, rig), []);
-    const owner = await connect(s.api, TOKENS.admin);
+    const owner = await mcpClient(s.api, TOKENS.admin);
     const r = JSON.parse(
       text(
         await owner.callTool({
@@ -827,7 +800,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
       issuedBy: "owner:api",
     });
     const before = pendingOf(s.store, rig).length;
-    const operator = await connect(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.api, TOKENS.operator);
     const refused = await operator.callTool({
       name: "start_run",
       arguments: { campaign: "camp", rig, agents: false },
@@ -859,7 +832,7 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
       payload: assignment("camp-1"),
       issuedBy: "owner:api",
     });
-    const owner = await connect(t.api, TOKENS.admin);
+    const owner = await mcpClient(t.api, TOKENS.admin);
     const o = JSON.parse(
       text(
         await owner.callTool({

@@ -3,14 +3,13 @@ import { describe, test } from "node:test";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 099 on control's side, from a rig's events: a goal run that met its goals reads Completed,
  * and its campaign reads as its newest run, over an older paused one; a judge-only run says so on
  * its page and over its queue.
  */
-
-const ADMIN = "admin-token-abcdef";
 
 async function control() {
   const store = new ControlStore(":memory:");
@@ -20,13 +19,7 @@ async function control() {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000 },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+  const { page } = await signIn(api);
   const rest = async (path: string) =>
     (await api.request(path, { headers: { authorization: `Bearer ${ADMIN}` } })).json();
   let id = 0;

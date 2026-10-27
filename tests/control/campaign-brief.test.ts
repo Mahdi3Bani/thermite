@@ -3,8 +3,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { ControlStore } from "../../src/control/store.ts";
@@ -16,6 +14,7 @@ import {
 import { MD_CORE_JS, mdHtml } from "../../src/control/ui/markdown.ts";
 import { NEW_CAMPAIGN_JS } from "../../src/control/ui/new-campaign-client.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A campaign's brief on the screens and over the APIs (goal 078): New campaign takes it for every
@@ -24,7 +23,7 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
  */
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
-const TOKENS = { admin: "admin-token-abcdef", rigs: {} };
+const TOKENS = { admin: ADMIN, rigs: {} };
 const CPU = { type: "cpu", class: "generic-cpu" };
 
 /** The brief's page-free part, as the browser runs it. */
@@ -73,50 +72,25 @@ async function stack() {
       },
     },
   } as Parameters<typeof store.ingest>[0]);
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await get("/ui/campaigns/new"))?.[1] ?? "";
+  const { page: get, csrfOf, post } = await signIn(api);
+  const csrf = csrfOf(await get("/ui/campaigns/new"));
   /** New campaign's form, posted as the browser posts it: the draft as JSON, and the rig. */
   const submit = (draft: Record<string, unknown>, start = "save") =>
-    api.request("/ui/campaigns/new", {
-      method: "POST",
-      body: new URLSearchParams({
-        csrf,
-        draft: JSON.stringify(draft),
-        rig: "rig-a",
-        start_value: start,
-      }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    post("/ui/campaigns/new", {
+      csrf,
+      draft: JSON.stringify(draft),
+      rig: "rig-a",
+      start_value: start,
     });
   const rest = (from: string, body: unknown) =>
     api.request(`/v1/campaigns/${from}/copy`, {
       method: "POST",
-      headers: { authorization: `Bearer ${TOKENS.admin}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
   const contract = (campaign: string) =>
     store.campaignVersions(campaign)[0]?.contract as Record<string, unknown> | undefined;
   return { store, api, get, submit, rest, contract };
-}
-
-/** An MCP client talking to control in-process, with the owner's token. */
-async function mcp(api: ReturnType<typeof createControlApi>) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${TOKENS.admin}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 /** The fields of the first step as the owner fills them, and the rest of a hill climb or goal. */
@@ -476,7 +450,7 @@ describe("a campaign's brief on the screens (goal 078)", () => {
       ],
     );
     // Over MCP: other hypotheses; and a research campaign takes no ideas.
-    const client = await mcp(s.api);
+    const client = await mcpClient(s.api);
     const out = await client.callTool({
       name: "copy_campaign",
       arguments: {

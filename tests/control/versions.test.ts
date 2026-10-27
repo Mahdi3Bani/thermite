@@ -4,8 +4,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import type { RigVersions } from "../../src/control/versions.ts";
@@ -19,12 +17,18 @@ import {
   OLDEST_PROTOCOL,
   PROTOCOL,
 } from "../../src/core/version.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
 import { RelayError, relayOnce } from "../../src/supervisor/relay.ts";
+import {
+  ADMIN,
+  controlStack,
+  mcpClient,
+  RIG_TOKEN,
+  SUPERVISOR_TOKEN,
+} from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
-const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
+const tokens = { admin: ADMIN, rigs: { "rig-a": RIG_TOKEN } };
 const owner = { authorization: `Bearer ${tokens.admin}`, "content-type": "application/json" };
 
 interface Listed {
@@ -36,13 +40,10 @@ interface Listed {
  * Control and one rig (harness and supervisor) wired in-process. `supervisor` changes the build
  * headers the supervisor sends: null sends none, as a supervisor from before version checks.
  */
-function setup(control?: BuildInfo) {
-  const env = makeHarnessEnv("rig-a");
-  const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-  const store = new ControlStore(":memory:");
-  const api = createControlApi(store, tokens, env.keys.privateKeyPem, {
-    staleAfterMs: 180_000,
-    ...(control ? { build: control } : {}),
+function setup(build?: BuildInfo) {
+  const { env, store, control, harness } = controlStack({
+    env: makeHarnessEnv("rig-a"),
+    options: build ? { build } : {},
   });
   const rig: { supervisor: Record<string, string> | null | undefined; seen: Headers[] } = {
     supervisor: undefined,
@@ -60,27 +61,27 @@ function setup(control?: BuildInfo) {
         else headers.set(h, v);
       }
     rig.seen.push(headers);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
+    return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
   };
   const cfg = {
     rig: "rig-a",
     harnessUrl: "http://harness",
-    harnessToken: "sup-token-abcdef",
+    harnessToken: SUPERVISOR_TOKEN,
     controlUrl: "http://control",
     controlToken: tokens.rigs["rig-a"],
     fetchImpl,
   };
   const listed = async () =>
-    (await (await api.request("/v1/rigs", { headers: owner })).json()) as Listed;
+    (await (await control.request("/v1/rigs", { headers: owner })).json()) as Listed;
   const issue = () =>
-    api.request("/v1/commands", {
+    control.request("/v1/commands", {
       method: "POST",
       headers: owner,
       body: JSON.stringify({ rig: "rig-a", kind: "assign_campaign", payload: env.assignPayload() }),
     });
   const audits = (action: string) =>
     store.listAudit(1000).filter((a) => a.action === action) as { body: unknown }[];
-  return { env, store, api, rig, cfg, listed, issue, audits };
+  return { env, store, api: control, rig, cfg, listed, issue, audits };
 }
 
 const hdrs = (b: Partial<BuildInfo>) => ({
@@ -313,17 +314,7 @@ describe("versions between control and its rigs", () => {
       oldest_protocol: OLDEST_PROTOCOL,
     });
     await relayOnce(s.cfg, { cursor: 0 });
-    const client = new Client({ name: "test", version: "1.0.0" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), {
-        fetch: async (input, init) => {
-          const url = new URL(String(input));
-          const headers = new Headers(init?.headers);
-          headers.set("authorization", `Bearer ${tokens.admin}`);
-          return s.api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-        },
-      }),
-    );
+    const client = await mcpClient(s.api, tokens.admin);
     assert.equal(client.getServerVersion()?.version, "99.0.0");
     const r = await client.callTool({ name: "list_rigs", arguments: {} });
     const rigs = JSON.parse((r.content as { text: string }[])[0]?.text ?? "") as {

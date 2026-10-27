@@ -11,9 +11,8 @@ import { ControlStore } from "../../src/control/store.ts";
 import { rigView } from "../../src/control/views.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import type { BuildInfo } from "../../src/core/version.ts";
+import { ADMIN, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 
-const ADMIN = "admin-token-abcdef";
-const RIG_TOKEN = "rig-token-abcdef";
 const CONTROL: BuildInfo = { version: "0.1.0", commit: null, protocol: 1, oldest_protocol: 1 };
 const OLD = { version: "0.0.9", commit: null, protocol: 1, oldest_protocol: 1 };
 const IMAGES = {
@@ -102,26 +101,11 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     slots: [],
     by: "owner:ui",
   });
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+  const ui = await signIn(api);
+  const { cookie, page } = ui;
+  const csrf = ui.csrfOf(await page("/ui/settings"));
   const post = async (path: string, form: Record<string, string> = {}) =>
-    decodeURIComponent(
-      String(
-        (
-          await api.request(path, {
-            method: "POST",
-            body: new URLSearchParams({ csrf, ...form }),
-            headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-          })
-        ).headers.get("location"),
-      ),
-    );
+    decodeURIComponent(String((await ui.post(path, { csrf, ...form })).headers.get("location")));
   /** A form as the page's script sends it (goal 080): with fetch, asking for JSON. */
   const send = async (path: string, form: Record<string, string> = {}) => {
     const r = await api.request(path, {

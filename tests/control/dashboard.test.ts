@@ -13,10 +13,9 @@ import { ControlTunnels } from "../../src/control/tunnel.ts";
 import { deviceModeText } from "../../src/control/ui/components.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { ModelSource } from "../../src/harness/agents/model-source.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
 import { syncModelRoute } from "../../src/supervisor/model-route.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
 import { seedDemo } from "../helpers/control-demo.ts";
+import { ADMIN, controlStack, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../helpers/fake-runpod.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 import {
@@ -33,51 +32,13 @@ async function stack(
   promotion: "auto" | "owner_approval" = "owner_approval",
   opts: { providerFetch?: typeof fetch; agents?: false } = {},
 ) {
-  const env = makeJudgeEnv({ promotion, ...(opts.agents === false ? { agents: false } : {}) });
-  const store = new ControlStore(":memory:");
-  const admin = "admin-token-abcdef";
-  const control = createControlApi(
-    store,
-    { admin, rigs: { "rig-a": "rig-token-abcdef" } },
-    env.keys.privateKeyPem,
-    { staleAfterMs: 180_000, providerFetch: opts.providerFetch },
-  );
-  const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
-  const cfg = {
-    rig: "rig-a",
-    harnessUrl: "http://harness",
-    harnessToken: "sup-token-abcdef",
-    controlUrl: "http://control",
-    controlToken: "rig-token-abcdef",
-    fetchImpl,
-  };
-  let state = { cursor: 0 } as Awaited<ReturnType<typeof relayOnce>>;
-  const relay = async () => {
-    state = await relayOnce(cfg, state);
-  };
-  // Sign in through the form, keeping the session cookie.
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+  const { env, store, control, relay, cfg } = controlStack({
+    env: makeJudgeEnv({ promotion, ...(opts.agents === false ? { agents: false } : {}) }),
+    options: { providerFetch: opts.providerFetch },
   });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = (path: string) => control.request(path, { headers: { cookie } });
-  const post = (path: string, form: Record<string, string>) =>
-    control.request(path, {
-      method: "POST",
-      body: new URLSearchParams(form),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
-  const csrfFrom = (html: string) => /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1] ?? "";
-  return { env, store, control, relay, get, post, csrfFrom, login, fetchImpl };
+  // Sign in through the form, keeping the session cookie.
+  const { get, post, csrfOf: csrfFrom } = await signIn(control);
+  return { env, store, control, relay, get, post, csrfFrom, cfg };
 }
 
 describe("control dashboard", () => {
@@ -146,14 +107,7 @@ describe("control dashboard", () => {
     assert.equal(route.route.harness, "claude-code");
     assert.equal(route.route.model, "claude-opus-5-5");
     assert.equal(route.route.api_key, token);
-    const sync = {
-      rig: "rig-a",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      fetchImpl: s.fetchImpl,
-    };
+    const sync = s.cfg;
     assert.equal(await syncModelRoute(sync), "set");
     const m = s.env.service.models.current();
     assert.equal(m?.api, "claude");
@@ -373,14 +327,7 @@ describe("control dashboard", () => {
       join(mkdtempSync(join(tmpdir(), "thermite-chatgpt-")), "model-route.json"),
       undefined,
     );
-    const sync = {
-      rig: "rig-a",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      fetchImpl: s.fetchImpl,
-    };
+    const sync = s.cfg;
     assert.equal(await syncModelRoute(sync), "set");
     assert.equal(s.env.service.models?.current()?.api, "chatgpt");
     // Signing in again keeps the issued client ID and the host ID.
@@ -662,14 +609,7 @@ describe("control dashboard", () => {
     await s.post("/ui/settings/providers/opencode/models", { csrf, model: "custom-model" });
     assert.ok(s.store.provider("opencode")?.models.some((m) => m.id === "custom-model" && m.added));
     // The supervisor hands it to its harness once; its agents use it from then on.
-    const sync = {
-      rig: "rig-a",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      fetchImpl: s.fetchImpl,
-    };
+    const sync = s.cfg;
     assert.equal(await syncModelRoute(sync), "set");
     assert.equal(await syncModelRoute(sync), "unchanged");
     const current = s.env.service.models.current();
@@ -938,7 +878,12 @@ describe("control dashboard", () => {
 
   test("sign-in is required, and a wrong token gets nowhere", async () => {
     const s = await stack();
-    assert.equal(s.login.status, 303);
+    const login = await s.control.request("/ui/login", {
+      method: "POST",
+      body: new URLSearchParams({ token: ADMIN }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    });
+    assert.equal(login.status, 303);
     const anon = await s.control.request("/ui");
     assert.equal(anon.status, 303);
     assert.equal(anon.headers.get("location"), "/ui/login");
@@ -1006,12 +951,9 @@ describe("control dashboard", () => {
   });
 
   test("with only the token's hash, the owner signs in with the token, and the hash signs in no one", async () => {
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: Credential.ofHash(sha256("admin-token-abcdef")), rigs: {} },
-      makeJudgeEnv().keys.privateKeyPem,
-    );
+    const { control } = controlStack({
+      tokens: { admin: Credential.ofHash(sha256(ADMIN)), rigs: {} },
+    });
     const signIn = (token: string) =>
       control.request("/ui/login", {
         method: "POST",
@@ -1805,25 +1747,12 @@ describe("control dashboard", () => {
 async function demo() {
   const store = new ControlStore(":memory:");
   seedDemo(store);
-  const admin = "admin-token-abcdef";
   const control = createControlApi(
     store,
-    { admin, rigs: { "rig-a": "t-a-abcdef", "rig-b": "t-b-abcdef", "rig-c": "t-c-abcdef" } },
+    { admin: ADMIN, rigs: { "rig-a": "t-a-abcdef", "rig-b": "t-b-abcdef", "rig-c": "t-c-abcdef" } },
     makeJudgeEnv().keys.privateKeyPem,
   );
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = async (path: string) => (await control.request(path, { headers: { cookie } })).text();
-  const post = (path: string, form: Record<string, string>) =>
-    control.request(path, {
-      method: "POST",
-      body: new URLSearchParams(form),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+  const { page: get, post } = await signIn(control);
   return { store, get, post };
 }
 
@@ -2139,7 +2068,6 @@ async function rigsStack() {
   const MIN = 60_000;
   const CONTROL = { version: "0.1.0", commit: null, protocol: 1, oldest_protocol: 1 };
   const OLD = { version: "0.0.9", commit: null, protocol: 1, oldest_protocol: 1 };
-  const admin = "admin-token-abcdef";
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
   const keys = generateSigningKeys();
@@ -2160,7 +2088,7 @@ async function rigsStack() {
     now,
     privateKeyPem: keys.privateKeyPem,
   });
-  const control = createControlApi(store, { admin, rigs: {} }, keys.privateKeyPem, {
+  const control = createControlApi(store, { admin: ADMIN, rigs: {} }, keys.privateKeyPem, {
     staleAfterMs: 3 * MIN,
     offlineAfterMs: 15 * MIN,
     build: CONTROL,
@@ -2169,13 +2097,7 @@ async function rigsStack() {
     runpodRigs: pods,
     cloudFetch: cloud.fetch,
   });
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = async (path: string) => (await control.request(path, { headers: { cookie } })).text();
+  const { page: get } = await signIn(control);
   const cursors = new Map<string, number>();
   const report = (rig: string, events: { kind: string; subject: string; body: object }[] = []) => {
     const from = cursors.get(rig) ?? 0;
@@ -2479,18 +2401,9 @@ describe("the Rigs list", () => {
     assert.match(list, /Set up by you/);
     const empty = createControlApi(
       new ControlStore(":memory:"),
-      { admin: "admin-token-abcdef", rigs: {} },
+      { admin: ADMIN, rigs: {} },
       generateSigningKeys().privateKeyPem,
     );
-    const login = await empty.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: "admin-token-abcdef" }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    assert.match(
-      await (await empty.request("/ui/rigs", { headers: { cookie } })).text(),
-      /No rig has reported yet\./,
-    );
+    assert.match(await (await signIn(empty)).page("/ui/rigs"), /No rig has reported yet\./);
   });
 });

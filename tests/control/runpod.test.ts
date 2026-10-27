@@ -5,9 +5,9 @@ import { createPod, readRunpod, runpodLine } from "../../src/control/runpod.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod as runpodFake } from "../helpers/fake-runpod.ts";
 
-const ADMIN = "admin-token-abcdef";
 const KEY = "rpa_test-key-0123456789abcdef";
 
 /** RunPod's API behind a fake fetch: what it answers to the right key, and every call it got. */
@@ -159,26 +159,11 @@ async function control(f: typeof fetch) {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000, secrets, cloudFetch: f },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+  const ui = await signIn(api);
+  const { page } = ui;
+  const csrf = ui.csrfOf(await page("/ui/settings"));
   const post = async (path: string, form: Record<string, string>) =>
-    decodeURIComponent(
-      String(
-        (
-          await api.request(path, {
-            method: "POST",
-            body: new URLSearchParams({ csrf, ...form }),
-            headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-          })
-        ).headers.get("location"),
-      ),
-    );
+    decodeURIComponent(String((await ui.post(path, { csrf, ...form })).headers.get("location")));
   return { store, secrets, page, post };
 }
 

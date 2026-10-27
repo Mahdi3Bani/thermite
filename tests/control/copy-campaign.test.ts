@@ -3,8 +3,6 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
 import { issueCommand } from "../../src/control/issue.ts";
@@ -16,6 +14,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import { usesFor } from "../../src/core/mcp.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Copy a campaign (goal 069): REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign. The copy
@@ -26,7 +25,7 @@ import { usesFor } from "../../src/core/mcp.ts";
 type Ev = [string, string, string, Record<string, unknown>];
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
   agent: "agent-token-abcdef",
   read: "read-token-abcdef",
@@ -200,31 +199,8 @@ async function stack() {
           }
         ).envelope,
     );
-  const page = async (path: string) => {
-    const login = await api.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: TOKENS.admin }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    return (await api.request(path, { headers: { cookie } })).text();
-  };
+  const page = async (path: string) => (await signIn(api)).page(path);
   return { store, api, rest, startRun, assigned, ingest, page, gemv, gemvImports };
-}
-
-/** An MCP client talking to control in-process, with a token. */
-async function mcp(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 const text = (r: unknown) =>
@@ -382,12 +358,12 @@ describe("Copy a campaign over MCP (goal 069)", () => {
   test("copy_campaign for the owner and an operator; a campaign known only by an assignment; start_run on the copy", async () => {
     const s = await stack();
     const tools = async (token: string) =>
-      (await (await mcp(s.api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(s.api, token)).listTools()).tools.map((t) => t.name);
     assert.ok((await tools(TOKENS.admin)).includes("copy_campaign"));
     assert.ok((await tools(TOKENS.operator)).includes("copy_campaign"));
     assert.ok(!(await tools(TOKENS.agent)).includes("copy_campaign"));
     assert.ok(!(await tools(TOKENS.read)).includes("copy_campaign"));
-    const operator = await mcp(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.api, TOKENS.operator);
     const out = JSON.parse(
       text(
         await operator.callTool({
@@ -442,7 +418,7 @@ describe("Copy a campaign over MCP (goal 069)", () => {
     });
 
     // Refused in words, and in the audit log.
-    const owner = await mcp(s.api, TOKENS.admin);
+    const owner = await mcpClient(s.api, TOKENS.admin);
     const refused = await owner.callTool({
       name: "copy_campaign",
       arguments: { from: "gemv-speed", name: "gemv-speed-b" },
@@ -565,7 +541,7 @@ describe("A research copy's MCP servers (goals 069 and 068)", () => {
     assert.deepEqual(usesFor(given, "workers"), [{ name: "paper-search", tools: ["find"] }]);
 
     // Over MCP, with an operator's token: [] names none.
-    const operator = await mcp(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.api, TOKENS.operator);
     const out = JSON.parse(
       text(
         await operator.callTool({

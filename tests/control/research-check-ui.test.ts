@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 112 on control's side, from a rig's events: a research run's Overview says in one line
@@ -11,7 +12,6 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
  * Completed.
  */
 
-const ADMIN = "admin-token-abcdef";
 const PAGE = "/ui/campaigns/survey?run=rig-a%2Fs-1";
 
 async function control() {
@@ -22,13 +22,7 @@ async function control() {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000 },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+  const { page } = await signIn(api);
   let id = 0;
   const t0 = Date.now() - 3600_000;
   const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>

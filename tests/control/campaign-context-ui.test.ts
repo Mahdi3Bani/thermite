@@ -19,6 +19,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { CAMPAIGN_CONTEXT_JS, CC_CORE_JS } from "../../src/control/ui/campaign-context-client.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { agentsContextRefusal } from "../../src/core/compaction.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A campaign's Agents' context on the screens (goal 070, as the owner approved the revised
@@ -26,7 +27,7 @@ import { agentsContextRefusal } from "../../src/core/compaction.ts";
  * line, the Copy panel and New campaign's step 4. Forms are posted as a browser posts them.
  */
 
-const TOKENS = { admin: "admin-token-abcdef", rigs: {} };
+const TOKENS = { admin: ADMIN, rigs: {} };
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 const CPU = { type: "cpu", class: "generic-cpu" };
 const draft: CampaignDraft = {
@@ -116,22 +117,12 @@ async function stack() {
     { draft, rig: "rig-a", target: CPU, start: false, by: "owner:ui" },
   );
   assert.ok(saved.ok);
-  const signIn = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (signIn.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf =
-    /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/campaigns/matmul-speed"))?.[1] ?? "";
+  const session = await signIn(api);
+  const { page } = session;
+  const csrf = session.csrfOf(await page("/ui/campaigns/matmul-speed"));
   /** Posts a form as the page does: with the page's token. */
   const post = async (path: string, form: Record<string, string>) => {
-    const r = await api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    const r = await session.post(path, { csrf, ...form });
     return { status: r.status, to: decodeURIComponent(r.headers.get("location") ?? ""), r };
   };
   const contract = (campaign: string) =>

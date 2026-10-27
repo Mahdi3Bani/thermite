@@ -5,15 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { mcpUrlProblem } from "../../src/common/mcp-client.ts";
-import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { McpServers } from "../../src/control/mcp-servers.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import { KIT_MCP_CORE_JS, NEW_CAMPAIGN_JS } from "../../src/control/ui/new-campaign-client.ts";
 import { MCP_URL_CHECK_JS, PROVIDERS_JS } from "../../src/control/ui/providers-client.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { controlStack, signIn } from "../helpers/control-stack.ts";
 import { startFakeMcp } from "../helpers/fake-mcp.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
@@ -26,21 +23,13 @@ const KIT_C = "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e";
 async function stack(t: TestContext, o: { kitJson?: unknown } = {}) {
   const fake = await startFakeMcp({ kind: "bearer", token: KEY.slice(7) });
   t.after(() => fake.close());
-  const env = makeJudgeEnv({ promotion: "auto" });
-  const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
-  const servers = new McpServers(store, secrets);
-  const admin = "admin-token-abcdef";
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-  const control = createControlApi(
-    store,
-    { admin, rigs: { "rig-a": "rig-token-abcdef" } },
-    env.keys.privateKeyPem,
-    {
-      staleAfterMs: 180_000,
+  const { env, store, control, relay } = controlStack({
+    env: makeJudgeEnv({ promotion: "auto" }),
+    options: {
       kits,
       secrets,
-      mcpServers: servers,
       publicUrl: "https://control.example.com",
       probeRepo: async () => ({ commit: C, files: 10, suggest: ["src/**"] }),
       readKit: async (url, commit) => {
@@ -48,8 +37,9 @@ async function stack(t: TestContext, o: { kitJson?: unknown } = {}) {
         return o.kitJson ?? { name: "q4-gemv-kit", commit, mcp_servers: [] };
       },
     },
-  );
-  const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
+  });
+  // Control makes its own MCP servers on the same store and secrets: this is the tests' hand on them.
+  const servers = new McpServers(store, secrets);
   env.service.hardware = {
     collected_at: new Date().toISOString(),
     target: { type: "cpu", class: "generic-cpu", id: "cpu-a" },
@@ -62,38 +52,12 @@ async function stack(t: TestContext, o: { kitJson?: unknown } = {}) {
     toolchain: { cc: "cc 12", nvcc: null },
     errors: [],
   };
-  await relayOnce(
-    {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl: async (input, init) => {
-        const url = new URL(String(input));
-        return (url.host === "harness" ? harness : control).request(
-          `${url.pathname}${url.search}`,
-          init as RequestInit,
-        );
-      },
-    },
-    { cursor: 0 } as Parameters<typeof relayOnce>[1],
-  );
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = (path: string) => control.request(path, { headers: { cookie } });
-  const page = async (path: string) => (await get(path)).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+  await relay();
+  const session = await signIn(control);
+  const { get, page } = session;
+  const csrf = session.csrfOf(await page("/ui/settings"));
   const post = (path: string, form: Record<string, string>) =>
-    control.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    session.post(path, { csrf, ...form });
   return { fake, store, servers, kits, control, get, page, post };
 }
 

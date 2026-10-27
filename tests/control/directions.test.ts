@@ -7,14 +7,8 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import type { DirectionView } from "../../src/control/views.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
-import { makeJudgeEnv } from "../helpers/judge-env.ts";
+import { ADMIN, controlStack, mcpClient } from "../helpers/control-stack.ts";
 
 /**
  * Rules name directions (goal 066), over REST, MCP and the command line, against a real harness
@@ -22,47 +16,17 @@ import { makeJudgeEnv } from "../helpers/judge-env.ts";
  * run's directions as a client reads them, and the plain-words refusals.
  */
 
-const ADMIN = "admin-token-abcdef";
 const CLI = join(import.meta.dirname, "../../src/cli/thermite.ts");
 const run = promisify(execFile);
 
 async function stack() {
-  const env = makeJudgeEnv();
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-abcdef" } },
-    env.keys.privateKeyPem,
-  );
-  const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
-  const cfg = {
-    rig: "rig-a",
-    harnessUrl: "http://harness",
-    harnessToken: "s-token-abcdef",
-    controlUrl: "http://control",
-    controlToken: "rig-token-abcdef",
-    fetchImpl,
-  };
+  const { env, store, control, relay: rounds, api } = controlStack();
   await env.service.applyCommand(env.assign);
-  let state = await relayOnce(cfg, { cursor: 0 });
+  await rounds();
   /** The commands to the harness, then their events back to control. */
   const relay = async () => {
-    state = await relayOnce(cfg, state);
-    state = await relayOnce(cfg, state);
+    await rounds(2);
   };
-  const api = (method: string, path: string, body?: unknown) =>
-    control.request(path, {
-      method,
-      headers: { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
   /** The newest signed command's payload and what the rig answered. */
   const last = () => {
     const c = store.listCommands(1)[0];
@@ -187,16 +151,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
 
   test("MCP: issue_command takes :name: and refuses words; run_queue lists the run's directions", async () => {
     const s = await stack();
-    const client = new Client({ name: "test-agent", version: "1.0.0" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${ADMIN}`);
-      return s.control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-    };
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-    );
+    const client = await mcpClient(s.control);
     const call = (name: string, args: Record<string, unknown>) =>
       client.callTool({ name, arguments: args }) as Promise<{
         isError?: boolean;
@@ -286,9 +241,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
   });
 
   test("control refuses a research run a rule for another direction than its task kinds", async () => {
-    const store = new ControlStore(":memory:");
-    const env = makeJudgeEnv();
-    const control = createControlApi(store, { admin: ADMIN, rigs: {} }, env.keys.privateKeyPem);
+    const { store, api } = controlStack({ tokens: { rigs: {} } });
     store.ingest({
       rig: "rig-r",
       ledger_id: "ledger-r",
@@ -308,14 +261,10 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
       summary: {},
     });
     const post = (family: string) =>
-      control.request("/v1/commands", {
-        method: "POST",
-        headers: { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          rig: "rig-r",
-          kind: "redirect",
-          payload: { run: "r-1", directives: [{ kind: "avoid", family, rationale: "r" }] },
-        }),
+      api("POST", "/v1/commands", {
+        rig: "rig-r",
+        kind: "redirect",
+        payload: { run: "r-1", directives: [{ kind: "avoid", family, rationale: "r" }] },
       });
     const bad = await post("blog posts");
     assert.equal(bad.status, 400);

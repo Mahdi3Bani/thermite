@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Start a run's twins (goal 029): REST's POST /v1/campaigns/<name>/runs and MCP's start_run take
@@ -34,7 +33,7 @@ function ingest(store: ControlStore, rig: string, events: Ev[], summary: object 
 }
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
   agent: "agent-token-abcdef",
   read: "read-token-abcdef",
@@ -155,16 +154,8 @@ async function stack() {
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = await (
-    await api.request("/ui/campaigns/gemv-speed", { headers: { cookie } })
-  ).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(page)?.[1] ?? "";
+  const { cookie, page, csrfOf } = await signIn(api);
+  const csrf = csrfOf(await page("/ui/campaigns/gemv-speed"));
   assert.ok(csrf);
   /** A dashboard form, sent as the browser sends it: to a path, with the page's token. */
   const send = (path: string, fields: [string, string][]) =>
@@ -190,21 +181,6 @@ async function stack() {
         ).envelope,
     );
   return { store, api, rest, send, form, assigned, exp, finding };
-}
-
-/** An MCP client talking to control in-process, with a token. */
-async function mcp(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 const text = (r: unknown) =>
@@ -518,12 +494,12 @@ describe("Start a run over MCP (goal 029)", () => {
   test("start_run for the owner and an operator, never an agent or a reader; an operator's GPU split is refused", async () => {
     const s = await stack();
     const tools = async (token: string) =>
-      (await (await mcp(s.api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(s.api, token)).listTools()).tools.map((t) => t.name);
     assert.ok((await tools(TOKENS.admin)).includes("start_run"));
     assert.ok((await tools(TOKENS.operator)).includes("start_run"));
     assert.ok(!(await tools(TOKENS.agent)).includes("start_run"));
     assert.ok(!(await tools(TOKENS.read)).includes("start_run"));
-    const operator = await mcp(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.api, TOKENS.operator);
     const out = JSON.parse(
       text(
         await operator.callTool({
@@ -555,7 +531,7 @@ describe("Start a run over MCP (goal 029)", () => {
       error: "Only the owner's token changes a rig's GPU split: leave out judge_gpus.",
     });
     // The owner's call is refused in the panel's words, and in the audit log.
-    const owner = await mcp(s.api, TOKENS.admin);
+    const owner = await mcpClient(s.api, TOKENS.admin);
     const refused = await owner.callTool({
       name: "start_run",
       arguments: { campaign: "gemv-speed", rig: "rig-b" },

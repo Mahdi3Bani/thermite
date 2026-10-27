@@ -4,8 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import {
   advisorsFileOf,
@@ -15,6 +13,7 @@ import {
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, mcpClient, RIG_TOKEN } from "../helpers/control-stack.ts";
 
 /**
  * Each agent's model over REST and MCP (goal 029): POST /v1/rigs/<rig>/model and set_rig_model
@@ -24,10 +23,10 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
  */
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
   read: "read-token-abcdef",
-  rigs: { "rig-a": "rig-token-abcdef" },
+  rigs: { "rig-a": RIG_TOKEN },
 };
 
 /**
@@ -101,23 +100,9 @@ async function stack() {
   };
   const asRig = async (path: string) =>
     (await (
-      await api.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } })
+      await api.request(path, { headers: { authorization: `Bearer ${RIG_TOKEN}` } })
     ).json()) as Record<string, Record<string, unknown> | null>;
   return { store, api, as, owner, give, asRig };
-}
-
-async function connect(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test-agent", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 const text = (r: unknown) =>
@@ -655,7 +640,7 @@ describe("each agent's model over REST and MCP", () => {
 
   test("MCP: an operator sets and clears an advisor's model; a reader reads them only", async () => {
     const s = await stack();
-    const operator = await connect(s.api, TOKENS.operator);
+    const operator = await mcpClient(s.api, TOKENS.operator);
     await operator.callTool({
       name: "set_rig_model",
       arguments: { rig: "rig-a", provider: "lab", model: "wide-model" },
@@ -752,7 +737,7 @@ describe("each agent's model over REST and MCP", () => {
     assert.equal((read.agents as Record<string, { model: string }>).workers?.model, "wide-model");
     await operator.close();
 
-    const reader = await connect(s.api, TOKENS.read);
+    const reader = await mcpClient(s.api, TOKENS.read);
     const tools = (await reader.listTools()).tools.map((t) => t.name);
     assert.ok(tools.includes("rig_models"));
     assert.ok(!tools.includes("set_rig_model"));
@@ -901,7 +886,7 @@ describe("the advisors file, as control reads it from the supervisor", () => {
     // A new one.
     assert.equal((await report({ ...STATS, roles: ROLES, file: FILE })).status, 200);
     assert.deepEqual((await read()).advisors_file, FILE);
-    const mcp = await connect(s.api, TOKENS.read);
+    const mcp = await mcpClient(s.api, TOKENS.read);
     const seen = text(await mcp.callTool({ name: "rig_models", arguments: { rig: "rig-a" } }));
     assert.deepEqual(seen.advisors_file, FILE);
     await mcp.close();

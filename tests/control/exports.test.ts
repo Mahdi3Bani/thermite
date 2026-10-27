@@ -18,6 +18,7 @@ import { ControlStore } from "../../src/control/store.ts";
 import { tunnelRouteAllowed } from "../../src/control/tunnel.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { uploadExportsOnce } from "../../src/supervisor/export-upload.ts";
+import { signIn } from "../helpers/control-stack.ts";
 
 const OWNER = "owner-token-abcdef";
 const RIG_A = "rig-a-token-abcdef";
@@ -311,16 +312,6 @@ const filesUnder = (dir: string): string[] =>
     statSync(join(dir, p)).isFile(),
   );
 
-/** Signs in to the dashboard with the owner's token: the session's cookie. */
-async function signIn(control: ReturnType<typeof setup>["control"]): Promise<string> {
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: OWNER }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  return (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-}
-
 describe("Export and the Exports page (goal 103)", () => {
   // A path ustar can't hold (a name of 123 characters: a pax record) and one it holds split at a
   // "/" (more than 100 characters in all).
@@ -404,8 +395,7 @@ describe("Export and the Exports page (goal 103)", () => {
     writeExport(s.outbox, PART, files());
     s.breakAfter(3);
     await uploadExportsOnce(s.cfg, { queue: [PART], uploaded: [] });
-    const cookie = await signIn(s.control);
-    const get = (path: string) => s.control.request(path, { headers: { cookie } });
+    const { get } = await signIn(s.control, OWNER);
 
     const html = await (await get("/ui/exports")).text();
     assert.match(html, /<a href="\/ui\/exports" class="on">.*<span>Exports<\/span><\/a>/);
@@ -468,13 +458,9 @@ describe("Export and the Exports page (goal 103)", () => {
       ],
       summary: {},
     });
-    const cookie = await signIn(s.control);
+    const { cookie, page, post } = await signIn(s.control, OWNER);
     // A run's page has Export too: the run alone first, and chosen; then the rig's (goal 103).
-    const run = await (
-      await s.control.request(`/ui/campaigns/papers?run=${encodeURIComponent("rig-a/r-1")}`, {
-        headers: { cookie },
-      })
-    ).text();
+    const run = await page(`/ui/campaigns/papers?run=${encodeURIComponent("rig-a/r-1")}`);
     const runForm =
       /<form method="post" action="\/ui\/commands" class="stack export-now">([\s\S]*?)<\/form>/.exec(
         run,
@@ -511,7 +497,7 @@ describe("Export and the Exports page (goal 103)", () => {
     );
     assert.deepEqual([ranCmd?.kind, ranCmd?.payload], ["export_now", { full: false, run: "r-1" }]);
     assert.match(ranAnswer.said, /An export of r-1 alone was asked for\./);
-    const html = await (await s.control.request("/ui/rigs/rig-a", { headers: { cookie } })).text();
+    const html = await page("/ui/rigs/rig-a");
     const form =
       /<form method="post" action="\/ui\/commands" class="stack export-now">([\s\S]*?)<\/form>/.exec(
         html,
@@ -557,11 +543,7 @@ describe("Export and the Exports page (goal 103)", () => {
       assert.match(a.said, /it shows on the Exports page/);
     }
     // Without the script: the page it lands on says so too.
-    const plain = await s.control.request("/ui/commands", {
-      method: "POST",
-      body: new URLSearchParams({ ...hidden, full: "true" }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    const plain = await post("/ui/commands", { ...hidden, full: "true" });
     assert.equal(plain.status, 303);
     assert.match(
       decodeURIComponent(plain.headers.get("location") ?? ""),

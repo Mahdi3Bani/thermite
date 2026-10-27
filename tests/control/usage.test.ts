@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { modelUsage } from "../../src/control/usage.ts";
 import { rigView } from "../../src/control/views.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { callUsage } from "../../src/core/usage.ts";
+import { ADMIN, mcpClient } from "../helpers/control-stack.ts";
 
 /**
  * Model usage on control (goal 075): the rigs' model_call events become rows the sums read, for a
@@ -16,7 +15,7 @@ import { callUsage } from "../../src/core/usage.ts";
  */
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
   read: "read-token-abcdef",
   rigs: {},
@@ -252,16 +251,7 @@ describe("model usage on control (goal 075)", () => {
 
   test("MCP: model_usage gives the same report", async () => {
     const s = stack();
-    const client = new Client({ name: "test", version: "1.0.0" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${TOKENS.operator}`);
-      return s.api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-    };
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-    );
+    const client = await mcpClient(s.api, TOKENS.operator);
     const out = (await client.callTool({
       name: "model_usage",
       arguments: { run: "r-1", period: "7d" },
@@ -443,16 +433,7 @@ describe("model usage cost on control (goal 075)", () => {
 
   test("MCP: an operator sets a price with set_model_price; providers lists the prices in use", async () => {
     const s = priced();
-    const client = new Client({ name: "test", version: "1.0.0" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${TOKENS.operator}`);
-      return s.api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-    };
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-    );
+    const client = await mcpClient(s.api, TOKENS.operator);
     const out = (await client.callTool({
       name: "set_model_price",
       arguments: { provider: "lab", model: "small-model", input: 1, cached_input: 0.1, output: 2 },

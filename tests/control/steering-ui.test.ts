@@ -3,20 +3,17 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
-import { ControlStore } from "../../src/control/store.ts";
 import type { RigView } from "../../src/control/views.ts";
 import { parseContract } from "../../src/core/contract.ts";
 import type { ModelConfig } from "../../src/harness/agents/model.ts";
 import { ModelSource } from "../../src/harness/agents/model-source.ts";
 import { Scheduler } from "../../src/harness/agents/scheduler.ts";
 import type { TrialResult, TrialSpec } from "../../src/harness/agents/worker.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { Research } from "../../src/harness/research/research.ts";
 import type { HarnessService } from "../../src/harness/service.ts";
 import { relayLiveOnce } from "../../src/supervisor/live.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { controlStack, RIG_TOKEN, SUPERVISOR_TOKEN, signIn } from "../helpers/control-stack.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
@@ -30,34 +27,9 @@ import { makeJudgeEnv } from "../helpers/judge-env.ts";
  * the pages are read again. No browser runs: the script only shows and hides what the server drew.
  */
 
-const ADMIN = "admin-token-abcdef";
-
-/** Control with one rig (rig-a) whose harness is `service`; the supervisor's relay is called directly. */
-async function stack(service: HarnessService, privateKeyPem: string) {
-  const store = new ControlStore(":memory:");
-  const control = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-abcdef" } },
-    privateKeyPem,
-    { staleAfterMs: 180_000 },
-  );
-  const harness = createHarnessApi(service, { supervisor: "sup-token-abcdef" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
-  const cfg = {
-    rig: "rig-a",
-    harnessUrl: "http://harness",
-    harnessToken: "sup-token-abcdef",
-    controlUrl: "http://control",
-    controlToken: "rig-token-abcdef",
-    fetchImpl,
-  };
-  let events = { cursor: 0 } as Awaited<ReturnType<typeof relayOnce>>;
+/** Control with one rig (rig-a) whose harness is `env`'s; the supervisor's relay is called directly. */
+async function stack(env: { service: HarnessService; keys: { privateKeyPem: string } }) {
+  const { store, control, harness, cfg, relay, api } = controlStack({ env });
   let lines = { cursor: 0, ownCursor: 0 } as Awaited<ReturnType<typeof relayLiveOnce>>;
   /**
    * Two passes of the supervisor's relay: control's commands reach the harness, then the events
@@ -65,40 +37,23 @@ async function stack(service: HarnessService, privateKeyPem: string) {
    */
   const sync = async () => {
     for (let i = 0; i < 2; i++) {
-      events = await relayOnce(cfg, events);
+      await relay();
       lines = await relayLiveOnce(cfg, lines);
     }
   };
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  const session = await signIn(control);
   const get = async (path: string) => {
-    const r = await control.request(path, { headers: { cookie } });
+    const r = await session.get(path);
     assert.equal(r.status, 200, path);
     return r.text();
   };
-  const post = (path: string, form: Record<string, string>) =>
-    control.request(path, {
-      method: "POST",
-      body: new URLSearchParams(form),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+  const post = session.post;
   /** A form as the page drew it, posted with what the person typed or chose (`set`). */
   const submit = async (f: Form, set: Record<string, string> = {}) => {
     const r = await post(f.action, { ...f.fields, ...set });
     assert.equal(r.status, 303, await r.clone().text());
     return decodeURIComponent(r.headers.get("location") ?? "");
   };
-  /** The owner's REST API (its token). */
-  const api = (method: string, path: string, body?: unknown) =>
-    control.request(path, {
-      method,
-      headers: { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
   /** The run as control's records hold it (the owner's REST view of the rig). */
   const run = async (id: string) => {
     const v = (await (await api("GET", "/v1/rigs/rig-a/view")).json()) as RigView;
@@ -110,7 +65,7 @@ async function stack(service: HarnessService, privateKeyPem: string) {
   const toHarness = (path: string, body: unknown) =>
     harness.request(path, {
       method: "POST",
-      headers: { authorization: "Bearer sup-token-abcdef", "content-type": "application/json" },
+      headers: { authorization: `Bearer ${SUPERVISOR_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
   /** The supervisor's report of the advisor roles it has set up. */
@@ -122,7 +77,7 @@ async function stack(service: HarnessService, privateKeyPem: string) {
   }) => {
     const r = await control.request("/v1/rigs/rig-a/supervisor", {
       method: "POST",
-      headers: { authorization: "Bearer rig-token-abcdef", "content-type": "application/json" },
+      headers: { authorization: `Bearer ${RIG_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify({
         at: new Date().toISOString(),
         advisors: {
@@ -236,7 +191,7 @@ const yours = (html: string) =>
 describe("Live's message box", () => {
   test("each recipient, kept in force and removed; who read it from the rig's own record, and the advisors' answers, under You", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
-    const s = await stack(env.service, env.keys.privateKeyPem);
+    const s = await stack(env);
     await env.start();
     await s.sync();
     await s.advisorsSetUp({ teachers: 2, merged_by: true, auditor: true, review_panel: 1 });
@@ -485,7 +440,7 @@ describe("Live's message box", () => {
 
   test("a research run offers its planner (goals 047 and 117) and its review panel (goal 112), no auditor; everyone working, kept in force, reaches each new trial", async () => {
     const env = makeHarnessEnv("rig-a");
-    const s = await stack(env.service, env.keys.privateKeyPem);
+    const s = await stack(env);
     const parsed = parseContract({ ...researchFixture, lanes: { count: 1, trials_per_epoch: 1 } });
     if (!parsed.ok) throw new Error(parsed.errors.join("; "));
     const assigned = await s.api("POST", "/v1/commands", {
@@ -583,7 +538,7 @@ describe("Live's message box", () => {
 describe("Live's lanes", () => {
   test("a lane works while the ledger has its trial at work; Restart the lanes in Live's header, or a restart of the harness, ends it", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    const s = await stack(env.service, env.keys.privateKeyPem);
+    const s = await stack(env);
     await env.start();
     await s.sync();
     // Trials that work until they are stopped: each says so in its first line.
@@ -695,7 +650,7 @@ describe("Live's lanes", () => {
 
   test("the box says when each program's workers read a message: Pi at its next step, OpenCode, Claude Code and Codex when their run ends", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
-    const s = await stack(env.service, env.keys.privateKeyPem);
+    const s = await stack(env);
     await env.start();
     env.service.trialReport(
       { id: "t-1111111111111111", run: "js-1", lane: "lane-1" },
@@ -733,7 +688,7 @@ describe("Live's lanes", () => {
 describe("the run page's Experiments and Planner tabs", () => {
   test("add, drag, edit and drop experiments; queue or drop a lane's idea; rules added and removed; Tell the planner, and what the planner did; a new run starts from the untried ones", async (t: TestContext) => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
-    const s = await stack(env.service, env.keys.privateKeyPem);
+    const s = await stack(env);
     // Assigned over the owner's REST API: not made on the New campaign page.
     const payload = (env.assign as { envelope: { payload: Record<string, unknown> } }).envelope
       .payload;

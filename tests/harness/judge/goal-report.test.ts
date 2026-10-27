@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../../src/control/api.ts";
-import { ControlStore } from "../../../src/control/store.ts";
 import { Registry } from "../../../src/harness/agents/registry.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
-import { createHarnessApi } from "../../../src/harness/api.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import {
   CHECK_NUMBERS_MAX,
@@ -14,7 +11,7 @@ import {
   valuesText,
 } from "../../../src/harness/judge/goal-values.ts";
 import type { ArmRun } from "../../../src/harness/judge/measure.ts";
-import { relayOnce } from "../../../src/supervisor/relay.ts";
+import { controlStack, signIn } from "../../helpers/control-stack.ts";
 import { FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../../helpers/judge-env.ts";
 
 /**
@@ -72,46 +69,9 @@ async function setup(contract: Record<string, unknown> = {}) {
       )
     ).attempt;
   // Control, reached through the supervisor's relay as on a rig.
-  const store = new ControlStore(":memory:");
-  const ADMIN = "admin-token-abcdef";
-  const control = createControlApi(
-    store,
-    { admin: ADMIN, rigs: { "rig-a": "rig-token-abcdef" } },
-    env.keys.privateKeyPem,
-  );
-  const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
-  let cursor = 0;
-  const relay = async () => {
-    const r = await relayOnce(
-      {
-        rig: "rig-a",
-        harnessUrl: "http://harness",
-        harnessToken: "s-token-abcdef",
-        controlUrl: "http://control",
-        controlToken: "rig-token-abcdef",
-        fetchImpl,
-      },
-      { cursor },
-    );
-    cursor = r.cursor;
-  };
-  const rest = async (path: string) =>
-    (await control.request(path, { headers: { authorization: `Bearer ${ADMIN}` } })).text();
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) =>
-    (await control.request(path, { headers: { cookie } })).text();
+  const { control, relay, api } = controlStack({ env });
+  const rest = async (path: string) => (await api("GET", path)).text();
+  const { page } = await signIn(control);
   const events = (kind?: string) =>
     env.ledger.eventsAfter(0, 100_000).events.filter((e) => !kind || e.kind === kind);
   /** The goal reports of the run, oldest first. */

@@ -4,6 +4,7 @@ import { createControlApi } from "../../src/control/api.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { mcpClient, signIn } from "../helpers/control-stack.ts";
 import { ADMIN, control, fakeCluster, KUBECONFIG } from "../helpers/fake-cluster.ts";
 
 describe("clusters in Providers and Add a rig", () => {
@@ -595,26 +596,10 @@ describe("clusters in Providers and Add a rig", () => {
         },
       },
     );
-    const login = await api.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: ADMIN }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+    const { page, csrfOf, post: send } = await signIn(api);
+    const csrf = csrfOf(await page("/ui/settings"));
     const post = async (path: string, form: Record<string, string>) =>
-      decodeURIComponent(
-        String(
-          (
-            await api.request(path, {
-              method: "POST",
-              body: new URLSearchParams({ csrf, ...form }),
-              headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-            })
-          ).headers.get("location"),
-        ),
-      );
+      decodeURIComponent(String((await send(path, { csrf, ...form })).headers.get("location")));
     await post("/ui/settings/add", {
       type: "k8s",
       name: "lab",
@@ -633,21 +618,7 @@ describe("clusters in Providers and Add a rig", () => {
     assert.match(add, /name="k_size__lab" value="200"/);
 
     // Over MCP, as an operator: a rig in each slot, sized by the quota.
-    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-    const { StreamableHTTPClientTransport } = await import(
-      "@modelcontextprotocol/sdk/client/streamableHttp.js"
-    );
-    const client = new Client({ name: "t", version: "1.0.0" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), {
-        fetch: async (input, init) => {
-          const url = new URL(String(input));
-          const headers = new Headers(init?.headers);
-          headers.set("authorization", "Bearer operator-token-abcdef");
-          return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-        },
-      }),
-    );
+    const client = await mcpClient(api, "operator-token-abcdef");
     const call = async (name: string, args: Record<string, unknown>) => {
       const r = (await client.callTool({ name, arguments: args })) as {
         isError?: boolean;

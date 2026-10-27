@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 115 on control's side, from a rig's events: a hill climb that waits for the judge's
  * baseline, one in setup, and one with its baseline, on the run's page (its status line, its
  * Overview's "Where the run started" and its History), over REST and in get_run.
  */
-
-const ADMIN = "admin-token-abcdef";
 
 async function control() {
   const store = new ControlStore(":memory:");
@@ -22,26 +19,11 @@ async function control() {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000 },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+  const { page } = await signIn(api);
   const rest = async (path: string) =>
     (await api.request(path, { headers: { authorization: `Bearer ${ADMIN}` } })).json();
   const mcp = async (tool: string, args: Record<string, unknown>) => {
-    const client = new Client({ name: "test", version: "1.0.0" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${ADMIN}`);
-      return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-    };
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-    );
+    const client = await mcpClient(api);
     const r = (await client.callTool({ name: tool, arguments: args })) as {
       content: { text: string }[];
     };

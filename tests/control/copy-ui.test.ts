@@ -11,6 +11,7 @@ import { startCampaign } from "../../src/control/new-campaign.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Copy on a campaign's page (goal 069), driven as a browser drives it without the page's script:
@@ -20,7 +21,6 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
  * ui/copy-campaign-client.test.ts.
  */
 
-const ADMIN = "admin-token-abcdef";
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 const CPU = { type: "cpu", class: "generic-cpu" };
 
@@ -122,13 +122,7 @@ async function stack() {
     });
     assert.ok(saved.ok, JSON.stringify(saved));
   }
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = (path: string) => api.request(path, { headers: { cookie } });
+  const { cookie, get } = await signIn(api);
   const page = async (path: string) => {
     const r = await get(path);
     assert.equal(r.status, 200, path);

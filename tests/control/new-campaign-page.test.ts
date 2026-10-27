@@ -4,28 +4,19 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, test } from "node:test";
-import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
-import { ControlStore } from "../../src/control/store.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { controlStack, signIn } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 
 /** Control with kits and one CPU rig that has reported its hardware; signed in. */
 async function stack() {
-  const env = makeJudgeEnv({ promotion: "auto" });
-  const store = new ControlStore(":memory:");
-  const admin = "admin-token-abcdef";
   const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
   const probes: string[] = [];
-  const control = createControlApi(
-    store,
-    { admin, rigs: { "rig-a": "rig-token-abcdef" } },
-    env.keys.privateKeyPem,
-    {
-      staleAfterMs: 180_000,
+  const { env, store, control, relay } = controlStack({
+    env: makeJudgeEnv({ promotion: "auto" }),
+    options: {
       kits,
       probeRepo: async (url, ref, _access, folder) => {
         probes.push(`${url}@${ref}${folder ? ` in ${folder}` : ""}`);
@@ -36,15 +27,7 @@ async function stack() {
           : { commit: C, files: 1532, suggest: ["src/**", "src/kernels/**"] };
       },
     },
-  );
-  const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    return (url.host === "harness" ? harness : control).request(
-      `${url.pathname}${url.search}`,
-      init as RequestInit,
-    );
-  };
+  });
   env.service.hardware = {
     collected_at: new Date().toISOString(),
     target: { type: "cpu", class: "generic-cpu", id: "cpu-a" },
@@ -57,33 +40,9 @@ async function stack() {
     toolchain: { cc: "cc 12", nvcc: null },
     errors: [],
   };
-  await relayOnce(
-    {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl,
-    },
-    { cursor: 0 } as Parameters<typeof relayOnce>[1],
-  );
-  const login = await control.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = (path: string) => control.request(path, { headers: { cookie } });
-  const post = (path: string, form: Record<string, string>) =>
-    control.request(path, {
-      method: "POST",
-      body: new URLSearchParams(form),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
-  const csrf =
-    /name="csrf" value="([0-9a-f]+)"/.exec(await (await get("/ui/campaigns/new")).text())?.[1] ??
-    "";
+  await relay();
+  const { cookie, get, page, csrfOf, post } = await signIn(control);
+  const csrf = csrfOf(await page("/ui/campaigns/new"));
   /** Sends a kit archive as the page does: a multipart form with the page's token. */
   const upload = (name: string, archive: Buffer, token = csrf) => {
     const body = new FormData();

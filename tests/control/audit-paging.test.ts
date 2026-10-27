@@ -3,8 +3,7 @@ import { describe, test } from "node:test";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-
-const ADMIN = "admin-token-abcdef";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /** Every entry, one page at a time, following one cursor until it ends. */
 function walk(
@@ -130,13 +129,7 @@ describe("paging through control's audit log (goal 015)", () => {
       generateSigningKeys().privateKeyPem,
     );
     for (let i = 1; i <= 650; i++) store.audit("owner:api", `step_${i}`, { i });
-    const login = await api.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: ADMIN }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+    const { page } = await signIn(api);
     const shown = (html: string) =>
       [...html.matchAll(/<span class="muted xs">(step_\d+)<\/span>/g)].map((m) => m[1]);
     const link = (html: string, word: string) =>

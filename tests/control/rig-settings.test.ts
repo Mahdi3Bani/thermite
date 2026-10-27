@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { quietField, rigSettingsChange } from "../../src/control/rig-settings.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { ADMIN, controlStack, mcpClient, RIG_TOKEN } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 /**
@@ -18,12 +16,12 @@ import { makeJudgeEnv } from "../helpers/judge-env.ts";
  */
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
   agent: "agent-token-abcdef",
   read: "read-token-abcdef",
   rigs: {
-    "rig-a": "rig-token-abcdef",
+    "rig-a": RIG_TOKEN,
     "rig-b": "rig-token-bbbbbb",
     "rig-old": "rig-token-oooooo",
   },
@@ -87,20 +85,6 @@ function stack() {
       .filter((c) => c.envelope.kind === "rig_settings")
       .map((c) => ({ payload: c.envelope.payload, by: c.envelope.issued_by, id: c.envelope.id }));
   return { store, api, call, owner, set, sent, report };
-}
-
-async function connect(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test-agent", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 const text = (r: unknown) =>
@@ -345,7 +329,7 @@ describe("Edit rig's settings over REST and MCP", () => {
 
   test("MCP: the owner sets each field; refusals are errors in the same words", async () => {
     const s = stack();
-    const owner = await connect(s.api, TOKENS.admin);
+    const owner = await mcpClient(s.api, TOKENS.admin);
     const call = (args: Record<string, unknown>) =>
       owner.callTool({ name: "set_rig_settings", arguments: { rig: "rig-a", ...args } });
     for (const [field, value] of FIELDS) {
@@ -419,9 +403,9 @@ describe("Edit rig's settings over REST and MCP", () => {
 
   test("MCP tokens: an operator changes all but the promotion rule and the GPU split; the agent and the reader change nothing", async () => {
     const s = stack();
-    const operator = await connect(s.api, TOKENS.operator);
-    const agent = await connect(s.api, TOKENS.agent);
-    const reader = await connect(s.api, TOKENS.read);
+    const operator = await mcpClient(s.api, TOKENS.operator);
+    const agent = await mcpClient(s.api, TOKENS.agent);
+    const reader = await mcpClient(s.api, TOKENS.read);
     const names = async (c: Client) => (await c.listTools()).tools.map((t) => t.name);
     const op = await names(operator);
     assert.ok(op.includes("set_rig_settings") && op.includes("rig_settings"));
@@ -486,37 +470,13 @@ describe("Edit rig's settings over REST and MCP", () => {
   });
 
   test("the rig's harness takes the change: an operator's lanes and the owner's promotion rule, then reports them", async () => {
-    const env = makeJudgeEnv({ promotion: "owner_approval" });
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      { admin: TOKENS.admin, operator: TOKENS.operator, rigs: { "rig-a": "rig-token-abcdef" } },
-      env.keys.privateKeyPem,
-      { staleAfterMs: 180_000 },
-    );
-    const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      return (url.host === "harness" ? harness : control).request(
-        `${url.pathname}${url.search}`,
-        init as RequestInit,
-      );
-    };
-    const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "sup-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl,
-    };
-    let state = { cursor: 0 } as Awaited<ReturnType<typeof relayOnce>>;
-    const relay = async () => {
-      state = await relayOnce(cfg, state);
-    };
+    const { env, store, control, relay, api } = controlStack({
+      env: makeJudgeEnv({ promotion: "owner_approval" }),
+      tokens: { operator: TOKENS.operator },
+    });
     env.service.gpuSplit = { set: 4, judge: 2 };
     await relay();
-    const operator = await connect(control, TOKENS.operator);
+    const operator = await mcpClient(control, TOKENS.operator);
     const r = text(
       await operator.callTool({
         name: "set_rig_settings",
@@ -532,11 +492,7 @@ describe("Edit rig's settings over REST and MCP", () => {
     // The rig reports its new settings at its next report: the same lanes are then no change.
     await relay();
     const owner = (method: "GET" | "POST", body?: unknown) =>
-      control.request("/v1/rigs/rig-a/settings", {
-        method,
-        headers: { authorization: `Bearer ${TOKENS.admin}`, "content-type": "application/json" },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      });
+      api(method, "/v1/rigs/rig-a/settings", body);
     const promote = (await (await owner("POST", { promotion: "auto", lanes: 3 })).json()) as {
       sent: unknown;
     };

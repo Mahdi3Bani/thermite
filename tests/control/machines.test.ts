@@ -7,8 +7,8 @@ import { type MachineSsh, parseHostKeys, type SshTarget } from "../../src/contro
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
-const ADMIN = "admin-token-abcdef";
 const HOST = makeDeployKey("host").publicKey.split(" ")[1] as string;
 const OTHER = makeDeployKey("other").publicKey.split(" ")[1] as string;
 const FACTS = [
@@ -74,14 +74,8 @@ async function control(
       ...extra,
     },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+  const { cookie, page, csrfOf } = await signIn(api);
+  const csrf = csrfOf(await page("/ui/settings"));
   const post = async (path: string, form: Record<string, string> | [string, string][]) =>
     decodeURIComponent(
       String(

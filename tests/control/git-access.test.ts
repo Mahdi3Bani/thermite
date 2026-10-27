@@ -14,8 +14,8 @@ import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { stageCommand } from "../../src/supervisor/staging.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
-const ADMIN = "admin-token-abcdef";
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 
 async function control(extra: Partial<Parameters<typeof createControlApi>[3]> = {}) {
@@ -29,20 +29,9 @@ async function control(extra: Partial<Parameters<typeof createControlApi>[3]> = 
     keys.privateKeyPem,
     { staleAfterMs: 180_000, kits, secrets, ...extra },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
-  const post = (path: string, form: Record<string, string>) =>
-    api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+  const { page, csrfOf, post: send } = await signIn(api);
+  const csrf = csrfOf(await page("/ui/settings"));
+  const post = (path: string, form: Record<string, string>) => send(path, { csrf, ...form });
   return { keys, store, secrets, kits, api, page, post };
 }
 

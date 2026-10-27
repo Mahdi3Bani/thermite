@@ -8,6 +8,7 @@ import { advanceResets } from "../../src/control/lifecycle.ts";
 import { exportLeft, resultsLeft } from "../../src/control/results-left.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { signIn } from "../helpers/control-stack.ts";
 
 const NAME = "20261020T120000Z-0123abcd";
 const OWNER = "owner-token-abcdef";
@@ -226,13 +227,8 @@ describe("model downloads in the rig's report and history", () => {
       });
     assert.equal((await report([model({})])).status, 200);
     assert.equal((await report([model({})])).status, 200, "the same download again: no new step");
-    const login = await control.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: OWNER }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    const page = await (await control.request("/ui/rigs/rig-a", { headers: { cookie } })).text();
+    const ui = await signIn(control, OWNER);
+    const page = await ui.page("/ui/rigs/rig-a");
     assert.match(
       page,
       /<dt>Models<\/dt><dd><b>llama-8b<\/b>: downloading, 3\.2 GB of 16\.1 GB \(19%\)<\/dd>/,
@@ -242,7 +238,7 @@ describe("model downloads in the rig's report and history", () => {
       /sent to control .* ago<\/span> · <a href="[^"]+">its exports on control<\/a> · 2 waiting to leave the rig/,
     );
     assert.equal((await report([model({ state: "done", bytes: 16_100_000_000 })])).status, 200);
-    const page2 = await (await control.request("/ui/rigs/rig-a", { headers: { cookie } })).text();
+    const page2 = await ui.page("/ui/rigs/rig-a");
     assert.match(page2, /<b>llama-8b<\/b>: 16\.1 GB, its SHA-256 checked/);
     const wrong = model({
       name: "other",

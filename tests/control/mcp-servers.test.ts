@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, type TestContext, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { issueCommand } from "../../src/control/issue.ts";
 import { McpServers, mcpRefusal } from "../../src/control/mcp-servers.ts";
@@ -9,12 +7,12 @@ import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { assigned } from "../helpers/assignments.ts";
+import { ADMIN, mcpClient, signIn } from "../helpers/control-stack.ts";
 import { type FakeAuth, type FakeMcp, startFakeMcp } from "../helpers/fake-mcp.ts";
 
 /** Made-up secrets: each must reach only the fake server's headers, never a page, log or audit. */
 const KEY = "Bearer brainkeyforthetestsonly";
 const CLIENT_SECRET = "clientsecretforthetestsonly";
-const ADMIN = "admin-token-abcdef";
 const RIG_TOKEN = "rig-token-aaaaaa";
 
 async function fakeOf(t: TestContext, auth: FakeAuth) {
@@ -410,13 +408,7 @@ describe("what a rig gets", () => {
     assert.equal(changed.status, 200);
     assert.ok(!(await changed.text()).includes("anotherkeyfortests"));
     // The settings page shows the row, its tools and its hint, never the key.
-    const login = await app.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: ADMIN }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    const page = await (await app.request("/ui/settings", { headers: { cookie } })).text();
+    const page = await (await signIn(app)).page("/ui/settings");
     assert.match(page, /<h2>MCP servers<\/h2>/);
     assert.match(page, /data-mcp="gbrain"/);
     assert.match(page, /put_page/);
@@ -539,19 +531,9 @@ describe("control's log lines", () => {
       });
       await app.request("/v1/mcp-servers/gbrain/check", { method: "POST", headers: owner });
       // The page's Read tools again is refused, and control logs why.
-      const login = await app.request("/ui/login", {
-        method: "POST",
-        body: new URLSearchParams({ token: ADMIN }),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-      });
-      const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-      const page = await (await app.request("/ui/settings", { headers: { cookie } })).text();
-      const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(page)?.[1] ?? "";
-      await app.request("/ui/settings/mcp/gbrain/check", {
-        method: "POST",
-        body: new URLSearchParams({ csrf }),
-        headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-      });
+      const ui = await signIn(app);
+      const csrf = ui.csrfOf(await ui.page("/ui/settings"));
+      await ui.post("/ui/settings/mcp/gbrain/check", { csrf });
       assigned(store, "rig-a", "pn-1", "pn", {
         mcp_servers: [{ name: "gbrain", agents: ["workers"] }],
       });
@@ -578,20 +560,7 @@ describe("MCP servers over control's own MCP", () => {
       keys.privateKeyPem,
       { staleAfterMs: 180_000, secrets: SecretBox.ephemeral() },
     );
-    const connect = async (token: string) => {
-      const client = new Client({ name: "test-owner", version: "1.0.0" });
-      const fetchImpl: typeof fetch = async (input, init) => {
-        const url = new URL(String(input));
-        const headers = new Headers(init?.headers);
-        headers.set("authorization", `Bearer ${token}`);
-        return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-      };
-      await client.connect(
-        new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-      );
-      return client;
-    };
-    const owner = await connect(ADMIN);
+    const owner = await mcpClient(control);
     const added = await owner.callTool({
       name: "mcp_server_add",
       arguments: { name: "gbrain", url: fake.url, auth: "key", secret: KEY },
@@ -602,7 +571,7 @@ describe("MCP servers over control's own MCP", () => {
     const listed = JSON.stringify(await owner.callTool({ name: "mcp_servers", arguments: {} }));
     assert.match(listed, /put_page/);
     // An operator may list them, never add one.
-    const operator = await connect("operator-token-abcdef");
+    const operator = await mcpClient(control, "operator-token-abcdef");
     const tools = (await operator.listTools()).tools.map((x) => x.name);
     assert.ok(tools.includes("mcp_servers") && !tools.includes("mcp_server_add"));
     const gone = await owner.callTool({ name: "mcp_server_delete", arguments: { name: "gbrain" } });

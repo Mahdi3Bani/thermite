@@ -7,6 +7,7 @@ import { PRICE_CORE_JS } from "../../src/control/ui/providers-client.ts";
 import { bars, dayEdges, PRICE_WORDS } from "../../src/control/ui/usage.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { callUsage, startOfDay } from "../../src/core/usage.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Model use and cost on the screens (goal 075, as the owner approved the mockup v010-usage): the
@@ -16,7 +17,7 @@ import { callUsage, startOfDay } from "../../src/core/usage.ts";
  * says "not reported"; a cost says "on a plan", "no price" or "free", never $0.
  */
 
-const TOKENS = { admin: "admin-token-abcdef", rigs: {} };
+const TOKENS = { admin: ADMIN, rigs: {} };
 const NOW = Date.now();
 const ago = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
 
@@ -233,20 +234,11 @@ async function stack() {
       }),
     ],
   ]);
-  const signIn = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (signIn.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+  const session = await signIn(api);
+  const { page } = session;
+  const csrf = session.csrfOf(await page("/ui/settings"));
   const post = async (path: string, form: Record<string, string>) => {
-    const r = await api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    const r = await session.post(path, { csrf, ...form });
     return { status: r.status, to: decodeURIComponent(r.headers.get("location") ?? "") };
   };
   return { store, api, page, post };

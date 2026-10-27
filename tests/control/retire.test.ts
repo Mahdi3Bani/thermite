@@ -3,8 +3,8 @@ import { describe, test } from "node:test";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
-const ADMIN = "admin-token-abcdef";
 const RIG_TOKEN = "rig-token-in-the-file-0001";
 
 describe("retiring a rig that is gone", () => {
@@ -22,26 +22,10 @@ describe("retiring a rig that is gone", () => {
         "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",
       )
       .run("rig-a", "2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z");
-    const login = await api.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: ADMIN }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/rigs/rig-a"))?.[1] ?? "";
+    const { page, csrfOf, post: send } = await signIn(api);
+    const csrf = csrfOf(await page("/ui/rigs/rig-a"));
     const post = async (path: string, form: Record<string, string>) =>
-      decodeURIComponent(
-        String(
-          (
-            await api.request(path, {
-              method: "POST",
-              body: new URLSearchParams({ csrf, ...form }),
-              headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-            })
-          ).headers.get("location"),
-        ),
-      );
+      decodeURIComponent(String((await send(path, { csrf, ...form })).headers.get("location")));
     assert.match(await page("/ui"), /rig-a stopped reporting/);
     assert.match(await page("/ui/rigs/rig-a"), /Retire it/);
     // A rig that never reported has no last report: "not yet", not days since 1970.

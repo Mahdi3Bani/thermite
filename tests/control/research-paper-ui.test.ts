@@ -4,6 +4,7 @@ import { createControlApi } from "../../src/control/api.ts";
 import { queueSeedOf } from "../../src/control/kb.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * Goal 112's research paper on control's side, from a rig's events: the research Overview's
@@ -12,7 +13,6 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
  * next experiments are past research a new run can take into its queue.
  */
 
-const ADMIN = "admin-token-abcdef";
 const PAGE = "/ui/campaigns/survey?run=rig-a%2Fs-1";
 
 async function control() {
@@ -23,14 +23,7 @@ async function control() {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000 },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const get = (path: string) => api.request(path, { headers: { cookie } });
-  const page = async (path: string) => (await get(path)).text();
+  const { get, page } = await signIn(api);
   let id = 0;
   const t0 = Date.now() - 3600_000;
   const ingest = (...events: { kind: string; subject: string; body: Record<string, unknown> }[]) =>

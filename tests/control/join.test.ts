@@ -14,8 +14,8 @@ import {
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 
-const ADMIN = "admin-token-abcdef";
 const SECRETS = { controlToken: "rig-token-123", harnessSupervisorToken: "hs-token-456" };
 const IMAGES = {
   harness: "registry.example.com/harness:1",
@@ -138,20 +138,9 @@ async function control() {
       },
     },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/rigs/add"))?.[1] ?? "";
-  const post = (path: string, form: Record<string, string>) =>
-    api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+  const { page, csrfOf, post: send } = await signIn(api);
+  const csrf = csrfOf(await page("/ui/rigs/add"));
+  const post = (path: string, form: Record<string, string>) => send(path, { csrf, ...form });
   const where = async (r: Response) => decodeURIComponent(String(r.headers.get("location")));
   const fetchJoin = (path: string, token: string) =>
     api.request(path, { headers: { authorization: `Bearer ${token}` } });

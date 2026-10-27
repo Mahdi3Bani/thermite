@@ -4,13 +4,14 @@ import { PRIVATE_RANGES } from "../../src/control/clusters/netcheck.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, mcpClient, signIn } from "./control-stack.ts";
 
 /**
  * Control over a fake Kubernetes cluster, for the tests of clusters in Providers, Add a rig and
  * a cluster rig's page. Moved out of tests/control/clusters-ui.test.ts.
  */
 
-export const ADMIN = "admin-token-abcdef";
+export { ADMIN };
 export const OPERATOR = "operator-token-abcdef";
 export const KUBECONFIG =
   "apiVersion: v1\nkind: Config\nusers: [{ name: u, user: { token: secret-kube-token-789 } }]\n";
@@ -208,46 +209,17 @@ export async function control(
       },
     },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+  const ui = await signIn(api);
+  const { page } = ui;
+  const csrf = ui.csrfOf(await page("/ui/settings"));
   const post = async (path: string, form: Record<string, string>) =>
-    decodeURIComponent(
-      String(
-        (
-          await api.request(path, {
-            method: "POST",
-            body: new URLSearchParams({ csrf, ...form }),
-            headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-          })
-        ).headers.get("location"),
-      ),
-    );
+    decodeURIComponent(String((await ui.post(path, { csrf, ...form })).headers.get("location")));
   return { store, secrets, page, post, api };
 }
 
 /** An MCP client on control with a token: each call's error flag and its JSON answer. */
 export async function mcpWith(api: ReturnType<typeof createControlApi>, token: string) {
-  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-  const { StreamableHTTPClientTransport } = await import(
-    "@modelcontextprotocol/sdk/client/streamableHttp.js"
-  );
-  const client = new Client({ name: "t", version: "1.0.0" });
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), {
-      fetch: async (input, init) => {
-        const url = new URL(String(input));
-        const headers = new Headers(init?.headers);
-        headers.set("authorization", `Bearer ${token}`);
-        return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-      },
-    }),
-  );
+  const client = await mcpClient(api, token);
   const call = async (name: string, args: Record<string, unknown>) => {
     const r = (await client.callTool({ name, arguments: args })) as {
       isError?: boolean;

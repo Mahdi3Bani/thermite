@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { cappedWindow, capWords, contextCapRefusal } from "../../src/control/providers.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
+import { ADMIN, mcpClient, RIG_TOKEN, signIn } from "../helpers/control-stack.ts";
 
 /**
  * A cap on the context window of a rig's model (goal 070): REST's POST /v1/rigs/<rig>/model and
@@ -15,9 +14,9 @@ import { generateSigningKeys } from "../../src/core/commands.ts";
  */
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
-  rigs: { "rig-a": "rig-token-abcdef" },
+  rigs: { "rig-a": RIG_TOKEN },
 };
 
 /**
@@ -65,38 +64,12 @@ async function stack() {
     (
       (await (
         await api.request("/v1/rigs/rig-a/model-route", {
-          headers: { authorization: "Bearer rig-token-abcdef" },
+          headers: { authorization: `Bearer ${RIG_TOKEN}` },
         })
       ).json()) as { route: { context_window: number; revision: string } }
     ).route;
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: TOKENS.admin }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
-  const post = (path: string, form: Record<string, string>) =>
-    api.request(path, {
-      method: "POST",
-      body: new URLSearchParams(form),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+  const { page, post } = await signIn(api);
   return { store, api, give, route, page, post };
-}
-
-async function connect(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test-agent", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 const text = (r: unknown) =>
@@ -203,7 +176,7 @@ describe("a cap on a rig's model context window", () => {
 
   test("MCP: set_rig_model takes context_window, refuses one above the provider's, and drops the cap when left out", async () => {
     const s = await stack();
-    const mcp = await connect(s.api, TOKENS.operator);
+    const mcp = await mcpClient(s.api, TOKENS.operator);
     const r = text(
       await mcp.callTool({
         name: "set_rig_model",
@@ -327,7 +300,7 @@ describe("the compaction point of a rig's model (goal 070)", () => {
 
   test("MCP: set_rig_model takes compact_at, and rig_models shows it", async () => {
     const s = await stack();
-    const mcp = await connect(s.api, TOKENS.operator);
+    const mcp = await mcpClient(s.api, TOKENS.operator);
     const r = text(
       await mcp.callTool({
         name: "set_rig_model",
@@ -523,7 +496,7 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
 
   test("MCP: set_rig_model sets an advisor's own, and rig_models shows it", async () => {
     const s = await stack();
-    const mcp = await connect(s.api, TOKENS.operator);
+    const mcp = await mcpClient(s.api, TOKENS.operator);
     const r = text(
       await mcp.callTool({
         name: "set_rig_model",

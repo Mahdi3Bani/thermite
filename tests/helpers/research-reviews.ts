@@ -1,9 +1,8 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { callUsage } from "../../src/core/usage.ts";
+import { ADMIN, mcpClient, signIn } from "./control-stack.ts";
 
 /**
  * A research run as control sees it from a rig's events (goals 116 and 117), for control's tests:
@@ -15,7 +14,7 @@ import { callUsage } from "../../src/core/usage.ts";
  * with: its pages, MCP and the dashboard's command form.
  */
 
-export const ADMIN = "admin-token-abcdef";
+export { ADMIN };
 export const RIG_TOKEN = "t-a-abcdef";
 export const RUN = "/ui/campaigns/survey?run=rig-a%2Fs-1";
 const t0 = Date.now() - 10 * 3_600_000;
@@ -30,24 +29,10 @@ export async function researchControl() {
     generateSigningKeys().privateKeyPem,
     { staleAfterMs: 180_000 },
   );
-  const login = await api.request("/ui/login", {
-    method: "POST",
-    body: new URLSearchParams({ token: ADMIN }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+  const ui = await signIn(api);
+  const { cookie, page } = ui;
   const mcp = async (tool: string, args: Record<string, unknown>) => {
-    const client = new Client({ name: "test", version: "1.0.0" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${ADMIN}`);
-      return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-    };
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-    );
+    const client = await mcpClient(api);
     const r = (await client.callTool({ name: tool, arguments: args })) as {
       content: { text: string }[];
     };
@@ -73,7 +58,7 @@ export async function researchControl() {
     });
   /** A form as the page's script sends it: with fetch, asking for JSON. */
   const send = async (form: Record<string, string>) => {
-    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page(RUN))?.[1] ?? "";
+    const csrf = ui.csrfOf(await page(RUN));
     const r = await api.request("/ui/commands", {
       method: "POST",
       body: new URLSearchParams({ csrf, ...form }),
@@ -87,12 +72,8 @@ export async function researchControl() {
   };
   /** A form posted as the browser posts it, without the page's script: the answer as it comes. */
   const post = async (path: string, form: Record<string, string>) => {
-    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page(RUN))?.[1] ?? "";
-    return api.request(path, {
-      method: "POST",
-      body: new URLSearchParams({ csrf, ...form }),
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    });
+    const csrf = ui.csrfOf(await page(RUN));
+    return await ui.post(path, { csrf, ...form });
   };
   return { store, page, mcp, ingest, send, post };
 }

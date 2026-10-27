@@ -6,14 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { serve } from "@hono/node-server";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { MCP_KIT_BASE64_MAX } from "../../src/control/kit-add.ts";
 import { KIT_BUNDLE_MAX, KitRefused, KitRepos } from "../../src/control/kit-repos.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys, type SignedCommand } from "../../src/core/commands.ts";
 import { type StageResult, stageCommand } from "../../src/supervisor/staging.ts";
+import { mcpClient } from "../helpers/control-stack.ts";
 
 /**
  * A kit written elsewhere, given to control as a git bundle of its repository (goal 096): kept
@@ -119,20 +118,6 @@ function control() {
     kits,
   });
   return { store, kits, api };
-}
-
-async function mcp(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
 }
 
 const text = (r: unknown) =>
@@ -413,7 +398,7 @@ describe("a kit written elsewhere, given to control as a git bundle", () => {
     const src = kitRepo();
     const { store, api } = control();
     const tools = async (token: string) =>
-      (await (await mcp(api, token)).listTools()).tools.map((t) => t.name);
+      (await (await mcpClient(api, token)).listTools()).tools.map((t) => t.name);
     const owner = await tools(TOKENS.admin);
     const operator = await tools(TOKENS.operator);
     const reader = await tools(TOKENS.read);
@@ -423,7 +408,7 @@ describe("a kit written elsewhere, given to control as a git bundle", () => {
     assert.ok(!reader.includes("kit_add") && reader.includes("kits"));
     assert.ok(!agent.includes("kit_add") && !agent.includes("kits"));
 
-    const op = await mcp(api, TOKENS.operator);
+    const op = await mcpClient(api, TOKENS.operator);
     const b64 = src.bundle("--all").toString("base64");
     const added = text(
       await op.callTool({ name: "kit_add", arguments: { name: "lab-kit", bundle_base64: b64 } }),
@@ -457,7 +442,7 @@ describe("a kit written elsewhere, given to control as a git bundle", () => {
     });
     assert.match(text(long).error, /above the 4000000 MCP takes: send the bundle over REST/);
 
-    const rd = await mcp(api, TOKENS.read);
+    const rd = await mcpClient(api, TOKENS.read);
     const list = text(await rd.callTool({ name: "kits", arguments: {} }));
     assert.deepEqual(list.kits[0], {
       name: "lab-kit",

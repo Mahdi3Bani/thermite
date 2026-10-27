@@ -3,8 +3,6 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createControlApi } from "../../src/control/api.ts";
 import type { CampaignDraft } from "../../src/control/campaign-builder.ts";
 import { issueCommand } from "../../src/control/issue.ts";
@@ -14,6 +12,7 @@ import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { parseContract } from "../../src/core/contract.ts";
+import { ADMIN, mcpClient } from "../helpers/control-stack.ts";
 
 /**
  * A campaign's own context settings for all its runs' agents (goal 070): REST's POST
@@ -23,7 +22,7 @@ import { parseContract } from "../../src/core/contract.ts";
  */
 
 const TOKENS = {
-  admin: "admin-token-abcdef",
+  admin: ADMIN,
   operator: "operator-token-abcdef",
   read: "read-token-abcdef",
   rigs: {},
@@ -148,20 +147,6 @@ async function stack() {
   return { store, api, keys, post, setContext, give, assigned, gemv };
 }
 
-async function mcp(api: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
-}
-
 const text = (r: unknown) =>
   JSON.parse((r as { content: { text: string }[] }).content[0]?.text ?? "{}") as Record<
     string,
@@ -210,7 +195,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     assert.equal(newest(s, "matmul-speed").version, 2);
 
     // MCP: each call sets them anew, so a point alone drops the window.
-    const client = await mcp(s.api, TOKENS.operator);
+    const client = await mcpClient(s.api, TOKENS.operator);
     const point = text(
       await client.callTool({
         name: "set_campaign_context",
@@ -238,7 +223,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     }
     assert.equal(newest(s, "matmul-speed").version, 3);
     await client.close();
-    const reader = await mcp(s.api, TOKENS.read);
+    const reader = await mcpClient(s.api, TOKENS.read);
     assert.ok(!(await reader.listTools()).tools.some((t) => t.name === "set_campaign_context"));
     await reader.close();
 
@@ -341,7 +326,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     assert.deepEqual(sent.contract.agents_context, { context_window: 100_000, compact_at: 70 });
 
     // MCP's start_run gives the same; a try (no agents) says nothing of it.
-    const client = await mcp(s.api, TOKENS.operator);
+    const client = await mcpClient(s.api, TOKENS.operator);
     const viaMcp = text(
       await client.callTool({
         name: "start_run",
@@ -379,7 +364,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     );
     // The same over issue_command, with the campaign's contract: nothing signed.
     const v = newest(s, "matmul-speed");
-    const client = await mcp(s.api, TOKENS.operator);
+    const client = await mcpClient(s.api, TOKENS.operator);
     const issued = await client.callTool({
       name: "issue_command",
       arguments: {
@@ -427,7 +412,7 @@ describe("a campaign's own context settings (goal 070)", () => {
       compact_at: 70,
     });
     // Its own, in place of the source's.
-    const client = await mcp(s.api, TOKENS.operator);
+    const client = await mcpClient(s.api, TOKENS.operator);
     const own = text(
       await client.callTool({
         name: "copy_campaign",

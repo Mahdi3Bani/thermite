@@ -27,6 +27,7 @@ import { syncMcpServers } from "../../src/supervisor/mcp-sync.ts";
 import { relayCommandsOnce, relayOnce } from "../../src/supervisor/relay.ts";
 import { PodTunnel, pullModeOptions, startPullMode } from "../../src/supervisor/tunnel-pod.ts";
 import { assigned } from "../helpers/assignments.ts";
+import { ADMIN, signIn } from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -117,16 +118,11 @@ async function setup(
     fetch: proxy,
     ...(o.now ? { now: o.now } : {}),
   });
-  const api = createControlApi(
-    store,
-    { admin: "admin-token-abcdef", rigs: {} },
-    control.privateKeyPem,
-    {
-      staleAfterMs: 180_000,
-      secrets,
-      tunnels,
-    },
-  );
+  const api = createControlApi(store, { admin: ADMIN, rigs: {} }, control.privateKeyPem, {
+    staleAfterMs: 180_000,
+    secrets,
+    tunnels,
+  });
   const minted = tunnels.mint({
     by: "owner:ui",
     ...(o.rig ? { rig: o.rig } : {}),
@@ -211,15 +207,7 @@ async function setup(
       existsSync(join(opts.dir, f)) ? readFileSync(join(opts.dir, f), "utf8") : "",
     );
   /** The rig's page on the dashboard, as the owner sees it. */
-  const rigPage = async () => {
-    const login = await api.request("/ui/login", {
-      method: "POST",
-      body: new URLSearchParams({ token: "admin-token-abcdef" }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    return (await api.request(`/ui/rigs/${rig}`, { headers: { cookie } })).text();
-  };
+  const rigPage = async () => await (await signIn(api)).page(`/ui/rigs/${rig}`);
   return {
     store,
     secrets,

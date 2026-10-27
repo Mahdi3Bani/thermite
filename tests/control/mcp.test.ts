@@ -1,66 +1,23 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { createControlApi } from "../../src/control/api.ts";
 import { Credential } from "../../src/control/credential.ts";
 import { ControlStore } from "../../src/control/store.ts";
-import { createHarnessApi } from "../../src/harness/api.ts";
-import { relayOnce } from "../../src/supervisor/relay.ts";
+import { ADMIN, controlStack, mcpClient } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
-
-/** An MCP client talking to control in-process (no network), as an agent would over HTTP. */
-async function connect(control: ReturnType<typeof createControlApi>, token: string) {
-  const client = new Client({ name: "test-agent", version: "1.0.0" });
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const headers = new Headers(init?.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
-  };
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
-  );
-  return client;
-}
 
 const text = (r: unknown) =>
   JSON.parse(((r as { content: { text: string }[] }).content[0] as { text: string }).text);
 
 describe("control over MCP", () => {
   test("an agent lists rigs and pauses a run; a reader can only read", async () => {
-    const env = makeJudgeEnv();
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      {
-        admin: "admin-token-abcdef",
-        read: "read-token-abcdef",
-        rigs: { "rig-a": "rig-token-abcdef" },
-      },
-      env.keys.privateKeyPem,
-    );
-    const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      return (url.host === "harness" ? harness : control).request(
-        `${url.pathname}${url.search}`,
-        init as RequestInit,
-      );
-    };
-    const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "s-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl,
-    };
+    const { env, store, control, relay } = controlStack({ tokens: { read: "read-token-abcdef" } });
     await env.service.applyCommand(env.assign);
-    let state = await relayOnce(cfg, { cursor: 0 });
+    await relay();
 
-    const agent = await connect(control, "admin-token-abcdef");
+    const agent = await mcpClient(control, ADMIN);
     const tools = (await agent.listTools()).tools.map((t) => t.name).sort();
     assert.ok(tools.includes("issue_command"));
     const rigs = text(await agent.callTool({ name: "list_rigs", arguments: {} }));
@@ -76,14 +33,14 @@ describe("control over MCP", () => {
         },
       }),
     );
-    state = await relayOnce(cfg, state);
+    await relay();
     assert.equal(env.ledger.getRun("js-1")?.status, "paused");
     const status = text(
       await agent.callTool({ name: "command_status", arguments: { id: issued.id } }),
     );
     assert.equal(status.status, "delivered");
 
-    const reader = await connect(control, "read-token-abcdef");
+    const reader = await mcpClient(control, "read-token-abcdef");
     const readerTools = (await reader.listTools()).tools.map((t) => t.name);
     assert.ok(!readerTools.includes("issue_command"));
     assert.ok(readerTools.includes("list_rigs"));
@@ -106,8 +63,8 @@ describe("control over MCP", () => {
         },
       }),
     );
-    state = await relayOnce(cfg, state); // the command to the harness
-    state = await relayOnce(cfg, state); // its event back to control
+    await relay(); // the command to the harness
+    await relay(); // its event back to control
     const known = env.service.queue.all("js-1")[0];
     assert.ok(known);
     const from = (id: string) => ({
@@ -155,37 +112,16 @@ describe("control over MCP", () => {
   });
 
   test("an operator messages a run's agents for the owner, never approves; an agent never messages", async () => {
-    const env = makeJudgeEnv();
-    const store = new ControlStore(":memory:");
-    const control = createControlApi(
-      store,
-      {
+    const { env, store, control, relay } = controlStack({
+      tokens: {
         // Deployed as a hash: control holds nothing that signs in as the owner.
         admin: Credential.ofHash(createHash("sha256").update("admin-token-abcdef").digest("hex")),
         operator: "operator-token-abcdef",
         agent: "agent-token-abcdef",
-        rigs: { "rig-a": "rig-token-abcdef" },
       },
-      env.keys.privateKeyPem,
-    );
-    const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = new URL(String(input));
-      return (url.host === "harness" ? harness : control).request(
-        `${url.pathname}${url.search}`,
-        init as RequestInit,
-      );
-    };
-    const cfg = {
-      rig: "rig-a",
-      harnessUrl: "http://harness",
-      harnessToken: "s-token-abcdef",
-      controlUrl: "http://control",
-      controlToken: "rig-token-abcdef",
-      fetchImpl,
-    };
+    });
     await env.service.applyCommand(env.assign);
-    let state = await relayOnce(cfg, { cursor: 0 });
+    await relay();
     const issue = async (client: Client, kind: string, payload: Record<string, unknown>) => {
       try {
         const r = (await client.callTool({
@@ -197,14 +133,14 @@ describe("control over MCP", () => {
         return undefined;
       }
     };
-    const operator = await connect(control, "operator-token-abcdef");
+    const operator = await mcpClient(control, "operator-token-abcdef");
     const sent = await issue(operator, "message_agent", {
       run: "js-1",
       to: "planner",
       text: "work on the unmet goals first",
     });
     assert.ok(sent?.id, "the operator may message agents");
-    state = await relayOnce(cfg, state);
+    await relay();
     assert.deepEqual(env.service.takePlannerMessages("js-1"), ["work on the unmet goals first"]);
     assert.equal(
       text(await operator.callTool({ name: "command_status", arguments: { id: sent.id } })).status,
@@ -251,7 +187,7 @@ describe("control over MCP", () => {
       undefined,
       "approvals stay the owner's",
     );
-    const agent = await connect(control, "agent-token-abcdef");
+    const agent = await mcpClient(control, "agent-token-abcdef");
     // A campaign's agents don't read control itself: no log, providers or rig setup details.
     const agentTools = (await agent.listTools()).tools.map((t) => t.name);
     for (const t of ["rig_setup", "control_log", "providers"])
@@ -292,7 +228,7 @@ describe("control over MCP", () => {
       "an agent may add a rule",
     );
     // The owner signs in with the token whose hash control holds.
-    const owner = await connect(control, "admin-token-abcdef");
+    const owner = await mcpClient(control, "admin-token-abcdef");
     assert.ok((await owner.listTools()).tools.some((t) => t.name === "issue_command"));
     const wrong = await control.request("/v1/rigs", {
       headers: {
@@ -345,7 +281,7 @@ describe("control over MCP", () => {
     store.audit("owner:ui", "refused", { path: "/ui/settings/add", why: "a name is lowercase" });
     store.audit("control", "failed", { method: "GET", path: "/ui/x", status: 500, error: "boom" });
 
-    const operator = await connect(control, "operator-token-abcdef");
+    const operator = await mcpClient(control, "operator-token-abcdef");
     const providers = text(await operator.callTool({ name: "providers", arguments: {} }));
     assert.equal(providers.gpu_clouds[0].name, "runpod");
     assert.equal(providers.gpu_clouds[0].facts.gpus[0].price_secure, 0.25);
@@ -403,9 +339,9 @@ describe("control over MCP", () => {
     // Only a key's last characters (its hint, as the dashboard shows it), never the key.
     assert.ok(!seen.includes("sealed-cloud-key"), "never a key");
 
-    const reader = await connect(control, "read-token-abcdef");
+    const reader = await mcpClient(control, "read-token-abcdef");
     assert.ok((await reader.listTools()).tools.some((t) => t.name === "control_log"));
-    const agent = await connect(control, "agent-token-abcdef");
+    const agent = await mcpClient(control, "agent-token-abcdef");
     const agentTools = (await agent.listTools()).tools.map((t) => t.name);
     assert.ok(!["control_log", "providers", "trial_session"].some((t) => agentTools.includes(t)));
     await Promise.all([operator.close(), reader.close(), agent.close()]);
@@ -425,7 +361,7 @@ describe("control over MCP", () => {
       .run("cpu-1", new Date().toISOString(), new Date().toISOString(), new Date().toISOString());
     store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
     store.setProviderModels("zen", [{ id: "deepseek-v4.1-flash-free" }]);
-    const operator = await connect(control, "operator-token-abcdef");
+    const operator = await mcpClient(control, "operator-token-abcdef");
     const r = text(
       await operator.callTool({
         name: "set_rig_model",
