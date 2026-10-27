@@ -13,7 +13,7 @@ Thermite runs the same images under docker-compose, podman-compose and Kubernete
 
 ```sh
 npm ci
-npm run check            # typecheck, lint, tests, public-content check, size check
+npm run check            # typecheck, lint, tests, public-content check, size and import checks
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every pull request, every push to `main` and to a version's branch (such as `v0.1.1`), and every version tag. Its fast jobs run at once. It runs the same checks on Node 22 and 24, with the judge's tests in jobs of their own, builds and checks the documentation site, and scans the whole history for secrets with gitleaks (the allowlists for made-up keys are in `.gitleaks.toml`). The heavy jobs, the compose smoke test, the rig image, RunPod and [the quick-start test](#the-quick-start-test), wait only for a short job, **heavy checks, needed?**, that decides which of them run: on a push or a pull request, those whose paths the change touches; on a version tag, a run by hand, a new branch or a rewritten history, all of them. [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.

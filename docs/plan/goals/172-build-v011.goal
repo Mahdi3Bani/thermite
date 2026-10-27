@@ -101,6 +101,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 - 2026-10-27 04:51 UTC: The owner asked for an explorer of the knowledge base on the dashboard. It is goal 176, mocked up, in the list and step 9.
 - 2026-10-27 05:09 UTC: The owner launched this goal: the planning phase is over. Step 1 starts: the accepted rules of shape go into CONVENTIONS.md, in a commit of their own for the owner to review (gate A).
 - 2026-10-27 05:17 UTC: Gate A passed: the owner approved the rules of shape. The size check is in `npm run check` and CI (goal 125); the import-rule check is next.
+- 2026-10-27 05:23 UTC: The import-rule check is in `npm run check` and CI (`npm run check:imports`), with today's 62 exceptions in 32 files listed in `scripts/import-exceptions.json`: the supervisor's 32 imports of the harness, control's 14, the command line's 7 of control and the harness, 7 imports of page code by control's domain modules or its router, and core's one read of a file. Step 1 is done; step 2, the bugs, starts with goal 173's copy before every migration.
 
 ---
 

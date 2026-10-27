@@ -48,6 +48,7 @@ jobs:
       # Generic patterns only here; maintainers' checkouts add a private denylist.
       - run: npm run check:public
       - run: npm run check:sizes
+      - run: npm run check:imports
 
   # The judge's and the broker's tests time real processes, so they run one file at a time, on a
   # machine with nothing else on it.

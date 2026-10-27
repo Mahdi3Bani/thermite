@@ -56,8 +56,9 @@ Run these from the repository root before each commit:
 | `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all: the files side by side, one for each CPU, then the judge's and the broker's one at a time, alone, because they time real processes. Each file ends when its tests end, so a failed test that leaves a server open fails at once instead of hanging |
 | `npm run check:public` | That no tracked or staged file holds private names (see below). Stage new files first, or run `node scripts/check-public.mjs --untracked` |
 | `npm run check:sizes` | That no file over 800 lines grows, and no file newly passes 800 lines, unless `scripts/size-baseline.json` records a reason for it. After a split, `npm run check:sizes -- --lower` lowers the file's recorded size; the check fails until it does. `-- --list` lists every file over 500 lines |
+| `npm run check:imports` | That no new import breaks the rule of the parts in CONVENTIONS.md: they import `core`, `common` and `agents`, never each other; `core` does no I/O; domain modules never import page code. Today's exceptions are listed in `scripts/import-exceptions.json`, and the list only shrinks: after a move, `npm run check:imports -- --lower` drops those that are gone |
 
-`npm run check` runs the typecheck, the lint, every test, the public check and the size check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `tests/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit.
+`npm run check` runs the typecheck, the lint, every test, the public check, the size check and the import check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `tests/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit.
 
 Changes to some parts also need a test that starts containers. Each takes from a few minutes to half an hour:
 
@@ -94,7 +95,7 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 
 | Job | What it runs |
 | --- | --- |
-| **checks (Node 22)**, **checks (Node 24)** | `npm ci`, the typecheck, the lint, every test but the judge's and the broker's (`node scripts/test.mjs --part parallel`), the public check and the size check, on each Node.js version |
+| **checks (Node 22)**, **checks (Node 24)** | `npm ci`, the typecheck, the lint, every test but the judge's and the broker's (`node scripts/test.mjs --part parallel`), the public check, the size check and the import check, on each Node.js version |
 | **judge tests (Node 22)**, **judge tests (Node 24)** | The judge's and the broker's tests, one file at a time, on a machine of their own, because they time real processes (`node scripts/test.mjs --part alone`) |
 | **docs site** | `npm run docs:build` and `npm run docs:check` |
 | **secret scan** | gitleaks over the whole history of the commit (see below) |
