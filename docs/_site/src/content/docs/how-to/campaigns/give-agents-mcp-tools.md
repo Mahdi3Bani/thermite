@@ -40,7 +40,7 @@ The server's secret never reaches an agent. Control keeps it sealed and hands ea
    | **A client ID and secret** | **Client ID**, **Client secret** and, optional, **Scopes** | "Control seals the secret, gets a token from the server with it, and reads the server's tools. It calls no tool yet." |
    | **None: a public server** | none | "Control reads the server's tools. It calls no tool yet. Anyone who can reach a server with no sign-in can use it: add only public servers this way." |
 
-   While something is wrong, the line starts with **Not yet.** and says what, for example `Use https. Over http, the sign-in or key crosses the network in plain text, so control refuses it.`, and the button stays off.
+   While something is wrong, the line starts with **Not yet.** and says what, for example `Use https. Over http, the sign-in or key crosses the network in plain text, so control refuses it.`, and the button stays off. Over `http://`, the form and control take only this machine's own addresses: `localhost`, `127.0.0.1` and `[::1]`.
 5. Press the button: **Sign in and read its tools** for OAuth, **Add and read its tools** for the others.
 
    - **A key, a client, or none.** The page comes back to the **MCP servers** block and says, for example, `gbrain is kept, sealed. Control read 31 tools, and called none of them. Next: name it in a kit, on a campaign's How to measure step.`

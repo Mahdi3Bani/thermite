@@ -1,3 +1,4 @@
+import { LOCAL_HTTP_HOSTS } from "../../common/mcp-client.ts";
 import { PRICE_NUMBER, PRICE_WORDS } from "./usage.ts";
 
 /**
@@ -28,6 +29,20 @@ function prJudge(v) {
  * in a new tab once control has kept the server. Without the script every field shows and the
  * forms still work: an OAuth server then gets a sign-in link on the page.
  */
+/**
+ * The MCP server form's check of a URL, as browser code: the rules of mcpUrlProblem
+ * (common/mcp-client.ts), with its local hosts given to it, so the form refuses what control
+ * refuses and no more. Null when the URL is fine, else why not, in words.
+ */
+export const MCP_URL_CHECK_JS = `(u) => {
+  if (!/^https?:[/][/][^ /]+/.test(u)) return "The URL starts with https://.";
+  let host = "";
+  try { host = new URL(u).hostname; } catch {}
+  if (u.startsWith("http://") && !${JSON.stringify(LOCAL_HTTP_HOSTS)}.includes(host)) return "Use https. Over http, the sign-in or key crosses the network in plain text, so control refuses it.";
+  if (/[?&][^=]*(token|key|secret|password|auth|sig)[^=]*=/i.test(u)) return "Put no secret in the URL. Use Sign-in for it.";
+  return null;
+}`;
+
 export const PROVIDERS_JS = `
 (() => {
   "use strict";
@@ -103,9 +118,8 @@ ${PRICE_CORE_JS}
     const problems = [];
     if (n && !/^[a-z0-9][a-z0-9-]*$/.test(n)) problems.push("A name is lowercase letters, digits and dashes.");
     if (n && [...document.querySelectorAll("[data-mcp]")].some((r) => r.dataset.mcp === n)) problems.push("There is a server named " + n + " already.");
-    if (u && !/^https?:[/][/][^ /]+/.test(u)) problems.push("The URL starts with https://.");
-    else if (u.startsWith("http://") && !/^http:[/][/](localhost|127[.]0[.]0[.]1|[[]::1[]])([:/]|$)/.test(u)) problems.push("Use https. Over http, the sign-in or key crosses the network in plain text, so control refuses it.");
-    else if (/[?&][^=]*(token|key|secret|password|auth|sig)[^=]*=/i.test(u)) problems.push("Put no secret in the URL. Use Sign-in for it.");
+    const urlProblem = u ? (${MCP_URL_CHECK_JS})(u) : null;
+    if (urlProblem) problems.push(urlProblem);
     if (auth.value === "key" && !el("m-key").value.trim()) problems.push("Paste the key's value.");
     if (auth.value === "client" && !(el("m-cid").value.trim() && el("m-csec").value.trim())) problems.push("Fill in the client ID and its secret.");
     does.replaceChildren();

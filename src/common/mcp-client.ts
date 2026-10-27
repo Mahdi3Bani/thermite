@@ -128,6 +128,9 @@ export function resultText(r: McpCallResult, n = 30_000): string {
   return text.length > n ? `${text.slice(0, n)}\n(the answer was cut at ${n} characters)` : text;
 }
 
+/** The hosts an MCP server's URL may name over http: this machine itself, as `URL.hostname` gives them. */
+export const LOCAL_HTTP_HOSTS: readonly string[] = ["localhost", "127.0.0.1", "[::1]"];
+
 /**
  * A URL control may give a server's sign-in to: https (http only for this machine itself), with
  * no user, password or fragment in it, and no query parameter that carries a secret. Null when
@@ -141,7 +144,7 @@ export function mcpUrlProblem(raw: string): string | null {
     return "The MCP URL is not a URL.";
   }
   if (!/^https?:$/.test(u.protocol)) return "The MCP URL starts with https://.";
-  if (u.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))
+  if (u.protocol === "http:" && !LOCAL_HTTP_HOSTS.includes(u.hostname))
     return "Use https. Over http, the sign-in or key crosses the network in plain text, so control refuses it (http only for localhost).";
   if (u.username || u.password || u.hash)
     return "Put no user, password or fragment in the MCP URL: the sign-in has its own field.";

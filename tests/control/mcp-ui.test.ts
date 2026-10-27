@@ -4,13 +4,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
+import { mcpUrlProblem } from "../../src/common/mcp-client.ts";
 import { createControlApi } from "../../src/control/api.ts";
 import { KitRepos } from "../../src/control/kit-repos.ts";
 import { McpServers } from "../../src/control/mcp-servers.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { KIT_MCP_CORE_JS, NEW_CAMPAIGN_JS } from "../../src/control/ui/new-campaign-client.ts";
-import { PROVIDERS_JS } from "../../src/control/ui/providers-client.ts";
+import { MCP_URL_CHECK_JS, PROVIDERS_JS } from "../../src/control/ui/providers-client.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
 import { relayOnce } from "../../src/supervisor/relay.ts";
 import { startFakeMcp } from "../helpers/fake-mcp.ts";
@@ -232,6 +233,22 @@ describe("Settings › MCP servers", () => {
     ])
       assert.ok(PROVIDERS_JS.includes(piece), piece);
     assert.doesNotThrow(() => new Function(PROVIDERS_JS));
+  });
+
+  test("the form's URL check takes the local addresses control takes, [::1] too (goal 161)", () => {
+    const check = new Function(`return ${MCP_URL_CHECK_JS}`)() as (u: string) => string | null;
+    for (const url of [
+      "http://localhost:8000/mcp",
+      "http://127.0.0.1/mcp",
+      "http://[::1]:8000/mcp",
+      "https://mcp.example.com/x",
+      "http://mcp.example.com/x",
+      "http://localhost.example.com/x",
+      "https://mcp.example.com/x?api_key=1",
+    ])
+      assert.equal(check(url) === null, mcpUrlProblem(url) === null, url);
+    assert.equal(check("http://[::1]:8000/mcp"), null);
+    assert.match(check("http://mcp.example.com/x") ?? "", /^Use https\./);
   });
 });
 
