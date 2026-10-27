@@ -179,7 +179,10 @@ describe("a hypothesis's status by command (goal 117)", () => {
     const items = new Map<string, KbFields>();
     const target = {
       runCreated: () => {},
-      body: (_r: string, _k: string, ref: string) => items.get(ref)?.body,
+      item: (_r: string, _k: string, ref: string) => {
+        const x = items.get(ref);
+        return x?.body === undefined ? undefined : { body: x.body, meta: x.meta ?? {} };
+      },
       attempt: () => undefined,
       put: (_r: string, _k: string, ref: string, f: KbFields) => {
         items.set(ref, { ...items.get(ref), ...f });

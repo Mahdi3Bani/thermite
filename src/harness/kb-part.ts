@@ -5,6 +5,7 @@ import {
   type KbIndexTarget,
   type KbStored,
   mergeItem,
+  metaOf,
   sameItem,
 } from "../core/kb-index.ts";
 import { currentEvent, eventKinds } from "../core/names.ts";
@@ -69,11 +70,14 @@ export function knowledgePart(
       const campaign = ledger.getRun(run)?.campaign || named;
       if (campaign) campaigns.set(run, campaign);
     },
-    body: (run, kind, ref) => items.get(key(run, kind, ref))?.stored.body,
+    item: (run, kind, ref) => {
+      const s = items.get(key(run, kind, ref))?.stored;
+      return s && { body: s.body, meta: metaOf(s.meta) };
+    },
     attempt: (ref) => {
       const run = attempts.get(ref);
-      const body = run ? items.get(key(run, "attempt", ref))?.stored.body : undefined;
-      return run && body !== undefined ? { run, body } : undefined;
+      const s = run ? items.get(key(run, "attempt", ref))?.stored : undefined;
+      return run && s ? { run, body: s.body, meta: metaOf(s.meta) } : undefined;
     },
     put: (run, kind, ref, f, at) => {
       if (!campaigns.has(run) || !ref) return;

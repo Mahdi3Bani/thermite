@@ -15,9 +15,6 @@
     "src/control/dashboard.ts": {
       "lines": 8831
     },
-    "src/control/kb.ts": {
-      "lines": 825
-    },
     "src/control/mcp-servers.ts": {
       "lines": 996
     },

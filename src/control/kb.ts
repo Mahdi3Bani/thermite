@@ -9,9 +9,11 @@ import {
   type KbIndexTarget,
   type KbStored,
   mergeItem,
+  metaOf,
   sameItem,
   str,
 } from "../core/kb-index.ts";
+import { KB_SCHEMA } from "./kb/schema.ts";
 
 /**
  * Thermite's own knowledge base (goal 065): one folder for each campaign, built from what its
@@ -68,92 +70,44 @@ export interface KbFolder {
   reads: string[];
 }
 
-const SCHEMA = `
-create table if not exists kb_item (
-  id integer primary key autoincrement,
-  -- From kb_cursor.item_seq, given again on every update: what a rig's sync reads after.
-  seq integer not null,
-  campaign text not null,
-  rig text not null,
-  -- The rig's ledger: after a reset, its new runs' items never mix with the old ones.
-  ledger text not null,
-  run text not null,
-  kind text not null,
-  ref text not null,
-  title text not null,
-  body text not null,
-  by text not null,
-  url text,
-  sub text,
-  meta text not null default '{}',
-  at text not null,
-  updated_at text not null,
-  unique (rig, ledger, run, kind, ref)
-);
-create index if not exists kb_item_campaign on kb_item (campaign, kind);
-create index if not exists kb_item_seq on kb_item (campaign, seq);
-create table if not exists kb_run (
-  rig text not null,
-  ledger text not null,
-  run text not null,
-  campaign text not null,
-  primary key (rig, ledger, run)
-);
--- seq: the last rig event indexed; item_seq: the last seq given to an item or a grant's copy.
-create table if not exists kb_cursor (
-  id integer primary key check (id = 1),
-  seq integer not null,
-  item_seq integer not null
-);
-insert or ignore into kb_cursor (id, seq, item_seq) values (1, 0, 0);
-create table if not exists kb_read (
-  campaign text not null,
-  reads text not null,
-  granted_by text not null,
-  granted_at text not null,
-  primary key (campaign, reads)
-);
--- A grant gives the granted folder's items seqs of their own for the grantee, so a run at work,
--- whose cursor is past those items' seqs, still receives the folder it may now read.
-create table if not exists kb_grant_item (
-  campaign text not null,
-  reads text not null,
-  item integer not null,
-  seq integer not null,
-  primary key (campaign, reads, item)
-);
-create index if not exists kb_grant_item_seq on kb_grant_item (campaign, seq);
--- What the folders were built with: the reading's version (see READING).
-create table if not exists kb_meta (key text primary key, value text not null);
-`;
-
 type Row = Record<string, unknown>;
 /** Events read per transaction while catching up. */
 const PAGE = 2000;
 /** Items a rig's sync answers at most at once (it asks again while `more` is true). */
 export const SYNC_PAGE = 500;
 /**
- * The reading's version. A store built by an earlier reading reads its events once more for the
- * kinds of item added since (runs, trials, documents, hypotheses), so the runs before an upgrade
- * have them too. The items it had already are left as they were.
+ * The reading's version, and the kinds each reading read anew: a store built by an earlier
+ * reading reads those events once more, so the runs before an upgrade have them too. Reading 2
+ * added runs, trials, documents and hypotheses; reading 3 keeps an experiment's result and an
+ * attempt's verdict in fields, and an experiment's edits (goal 162), so their items are rebuilt.
  */
-const READING = "2";
-const SINCE_READING_1 = [
-  "run_created",
-  "run_status",
-  "champion_promoted",
-  "trial_started",
-  "trial_finished",
-  "research_doc",
-  "hypothesis_added",
-];
+const READING = "3";
+const READ_ANEW: Record<string, string[]> = {
+  "2": [
+    "run_created",
+    "run_status",
+    "champion_promoted",
+    "trial_started",
+    "trial_finished",
+    "research_doc",
+    "hypothesis_added",
+  ],
+  "3": [
+    "experiment_added",
+    "experiment_edited",
+    "experiment_finished",
+    "experiment_dropped",
+    "attempt_recorded",
+    "verdict",
+  ],
+};
 
 export class KnowledgeBase {
   private readonly db: DatabaseSync;
 
   constructor(db: DatabaseSync) {
     this.db = db;
-    db.exec(SCHEMA);
+    db.exec(KB_SCHEMA);
   }
 
   /** Runs fn in one transaction: all of it is kept, or none of it. */
@@ -240,7 +194,8 @@ export class KnowledgeBase {
     const through = Number(
       (this.db.prepare("select seq from kb_cursor where id = 1").get() as { seq: number }).seq,
     );
-    const kinds = SINCE_READING_1.map(() => "?").join(", ");
+    const anew = Object.entries(READ_ANEW).flatMap(([v, k]) => (v > (at ?? "1") ? k : []));
+    const kinds = anew.map(() => "?").join(", ");
     for (let after = 0; ; ) {
       const rows = this.db
         .prepare(
@@ -248,7 +203,7 @@ export class KnowledgeBase {
            join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
            where e.seq > ? and e.seq <= ? and e.kind in (${kinds}) order by e.seq limit ?`,
         )
-        .all(after, through, ...SINCE_READING_1, PAGE) as Row[];
+        .all(after, through, ...anew, PAGE) as Row[];
       this.tx(() => {
         for (const r of rows) {
           let body: unknown;
@@ -335,20 +290,22 @@ export class KnowledgeBase {
             )
             .run(rig, ledger, run, campaign);
       },
-      body: (run, kind, ref) =>
-        (
-          this.db
-            .prepare(
-              "select body from kb_item where rig = ? and ledger = ? and run = ? and kind = ? and ref = ?",
-            )
-            .get(rig, ledger, run, kind, ref) as { body: string } | undefined
-        )?.body,
-      attempt: (ref) =>
-        this.db
+      item: (run, kind, ref) => {
+        const r = this.db
           .prepare(
-            "select run, body from kb_item where rig = ? and ledger = ? and kind = 'attempt' and ref = ?",
+            "select body, meta from kb_item where rig = ? and ledger = ? and run = ? and kind = ? and ref = ?",
           )
-          .get(rig, ledger, ref) as { run: string; body: string } | undefined,
+          .get(rig, ledger, run, kind, ref) as { body: string; meta: string } | undefined;
+        return r && { body: r.body, meta: metaOf(r.meta) };
+      },
+      attempt: (ref) => {
+        const r = this.db
+          .prepare(
+            "select run, body, meta from kb_item where rig = ? and ledger = ? and kind = 'attempt' and ref = ?",
+          )
+          .get(rig, ledger, ref) as { run: string; body: string; meta: string } | undefined;
+        return r && { run: r.run, body: r.body, meta: metaOf(r.meta) };
+      },
       put: (run, kind, ref, f, at) => this.put(src, run, kind, ref, f, at),
     };
   }

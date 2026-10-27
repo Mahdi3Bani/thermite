@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createControlApi } from "../../src/control/api.ts";
+import { KnowledgeBase } from "../../src/control/kb.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { generateSigningKeys } from "../../src/core/commands.ts";
 import { KbSync } from "../../src/core/kb.ts";
@@ -133,6 +134,7 @@ test("each campaign's folder is built from its runs' events; folders are read on
     details: "128-bit loads of the packed weights",
     why: "the guide says twice the bandwidth",
     family: "memory-layout",
+    result: "Result: attempt a-1 (submitted)",
   });
   assert.equal(exp && kb.resultOf(exp), "tried: attempt a-1 (submitted), win confirmed (+6.10%)");
   const [att] = kb.search("vector", ["gemv-speed"], { kinds: ["attempt"] });
@@ -653,4 +655,23 @@ test("a rig files a run's items only under a campaign control gave it", () => {
   );
   assert.equal(kb.search("planted", ["gemv-speed"]).length, 0);
   assert.equal(kb.search("local", ["local-try"], { kinds: ["note"] }).length, 1);
+});
+
+test("a store built by an earlier reading rebuilds its experiments and attempts once (goal 162)", () => {
+  const store = new ControlStore(":memory:");
+  twoCampaigns(store);
+  const kb = store.kb();
+  const [exp] = kb.search("vector", ["gemv-speed"], { kinds: ["experiment"] });
+  const whole = exp?.body;
+  // As reading 2 left an item whose details held "Result: ": cut, and its state in its text.
+  store.db.prepare("update kb_item set body = 'cut', meta = '{}' where kind = 'experiment'").run();
+  store.db.prepare("update kb_meta set value = '2' where key = 'reading'").run();
+  new KnowledgeBase(store.db).catchUp();
+  const [again] = kb.search("vector", ["gemv-speed"], { kinds: ["experiment"] });
+  assert.equal(again?.body, whole);
+  assert.equal(again?.meta.result, "Result: attempt a-1 (submitted)");
+  const reading = store.db.prepare("select value from kb_meta where key = 'reading'").get() as {
+    value: string;
+  };
+  assert.equal(reading.value, "3");
 });

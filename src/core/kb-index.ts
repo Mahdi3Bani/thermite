@@ -67,14 +67,30 @@ export function sameItem(a: KbStored, b: KbStored): boolean {
   );
 }
 
+/** An item as the reading changes it: its text, and the fields its state is kept in. */
+export interface KbHeld {
+  body: string;
+  meta: Record<string, string>;
+}
+
+/** An item's stored meta (JSON) as fields; anything else is none. */
+export function metaOf(json: string | undefined): Record<string, string> {
+  try {
+    const m = JSON.parse(json ?? "{}") as unknown;
+    return m && typeof m === "object" && !Array.isArray(m) ? (m as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Where the items of one reading go: control's store, or an export's. */
 export interface KbIndexTarget {
   /** A run started: its campaign as its event names it (the target decides where to file it). */
   runCreated(run: string, named: string): void;
-  /** An item's text, when the target has the item. */
-  body(run: string, kind: KbKind, ref: string): string | undefined;
+  /** An item, when the target has it. */
+  item(run: string, kind: KbKind, ref: string): KbHeld | undefined;
   /** An attempt's item, found by its ref alone (a verdict names only its attempt). */
-  attempt(ref: string): { run: string; body: string } | undefined;
+  attempt(ref: string): ({ run: string } & KbHeld) | undefined;
   /** A new item, or a change to one (the target merges it with mergeItem). */
   put(run: string, kind: KbKind, ref: string, f: KbFields, at: string): void;
 }
@@ -100,6 +116,7 @@ export const KB_EVENT_KINDS = [
   "research_doc",
   "context_compacted",
   "experiment_added",
+  "experiment_edited",
   "experiment_finished",
   "experiment_dropped",
   "attempt_recorded",
@@ -122,6 +139,28 @@ const lines = (xs: string[]) => xs.filter(Boolean).join("\n");
 function setLine(body: string, label: string, line: string): string {
   const kept = body.split("\n").filter((l) => !l.startsWith(`${label}: `));
   return lines([...kept, line]).trim();
+}
+
+/** An experiment's text from its fields: the words it was given, then how it ended. */
+function experimentBody(m: Record<string, string>): string {
+  return lines([
+    m.details ?? "",
+    m.why ? `Why: ${m.why}` : "",
+    m.family ? `Direction: ${m.family}` : "",
+    m.about ? `About: ${m.about}` : "",
+    m.result ?? "",
+  ]);
+}
+
+/** An attempt's text from its fields: its hypothesis and claim, then the judge's verdict. */
+function attemptBody(m: Record<string, string>): string {
+  return lines([
+    m.hypothesis ?? "",
+    m.claim ? `Claim: ${m.claim}` : "",
+    m.flaws ? `Declared flaws: ${m.flaws}` : "",
+    m.refused ? `Refused before building: ${m.refused}` : "",
+    m.verdict ? `Verdict: ${m.verdict}` : "",
+  ]);
 }
 
 /** A research paper's next experiment's kind (goal 119), in words: the run it is for. */
@@ -176,7 +215,7 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
       return;
     }
     case "run_status": {
-      const old = t.body(e.subject, "run", ref(e.subject));
+      const old = t.item(e.subject, "run", ref(e.subject))?.body;
       if (old === undefined) return;
       t.put(
         e.subject,
@@ -194,7 +233,7 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
       return;
     }
     case "champion_promoted": {
-      const old = t.body(e.subject, "run", ref(e.subject));
+      const old = t.item(e.subject, "run", ref(e.subject))?.body;
       if (old === undefined) return;
       t.put(
         e.subject,
@@ -234,7 +273,7 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
     }
     case "trial_finished": {
       const id = ref(b.trial);
-      const had = t.body(e.subject, "trial", id);
+      const had = t.item(e.subject, "trial", id)?.body;
       let body = setLine(
         had ?? `Lane: ${str(b.lane)}`,
         "Ended",
@@ -301,7 +340,7 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
       const lane = str(b.lane);
       const id = ref(`${lane}/${str(b.path)}`);
       if (str(b.change) === "removed") {
-        const old = t.body(run, "doc", id);
+        const old = t.item(run, "doc", id)?.body;
         if (old === undefined) return;
         t.put(
           run,
@@ -358,89 +397,99 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
       );
       return;
     }
-    case "experiment_added":
+    case "experiment_added": {
+      const meta = {
+        details: str(b.details),
+        why: str(b.why),
+        family: str(b.family),
+        // A research task's question (goal 117).
+        ...(typeof b.question === "number" ? { about: questionLabel(b.question) } : {}),
+      };
       t.put(
         run,
         "experiment",
         ref(b.id),
-        {
-          title: str(b.title),
-          body: lines([
-            str(b.details),
-            b.why ? `Why: ${str(b.why)}` : "",
-            b.family ? `Direction: ${str(b.family)}` : "",
-            // A research task's question (goal 117).
-            typeof b.question === "number" ? `About: ${questionLabel(b.question)}` : "",
-          ]),
-          by: str(b.by) || e.actor,
-          meta: { details: str(b.details), why: str(b.why), family: str(b.family) },
-        },
+        { title: str(b.title), body: experimentBody(meta), by: str(b.by) || e.actor, meta },
         e.at,
       );
       return;
+    }
+    // New words for a waiting experiment: its item takes them, and keeps the rest (goal 162).
+    case "experiment_edited": {
+      const old = t.item(run, "experiment", ref(b.id));
+      if (old === undefined) return;
+      const meta = { ...old.meta };
+      for (const k of ["details", "why", "family"] as const) if (k in b) meta[k] = str(b[k]);
+      t.put(
+        run,
+        "experiment",
+        ref(b.id),
+        { ...("title" in b ? { title: str(b.title) } : {}), body: experimentBody(meta), meta },
+        e.at,
+      );
+      return;
+    }
     case "experiment_finished":
     case "experiment_dropped": {
-      const old = t.body(run, "experiment", ref(b.id));
+      const old = t.item(run, "experiment", ref(b.id));
       if (old === undefined) return;
       // What a research task's trial added (goal 117), after its result.
       const y = b.yield && typeof b.yield === "object" ? (b.yield as Row) : undefined;
       const added = y
         ? `; it added ${n(y.verified_claims)} verified claims, ${n(y.new_domains)} new domains and ${n(y.findings)} findings`
         : "";
-      const result =
-        e.kind === "experiment_dropped"
-          ? `Dropped: ${str(b.why)}`
-          : `Result: ${str(b.attempt) ? `attempt ${str(b.attempt)}` : "no attempt"}${str(b.result) ? ` (${str(b.result)})` : ""}${added}`;
-      t.put(
-        run,
-        "experiment",
-        ref(b.id),
-        { body: `${old.replace(/\n?(Result|Dropped): .*$/s, "")}\n${result}`.trim() },
-        e.at,
-      );
+      // Its state is a field: the agents' own words are never read back as prose (goal 162).
+      const meta = {
+        ...old.meta,
+        result:
+          e.kind === "experiment_dropped"
+            ? `Dropped: ${str(b.why)}`
+            : `Result: ${str(b.attempt) ? `attempt ${str(b.attempt)}` : "no attempt"}${str(b.result) ? ` (${str(b.result)})` : ""}${added}`,
+      };
+      t.put(run, "experiment", ref(b.id), { body: experimentBody(meta), meta }, e.at);
       return;
     }
-    case "attempt_recorded":
+    case "attempt_recorded": {
+      const meta = {
+        hypothesis: str(b.hypothesis),
+        claim: str(b.claim),
+        flaws: Array.isArray(b.known_flaws) ? b.known_flaws.map(str).join("; ") : "",
+        // Why the static checks refused it (goal 082), as its event bounds them.
+        refused:
+          Array.isArray(b.violations) && b.violations.length
+            ? `${b.violations.map(str).join("; ")}${
+                typeof b.violations_total === "number" && b.violations_total > b.violations.length
+                  ? `; and ${b.violations_total - b.violations.length} more`
+                  : ""
+              }`
+            : "",
+      };
       t.put(
         run,
         "attempt",
         ref(e.subject || str(b.attempt)),
         {
           title: str(b.hypothesis) || e.subject,
-          body: lines([
-            str(b.hypothesis),
-            str(b.claim) ? `Claim: ${str(b.claim)}` : "",
-            Array.isArray(b.known_flaws) && b.known_flaws.length
-              ? `Declared flaws: ${b.known_flaws.map(str).join("; ")}`
-              : "",
-            // Why the static checks refused it (goal 082), as its event bounds them.
-            Array.isArray(b.violations) && b.violations.length
-              ? `Refused before building: ${b.violations.map(str).join("; ")}${
-                  typeof b.violations_total === "number" && b.violations_total > b.violations.length
-                    ? `; and ${b.violations_total - b.violations.length} more`
-                    : ""
-                }`
-              : "",
-          ]),
+          body: attemptBody(meta),
           by: str(b.lane) || e.actor,
+          meta,
         },
         e.at,
       );
       return;
+    }
     case "verdict": {
       // A verdict names its attempt (the subject); the attempt's item says which run it is in.
       const old = t.attempt(ref(e.subject));
       const verdict = str(b.verdict);
-      if (old && verdict)
-        t.put(
-          old.run,
-          "attempt",
-          ref(e.subject),
-          {
-            body: `${old.body.replace(/\n?Verdict: .*$/s, "")}\nVerdict: ${verdict}${typeof b.delta === "number" ? ` (${b.delta >= 0 ? "+" : ""}${(b.delta * 100).toFixed(2)}%)` : ""}`.trim(),
-          },
-          e.at,
-        );
+      if (old && verdict) {
+        const delta =
+          typeof b.delta === "number"
+            ? ` (${b.delta >= 0 ? "+" : ""}${(b.delta * 100).toFixed(2)}%)`
+            : "";
+        const meta = { ...old.meta, verdict: `${verdict}${delta}` };
+        t.put(old.run, "attempt", ref(e.subject), { body: attemptBody(meta), meta }, e.at);
+      }
       return;
     }
     // A source: its address, then the text that was read (the archived page as text, cut).
@@ -513,7 +562,7 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
       const id = ref(b.hypothesis);
       const status = `Status: ${hypothesisStatusWords(str(b.status))}`;
       const why = `Status set by ${str(b.by) || e.actor}: ${str(b.reason)}`;
-      const old = t.body(run, "hypothesis", id);
+      const old = t.item(run, "hypothesis", id)?.body;
       t.put(
         run,
         "hypothesis",

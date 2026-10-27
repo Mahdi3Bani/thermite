@@ -33,7 +33,7 @@ Experiment integrity: a claim counts only when its quotes are in the archived te
 ## Done when
 
 - [ ] Each of the nine bugs is fixed, with a regression test that fails without the fix.
-- [ ] Control's knowledge items written before the fix of item 3 are rebuilt, and the rebuild is tested.
+- [x] Control's knowledge items written before the fix of item 3 are rebuilt, and the rebuild is tested.
 - [ ] The campaign modes page and the knowledge base reference say what changed.
 - [ ] The fast checks pass, and the steering acceptance check.
 
@@ -51,6 +51,8 @@ Experiment integrity: a claim counts only when its quotes are in the archived te
 
 - 2026-10-26: Goal written from the v0.1.1 audit's harness and knowledge reports.
 - 2026-10-27 06:06 UTC: Started by goal 172, step 2. Item 1 fixed: the fetcher refuses an answer that is not a 2xx before anything is archived (`statusRefusal` in `src/harness/research/fetcher.ts`): a 404, a 410 or another 4xx for good, a 408, a 429 or a 5xx as a failure that can pass (`tests/harness/research/fetch-status.test.ts`, which fails without the fix). The campaign modes page states the rule.
+- 2026-10-27 06:08 UTC: Item 2 fixed: an answer card's claims count registrable domains, as the review package, the report and the docs do (`claimFor` in `src/harness/research/cards.ts`; `tests/harness/research/cards.test.ts`, where two hosts of one owner are one domain).
+- 2026-10-27 06:22 UTC: Items 3 and 4 fixed: the knowledge index keeps an experiment's result and an attempt's verdict in fields, and writes them after the agents' words, never reading them back from the text; an `experiment_edited` reaches the experiment's item, which keeps its result (`src/core/kb-index.ts`; `tests/core/kb-index.test.ts`). Control's knowledge base reads its experiments' and attempts' events once more (reading 3), so items cut by the earlier reading are whole again (`tests/control/kb.test.ts`). The targets give the index an item's fields (`item` in place of `body`). The knowledge base reference says what changed. The tables of control's knowledge base moved to `src/control/kb/schema.ts`.
 
 ---
 
