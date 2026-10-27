@@ -30,7 +30,7 @@ import { hasAdvisors, outcome } from "./operator/outcome.ts";
 export { championHeldOutBlock, outcome };
 
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../core/verdicts.ts";
-import { currentChampion } from "../views/facts.ts";
+import { currentChampion, runCampaign } from "../views/facts.ts";
 import { card } from "./need-card.ts";
 import { stuckChip, stuckNeeds, stuckTrials } from "./stuck.ts";
 import {
@@ -1139,7 +1139,7 @@ export function runBrief(
     );
   const champ = currentChampion(r);
   const head = opts.heading
-    ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(u.id, r)}">${esc(r.campaign || r.id)} › ${esc(r.id)}</a>${judgeOnlyMark(r)}<span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
+    ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(u.id, r)}">${esc(runCampaign(r))} › ${esc(r.id)}</a>${judgeOnlyMark(r)}<span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
     : "";
   return `<section class="brief">${head}${rows.join("")}</section>`;
 }
@@ -1168,7 +1168,7 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
         : "no attempt yet";
   const title =
     name === "campaign"
-      ? `${esc(r.campaign || r.id)} › ${esc(r.id)}`
+      ? `${esc(runCampaign(r))} › ${esc(r.id)}`
       : `${esc(r.id)} <span class="muted small">on ${esc(u.id)}${reportingTag(u)}</span>`;
   return `<a class="rr" href="${runHref(u.id, r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
 }
@@ -1438,7 +1438,7 @@ export function attemptDetail(
   const facts = [
     [
       "Run",
-      `<a href="${runHref(u.id, r)}">${esc(r.campaign || r.id)} › ${esc(r.id)}</a> on ${esc(u.id)}`,
+      `<a href="${runHref(u.id, r)}">${esc(runCampaign(r))} › ${esc(r.id)}</a> on ${esc(u.id)}`,
     ],
     ["Lane", esc(a.lane ?? "none: submitted by hand")],
     ...(a.family ? [["Direction", esc(a.family)]] : []),
@@ -1463,7 +1463,7 @@ export function attemptDetail(
     .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
     .join("");
 
-  return `<div class="att-head"><div class="att-crumb"><span class="chip ${o.tone}">${esc(o.word)}</span>${esc(r.campaign || r.id)} › ${esc(r.id)} › attempt ${esc(a.id)}</div><h1 class="att-title">${esc(a.hypothesis ?? "(no hypothesis given)")}</h1>${opts.patch ? `<div class="small">${opts.patch}</div>` : ""}</div>
+  return `<div class="att-head"><div class="att-crumb"><span class="chip ${o.tone}">${esc(o.word)}</span>${esc(runCampaign(r))} › ${esc(r.id)} › attempt ${esc(a.id)}</div><h1 class="att-title">${esc(a.hypothesis ?? "(no hypothesis given)")}</h1>${opts.patch ? `<div class="small">${opts.patch}</div>` : ""}</div>
 <p class="run-said">${said}</p>
 ${opts.decision ? `<div class="block"><div class="head"><h2>Your decision</h2></div>${opts.decision.box}</div>` : ""}
 <div class="cols run-cols"><div>

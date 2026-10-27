@@ -385,7 +385,7 @@ import {
 } from "./ui/usage.ts";
 import { auditReason, clip, jobText, listText, runStatusText, signed, span } from "./ui/words.ts";
 import { pricingOf, setModelPrice, usageData } from "./usage.ts";
-import { championsInForce, currentChampion } from "./views/facts.ts";
+import { championsInForce, currentChampion, runCampaign } from "./views/facts.ts";
 import {
   type CampaignView,
   campaignModes,
@@ -710,7 +710,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   /** A run's campaign, as the views name it (a run without one is its own). */
   const campaignOfRun = (vs: RigView[], rig: string, run: string) => {
     const r = vs.find((u) => u.id === rig)?.runs.find((x) => x.id === run);
-    return r ? r.campaign || r.id : undefined;
+    return r ? runCampaign(r) : undefined;
   };
   /** Leaves out what belongs to an archived campaign's runs: for Needs you and the lists. */
   const notArchived = <T extends { rig: string; run?: string | undefined }>(
@@ -879,7 +879,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const decisions = needs(c, [u], now, back).filter((n) => n.run === i.id);
     // How each goal is really checked (goal 082): as this run's rig reported its kit, else as
     // control can read the campaign's kit or contract.
-    const how = i.mode === "goal" ? goalChecksFor(i.campaign || i.id, vs, u.id, i) : undefined;
+    const how = i.mode === "goal" ? goalChecksFor(runCampaign(i), vs, u.id, i) : undefined;
     const howFor = (goal: string) =>
       howCheckedDetails(
         how?.checks.goals.find((x) => x.goal === goal),
@@ -1257,7 +1257,7 @@ ${body}
     // One scan, top to bottom: what needs you, what is at work, what happened.
     const live = vs.flatMap((u) =>
       u.runs
-        .filter((i) => i.status === "running" && !archived.has(i.campaign || i.id))
+        .filter((i) => i.status === "running" && !archived.has(runCampaign(i)))
         .map((i) =>
           runBrief(store, u, i, now, {
             heading: true,
@@ -1313,9 +1313,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       u.runs
         .filter(
           (r) =>
-            r.status === "running" &&
-            !isRigCheck(r.campaign ?? "") &&
-            !shelf.has(r.campaign || r.id),
+            r.status === "running" && !isRigCheck(r.campaign ?? "") && !shelf.has(runCampaign(r)),
         )
         .map((r) => workCardFor(c, u, r, now, waitingFor(u, r), "/ui/campaigns")),
     );
@@ -3280,7 +3278,7 @@ ${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>$
             : `${esc(u.id)} is live; it reported ${esc(ago(u.last_seen, now))} ago.`,
       drain?.said ?? "",
       live.length
-        ? `It runs ${live.map((i) => `<a href="${runHref(u.id, i)}">${esc(i.campaign || i.id)} › ${esc(i.id)}</a>`).join(" and ")}.`
+        ? `It runs ${live.map((i) => `<a href="${runHref(u.id, i)}">${esc(runCampaign(i))} › ${esc(i.id)}</a>`).join(" and ")}.`
         : u.runs.length
           ? "No run is at work on it."
           : "No campaign is assigned to it.",
@@ -3561,7 +3559,7 @@ ${rp ? "" : events}
         title: a.id,
         crumbs: [
           { href: "/ui/campaigns", text: "Campaigns" },
-          { href: campaignHref(r.campaign || r.id), text: r.campaign || r.id },
+          { href: campaignHref(runCampaign(r)), text: runCampaign(r) },
           { href: runHref(u.id, r), text: `${r.id} on ${u.id}` },
         ],
         active: "campaigns",
@@ -3689,7 +3687,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
           : "all";
     // The review panel reads only for a goal it reviews (a goal checked by review) or a research
     // run's questions (goal 112).
-    const reviewed = panelReviews(store, r.campaign || r.id);
+    const reviewed = panelReviews(store, runCampaign(r));
     // Who would read nothing: off on the rig, or not set up on its supervisor. Control refuses
     // a message to them with the same words (issue.ts).
     const off = (v: string) => nobodyReads(u, v, r);
@@ -3916,7 +3914,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
               const run = sel?.run ? u.runs.find((i) => i.id === sel.run) : undefined;
               return [
                 run
-                  ? `<a href="${runHref(u.id, run)}">${esc(run.campaign || run.id)} › ${esc(run.id)}</a>`
+                  ? `<a href="${runHref(u.id, run)}">${esc(runCampaign(run))} › ${esc(run.id)}</a>`
                   : esc(sel?.run ?? ""),
                 esc(sel?.lane ?? ""),
                 esc(source.slice(6)),

@@ -1,6 +1,7 @@
 import type { BuildInfo } from "../../core/version.ts";
 import { rigVersionWords } from "../rig-update.ts";
 import type { RunpodRigView } from "../runpod-rig-view.ts";
+import { runCampaign } from "../views/facts.ts";
 import type { RigView } from "../views.ts";
 import { esc, hardwareLine, runHref } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
@@ -188,7 +189,7 @@ function runCells(r: RigsListRow, st: StateKey, now: number): [string, string] {
         ? `<b class="fig">${esc(fig)}</b>`
         : `<span class="muted">${esc(fig)}</span>`;
   return [
-    `<a class="nowrap${live ? "" : " muted"}" href="${runHref(u.id, run)}">${esc(run.id)}</a>${sub(`${esc(run.campaign || run.id)} · ${esc(line)}${more}`)}`,
+    `<a class="nowrap${live ? "" : " muted"}" href="${runHref(u.id, run)}">${esc(run.id)}</a>${sub(`${esc(runCampaign(run))} · ${esc(line)}${more}`)}`,
     prog,
   ];
 }

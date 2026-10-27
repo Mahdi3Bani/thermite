@@ -13,3 +13,7 @@ export const championsInForce = (r: { champion: readonly ChampionStep[] }): Cham
 export const currentChampion = (r: {
   champion: readonly ChampionStep[];
 }): ChampionStep | undefined => championsInForce(r).at(-1);
+
+/** A run's campaign: a run assigned without one is its own campaign. */
+export const runCampaign = (r: { campaign: string | null; id: string }): string =>
+  r.campaign || r.id;

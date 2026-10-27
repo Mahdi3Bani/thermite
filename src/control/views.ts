@@ -31,9 +31,9 @@ import {
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
-import { currentChampion } from "./views/facts.ts";
+import { currentChampion, runCampaign } from "./views/facts.ts";
 
-export { championsInForce, currentChampion } from "./views/facts.ts";
+export { championsInForce, currentChampion, runCampaign } from "./views/facts.ts";
 
 import { doingsOf, type TrialDoing } from "./views/work.ts";
 
@@ -1971,7 +1971,7 @@ export function campaignViews(vs: RigView[]): CampaignView[] {
   const by = new Map<string, CampaignView>();
   for (const rig of vs) {
     for (const run of rig.runs) {
-      const name = run.campaign || run.id;
+      const name = runCampaign(run);
       const c = by.get(name) ?? { name, mode: run.mode, runs: [] };
       c.runs.push({ rig, run });
       by.set(name, c);

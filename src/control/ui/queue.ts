@@ -1,5 +1,6 @@
 import { directionList, directionParts, RESEARCH_TASK_KINDS } from "../../core/directions.ts";
 import { labelledQuestion } from "../../core/research-check.ts";
+import { runCampaign } from "../views/facts.ts";
 import type { AttemptView, DirectionView, ExperimentView, RigView, RunView } from "../views.ts";
 import { ago, campaignHref, esc, icon, runKey } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
@@ -111,7 +112,7 @@ export function triedResult(
 export function judgeOnlyQueueLine(u: Pick<RigView, "id">, r: RunView): string {
   if (r.has_agents !== false) return "";
   if (!r.queue.some((x) => x.state === "queued" || x.state === "proposed")) return "";
-  const start = `${campaignHref(r.campaign || r.id)}?start=1&copy=${encodeURIComponent(runKey(u.id, r.id))}`;
+  const start = `${campaignHref(runCampaign(r))}?start=1&copy=${encodeURIComponent(runKey(u.id, r.id))}`;
   return `<div class="lnotice qjudge">${icon.warn}<span><b>Judge only:</b> no worker takes these experiments, so they wait for a run with workers. To carry them over, <a href="${esc(start)}">Start a run</a> of the campaign with <b>Copy the untried experiments of</b> ${esc(r.id)} ticked.</span></div>`;
 }
 
