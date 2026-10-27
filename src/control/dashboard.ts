@@ -249,6 +249,7 @@ import {
 } from "./ui/campaigns.ts";
 import { CLIENT_JS } from "./ui/client.ts";
 import { formPayload } from "./ui/command-forms.ts";
+import { commandRow } from "./ui/commands.ts";
 import {
   ago,
   attemptHref,
@@ -3974,17 +3975,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const now = Date.now();
     const rows = store
       .listCommands(200)
-      .map((x) => {
-        const cls =
-          x.status === "delivered"
-            ? "ok"
-            : x.status === "pending"
-              ? "info"
-              : x.status === "expired" || x.status === "cancelled"
-                ? ""
-                : "bad";
-        return `<tr><td class="muted nowrap">${esc(ago(x.issued_at, now))} ago</td><td>${esc(x.rig)}</td><td><b>${esc(x.kind.replace(/_/g, " "))}</b></td><td class="muted">${esc(x.issued_by)}</td><td><span class="chip ${cls}">${esc(x.status)}</span></td><td class="clip"><code class="muted">${esc(JSON.stringify(x.outcome ?? "").slice(0, 200))}</code></td></tr>`;
-      })
+      .map((x) => commandRow(x, now))
       .join("");
     return page(
       c,

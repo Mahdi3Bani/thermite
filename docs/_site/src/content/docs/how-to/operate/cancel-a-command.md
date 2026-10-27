@@ -50,7 +50,7 @@ curl -sS -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
   http://127.0.0.1:8800/v1/commands/0b6d3e52-6f1a-4c2e-9a57-3f4e1d2c8b90
 ```
 
-A cancelled command shows `{"status":"failed","outcome":{"cancelled_by":"owner:api"}}`. There is no separate "cancelled" status, so on the **Commands** page it shows as **failed**, with `cancelled_by` in its **Outcome**. **Audit log** has a `command_cancelled` entry.
+A cancelled command shows `{"status":"failed","outcome":{"cancelled_by":"owner:api"}}` over REST and MCP: there is no separate "cancelled" status. On the **Commands** page it shows as **cancelled**, in a grey chip, with `cancelled_by` in its **Outcome**. **Audit log** has a `command_cancelled` entry.
 
 In a rare case the rig still applies it: if its supervisor was handing the command to the harness at the moment you cancelled. The command's status then changes to `delivered` at the rig's next report.
 
