@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { z } from "zod";
+import { log } from "../common/env.ts";
+import { numberSetting, optionalNumberSetting } from "../common/settings.ts";
 import type { CommandPayloads } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
 
@@ -8,28 +10,20 @@ import { MAX_LANES } from "../core/contract.ts";
  * minutes from 1 to 1,440, as a contract's `lanes.limits.trial_minutes`.
  */
 export function trialMinutesFromEnv(raw: string | undefined): number | null {
-  if (raw === undefined || raw.trim() === "") return null;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > 1440)
-    throw new Error(
-      `THERMITE_TRIAL_MINUTES must be a whole number from 1 to 1440, or empty, not ${raw}`,
-    );
-  return n;
+  const rule = { unit: "minutes", integer: true, min: 1, max: 1440 };
+  return (
+    optionalNumberSetting({ THERMITE_TRIAL_MINUTES: raw }, "THERMITE_TRIAL_MINUTES", rule) ?? null
+  );
 }
 
 /**
  * Workers at a time from THERMITE_MAX_TRIALS (unset: 1; 0: a rig that starts no trials, such as
- * one that only judges or runs its advisors). A rig runs at most MAX_LANES, as on Edit rig;
- * anything else stops the harness at start with the reason.
+ * one that only judges or runs its advisors). A rig has users for lanes 1 to MAX_LANES only, as on
+ * Edit rig; anything else stops the harness at start with the reason.
  */
 export function lanesFromEnv(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === "") return 1;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0 || n > MAX_LANES)
-    throw new Error(
-      `THERMITE_MAX_TRIALS must be a whole number from 0 to ${MAX_LANES}, not ${raw}: a rig has users for lanes 1 to ${MAX_LANES} only`,
-    );
-  return n;
+  const rule = { integer: true, max: MAX_LANES, zeroMeans: "no trials" };
+  return numberSetting({ THERMITE_MAX_TRIALS: raw }, "THERMITE_MAX_TRIALS", 1, rule);
 }
 
 /**
@@ -79,6 +73,12 @@ export class RigSettingsStore {
   private readonly listeners: ((s: RigSettings) => void)[] = [];
   private readonly file: string | undefined;
 
+  /**
+   * A settings file the harness could not read (goal 164): kept aside under `kept` for the owner
+   * to look at, logged, and reported; the defaults apply until someone sets a value again.
+   */
+  readonly unreadable: { kept: string; error: string } | undefined;
+
   /** Settings kept in `file` (none: in memory only), starting from `defaults`. */
   constructor(defaults: RigSettings, file?: string | undefined) {
     this.file = file;
@@ -86,7 +86,16 @@ export class RigSettingsStore {
     if (file && existsSync(file)) {
       try {
         saved = JSON.parse(readFileSync(file, "utf8")) as typeof saved;
-      } catch {}
+      } catch (err) {
+        const kept = `${file}.unreadable-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+        renameSync(file, kept);
+        this.unreadable = { kept, error: String(err) };
+        log("harness", "the rig's settings file could not be read: kept aside, defaults apply", {
+          file,
+          kept,
+          error: String(err),
+        });
+      }
     }
     // A file written before goal 079 kept every setting, defaults too: its 20-minute trial was
     // the old default, not a choice, and there is no default trial length now. A file that says
@@ -109,11 +118,11 @@ export class RigSettingsStore {
     if (this.file) {
       // Only what someone set is kept, with the names of those settings: the defaults stay the
       // environment's (goal 079).
-      let kept: Record<string, unknown> & { set_keys?: string[] } = {};
-      try {
-        if (existsSync(this.file))
-          kept = JSON.parse(readFileSync(this.file, "utf8")) as typeof kept;
-      } catch {}
+      // The file as the constructor read it, or kept aside: a file that can't be read now is no
+      // reason to lose the settings someone set, so the change is refused with the reason.
+      const kept = (
+        existsSync(this.file) ? JSON.parse(readFileSync(this.file, "utf8")) : {}
+      ) as Record<string, unknown> & { set_keys?: string[] };
       const keys = new Set([
         ...(kept.set_keys ?? Object.keys(kept).filter((k) => k !== "set_keys")),
         ...Object.entries(change)

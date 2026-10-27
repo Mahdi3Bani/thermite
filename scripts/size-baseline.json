@@ -7,7 +7,7 @@
       "lines": 957
     },
     "src/cli/thermite.ts": {
-      "lines": 1330
+      "lines": 1328
     },
     "src/control/api.ts": {
       "lines": 1719
@@ -58,10 +58,10 @@
       "lines": 1016
     },
     "src/harness/broker.ts": {
-      "lines": 1223
+      "lines": 1222
     },
     "src/harness/broker/snapshot.ts": {
-      "lines": 1257
+      "lines": 1250
     },
     "src/harness/judge/judge.ts": {
       "lines": 2074
@@ -70,7 +70,7 @@
       "lines": 1606
     },
     "src/harness/main.ts": {
-      "lines": 886
+      "lines": 882
     },
     "src/harness/research/paper.ts": {
       "lines": 1183
@@ -91,7 +91,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2964
+      "lines": 2959
     },
     "src/supervisor/advise.ts": {
       "lines": 1368

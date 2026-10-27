@@ -690,7 +690,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
     );
     assert.throws(
       () => pullModeOptions({ ...env, THERMITE_TUNNEL_PORT: "http" }, minted.rig, home),
-      /must be a port number/,
+      /THERMITE_TUNNEL_PORT takes a whole number from 1 to 65535, not "http"/,
     );
     const pull = await startPullMode(env, minted.rig, home);
     try {

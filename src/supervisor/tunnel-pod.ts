@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { log } from "../common/env.ts";
+import { numberSetting } from "../common/settings.ts";
 import {
   controlCodeProof,
   ENROLLED_FILES,
@@ -565,9 +566,7 @@ export function pullModeOptions(
     if (!v) throw new Error(`pull mode needs ${name}`);
     return v;
   };
-  const port = Number(env.THERMITE_TUNNEL_PORT);
-  if (!Number.isInteger(port) || port < 1 || port > 65535)
-    throw new Error(`THERMITE_TUNNEL_PORT must be a port number, not ${env.THERMITE_TUNNEL_PORT}`);
+  const port = numberSetting(env, "THERMITE_TUNNEL_PORT", 0, { integer: true, min: 1, max: 65535 });
   const until = env.THERMITE_TUNNEL_ENROLL_UNTIL
     ? Date.parse(env.THERMITE_TUNNEL_ENROLL_UNTIL)
     : Number.NaN;

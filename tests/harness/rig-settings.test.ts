@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -24,6 +24,22 @@ const defaults: RigSettings = {
 };
 
 describe("the rig's own settings (Edit rig)", () => {
+  test("a settings file that can't be read is kept aside and reported, never lost (goal 164)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "thermite-settings-"));
+    const file = join(dir, "rig-settings.json");
+    writeFileSync(file, '{"lanes": 3, "judge": fal');
+    const store = new RigSettingsStore(defaults, file);
+    assert.deepEqual(store.get(), defaults);
+    const kept = store.unreadable?.kept ?? "";
+    assert.match(kept, /rig-settings\.json\.unreadable-/);
+    assert.equal(readFileSync(kept, "utf8"), '{"lanes": 3, "judge": fal');
+    assert.match(store.unreadable?.error ?? "", /JSON/);
+    // A later change starts a new file; the old one stays for the owner.
+    store.set({ lanes: 2 });
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { set_keys: ["lanes"], lanes: 2 });
+    assert.ok(existsSync(kept));
+  });
+
   test("a change is kept across restarts and tells the loops that read it", () => {
     const file = join(mkdtempSync(join(tmpdir(), "thermite-settings-")), "rig-settings.json");
     const store = new RigSettingsStore(defaults, file);
@@ -45,7 +61,10 @@ describe("the rig's own settings (Edit rig)", () => {
     assert.equal(trialMinutesFromEnv(undefined), null);
     assert.equal(trialMinutesFromEnv(""), null);
     assert.equal(trialMinutesFromEnv("45"), 45);
-    assert.throws(() => trialMinutesFromEnv("0"), /THERMITE_TRIAL_MINUTES must be/);
+    assert.throws(
+      () => trialMinutesFromEnv("0"),
+      /THERMITE_TRIAL_MINUTES takes a whole number of minutes from 1 to 1440, not "0"/,
+    );
     const none = { ...defaults, trial_minutes: null };
     const dir = mkdtempSync(join(tmpdir(), "thermite-settings-"));
     // A file written before kept every setting, the old 20-minute default too: not a choice.

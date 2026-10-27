@@ -1231,13 +1231,11 @@ async function main(argv: string[]): Promise<void> {
       });
       if (!values.harness || !values["token-file"] || !values.attempt) fail(USAGE);
       const token = readFileSync(values["token-file"], "utf8").trim();
-      const res = await fetch(
-        `${values.harness.replace(/\/$/, "")}/v1/attempts/${values.attempt}`,
-        {
-          headers: { authorization: `Bearer ${token}` },
-        },
-      );
+      const url = `${values.harness.replace(/\/$/, "")}/v1/attempts/${values.attempt}`;
+      const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+      // What the harness sent, as before; an error answer ends with a non-zero exit (goal 164).
       process.stdout.write(`${await res.text()}\n`);
+      if (!res.ok) process.exitCode = 1;
       return;
     }
     case "local": {

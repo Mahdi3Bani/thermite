@@ -60,6 +60,7 @@ import { killScope, SETPRIV } from "./broker/process.ts";
 import { IDS, type Role, roleIds } from "./broker/runner.ts";
 import { deriveKeys, SnapshotRefused, takeSnapshotKey } from "./broker/seal.ts";
 import { ALL_ROLES, startBrokerServer, timedRunsAtWork } from "./broker/server.ts";
+import { brokerNumbers } from "./broker/settings.ts";
 import {
   CLOSED_PROBE_JS,
   closedTo,
@@ -114,6 +115,7 @@ const controller = fileURLToPath(new URL("./main.js", import.meta.url));
 const supervisorMain = fileURLToPath(new URL("../supervisor/main.js", import.meta.url));
 const snapshotMain = fileURLToPath(new URL("./broker/snapshot-main.js", import.meta.url));
 const env = process.env;
+const { outboxGid, fatalHoldMs } = brokerNumbers(env);
 /**
  * The state snapshot's key (THERMITE_STATE_SNAPSHOT_KEY, a launch value), taken out of the
  * broker's own environment before it starts anything: no part, no role and no program the broker
@@ -126,9 +128,7 @@ const snapshotKey = takeSnapshotKey(env);
  * keeps the error in the pod's log, and the container does not restart every few seconds.
  */
 function fatalExit(): never {
-  const hold = Number(env.THERMITE_FATAL_HOLD_SECONDS ?? 0);
-  if (Number.isFinite(hold) && hold > 0)
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(hold, 600) * 1000);
+  if (fatalHoldMs > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, fatalHoldMs);
   process.exit(1);
 }
 const stateDir = env.THERMITE_STATE_DIR ?? "/var/lib/thermite";
@@ -177,7 +177,6 @@ const fenceAbi = (() => {
 let groupsHold = true;
 
 /** The supervisor's group: it reads exports from the shared outbox; roles may not. */
-const outboxGid = Number(env.THERMITE_OUTBOX_GID ?? "10001");
 
 function prepareDirectories(): void {
   for (const d of [stateDir, scratchDir, outboxDir, socketDir]) mkdirSync(d, { recursive: true });

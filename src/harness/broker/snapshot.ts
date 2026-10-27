@@ -22,6 +22,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { minutesSetting, numberSetting, secondsSetting } from "../../common/settings.ts";
 import { oneContainer, supervisorPaths } from "./one-container.ts";
 import { IDS } from "./runner.ts";
 import {
@@ -105,22 +106,14 @@ export function snapshotDir(env: Env): string | undefined {
   return env.THERMITE_STATE_SNAPSHOT_DIR || undefined;
 }
 
-function positive(env: Env, name: string, fallback: number, unit: string): number {
-  const raw = env[name];
-  if (raw === undefined || raw === "") return fallback;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a number of ${unit} above 0`);
-  return n;
-}
-
 /** How often a snapshot is taken (THERMITE_STATE_SNAPSHOT_MINUTES, 5 by default). */
 export function snapshotEveryMs(env: Env): number {
-  return positive(env, "THERMITE_STATE_SNAPSHOT_MINUTES", 5, "minutes") * 60_000;
+  return minutesSetting(env, "THERMITE_STATE_SNAPSHOT_MINUTES", 5);
 }
 
 /** How long a stop waits for its snapshot (THERMITE_STATE_SNAPSHOT_STOP_SECONDS, 8). */
 export function stopBudgetMs(env: Env): number {
-  return positive(env, "THERMITE_STATE_SNAPSHOT_STOP_SECONDS", 8, "seconds") * 1000;
+  return secondsSetting(env, "THERMITE_STATE_SNAPSHOT_STOP_SECONDS", 8);
 }
 
 /**
@@ -141,7 +134,7 @@ export function snapshotAreas(env: Env): SnapshotArea[] {
       name: "outbox",
       live: env.THERMITE_OUTBOX_DIR ?? "/outbox",
       uid: t.uid,
-      gid: Number(env.THERMITE_OUTBOX_GID ?? "10001"),
+      gid: numberSetting(env, "THERMITE_OUTBOX_GID", 10001, { integer: true }),
     },
   ];
   if (oneContainer(env)) {

@@ -152,7 +152,9 @@ describe("the most lanes a rig runs", () => {
     for (const bad of ["-1", String(MAX_LANES + 1), "2.5", "two"])
       assert.throws(
         () => lanesFromEnv(bad),
-        new RegExp(`THERMITE_MAX_TRIALS must be a whole number from 0 to ${MAX_LANES}, not `),
+        new RegExp(
+          `THERMITE_MAX_TRIALS takes a whole number from 0 to ${MAX_LANES} \\(0: no trials\\), not `,
+        ),
         bad,
       );
   });

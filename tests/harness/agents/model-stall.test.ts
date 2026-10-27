@@ -59,7 +59,7 @@ describe("a model stream that goes silent (goal 079)", () => {
       assert.throws(
         () => modelStallMs({ [STALL_SETTING]: bad }),
         new RegExp(
-          `^Error: THERMITE_MODEL_STALL_SECONDS must be a number of seconds \\(0: off\\), not ${bad}$`,
+          `^Error: THERMITE_MODEL_STALL_SECONDS takes a number of seconds from 0 \\(0: off\\), not "${bad}"$`,
         ),
       );
     assert.equal(stallWords(600_000), "the model's stream went silent for 600 s");

@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
+import { numberSetting, secondsSetting } from "../common/settings.ts";
 import { untoldKinds } from "../core/kb.ts";
 import type { McpUse } from "../core/mcp.ts";
 import { buildHeaders, buildInfo } from "../core/version.ts";
@@ -20,6 +21,7 @@ import { AdvisorsConfig, advisorsFileReport } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
+import { harnessAdvisors } from "./harness-advisors.ts";
 import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
 import { syncMcpServers } from "./mcp-sync.ts";
@@ -46,6 +48,9 @@ function notYetExported(outboxDir: string, state: ExportState): number {
   const done = new Set(state.done);
   return readdirSync(outboxDir).filter((n) => !n.startsWith(".") && !done.has(n)).length;
 }
+
+/** An interval whose 0 turns its loop off. */
+const OFF_AT_ZERO = { aboveMin: false, zeroMeans: "off" };
 
 /**
  * Supervisor entry point: the 60-second report and command relay loop (with content staging,
@@ -111,7 +116,7 @@ async function main(): Promise<void> {
       if (kind === "wipe_state" && accepted) wipeRequested = true;
     },
   };
-  const intervalMs = Number(env.THERMITE_POLL_SECONDS ?? "60") * 1000;
+  const intervalMs = secondsSetting(env, "THERMITE_POLL_SECONDS", 60);
   const exportPath = join(home, "export-state.json");
   let exportState: ExportState = load(exportPath, { done: [] });
   // Champion patches waiting to reach control (kept across restarts).
@@ -232,39 +237,9 @@ async function main(): Promise<void> {
   // The harness may still be starting: wait for it once, before the relays begin.
   await waitForHarness(harnessUrl, () => stopping);
 
-  /** The rig's settings from the harness; all advisors on when it can't say (an older harness). */
-  let lastSettings = { teachers: true, auditor: true, review: true };
-  const rigSettings = async () => {
-    try {
-      const r = await fetch(`${harnessUrl}/v1/settings`, {
-        headers: { authorization: `Bearer ${harnessToken}` },
-      });
-      if (r.ok) lastSettings = { ...lastSettings, ...((await r.json()) as typeof lastSettings) };
-    } catch {}
-    return lastSettings;
-  };
-  /**
-   * Tells the harness which advisors decide (goal 079): without an auditor, the audits it holds
-   * go on by each run's rules instead of waiting; without a final writer (goal 112: the first of
-   * the teachers on, which writes research papers), an answered research run closes without a
-   * paper. An older harness does not know the call. Said again every minute between rounds: a
-   * harness that restarted forgets it.
-   */
-  let told: { auditor: boolean; panel: number; writer: boolean } | undefined;
-  let toldAt = 0;
-  const tellAdvisors = async (a = told) => {
-    if (!a) return;
-    told = a;
-    toldAt = Date.now();
-    try {
-      await fetch(`${harnessUrl}/v1/advisors`, {
-        method: "PUT",
-        headers: { authorization: `Bearer ${harnessToken}`, "content-type": "application/json" },
-        body: JSON.stringify(a),
-      });
-    } catch {}
-  };
-  const retell = () => (Date.now() - toldAt >= 60_000 ? tellAdvisors() : undefined);
+  // The rig's settings and which advisors decide, from and to the harness.
+  const harnessLink = harnessAdvisors(harnessUrl, harnessToken);
+  const { tell: tellAdvisors, retell } = harnessLink;
   // How often the pause between advisor rounds looks for a new owner's message to the teachers.
   const ownerCheckMs = 5000;
   // Advisors run on their own: a teacher round can take many minutes.
@@ -284,7 +259,7 @@ async function main(): Promise<void> {
       const before = { ...adviseState.stats };
       try {
         // Only the roles both configured and switched on in the rig's settings (Edit rig).
-        const on = await rigSettings();
+        const on = await harnessLink.settings();
         const active = {
           ...advisors,
           teachers: on.teachers ? advisors.teachers : [],
@@ -352,7 +327,7 @@ async function main(): Promise<void> {
           { harnessUrl, harnessToken, advisors },
           adviseState,
         ).catch(() => false);
-        if (called && lastSettings.teachers) break;
+        if (called && harnessLink.last().teachers) break;
       }
     }
   };
@@ -360,7 +335,10 @@ async function main(): Promise<void> {
 
   // The live view: the harness's live log (signed) and the supervisor's own lines, every few
   // seconds. Independent of the 60 s report relay.
-  const liveMs = Number(env.THERMITE_LIVE_INTERVAL_MS ?? "3000");
+  const liveMs = numberSetting(env, "THERMITE_LIVE_INTERVAL_MS", 3000, {
+    unit: "ms",
+    zeroMeans: "off",
+  });
   const living = async () => {
     let liveState: LiveRelayState = { cursor: 0, ownCursor: 0 };
     let failing = false;
@@ -383,7 +361,10 @@ async function main(): Promise<void> {
 
   // Commands on their own short interval: a pause or a message should not wait for the next
   // report. The report loop below leaves commands to this one.
-  const commandMs = Number(env.THERMITE_COMMAND_POLL_SECONDS ?? "5") * 1000;
+  const commandMs = secondsSetting(env, "THERMITE_COMMAND_POLL_SECONDS", 5, {
+    aboveMin: false,
+    zeroMeans: "with each report",
+  });
   const commanding = async () => {
     let failing = false;
     while (!stopping && controlUrl && commandMs > 0) {
@@ -403,7 +384,7 @@ async function main(): Promise<void> {
   const commandingDone = commanding();
 
   // The agents' model route, from control's settings page: checked every half minute.
-  const routeMs = Number(env.THERMITE_MODEL_ROUTE_POLL_SECONDS ?? "30") * 1000;
+  const routeMs = secondsSetting(env, "THERMITE_MODEL_ROUTE_POLL_SECONDS", 30, OFF_AT_ZERO);
   const pause = async (ms: number) => {
     const until = Date.now() + ms;
     while (!stopping && !wipeRequested && Date.now() < until)
@@ -457,7 +438,7 @@ async function main(): Promise<void> {
   // folder (knowledge/), every few minutes. The cursor of each run is kept here.
   const kbPath = join(home, "kb-state.json");
   let kbState: KbSyncState = load(kbPath, emptyKbSyncState());
-  const kbMs = Number(env.THERMITE_KB_SYNC_SECONDS ?? "180") * 1000;
+  const kbMs = secondsSetting(env, "THERMITE_KB_SYNC_SECONDS", 180, OFF_AT_ZERO);
   const syncingKb = async () => {
     let failing = false;
     // Kinds of item from a newer control that this build left out: each is logged once.
@@ -610,10 +591,10 @@ async function main(): Promise<void> {
               // decided. Control reads these keys from every version of the supervisor: the
               // merged by model is `combiner` and the review panel `panel` here (goal 074).
               roles: {
-                teachers: lastSettings.teachers ? advisors.teachers.length : 0,
-                combiner: lastSettings.teachers && Boolean(advisors.merged_by),
-                auditor: lastSettings.auditor && Boolean(advisors.auditor),
-                panel: lastSettings.review ? advisors.review_panel.length : 0,
+                teachers: harnessLink.last().teachers ? advisors.teachers.length : 0,
+                combiner: harnessLink.last().teachers && Boolean(advisors.merged_by),
+                auditor: harnessLink.last().auditor && Boolean(advisors.auditor),
+                panel: harnessLink.last().review ? advisors.review_panel.length : 0,
               },
               // What the rig's advisors file sets up for each role, so that Edit rig can say what
               // an advisor with no model from control uses (goal 074). No key, token or address.

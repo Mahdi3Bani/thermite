@@ -79,7 +79,7 @@ describe("the agents' model source", () => {
     assert.throws(() => m.set({ ...route, compact_at: 99 }));
     assert.throws(
       () => modelConfigFromEnv({ ...vars, THERMITE_MODEL_COMPACT_AT: "40" }),
-      /THERMITE_MODEL_COMPACT_AT: The compaction point is a whole percent of the context window, from 50 to 95\. Not 40\./,
+      /THERMITE_MODEL_COMPACT_AT takes a whole number of percent from 50 to 95, not "40"/,
     );
   });
 

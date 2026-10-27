@@ -50,6 +50,7 @@ import {
 } from "./broker/devices.ts";
 import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
 import { Compactions, compactionOf } from "./compactions.ts";
+import { harnessNumbers } from "./env-numbers.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { jobsAtStart } from "./judge/lease.ts";
@@ -81,6 +82,7 @@ async function main(): Promise<void> {
   // world write.
   process.umask(0o022);
   const env = process.env;
+  const numbers = harnessNumbers(env);
   const rig = requireEnv("THERMITE_RIG_ID");
   const paths = {
     stateDir: env.THERMITE_STATE_DIR ?? "/var/lib/thermite",
@@ -233,7 +235,7 @@ async function main(): Promise<void> {
       exports: true,
       // No trial length unless one is set (goal 079).
       trial_minutes: trialMinutesFromEnv(env.THERMITE_TRIAL_MINUTES),
-      max_turns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : null,
+      max_turns: numbers.maxTurns,
       quiet_minutes: null,
       promotion,
       judge_gpus: null,
@@ -354,9 +356,7 @@ async function main(): Promise<void> {
     knowledge: service.knowledge,
   });
   const research = new Research(ledger, paths.stateDir, {
-    maxCorpusBytes: env.THERMITE_RESEARCH_MAX_MB
-      ? Number(env.THERMITE_RESEARCH_MAX_MB) * 1024 * 1024
-      : undefined,
+    maxCorpusBytes: numbers.researchMaxBytes,
     onChange: (run) => void researchFolder.sync(run),
   });
   service.researchFolder = (run) => researchFolder.exportFiles(run);
@@ -444,7 +444,7 @@ async function main(): Promise<void> {
         driver: d,
         owner: executorIds[i] as string,
         promotion,
-        calibrationBlocks: Number(env.THERMITE_CALIBRATION_BLOCKS ?? "6"),
+        calibrationBlocks: numbers.calibrationBlocks,
         deviceGate: devRuns,
         ...(judging.length > 1
           ? {
@@ -762,12 +762,8 @@ async function main(): Promise<void> {
       }
     },
     devRuns,
-    usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
-      ? Number(env.THERMITE_LLM_USD_PER_MTOK_IN)
-      : undefined,
-    usdPerMTokOut: env.THERMITE_LLM_USD_PER_MTOK_OUT
-      ? Number(env.THERMITE_LLM_USD_PER_MTOK_OUT)
-      : undefined,
+    usdPerMTokIn: numbers.usdPerMTokIn,
+    usdPerMTokOut: numbers.usdPerMTokOut,
   });
   settings.onChange((s) => {
     scheduler.configure({
@@ -793,7 +789,7 @@ async function main(): Promise<void> {
     route: info.source,
     model: info.model ?? null,
   });
-  const exportEveryMs = Number(env.THERMITE_EXPORT_MINUTES ?? "60") * 60_000;
+  const exportEveryMs = numbers.exportEveryMs;
   let stopping = false;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   // Three independent loops: a judging job never holds up the scheduler (trials, epochs) or the

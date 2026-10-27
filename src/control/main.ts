@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
+import { optionalNumberSetting, secondsSetting } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
@@ -73,9 +74,9 @@ async function main(): Promise<void> {
   const store = new ControlStore(join(dir, "control.db"));
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
   // A rig is stale after 3 missed reports (the supervisor reports every 60 s by default).
-  const staleAfterMs = Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000;
+  const staleAfterMs = secondsSetting(env, "THERMITE_CONTROL_STALE_SECONDS", 180);
   // Offline after 15 minutes without a report (never before it is stale).
-  const offlineAfterMs = Number(env.THERMITE_CONTROL_OFFLINE_SECONDS ?? "900") * 1000;
+  const offlineAfterMs = secondsSetting(env, "THERMITE_CONTROL_OFFLINE_SECONDS", 900);
   const driver = driverFromEnv(env);
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
@@ -108,9 +109,10 @@ async function main(): Promise<void> {
       driver,
       // Optional: the owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
-      sessionDays: env.THERMITE_CONTROL_SESSION_DAYS
-        ? Number(env.THERMITE_CONTROL_SESSION_DAYS)
-        : undefined,
+      sessionDays: optionalNumberSetting(env, "THERMITE_CONTROL_SESSION_DAYS", {
+        unit: "days",
+        aboveMin: true,
+      }),
       secrets,
       runpodTests,
       mcpServers,

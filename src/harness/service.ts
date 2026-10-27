@@ -188,13 +188,7 @@ export const IdeaRequest = z.strictObject({
 });
 
 /** What a queue command did, as its result: the experiment, its state and its place. */
-function queueResult(x: Experiment): {
-  experiment: string;
-  state: string;
-  position: number | null;
-} {
-  return { experiment: x.id, state: x.state, position: x.place };
-}
+const queueResult = (x: Experiment) => ({ experiment: x.id, state: x.state, position: x.place });
 
 /** Written by an accepted wipe_state; the next controller start wipes the state and removes it. */
 export const WIPE_MARKER = "WIPE_REQUESTED";
@@ -2906,6 +2900,7 @@ export class HarnessService {
         ...(this.models ? { model: this.models.info() } : {}),
         // What runs on this rig and how (Edit rig).
         settings: this.settings.get(),
+        ...(this.settings.unreadable ? { settings_unreadable: this.settings.unreadable } : {}),
         // What still runs, and whether the rig drains (goal 079): control restarts a draining
         // rig once nothing runs.
         work: this.work(),

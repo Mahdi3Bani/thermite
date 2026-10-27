@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statfsSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { arch, cpus, totalmem } from "node:os";
+import { numberSetting } from "../common/settings.ts";
 import { composeFinding } from "./doctor/compose.ts";
 import {
   CDI_GENERATE,
@@ -200,7 +201,9 @@ function engineFinding(engines: Engine[], platform: NodeJS.Platform): Finding {
 
 async function portFinding(p: Probes, opts: DoctorOptions): Promise<Finding> {
   const title = "Control's port";
-  const port = opts.port ?? (Number(p.env.THERMITE_CONTROL_PORT) || 8800);
+  const port =
+    opts.port ??
+    numberSetting(p.env, "THERMITE_CONTROL_PORT", 8800, { integer: true, min: 1, max: 65535 });
   if (!(await p.portInUse(port)))
     return {
       check: "port",

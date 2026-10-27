@@ -1,16 +1,16 @@
 ---
 id: "164"
 title: "Settings that fail loudly: a bad value stops the part at start, and no failure passes as success"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-26
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # 164 · Settings that fail loudly: a bad value stops the part at start, and no failure passes as success
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
@@ -37,9 +37,9 @@ CONVENTIONS.md: "Validate every input that crosses a trust boundary", and "Nothi
 
 ## Done when
 
-- [ ] Every numeric setting in `src/` is read through the one helper, and a test for each kind shows a bad value stopping the part at start with words.
-- [ ] Items 2 to 4 are fixed, each with a regression test.
-- [ ] The pages that list settings say what each setting takes; the docs check passes.
+- [x] Every numeric setting in `src/` is read through the one helper, and a test for each kind shows a bad value stopping the part at start with words.
+- [x] Items 2 to 4 are fixed, each with a regression test.
+- [x] The pages that list settings say what each setting takes; the docs check passes.
 - [ ] The fast checks pass, and the compose smoke check.
 
 ## Decisions
@@ -49,6 +49,7 @@ CONVENTIONS.md: "Validate every input that crosses a trust boundary", and "Nothi
 ## Progress
 
 - 2026-10-26: Goal written from the v0.1.1 audit's harness, supervisor, cross-cutting and operations reports.
+- 2026-10-27 07:41 UTC: Items 1 to 4 fixed. Item 1: `src/common/settings.ts` reads every numeric setting by what it takes (a unit, bounds, whole or not, and what 0 means where it means something) and stops the part at start with `<NAME> takes <what it takes>, not "<value>"`; an empty value takes the default. Every `Number(env…)` read in `src/` uses it, the snapshot settings' `positive()` and the lanes and compaction readers included; the harness's and the broker's numbers are read in `src/harness/env-numbers.ts` and `src/harness/broker/settings.ts` (`tests/common/settings.test.ts`). The supervisor's intervals whose 0 turns a loop off keep that. Item 2: a settings file the harness can't read is renamed `rig-settings.json.unreadable-<time>`, logged and reported as `settings_unreadable` (`tests/harness/rig-settings.test.ts`). Item 3: `thermite status` exits 1 on an error answer (`tests/cli/status.test.ts`). Item 4: the supervisor's two calls to the harness about the advisors moved to `src/supervisor/harness-advisors.ts`, which logs the first failure of a streak with its status (`tests/supervisor/harness-advisors.test.ts`). Settings says what each number setting takes; the changelog says a bad value now stops the part at start. The fast checks and the compose smoke check are left, with goal 163's acceptance checks.
 
 ---
 
