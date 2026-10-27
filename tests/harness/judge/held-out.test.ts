@@ -41,7 +41,7 @@ describe("held-out failures, named safely (goal 082)", () => {
     });
     const crash = await env.submit(CRASHES_HIDDEN, "drop the waste, crash on one size");
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(crash)?.verdict, "not_confirmed", env.explain(crash));
+    assert.equal(env.ledger.verdicts.current(crash)?.verdict, "not_confirmed", env.explain(crash));
     // The agents' words: that a held-out check crashed, and the measured cells' own figures.
     assert.match(
       env.reasons(crash),
@@ -49,9 +49,9 @@ describe("held-out failures, named safely (goal 082)", () => {
     );
     const slow = await env.submit(SLOW_ON_HIDDEN, "drop the waste, idle on one size");
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(slow)?.verdict, "not_confirmed", env.explain(slow));
+    assert.equal(env.ledger.verdicts.current(slow)?.verdict, "not_confirmed", env.explain(slow));
     assert.match(env.reasons(slow), /^confirmation failed: a held-out check missed its threshold;/);
-    assert.equal(env.ledger.currentChampion("js-1").seq, 1);
+    assert.equal(env.ledger.champions.current("js-1").seq, 1);
 
     // The record and the owner's event: the case, its kind, and the ratio against its threshold.
     const record = env.ledger.db
@@ -229,7 +229,7 @@ describe("held-out failures, named safely (goal 082)", () => {
     await env.drain(); // validates the seed
     const id = await env.submit(SLOW_ON_HIDDEN, "drop the waste, idle on one size");
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(id)?.verdict, "not_confirmed", env.explain(id));
+    assert.equal(env.ledger.verdicts.current(id)?.verdict, "not_confirmed", env.explain(id));
     assert.equal(
       env.reasons(id),
       "confirmation failed: a held-out check missed its threshold; vs champion seq 1",

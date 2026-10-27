@@ -44,7 +44,7 @@ export function olderChampion(
   currentSeq: number,
 ): number | undefined {
   if (crowned(ledger, attempt)) return undefined;
-  const parentCommit = String(ledger.getAttempt(attempt)?.parent_commit ?? "");
+  const parentCommit = String(ledger.attempts.get(attempt)?.parent_commit ?? "");
   const r = ledger.db
     .prepare(
       "select seq from champion where run = ? and commit_sha = ? and seq < ? and seq >= ? order by seq desc limit 1",
@@ -72,15 +72,15 @@ export async function queuePort(
   p: PortFound,
 ): Promise<string | undefined> {
   const ledger = service.ledger;
-  const champion = ledger.currentChampion(p.run);
+  const champion = ledger.champions.current(p.run);
   const done = ledger.events.newest("port_queued", {
     subject: p.attempt,
     body: { onto_seq: champion.seq },
   });
   // The current champion's change is in it already.
   if (done || p.attempt === champion.attempt) return undefined;
-  const a = ledger.getAttempt(p.attempt);
-  const inst = ledger.getRun(p.run);
+  const a = ledger.attempts.get(p.attempt);
+  const inst = ledger.runs.get(p.run);
   if (!a || !inst) return undefined;
   const head = [
     `Port of ${p.attempt} onto champion #${champion.seq} (commit ${champion.commit_sha.slice(0, 12)}).`,
@@ -136,7 +136,7 @@ export async function portReplaced(service: HarnessService, run: string): Promis
     )
     .all(run) as { seq: number; attempt: string | null; commit_sha: string }[];
   if (!cur?.attempt || !prev?.attempt) return;
-  const parent = String(service.ledger.getAttempt(cur.attempt)?.parent_commit ?? "");
+  const parent = String(service.ledger.attempts.get(cur.attempt)?.parent_commit ?? "");
   if (parent === prev.commit_sha) return;
   await queuePort(service, {
     run,

@@ -64,7 +64,7 @@ export function unblockAtStart(ledger: Ledger, actor: string): number[] {
         expiries: Number(r.expiries),
         reason: "queued again at the harness's start: one more lost lease blocks it again",
       });
-      if (r.attempt !== null) ledger.setAttemptLifecycle(r.attempt, "queued", actor);
+      if (r.attempt !== null) ledger.attempts.setLifecycle(r.attempt, "queued", actor);
     }
     return rows.map((r) => Number(r.id));
   });
@@ -86,9 +86,9 @@ export function jobsAtStart(
   const unblocked = unblockAtStart(ledger, "controller-start");
   if (unblocked.length) log("blocked jobs queued again at start", { jobs: unblocked });
   for (const id of executors) {
-    const reclaimed = ledger.reclaimLeases(id, "controller-start");
+    const reclaimed = ledger.jobs.reclaimLeases(id, "controller-start");
     if (reclaimed.length) log("reclaimed leases at start", { executor: id, jobs: reclaimed });
   }
-  const cancelled = ledger.endClosedRunJobs("controller-start");
+  const cancelled = ledger.jobs.endClosedRuns("controller-start");
   if (cancelled.length) log("cancelled closed runs' jobs at start", { jobs: cancelled });
 }

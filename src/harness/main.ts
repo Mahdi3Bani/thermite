@@ -829,7 +829,7 @@ async function main(): Promise<void> {
       }
       // Hourly export for the supervisor to push (and an export command can force one). An
       // export's own event is not news, or an idle rig would export every hour forever.
-      const last = ledger.lastExport();
+      const last = ledger.exports.last();
       const lastAt = last ? Date.parse(last.created_at) : 0;
       if (
         settings.get().exports &&

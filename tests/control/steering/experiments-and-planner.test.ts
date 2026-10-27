@@ -194,7 +194,7 @@ describe("the run page's Experiments and Planner tabs", () => {
       },
     });
     assert.equal(redirect.status, 201, await redirect.clone().text());
-    const [legacy] = env.service.ledger.addDirectiveSet(
+    const [legacy] = env.service.ledger.directives.addSet(
       "js-1",
       "control:owner:ui",
       [

@@ -29,13 +29,13 @@ describe("the ledger's migrations (goal 125, T6)", () => {
     const { path, ledger } = migrated();
     const version = ledger.db.prepare("select max(version) as v from schema_migrations").get();
     assert.equal(version?.v, LEDGER_MIGRATIONS.length);
-    assert.deepEqual(ledger.currentChampion("js-1"), {
+    assert.deepEqual(ledger.champions.current("js-1"), {
       seq: 2,
       commit_sha: "acebca7c8a4298c1f1fbf74c8b9c586061cd2135",
       attempt: WIN,
     });
-    assert.equal(ledger.currentVerdict(WIN)?.verdict, "win_confirmed");
-    assert.equal(ledger.currentVerdict(WRONG)?.verdict, "invalid");
+    assert.equal(ledger.verdicts.current(WIN)?.verdict, "win_confirmed");
+    assert.equal(ledger.verdicts.current(WRONG)?.verdict, "invalid");
     assert.equal(ledger.latestEventId(), 37);
     ledger.close();
     assert.deepEqual(

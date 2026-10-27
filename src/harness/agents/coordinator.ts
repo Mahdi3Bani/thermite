@@ -71,8 +71,8 @@ export function rulesInForce(ledger: Ledger, run: string): { id: number; body: S
   // round converts it; it has no family, so the code below and the fixed rules never keep it.
   // An advisor's rule that freezes the queue's size or pins an experiment, set before code
   // refused them (goal 081), never reaches the plan.
-  const all = ledger
-    .activeDirectives(run)
+  const all = ledger.directives
+    .active(run)
     .filter((d) => !d.author.startsWith("supervisor") || !ruleRefusal(d.body as StoredRule))
     .map((d) => ({
       id: d.id,
@@ -110,7 +110,7 @@ export function lanesAtWork(ledger: Ledger, run: string, contract: Contract): nu
 
 /** Whether the judge is done with an attempt (none: nothing to wait for). */
 export function attemptSettled(ledger: Ledger, attempt: string | null): boolean {
-  return !attempt || JUDGED_LIFECYCLES.has(String(ledger.getAttempt(attempt)?.lifecycle));
+  return !attempt || JUDGED_LIFECYCLES.has(String(ledger.attempts.get(attempt)?.lifecycle));
 }
 
 /**
@@ -351,7 +351,7 @@ export class Coordinator {
         this.queue.move(run, m.id, { by: PLANNER, position: m.position, why: m.why }, PLANNER),
       );
     if (plan.rules.length)
-      this.ledger.addDirectiveSet(
+      this.ledger.directives.addSet(
         run,
         PLANNER,
         plan.rules.map((r) => ({
@@ -366,7 +366,7 @@ export class Coordinator {
     // Each old rule in words becomes a rule on the direction the model named (goal 066).
     for (const c of plan.convert)
       tryIt(`convert rule ${c.rule}`, () => {
-        this.ledger.convertRule(run, c.rule, c.family, PLANNER);
+        this.ledger.directives.convertRule(run, c.rule, c.family, PLANNER);
       });
     const handout: (Handout & { parent: "champion" | "lane_best" })[] = [];
     for (const h of plan.handout) {

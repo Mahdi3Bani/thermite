@@ -27,7 +27,7 @@ describe("supervisor relay between control and harness", () => {
     assert.equal(store.command(id)?.status, "pending");
     state = await relayOnce(cfg, state);
     assert.equal(store.command(id)?.status, "delivered");
-    assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
+    assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
 
     state = await relayOnce(cfg, state);
     const events = store.events("rig-a", 0, 10_000) as { id: number; kind: string }[];
@@ -69,7 +69,7 @@ describe("supervisor relay between control and harness", () => {
       statuses.map((s) => s.status),
       ["delivered", "rejected"],
     );
-    assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
+    assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
   });
 
   test("a command whose content could not be fetched fails with the reason, and never reaches the harness", async () => {
@@ -101,7 +101,7 @@ describe("supervisor relay between control and harness", () => {
     assert.equal(cmd.status, "failed");
     assert.match(JSON.stringify(cmd.outcome), /staging: the repository has no commit/);
     assert.equal(harnessCalls, 0);
-    assert.equal(env.service.ledger.getRun("smoke-1"), undefined);
+    assert.equal(env.service.ledger.runs.get("smoke-1"), undefined);
   });
 
   test("a command that waits for its sources is fetched whole once, then by its id (goal 171)", async () => {
@@ -141,7 +141,7 @@ describe("supervisor relay between control and harness", () => {
     ready = true;
     state = await relayOnce(cfg, state);
     assert.equal(store.command(id)?.status, "delivered");
-    assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
+    assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
     await relayOnce(cfg, state);
     assert.equal(cfg.held.size, 0);
   });
@@ -176,7 +176,7 @@ describe("supervisor relay between control and harness", () => {
     ready = true;
     await relayOnce(cfg, state);
     assert.equal(store.command(id)?.status, "delivered");
-    assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
+    assert.equal(env.service.ledger.runs.get("smoke-1")?.status, "running");
   });
 
   test("a reset harness ledger restarts the cursor, and control keeps both ledgers' events", async () => {

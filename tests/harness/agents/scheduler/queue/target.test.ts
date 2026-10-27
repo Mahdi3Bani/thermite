@@ -50,7 +50,7 @@ describe("the queue's target drives ideas (goal 081)", () => {
     const repeat = idea("Wider loads!");
     const avoided = idea("tile the loops", { family: "tiling" });
     const table = idea("use a lookup table");
-    s.env.ledger.addDirectiveSet(
+    s.env.ledger.directives.addSet(
       RUN,
       "control:owner",
       [{ kind: "avoid", family: "tiling", rationale: "null", citations: [] }],
@@ -189,7 +189,7 @@ describe("the queue's target drives ideas (goal 081)", () => {
       }),
     });
     // Set before code refused them (goal 081): one freezes the queue, one is a plain rule.
-    s.env.ledger.addDirectiveSet(
+    s.env.ledger.directives.addSet(
       RUN,
       "supervisor",
       [

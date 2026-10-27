@@ -517,12 +517,12 @@ export class HarnessService {
 
   /** A run's promotion policy: its own, chosen when it was assigned, or the rig's default. */
   promotionFor(run: string): "auto" | "owner_approval" {
-    return this.ledger.getRun(run)?.promotion ?? this.promotion;
+    return this.ledger.runs.get(run)?.promotion ?? this.promotion;
   }
 
   /** What else a run asks the owner about (goal 079): nothing unless it was set to ask. */
   askFor(run: string): AskOwner {
-    return this.ledger.getRun(run)?.ask_owner ?? {};
+    return this.ledger.runs.get(run)?.ask_owner ?? {};
   }
 
   /**
@@ -550,13 +550,8 @@ export class HarnessService {
 
   /** The change of an attempt's current verdict, if it has one. */
   private verdictDelta(attempt: string): number | null {
-    const v = this.ledger.currentVerdict(attempt);
-    const d = v
-      ? (this.ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as
-          | { delta: number | null }
-          | undefined)
-      : undefined;
-    return typeof d?.delta === "number" ? d.delta : null;
+    const v = this.ledger.verdicts.current(attempt);
+    return (v && this.ledger.verdicts.get(v.id)?.delta) ?? null;
   }
 
   /**
@@ -744,7 +739,7 @@ export class HarnessService {
       "hands-off: the review panel passed it, and the run does not ask the owner",
       "harness (hands-off)",
     );
-    this.ledger.enqueueJob({ kind: "validate", priority: 40, spec: { run: row.run }, actor: by });
+    this.ledger.jobs.enqueue({ kind: "validate", priority: 40, spec: { run: row.run }, actor: by });
     return { result, accepted: true };
   }
 
@@ -851,9 +846,9 @@ export class HarnessService {
         | undefined;
       if (!au) continue;
       const attempt = String(au.attempt);
-      if (String(this.ledger.getAttempt(attempt)?.lifecycle) !== "awaiting_audit") continue;
+      if (String(this.ledger.attempts.get(attempt)?.lifecycle) !== "awaiting_audit") continue;
       // A closed run's audit stays held (goal 087): none of its changes becomes the champion.
-      if (this.ledger.getRun(String(au.run))?.status === "closed") continue;
+      if (this.ledger.runs.get(String(au.run))?.status === "closed") continue;
       this.ledger.appendEvent(by, "audit_skipped", attempt, {
         audit: id,
         run: String(au.run),
@@ -878,7 +873,7 @@ export class HarnessService {
     by: string,
     cleared: string,
   ): Promise<Record<string, unknown>> {
-    const a = this.ledger.getAttempt(attempt) as Record<string, unknown>;
+    const a = this.ledger.attempts.get(attempt) as Record<string, unknown>;
     const ask = this.ownerAsks(run, a, this.verdictDelta(attempt));
     if (ask) {
       this.ledger.tx(() => {
@@ -888,7 +883,7 @@ export class HarnessService {
           commit: a.commit_sha,
           reason: ask,
         });
-        this.ledger.setAttemptLifecycle(attempt, "awaiting_approval", by);
+        this.ledger.attempts.setLifecycle(attempt, "awaiting_approval", by);
       });
       return { effect: "waiting for the owner", reason: ask };
     }
@@ -909,7 +904,7 @@ export class HarnessService {
     const verified = verifyCommand(input, this.controlPublicKeyPem, this.rig, this.clock());
     if (!verified.ok && verified.authenticId) {
       // Authentic but expired (or otherwise late): if it was applied before, report that.
-      const prior = this.ledger.getCommand(verified.authenticId);
+      const prior = this.ledger.commands.get(verified.authenticId);
       if (prior) return { status: "replayed", ...prior };
     }
     if (!verified.ok) {
@@ -923,7 +918,7 @@ export class HarnessService {
       return { status: "rejected", reason: verified.reason };
     }
     const { envelope, payload } = verified;
-    const prior = this.ledger.getCommand(envelope.id);
+    const prior = this.ledger.commands.get(envelope.id);
     if (prior) return { status: "replayed", ...prior };
     // After a wipe, commands signed for the old ledger are not applied to the new one.
     const notBefore = this.ledger.db
@@ -950,7 +945,7 @@ export class HarnessService {
     } finally {
       this.inFlight.delete(envelope.id);
     }
-    this.ledger.recordCommand({
+    this.ledger.commands.record({
       id: envelope.id,
       kind: envelope.kind,
       envelope,
@@ -986,7 +981,7 @@ export class HarnessService {
         const p = CommandPayloads.pause_run.parse(payload);
         // A closed run stays closed: a pause would let a resume open it again.
         if (this.requireRun(p.run).status === "closed") throw new Refusal(`run ${p.run} is closed`);
-        this.ledger.setRunStatus(p.run, "paused", p.reason, by);
+        this.ledger.runs.setStatus(p.run, "paused", p.reason, by);
         return { run: p.run, status: "paused" };
       }
       case "resume_run": {
@@ -996,7 +991,7 @@ export class HarnessService {
         // One running run per rig: resuming one pauses the others.
         this.ledger.tx(() => {
           this.pauseOthers(p.run, by);
-          this.ledger.setRunStatus(p.run, "running", null, by);
+          this.ledger.runs.setStatus(p.run, "running", null, by);
         });
         return { run: p.run, status: "running" };
       }
@@ -1011,7 +1006,7 @@ export class HarnessService {
             "conflict",
             `run ${p.run} is already closed${inst.pause_reason ? ` (${inst.pause_reason})` : ""}: there is nothing to close`,
           );
-        this.ledger.setRunStatus(p.run, "closed", p.reason, by);
+        this.ledger.runs.setStatus(p.run, "closed", p.reason, by);
         return { run: p.run, status: "closed", was: inst.status };
       }
       case "redirect": {
@@ -1024,7 +1019,7 @@ export class HarnessService {
         const unknown = unknownIn(p.directives, known);
         if (unknown.length && this.contractFor(p.run).mode === "research")
           throw new LedgerError("invalid", researchDirectionRefusal(unknown));
-        const ids = this.ledger.addDirectiveSet(p.run, by, p.directives, p.replace);
+        const ids = this.ledger.directives.addSet(p.run, by, p.directives, p.replace);
         return {
           run: p.run,
           directives: ids,
@@ -1083,7 +1078,7 @@ export class HarnessService {
       case "drop_directive": {
         const p = CommandPayloads.drop_directive.parse(payload);
         this.openRun(p.run);
-        this.ledger.dropDirective(p.run, p.id, by);
+        this.ledger.directives.drop(p.run, p.id, by);
         return { run: p.run, dropped: p.id };
       }
       // A research run's hypothesis promoted, returned to the pool or retired (goal 117): the
@@ -1123,7 +1118,7 @@ export class HarnessService {
         return {
           export: r.dir.split("/").pop(),
           export_id: r.id,
-          through_event: this.ledger.lastExport()?.through_event ?? 0,
+          through_event: this.ledger.exports.last()?.through_event ?? 0,
           attempts: r.attempts,
           events: r.events,
         };
@@ -1165,7 +1160,7 @@ export class HarnessService {
           return { review: p.review, decision: p.accept ? "accepted" : "rejected" };
         }
         // The goal tree is checked again with the owner's word.
-        this.ledger.enqueueJob({
+        this.ledger.jobs.enqueue({
           kind: "validate",
           priority: 40,
           spec: { run: p.run },
@@ -1182,15 +1177,15 @@ export class HarnessService {
   }
 
   private pauseOthers(run: string, by: string): void {
-    for (const other of this.ledger.listRuns()) {
+    for (const other of this.ledger.runs.list()) {
       if (other.status === "running" && other.id !== run) {
-        this.ledger.setRunStatus(other.id, "paused", `replaced by ${run}`, by);
+        this.ledger.runs.setStatus(other.id, "paused", `replaced by ${run}`, by);
       }
     }
   }
 
   private requireRun(id: string) {
-    const inst = this.ledger.getRun(id);
+    const inst = this.ledger.runs.get(id);
     if (!inst) throw new LedgerError("not_found", `no run ${id}`);
     return inst;
   }
@@ -1236,7 +1231,7 @@ export class HarnessService {
           expectedCommit: spec.commit,
           expectedSha256: spec.sha256,
         });
-        this.ledger.recordImport({
+        this.ledger.imports.record({
           kind: spec.kind,
           name: repo,
           sha256: r.sha256,
@@ -1254,7 +1249,7 @@ export class HarnessService {
           expectedSha256: spec.sha256,
           storeDir: join(this.paths.stateDir, "models"),
         });
-        this.ledger.recordImport({
+        this.ledger.imports.record({
           kind: "model",
           name: spec.name,
           sha256: spec.sha256,
@@ -1310,7 +1305,7 @@ export class HarnessService {
       throw new BadInput("contract hash does not match contract_sha");
     const contract = parsed.contract;
     // Validate everything before changing anything: a refused assign leaves no trace but events.
-    if (this.ledger.getRun(p.run)) throw new Refusal(`run ${p.run} already exists`);
+    if (this.ledger.runs.get(p.run)) throw new Refusal(`run ${p.run} already exists`);
     // A run without agents (a try) has no queue: nothing would take its experiments.
     if (p.agents === false && p.queue?.length)
       throw new BadInput("a run without agents has no queue: leave out the experiments to copy");
@@ -1326,7 +1321,7 @@ export class HarnessService {
       throw new Refusal(
         "a run without agents has no briefs: leave out the background from past research",
       );
-    const existing = this.ledger.getContract(contract.campaign, contract.version);
+    const existing = this.ledger.contracts.get(contract.campaign, contract.version);
     if (existing && contractSha(existing) !== parsed.sha) {
       throw new Refusal(
         `contract ${contract.campaign} v${contract.version} exists with other content`,
@@ -1346,7 +1341,7 @@ export class HarnessService {
     for (const spec of p.imports)
       imported.push(await this.runImport(spec, seed.repo, by, inboxDir));
     for (const m of contract.models) {
-      if (!this.ledger.findImport("model", { sha256: m.sha256 })) {
+      if (!this.ledger.imports.find("model", { sha256: m.sha256 })) {
         throw new Refusal(`model ${m.name} (${m.sha256}) has not been imported`);
       }
     }
@@ -1398,9 +1393,9 @@ export class HarnessService {
       await updateRef(mirror, `refs/thermite/runs/${p.run}/champion`, start);
     }
     this.ledger.tx(() => {
-      this.ledger.storeContract(contract, parsed.sha, by);
+      this.ledger.contracts.store(contract, parsed.sha, by);
       this.pauseOthers(p.run, by);
-      this.ledger.createRun({
+      this.ledger.runs.create({
         id: p.run,
         contract,
         contractSha: parsed.sha,
@@ -1483,17 +1478,24 @@ export class HarnessService {
     acceptFlaws?: string | undefined;
     also?: () => void;
   }): Promise<{ promoted: true; seq: number } | { promoted: false; currentSeq: number }> {
-    const a = this.ledger.getAttempt(input.attempt);
+    const a = this.ledger.attempts.get(input.attempt);
     if (!a) throw new LedgerError("not_found", `no attempt ${input.attempt}`);
     const goal = this.contractFor(input.run).mode === "goal";
     const r = this.ledger.tx(() => {
       const { run, expectedSeq, attempt, by, acceptFlaws } = input;
       const commitSha = String(a.commit_sha);
-      const p = this.ledger.promote({ run, expectedSeq, attempt, commitSha, by, acceptFlaws });
+      const p = this.ledger.champions.promote({
+        run,
+        expectedSeq,
+        attempt,
+        commitSha,
+        by,
+        acceptFlaws,
+      });
       if (!p.ok) return p;
       // A new goal-campaign champion is validated afresh, so the goal tree reflects it.
       if (goal)
-        this.ledger.enqueueJob({
+        this.ledger.jobs.enqueue({
           kind: "validate",
           priority: 60,
           spec: { run: input.run },
@@ -1531,11 +1533,9 @@ export class HarnessService {
     by: string,
     issuedAt: string,
   ): unknown {
-    const exp = this.ledger.db
-      .prepare("select id, through_event, manifest from export where path = ?")
-      .get(p.export) as { id: number; through_event: number; manifest: string } | undefined;
+    const exp = this.ledger.exports.at(p.export);
     if (!exp) throw new Refusal(`no export ${p.export} in this rig`);
-    if (!(JSON.parse(exp.manifest) as { full?: boolean }).full)
+    if (!(exp.manifest as { full?: boolean }).full)
       throw new Refusal(`export ${p.export} is not a full export`);
     if (exp.through_event < p.through_event)
       throw new Refusal("the export does not cover the events");
@@ -1547,8 +1547,8 @@ export class HarnessService {
         `research was recorded after the export (${since.map(([kind, n]) => `${kind} ${n}`).join(", ")}): export again`,
       );
     }
-    for (const inst of this.ledger.listRuns()) {
-      if (inst.status === "running") this.ledger.setRunStatus(inst.id, "paused", "wiping", by);
+    for (const inst of this.ledger.runs.list()) {
+      if (inst.status === "running") this.ledger.runs.setStatus(inst.id, "paused", "wiping", by);
     }
     writeFileSync(
       join(this.paths.stateDir, WIPE_MARKER),
@@ -1628,7 +1628,7 @@ export class HarnessService {
       | { attempt: string | null }
       | undefined;
     if (!t?.attempt) return undefined;
-    const a = this.ledger.getAttempt(t.attempt);
+    const a = this.ledger.attempts.get(t.attempt);
     return { attempt: t.attempt, lifecycle: String(a?.lifecycle ?? "recorded") };
   }
 
@@ -1679,9 +1679,9 @@ export class HarnessService {
           "interrupted: the controller restarted during the check (runs it paused stay paused)",
       });
     }
-    for (const r of this.ledger.listRuns()) {
+    for (const r of this.ledger.runs.list()) {
       if (r.id.startsWith("check-smoke-") && r.status !== "closed")
-        this.ledger.setRunStatus(r.id, "closed", "its smoke check was interrupted", "harness");
+        this.ledger.runs.setStatus(r.id, "closed", "its smoke check was interrupted", "harness");
     }
   }
 
@@ -1780,7 +1780,7 @@ export class HarnessService {
       // A closed run's audits are not the auditor's to decide (goal 087): nothing in it changes.
       if (inst.status === "closed") continue;
       const pkg = audits.package(id, this.contractFor(row.run));
-      const a = this.ledger.getAttempt(row.attempt) as Record<string, unknown>;
+      const a = this.ledger.attempts.get(row.attempt) as Record<string, unknown>;
       const diff = await patchBetween(
         this.mirrorFor(inst.seed_repo),
         String(a.parent_commit),
@@ -1842,7 +1842,7 @@ export class HarnessService {
     background?: ReturnType<typeof briefingData>;
     past_research?: string;
   } {
-    const items = this.ledger.briefing(run);
+    const items = this.ledger.runs.briefing(run);
     const knowledge = this.knowledge.summary(run);
     return {
       ...(items.length ? { background: briefingData(items) } : {}),
@@ -1870,10 +1870,10 @@ export class HarnessService {
     auditor: string;
   }): Promise<unknown> {
     // A run closed after the auditor took its package (goal 087): its decision is not recorded.
-    const held = this.ledger.getAttempt(input.attempt);
+    const held = this.ledger.attempts.get(input.attempt);
     if (held) this.decidingRun(String(held.run), "approve_promotion");
     const audit = new Audits(this.ledger).decide(input);
-    const a = this.ledger.getAttempt(input.attempt) as Record<string, unknown>;
+    const a = this.ledger.attempts.get(input.attempt) as Record<string, unknown>;
     const run = String(a.run);
     const expectedSeq = Number(audit.expected_seq);
     if (String(a.lifecycle) !== "awaiting_audit") {
@@ -1887,7 +1887,7 @@ export class HarnessService {
           commit: a.commit_sha,
           reason: why,
         });
-        this.ledger.setAttemptLifecycle(input.attempt, "awaiting_approval", input.auditor);
+        this.ledger.attempts.setLifecycle(input.attempt, "awaiting_approval", input.auditor);
       });
       return { decision: input.decision, effect: "waiting for the owner" };
     };
@@ -1896,7 +1896,7 @@ export class HarnessService {
         this.ledger.appendEvent(input.auditor, "promotion_blocked", input.attempt, {
           reason: `blocked by the audit: ${input.reasons.slice(0, 1000)}`,
         });
-        this.ledger.setAttemptLifecycle(input.attempt, "audit_blocked", input.auditor);
+        this.ledger.attempts.setLifecycle(input.attempt, "audit_blocked", input.auditor);
       });
       return { decision: "block", effect: "blocked" };
     }
@@ -1942,7 +1942,7 @@ export class HarnessService {
   queueLow(
     run: string,
   ): { event: number; at: string; round: number; ready: number; target: number } | null {
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (inst?.status !== "running" || !inst.agents || inst.mode === "research") return null;
     const e = this.ledger.events.newest("queue_low", { subject: run });
     if (!e) return null;
@@ -1974,7 +1974,7 @@ export class HarnessService {
 
   /** The champion's commit and the run's project mirror, for the teachers' code reads (goal 081). */
   private championCode(run: string): { mirror: string; commit: string } {
-    return { mirror: this.codeMirror(run), commit: this.ledger.currentChampion(run).commit_sha };
+    return { mirror: this.codeMirror(run), commit: this.ledger.champions.current(run).commit_sha };
   }
 
   /** The files of the champion's tree under a folder, for the teachers (goal 081). */
@@ -2024,7 +2024,7 @@ export class HarnessService {
     const inst = this.requireRun(run);
     const contract = this.contractFor(run);
     const registry = new Registry(this.ledger);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     const epochs = (
       this.ledger.db
         .prepare("select * from epoch where run = ? order by n desc limit 5")
@@ -2045,10 +2045,7 @@ export class HarnessService {
     }));
     const goals =
       contract.mode === "goal"
-        ? (this.ledger.db.prepare("select id, status from goal where run = ?").all(run) as {
-            id: string;
-            status: string;
-          }[])
+        ? [...this.ledger.goals.statuses(run)].map(([id, status]) => ({ id, status }))
         : undefined;
     const brief = briefData(contract);
     const research = this.runResearch.summary(run);
@@ -2130,7 +2127,7 @@ export class HarnessService {
       epochs,
       // A teachers' rule that freezes the queue or pins an experiment, set before code refused
       // them, is marked: it no longer reaches the planner (goal 081).
-      directives: this.ledger.activeDirectives(run).map((d) => {
+      directives: this.ledger.directives.active(run).map((d) => {
         const refused = d.author.startsWith("supervisor")
           ? ruleRefusal(d.body as StructuredDirective)
           : undefined;
@@ -2147,7 +2144,7 @@ export class HarnessService {
       ...(goals ? { goals } : {}),
       budget: {
         ...contract.budget,
-        device_hours_used: this.ledger.deviceHours(run),
+        device_hours_used: this.ledger.jobs.deviceHours(run),
         tokens: registry.tokensUsed(run),
       },
       // The owner's messages to the teachers (to them, or to all the advisors): those they have not
@@ -2168,7 +2165,7 @@ export class HarnessService {
    */
   async syncChampionRef(run: string): Promise<void> {
     const inst = this.requireRun(run);
-    const champ = this.ledger.currentChampion(run);
+    const champ = this.ledger.champions.current(run);
     const ref = `refs/thermite/runs/${run}/champion`;
     try {
       await updateRef(this.mirrorFor(inst.seed_repo), ref, champ.commit_sha);
@@ -2191,7 +2188,7 @@ export class HarnessService {
     by: string,
   ): Promise<unknown> {
     this.decidingRun(p.run, "approve_promotion");
-    const a = this.ledger.getAttempt(p.attempt);
+    const a = this.ledger.attempts.get(p.attempt);
     if (!a || String(a.run) !== p.run) {
       throw new Refusal(`attempt ${p.attempt} is not in ${p.run}`);
     }
@@ -2230,13 +2227,13 @@ export class HarnessService {
   ): unknown {
     // A closed run's changes stay as they were (goal 087): its record does not change.
     this.decidingRun(p.run, "decline_promotion");
-    const a = this.ledger.getAttempt(p.attempt);
+    const a = this.ledger.attempts.get(p.attempt);
     if (!a || String(a.run) !== p.run) throw new Refusal(`attempt ${p.attempt} is not in ${p.run}`);
     const lifecycle = String(a.lifecycle);
     if (!["awaiting_approval", "awaiting_audit", "audit_blocked"].includes(lifecycle))
       throw new Refusal(`attempt ${p.attempt} is ${lifecycle}: there is nothing to decline`);
     this.ledger.tx(() => {
-      this.ledger.setAttemptLifecycle(p.attempt, "declined", by);
+      this.ledger.attempts.setLifecycle(p.attempt, "declined", by);
       this.ledger.appendEvent(by, "promotion_declined", p.attempt, {
         run: p.run,
         was: lifecycle,
@@ -2249,11 +2246,11 @@ export class HarnessService {
   /** The champion moved after a win was confirmed: it is screened again against the new one. */
   private rescreen(attempt: string, currentSeq: number, by: string): unknown {
     // Another path may have promoted it meanwhile (an audit clear and an approval racing).
-    if (String(this.ledger.getAttempt(attempt)?.lifecycle) === "promoted") {
+    if (String(this.ledger.attempts.get(attempt)?.lifecycle) === "promoted") {
       return { promoted: true, note: "already promoted" };
     }
-    this.ledger.enqueueJob({ attempt, kind: "evaluate", actor: by });
-    this.ledger.setAttemptLifecycle(attempt, "queued", by);
+    this.ledger.jobs.enqueue({ attempt, kind: "evaluate", actor: by });
+    this.ledger.attempts.setLifecycle(attempt, "queued", by);
     return { promoted: false, rescreen: true, champion_seq: currentSeq };
   }
 
@@ -2323,7 +2320,7 @@ export class HarnessService {
           });
       }
       return {
-        ids: this.ledger.addDirectiveSet(run, author, keep, true),
+        ids: this.ledger.directives.addSet(run, author, keep, true),
         left_out: parsed
           .filter((d) => !keep.includes(d))
           .map((d) => ({
@@ -2364,7 +2361,7 @@ export class HarnessService {
     };
     // A research run measures nothing (goal 117): an item that asks for a measurement is a next
     // experiment for the run's report, never a task for its queue.
-    const research = this.ledger.getRun(p.run)?.mode === "research";
+    const research = this.ledger.runs.get(p.run)?.mode === "research";
     for (const a of p.add) {
       const same = p.role === "teacher" ? waiting.get(ideaWords(a.title)) : undefined;
       if (same) {
@@ -2421,7 +2418,7 @@ export class HarnessService {
   proposeIdea(token: string, input: unknown): { experiment: string; state: "proposed" } {
     const t = new Registry(this.ledger).openTrial(token);
     const idea = IdeaRequest.parse(input);
-    if (this.ledger.getRun(t.run)?.mode === "research") {
+    if (this.ledger.runs.get(t.run)?.mode === "research") {
       const measures = measurementIn(
         [idea.title, idea.details ?? "", idea.why ?? "", idea.family ?? ""].join("\n"),
       );
@@ -2450,7 +2447,7 @@ export class HarnessService {
    */
   writeTrialNote(token: string, input: unknown): { note: number } {
     const t = new Registry(this.ledger).openTrial(token);
-    if (this.ledger.getRun(t.run)?.mode === "research") {
+    if (this.ledger.runs.get(t.run)?.mode === "research") {
       const same = this.journal.repeatOf(t.run, Journal.parse(input).text, NOTE_REPEATS);
       if (same)
         throw new LedgerError(
@@ -2502,7 +2499,7 @@ export class HarnessService {
 
   contractFor(run: string): Contract {
     const inst = this.requireRun(run);
-    const c = this.ledger.getContract(inst.campaign, inst.version);
+    const c = this.ledger.contracts.get(inst.campaign, inst.version);
     if (!c) throw new LedgerError("not_found", `contract for ${run} missing`);
     return c;
   }
@@ -2518,7 +2515,7 @@ export class HarnessService {
     const contract = this.contractFor(req.run);
     if (contract.mode === "research")
       throw new LedgerError("invalid", "research campaigns take claims, not patches");
-    const champion = this.ledger.currentChampion(req.run);
+    const champion = this.ledger.champions.current(req.run);
     const parent = req.parent ?? champion.commit_sha;
     const mirror = this.mirrorFor(inst.seed_repo);
     if (!(await hasCommit(mirror, parent)))
@@ -2554,17 +2551,17 @@ export class HarnessService {
       made.binaryFiles,
       made.specialFiles,
     );
-    const duplicateOf = this.ledger.findDuplicate(req.run, made.normalizedDiffSha);
+    const duplicateOf = this.ledger.attempts.findDuplicate(req.run, made.normalizedDiffSha);
     const lifecycle = !v0.ok ? "rejected_v0" : duplicateOf ? "duplicate" : "queued";
     // Lineage: the attempt this one was built on, whether or not it is the champion.
     const parentAttempt =
       parent === champion.commit_sha && champion.attempt
         ? champion.attempt
-        : this.ledger.attemptByCommit(req.run, parent);
+        : this.ledger.attempts.byCommit(req.run, parent);
     const parentRef = parentAttempt
       ? `refs/thermite/attempts/${parentAttempt}`
       : `commit:${parent}`;
-    this.ledger.recordAttempt(
+    this.ledger.attempts.record(
       {
         id,
         run: req.run,
@@ -2591,7 +2588,7 @@ export class HarnessService {
       // is judged by the baseline job, which makes the first one it can measure the starting
       // point. Otherwise the change is screened against the champion.
       const setup = baselineState(this.ledger, req.run)?.state === "setup";
-      this.ledger.enqueueJob({
+      this.ledger.jobs.enqueue({
         attempt: id,
         kind: setup ? "baseline" : "evaluate",
         ...(setup ? { priority: BASELINE_PRIORITY } : {}),
@@ -2648,10 +2645,10 @@ export class HarnessService {
    * violations of a refused change at the top (`violations`, all of them).
    */
   attemptStatus(id: string): unknown {
-    const a = this.ledger.getAttempt(id);
+    const a = this.ledger.attempts.get(id);
     if (!a) throw new LedgerError("not_found", `no attempt ${id}`);
-    const verdict = this.ledger.currentVerdict(id);
-    const heldOut = this.ledger.heldOutFailure(id);
+    const verdict = this.ledger.verdicts.current(id);
+    const heldOut = this.ledger.heldOut.failure(id);
     return {
       attempt: id,
       run: a.run,
@@ -2899,7 +2896,7 @@ export class HarnessService {
     let removed = 0;
     for (const name of names) {
       if (!/^[0-9TZ]+-[0-9a-f]{8}$/.test(name)) continue;
-      const known = this.ledger.db.prepare("select 1 from export where path = ?").get(name);
+      const known = this.ledger.exports.at(name);
       const dir = join(this.paths.outboxDir, name);
       if (!known || !existsSync(dir)) continue;
       rmSync(dir, { recursive: true, force: true });

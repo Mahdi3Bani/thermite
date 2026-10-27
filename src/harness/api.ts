@@ -218,7 +218,7 @@ export function createHarnessApi(
         error: z.string().max(500).optional(),
       })
       .parse(await c.req.json());
-    if (!service.ledger.getRun(b.run)) return c.json({ error: `no run ${b.run}` }, 404);
+    if (!service.ledger.runs.get(b.run)) return c.json({ error: `no run ${b.run}` }, 404);
     service.mcp.report(
       { run: b.run, kind: "advisors", source: "supervisor" },
       b.server,
@@ -293,7 +293,7 @@ export function createHarnessApi(
   // where their outputs go. None of these can set a verdict, a contract or a champion.
   app.get("/v1/runs", supervisor, (c) =>
     c.json({
-      runs: service.ledger.listRuns().map((i) => ({
+      runs: service.ledger.runs.list().map((i) => ({
         id: i.id,
         campaign: i.campaign,
         mode: i.mode,
@@ -306,7 +306,7 @@ export function createHarnessApi(
         mcp_servers: service.mcpUses(i.id),
         // The campaign's own context settings, which the advisors' calls for the run take too
         // (goal 070); null: none.
-        agents_context: service.ledger.getContract(i.campaign, i.version)?.agents_context ?? null,
+        agents_context: service.ledger.contracts.get(i.campaign, i.version)?.agents_context ?? null,
         // The planner's round left the queue below its target (goal 081): the teachers' round
         // starts at once, not on the clock. Null: the queue is at its target, or none applies.
         queue_low: service.queueLow(i.id),
@@ -636,7 +636,7 @@ export function createHarnessApi(
         kinds: c.req.query("kinds") ?? undefined,
         limit: c.req.query("limit") ?? undefined,
       });
-    if (!service.ledger.getRun(q.run)) return c.json({ error: `no run ${q.run}` }, 404);
+    if (!service.ledger.runs.get(q.run)) return c.json({ error: `no run ${q.run}` }, 404);
     return c.json(
       service.knowledge.search(q.run, q.q, {
         kinds: q.kinds ? q.kinds.split(",").map((k) => k.trim()) : undefined,
@@ -981,8 +981,8 @@ export function createHarnessApi(
       // (a hand-out may name one), or an earlier run's (the knowledge base shows those). Its
       // brief still shows only its own lane's (goal 082).
       const { trial } = trialOf(c.req.header("authorization"));
-      const a = service.ledger.getAttempt(id);
-      const campaign = (run: unknown) => service.ledger.getRun(String(run))?.campaign;
+      const a = service.ledger.attempts.get(id);
+      const campaign = (run: unknown) => service.ledger.runs.get(String(run))?.campaign;
       if (!a || campaign(a.run) !== campaign(trial.run))
         throw new LedgerError("not_found", `no attempt ${id} in this campaign`);
       return c.json(service.attemptStatus(id) as object);

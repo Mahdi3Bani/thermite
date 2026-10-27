@@ -128,7 +128,7 @@ export class Journal {
    */
   write(run: string, input: unknown, w: NoteWriter): JournalNote {
     const n = Journal.parse(input);
-    if (!this.ledger.getRun(run)) throw new LedgerError("not_found", `no run ${run}`);
+    if (!this.ledger.runs.get(run)) throw new LedgerError("not_found", `no run ${run}`);
     const about: NoteAbout = n.about ?? { type: "run", id: run };
     this.checkAbout(run, about);
     const at = this.clock().toISOString();

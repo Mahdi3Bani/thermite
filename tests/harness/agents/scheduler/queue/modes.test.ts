@@ -161,7 +161,7 @@ describe("research runs use the queue", () => {
     // An old rule in words, as a harness from before rules named directions could take it for a
     // research run too: the research plan has no planner's model to convert it, and code can't
     // keep it, so it stays in force as it is, for the owner to remove.
-    const [words] = env.service.ledger.addDirectiveSet(
+    const [words] = env.service.ledger.directives.addSet(
       "r-1",
       "control:owner:ui",
       [{ kind: "avoid", match: "anything from blogs", rationale: "old", citations: [] }],
@@ -248,7 +248,7 @@ describe("research runs use the queue", () => {
     const h = body(events(env, "planner_handout")[0]);
     assert.equal((h.assignments as unknown[]).length, 2);
     assert.deepEqual(
-      env.service.ledger.activeDirectives("r-1").map((d) => d.id),
+      env.service.ledger.directives.active("r-1").map((d) => d.id),
       [words],
     );
     assert.equal(events(env, "directive_converted").length, 0);

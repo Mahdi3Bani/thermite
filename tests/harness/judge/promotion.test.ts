@@ -17,7 +17,7 @@ test("an approval that fails after the champion moves leaves the record whole (g
   );
   await env.drain();
   // Declared flaws send it to an audit, which the owner's approval overrides.
-  assert.equal(env.ledger.getAttempt(attempt)?.lifecycle, "awaiting_audit", env.explain(attempt));
+  assert.equal(env.ledger.attempts.get(attempt)?.lifecycle, "awaiting_audit", env.explain(attempt));
   // The champion moves, then the git ref can't be written: the step after the ledger fails.
   env.service.syncChampionRef = async () => {
     throw new Error("git: no space left on device");
@@ -26,9 +26,9 @@ test("an approval that fails after the champion moves leaves the record whole (g
     env.sign("approve_promotion", { run: "js-1", attempt }),
   );
   assert.equal(out.status, "applied");
-  assert.equal(env.ledger.currentChampion("js-1").attempt, attempt);
+  assert.equal(env.ledger.champions.current("js-1").attempt, attempt);
   // The champion, its flaws' acceptance, the override and the lifecycle were written together.
-  const a = env.ledger.getAttempt(attempt);
+  const a = env.ledger.attempts.get(attempt);
   assert.equal(a?.lifecycle, "promoted", env.explain(attempt));
   assert.equal(a?.flaws_cleared_by, "control:owner");
   const kinds = env.ledger
@@ -57,32 +57,37 @@ test("promotion is a compare-and-swap on the champion, on seeded random sequence
         },
         "t",
       );
-      env.ledger.recordVerdict({ attempt, verdict: "win_confirmed", reasons: "t", judgedBy: "t" });
-      attempts.push({ attempt, commitSha: String(env.ledger.getAttempt(attempt)?.commit_sha) });
+      env.ledger.verdicts.record({
+        attempt,
+        verdict: "win_confirmed",
+        reasons: "t",
+        judgedBy: "t",
+      });
+      attempts.push({ attempt, commitSha: String(env.ledger.attempts.get(attempt)?.commit_sha) });
     }
     const seqs = () =>
       env.ledger.db
         .prepare("select seq from champion where run = 'js-1' order by seq")
         .all()
         .map((r) => Number(r.seq));
-    let current = env.ledger.currentChampion("js-1").seq;
+    let current = env.ledger.champions.current("js-1").seq;
     // Each change is offered once, against the champion's seq or a stale or a future one.
     for (const a of attempts) {
       const pick = d();
       const expectedSeq = pick < 0.5 ? current : pick < 0.8 ? current - 1 : current + 1;
       const events = env.ledger.eventsAfter(0, 100_000).events.length;
-      const r = env.ledger.promote({ run: "js-1", expectedSeq, ...a, by: "t" });
+      const r = env.ledger.champions.promote({ run: "js-1", expectedSeq, ...a, by: "t" });
       const where = `seed ${seed}, ${a.attempt} against ${expectedSeq} with ${current}`;
       if (expectedSeq === current) {
         assert.deepEqual(r, { ok: true, seq: current + 1 }, where);
         current += 1;
-        assert.equal(String(env.ledger.getAttempt(a.attempt)?.lifecycle), "promoted", where);
+        assert.equal(String(env.ledger.attempts.get(a.attempt)?.lifecycle), "promoted", where);
       } else {
         assert.deepEqual(r, { ok: false, currentSeq: current }, where);
         assert.equal(env.ledger.eventsAfter(0, 100_000).events.length, events, where);
-        assert.notEqual(String(env.ledger.getAttempt(a.attempt)?.lifecycle), "promoted", where);
+        assert.notEqual(String(env.ledger.attempts.get(a.attempt)?.lifecycle), "promoted", where);
       }
-      assert.equal(env.ledger.currentChampion("js-1").seq, current, where);
+      assert.equal(env.ledger.champions.current("js-1").seq, current, where);
     }
     // The champions are numbered one by one, with no gap.
     assert.deepEqual(

@@ -128,7 +128,7 @@ class FixedInfraError extends InfraError {}
 /** A job's outcome, written by finish() in one fenced transaction. */
 interface Finish {
   result: unknown;
-  verdict?: Parameters<Ledger["recordVerdict"]>[0] | undefined;
+  verdict?: Parameters<Ledger["verdicts"]["record"]>[0] | undefined;
   promote?:
     | {
         run: string;
@@ -145,7 +145,7 @@ interface Finish {
   events?: EventToRecord[] | undefined;
   /** A port to queue once the job is recorded (goal 135). */
   port?: PortFound | undefined;
-  enqueue?: Parameters<Ledger["enqueueJob"]>[0] | undefined;
+  enqueue?: Parameters<Ledger["jobs"]["enqueue"]>[0] | undefined;
   lifecycle?: string | undefined;
   /** Close a run (a goal campaign whose success rule holds). */
   close?: { run: string; reason: string } | undefined;
@@ -225,7 +225,7 @@ export class Judge {
    * It starts no work, so the harness does it while draining too (goal 079).
    */
   expireLeases(): number[] {
-    return this.ledger.expireLeases(this.o.owner);
+    return this.ledger.jobs.expireLeases(this.o.owner);
   }
 
   /** One scheduling step. Returns true when a job was processed. */
@@ -235,7 +235,7 @@ export class Judge {
     const waiting = this.maybeScheduleBaseline();
     this.maybeScheduleCalibration(waiting);
     this.maybeScheduleValidation();
-    const job = this.ledger.leaseJob(
+    const job = this.ledger.jobs.lease(
       this.o.owner,
       this.o.leaseMs,
       ["baseline", "evaluate", "parent_screen", "confirm", "calibrate", "validate"],
@@ -299,18 +299,22 @@ export class Judge {
   private finish(job: JobRow, fin: Finish): string | undefined {
     let movedRun: string | undefined;
     this.ledger.tx(() => {
-      this.ledger.assertLease(job.id, job.fence);
+      this.ledger.jobs.assertLease(job.id, job.fence);
       const result = { ...(fin.result as object) } as Record<string, unknown>;
       let lifecycle = fin.lifecycle;
       let enqueue = fin.enqueue;
-      if (fin.verdict) this.ledger.recordVerdict(fin.verdict);
+      if (fin.verdict) this.ledger.verdicts.record(fin.verdict);
       for (const e of fin.events ?? [])
         this.ledger.appendEvent(this.o.owner, e.kind, e.subject, e.body);
       if (fin.promote) {
         const { clearFlaws, ...promote } = fin.promote;
         // Declared flaws nothing asks the owner about are accepted by this promotion (goal 079),
         // and only if it happens: in its own transaction.
-        const r = this.ledger.promote({ ...promote, by: this.o.owner, acceptFlaws: clearFlaws });
+        const r = this.ledger.champions.promote({
+          ...promote,
+          by: this.o.owner,
+          acceptFlaws: clearFlaws,
+        });
         if (r.ok) {
           lifecycle = "promoted";
           movedRun = fin.promote.run;
@@ -324,9 +328,9 @@ export class Judge {
       }
       if (fin.start) {
         const { baseline, ...start } = fin.start;
-        const r = this.ledger.setStartingPoint({ ...start, by: this.o.owner });
+        const r = this.ledger.champions.setStartingPoint({ ...start, by: this.o.owner });
         if (r.ok) {
-          this.ledger.recordVerdict({
+          this.ledger.verdicts.record({
             attempt: start.attempt,
             verdict: "starting_point",
             dependsOnJobs: [job.id],
@@ -347,7 +351,7 @@ export class Judge {
           result.lost_race_to_seq = r.currentSeq;
         }
       }
-      if (enqueue) this.ledger.enqueueJob(enqueue);
+      if (enqueue) this.ledger.jobs.enqueue(enqueue);
       if (fin.audit && job.attempt) {
         new Audits(this.ledger).request({
           ...fin.audit,
@@ -357,11 +361,11 @@ export class Judge {
         });
       }
       // A run the owner closed while this job ran keeps the owner's reason (goal 087).
-      if (fin.close && this.ledger.getRun(fin.close.run)?.status !== "closed")
-        this.ledger.setRunStatus(fin.close.run, "closed", fin.close.reason, this.o.owner);
+      if (fin.close && this.ledger.runs.get(fin.close.run)?.status !== "closed")
+        this.ledger.runs.setStatus(fin.close.run, "closed", fin.close.reason, this.o.owner);
       if (lifecycle && job.attempt)
-        this.ledger.setAttemptLifecycle(job.attempt, lifecycle, this.o.owner);
-      this.ledger.completeJob(job.id, job.fence, "done", result);
+        this.ledger.attempts.setLifecycle(job.attempt, lifecycle, this.o.owner);
+      this.ledger.jobs.complete(job.id, job.fence, "done", result);
     });
     return movedRun;
   }
@@ -376,7 +380,7 @@ export class Judge {
   /** The run a job works for. */
   private jobRun(job: JobRow): string | undefined {
     if (job.attempt) {
-      const i = this.ledger.getAttempt(job.attempt)?.run;
+      const i = this.ledger.attempts.get(job.attempt)?.run;
       return i === undefined || i === null ? undefined : String(i);
     }
     const i = (JSON.parse(job.spec) as { run?: unknown }).run;
@@ -407,7 +411,7 @@ export class Judge {
   }
 
   private async build(run: string, commit: string, k: { kit: Kit; dir: string; commit: string }) {
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (!inst) throw new InfraError(`no run ${run}`);
     const started = Date.now();
     this.note(`build ${commit.slice(0, 12)}: started`, run);
@@ -423,7 +427,7 @@ export class Judge {
         role: builderRole(this.o.card?.index ?? 0),
       });
     const h = this.holding;
-    const renew = () => h && this.ledger.heartbeat(h.id, h.fence, this.o.leaseMs);
+    const renew = () => h && this.ledger.jobs.heartbeat(h.id, h.fence, this.o.leaseMs);
     const b = await whileLeased(renew, this.o.leaseMs / 3, ensure, { job: h?.id, commit });
     this.note(
       `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${clipReason(b.reason)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
@@ -595,7 +599,7 @@ export class Judge {
     runsPerCell: number;
   }): Promise<Block | undefined> {
     const { job, ctx, a, b, n } = x;
-    this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+    this.ledger.jobs.heartbeat(job.id, job.fence, this.o.leaseMs);
     const readiness = await this.ready();
     const block: Block = { candidate: {}, reference: {} };
     const values: { arm: string; metric: string; cell: string; value: number }[] = [];
@@ -662,7 +666,7 @@ export class Judge {
       worstRunThrottle <= MAX_RUN_THROTTLED &&
       (throttled === undefined || throttled <= MAX_THROTTLED) &&
       afterBlock.length === 0;
-    this.ledger.recordReceipt(job.id, job.fence, {
+    this.ledger.jobs.recordReceipt(job.id, job.fence, {
       job: job.id,
       attempt: job.attempt,
       block: n,
@@ -680,7 +684,7 @@ export class Judge {
     });
     if (!accepted) return undefined;
     for (const v of values) {
-      this.ledger.recordMeasurement(job.id, job.fence, {
+      this.ledger.measurements.record(job.id, job.fence, {
         ...v,
         rep: n,
         unit: ctx.kit.metrics[v.metric]?.unit ?? "",
@@ -736,18 +740,18 @@ export class Judge {
 
   private async evaluate(job: JobRow): Promise<Finish> {
     const attemptId = job.attempt as string;
-    const attempt = this.ledger.getAttempt(attemptId);
+    const attempt = this.ledger.attempts.get(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
     const run = String(attempt.run);
     if (this.o.service.contractFor(run).mode === "goal") return this.evaluateGoal(job);
     const contract = this.hillClimb(run);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     // A parent screen (goal 135): against the older champion it was written on, with no verdict.
     const parent = String(attempt.parent_commit);
     const onParent = job.kind === "parent_screen";
     const step = (l: string) => {
-      this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
-      if (!onParent) this.ledger.setAttemptLifecycle(attemptId, l, this.o.owner);
+      this.ledger.jobs.heartbeat(job.id, job.fence, this.o.leaseMs);
+      if (!onParent) this.ledger.attempts.setLifecycle(attemptId, l, this.o.owner);
     };
 
     try {
@@ -827,13 +831,13 @@ export class Judge {
 
   private async confirm(job: JobRow): Promise<Finish> {
     const attemptId = job.attempt as string;
-    const attempt = this.ledger.getAttempt(attemptId);
+    const attempt = this.ledger.attempts.get(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
     const run = String(attempt.run);
     if (this.o.service.contractFor(run).mode === "goal") return this.confirmGoal(job);
     const contract = this.hillClimb(run);
     const baselineSeq = Number(this.spec(job).baseline_seq);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     if (champion.seq !== baselineSeq) {
       // The champion moved since screening: screen again against the new one.
       return {
@@ -845,7 +849,7 @@ export class Judge {
 
     try {
       const k = await this.kitFor(contract);
-      this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+      this.ledger.jobs.heartbeat(job.id, job.fence, this.o.leaseMs);
       const champ = await this.armFor("champion", run, champion.commit_sha, k);
       const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
       const ctx = this.context(k, job);
@@ -942,7 +946,7 @@ export class Judge {
     // A ratio to the champion above this passes: no worse than twice the equivalence band.
     const threshold = 1 / (1 + 2 * contract.acceptance.equivalence_band);
     for (const cell of contract.held_out_cells) {
-      this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+      this.ledger.jobs.heartbeat(job.id, job.fence, this.o.leaseMs);
       const cv: number[] = [];
       const rv: number[] = [];
       let failed: HeldOutKind | undefined;
@@ -977,7 +981,7 @@ export class Judge {
       else cells.push({ cell, ok: false, kind: "threshold_missed", ...measured });
     }
     const result = heldOutResult(cells);
-    this.ledger.recordHeldOut(job.id, job.fence, job.attempt as string, result.pass, result);
+    this.ledger.heldOut.record(job.id, job.fence, job.attempt as string, result.pass, result);
     return result;
   }
 
@@ -997,7 +1001,7 @@ export class Judge {
   ): Finish {
     // A run the owner closed while this job ran (goal 087): nothing changes its champion now. The
     // win stays recorded and waits, and no one decides it.
-    if (String(this.ledger.getRun(run)?.status) === "closed")
+    if (String(this.ledger.runs.get(run)?.status) === "closed")
       return {
         ...fin,
         result: { ...(fin.result as object), promoted: false, waiting: "run_closed" },
@@ -1141,7 +1145,7 @@ export class Judge {
             reasons: opts.heldOut ? "no held-out cells" : "every cell of this verifier is held out",
           };
         } else {
-          this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+          this.ledger.jobs.heartbeat(job.id, job.fence, this.o.leaseMs);
           const failures: string[] = [];
           // Each public cell's values (goal 086). The held-out pass keeps none: names and kinds
           // only, never a held-out cell's values.
@@ -1185,7 +1189,7 @@ export class Judge {
       g.verify.type === "code" ? (ctx.kit.verifiers[g.verify.verifier]?.priority ?? 100) : 100;
     for (const g of [...contract.goals].sort((a, b) => rank(a) - rank(b))) {
       if (opts.goals && !opts.goals.includes(g.id)) continue;
-      this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+      this.ledger.jobs.heartbeat(job.id, job.fence, this.o.leaseMs);
       const v = g.verify;
       if (v.type === "review") {
         if (!opts.champion || opts.heldOut) {
@@ -1200,7 +1204,7 @@ export class Judge {
         const reviews = new Reviews(this.ledger);
         const { run, attempt, commit } = opts.champion;
         if (!reviews.get(run, g.id, commit)) {
-          const inst = this.ledger.getRun(run);
+          const inst = this.ledger.runs.get(run);
           const diff = inst
             ? await patchBetween(this.o.service.mirrorFor(inst.seed_repo), inst.seed_commit, commit)
             : "";
@@ -1269,7 +1273,7 @@ export class Judge {
           }
           values[cell] = [...(values[cell] ?? []), value];
           if (opts.heldOut) continue;
-          this.ledger.recordMeasurement(job.id, job.fence, {
+          this.ledger.measurements.record(job.id, job.fence, {
             arm: arm.name,
             metric: v.metric,
             cell,
@@ -1336,34 +1340,13 @@ export class Judge {
     updateStatus: boolean,
   ): void {
     this.ledger.tx(() => {
-      this.ledger.assertLease(job.id, job.fence);
-      for (const r of results) {
-        this.ledger.db
-          .prepare(
-            "insert into goal_check (run, goal, attempt, job, commit_sha, result, detail, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
-          )
-          .run(
-            run,
-            r.goal,
-            attempt,
-            job.id,
-            commit,
-            r.status,
-            clipReason(r.reasons, REASONS_CHARS),
-            new Date().toISOString(),
-          );
-        if (updateStatus) {
-          const status = {
-            met: "verified",
-            unmet: "unmet",
-            inconclusive: "attempted",
-            not_runnable: "not_runnable",
-          }[r.status];
-          this.ledger.db
-            .prepare("update goal set status = ? where run = ? and id = ?")
-            .run(status, run, r.goal);
-        }
-      }
+      this.ledger.jobs.assertLease(job.id, job.fence);
+      for (const r of results)
+        this.ledger.goals.recordCheck(
+          { run, goal: r.goal, attempt, job: job.id, commit },
+          r,
+          updateStatus,
+        );
     });
   }
 
@@ -1428,7 +1411,7 @@ export class Judge {
   private async validate(job: JobRow): Promise<Finish> {
     const run = String(this.spec(job).run);
     const contract = this.goalContract(run);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     const k = await this.kitFor(contract);
     const arm = await this.armFor("champion", run, champion.commit_sha, k);
     const ctx = this.context(k, job);
@@ -1461,7 +1444,7 @@ export class Judge {
       // No held-out cell ran (none of these goals has one): there was nothing to check.
       if (ho?.pass && !ho.cells.length) ho = undefined;
       if (ho)
-        this.ledger.recordChampionHeldOut(job.id, job.fence, run, champion.seq, ho.pass, {
+        this.ledger.heldOut.recordChampion(job.id, job.fence, run, champion.seq, ho.pass, {
           pass: ho.pass,
           cells: ho.cells,
         });
@@ -1547,26 +1530,19 @@ export class Judge {
    */
   private async evaluateGoal(job: JobRow): Promise<Finish> {
     const attemptId = job.attempt as string;
-    const attempt = this.ledger.getAttempt(attemptId);
+    const attempt = this.ledger.attempts.get(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
     const run = String(attempt.run);
     const contract = this.goalContract(run);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     try {
       const k = await this.kitFor(contract);
-      this.ledger.setAttemptLifecycle(attemptId, "building", this.o.owner);
+      this.ledger.attempts.setLifecycle(attemptId, "building", this.o.owner);
       const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
-      this.ledger.setAttemptLifecycle(attemptId, "verifying", this.o.owner);
+      this.ledger.attempts.setLifecycle(attemptId, "verifying", this.o.owner);
       const results = await this.verifyGoals(job, contract, this.context(k, job), cand);
       this.recordGoals(job, run, attemptId, String(attempt.commit_sha), results, false);
-      const champ = new Map(
-        (
-          this.ledger.db.prepare("select id, status from goal where run = ?").all(run) as {
-            id: string;
-            status: string;
-          }[]
-        ).map((g) => [g.id, g.status]),
-      );
+      const champ = this.ledger.goals.statuses(run);
       const reviewed = new Set(
         contract.goals.filter((g) => g.verify.type === "review").map((g) => g.id),
       );
@@ -1622,11 +1598,11 @@ export class Judge {
    */
   private async confirmGoal(job: JobRow): Promise<Finish> {
     const attemptId = job.attempt as string;
-    const attempt = this.ledger.getAttempt(attemptId) as Record<string, unknown>;
+    const attempt = this.ledger.attempts.get(attemptId) as Record<string, unknown>;
     const run = String(attempt.run);
     const contract = this.goalContract(run);
     const baselineSeq = Number(this.spec(job).baseline_seq);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     if (champion.seq !== baselineSeq) {
       return {
         result: { rescreen: true, baseline_seq: baselineSeq, champion_seq: champion.seq },
@@ -1636,19 +1612,12 @@ export class Judge {
     }
     try {
       const k = await this.kitFor(contract);
-      this.ledger.setAttemptLifecycle(attemptId, "verifying", this.o.owner);
+      this.ledger.attempts.setLifecycle(attemptId, "verifying", this.o.owner);
       const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
       const ctx = this.context(k, job);
       const results = await this.verifyGoals(job, contract, ctx, cand);
       this.recordGoals(job, run, attemptId, String(attempt.commit_sha), results, false);
-      const champ = new Map(
-        (
-          this.ledger.db.prepare("select id, status from goal where run = ?").all(run) as {
-            id: string;
-            status: string;
-          }[]
-        ).map((g) => [g.id, g.status]),
-      );
+      const champ = this.ledger.goals.statuses(run);
       const reviewed = new Set(
         contract.goals.filter((g) => g.verify.type === "review").map((g) => g.id),
       );
@@ -1663,7 +1632,7 @@ export class Judge {
       if (contract.held_out_cells.length && gained.length) {
         const { pass, cells } = await this.heldOutGoals(job, contract, ctx, cand, gained);
         ho = { pass, cells };
-        this.ledger.recordHeldOut(job.id, job.fence, attemptId, ho.pass, ho);
+        this.ledger.heldOut.record(job.id, job.fence, attemptId, ho.pass, ho);
       }
       const ok =
         gained.length > 0 && !lost.length && !unsure.length && !held.length && ho?.pass !== false;
@@ -1712,7 +1681,7 @@ export class Judge {
    * (up to three times, ten minutes apart), and never while a validation is queued or running.
    */
   private maybeScheduleValidation(): void {
-    for (const inst of this.ledger.listRuns()) {
+    for (const inst of this.ledger.runs.list()) {
       if (inst.status !== "running" || inst.mode !== "goal") continue;
       const proposal = new Conclusions(this.ledger).maybePropose(
         inst.id,
@@ -1721,7 +1690,7 @@ export class Judge {
       );
       // Hands-off by default (goal 079): the evidence ends the campaign unless the run asks.
       if (proposal !== undefined && this.o.service.takeConclusion(inst.id, proposal)) continue;
-      const seq = this.ledger.currentChampion(inst.id).seq;
+      const seq = this.ledger.champions.current(inst.id).seq;
       const jobs = this.ledger.db
         .prepare(
           `select state, updated_at, json_extract(result, '$.champion_seq') as done_seq,
@@ -1746,7 +1715,7 @@ export class Judge {
       if (failed.length >= 3) continue;
       const lastFail = failed.at(-1);
       if (lastFail && Date.now() - Date.parse(lastFail.updated_at) < 10 * 60_000) continue;
-      this.ledger.enqueueJob({
+      this.ledger.jobs.enqueue({
         kind: "validate",
         priority: 40,
         spec: { run: inst.id, champion_seq: seq },
@@ -1764,14 +1733,14 @@ export class Judge {
    */
   private maybeScheduleBaseline(): string[] {
     const waiting: string[] = [];
-    for (const inst of this.ledger.listRuns()) {
+    for (const inst of this.ledger.runs.list()) {
       if (inst.status !== "running" || inst.mode !== "hill_climb") continue;
       const s = baselineState(this.ledger, inst.id);
       if (!s || s.state === "measured") continue;
       waiting.push(inst.id);
       const due = baselineDue(this.ledger, inst.id);
       if (!due) continue;
-      this.ledger.enqueueJob({
+      this.ledger.jobs.enqueue({
         kind: "baseline",
         priority: BASELINE_PRIORITY,
         spec: { run: inst.id, champion_seq: due.seq, commit: due.commit },
@@ -1807,7 +1776,7 @@ export class Judge {
           enqueue: { attempt: setup, kind: "evaluate", actor: this.o.owner },
           lifecycle: "queued",
         };
-      const attempt = this.ledger.getAttempt(setup);
+      const attempt = this.ledger.attempts.get(setup);
       if (!attempt) throw new InfraError(`no attempt ${setup}`);
       commit = String(attempt.commit_sha);
     } else {
@@ -1816,10 +1785,10 @@ export class Judge {
       commit = s.start.commit;
     }
     const step = (l: string) => {
-      this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
-      if (setup) this.ledger.setAttemptLifecycle(setup, l, this.o.owner);
+      this.ledger.jobs.heartbeat(job.id, job.fence, this.o.leaseMs);
+      if (setup) this.ledger.attempts.setLifecycle(setup, l, this.o.owner);
     };
-    const expectedSeq = this.ledger.currentChampion(run).seq;
+    const expectedSeq = this.ledger.champions.current(run).seq;
     const dir = prepareBaselineDir(this.o.service.paths.stateDir, run, job.id);
     try {
       const k = await this.kitFor(contract);
@@ -1969,7 +1938,7 @@ export class Judge {
     if (this.o.calibrationBlocks < 2) return;
     // Each judge card calibrates for itself; its executor schedules the job pinned to it.
     const mine = this.cards > 1 ? this.o.card?.uuid : undefined;
-    for (const inst of this.ledger.listRuns()) {
+    for (const inst of this.ledger.runs.list()) {
       if (inst.status !== "running" || inst.mode !== "hill_climb") continue;
       if (waiting.includes(inst.id)) continue;
       const last = this.ledger.db
@@ -1979,7 +1948,7 @@ export class Judge {
         )
         .get(inst.id, ...(mine ? [mine] : [])) as { created_at: string } | undefined;
       if (last && Date.now() - Date.parse(last.created_at) < this.o.calibrationEveryMs) continue;
-      this.ledger.enqueueJob({
+      this.ledger.jobs.enqueue({
         kind: "calibrate",
         priority: 200,
         spec: { run: inst.id, ...(mine ? { card: mine } : {}) },
@@ -2001,7 +1970,7 @@ export class Judge {
   private async calibrate(job: JobRow): Promise<Finish> {
     const run = String(this.spec(job).run);
     const contract = this.hillClimb(run);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     const k = await this.kitFor(contract);
     const champ = await this.armFor("champion", run, champion.commit_sha, k);
     const ctx = this.context(k, job);

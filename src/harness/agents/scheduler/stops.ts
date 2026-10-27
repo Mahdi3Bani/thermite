@@ -27,7 +27,7 @@ export function lastStopAsked(ledger: Ledger): number {
 
 /** Stops what must stop now. Returns the newest `trial_stop_asked` event read. */
 export function stopTrials(ledger: Ledger, o: Stopping): number {
-  const running = (id: string) => ledger.getRun(id)?.status === "running";
+  const running = (id: string) => ledger.runs.get(id)?.status === "running";
   for (const [lane, ctrl] of o.aborts) {
     const run = o.laneRun.get(lane);
     if (run && !running(run) && !ctrl.signal.aborted) {

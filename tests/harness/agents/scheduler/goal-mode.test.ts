@@ -118,7 +118,7 @@ describe("agent scheduler", () => {
     assert.ok(await scheduler.tick()); // round 1, and its first trial
     assert.equal(scheduler.trialsRunning, 1);
     // A validation found every required goal met: the judge's confirming validation is queued.
-    const confirm = env.ledger.enqueueJob({
+    const confirm = env.ledger.jobs.enqueue({
       kind: "validate",
       priority: 40,
       spec: { run: "js-1", champion_seq: 1, confirm: true },
@@ -159,7 +159,7 @@ describe("agent scheduler", () => {
   test("goal mode: a confirmation queued for another champion does not hold the lanes (goal 086)", async () => {
     const { env, fake, scheduler } = await goalSetup(undefined, { trialsPerEpoch: 2 });
     await env.drain();
-    env.ledger.enqueueJob({
+    env.ledger.jobs.enqueue({
       kind: "validate",
       priority: 40,
       spec: { run: "js-1", champion_seq: 7, confirm: true },

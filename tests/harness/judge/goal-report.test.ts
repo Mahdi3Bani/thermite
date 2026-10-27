@@ -133,7 +133,7 @@ describe("a goal report keeps what it measured (goal 086)", () => {
     // A change the kit's check refuses: the numbers the check reported for its metrics.
     const wrong = await env.submit(WRONG_KERNEL, "return early");
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(wrong)?.verdict, "regress", env.explain(wrong));
+    assert.equal(env.ledger.verdicts.current(wrong)?.verdict, "regress", env.explain(wrong));
     assert.match(
       String(env.checks(wrong).find((c) => c.goal === "correct")?.detail),
       /^small: invalid: wrong result 60000000, expected 59999997; measured: small: sum 6\.00000e\+7$/,
@@ -142,8 +142,8 @@ describe("a goal report keeps what it measured (goal 086)", () => {
     // A change that meets speedy: confirmed, with its held-out case, then promoted and validated.
     const fast = await env.submit(FAST_KERNEL, "drop the idle");
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(fast)?.verdict, "goal_progress", env.explain(fast));
-    assert.equal(env.ledger.getRun("js-1")?.status, "closed");
+    assert.equal(env.ledger.verdicts.current(fast)?.verdict, "goal_progress", env.explain(fast));
+    assert.equal(env.ledger.runs.get("js-1")?.status, "closed");
     const held = env.events("held_out_checked").find((e) => e.subject === fast);
     assert.ok(held, env.explain(fast));
     assert.deepEqual((held.body as { cells: unknown[] }).cells, [
@@ -205,7 +205,7 @@ describe("a goal report keeps what it measured (goal 086)", () => {
     // What the planner and the workers get of the goal report: public values, never held-out.
     const forAgents = (
       scheduler as unknown as { goalReport(run: string, seq: number): unknown }
-    ).goalReport("js-1", env.ledger.currentChampion("js-1").seq);
+    ).goalReport("js-1", env.ledger.champions.current("js-1").seq);
     const agentViews = {
       goal_report: JSON.stringify(forAgents),
       evidence: JSON.stringify(new Registry(env.ledger).evidence("js-1")),
@@ -253,14 +253,14 @@ describe("a goal report keeps what it measured (goal 086)", () => {
   test("a confirmation queued for an earlier champion is a first validation of the champion now", async () => {
     const env = await setup({ goals: [GOALS[0]] });
     // As when a promotion came between a validation that met every goal and its confirmation.
-    env.ledger.enqueueJob({
+    env.ledger.jobs.enqueue({
       kind: "validate",
       priority: 40,
       spec: { run: "js-1", champion_seq: 7, confirm: true },
       actor: "t",
     });
     assert.ok(await env.judge.tick());
-    assert.equal(env.ledger.getRun("js-1")?.status, "running", "one validation never closes it");
+    assert.equal(env.ledger.runs.get("js-1")?.status, "running", "one validation never closes it");
     assert.equal(env.reports()[0]?.confirming, true);
     const confirm = env.ledger.db
       .prepare(
@@ -272,7 +272,7 @@ describe("a goal report keeps what it measured (goal 086)", () => {
       [1],
     );
     await env.drain();
-    assert.equal(env.ledger.getRun("js-1")?.status, "closed");
+    assert.equal(env.ledger.runs.get("js-1")?.status, "closed");
     assert.equal(env.events("goal_complete").length, 1);
     // The contract has a held-out case, but no goal met has it: nothing to check (goal 086).
     assert.equal(env.events("held_out_checked").length, 0);

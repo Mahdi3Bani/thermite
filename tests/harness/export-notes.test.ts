@@ -126,7 +126,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
         updated_at: "2026-10-16T00:00:00.000Z",
       },
     ]);
-    s.ledger.setRunStatus(RUN, "closed", "done", "test");
+    s.ledger.runs.setStatus(RUN, "closed", "done", "test");
     const exp = await s.export("test");
     const files = Object.keys(manifestOf(exp.dir).files);
     assert.ok(files.includes(`research/${RUN}/folder/INDEX.md`), files.join(", "));
@@ -181,8 +181,8 @@ describe("a run's export holds its journal, its research notes and its briefing"
     assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
     research.addNote("r-1", "lane-1", "The paper's table 3 has the numbers.", [], "t-9");
     research.addNote(RUN, "lane-1", "Aligned loads matter.", [], "t-1");
-    assert.notEqual(s.ledger.getRun("r-1")?.status, "closed");
-    assert.notEqual(s.ledger.getRun(RUN)?.status, "closed");
+    assert.notEqual(s.ledger.runs.get("r-1")?.status, "closed");
+    assert.notEqual(s.ledger.runs.get(RUN)?.status, "closed");
     const folderFiles = (dir: string, run: string) =>
       Object.keys(manifestOf(dir).files).filter((f) => f.startsWith(`research/${run}/folder`));
 
@@ -215,7 +215,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
       notes.join(", "),
     );
     // The run's end still exports its folder at its own place.
-    s.ledger.setRunStatus(RUN, "closed", "done", "test");
+    s.ledger.runs.setStatus(RUN, "closed", "done", "test");
     const last = await s.export("test");
     assert.ok(folderFiles(last.dir, RUN).includes(`research/${RUN}/folder/INDEX.md`));
   });
@@ -237,7 +237,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
     research.addNote(RUN, "lane-1", "Aligned loads matter.", [], "t-1");
     // The chain: a normal export first.
     const before = await s.export("test");
-    const chain = s.ledger.lastExport();
+    const chain = s.ledger.exports.last();
 
     // Through the command, as Export on the run's page sends it.
     const r = (await s.applyCommand(env.sign("export_now", { run: "r-1" }))) as {
@@ -279,7 +279,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
       ["r-1"],
     );
     // The chain is as it was: the next export starts where the last of the chain ended.
-    assert.deepEqual(s.ledger.lastExport(), chain);
+    assert.deepEqual(s.ledger.exports.last(), chain);
     research.addNote(RUN, "lane-1", "After the run's export.", [], "t-1");
     const next = await s.export("test");
     const nm = manifestOf(next.dir) as { from_event?: number };
@@ -344,7 +344,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
     for (const i of part) {
       assert.equal(i.rig, s.rig);
       assert.equal(i.run, RUN);
-      assert.equal(i.campaign, s.ledger.getRun(RUN)?.campaign);
+      assert.equal(i.campaign, s.ledger.runs.get(RUN)?.campaign);
       assert.ok(i.by && i.at && i.updated_at, "who wrote it and when");
     }
     assert.match(
@@ -365,7 +365,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
     });
     const filed = store
       .kb()
-      .changedAfter([String(s.ledger.getRun(RUN)?.campaign)], 0)
+      .changedAfter([String(s.ledger.runs.get(RUN)?.campaign)], 0)
       .map(({ campaign, rig, run, kind, ref, title, body, by, url, sub, at, updated_at }) => ({
         campaign,
         rig,
@@ -386,7 +386,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
       [...filed].sort((a, b) => key(a).localeCompare(key(b))),
     );
     // The next export holds only what changed since: the run's new status.
-    s.ledger.setRunStatus(RUN, "paused", "the owner paused it", "test");
+    s.ledger.runs.setStatus(RUN, "paused", "the owner paused it", "test");
     const two = await s.export("test");
     const changed = lines(join(two.dir, "knowledge.jsonl"));
     assert.deepEqual(

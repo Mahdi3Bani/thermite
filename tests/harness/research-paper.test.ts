@@ -108,7 +108,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
     assert.equal(asked.length, 1, "asked once");
     assert.equal(asked[0]?.review, s.review);
     assert.equal(started, 0, "no trial starts while the run waits for its paper");
-    assert.equal(s.ledger.getRun(RUN)?.status, "running", "it waits for its paper");
+    assert.equal(s.ledger.runs.get(RUN)?.status, "running", "it waits for its paper");
     // The writer's package: the review panel's checked answers and verdicts, the figures, the rules.
     const { status, body } = await s.call("GET", "/v1/research/papers/pending");
     assert.equal(status, 200);
@@ -504,7 +504,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
     assert.deepEqual(pkg?.last_refusal?.problems, [
       "the STE checker's result is not of this paper's text",
     ]);
-    assert.equal(s.ledger.getRun(RUN)?.status, "running", "it still waits for its paper");
+    assert.equal(s.ledger.runs.get(RUN)?.status, "running", "it still waits for its paper");
   });
 
   test("accepted: paper.md, the final report with the paper first, the next experiments in the knowledge base, and the close once trials end", async (t) => {
@@ -693,7 +693,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
     );
     // The run closes once its trials end: the final report starts with the paper.
     await sch.tick();
-    const run = s.ledger.getRun(RUN);
+    const run = s.ledger.runs.get(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", ANSWERED]);
     const final = String(
       (

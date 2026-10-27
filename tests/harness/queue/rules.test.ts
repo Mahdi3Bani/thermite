@@ -23,7 +23,7 @@ describe("the owner's queue commands", () => {
     assert.ok(set.accepted, JSON.stringify(set));
     assert.deepEqual(set.result.new_directions, ["timer-code"]);
     assert.deepEqual(
-      s.env.service.ledger.activeDirectives(RUN).map((d) => (d.body as { family: string }).family),
+      s.env.service.ledger.directives.active(RUN).map((d) => (d.body as { family: string }).family),
       ["timer-code", "tiling"],
     );
     const supervisorIds = s.env.service.addDirectives(
@@ -31,7 +31,7 @@ describe("the owner's queue commands", () => {
       [{ kind: "try", family: "unroll", rationale: "r", citations: ["a-1"] }],
       "supervisor",
     );
-    const active = () => s.env.service.ledger.activeDirectives(RUN).map((d) => d.id);
+    const active = () => s.env.service.ledger.directives.active(RUN).map((d) => d.id);
     assert.equal(active().length, 3);
     const dropped = await s.command("drop_directive", { run: RUN, id: supervisorIds[0] });
     assert.ok(dropped.accepted, JSON.stringify(dropped));
@@ -103,7 +103,7 @@ describe("the owner's queue commands", () => {
   test("an old rule in words stays in force, marked legacy, until it is converted or the owner removes it", async () => {
     const s = await setup();
     // As an older harness wrote it: a new one can't be made.
-    const [old] = s.env.service.ledger.addDirectiveSet(
+    const [old] = s.env.service.ledger.directives.addSet(
       RUN,
       "control:owner:ui",
       [{ kind: "avoid", match: "anything with shared memory", rationale: "slow", citations: [] }],
@@ -134,16 +134,16 @@ describe("the owner's queue commands", () => {
       [{ kind: "note", value: "a note", rationale: "r", citations: ["a-1"] }],
       "supervisor",
     );
-    assert.ok(s.env.service.ledger.activeDirectives(RUN).some((d) => d.id === old));
+    assert.ok(s.env.service.ledger.directives.active(RUN).some((d) => d.id === old));
     const gone = await s.command("drop_directive", { run: RUN, id: old });
     assert.ok(gone.accepted, JSON.stringify(gone));
-    assert.ok(!s.env.service.ledger.activeDirectives(RUN).some((d) => d.id === old));
+    assert.ok(!s.env.service.ledger.directives.active(RUN).some((d) => d.id === old));
   });
 
   test("converting an old rule in words: a new rule with its author, kind, why and source; the old one ends as converted", async () => {
     const s = await setup();
     const ledger = s.env.service.ledger;
-    const [named, old] = ledger.addDirectiveSet(
+    const [named, old] = ledger.directives.addSet(
       RUN,
       "control:owner:ui",
       [
@@ -158,10 +158,10 @@ describe("the owner's queue commands", () => {
       ],
       false,
     ) as [number, number];
-    const to = ledger.convertRule(RUN, old, "vector-loads", "planner");
+    const to = ledger.directives.convertRule(RUN, old, "vector-loads", "planner");
     // The new rule: the old one's author, kind, why, citations and source, on a direction, with
     // the words it was converted from. Code keeps it: it is no longer legacy.
-    const active = ledger.activeDirectives(RUN);
+    const active = ledger.directives.active(RUN);
     assert.deepEqual(
       active.map((d) => d.id),
       [named, to],
@@ -212,9 +212,12 @@ describe("the owner's queue commands", () => {
       { id: to, kind: "mandate" },
     ]);
     // Converted once: the old rule is no longer in force, and a rule on a direction is not one.
-    assert.throws(() => ledger.convertRule(RUN, old, "loads", "planner"), /no rule \d+ in force/);
     assert.throws(
-      () => ledger.convertRule(RUN, named, "loads", "planner"),
+      () => ledger.directives.convertRule(RUN, old, "loads", "planner"),
+      /no rule \d+ in force/,
+    );
+    assert.throws(
+      () => ledger.directives.convertRule(RUN, named, "loads", "planner"),
       /names a direction already/,
     );
     assert.equal(s.events("directive_converted").length, 1);

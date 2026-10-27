@@ -38,7 +38,7 @@ describe("the teachers' reads of a run's code and evidence (goal 081)", () => {
     const { env, wrong, fast, get } = await judged();
     const files = await get("/v1/code/files?run=js-1");
     assert.equal(files.status, 200);
-    const champion = env.ledger.currentChampion("js-1");
+    const champion = env.ledger.champions.current("js-1");
     assert.equal(files.body.commit, champion.commit_sha);
     assert.deepEqual(
       (files.body.files as string[]).map((f) => f.replace(/ \(\d+ bytes\)$/, "")).sort(),

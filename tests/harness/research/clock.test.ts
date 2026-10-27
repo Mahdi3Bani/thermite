@@ -25,7 +25,7 @@ describe("the research clock", () => {
   test("paused time does not count on the research clock", async () => {
     const { env, clock, pass } = await onClock({ min_duration: "1h", max_duration: "2h" });
     pass(1000);
-    env.service.ledger.setRunStatus("r-1", "paused", "t", "t");
+    env.service.ledger.runs.setStatus("r-1", "paused", "t", "t");
     pass(300);
     const paused = clock().elapsed_ms;
     assert.equal(paused, 1000);

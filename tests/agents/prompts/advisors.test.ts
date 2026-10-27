@@ -59,7 +59,7 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
       "t",
     );
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(attempt)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(attempt)?.lifecycle), "awaiting_audit");
     const { sent, script } = recorder(() => ({
       toolCalls: [
         { name: "answer", args: { decision: "needs_owner", reasons: "unsure", citations: [] } },

@@ -75,7 +75,7 @@ describe("the owner's queue commands", () => {
 
   test("a closed run's queue and rules do not change", async () => {
     const s = await setup();
-    s.env.service.ledger.setRunStatus(RUN, "closed", "done", "test");
+    s.env.service.ledger.runs.setStatus(RUN, "closed", "done", "test");
     const r = await s.command("queue_add", { run: RUN, title: "late" });
     assert.match(String(r.result.error), /run smoke-1 is closed/);
     const d = await s.command("drop_directive", { run: RUN, id: 1 });

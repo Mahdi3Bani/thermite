@@ -505,7 +505,7 @@ export function makeJudgeEnv(
   /** What became of an attempt, for assertion messages: lifecycle, verdicts, jobs, events. */
   const explain = (attempt: string) =>
     JSON.stringify({
-      lifecycle: ledger.getAttempt(attempt)?.lifecycle,
+      lifecycle: ledger.attempts.get(attempt)?.lifecycle,
       verdicts: ledger.db
         .prepare("select verdict, reasons from verdict where attempt = ? order by id")
         .all(attempt),

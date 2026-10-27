@@ -66,7 +66,7 @@ export async function writeExport(input: {
   run?: string | undefined;
 }): Promise<ExportResult> {
   const { ledger, run: only } = input;
-  const since = only ? 0 : (ledger.lastExport()?.through_event ?? 0);
+  const since = only ? 0 : (ledger.exports.last()?.through_event ?? 0);
   const through = ledger.latestEventId();
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "");
   const name = `${stamp}-${randomUUID().slice(0, 8)}`;
@@ -87,15 +87,15 @@ export async function writeExport(input: {
       ...new Set(events.filter((e) => e.kind === "attempt_recorded").map((e) => String(e.subject))),
     ];
     for (const id of attemptIds) {
-      const a = ledger.getAttempt(id);
+      const a = ledger.attempts.get(id);
       if (!a || (only && String(a.run) !== only)) continue;
-      const run = ledger.getRun(String(a.run));
+      const run = ledger.runs.get(String(a.run));
       const mirror = input.mirrorFor(run?.seed_repo ?? "");
       const patch = await patchBytes(mirror, String(a.parent_commit), String(a.commit_sha));
       writeFileSync(join(tmp, "attempts", `${id}.patch`), patch);
       writeFileSync(
         join(tmp, "attempts", `${id}.json`),
-        `${canonicalJson({ attempt: a, verdict: ledger.currentVerdict(id) ?? null })}\n`,
+        `${canonicalJson({ attempt: a, verdict: ledger.verdicts.current(id) ?? null })}\n`,
       );
     }
 
@@ -174,7 +174,7 @@ export async function writeExport(input: {
       ...new Set(events.filter((e) => e.kind === "run_created").map((e) => String(e.subject))),
     ];
     const briefing = created.flatMap((run) =>
-      ledger.briefing(run).map((b, i) => ({ run, seq: i + 1, ...b })),
+      ledger.runs.briefing(run).map((b, i) => ({ run, seq: i + 1, ...b })),
     );
     if (briefing.length) {
       writeFileSync(join(tmp, "briefing.jsonl"), jsonl(briefing));
@@ -215,7 +215,7 @@ export async function writeExport(input: {
             (e) =>
               e.kind === "run_status" &&
               (e.body as { status?: string }).status === "closed" &&
-              ledger.getRun(String(e.subject))?.mode !== "research" &&
+              ledger.runs.get(String(e.subject))?.mode !== "research" &&
               recorded(String(e.subject)),
           )
           .map((e) => String(e.subject)),
@@ -231,7 +231,7 @@ export async function writeExport(input: {
       // final one, under the export's name: a results repository never replaces a file it has,
       // so the folder the run's end exports must not be taken already.
       if (input.full && !only)
-        for (const r of ledger.listRuns())
+        for (const r of ledger.runs.list())
           if (!at.has(r.id) && (r.mode === "research" || recorded(r.id)))
             at.set(r.id, `research/${r.id}/folder-${name}`);
       for (const [run, place] of at) {
@@ -291,11 +291,11 @@ export async function writeExport(input: {
     renameSync(tmp, final);
     const id = only
       ? 0
-      : ledger.recordExport({ throughEvent: through, path: name, manifest, actor: input.actor });
+      : ledger.exports.record({ throughEvent: through, path: name, manifest, actor: input.actor });
     // Announced after the export exists: control can then offer it for propagation, and the
     // receiving supervisor finds the patch in the results repository once this export is pushed.
     for (const c of published) {
-      const inst = ledger.getRun(c.run);
+      const inst = ledger.runs.get(c.run);
       ledger.appendEvent(input.actor, "champion_published", c.run, {
         seq: c.seq,
         repo: inst?.seed_repo ?? null,

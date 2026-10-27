@@ -110,13 +110,17 @@ describe("agent scheduler", () => {
       ["submitted", "submitted"],
     );
     const winner = String(trials[0]?.attempt);
-    assert.equal(env.ledger.currentVerdict(winner)?.verdict, "win_confirmed", env.explain(winner));
-    assert.equal(env.ledger.currentVerdict(String(trials[1]?.attempt))?.verdict, "invalid");
+    assert.equal(
+      env.ledger.verdicts.current(winner)?.verdict,
+      "win_confirmed",
+      env.explain(winner),
+    );
+    assert.equal(env.ledger.verdicts.current(String(trials[1]?.attempt))?.verdict, "invalid");
     // The win became the champion, so it is no lane's separate best.
-    assert.equal(env.ledger.currentChampion("js-1").attempt, winner);
+    assert.equal(env.ledger.champions.current("js-1").attempt, winner);
     assert.equal(scheduler.registry.laneBest("js-1", "lane-1"), null);
     assert.equal(scheduler.registry.laneBest("js-1", "lane-2"), null);
-    assert.equal(String(env.ledger.getAttempt(winner)?.family), "loops");
+    assert.equal(String(env.ledger.attempts.get(winner)?.family), "loops");
     await scheduler.idle();
     await fake.close();
   });
@@ -179,7 +183,7 @@ describe("agent scheduler", () => {
         .all()
         .map((r) => r.lifecycle);
     const rule = (value: "on" | "off") =>
-      env.ledger.addDirective("js-1", "control:owner", {
+      env.ledger.directives.add("js-1", "control:owner", {
         kind: "keep_working",
         value,
         rationale: "test",
@@ -321,7 +325,7 @@ describe("agent scheduler", () => {
     await env.start();
     const contract = env.service.contractFor("js-1");
     assert.equal(keepsWorking(env.ledger, "js-1", contract), true);
-    env.ledger.addDirective("js-1", "control:owner", {
+    env.ledger.directives.add("js-1", "control:owner", {
       kind: "keep_working",
       value: "off",
       rationale: "test",
@@ -338,7 +342,7 @@ describe("agent scheduler", () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 }, agents: false });
     const r = await env.start();
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
-    assert.equal(env.ledger.getRun("js-1")?.agents, false);
+    assert.equal(env.ledger.runs.get("js-1")?.agents, false);
     let asked = 0;
     const fake = await startFakeModel(() => {
       asked++;
@@ -372,6 +376,6 @@ describe("agent scheduler", () => {
       "proposer",
     )) as { attempt: string };
     await env.drain();
-    assert.ok(env.ledger.currentVerdict(sub.attempt), "the judge gave the attempt a verdict");
+    assert.ok(env.ledger.verdicts.current(sub.attempt), "the judge gave the attempt a verdict");
   });
 });

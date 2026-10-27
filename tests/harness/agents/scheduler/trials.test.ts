@@ -49,7 +49,7 @@ describe("agent scheduler", () => {
     await scheduler.tick();
     await scheduler.idle();
     const t = env.ledger.db.prepare("select lane, attempt from trial").get();
-    const a = env.ledger.getAttempt(String(t?.attempt));
+    const a = env.ledger.attempts.get(String(t?.attempt));
     assert.equal(a?.lane, "lane-1");
     assert.equal(a?.family, env.ledger.db.prepare("select family from trial").get()?.family);
     // The trial has ended: its token no longer works.
@@ -118,7 +118,7 @@ describe("agent scheduler", () => {
     release();
     await scheduler.idle();
     // A trial_minutes rule on the run comes before the rig's, as it does before the contract's.
-    env.ledger.addDirective("js-1", "control:owner", {
+    env.ledger.directives.add("js-1", "control:owner", {
       kind: "trial_minutes",
       value: 120,
       rationale: "trials end at their limit before they submit",

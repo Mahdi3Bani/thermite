@@ -328,7 +328,7 @@ describe("the teachers put ideas first (goal 081)", () => {
       emptyAdviseState(),
     );
     // Only the avoid rule reached the rig; the supervisor said why it dropped the others.
-    const rules = env.ledger.activeDirectives("js-1").map((d) => d.body as { kind: string });
+    const rules = env.ledger.directives.active("js-1").map((d) => d.body as { kind: string });
     assert.deepEqual(
       rules.map((r) => r.kind),
       ["avoid"],
@@ -604,7 +604,7 @@ describe("the teachers put ideas first (goal 081)", () => {
     const plain = Array.from({ length: target }, (_, i) => add(`plain ${i}`));
     add("tile by 32", "tiling");
     add("tile by 64", "tiling");
-    env.ledger.addDirectiveSet(
+    env.ledger.directives.addSet(
       run,
       "supervisor",
       [{ kind: "avoid", family: "tiling", rationale: "null twice", citations: ["a-1"] }],

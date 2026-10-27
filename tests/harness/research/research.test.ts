@@ -748,7 +748,7 @@ describe("research campaign", () => {
       runResearchTrial: (spec) => runResearchTrial(spec, { model, call }),
     });
     const deadline = Date.now() + 30_000;
-    while (env.service.ledger.getRun("r-1")?.status === "running" && Date.now() < deadline) {
+    while (env.service.ledger.runs.get("r-1")?.status === "running" && Date.now() < deadline) {
       await scheduler.tick();
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -760,7 +760,7 @@ describe("research campaign", () => {
       trials.length >= 2,
       `the campaign kept assigning work after a worker finished (${trials.length} trials)`,
     );
-    assert.equal(env.service.ledger.getRun("r-1")?.status, "closed");
+    assert.equal(env.service.ledger.runs.get("r-1")?.status, "closed");
     const final = env.service.ledger.db
       .prepare("select body from report_version where kind = 'final'")
       .get();

@@ -31,7 +31,7 @@ export async function receivePropagation(
   p: Propagate,
   by: string,
 ): Promise<unknown> {
-  const inst = svc.ledger.getRun(p.run);
+  const inst = svc.ledger.runs.get(p.run);
   if (!inst) throw new LedgerError("not_found", `no run ${p.run}`);
   if (inst.mode === "research") throw new Refusal("research campaigns do not take propagations");
   const spec = p.import;
@@ -74,7 +74,7 @@ export async function receivePropagation(
     await deleteRef(mirror, rebuilt.ref).catch(() => undefined);
     throw new Refusal(`tree mismatch: the signed tree is ${spec.tree}, the patch gives ${tree}`);
   }
-  svc.ledger.recordImport({
+  svc.ledger.imports.record({
     kind: "champion_patch",
     name: `${p.source_rig}/${p.source_run}/${p.source_seq}`,
     sha256: spec.sha256,
@@ -83,7 +83,7 @@ export async function receivePropagation(
     storedPath: stored,
     actor: by,
   });
-  const champion = svc.ledger.currentChampion(p.run);
+  const champion = svc.ledger.champions.current(p.run);
   const source = {
     source_rig: p.source_rig,
     source_run: p.source_run,
@@ -117,7 +117,7 @@ export async function receivePropagation(
   // The candidate judged here must be exactly the source champion's tree.
   const got = await treeOf(mirror, r.commit);
   if (got !== tree) {
-    svc.ledger.setAttemptLifecycle(r.attempt, "errored", by);
+    svc.ledger.attempts.setLifecycle(r.attempt, "errored", by);
     throw new Error(`the propagated attempt has tree ${got}, not ${tree}`);
   }
   svc.ledger.tx(() => {
@@ -157,14 +157,14 @@ export function settlePropagations(ledger: Ledger, by: string): number {
       .all() as Record<string, unknown>[]
   ).filter(
     (r) =>
-      r.result === null || String(ledger.getAttempt(String(r.attempt))?.lifecycle) === "promoted",
+      r.result === null || String(ledger.attempts.get(String(r.attempt))?.lifecycle) === "promoted",
   );
   let settled = 0;
   for (const row of open) {
     const attempt = String(row.attempt);
-    const lifecycle = String(ledger.getAttempt(attempt)?.lifecycle);
+    const lifecycle = String(ledger.attempts.get(attempt)?.lifecycle);
     if (!SETTLED.has(lifecycle)) continue;
-    const verdict = ledger.currentVerdict(attempt)?.verdict ?? lifecycle;
+    const verdict = ledger.verdicts.current(attempt)?.verdict ?? lifecycle;
     const accepted = lifecycle === "promoted";
     ledger.tx(() => {
       ledger.db
@@ -216,9 +216,9 @@ export async function championFiles(input: {
     sha256: string;
     path: string;
   }[] = [];
-  for (const inst of input.ledger.listRuns()) {
+  for (const inst of input.ledger.runs.list()) {
     if (inst.mode === "research") continue;
-    const champ = input.ledger.currentChampion(inst.id);
+    const champ = input.ledger.champions.current(inst.id);
     if (champ.seq <= 1 || !champ.attempt) continue;
     const published = input.ledger.events.newest("champion_published", {
       subject: inst.id,

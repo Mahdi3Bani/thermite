@@ -6,11 +6,11 @@ const ledger = Ledger.open(dbPath);
 while (Date.now() < Number(startAt)) {
   // spin until both racers are ready
 }
-const r = ledger.promote({
+const r = ledger.champions.promote({
   run: "race-1",
   expectedSeq: 1,
   attempt,
-  commitSha: String(ledger.getAttempt(attempt)?.commit_sha),
+  commitSha: String(ledger.attempts.get(attempt)?.commit_sha),
   by: attempt,
 });
 process.stdout.write(JSON.stringify(r));

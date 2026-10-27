@@ -165,7 +165,7 @@ describe("the advisors and the run's queue", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
     const script = join(dir, "auditor.mjs");
     writeFileSync(

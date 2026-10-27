@@ -115,7 +115,7 @@ export function startingPoint(ledger: Ledger, run: string): StartingPoint {
     | { seq: number; commit_sha: string; attempt: string | null }
     | undefined;
   if (!r) {
-    const c = ledger.currentChampion(run);
+    const c = ledger.champions.current(run);
     return { seq: c.seq, commit: c.commit_sha, attempt: c.attempt };
   }
   return { seq: Number(r.seq), commit: String(r.commit_sha), attempt: r.attempt ?? null };
@@ -162,7 +162,7 @@ export type BaselineState =
 
 /** A hill climb's baseline state; undefined for a run in another mode. */
 export function baselineState(ledger: Ledger, run: string): BaselineState | undefined {
-  if (ledger.getRun(run)?.mode !== "hill_climb") return undefined;
+  if (ledger.runs.get(run)?.mode !== "hill_climb") return undefined;
   const start = startingPoint(ledger, run);
   const baseline = baselineOf(ledger, run, start);
   if (baseline) return { state: "measured", start, baseline };

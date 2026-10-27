@@ -49,7 +49,7 @@
       "lines": 1277
     },
     "src/harness/agents/scheduler.ts": {
-      "lines": 2980
+      "lines": 2976
     },
     "src/harness/agents/worker.ts": {
       "lines": 832
@@ -64,10 +64,7 @@
       "lines": 1241
     },
     "src/harness/judge/judge.ts": {
-      "lines": 2044
-    },
-    "src/harness/ledger.ts": {
-      "lines": 1562
+      "lines": 2013
     },
     "src/harness/main.ts": {
       "lines": 882
@@ -91,7 +88,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2924
+      "lines": 2921
     },
     "src/supervisor/advise.ts": {
       "lines": 1366

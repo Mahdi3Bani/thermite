@@ -789,7 +789,7 @@ export class Papers {
 
   /** What a run's paper is checked against; it must wait for its paper. */
   basis(run: string): PaperBasis {
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (!inst) throw new LedgerError("not_found", `no run ${run}`);
     if (inst.status !== "running") throw new LedgerError("invalid", `run ${run} is ${inst.status}`);
     if (this.accepted(run))

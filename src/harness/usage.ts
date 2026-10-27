@@ -91,7 +91,7 @@ export class ModelUsage {
 
   /** The supervisor's records of one advisor's calls in a run; returns how many were recorded. */
   fromSupervisor(run: string, ctx: CallContext, calls: readonly CallUsage[]): number {
-    if (!this.ledger.getRun(run)) throw new LedgerError("not_found", `no run ${run}`);
+    if (!this.ledger.runs.get(run)) throw new LedgerError("not_found", `no run ${run}`);
     this.ledger.tx(() => {
       for (const u of calls) this.record("supervisor", run, ctx, u);
     });

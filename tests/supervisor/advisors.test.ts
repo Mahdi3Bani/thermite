@@ -151,8 +151,8 @@ describe("advisors", () => {
     assert.equal(new Set(usage.map((u) => u.round)).size, 1);
     assert.match(String(usage[0]?.round), /^teachers \d{4}-/);
     assert.ok(usage.every((u) => u.provider === null && u.tokens_in === 100));
-    const active = env.ledger
-      .activeDirectives("js-1")
+    const active = env.ledger.directives
+      .active("js-1")
       .map((d) => d.body as { kind: string; family: string });
     assert.deepEqual(active, [
       { kind: "mandate", family: "tiling", rationale: "both reviews", citations: ["arxiv:1"] },
@@ -289,7 +289,7 @@ describe("advisors", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     // A stand-in for a CLI agent: reads the prompt, prints logs, then its JSON answer.
     const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
     const script = join(dir, "auditor.mjs");
@@ -316,7 +316,7 @@ describe("advisors", () => {
       emptyAdviseState(),
     );
     assert.equal(state.stats.audits, 1, JSON.stringify(state.stats));
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "audit_blocked");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "audit_blocked");
     // A command-line agent says nothing of its model calls: none is recorded, none made up.
     assert.equal(
       env.ledger.eventsAfter(0, 100_000).events.filter((e) => e.kind === "model_call").length,
@@ -342,7 +342,7 @@ describe("advisors", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
     const script = join(dir, "auditor.mjs");
     writeFileSync(script, `console.log("no answer today"); process.exit(3);`);
@@ -360,7 +360,7 @@ describe("advisors", () => {
     for (let n = 1; n <= 5; n++) {
       state = await adviseOnce({ ...cfg, retryMs: 0, fetchImpl: harnessFetch(env) }, state);
       assert.equal(
-        String(env.ledger.getAttempt(id)?.lifecycle),
+        String(env.ledger.attempts.get(id)?.lifecycle),
         n < 5 ? "awaiting_audit" : "awaiting_approval",
         `after try ${n}`,
       );
@@ -390,7 +390,7 @@ describe("advisors", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
     writeFileSync(join(dir, "auditor.mjs"), script);
     const advisors = AdvisorsConfig.parse({
@@ -424,7 +424,7 @@ describe("advisors", () => {
     state.tries[`audit:${id}`] = 5;
     const next = await adviseOnce({ ...cfg, fetchImpl: harnessFetch(env) }, state);
     assert.equal(next.stats.audits, 1, "the open audit is tried");
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "audit_blocked");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "audit_blocked");
     assert.equal(next.tries[`audit:${id}`], undefined, "the old marker is gone");
   });
 
@@ -444,11 +444,11 @@ describe("advisors", () => {
     let state = emptyAdviseState();
     for (let n = 1; n <= 5; n++) state = await adviseOnce({ ...cfg, fetchImpl }, state);
     assert.equal(refused, 1, "the fifth failure was handed to the owner, and refused");
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     assert.equal(state.tries[`audit:${audit}`], 5);
     // The next round hands it again: it reaches the owner, with the auditor's error.
     state = await adviseOnce({ ...cfg, fetchImpl }, state);
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_approval");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_approval");
     assert.match(
       String(env.ledger.latestEventBody("promotion_pending", id)?.reason),
       /the auditor could not answer after 5 tries: no valid answer: no answer/,

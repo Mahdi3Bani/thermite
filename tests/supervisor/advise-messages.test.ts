@@ -286,7 +286,7 @@ describe("the owner's messages to the advisors", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     await ownerSays(env, "auditor", "be strict about timing changes");
     // A command-line auditor: it is told the answer's shape and finds the message in its input.
     const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));
@@ -306,7 +306,7 @@ describe("the owner's messages to the advisors", () => {
     const lines: string[] = [];
     const state = await adviseOnce(config(env, advisors, lines), emptyAdviseState());
     assert.equal(state.stats.audits, 1, JSON.stringify(state.stats));
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "audit_blocked");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "audit_blocked");
     assert.deepEqual(bodies(env, "advisor_answer"), [
       {
         message: 1,

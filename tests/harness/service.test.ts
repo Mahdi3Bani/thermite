@@ -32,7 +32,7 @@ describe("harness service and API", () => {
     const out = await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     assert.equal(out.status, "applied");
     assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
-    const champ = env.service.ledger.currentChampion("smoke-1");
+    const champ = env.service.ledger.champions.current("smoke-1");
     assert.deepEqual([champ.seq, champ.commit_sha], [1, env.seedCommit]);
   });
 
@@ -52,7 +52,7 @@ describe("harness service and API", () => {
     const out = await env.service.applyCommand(env.sign("assign_campaign", bad));
     assert.ok(out.status === "applied" && !out.accepted);
     assert.match(JSON.stringify(out.result), /does not contain commit/);
-    assert.equal(env.service.ledger.getRun("smoke-1"), undefined);
+    assert.equal(env.service.ledger.runs.get("smoke-1"), undefined);
   });
 
   test("a model whose sha256 differs from the signed command is refused", async () => {
@@ -94,7 +94,7 @@ describe("harness service and API", () => {
     );
     assert.ok(ok.status === "applied" && ok.accepted, JSON.stringify(ok));
     writeFileSync(join(env.service.paths.inboxDir, "models", "m.bin"), "tampered after import");
-    const stored = env.service.ledger.findImport("model", { sha256: good }) as string;
+    const stored = env.service.ledger.imports.find("model", { sha256: good }) as string;
     assert.equal(readFileSync(stored, "utf8"), "weights-v1");
   });
 
@@ -120,7 +120,7 @@ describe("harness service and API", () => {
       },
       "rig-check",
     );
-    const stored = env.service.ledger.findImport("model", { sha256: sha }) as string;
+    const stored = env.service.ledger.imports.find("model", { sha256: sha }) as string;
     assert.equal(readFileSync(stored, "utf8"), "own weights");
   });
 
@@ -419,7 +419,7 @@ describe("harness service and API", () => {
     ]);
     assert.deepEqual(outcomes.map((o) => o.status).sort(), ["applied", "in_progress"]);
     assert.equal((await env.service.applyCommand(redirect)).status, "replayed");
-    assert.equal(env.service.ledger.activeDirectives("smoke-1").length, 1);
+    assert.equal(env.service.ledger.directives.active("smoke-1").length, 1);
   });
 
   test("a refused assign changes nothing, and resume keeps one run running", async () => {
@@ -429,14 +429,14 @@ describe("harness service and API", () => {
     const reuse = await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     assert.ok(reuse.status === "applied" && !reuse.accepted);
     assert.match(JSON.stringify(reuse.result), /already exists/);
-    assert.equal(ledger.getRun("smoke-1")?.status, "running");
+    assert.equal(ledger.runs.get("smoke-1")?.status, "running");
 
     await env.service.applyCommand(
       env.sign("assign_campaign", env.assignPayload({ run: "smoke-2" })),
     );
-    assert.equal(ledger.getRun("smoke-1")?.status, "paused");
+    assert.equal(ledger.runs.get("smoke-1")?.status, "paused");
     await env.service.applyCommand(env.sign("resume_run", { run: "smoke-1" }));
-    const running = ledger.listRuns().filter((i) => i.status === "running");
+    const running = ledger.runs.list().filter((i) => i.status === "running");
     assert.deepEqual(
       running.map((i) => i.id),
       ["smoke-1"],
@@ -687,7 +687,7 @@ describe("harness service and API", () => {
       "proposer",
     );
     // As the judge leaves a confirmed win under the owner_approval policy.
-    env.service.ledger.setAttemptLifecycle(r.attempt, "awaiting_approval", "judge");
+    env.service.ledger.attempts.setLifecycle(r.attempt, "awaiting_approval", "judge");
     const decline = (over?: { issuedBy?: string }) =>
       env.service.applyCommand(
         env.sign(
@@ -700,7 +700,7 @@ describe("harness service and API", () => {
     assert.match(JSON.stringify(byAgent), /the owner's to issue/);
     const ok = await decline();
     assert.equal(ok.accepted, true, JSON.stringify(ok));
-    assert.equal(String(env.service.ledger.getAttempt(r.attempt)?.lifecycle), "declined");
+    assert.equal(String(env.service.ledger.attempts.get(r.attempt)?.lifecycle), "declined");
     const ev = env.service.ledger.latestEventBody("promotion_declined", r.attempt);
     assert.deepEqual(ev, { run: "smoke-1", was: "awaiting_approval", note: "not this one" });
     const again = await decline();

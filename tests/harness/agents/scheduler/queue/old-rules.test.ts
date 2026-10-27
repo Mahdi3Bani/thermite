@@ -33,7 +33,7 @@ describe("the planner as the queue's coordinator", () => {
     // A rule in words from before rules named directions: a new one can't be made, so the
     // ledger gets it as an older harness wrote it.
     old = Number(
-      s.env.service.ledger.addDirectiveSet(
+      s.env.service.ledger.directives.addSet(
         RUN,
         "control:owner:ui",
         [
@@ -81,7 +81,7 @@ describe("the planner as the queue's coordinator", () => {
     );
     // The new rule: the old one's author, kind, why and citations, on the direction, with the
     // words it replaced. The old rule ends as converted, by the planner.
-    const active = s.env.service.ledger.activeDirectives(RUN);
+    const active = s.env.service.ledger.directives.active(RUN);
     assert.equal(active.length, 1);
     const to = active[0]?.id;
     assert.deepEqual(active[0], {
@@ -175,7 +175,7 @@ describe("the planner as the queue's coordinator", () => {
       }),
     });
     x = await s.add("tile it", { family: "tiling" });
-    ids = s.env.service.ledger.addDirectiveSet(
+    ids = s.env.service.ledger.directives.addSet(
       RUN,
       "control:owner:ui",
       [
@@ -190,7 +190,7 @@ describe("the planner as the queue's coordinator", () => {
       "supervisor",
     );
     // A third, removed by the owner: it may leave force with nothing in its place.
-    const [removed] = s.env.service.ledger.addDirectiveSet(
+    const [removed] = s.env.service.ledger.directives.addSet(
       RUN,
       "control:owner:ui",
       [{ kind: "try", match: "anything cheap", rationale: "c", citations: [] }],
@@ -200,12 +200,14 @@ describe("the planner as the queue's coordinator", () => {
     await s.round();
     assert.equal(events(s.env, "directive_converted").length, 2);
     assert.deepEqual(
-      s.env.service.ledger.activeDirectives(RUN).map((d) => (d.body as { family?: string }).family),
+      s.env.service.ledger.directives
+        .active(RUN)
+        .map((d) => (d.body as { family?: string }).family),
       [undefined, "timer-code", "tiling"],
     );
     assert.deepEqual(unreplaced(s.env), []);
     // The check fails on an old rule in words that left force with nothing in its place.
-    const [lost] = s.env.service.ledger.addDirectiveSet(
+    const [lost] = s.env.service.ledger.directives.addSet(
       RUN,
       "control:owner:ui",
       [{ kind: "try", match: "anything quick", rationale: "d", citations: [] }],
@@ -221,7 +223,7 @@ describe("the planner as the queue's coordinator", () => {
     // The planner off: the fixed rules plan, and the rule waits.
     const off = await setup(t);
     await off.add("first");
-    const [kept] = off.env.service.ledger.addDirectiveSet(
+    const [kept] = off.env.service.ledger.directives.addSet(
       RUN,
       "control:owner:ui",
       [{ kind: "avoid", match: "anything slow", rationale: "old", citations: [] }],
@@ -230,7 +232,7 @@ describe("the planner as the queue's coordinator", () => {
     await off.round();
     assert.equal(body(events(off.env, "epoch_started")[0]).source, "fallback");
     assert.deepEqual(
-      off.env.service.ledger.activeDirectives(RUN).map((d) => d.id),
+      off.env.service.ledger.directives.active(RUN).map((d) => d.id),
       [kept],
     );
     assert.equal(events(off.env, "directive_converted").length, 0);
@@ -245,7 +247,7 @@ describe("the planner as the queue's coordinator", () => {
       }),
     });
     await stubborn.add("first");
-    const [waits] = stubborn.env.service.ledger.addDirectiveSet(
+    const [waits] = stubborn.env.service.ledger.directives.addSet(
       RUN,
       "control:owner:ui",
       [{ kind: "avoid", match: "anything slow", rationale: "old", citations: [] }],
@@ -256,7 +258,7 @@ describe("the planner as the queue's coordinator", () => {
     assert.equal(epoch.source, "fallback");
     assert.match(JSON.stringify(epoch.refused), /try 2: refused: rule \d+ is an old rule in words/);
     assert.deepEqual(
-      stubborn.env.service.ledger.activeDirectives(RUN).map((d) => d.id),
+      stubborn.env.service.ledger.directives.active(RUN).map((d) => d.id),
       [waits],
     );
     assert.equal(events(stubborn.env, "directive_converted").length, 0);

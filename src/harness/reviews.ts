@@ -219,7 +219,7 @@ export class Reviews {
     if (!row) throw new LedgerError("not_found", `no review ${id}`);
     if (row.panel_result !== null)
       throw new LedgerError("conflict", `review ${id} is already decided`);
-    const inst = this.ledger.getRun(String(row.run));
+    const inst = this.ledger.runs.get(String(row.run));
     if (inst?.status !== "running")
       throw new LedgerError("invalid", `run ${String(row.run)} is not running`);
     return row;
@@ -413,7 +413,7 @@ export class Reviews {
           `review ${id} is a research review: it is recorded with each reviewer's answers`,
         );
       // Only for a running campaign's current champion: a stale review is not recorded.
-      if (this.ledger.currentChampion(String(row.run)).commit_sha !== String(row.commit_sha))
+      if (this.ledger.champions.current(String(row.run)).commit_sha !== String(row.commit_sha))
         throw new LedgerError(
           "stale",
           `review ${id} is of a commit that is no longer the champion`,

@@ -73,7 +73,7 @@ describe("control dashboard", () => {
       /You selected <b>Make it the champion<\/b> [^<]* ago\. Control sent it to the rig\./,
     );
     await s.relay(); // delivers the signed command to the harness
-    assert.equal(s.env.ledger.currentChampion("js-1").seq, 2);
+    assert.equal(s.env.ledger.champions.current("js-1").seq, 2);
     await s.relay(); // reports the promotion back
     // Campaigns first: the run's chart and attempts are on its campaign's page, linked from the rig.
     const rig = await (await s.get("/ui/rigs/rig-a")).text();
@@ -117,6 +117,6 @@ describe("control dashboard", () => {
     });
     assert.equal(r.status, 303);
     await s.relay();
-    assert.equal(s.env.ledger.getRun("js-1")?.status, "paused");
+    assert.equal(s.env.ledger.runs.get("js-1")?.status, "paused");
   });
 });

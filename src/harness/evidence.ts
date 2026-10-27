@@ -69,7 +69,7 @@ const str = (v: unknown) => (v === null || v === undefined ? null : String(v));
 
 /** The planner's evidence of an attempt, with the judge's reasons and its experiment. */
 function withReasons(ledger: Ledger, e: Evidence, reasonChars: number): AttemptEvidence {
-  const v = ledger.currentVerdict(e.attempt);
+  const v = ledger.verdicts.current(e.attempt);
   const reasons = v
     ? (ledger.db.prepare("select reasons from verdict where id = ?").get(v.id) as
         | { reasons: string }
@@ -101,7 +101,7 @@ export function recentAttempts(
  * of a refused change, the judge's reasons as it kept them, its claim and its declared flaws.
  */
 export function oneAttempt(ledger: Ledger, run: string, attempt: string): AttemptEvidence {
-  const a = ledger.getAttempt(attempt);
+  const a = ledger.attempts.get(attempt);
   if (!a || String(a.run) !== run)
     throw new LedgerError("not_found", `no attempt ${attempt} in run ${run}`);
   const all = violationsOf(a.v0);
@@ -164,7 +164,7 @@ export function triedCauses(
         ledger,
         evidenceOf(
           ledger,
-          (ledger.getAttempt(x.attempt) ?? { id: x.attempt, lifecycle: "unknown" }) as Row,
+          (ledger.attempts.get(x.attempt) ?? { id: x.attempt, lifecycle: "unknown" }) as Row,
         ),
         o.causeChars,
       );
@@ -289,7 +289,7 @@ export async function readAttemptDiff(
   next: number | null;
   diff: string;
 }> {
-  const a = ledger.getAttempt(attempt);
+  const a = ledger.attempts.get(attempt);
   if (!a || String(a.run) !== run)
     throw new LedgerError("not_found", `no attempt ${attempt} in run ${run}`);
   let text: string;

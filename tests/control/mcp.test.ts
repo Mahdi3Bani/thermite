@@ -31,7 +31,7 @@ describe("control over MCP", () => {
       }),
     );
     await relay();
-    assert.equal(env.ledger.getRun("js-1")?.status, "paused");
+    assert.equal(env.ledger.runs.get("js-1")?.status, "paused");
     const status = text(
       await agent.callTool({ name: "command_status", arguments: { id: issued.id } }),
     );

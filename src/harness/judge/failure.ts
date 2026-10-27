@@ -20,10 +20,10 @@ export function recordInfraFailure(
 ): void {
   try {
     ledger.tx(() => {
-      ledger.completeJob(job.id, job.fence, "failed", { error: clipReason(reason) });
+      ledger.jobs.complete(job.id, job.fence, "failed", { error: clipReason(reason) });
       if (!job.attempt || job.kind === "parent_screen") return;
       const retries = Number(o.spec.retries ?? 0);
-      ledger.recordVerdict({
+      ledger.verdicts.record({
         attempt: job.attempt,
         verdict: "crash_infra",
         dependsOnJobs: [job.id],
@@ -31,7 +31,7 @@ export function recordInfraFailure(
         judgedBy: o.owner,
       });
       if (retries < 1) {
-        ledger.enqueueJob({
+        ledger.jobs.enqueue({
           attempt: job.attempt,
           kind: job.kind,
           // A setup change's baseline job keeps its place ahead of the run's other jobs.
@@ -39,9 +39,9 @@ export function recordInfraFailure(
           spec: { ...o.spec, retries: retries + 1 },
           actor: o.owner,
         });
-        ledger.setAttemptLifecycle(job.attempt, "queued", o.owner);
+        ledger.attempts.setLifecycle(job.attempt, "queued", o.owner);
       } else {
-        ledger.setAttemptLifecycle(job.attempt, "errored", o.owner);
+        ledger.attempts.setLifecycle(job.attempt, "errored", o.owner);
       }
     });
   } catch (err) {

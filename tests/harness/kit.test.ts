@@ -313,7 +313,7 @@ describe("kit commands", () => {
       JSON.stringify(out.result),
       /the kit does not fit the contract: cells names cell huge/,
     );
-    assert.equal(env.ledger.getRun("js-1"), undefined);
+    assert.equal(env.ledger.runs.get("js-1"), undefined);
   });
 
   test("a run assigned with its own promotion policy keeps it; one without follows the rig's", async () => {
@@ -324,7 +324,7 @@ describe("kit commands", () => {
       env.sign("assign_campaign", { ...base, promotion: "owner_approval" }),
     )) as { accepted?: boolean; result?: unknown };
     assert.equal(out.accepted, true, JSON.stringify(out.result));
-    assert.equal(env.ledger.getRun("js-1")?.promotion, "owner_approval");
+    assert.equal(env.ledger.runs.get("js-1")?.promotion, "owner_approval");
     assert.equal(env.service.promotionFor("js-1"), "owner_approval");
     const created = env.ledger.eventsAfter(0, 1000).events.find((e) => e.kind === "run_created");
     assert.equal(
@@ -332,7 +332,7 @@ describe("kit commands", () => {
       "owner_approval",
     );
     await env.service.applyCommand(env.sign("assign_campaign", { ...base, run: "js-2" }));
-    assert.equal(env.ledger.getRun("js-2")?.promotion, null);
+    assert.equal(env.ledger.runs.get("js-2")?.promotion, null);
     assert.equal(env.service.promotionFor("js-2"), "auto");
   });
 });

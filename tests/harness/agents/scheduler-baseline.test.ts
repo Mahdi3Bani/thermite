@@ -121,7 +121,7 @@ describe("a hill climb's rounds and its baseline (goal 115)", () => {
     const first = env.ledger.db.prepare("select attempt from trial where epoch = 1").get() as {
       attempt: string;
     };
-    assert.equal(env.ledger.currentVerdict(first.attempt)?.verdict, "invalid");
+    assert.equal(env.ledger.verdicts.current(first.attempt)?.verdict, "invalid");
 
     // The round ends with its one trial; round 2 is a setup round again, and its brief has the
     // judge's words on the lane's last change.
@@ -137,8 +137,8 @@ describe("a hill climb's rounds and its baseline (goal 115)", () => {
     const second = env.ledger.db.prepare("select attempt from trial where epoch = 2").get() as {
       attempt: string;
     };
-    assert.equal(env.ledger.currentVerdict(second.attempt)?.verdict, "starting_point");
-    assert.equal(env.ledger.currentChampion("js-1").attempt, second.attempt);
+    assert.equal(env.ledger.verdicts.current(second.attempt)?.verdict, "starting_point");
+    assert.equal(env.ledger.champions.current("js-1").attempt, second.attempt);
 
     // Setup is over: round 3 is a round of the plan, from the new starting point.
     assert.equal(await scheduler.tick(), false); // round 2 ends

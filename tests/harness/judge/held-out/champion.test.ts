@@ -82,8 +82,8 @@ describe("the champion's held-out check (goal 086)", () => {
       );
     for (let i = 0; i < 30 && !confirming(); i++) await env.judge.tick();
     // Its own confirmation checked the goal it gained, speedy, which has no held-out case.
-    assert.equal(env.ledger.currentVerdict(first)?.verdict, "goal_progress", env.explain(first));
-    assert.equal(env.ledger.currentChampion("js-1").seq, 2);
+    assert.equal(env.ledger.verdicts.current(first)?.verdict, "goal_progress", env.explain(first));
+    assert.equal(env.ledger.champions.current("js-1").seq, 2);
     assert.equal(confirming(), 1, env.explain(first));
     // The lanes wait for the second validation.
     const scheduler = new Scheduler({
@@ -107,7 +107,7 @@ describe("the champion's held-out check (goal 086)", () => {
     await env.drain();
 
     // A held-out case of correct failed: the run does not close, and the lanes go on.
-    assert.equal(env.ledger.getRun("js-1")?.status, "running", env.explain(first));
+    assert.equal(env.ledger.runs.get("js-1")?.status, "running", env.explain(first));
     const all = () => env.ledger.eventsAfter(0, 100_000).events;
     assert.equal(all().filter((e) => e.kind === "goal_complete").length, 0);
     assert.equal(inside.waitingForConfirmation("js-1"), false);
@@ -290,9 +290,9 @@ describe("the champion's held-out check (goal 086)", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(fixed)?.verdict, "goal_progress", env.explain(fixed));
+    assert.equal(env.ledger.verdicts.current(fixed)?.verdict, "goal_progress", env.explain(fixed));
     assert.equal(env.reasons(fixed), "confirmed: newly met correct; vs champion seq 2");
-    assert.equal(env.ledger.getRun("js-1")?.status, "closed");
+    assert.equal(env.ledger.runs.get("js-1")?.status, "closed");
     assert.equal(all().filter((e) => e.kind === "goal_complete").length, 1);
     assert.deepEqual(
       records()
@@ -318,8 +318,8 @@ describe("the champion's held-out check (goal 086)", () => {
     await env.drain();
     const id = await env.submit(FAST_KERNEL, "drop the idle");
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(id)?.verdict, "goal_progress", env.explain(id));
-    assert.equal(env.ledger.getRun("js-1")?.status, "closed");
+    assert.equal(env.ledger.verdicts.current(id)?.verdict, "goal_progress", env.explain(id));
+    assert.equal(env.ledger.runs.get("js-1")?.status, "closed");
     const events = env.ledger.eventsAfter(0, 100_000).events;
     assert.equal(events.filter((e) => e.kind === "held_out_checked").length, 0);
     assert.equal(

@@ -69,7 +69,7 @@ async function codeTrial(o: {
   const env = makeJudgeEnv();
   await env.service.applyCommand(env.assign);
   const runner = new LocalRunner(env.paths.scratchDir);
-  const champion = env.ledger.currentChampion("js-1");
+  const champion = env.ledger.champions.current("js-1");
   const ws = await prepareWorkspace({
     runner,
     scratchDir: env.paths.scratchDir,

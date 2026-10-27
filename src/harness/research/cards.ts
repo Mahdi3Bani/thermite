@@ -539,7 +539,7 @@ export class Cards {
    * does not have is answered with its problem and recorded nowhere.
    */
   submit(run: string, input: CardSubmission, by: string): { results: CardResult[] } {
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (!inst) throw new LedgerError("not_found", `no run ${run}`);
     if (inst.status !== "running") throw new LedgerError("invalid", `run ${run} is ${inst.status}`);
     const contract = this.contract(run);

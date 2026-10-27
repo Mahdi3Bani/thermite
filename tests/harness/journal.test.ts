@@ -282,7 +282,7 @@ describe("field notes", () => {
       },
     ];
     const s = await setup({ briefing });
-    assert.deepEqual(s.s.ledger.briefing(RUN), briefing);
+    assert.deepEqual(s.s.ledger.runs.briefing(RUN), briefing);
     const created = s.events("run_created")[0]?.body as { briefing?: number } | undefined;
     assert.equal(created?.briefing, 2);
     assert.throws(
@@ -290,7 +290,7 @@ describe("field notes", () => {
       /fixed/,
     );
     const plain = await setup();
-    assert.deepEqual(plain.s.ledger.briefing(RUN), []);
+    assert.deepEqual(plain.s.ledger.runs.briefing(RUN), []);
     // A run without agents has no briefs: its background is refused, and no run is made.
     const tryEnv = makeHarnessEnv();
     const refused = await tryEnv.service.applyCommand(
@@ -301,6 +301,6 @@ describe("field notes", () => {
       String((refused.result as { error?: string }).error),
       /a run without agents has no briefs: leave out the background from past research/,
     );
-    assert.equal(tryEnv.service.ledger.getRun(RUN), undefined);
+    assert.equal(tryEnv.service.ledger.runs.get(RUN), undefined);
   });
 });

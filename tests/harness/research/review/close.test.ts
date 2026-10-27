@@ -93,20 +93,20 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
     // Its running trial ends first: no new trial starts on the free lane, and the run stays open.
     await sch.tick();
     assert.equal(started, 2, "no new trial");
-    assert.equal(s.env.service.ledger.getRun(RUN)?.status, "running");
+    assert.equal(s.env.service.ledger.runs.get(RUN)?.status, "running");
     release();
     await sch.idle();
     // Until the supervisor says whether it has a final writer, the run waits (goal 112).
     await sch.tick();
     assert.equal(
-      s.env.service.ledger.getRun(RUN)?.status,
+      s.env.service.ledger.runs.get(RUN)?.status,
       "running",
       "it waits for the supervisor",
     );
     // A rig with no final writer: the run closes with the decisions, and says why it has no paper.
     await s.env.service.setAdvisors({ auditor: false, review_panel: 2 }, "supervisor");
     await sch.tick();
-    const run = s.env.service.ledger.getRun(RUN);
+    const run = s.env.service.ledger.runs.get(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", ANSWERED]);
     const final = lastFinal(s);
     assert.match(final, /Research paper: none, no final writer on this rig\./);
@@ -155,7 +155,7 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
     assert.equal(new Reviews(s.ledger).byId(first)?.owner_decision, null);
     await sch.tick();
     await sch.idle();
-    assert.equal(s.env.service.ledger.getRun(RUN)?.status, "running", "it waits for the owner");
+    assert.equal(s.env.service.ledger.runs.get(RUN)?.status, "running", "it waits for the owner");
     const no = await s.env.service.applyCommand(
       s.env.sign("accept_review", {
         run: RUN,
@@ -167,7 +167,7 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
     assert.ok(no.status === "applied" && no.accepted, JSON.stringify(no));
     await sch.tick();
     await sch.idle();
-    assert.equal(s.env.service.ledger.getRun(RUN)?.status, "running", "a rejection goes on");
+    assert.equal(s.env.service.ledger.runs.get(RUN)?.status, "running", "a rejection goes on");
     assert.ok(
       notes(s).some(
         (n) =>
@@ -191,7 +191,7 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
     await sch.tick();
     await sch.idle();
     await sch.tick();
-    const run = s.env.service.ledger.getRun(RUN);
+    const run = s.env.service.ledger.runs.get(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", ANSWERED]);
     assert.match(
       lastFinal(s),

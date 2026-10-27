@@ -254,7 +254,7 @@ describe("staging sources by reference", () => {
     const bundle = join(env.paths.inboxDir, "repos", "folder-project.bundle");
     assert.match(git(env.root, "bundle", "list-heads", bundle), new RegExp(`^${env.seed} `));
     // The run starts from the folder: its tree, and none of the repository's other files.
-    const start = env.ledger.getRun("js-1")?.seed_commit ?? "";
+    const start = env.ledger.runs.get("js-1")?.seed_commit ?? "";
     const mirror = env.service.mirrorFor("proj");
     assert.equal(
       git(mirror, "rev-parse", `${start}^{tree}`),
@@ -318,7 +318,7 @@ describe("staging sources by reference", () => {
       await new Promise((r) => setTimeout(r, 25));
     }
     assert.equal(store.command(id)?.status, "delivered", JSON.stringify(store.command(id)));
-    assert.equal(env.ledger.getRun("js-1")?.status, "running");
+    assert.equal(env.ledger.runs.get("js-1")?.status, "running");
     assert.ok(existsSync(join(env.paths.inboxDir, "repos", "fetched-project.bundle")));
     assert.ok(existsSync(join(env.paths.inboxDir, "repos", "fetched-kit.bundle")));
   });

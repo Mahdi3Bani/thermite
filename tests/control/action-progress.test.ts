@@ -285,7 +285,7 @@ describe("every button that sends a command (goal 080)", () => {
       taken.said,
       /^rig-a took it at \d\d:\d\d UTC\. This page shows the change when the rig next reports\.$/,
     );
-    assert.equal(s.env.ledger.getRun("js-1")?.status, "paused");
+    assert.equal(s.env.ledger.runs.get("js-1")?.status, "paused");
     await s.relay();
     const done = await s.follow(url);
     assert.deepEqual([done.state, done.final, done.tone], ["done", true, "ok"]);

@@ -311,7 +311,7 @@ describe("answer cards are checked by code and kept as versions (goal 117)", () 
       s.events("card_refused").map((e) => e.question),
       [3],
     );
-    s.ledger.setRunStatus(RUN, "paused", "test", "owner");
+    s.ledger.runs.setStatus(RUN, "paused", "test", "owner");
     const paused = await s.call("POST", `/v1/research/cards/${RUN}`, {
       synthesizer: "teacher-1",
       cards: [card(3, [s.ids.q3[0] as string], [0])],

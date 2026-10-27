@@ -79,7 +79,7 @@ describe("the owner's messages", () => {
     ]);
     // A teacher's later rule of 3 lanes does not apply over the owner's 2, for the scheduler or
     // for the readers: the message never waits for a lane that never runs (goal 162).
-    env.service.ledger.addDirective("js-1", "supervisor:teachers", {
+    env.service.ledger.directives.add("js-1", "supervisor:teachers", {
       kind: "lane_count",
       value: 3,
       rationale: "more lanes",
@@ -275,7 +275,7 @@ describe("the owner's messages", () => {
     await command(env, "rig_settings", { auditor: false });
     await refused({ to: "auditor" }, /the auditor is off on this rig/);
     await refused({ to: "advisors" }, /none of the advisors would read this message/);
-    env.ledger.setRunStatus("js-1", "closed", "done", "test");
+    env.ledger.runs.setStatus("js-1", "closed", "done", "test");
     await refused({ to: "lane-1" }, /run js-1 is closed/);
     // Nothing refused was recorded.
     assert.equal(events(env, "agent_message").length, 2);

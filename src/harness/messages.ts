@@ -117,7 +117,7 @@ export class OwnerMessages {
    * refused with the reason, so control shows the message as failed rather than delivered.
    */
   private readersOf(run: string, to: string): { readers: string[]; note?: string | undefined } {
-    const status = this.ledger.getRun(run)?.status;
+    const status = this.ledger.runs.get(run)?.status;
     if (!status) throw new LedgerError("not_found", `no run ${run}`);
     if (status === "closed")
       throw new LedgerError("invalid", `run ${run} is closed: nothing will read this message`);
@@ -127,7 +127,7 @@ export class OwnerMessages {
     // The lanes at work now, as the scheduler counts them: the owner's lane count first.
     const working = lanesAtWork(this.ledger, run, contract);
     // A run without agents (a try) has no lanes and no planner to read anything.
-    const noAgents = this.ledger.getRun(run)?.agents === false;
+    const noAgents = this.ledger.runs.get(run)?.agents === false;
     if (
       noAgents &&
       (to === "all" || to === "planner" || /^lane-\d+$/.test(to) || to.startsWith("trial:"))

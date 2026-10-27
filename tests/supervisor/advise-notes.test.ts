@@ -211,7 +211,7 @@ describe("the advisors' field notes", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     const pkg = (await env.service.auditPackages())[0] as { background?: { items: unknown[] } };
     assert.deepEqual(pkg.background?.items, BRIEFING);
     const dir = mkdtempSync(join(tmpdir(), "thermite-cli-"));

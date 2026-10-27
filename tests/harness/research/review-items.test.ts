@@ -595,7 +595,7 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
       [stopped.reason, stopped.open],
       [PROGRESS_STOPPED, { questions: [1], hypotheses: [] }],
     );
-    assert.equal(s.ledger.getRun(RUN)?.status, "running", "it closes once its paper is in");
+    assert.equal(s.ledger.runs.get(RUN)?.status, "running", "it closes once its paper is in");
     assert.match(
       String(
         (
@@ -652,7 +652,7 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
     assert.ok(out.accepted, JSON.stringify(out));
     await sch.idle();
     await sch.tick();
-    const run = s.ledger.getRun(RUN);
+    const run = s.ledger.runs.get(RUN);
     assert.deepEqual([run?.status, run?.pause_reason], ["closed", PROGRESS_STOPPED]);
     assert.notEqual(run?.pause_reason, ANSWERED);
     const final = String(
@@ -688,6 +688,6 @@ describe("the progress rule ends a run that stopped adding (goal 117)", () => {
     assert.deepEqual(p.saturated, []);
     assert.ok(Number(p.since_ms) < 60_000, "the cards improved the run just now");
     assert.equal(s.events("research_stopped").length, 0);
-    assert.equal(s.ledger.getRun(RUN)?.status, "running");
+    assert.equal(s.ledger.runs.get(RUN)?.status, "running");
   });
 });

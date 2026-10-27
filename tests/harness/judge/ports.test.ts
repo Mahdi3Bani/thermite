@@ -19,9 +19,9 @@ async function setup() {
     ).attempt;
   /** Makes an attempt the champion by another path than the judge's. */
   const crown = (attempt: string, expectedSeq: number) => {
-    env.ledger.recordVerdict({ attempt, verdict: "win_confirmed", reasons: "t", judgedBy: "t" });
-    const commitSha = String(env.ledger.getAttempt(attempt)?.commit_sha);
-    return env.ledger.promote({ run: "js-1", expectedSeq, attempt, commitSha, by: "t" });
+    env.ledger.verdicts.record({ attempt, verdict: "win_confirmed", reasons: "t", judgedBy: "t" });
+    const commitSha = String(env.ledger.attempts.get(attempt)?.commit_sha);
+    return env.ledger.champions.promote({ run: "js-1", expectedSeq, attempt, commitSha, by: "t" });
   };
   const ports = () =>
     env.service.queue
@@ -44,8 +44,8 @@ describe("changes carried to a new champion (goal 135)", () => {
     const screened = env.ledger.latestEventBody("parent_screened", a) as { verdict: string };
     assert.equal(screened.verdict, "win_screened", env.explain(a));
     // Its verdict and lifecycle are the ones against the current champion.
-    assert.notEqual(env.ledger.currentVerdict(a)?.verdict, "win_screened");
-    assert.equal(String(env.ledger.getAttempt(a)?.lifecycle), "judged");
+    assert.notEqual(env.ledger.verdicts.current(a)?.verdict, "win_screened");
+    assert.equal(String(env.ledger.attempts.get(a)?.lifecycle), "judged");
     assert.deepEqual(env.ports(), [
       { title: `Port ${a} onto champion #2`, by: "judge", state: "queued" },
     ]);

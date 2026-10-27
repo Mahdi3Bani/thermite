@@ -255,7 +255,7 @@ describe("the final writer writes the research paper (goal 112)", () => {
     ]);
     const pkg = s.env.service.paperPackages()[0];
     assert.deepEqual(pkg?.last_refusal?.problems, refused[0]?.problems);
-    assert.equal(s.ledger.getRun(RUN)?.status, "running");
+    assert.equal(s.ledger.runs.get(RUN)?.status, "running");
   });
 
   test("the prompt: the checker's guide when it is beside the checker, else short STE rules; without a checker, ste_check says so and the paper is not checked", async (t) => {

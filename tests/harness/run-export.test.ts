@@ -13,10 +13,10 @@ test("a run's export takes its attempts' verdicts and its judge's jobs, and no o
   const ledger = Ledger.open(join(mkdtempSync(join(tmpdir(), "thermite-run-export-")), "l.db"));
   const parsed = parseContract(hillClimbFixture);
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
-  ledger.storeContract(parsed.contract, parsed.sha, "test");
+  ledger.contracts.store(parsed.contract, parsed.sha, "test");
   // Two runs, each with an attempt the judge measured and judged.
   for (const run of ["r-1", "r-2"]) {
-    ledger.createRun({
+    ledger.runs.create({
       id: run,
       contract: parsed.contract,
       contractSha: parsed.sha,
@@ -25,7 +25,7 @@ test("a run's export takes its attempts' verdicts and its judge's jobs, and no o
       actor: "test",
     });
     const id = `${run}-a`;
-    ledger.recordAttempt(
+    ledger.attempts.record(
       {
         id,
         run,
@@ -40,11 +40,11 @@ test("a run's export takes its attempts' verdicts and its judge's jobs, and no o
       },
       "test",
     );
-    ledger.enqueueJob({ attempt: id, kind: "evaluate", actor: "judge" });
-    const job = ledger.leaseJob("judge", 60_000);
+    ledger.jobs.enqueue({ attempt: id, kind: "evaluate", actor: "judge" });
+    const job = ledger.jobs.lease("judge", 60_000);
     assert.ok(job);
-    ledger.completeJob(job.id, job.fence, "done", {});
-    ledger.recordVerdict({
+    ledger.jobs.complete(job.id, job.fence, "done", {});
+    ledger.verdicts.record({
       attempt: id,
       verdict: "win_confirmed",
       reasons: "t",

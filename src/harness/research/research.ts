@@ -348,7 +348,7 @@ export class Research {
    * goal run records sources, claims and notes (goal 065), and the rest belongs to research runs.
    */
   requireRunning(run: string, op?: string | undefined): void {
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (!inst) throw new LedgerError("not_found", `no run ${run}`);
     if (inst.status !== "running") throw new LedgerError("invalid", `run ${run} is ${inst.status}`);
     if (inst.mode !== "research" && (op === undefined || !CODE_OPS.has(op)))
@@ -359,9 +359,9 @@ export class Research {
   }
 
   private contract(run: string): ResearchContract {
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (!inst) throw new LedgerError("not_found", `no run ${run}`);
-    const c = this.ledger.getContract(inst.campaign, inst.version);
+    const c = this.ledger.contracts.get(inst.campaign, inst.version);
     if (c?.mode === "research") return c;
     throw new LedgerError("invalid", `${run} is not a research campaign`);
   }
@@ -371,8 +371,8 @@ export class Research {
     if (!f) {
       // A research contract's fetch policy and scope; another run's are the policy's defaults
       // (robots.txt respected, a polite rate per domain, a size bound per page), no scope.
-      const inst = this.ledger.getRun(run);
-      const c = inst ? this.ledger.getContract(inst.campaign, inst.version) : undefined;
+      const inst = this.ledger.runs.get(run);
+      const c = inst ? this.ledger.contracts.get(inst.campaign, inst.version) : undefined;
       const policy =
         c?.mode === "research"
           ? c.fetch_policy
@@ -656,7 +656,7 @@ export class Research {
     const c = ClaimInput.parse(input);
     // A claim counts toward its question's answer: with one question, that one. A run of another
     // mode has no questions.
-    const research = this.ledger.getRun(run)?.mode === "research";
+    const research = this.ledger.runs.get(run)?.mode === "research";
     const n = research ? this.contract(run).questions.length : 0;
     if (c.question === undefined && n > 1) throw new LedgerError("invalid", noQuestion(n));
     const question = research ? this.questionOf(run, c.question ?? 0) : null;

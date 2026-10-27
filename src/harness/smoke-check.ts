@@ -131,8 +131,8 @@ export async function smokeCheck(o: {
 
   const runId = `check-smoke-${randomUUID().replace(/-/g, "").slice(0, 8)}`;
   // Assigning pauses the rig's other runs; the ones running now are resumed afterwards.
-  const wereRunning = ledger
-    .listRuns()
+  const wereRunning = ledger.runs
+    .list()
     .filter((r) => r.status === "running")
     .map((r) => r.id);
   await o.service.assignLocal(
@@ -178,7 +178,7 @@ export async function smokeCheck(o: {
     ids[name] = r.attempt;
   };
   const settled = (id: string) =>
-    JUDGED_LIFECYCLES.has(String(ledger.getAttempt(id)?.lifecycle ?? ""));
+    JUDGED_LIFECYCLES.has(String(ledger.attempts.get(id)?.lifecycle ?? ""));
   const timeoutMs = o.timeoutMs ?? 3 * 3_600_000;
   const deadline = Date.now() + timeoutMs;
   const waitFor = async (which: string[]) => {
@@ -200,10 +200,10 @@ export async function smokeCheck(o: {
       await waitFor(["good"]);
     }
   } finally {
-    ledger.setRunStatus(runId, "closed", "the smoke check is done", by);
+    ledger.runs.setStatus(runId, "closed", "the smoke check is done", by);
     for (const r of wereRunning)
-      if (ledger.getRun(r)?.status === "paused")
-        ledger.setRunStatus(r, "running", "resumed after the smoke check", by);
+      if (ledger.runs.get(r)?.status === "paused")
+        ledger.runs.setStatus(r, "running", "resumed after the smoke check", by);
   }
 
   const results = Object.fromEntries(
@@ -212,8 +212,10 @@ export async function smokeCheck(o: {
       const id = ids[n] as string;
       const got =
         c.expect === "rejected_v0"
-          ? String(ledger.getAttempt(id)?.lifecycle ?? "")
-          : String(ledger.currentVerdict(id)?.verdict ?? ledger.getAttempt(id)?.lifecycle ?? "");
+          ? String(ledger.attempts.get(id)?.lifecycle ?? "")
+          : String(
+              ledger.verdicts.current(id)?.verdict ?? ledger.attempts.get(id)?.lifecycle ?? "",
+            );
       const ok = c.accept ? c.accept.includes(got) : got === c.expect;
       return [n, { expect: c.accept ? c.accept.join("|") : c.expect, got, ok, attempt: id }];
     }),

@@ -17,7 +17,7 @@ describe("worker trial", () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const runner = new LocalRunner(env.paths.scratchDir);
-    const champion = env.ledger.currentChampion("js-1");
+    const champion = env.ledger.champions.current("js-1");
     const ws = await prepareWorkspace({
       runner,
       scratchDir: env.paths.scratchDir,
@@ -74,18 +74,18 @@ describe("worker trial", () => {
     assert.equal(r.stopped, "submitted", JSON.stringify(r));
     assert.equal(r.toolCalls, 5);
     assert.ok(r.tokensIn > 0);
-    const a = env.ledger.getAttempt(r.submitted?.attempt ?? "");
+    const a = env.ledger.attempts.get(r.submitted?.attempt ?? "");
     assert.equal(String(a?.lane), "lane-1");
     assert.equal(String(a?.lifecycle), "queued");
     await env.drain();
-    assert.equal(env.ledger.currentVerdict(String(a?.id))?.verdict, "win_confirmed");
+    assert.equal(env.ledger.verdicts.current(String(a?.id))?.verdict, "win_confirmed");
   });
 
   test("earlier replies' thinking is never sent back to the model", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const runner = new LocalRunner(env.paths.scratchDir);
-    const champion = env.ledger.currentChampion("js-1");
+    const champion = env.ledger.champions.current("js-1");
     const ws = await prepareWorkspace({
       runner,
       scratchDir: env.paths.scratchDir,
@@ -153,7 +153,7 @@ describe("worker trial", () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const runner = new LocalRunner(env.paths.scratchDir);
-    const champion = env.ledger.currentChampion("js-1");
+    const champion = env.ledger.champions.current("js-1");
     const ws = await prepareWorkspace({
       runner,
       scratchDir: env.paths.scratchDir,

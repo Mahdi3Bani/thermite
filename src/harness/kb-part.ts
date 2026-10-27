@@ -66,7 +66,7 @@ export function knowledgePart(
   const target: KbIndexTarget = {
     // The run's campaign as its own ledger records it (the contract it was assigned).
     runCreated: (run, named) => {
-      const campaign = ledger.getRun(run)?.campaign || named;
+      const campaign = ledger.runs.get(run)?.campaign || named;
       if (campaign) campaigns.set(run, campaign);
     },
     item: (run, kind, ref) => {

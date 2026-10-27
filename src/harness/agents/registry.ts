@@ -71,13 +71,13 @@ const EVIDENCE_VIOLATIONS = 5;
  * and 082).
  */
 export function evidenceOf(ledger: Ledger, r: Row): Evidence {
-  const v = ledger.currentVerdict(String(r.id));
+  const v = ledger.verdicts.current(String(r.id));
   const d = v
     ? (ledger.db.prepare("select delta from verdict where id = ?").get(v.id) as Row | undefined)
         ?.delta
     : null;
   const refused = violationsOf(r.v0);
-  const heldOut = ledger.heldOutFailure(String(r.id));
+  const heldOut = ledger.heldOut.failure(String(r.id));
   return {
     attempt: String(r.id),
     lane: r.lane === null || r.lane === undefined ? null : String(r.lane),
@@ -161,8 +161,8 @@ export class Registry {
       const verdicts: Record<string, number> = {};
       let best: number | null = null;
       for (const a of attempts) {
-        const v = this.ledger.currentVerdict(a);
-        const key = v?.verdict ?? String(this.ledger.getAttempt(a)?.lifecycle);
+        const v = this.ledger.verdicts.current(a);
+        const key = v?.verdict ?? String(this.ledger.attempts.get(a)?.lifecycle);
         verdicts[key] = (verdicts[key] ?? 0) + 1;
         const d = this.get("select delta from verdict where id = ?", v?.id ?? -1)?.delta;
         if (typeof d === "number" && (best === null || d > best)) best = d;

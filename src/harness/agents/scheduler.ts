@@ -368,7 +368,7 @@ export class Scheduler {
     const o = { aborts: this.aborts, laneRun: this.laneRun, owner: this.o.owner };
     this.stopSeen = stopTrials(this.ledger, { ...o, seen: this.stopSeen });
     const p = this.planning;
-    if (p && this.ledger.getRun(p.run)?.status !== "running") p.ctrl.abort();
+    if (p && this.ledger.runs.get(p.run)?.status !== "running") p.ctrl.abort();
   }
 
   /**
@@ -470,7 +470,7 @@ export class Scheduler {
         text: `${end.reason === ANSWERED ? "every question is answered" : "research stopped adding"}; the run ends with no research paper: ${noPaper}`,
         run,
       });
-    this.ledger.setRunStatus(run, "closed", end.reason, this.o.owner);
+    this.ledger.runs.setStatus(run, "closed", end.reason, this.o.owner);
   }
 
   /** Checks every second while trials or a planner call are in flight (the tick may be waiting). */
@@ -520,7 +520,7 @@ export class Scheduler {
     const recent = this.registry.recentTrials(run, lane, 8);
     let k = 0;
     for (const t of recent) {
-      const lifecycle = t.attempt ? String(this.ledger.getAttempt(t.attempt)?.lifecycle) : null;
+      const lifecycle = t.attempt ? String(this.ledger.attempts.get(t.attempt)?.lifecycle) : null;
       const unproductive = research
         ? t.stopped === "error"
         : t.stopped === "error" ||
@@ -753,7 +753,7 @@ export class Scheduler {
   /** The contract's budgets that end agent work, other than wall time: the first one spent. */
   private budgetSpent(run: string, contract: Contract): string | undefined {
     const b = contract.budget;
-    if (b.device_hours !== undefined && this.ledger.deviceHours(run) >= b.device_hours)
+    if (b.device_hours !== undefined && this.ledger.jobs.deviceHours(run) >= b.device_hours)
       return "the device-hours budget is spent";
     if (
       b.llm_usd !== undefined &&
@@ -804,7 +804,7 @@ export class Scheduler {
   }
 
   private run(): { id: string; contract: Contract } | undefined {
-    const inst = this.ledger.listRuns().find((i) => i.status === "running");
+    const inst = this.ledger.runs.list().find((i) => i.status === "running");
     // A judge-only run: no planning, no trials.
     if (!inst?.agents) return undefined;
     if (inst.mode === "research" && !(this.o.research && this.o.runResearchTrial)) return undefined;
@@ -849,12 +849,12 @@ export class Scheduler {
    * not hold (failed confirmation, invalidation) or that became the champion is dropped too.
    */
   private updateLaneBests(run: string, lanes: string[]): void {
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     for (const lane of lanes) {
       let best = this.registry.laneBest(run, lane);
       if (best) {
-        const a = this.ledger.getAttempt(best);
-        const verdict = this.ledger.currentVerdict(best)?.verdict;
+        const a = this.ledger.attempts.get(best);
+        const verdict = this.ledger.verdicts.current(best)?.verdict;
         const why =
           !a || a.invalidated_by !== null
             ? "invalidated"
@@ -873,7 +873,7 @@ export class Scheduler {
       // After a fork round, only work done since the round may become a lane's best again.
       const round = this.ledger.events.newest("fork_round", { subject: run });
       const current = (id: string) => {
-        const a = this.ledger.getAttempt(id);
+        const a = this.ledger.attempts.get(id);
         return (
           Number(a?.baseline_champion_seq) === champion.seq &&
           (!round || String(a?.created_at) > round.at)
@@ -920,7 +920,7 @@ export class Scheduler {
    * the judge has stopped validating this champion (three failures), or after goalReportWaitMs.
    */
   private awaitingGoalReport(run: string, n: number): boolean {
-    const { seq } = this.ledger.currentChampion(run);
+    const { seq } = this.ledger.champions.current(run);
     if (this.goalReport(run, seq)) return false;
     const since = String(
       (
@@ -963,7 +963,7 @@ export class Scheduler {
    * fails), the lanes go on.
    */
   private waitingForConfirmation(run: string): boolean {
-    const { seq } = this.ledger.currentChampion(run);
+    const { seq } = this.ledger.champions.current(run);
     const pending = this.ledger.db
       .prepare(
         `select count(*) as k from job where kind = 'validate' and state in ('queued', 'leased')
@@ -1222,7 +1222,7 @@ export class Scheduler {
     // The owner's messages to the planner and to everyone working, not read yet.
     const owner = this.o.service.messages.waitingForPlanner(run);
     const lanes = lanesOf(laneCount);
-    const champion = this.ledger.currentChampion(run);
+    const champion = this.ledger.champions.current(run);
     const input: PlannerInput = {
       run,
       epoch: n,
@@ -1244,7 +1244,7 @@ export class Scheduler {
       // The run's newest field notes, the owner's picks from past research, and where the run's
       // past research is: all data for the planner to weigh.
       notes: notesData(this.o.service.journal.newest(run, 20)),
-      briefing: this.ledger.briefing(run),
+      briefing: this.ledger.runs.briefing(run),
       // The queue's target (goal 081): the planner tops the queue up to it with distinct ideas.
       queueTarget: queueTarget(contract, laneCount),
     };
@@ -1536,7 +1536,7 @@ export class Scheduler {
    */
   private notesAndPast(run: string, lane: string, reader: "worker" | "research"): string[] {
     const out: string[] = [];
-    const background = briefingText(this.ledger.briefing(run));
+    const background = briefingText(this.ledger.runs.briefing(run));
     if (background) out.push(background);
     const knowledge = this.o.service.knowledge;
     try {
@@ -1659,13 +1659,18 @@ export class Scheduler {
       Date.now() - Date.parse(created.created_at) > wallHours * 3_600_000
     ) {
       if (!this.running.size) {
-        this.ledger.setRunStatus(inst.id, "paused", "the wall-time budget is spent", this.o.owner);
+        this.ledger.runs.setStatus(
+          inst.id,
+          "paused",
+          "the wall-time budget is spent",
+          this.o.owner,
+        );
       }
       return false;
     }
     const spent = this.budgetSpent(inst.id, inst.contract);
     if (spent) {
-      if (!this.running.size) this.ledger.setRunStatus(inst.id, "paused", spent, this.o.owner);
+      if (!this.running.size) this.ledger.runs.setStatus(inst.id, "paused", spent, this.o.owner);
       return false;
     }
     if (this.agentsStopped(inst.id)) return false;
@@ -1760,7 +1765,7 @@ export class Scheduler {
     if (clock.done) {
       if (this.running.size) return false; // let the last trials finish first
       research.report(run, "final");
-      this.ledger.setRunStatus(run, "closed", "the research window is over", this.o.owner);
+      this.ledger.runs.setStatus(run, "closed", "the research window is over", this.o.owner);
       return false;
     }
     // The run ended: no new trial starts; it closes once those running end (finishEndedResearch).
@@ -2007,7 +2012,7 @@ export class Scheduler {
         ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
         campaignBrief: briefData(contract),
         notes: notesData(this.o.service.journal.newest(run, 20)),
-        briefing: this.ledger.briefing(run),
+        briefing: this.ledger.runs.briefing(run),
       };
       const ctrl = new AbortController();
       this.planning = { run, ctrl };
@@ -2523,13 +2528,13 @@ export class Scheduler {
     this.laneRun.set(a.lane, run);
     this.watch();
     const work = (async () => {
-      const inst = this.ledger.getRun(run);
+      const inst = this.ledger.runs.get(run);
       if (!inst) return;
-      const champion = this.ledger.currentChampion(run);
+      const champion = this.ledger.champions.current(run);
       const best = this.registry.laneBest(run, a.lane);
       const parent =
         a.parent === "lane_best" && best
-          ? String(this.ledger.getAttempt(best)?.commit_sha)
+          ? String(this.ledger.attempts.get(best)?.commit_sha)
           : champion.commit_sha;
       this.registry.startTrial({
         id,
@@ -2874,21 +2879,12 @@ export class Scheduler {
   ): Prompt {
     const fam = this.registry.families(run).find((f) => f.id === a.family);
     const attempts = this.registry.evidence(run, 3, a.lane).map((e) => {
-      const v = e.verdict ? this.ledger.currentVerdict(e.attempt) : undefined;
+      const v = e.verdict ? this.ledger.verdicts.current(e.attempt) : undefined;
       // Its start and its end, where a crash's error usually is.
       const reasons = v
-        ? clipReason(
-            String(
-              (
-                this.ledger.db.prepare("select reasons from verdict where id = ?").get(v.id) as
-                  | { reasons: string }
-                  | undefined
-              )?.reasons ?? "",
-            ),
-            BRIEF_REASON_CHARS,
-          )
+        ? clipReason(this.ledger.verdicts.get(v.id)?.reasons ?? "", BRIEF_REASON_CHARS)
         : "";
-      const violations = violationsOf(this.ledger.getAttempt(e.attempt)?.v0);
+      const violations = violationsOf(this.ledger.attempts.get(e.attempt)?.v0);
       return {
         attempt: e.attempt,
         hypothesis: e.hypothesis ?? null,
@@ -2900,7 +2896,7 @@ export class Scheduler {
     });
     const report =
       contract.mode === "goal"
-        ? this.goalReport(run, this.ledger.currentChampion(run).seq)
+        ? this.goalReport(run, this.ledger.champions.current(run).seq)
         : undefined;
     // A setup trial (goal 115): why the judge could not measure the starting point.
     const base = a.family === SETUP_FAMILY ? baselineState(this.ledger, run) : undefined;

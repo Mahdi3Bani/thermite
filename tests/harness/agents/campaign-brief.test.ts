@@ -348,7 +348,7 @@ describe("a campaign's brief (goal 078)", () => {
       )
     ).attempt;
     await env.drain();
-    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "awaiting_audit");
+    assert.equal(String(env.ledger.attempts.get(id)?.lifecycle), "awaiting_audit");
     const pkg = (await env.service.auditPackages())[0] as unknown as Record<string, unknown>;
     assert.deepEqual(pkg.campaign_brief, briefData(BRIEF));
     // In the auditor's prompt, before the diff: a package cut to the window loses the diff first.

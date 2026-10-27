@@ -97,7 +97,8 @@ export function hypothesisGap(h: UnevidencedHypothesis): string {
 
 /** How many of the plan's tasks for hypotheses are done: each shows the panel them again. */
 export function hypothesisTasksDone(ledger: Ledger, run: string): number {
-  return ledger.experiments(run).filter((x) => x.state === "done" && forAnyHypothesis(x)).length;
+  return ledger.experiments.list(run).filter((x) => x.state === "done" && forAnyHypothesis(x))
+    .length;
 }
 
 /** Whether a task closes a hypothesis's gap; this one's, given its id. */

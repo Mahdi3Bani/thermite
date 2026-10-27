@@ -215,10 +215,10 @@ export class ResearchFolder {
    */
   sync(run: string): string {
     const root = this.root(run);
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (!inst) throw new Error(`no run ${run}`);
     const research = inst.mode === "research";
-    const contract = this.ledger.getContract(inst.campaign, inst.version) as {
+    const contract = this.ledger.contracts.get(inst.campaign, inst.version) as {
       title?: string;
       topic?: string;
       questions?: string[];

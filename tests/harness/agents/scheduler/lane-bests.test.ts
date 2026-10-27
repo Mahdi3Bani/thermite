@@ -44,7 +44,7 @@ describe("agent scheduler", () => {
         "t",
       )
     ).attempt;
-    env.ledger.recordVerdict({
+    env.ledger.verdicts.record({
       attempt: a,
       verdict: "win_screened",
       delta: 0.1,
@@ -65,18 +65,18 @@ describe("agent scheduler", () => {
         "t",
       )
     ).attempt;
-    env.ledger.recordVerdict({
+    env.ledger.verdicts.record({
       attempt: b,
       verdict: "win_confirmed",
       delta: 0.1,
       reasons: "t",
       judgedBy: "t",
     });
-    env.ledger.promote({
+    env.ledger.champions.promote({
       run: "js-1",
       expectedSeq: 1,
       attempt: b,
-      commitSha: String(env.ledger.getAttempt(b)?.commit_sha),
+      commitSha: String(env.ledger.attempts.get(b)?.commit_sha),
       by: "t",
     });
     await scheduler.tick();
@@ -102,7 +102,7 @@ describe("agent scheduler", () => {
         "t",
       )
     ).attempt;
-    env.ledger.recordVerdict({
+    env.ledger.verdicts.record({
       attempt: a,
       verdict: "win_screened",
       delta: 0.1,

@@ -114,8 +114,8 @@ describe("Close run on a run's page (goal 087)", () => {
     const cmd = s.store.listCommands(10).find((c) => c.kind === "close_run");
     assert.equal(cmd?.issued_by, "owner:ui");
     await s.relay();
-    assert.equal(s.env.ledger.getRun("js-1")?.status, "closed");
-    assert.equal(s.env.ledger.getRun("js-1")?.pause_reason, why, "the reason, trimmed");
+    assert.equal(s.env.ledger.runs.get("js-1")?.status, "closed");
+    assert.equal(s.env.ledger.runs.get("js-1")?.pause_reason, why, "the reason, trimmed");
     await s.relay();
     const done = await s.follow(sent.answer.follow ?? "");
     assert.deepEqual([done.state, done.final, done.tone], ["done", true, "ok"]);
@@ -154,7 +154,7 @@ describe("Close run on a run's page (goal 087)", () => {
     assert.equal(out.final, true);
     assert.equal(out.tone, "bad");
     assert.match(out.said, /run js-1 is already closed \(first\): there is nothing to close/);
-    assert.equal(s.env.ledger.getRun("js-1")?.pause_reason, "first");
+    assert.equal(s.env.ledger.runs.get("js-1")?.pause_reason, "first");
   });
 });
 
@@ -205,7 +205,7 @@ describe("close_run over REST and MCP (goal 087)", () => {
     await owner.close();
     await s.relay();
     assert.deepEqual(
-      [s.env.ledger.getRun("js-1")?.status, s.env.ledger.getRun("js-1")?.pause_reason],
+      [s.env.ledger.runs.get("js-1")?.status, s.env.ledger.runs.get("js-1")?.pause_reason],
       ["closed", "closed over MCP"],
     );
     const ev = s.env.ledger.db
@@ -237,11 +237,11 @@ describe("A closed run's waiting decisions (goal 087; the owner, 2026-10-22)", (
       },
       "proposer",
     )) as { attempt: string };
-    s.env.ledger.setAttemptLifecycle(attempt, "awaiting_approval", "judge");
+    s.env.ledger.attempts.setLifecycle(attempt, "awaiting_approval", "judge");
     s.env.ledger.appendEvent("judge", "promotion_pending", attempt, {
       run: "js-1",
       expected_seq: 1,
-      commit: s.env.ledger.getAttempt(attempt)?.commit_sha,
+      commit: s.env.ledger.attempts.get(attempt)?.commit_sha,
       reason: "you asked to decide every change (promotion: owner approval)",
     });
     await s.relay();
@@ -269,7 +269,7 @@ describe("A closed run's waiting decisions (goal 087; the owner, 2026-10-22)", (
     });
     await s.relay();
     await s.relay();
-    assert.equal(s.env.ledger.getRun("js-1")?.status, "closed");
+    assert.equal(s.env.ledger.runs.get("js-1")?.status, "closed");
 
     // Needs you leaves it out, and every count with it.
     const overview = await s.page("/ui");
@@ -326,8 +326,8 @@ describe("A closed run's waiting decisions (goal 087; the owner, 2026-10-22)", (
     const out = await s.follow(sent.answer.follow ?? "");
     assert.deepEqual([out.final, out.tone], [true, "bad"]);
     assert.match(out.said, /run js-1 is closed: none of its changes can become the champion/);
-    assert.equal(String(s.env.ledger.getAttempt(attempt)?.lifecycle), "awaiting_approval");
-    assert.equal(s.env.ledger.currentChampion("js-1").seq, 1, "the champion stays");
+    assert.equal(String(s.env.ledger.attempts.get(attempt)?.lifecycle), "awaiting_approval");
+    assert.equal(s.env.ledger.champions.current("js-1").seq, 1, "the champion stays");
     assert.match(await s.page("/ui"), /Nothing waits for you\./);
   });
 });

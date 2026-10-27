@@ -129,15 +129,15 @@ export class RunResearch {
 
   /** The run and its mode; a run that is not on the rig is not found. */
   private runOf(run: string): Mode {
-    const inst = this.ledger.getRun(run);
+    const inst = this.ledger.runs.get(run);
     if (!inst) throw new LedgerError("not_found", `no run ${run}`);
     return inst.mode as Mode;
   }
 
   /** The contract's questions (a research run's), by number. */
   private questions(run: string): string[] {
-    const inst = this.ledger.getRun(run);
-    const c = inst ? this.ledger.getContract(inst.campaign, inst.version) : undefined;
+    const inst = this.ledger.runs.get(run);
+    const c = inst ? this.ledger.contracts.get(inst.campaign, inst.version) : undefined;
     return c?.mode === "research" ? c.questions : [];
   }
 
@@ -496,8 +496,8 @@ export class RunResearch {
     if (card && mode === "research") {
       // A question's answer card (goal 117), as the research folder writes it.
       const i = Number(card[1]);
-      const inst = this.ledger.getRun(run);
-      const c = inst ? this.ledger.getContract(inst.campaign, inst.version) : undefined;
+      const inst = this.ledger.runs.get(run);
+      const c = inst ? this.ledger.contracts.get(inst.campaign, inst.version) : undefined;
       if (c?.mode !== "research" || i >= c.questions.length)
         throw new LedgerError("not_found", `run ${run} has no question with index ${i}`);
       const history = cardHistory(this.ledger, run, i);

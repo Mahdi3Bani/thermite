@@ -237,8 +237,8 @@ export class Audits {
       | Row
       | undefined;
     if (!au) throw new LedgerError("not_found", `no audit ${id}`);
-    const a = this.ledger.getAttempt(String(au.attempt)) as Row;
-    const current = this.ledger.currentVerdict(String(au.attempt));
+    const a = this.ledger.attempts.get(String(au.attempt)) as Row;
+    const current = this.ledger.verdicts.current(String(au.attempt));
     const v = this.ledger.db
       .prepare("select verdict, delta, ci_low, ci_high, guards from verdict where id = ?")
       .get(current?.id ?? -1) as Row | undefined;

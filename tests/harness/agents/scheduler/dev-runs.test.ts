@@ -110,7 +110,7 @@ describe("agent scheduler", () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
     await env.start();
     // A judge job that nothing drains here: the judge is busy throughout.
-    env.ledger.enqueueJob({ kind: "calibrate", priority: 10, spec: { run: "js-1" }, actor: "t" });
+    env.ledger.jobs.enqueue({ kind: "calibrate", priority: 10, spec: { run: "js-1" }, actor: "t" });
     const { DevRuns } = await import("../../../../src/harness/agents/devrun.ts");
     const runner = new LocalRunner(env.paths.scratchDir);
     scheduler0(env).registry.startTrial({

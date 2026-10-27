@@ -52,8 +52,8 @@ describe("the smoke rig check", () => {
     assert.equal(got["ref-edit"]?.got, "rejected_v0");
     if (only.includes("broken")) assert.equal(got.broken?.got, "invalid");
     const smokeRun = String(r.detail?.run);
-    assert.equal(env.ledger.getRun(smokeRun)?.status, "closed");
-    assert.equal(env.ledger.getRun("js-1")?.status, "running", "the rig's run is resumed");
+    assert.equal(env.ledger.runs.get(smokeRun)?.status, "closed");
+    assert.equal(env.ledger.runs.get("js-1")?.status, "running", "the rig's run is resumed");
     // A second smoke reuses the same deterministic repositories and contract.
     const again = await smokeCheck({
       service: env.service,

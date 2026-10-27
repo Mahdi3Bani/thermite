@@ -59,7 +59,7 @@ export class Conclusions {
       for (const a of this.ledger.db
         .prepare("select id from attempt where run = ? and family = ? order by created_at")
         .all(run, String(f.id)) as Row[]) {
-        const v = this.ledger.currentVerdict(String(a.id));
+        const v = this.ledger.verdicts.current(String(a.id));
         if (!v) continue;
         if (PROMISING.has(v.verdict)) promising = true;
         if (!REFUTING.has(v.verdict)) continue;
@@ -107,12 +107,10 @@ export class Conclusions {
         .approaches.length;
       if (refuted.length <= before) return undefined;
     }
-    const goals = this.ledger.db
-      .prepare("select id, status from goal where run = ?")
-      .all(run) as Row[];
+    const goals = this.ledger.goals.statuses(run);
     const evidence = {
       approaches: refuted,
-      goals: goals.map((g) => ({ goal: String(g.id), status: String(g.status) })),
+      goals: [...goals].map(([goal, status]) => ({ goal, status })),
       rule: `at least ${need} approach families, each with ${REFUTE_ATTEMPTS} or more judged attempts and no progress`,
     };
     return this.ledger.tx(() => {
@@ -173,7 +171,7 @@ export class Conclusions {
         kind: String(row.kind),
       });
       if (accept) {
-        this.ledger.setRunStatus(run, "closed", closeReason, by);
+        this.ledger.runs.setStatus(run, "closed", closeReason, by);
       } else {
         // The owner wants the campaign to go on: the families this proposal exhausted reopen.
         const families = (JSON.parse(String(row.evidence)) as { approaches: { family: string }[] })
