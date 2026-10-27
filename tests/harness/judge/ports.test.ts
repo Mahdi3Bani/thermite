@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { portReplaced } from "../../../src/harness/judge/ports.ts";
-import { FAST_KERNEL, makeJudgeEnv } from "../../helpers/judge-env.ts";
+import { FAST_KERNEL, FAST_KERNEL_RESTATED, makeJudgeEnv } from "../../helpers/judge-env.ts";
 
+/**
+ * The stand-in runner times the kernels: a change screened against a champion with the same
+ * effect is an A/A comparison, which real runs on a loaded machine can show as a win.
+ */
 async function setup() {
-  const env = makeJudgeEnv({ realRuns: true });
+  const env = makeJudgeEnv();
   await env.start();
   const submit = async (kernel: string, hypothesis: string) =>
     (
@@ -31,7 +35,7 @@ describe("changes carried to a new champion (goal 135)", () => {
   test("a change written on an older champion that loses to the new one, but helped on its own, is ported", async () => {
     const env = await setup();
     const a = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
-    const b = await env.submit(`${FAST_KERNEL}// same idea, restated\n`, "the same, restated");
+    const b = await env.submit(FAST_KERNEL_RESTATED, "the same, restated");
     // b becomes champion #2; a was written on #1.
     assert.deepEqual(env.crown(b, 1), { ok: true, seq: 2 });
     // The judge screens a against #2: no win, the same speed. Then against #1, the champion it
@@ -63,7 +67,7 @@ describe("changes carried to a new champion (goal 135)", () => {
   test("a new champion written on an older one gets the champion it replaced ported onto it", async () => {
     const env = await setup();
     const a = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
-    const b = await env.submit(`${FAST_KERNEL}// same idea, restated\n`, "the same, restated");
+    const b = await env.submit(FAST_KERNEL_RESTATED, "the same, restated");
     assert.deepEqual(env.crown(a, 1), { ok: true, seq: 2 });
     // a's own promotion, on #1, needs no port.
     await portReplaced(env.service, "js-1");
