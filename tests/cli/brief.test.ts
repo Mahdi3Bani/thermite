@@ -140,6 +140,19 @@ describe("a campaign's brief on the command line (goal 078)", () => {
       hypotheses: ["An old hypothesis."],
     });
     assert.ok(contract.ok, contract.ok ? "" : contract.errors.join("; "));
+    // The assignment that started sort-speed-1, before the rig reported it.
+    store.setConfiguredRigs(["rig-a"]);
+    issueCommand(store, keys.privateKeyPem, {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: {
+        run: "sort-speed-1",
+        contract: contract.contract,
+        contract_sha: contract.sha,
+        imports: [],
+      },
+      issuedBy: "owner:api",
+    });
     store.ingest({
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
@@ -157,17 +170,6 @@ describe("a campaign's brief on the command line (goal 078)", () => {
         },
       ],
       summary: {},
-    });
-    issueCommand(store, keys.privateKeyPem, {
-      rig: "rig-a",
-      kind: "assign_campaign",
-      payload: {
-        run: "sort-speed-1",
-        contract: contract.contract,
-        contract_sha: contract.sha,
-        imports: [],
-      },
-      issuedBy: "owner:api",
     });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));

@@ -1388,22 +1388,25 @@ export class ControlStore {
     }));
   }
 
-  /** A rig's events in control's arrival order; `after` is a control `seq`, not an event id. */
-  /** The rig's signed record that a champion was published: its sha256 and base commit. */
+  /**
+   * The rig's signed record that a champion was published: its sha256, base commit and ledger
+   * (the newest, should a run of that name have been in an earlier ledger).
+   */
   publishedChampion(
     rig: string,
     run: string,
     seq: number,
-  ): { sha256: string; base_commit: string; repo: string | null } | undefined {
+  ): { sha256: string; base_commit: string; repo: string | null; ledger_id: string } | undefined {
     const r = this.db
       .prepare(
-        `select body from rig_event where rig = ? and kind = 'champion_published' and subject = ?
-           and json_extract(body, '$.seq') = ? order by seq desc limit 1`,
+        `select body, ledger_id from rig_event where rig = ? and kind = 'champion_published'
+           and subject = ? and json_extract(body, '$.seq') = ? order by seq desc limit 1`,
       )
-      .get(rig, run, seq) as { body: string } | undefined;
+      .get(rig, run, seq) as { body: string; ledger_id: string } | undefined;
     if (!r) return undefined;
     const b = JSON.parse(r.body) as { sha256?: string; base_commit?: string; repo?: string };
     return {
+      ledger_id: r.ledger_id,
       sha256: String(b.sha256 ?? ""),
       base_commit: String(b.base_commit ?? ""),
       repo: b.repo ?? null,
@@ -1425,23 +1428,38 @@ export class ControlStore {
     if (sha256Hex(patch) !== pub.sha256) return "mismatch";
     this.db
       .prepare(
-        `insert or ignore into champion_patch (rig, run, seq, sha256, base_commit, patch, received_at)
-           values (?, ?, ?, ?, ?, ?, ?)`,
+        `insert or ignore into champion_patch
+           (rig, ledger_id, run, seq, sha256, base_commit, patch, received_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(rig, run, seq, pub.sha256, pub.base_commit, patch, new Date().toISOString());
+      .run(
+        rig,
+        pub.ledger_id,
+        run,
+        seq,
+        pub.sha256,
+        pub.base_commit,
+        patch,
+        new Date().toISOString(),
+      );
     return "stored";
   }
 
+  /** The patch of the champion the rig published last as `seq` of `run`: none until it arrives. */
   championPatch(
     rig: string,
     run: string,
     seq: number,
   ): { patch: Buffer; sha256: string; base_commit: string } | undefined {
+    const pub = this.publishedChampion(rig, run, seq);
     const r = this.db
       .prepare(
-        "select patch, sha256, base_commit from champion_patch where rig = ? and run = ? and seq = ?",
+        `select patch, sha256, base_commit from champion_patch
+           where rig = ? and ledger_id = ? and run = ? and seq = ?`,
       )
-      .get(rig, run, seq) as { patch: Uint8Array; sha256: string; base_commit: string } | undefined;
+      .get(rig, pub?.ledger_id ?? "", run, seq) as
+      | { patch: Uint8Array; sha256: string; base_commit: string }
+      | undefined;
     return r
       ? { patch: Buffer.from(r.patch), sha256: r.sha256, base_commit: r.base_commit }
       : undefined;
@@ -3326,32 +3344,6 @@ export class ControlStore {
     } catch {
       return undefined;
     }
-  }
-
-  /**
-   * A run name for a campaign's next run on a rig: the campaign's name and the next number not
-   * yet used there (from the rig's reports and from assignments still on their way).
-   */
-  nextRunName(rig: string, campaign: string): string {
-    const base = campaign.slice(0, 58);
-    const taken = new Set<string>();
-    const created = this.db
-      .prepare("select distinct subject from rig_event where rig = ? and kind = 'run_created'")
-      .all(rig) as { subject: string | null }[];
-    for (const r of created) if (r.subject) taken.add(r.subject);
-    const assigned = this.db
-      .prepare("select signed from command where rig = ? and kind = 'assign_campaign'")
-      .all(rig) as { signed: string }[];
-    for (const c of assigned) {
-      try {
-        const run = (JSON.parse(c.signed) as { envelope?: { payload?: { run?: string } } }).envelope
-          ?.payload?.run;
-        if (run) taken.add(run);
-      } catch {
-        // not a command this store wrote
-      }
-    }
-    for (let n = 1; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
   }
 
   /**

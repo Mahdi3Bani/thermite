@@ -12,6 +12,7 @@ import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../core/direction
 import { McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { campaignContextRefusal } from "./campaign-context.ts";
 import { mcpRefusal } from "./mcp-servers.ts";
+import { usedRunRefusal } from "./run-names.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigView, type RunView, rigView } from "./views.ts";
 
@@ -405,7 +406,9 @@ export function prepareCommand(
       ? redirectRefusal(store, input.rig, payload)
       : input.kind === "hypothesis_status"
         ? hypothesisStatusRefusal(store, input.rig, payload)
-        : "";
+        : input.kind === "assign_campaign"
+          ? usedRunRefusal(store, payload as { run: string })
+          : "";
   if (ruled) throw new Error(ruled);
   const now = Date.now();
   const signed = signEnvelope(

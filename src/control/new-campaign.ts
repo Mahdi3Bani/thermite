@@ -3,6 +3,7 @@ import { parseContract } from "../core/contract.ts";
 import { buildCampaign } from "./campaign-builder.ts";
 import { issueWaking, type PodWaker } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
+import { nextRunName } from "./run-names.ts";
 import type { CampaignSources, ControlStore } from "./store.ts";
 
 /**
@@ -211,7 +212,7 @@ async function againLikeBefore(deps: Deps, input: RunInput): Promise<RunStarted>
       ],
     };
   const name = input.agents ? input.campaign : `${input.campaign.slice(0, 54)}-try`;
-  const run = deps.store.nextRunName(input.rig, name);
+  const run = nextRunName(deps.store, name);
   const {
     run: _old,
     agents: _agents,
@@ -259,7 +260,7 @@ export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted>
       ],
     };
   const name = input.agents ? input.campaign : `${input.campaign.slice(0, 54)}-try`;
-  const run = deps.store.nextRunName(input.rig, name);
+  const run = nextRunName(deps.store, name);
   const kept = v.sources.assignment;
   if (kept) {
     // A copy of a campaign control knew only by an assignment (goal 069): that assignment's

@@ -28,7 +28,7 @@ Choose a card: it sets the campaign's mode. [Choose a campaign mode](choose-a-mo
 | **Reach a list of goals** | Work until checks you write all pass | Every goal is met |
 | **Research a question** | Collect sourced findings. No code changes | The rig's review panel finds every question answered, its open questions stop adding, or you close it ([Time and tools](#time-and-tools)) |
 
-Fill in **Campaign name** (lowercase letters, digits, dots and dashes, such as `sort-speed`) and **Title** (one sentence; agents read it too). Runs are named after the campaign: `sort-speed-1`, `sort-speed-2`. Using a name again saves a new version of that campaign, and the page doesn't warn you that the name is in use. Nothing that ran changes: runs that exist keep their version, and later runs use the new one. This is how you change a campaign made here, such as its stop time: fill in the page again with the same name. The page starts empty each time.
+Fill in **Campaign name** (lowercase letters, digits, dots and dashes, such as `sort-speed`) and **Title** (one sentence; agents read it too). Runs are named after the campaign and numbered across every rig: `sort-speed-1`, `sort-speed-2`. A run's name is used once on control. Using a name again saves a new version of that campaign, and the page doesn't warn you that the name is in use. Nothing that ran changes: runs that exist keep their version, and later runs use the new one. This is how you change a campaign made here, such as its stop time: fill in the page again with the same name. The page starts empty each time.
 
 ## 2. The brief
 

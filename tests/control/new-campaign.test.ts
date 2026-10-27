@@ -219,7 +219,8 @@ describe("starting a campaign from the page", () => {
     });
     assert.ok(r.ok, JSON.stringify(!r.ok && r.errors));
     if (!r.ok) return;
-    assert.equal(r.run, "cli-made-1");
+    // Numbered across every rig: rig-a's cli-made-1 is taken (goal 170).
+    assert.equal(r.run, "cli-made-2");
     const row = store.db.prepare("select rig, signed from command where id = ?").get(r.command) as {
       rig: string;
       signed: string;
@@ -231,7 +232,7 @@ describe("starting a campaign from the page", () => {
     assert.deepEqual(payload.imports, imports);
     assert.deepEqual(payload.seed, { repo: "p", commit: C });
     assert.equal(payload.promotion, "owner_approval");
-    assert.equal(payload.run, "cli-made-1");
+    assert.equal(payload.run, "cli-made-2");
     // Another run's untried experiments go into the new run's queue, in order, with their origin.
     const seed = [
       {

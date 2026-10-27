@@ -44,6 +44,19 @@ async function stack() {
     rigs: { "rig-a": "rig-a-token-abcd", "rig-b": "rig-b-token-abcd" },
   };
   const control = createControlApi(store, tokens, keys.privateKeyPem, { staleAfterMs: 600_000 });
+  // The assignment that started gs-3, before the rig reported it.
+  store.setConfiguredRigs(["rig-a"]);
+  issueCommand(store, keys.privateKeyPem, {
+    rig: "rig-a",
+    kind: "assign_campaign",
+    payload: {
+      run: "gs-3",
+      contract: { campaign: "gemv-speed", mode: "goal" },
+      contract_sha: "a".repeat(64),
+      imports: [],
+    },
+    issuedBy: "owner:api",
+  });
   ingest(store, "rig-a", [
     ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal", agents: true }],
     [
@@ -139,17 +152,6 @@ async function stack() {
       { finding: "f-1", claims: 6, statement: "Self-training helps only where a verifier exists" },
     ],
   ]);
-  issueCommand(store, keys.privateKeyPem, {
-    rig: "rig-a",
-    kind: "assign_campaign",
-    payload: {
-      run: "gs-3",
-      contract: { campaign: "gemv-speed", mode: "goal" },
-      contract_sha: "a".repeat(64),
-      imports: [],
-    },
-    issuedBy: "owner:api",
-  });
   const login = await control.request("/ui/login", {
     method: "POST",
     body: new URLSearchParams({ token: tokens.admin }),
@@ -561,6 +563,8 @@ test("MCP: a briefing takes the knowledge base's own words; an item not found or
   const owner = await mcp(s.control, s.tokens.admin);
   const finding = { campaign: "survey-study", run: "sv-2", kind: "finding", ref: "f-1" };
   const note = { campaign: "gemv-speed", run: "gs-3", kind: "note", ref: "rn-4" };
+  // Each assignment its own run: a run's name is used once on control (goal 170).
+  let n = 9;
   const assign = async (briefing: unknown[]) => {
     const r = text(
       await owner.callTool({
@@ -569,7 +573,7 @@ test("MCP: a briefing takes the knowledge base's own words; an item not found or
           rig: "rig-a",
           kind: "assign_campaign",
           payload: {
-            run: "gemv-speed-9",
+            run: `gemv-speed-${n++}`,
             contract: { campaign: "gemv-speed", mode: "goal" },
             contract_sha: "a".repeat(64),
             imports: [],
@@ -620,6 +624,7 @@ test("MCP: a briefing takes the knowledge base's own words; an item not found or
 test("MCP: a copied experiment takes control's record only from a folder the run may read", async () => {
   const s = await stack();
   const owner = await mcp(s.control, s.tokens.admin);
+  let n = 9;
   const copy = async () => {
     const r = text(
       await owner.callTool({
@@ -628,7 +633,7 @@ test("MCP: a copied experiment takes control's record only from a folder the run
           rig: "rig-b",
           kind: "assign_campaign",
           payload: {
-            run: "survey-study-9",
+            run: `survey-study-${n++}`,
             contract: { campaign: "survey-study", mode: "research" },
             contract_sha: "a".repeat(64),
             imports: [],

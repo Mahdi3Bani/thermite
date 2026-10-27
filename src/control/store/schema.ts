@@ -648,10 +648,43 @@ function schemaTwo(db: DatabaseSync): void {
 }
 
 /**
+ * Run names used once on control (goal 170): an index to find a run's name on any rig, and a
+ * champion's patch kept by ledger, so a run of the same name in another ledger (before a full
+ * reset) never stands in for it. A row kept before takes the ledger of the event it matches.
+ */
+function schemaThree(db: DatabaseSync): void {
+  db.exec("create index if not exists rig_event_subject on rig_event (kind, subject)");
+  db.exec(`create table champion_patch_170 (
+  rig text not null,
+  ledger_id text not null,
+  run text not null,
+  seq integer not null,
+  sha256 text not null,
+  base_commit text not null,
+  patch blob not null,
+  received_at text not null,
+  primary key (rig, ledger_id, run, seq)
+)`);
+  db.exec(`insert or ignore into champion_patch_170
+  select c.rig, coalesce((select e.ledger_id from rig_event e
+      where e.rig = c.rig and e.kind = 'champion_published' and e.subject = c.run
+        and json_extract(e.body, '$.seq') = c.seq and json_extract(e.body, '$.sha256') = c.sha256
+      order by e.seq desc limit 1), ''),
+    c.run, c.seq, c.sha256, c.base_commit, c.patch, c.received_at
+  from champion_patch c`);
+  db.exec("drop table champion_patch");
+  db.exec("alter table champion_patch_170 rename to champion_patch");
+}
+
+/**
  * Control's migrations, in order: the store's schema version is how many have run. A change to
  * the schema is a new function at the end, never an edit of one that has run.
  */
-const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [schemaOne, schemaTwo];
+const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [
+  schemaOne,
+  schemaTwo,
+  schemaThree,
+];
 
 /**
  * Brings the store to this code's schema. A store with tables in it is copied first (goal 173),

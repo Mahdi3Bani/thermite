@@ -50,7 +50,7 @@ Run `thermite assign` as in the example at the top. Control signs the command an
 | Option | What it does |
 | --- | --- |
 | `--contract F` | The contract file. Required |
-| `--run ID` | The new run's name: lowercase letters, digits, dots, dashes and underscores. It must be new on that rig. Required |
+| `--run ID` | The new run's name: lowercase letters, digits, dots, dashes and underscores. It must be new on control: a name used on any rig, also by a run from before a full reset, is refused. Required |
 | `--seed GIT_URL@COMMIT` | Where the project comes from, and the full commit to start from. Without `@COMMIT`, the contract's `project.commit`. The rig keeps the project under the contract's `project.repo` name |
 | `--seed-commit C` | Instead of `--seed`: a full commit already on the rig, such as an earlier run's champion |
 | `--kit GIT_URL` | Where the kit comes from. Its commit comes from the contract. Leave it out when the rig already has that kit commit |
@@ -177,6 +177,7 @@ The command line itself prints a refusal from its own checks or from control. A 
 | `-> 401 {"error":"unauthorized"}` | The terminal | Use the owner's token |
 | `bad assign_campaign payload: seed.repo: lowercase id` | The terminal | Make the contract's `project.repo` a lowercase name, such as `my-project` |
 | `-> 400 {"error":"The kit names the MCP server paper-search, and Settings has no server of that name. …"}` | The terminal | Add the server in **Settings › Providers**, or take it out of the kit |
+| `-> 400 {"error":"run sort-speed-1 was used already, on local-1: a run's name is used once on control, on every rig. Choose another, such as sort-speed-2"}` | The terminal | Use the name it suggests, or another new one |
 | **failed**, `run <id> already exists` | **Commands** | Choose a new run name |
 | **failed**, `contract <campaign> v<n> exists with other content` | **Commands** | You changed the contract: raise its `version` |
 | **pending**, then **expired** | **Commands** | The rig's supervisor is down, or a large fetch took longer than the command may wait: send it again with a longer `--ttl` |

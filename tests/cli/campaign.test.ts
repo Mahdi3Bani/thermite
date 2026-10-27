@@ -41,6 +41,24 @@ describe("thermite campaign copy (goal 069)", () => {
       { admin: "owner-token-abcdef", rigs: {} },
       keys.privateKeyPem,
     );
+    // sort-speed was assigned over the API before, with a real contract, and the rig ran it.
+    store.setConfiguredRigs(["rig-a"]);
+    const goal = JSON.parse(
+      readFileSync(join(import.meta.dirname, "../../examples/contracts/goal-example.json"), "utf8"),
+    ) as Record<string, unknown>;
+    const contract = parseContract({ ...goal, campaign: "sort-speed" });
+    assert.ok(contract.ok);
+    issueCommand(store, keys.privateKeyPem, {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: {
+        run: "sort-speed-1",
+        contract: contract.contract,
+        contract_sha: contract.sha,
+        imports: [],
+      },
+      issuedBy: "owner:api",
+    });
     store.ingest({
       rig: "rig-a",
       ledger_id: "ledger-rig-a",
@@ -58,23 +76,6 @@ describe("thermite campaign copy (goal 069)", () => {
         },
       ],
       summary: {},
-    });
-    // sort-speed was assigned over the API before, with a real contract.
-    const goal = JSON.parse(
-      readFileSync(join(import.meta.dirname, "../../examples/contracts/goal-example.json"), "utf8"),
-    ) as Record<string, unknown>;
-    const contract = parseContract({ ...goal, campaign: "sort-speed" });
-    assert.ok(contract.ok);
-    issueCommand(store, keys.privateKeyPem, {
-      rig: "rig-a",
-      kind: "assign_campaign",
-      payload: {
-        run: "sort-speed-1",
-        contract: contract.contract,
-        contract_sha: contract.sha,
-        imports: [],
-      },
-      issuedBy: "owner:api",
     });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));

@@ -66,6 +66,19 @@ describe("thermite run start (goal 029)", () => {
       { admin: "owner-token-abcdef", rigs: {} },
       keys.privateKeyPem,
     );
+    store.setConfiguredRigs(["rig-a"]);
+    // sort-speed was assigned over the API before: Start a run assigns it again.
+    issueCommand(store, keys.privateKeyPem, {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: {
+        run: "sort-speed-1",
+        contract: { campaign: "sort-speed", mode: "hill_climb" },
+        contract_sha: "c".repeat(64),
+        imports: [],
+      },
+      issuedBy: "owner:api",
+    });
     report(store, "rig-a", [
       ["sort-speed-1", "run_created", { campaign: "sort-speed", mode: "hill_climb", agents: true }],
       ["sort-speed-1", "experiment_added", { id: "x-1", title: "radix sort", by: "planner" }],
@@ -80,18 +93,6 @@ describe("thermite run start (goal 029)", () => {
     });
     store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
     store.setProviderModels("zen", [{ id: "glm-5.3-flash-free" }]);
-    // sort-speed was assigned over the API before: Start a run assigns it again.
-    issueCommand(store, keys.privateKeyPem, {
-      rig: "rig-a",
-      kind: "assign_campaign",
-      payload: {
-        run: "sort-speed-1",
-        contract: { campaign: "sort-speed", mode: "hill_climb" },
-        contract_sha: "c".repeat(64),
-        imports: [],
-      },
-      issuedBy: "owner:api",
-    });
     const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise((r) => server.once("listening", r));
     const control = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

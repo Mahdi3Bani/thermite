@@ -169,7 +169,9 @@ const rigEvents = async (rig) => {
   }
 };
 const view = async (rig) => (await api(`/v1/rigs/${rig}/view`)).body;
-const runOf = async (rig) => (await view(rig)).runs?.find((i) => i.id === "smoke-1");
+// Each rig its own run: a run's name is used once on control (goal 170).
+const RUNS = { "local-1": "smoke-1", "local-2": "smoke-2" };
+const runOf = async (rig) => (await view(rig)).runs?.find((i) => i.id === RUNS[rig]);
 
 const env = prepare();
 // Audits for any win above 1% (the smoke kernel's win is far larger).
@@ -201,7 +203,7 @@ let failed = false;
 try {
   await until("control health", async () => (await fetch("http://127.0.0.1:8800/v1/health")).ok);
   await assign(env, "smoke-1", "local-1");
-  await assign(env, "smoke-1", "local-2");
+  await assign(env, "smoke-2", "local-2");
 
   // 1. Directives from the teachers, attributed in the next epoch.
   await until(
@@ -311,7 +313,7 @@ try {
           from_rig: "local-1",
           run: "smoke-1",
           to_rig: "local-2",
-          to_run: "smoke-1",
+          to_run: "smoke-2",
         }),
       });
       return r.status === 201 ? r.body : undefined;

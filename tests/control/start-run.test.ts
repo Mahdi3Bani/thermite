@@ -65,6 +65,19 @@ async function stack() {
   const keys = generateSigningKeys();
   const store = new ControlStore(":memory:");
   const api = createControlApi(store, TOKENS, keys.privateKeyPem, { staleAfterMs: 600_000 });
+  // The assignment that started gs-3, before the rig reported it.
+  store.setConfiguredRigs(["rig-a"]);
+  issueCommand(store, keys.privateKeyPem, {
+    rig: "rig-a",
+    kind: "assign_campaign",
+    payload: {
+      run: "gs-3",
+      contract: { campaign: "gemv-speed", mode: "goal", target: { type: "cpu" } },
+      contract_sha: "a".repeat(64),
+      imports: [],
+    },
+    issuedBy: "owner:api",
+  });
   ingest(store, "rig-a", [
     ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal", agents: true }],
     [
@@ -130,17 +143,6 @@ async function stack() {
     [["harness", "run_created", "other-1", { campaign: "other", mode: "hill_climb" }]],
     { hardware: hardware("cuda") },
   );
-  issueCommand(store, keys.privateKeyPem, {
-    rig: "rig-a",
-    kind: "assign_campaign",
-    payload: {
-      run: "gs-3",
-      contract: { campaign: "gemv-speed", mode: "goal", target: { type: "cpu" } },
-      contract_sha: "a".repeat(64),
-      imports: [],
-    },
-    issuedBy: "owner:api",
-  });
   store.kb().grant("gemv-speed", "survey-study", "owner:ui");
   const kb = store.kb();
   const exp = kb.search("vector loads", ["gemv-speed"], { kinds: ["experiment"] })[0];
