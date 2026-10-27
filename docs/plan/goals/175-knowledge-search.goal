@@ -1,0 +1,91 @@
+---
+id: "175"
+title: "Knowledge search: the knowledge base's items ranked by words and by meaning, with zvec-grep and a local embedding model"
+status: READY
+version: "0.1.1"
+depends_on: ["160"]
+created: 2026-10-27
+updated: 2026-10-27
+---
+
+# 175 · Knowledge search: the knowledge base's items ranked by words and by meaning, with zvec-grep and a local embedding model
+
+**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+
+## What
+
+Thermite's knowledge base is a store of blurbs: one item for each record a run makes (runs, trials, notes, experiments, attempts, sources, claims, hypotheses, findings, reports), built by control from the rigs' signed events. Its search is word matching: every word must appear in an item's title or text, newest first, with no ranking and no index, in five separate implementations. It has no vectors, no semantic lookup and no synthesis. A question about what failed can return whole web-page sources instead of the experiments that failed, with every result's whole text.
+
+This goal keeps the items as they are and makes them searchable by words and by meaning, for the owner and for the agents, with [zvec-grep](https://github.com/zvec-ai/zvec-grep) (ripgrep, BM25 and vector search over zvec, local-first) and a local embedding model.
+
+1. **One search interface, three layers:**
+   - **A floor that is always on:** a SQLite FTS5 index over control's items, ranked by BM25, written in the same transaction as each item, with excerpts in place of whole bodies. It replaces today's word matching and needs no download.
+   - **zvec-grep on control:** a Markdown copy of every item, indexed by zvec-grep in a search worker of its own, outside control's process, with the embedding model built into control's image. While its index rebuilds, search answers from the floor and says so.
+   - **zvec-grep on each rig:** over the run's research folder, served by the harness to every rig role through one tool with a scope (this run, past research, both) and a mode (words, meaning, both). The harness still never calls control.
+2. **One item renderer:** every item as one Markdown file with its front block, the same in control's copy and in each run's `knowledge/` folder.
+3. **The old searches go:** control's word matching, the harness's file scan, the run's research matcher, and the research `search` tool that always refuses (the clean-up guide's question 24).
+4. **Shown everywhere:** the Knowledge page and Start a run's From past research ranked (with "newest first" kept), REST, MCP `kb_search` with excerpts, the command line (`thermite kb search`), and the search's state (indexing, rebuilding, the floor in use) on a page, REST, MCP and `/metrics`.
+
+**The local model.** In v0.1.1 it is the embedding model inside zvec-grep (a small static retrieval model that runs on the CPU), built into the images: no GPU, no provider, and no data leaves the machine. A model that writes (answers to a question, topic pages for a collection, a reranker) is a later, opt-in step through a model route the owner configures, such as their own llama.cpp, vLLM or Ollama server. Anything a model writes is a derived page, never an item: it cites the items it rests on, code checks every citation word for word, it is marked stale when a cited item changes or is invalidated, and it is shown apart from the items, labelled "written by a model, not evidence".
+
+## Why
+
+The owner, 2026-10-27: "What we have is not a real KB, LLMWiki, Vector lookup system. Its just a collection of blurbs... right?" and "we want a local llm + blurbs searchable by https://github.com/zvec-ai/zvec-grep".
+
+The audit's lane 6 found the five searches and their cost; lane 15 (`.internal/reviews/v0.1.1-audit/15-knowledge-search.md`) studied zvec-grep and designed this goal, read-only.
+
+## Constraints
+
+- **The knowledge base comes only from the rigs' signed events,** and no agent writes an item. A derived page is never evidence.
+- **The network rules hold:** the harness reaches only DNS, the internet and its model endpoint; rig agents search through the harness.
+- **No default caps,** and no default spending: a model that writes runs only when the owner asks or schedules it.
+- **Downloads** (zvec-grep with its dependencies, the embedding model) come with the owner's yes (goal [172](172-build-v011.goal)'s gate B): pinned, at least two weeks old, and credited in [CREDITS.md](../../../CREDITS.md).
+- **Docs follow the code,** in the same commit: the knowledge-base reference, the MCP and REST references, the command line, the Knowledge page's text, and known limits.
+
+## Steps
+
+Each green on its own, with its tests and docs in the same commit. In goal 172's order, they go in step 9 with the guide's theme T11, after goal [162](162-research-and-knowledge-bugs.goal)'s structured item fields.
+
+0. **Gate B:** the owner approves, pins and credits zvec-grep (a release that carries the fix for its broken-index fault, once it is two weeks old; an older one for the spike only) and the embedding model, by hash.
+1. **The floor:** the FTS5 index over control's items, BM25 ranking and excerpts; REST, MCP and the command line; the Knowledge page and From past research ranked.
+2. **One item renderer** in `core`, used by control's copy and the runs' `knowledge/` folders.
+3. **A spike, with numbers:** zvec-grep's library in a worker over a copy of the items, measured for install size, cold index time, memory, disk, the update of 100 items and query times, at 30,000 and 100,000 items, against the floor. The owner decides go or no-go from the numbers.
+4. **zvec-grep on control:** the copy of the items, the search worker, the model in control's image, the search's state, and the fall-back to the floor.
+5. **The rig side:** the harness's search over the run's research folder, one tool for every rig role, the model and zvec-grep in the harness's image, and a closed run's copy and index removed.
+6. **The old searches go,** with the pages that named them.
+7. **Writing models** (answers, topic pages, a reranker) are a goal of their own, after the owner has used steps 1 to 5.
+
+## Done when
+
+- [ ] A question about what failed finds the experiments that failed, ranked, with excerpts, on the Knowledge page, over MCP and from a planner's tool, shown by an acceptance check.
+- [ ] The floor answers while zvec-grep's index rebuilds, and says so.
+- [ ] The spike's numbers and the acceptance check's are recorded here, at 30,000 and 100,000 items.
+- [ ] One search tool serves every rig role, and the old searches are gone.
+- [ ] Every page above matches the code, and CREDITS.md lists zvec-grep, zvec and the model.
+- [ ] The fast checks, the docs checks, and the control, agents and steering acceptance checks pass.
+
+## Decisions
+
+- 2026-10-27, owner: the blurbs, kept, made searchable by zvec-grep with a local model.
+
+## Open questions
+
+Each with lane 15's recommendation.
+
+1. **What "a local LLM" means in this goal.** Recommended: in v0.1.1, the embedding model inside zvec-grep (`potion-retrieval-32M`, MIT, 129 MB, CPU), built into the images; a model that writes is a later, opt-in step through a route the owner configures. Instead: a reranker now; a small writing model inside control's image (gigabytes and native GPU code; not recommended); or the owner's own agent over MCP, with nothing new in Thermite.
+2. **One engine or two.** Recommended: FTS5 as the floor, zvec-grep as the ranked layer above it, since zvec-grep's index can break apart from the records and takes hours to rebuild at a large size. Instead: zvec-grep only; FTS5 only, deciding zvec-grep later; or FTS5 with embeddings in Thermite's own code, without zvec-grep.
+3. **Which embedding model.** Recommended: `potion-retrieval-32M`, the retrieval-tuned static model, for English prose; changing it later is one rebuild. Instead: zvec-grep's code model, a multilingual model, or a larger model that runs best on a GPU.
+4. **How the rig's agents search.** Recommended: a rig-local index over each run's research folder, served by the harness through one tool. Instead: the `zvec-grep` command in the workers' path, reading the harness's index; or control's index for the advisors through the supervisor, and word search for the rest.
+5. **May agents read derived pages?** Recommended: no, not by default; they are for the owner, labelled. A campaign setting may later give them to its agents as summaries, not evidence.
+6. **When the writing part comes.** Recommended: a goal of its own after steps 1 to 5, in v0.1.2, starting with "Ask" on the Knowledge page.
+7. **May a run's agents search its own records** with the same tool (scope "this run"), with the run's field notes written into its research folder? Recommended: yes, in step 5.
+8. **Which zvec-grep to pin.** Recommended: its TypeScript library, the first release that carries the fix for its broken-index fault, once it is two weeks old; an older release for the spike only.
+9. **The images' size.** Recommended: zvec-grep only in control's and the harness's images, from a manifest of its own, without its runtime's GPU download; accept the growth the spike measures.
+
+## Progress
+
+- 2026-10-27 00:54 UTC: Goal written from the owner's words and the audit's lane 15.
+
+---
+
+Run with `/goal Complete docs/plan/goals/175-knowledge-search.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
