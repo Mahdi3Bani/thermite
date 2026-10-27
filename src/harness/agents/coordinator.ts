@@ -1,6 +1,7 @@
 import type { StoredRule } from "../../core/commands.ts";
 import { type Contract, type LaneLimitValues, laneLimits, MAX_LANES } from "../../core/contract.ts";
 import { ideaWords, ruleRefusal } from "../../core/queue-target.ts";
+import { JUDGED_LIFECYCLES } from "../../core/verdicts.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import {
   directionOf,
@@ -107,22 +108,9 @@ export function lanesAtWork(ledger: Ledger, run: string, contract: Contract): nu
   return Math.max(1, Math.min(cap, Math.trunc(Number(ruled?.value ?? cap))));
 }
 
-/** An attempt's lifecycles in which the judge is done with it, for now or for good. */
-const SETTLED = new Set([
-  "judged",
-  "promoted",
-  "rejected_v0",
-  "duplicate",
-  "errored",
-  "awaiting_approval",
-  "awaiting_audit",
-  "audit_blocked",
-  "not_judged",
-]);
-
 /** Whether the judge is done with an attempt (none: nothing to wait for). */
 export function attemptSettled(ledger: Ledger, attempt: string | null): boolean {
-  return !attempt || SETTLED.has(String(ledger.getAttempt(attempt)?.lifecycle));
+  return !attempt || JUDGED_LIFECYCLES.has(String(ledger.getAttempt(attempt)?.lifecycle));
 }
 
 /**

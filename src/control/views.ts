@@ -7,6 +7,7 @@ import {
   PAPER_REQUESTED,
   RESEARCH_REVIEW,
 } from "../core/research-check.ts";
+import { WON_VERDICTS } from "../core/verdicts.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
 import {
@@ -2151,11 +2152,7 @@ export function runDirections(v: RunView): DirectionView[] {
     if (!attempt) return false;
     if (v.champion.some((c) => c.attempt === attempt && !c.reopened)) return true;
     const a = v.attempts.find((x) => x.id === attempt);
-    return (
-      a?.lifecycle === "promoted" ||
-      a?.verdict === "win_confirmed" ||
-      a?.verdict === "goal_progress"
-    );
+    return a?.lifecycle === "promoted" || WON_VERDICTS.includes(a?.verdict ?? "");
   };
   for (const f of v.families) {
     const d = at(directionOf(f.name));

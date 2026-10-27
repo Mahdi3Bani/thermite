@@ -1,4 +1,13 @@
+import {
+  HELD_OUT_KINDS,
+  HELD_OUT_OWNER_WORDS,
+  HELD_OUT_WORDS,
+  type HeldOutKind,
+  heldOutWords,
+} from "../../core/held-out.ts";
 import type { ArmRun } from "./measure.ts";
+
+export { HELD_OUT_KINDS, HELD_OUT_OWNER_WORDS, HELD_OUT_WORDS, type HeldOutKind, heldOutWords };
 
 /**
  * What a confirmation found on its held-out cells (goal 082), named safely.
@@ -9,17 +18,6 @@ import type { ArmRun } from "./measure.ts";
  * inputs, outputs or texts: a run's error output and the kit's check reasons never pass through
  * here, only a kind from a closed list.
  */
-
-/** How one held-out cell failed. A closed list: nothing a run printed becomes a kind. */
-export const HELD_OUT_KINDS = [
-  "threshold_missed",
-  "timed_out",
-  "crashed",
-  "check_failed",
-  "non_finite",
-  "no_cell",
-] as const;
-export type HeldOutKind = (typeof HELD_OUT_KINDS)[number];
 
 /** One held-out cell's result, as the owner sees it. */
 export interface HeldOutCell {
@@ -50,16 +48,6 @@ export interface HeldOutResult {
   cells: HeldOutCell[];
 }
 
-/** The agents' words for each kind: that a held-out check failed, and how, never which or why. */
-export const HELD_OUT_WORDS: Record<HeldOutKind, string> = {
-  threshold_missed: "a held-out check missed its threshold",
-  timed_out: "a held-out check timed out",
-  crashed: "a held-out check crashed",
-  check_failed: "a held-out check failed the kit's check",
-  non_finite: "a held-out check gave no finite value",
-  no_cell: "a held-out check names a cell the kit does not have",
-};
-
 /**
  * The agents' words when a held-out pass could not finish: an error in the judge's own work (a
  * kit that fails its runs, a tampered build, a lost lease). An error's text can carry a held-out
@@ -67,16 +55,6 @@ export const HELD_OUT_WORDS: Record<HeldOutKind, string> = {
  * the rig's log, for the owner.
  */
 export const HELD_OUT_INFRA = "a held-out check could not finish (an infrastructure failure)";
-
-/** The owner's words for each kind, after the cell's name. */
-export const HELD_OUT_OWNER_WORDS: Record<HeldOutKind, string> = {
-  threshold_missed: "missed its threshold",
-  timed_out: "timed out",
-  crashed: "crashed",
-  check_failed: "failed the kit's check",
-  non_finite: "gave no finite value",
-  no_cell: "is not in the kit",
-};
 
 /**
  * What a hill climb's held-out ratio measures: the change over the champion when higher is better,
@@ -113,15 +91,6 @@ export function heldOutKindOf(r: Exclude<ArmRun, { kind: "ok" }>): HeldOutKind {
 export function heldOutKinds(cells: readonly HeldOutCell[]): HeldOutKind[] {
   const found = new Set(cells.filter((c) => !c.ok && c.kind).map((c) => c.kind as HeldOutKind));
   return HELD_OUT_KINDS.filter((k) => found.has(k));
-}
-
-/**
- * The agents' words for a failed held-out check: each kind once, such as "a held-out check
- * timed out; a held-out check missed its threshold". A record from before goal 082 has no
- * kinds: "a held-out check failed".
- */
-export function heldOutWords(kinds: readonly HeldOutKind[]): string {
-  return kinds.length ? kinds.map((k) => HELD_OUT_WORDS[k]).join("; ") : "a held-out check failed";
 }
 
 /**

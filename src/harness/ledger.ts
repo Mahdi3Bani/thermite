@@ -8,6 +8,7 @@ import type { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
+import { PROMOTABLE_VERDICTS } from "../core/verdicts.ts";
 import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
 import { migrateLedger } from "./ledger/migrate.ts";
@@ -59,14 +60,6 @@ export interface LedgerEvent {
 export type { AttemptInput, BriefingItem, ExperimentRow, JobRow, RunRow } from "./ledger/rows.ts";
 
 export type PromoteResult = { ok: true; seq: number } | { ok: false; currentSeq: number };
-
-/** Verdicts that may move a champion. */
-export const PROMOTABLE_VERDICTS: readonly string[] = [
-  "win_confirmed",
-  "neutral_simplify",
-  // Goal mode: meets more goals than the champion and loses none.
-  "goal_progress",
-];
 
 export interface InvalidationResult {
   attempts: string[];

@@ -8,7 +8,7 @@
     "src/harness/broker/devices.ts",
     "src/harness/selftest.ts"
   ],
-  "src/control/agent-view.ts": ["src/harness/goal-checks.ts", "src/harness/judge/held-out.ts"],
+  "src/control/agent-view.ts": ["src/harness/goal-checks.ts"],
   "src/control/api.ts": ["src/control/dashboard.ts"],
   "src/control/campaign-builder.ts": ["src/harness/kit.ts"],
   "src/control/campaign-context.ts": ["src/control/ui/campaigns.ts"],
@@ -22,8 +22,6 @@
   "src/control/plan-usage.ts": ["src/control/ui/components.ts"],
   "src/control/research-view.ts": ["src/harness/research/progress.ts"],
   "src/control/ui/goal-checks.ts": ["src/harness/goal-checks.ts"],
-  "src/control/ui/operator.ts": ["src/harness/judge/held-out.ts"],
-  "src/control/ui/words.ts": ["src/harness/judge/held-out.ts"],
   "src/control/views.ts": ["src/harness/goal-checks.ts", "src/harness/judge/goal-values.ts"],
   "src/core/tunnel.ts": ["node:path"],
   "src/core/version.ts": ["node:fs"],

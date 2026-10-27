@@ -1,5 +1,5 @@
+import { HELD_OUT_KINDS, type HeldOutKind, heldOutWords } from "../core/held-out.ts";
 import { type GoalChecks, parseGoalChecks } from "../harness/goal-checks.ts";
-import { HELD_OUT_KINDS, type HeldOutKind, heldOutWords } from "../harness/judge/held-out.ts";
 import type { AttemptView, HeldOutView, RunView, StoredEvent } from "./views.ts";
 
 /**

@@ -1,6 +1,7 @@
 import { canonicalJson } from "../core/canonical.ts";
 import type { GoalContract } from "../core/contract.ts";
-import { type Ledger, LedgerError, PROMOTABLE_VERDICTS } from "./ledger.ts";
+import { PROMOTABLE_VERDICTS, SCREENED_VERDICTS } from "../core/verdicts.ts";
+import { type Ledger, LedgerError } from "./ledger.ts";
 
 /**
  * "Not possible" endings for goal campaigns. The harness proposes one only where the contract
@@ -17,7 +18,7 @@ type Row = Record<string, unknown>;
 export const REFUTE_ATTEMPTS = 3;
 
 /** Verdicts that show an approach is getting somewhere (so it is not refuted). */
-const PROMISING = new Set([...PROMOTABLE_VERDICTS, "win_screened", "goal_screened"]);
+const PROMISING = new Set([...PROMOTABLE_VERDICTS, ...SCREENED_VERDICTS]);
 /**
  * Verdicts that refute an approach: a working change, judged, that did not help. Broken changes
  * (invalid, crashed) say more about the attempt than the approach, and infrastructure failures

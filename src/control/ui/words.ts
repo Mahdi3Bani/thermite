@@ -1,71 +1,18 @@
 import { asToken } from "../../core/directions.ts";
+import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../core/held-out.ts";
 import { questionName, RESEARCH_REVIEW } from "../../core/research-check.ts";
-import { HELD_OUT_OWNER_WORDS, type HeldOutKind } from "../../harness/judge/held-out.ts";
+import { BROKEN_VERDICTS, WON_VERDICTS } from "../../core/verdicts.ts";
 import type { AttemptView, RigView, RunView, StoredEvent } from "../views.ts";
 import { jobText, portWords } from "./judge-words.ts";
+import { attemptState, signed, verdictText } from "./verdict-words.ts";
+
+export { attemptState, jobText, signed, verdictText };
 
 /**
  * Plain words for what the ledger records: verdicts, attempt states, judge jobs and events, so a
  * person reads "confirmed faster: +14.2%" rather than "win_confirmed 0.142". Everything returned
  * here is plain text: callers escape it.
  */
-
-const VERDICT: Record<string, string> = {
-  win_screened: "looked faster in screening; being confirmed on fresh runs",
-  win_confirmed: "confirmed faster on fresh runs",
-  not_confirmed: "did not hold up on fresh runs",
-  regress: "worse than the champion",
-  neutral: "no measurable difference",
-  no_progress: "met no new goal",
-  inconclusive: "too noisy, or not checkable, to tell",
-  invalid: "broken: it failed a correctness check or did not build",
-  rejected_v0: "refused before building: it broke a contract rule",
-  crash_candidate: "crashed when run",
-  crash_infra: "the rig failed while measuring it (not the change's fault)",
-  invalidated: "its evidence was invalidated",
-  goal_screened: "looked like goal progress; being confirmed on fresh runs",
-  goal_progress: "confirmed: it meets more goals and loses none",
-  starting_point: "measured: it became the run's starting point",
-};
-
-const LIFECYCLE: Record<string, string> = {
-  queued: "waiting for the judge",
-  building: "being built",
-  screening: "being measured",
-  confirming: "being confirmed on fresh runs",
-  verifying: "being checked",
-  awaiting_audit: "held for an audit",
-  declined: "declined by you",
-  awaiting_approval: "waiting for your approval",
-  audit_blocked: "blocked by the auditor",
-  promoted: "became the champion",
-  judged: "judged",
-  duplicate: "the same change as an earlier attempt",
-  rejected: "refused",
-  errored: "failed in the judge",
-  not_judged: "not judged: its run closed first",
-};
-
-/** A verdict in words, with the measured change when there is one. */
-export function verdictText(verdict: string, delta?: number | null): string {
-  const words = VERDICT[verdict] ?? verdict.replace(/_/g, " ");
-  return typeof delta === "number" && Number.isFinite(delta)
-    ? `${words} (${signed(delta)})`
-    : words;
-}
-
-/** Where an attempt is, in words: its verdict if it has one, else its state. */
-export function attemptState(a: Pick<AttemptView, "verdict" | "lifecycle" | "delta">): string {
-  if (a.lifecycle in LIFECYCLE && a.lifecycle !== "judged" && a.lifecycle !== "queued")
-    return LIFECYCLE[a.lifecycle] as string;
-  if (a.verdict) return verdictText(a.verdict, a.delta);
-  return LIFECYCLE[a.lifecycle] ?? a.lifecycle.replace(/_/g, " ");
-}
-
-export const signed = (x: number, digits = 1) =>
-  `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
-
-export { jobText };
 
 const COMMAND: Record<string, string> = {
   approve_promotion: "approve a promotion",
@@ -280,9 +227,9 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       const v = String(b.verdict);
       return s(
         `${e.subject}${a?.lane ? ` (${a.lane})` : ""}: ${verdictText(v, b.delta as number | null)}.${v.startsWith("goal_") ? gained : ""}`,
-        v === "win_confirmed" || v === "goal_progress"
+        WON_VERDICTS.includes(v)
           ? "ok"
-          : v === "regress" || v === "crash_candidate" || v === "invalid" || v === "rejected_v0"
+          : v === "regress" || BROKEN_VERDICTS.includes(v)
             ? "bad"
             : "",
         { attempt: String(e.subject), run: a?.run },

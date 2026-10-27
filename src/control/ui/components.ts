@@ -1,5 +1,6 @@
 import type { Hardware } from "../../core/hardware.ts";
 import { ANSWERED, RESEARCH_REVIEW } from "../../core/research-check.ts";
+import { SCREENED_VERDICTS, WON_VERDICTS } from "../../core/verdicts.ts";
 import { championWords } from "../metric-values.ts";
 import {
   type CampaignView,
@@ -346,16 +347,9 @@ export function kpi(k: string, v: string, s = "", cls = ""): string {
 
 /** Verdict colours, shared by the stacked bar, chips and legends. */
 export function verdictColor(v: string): string {
-  if (
-    v === "win_confirmed" ||
-    v === "promoted" ||
-    v === "goal_progress" ||
-    v === "met" ||
-    v === "starting_point"
-  )
+  if (WON_VERDICTS.includes(v) || ["promoted", "met", "starting_point"].includes(v))
     return "var(--success)";
-  if (v === "win_screened" || v === "goal_screened")
-    return "color-mix(in srgb, var(--success) 55%, transparent)";
+  if (SCREENED_VERDICTS.includes(v)) return "color-mix(in srgb, var(--success) 55%, transparent)";
   if (v === "regress" || v === "crash_candidate" || v === "unmet") return "var(--error)";
   if (v === "invalid" || v === "rejected_v0" || v === "duplicate") return "var(--warning)";
   if (v === "queued" || v === "judging" || v === "evaluating") return "var(--info)";
@@ -365,7 +359,7 @@ export function verdictColor(v: string): string {
 export function verdictChip(v: string | null, lifecycle: string): string {
   const k = v ?? lifecycle;
   const cls =
-    k === "win_confirmed" || k === "goal_progress" || k === "promoted" || k === "starting_point"
+    WON_VERDICTS.includes(k) || k === "promoted" || k === "starting_point"
       ? "ok"
       : k === "regress" || k === "crash_candidate"
         ? "bad"

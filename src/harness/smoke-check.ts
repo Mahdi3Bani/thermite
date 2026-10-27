@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { git as gitRun, gitText } from "../common/git.ts";
+import { JUDGED_LIFECYCLES } from "../core/verdicts.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { HarnessService } from "./service.ts";
 
@@ -26,9 +27,6 @@ interface Candidate {
   expect: string;
   accept?: string[];
 }
-
-/** Lifecycles after which a candidate's outcome no longer changes (as the judge acceptance has). */
-const SETTLED = ["judged", "rejected_v0", "duplicate", "promoted", "awaiting_approval", "errored"];
 
 /** The same files always make the same commit, so repeated smokes reuse their repositories. */
 const FIXED = {
@@ -179,7 +177,8 @@ export async function smokeCheck(o: {
     );
     ids[name] = r.attempt;
   };
-  const settled = (id: string) => SETTLED.includes(String(ledger.getAttempt(id)?.lifecycle ?? ""));
+  const settled = (id: string) =>
+    JUDGED_LIFECYCLES.has(String(ledger.getAttempt(id)?.lifecycle ?? ""));
   const timeoutMs = o.timeoutMs ?? 3 * 3_600_000;
   const deadline = Date.now() + timeoutMs;
   const waitFor = async (which: string[]) => {

@@ -25,16 +25,16 @@
       "lines": 3718
     },
     "src/control/ui/operator.ts": {
-      "lines": 1541
+      "lines": 1485
     },
     "src/control/ui/style.ts": {
       "lines": 1165
     },
     "src/control/ui/words.ts": {
-      "lines": 970
+      "lines": 917
     },
     "src/control/views.ts": {
-      "lines": 2194
+      "lines": 2191
     },
     "src/harness/agents/claude-code.ts": {
       "lines": 985
@@ -67,7 +67,7 @@
       "lines": 2074
     },
     "src/harness/ledger.ts": {
-      "lines": 1606
+      "lines": 1599
     },
     "src/harness/main.ts": {
       "lines": 882

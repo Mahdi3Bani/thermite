@@ -1,3 +1,9 @@
+import {
+  BROKEN_VERDICTS,
+  SCREENED_VERDICTS,
+  UNCLEAR_VERDICTS,
+  WON_VERDICTS,
+} from "../../../core/verdicts.ts";
 import type { AttemptView, RigView, RunView } from "../../views.ts";
 
 /**
@@ -44,12 +50,10 @@ export function outcome(r: RunView, a: AttemptView, u?: RigView): { word: string
   // Its job lost its lease too often and was set aside: an infrastructure failure, not a loss.
   if (a.lifecycle === "errored") return { word: "Errored", tone: "" };
   const v = a.verdict ?? "";
-  if (v === "win_confirmed" || v === "goal_progress") return { word: "Won", tone: "ok" };
-  if (v === "win_screened" || v === "goal_screened") return { word: "Judging", tone: "info" };
-  if (["invalid", "rejected_v0", "crash_candidate"].includes(v))
-    return { word: "Broken", tone: "bad" };
-  if (["crash_infra", "inconclusive", "invalidated"].includes(v))
-    return { word: "Unclear", tone: "" };
+  if (WON_VERDICTS.includes(v)) return { word: "Won", tone: "ok" };
+  if (SCREENED_VERDICTS.includes(v)) return { word: "Judging", tone: "info" };
+  if (BROKEN_VERDICTS.includes(v)) return { word: "Broken", tone: "bad" };
+  if (UNCLEAR_VERDICTS.includes(v)) return { word: "Unclear", tone: "" };
   if (!v) return { word: "Judging", tone: "info" };
   return { word: "Lost", tone: "" };
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
 import type { CommandPayloads } from "../core/commands.ts";
+import { FINAL_LIFECYCLES } from "../core/verdicts.ts";
 import { createAttemptCommit, deleteRef, GitError, hasCommit, patchBytes, treeOf } from "./git.ts";
 import { importFile } from "./imports.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
@@ -22,15 +23,7 @@ import type { HarnessService, SubmitResult } from "./service.ts";
 type Propagate = z.infer<(typeof CommandPayloads)["propagate"]>;
 
 /** Lifecycles after which a propagated attempt's outcome is known. */
-const SETTLED = new Set([
-  "promoted",
-  "judged",
-  "rejected_v0",
-  "duplicate",
-  "errored",
-  "audit_blocked",
-  "not_judged",
-]);
+const SETTLED = FINAL_LIFECYCLES;
 
 export async function receivePropagation(
   svc: HarnessService,
