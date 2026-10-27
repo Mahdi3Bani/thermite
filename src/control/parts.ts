@@ -1,9 +1,13 @@
+import { createPublicKey } from "node:crypto";
 import type { BuildInfo } from "../core/version.ts";
 import { ChatGPTLogins } from "./chatgpt.ts";
+import { type ClusterKubectl, realKubectl } from "./clusters/kubectl.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { RunpodDriver } from "./lifecycle.ts";
+import { type MachineSsh, openSsh } from "./machines/ssh.ts";
 import { McpServers } from "./mcp-servers.ts";
 import { PlanUsageReader } from "./plan-usage.ts";
+import type { RigImages } from "./rigs/setup.ts";
 import { RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
@@ -20,6 +24,16 @@ export interface ControlParts {
   store: ControlStore;
   /** Control's signing key: every command it sends a rig is signed with it. */
   privateKeyPem: string;
+  /** Its public key, which every rig control sets up pins. */
+  controlPublicKey: string;
+  /** Control's address as rigs and machines reach it (THERMITE_CONTROL_PUBLIC_URL). */
+  publicUrl?: string | undefined;
+  /** The images control deploys rigs from (none: control can't set rigs up). */
+  rigImages?: RigImages | undefined;
+  /** How control reaches machines over SSH. */
+  machineSsh: MachineSsh;
+  /** How control reaches Kubernetes clusters. */
+  kube: ClusterKubectl;
   /** Seals every key and sign-in control stores. */
   secrets: SecretBox;
   /** The kits control keeps (New campaign, Start a run); none: it keeps none. */
@@ -47,6 +61,10 @@ export interface PartsOptions {
   staleAfterMs: number;
   secrets?: SecretBox | undefined;
   kits?: KitRepos | undefined;
+  publicUrl?: string | undefined;
+  rigImages?: RigImages | undefined;
+  machineSsh?: MachineSsh | undefined;
+  clusterKubectl?: ClusterKubectl | undefined;
   providerFetch?: typeof fetch | undefined;
   cloudFetch?: typeof fetch | undefined;
   runpodTests?: RunpodTests | undefined;
@@ -85,6 +103,13 @@ export function controlParts(
   return {
     store,
     privateKeyPem,
+    controlPublicKey: createPublicKey(privateKeyPem)
+      .export({ type: "spki", format: "pem" })
+      .toString(),
+    publicUrl: opts.publicUrl,
+    rigImages: opts.rigImages,
+    machineSsh: opts.machineSsh ?? openSsh,
+    kube: opts.clusterKubectl ?? realKubectl,
     secrets,
     kits: opts.kits,
     chatgpt,

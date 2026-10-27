@@ -6,13 +6,15 @@ import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
-import type { ControlActions } from "./actions.ts";
 import { createControlApi } from "./api.ts";
+import { realKubectl } from "./clusters/kubectl.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
+import { openSsh } from "./machines/ssh.ts";
 import { McpServers } from "./mcp-servers.ts";
 import { checkQuietRigs } from "./rig-watch.ts";
+import { checkRigPlace } from "./rigs/place.ts";
 import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests } from "./runpod-tests.ts";
@@ -102,13 +104,12 @@ async function main(): Promise<void> {
     staleAfterMs,
     privateKeyPem,
   });
-  // What the dashboard does that the loop below calls too: checking where a quiet rig runs.
-  const actions: ControlActions = {};
+  // What the loop below needs to check where a quiet rig runs, as its page's Check again does.
+  const places = { store, secrets, machineSsh: openSsh, kube: realKubectl };
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
       offlineAfterMs,
-      actions,
       driver,
       // Optional: the owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
@@ -182,7 +183,12 @@ async function main(): Promise<void> {
   const quiet = setInterval(() => {
     if (watching) return;
     watching = true;
-    checkQuietRigs({ store, check: actions.checkRigPlace, staleAfterMs, offlineAfterMs })
+    checkQuietRigs({
+      store,
+      check: (rig, by) => checkRigPlace(places, rig, by),
+      staleAfterMs,
+      offlineAfterMs,
+    })
       .catch((err) => log("control", "quiet rig check error", { error: String(err) }, "error"))
       .finally(() => {
         watching = false;

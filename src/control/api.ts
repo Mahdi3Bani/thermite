@@ -10,7 +10,6 @@ import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core
 import { RIG_ID_WORDS } from "../core/ids.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
-import type { ControlActions } from "./actions.ts";
 import { rigModels, setRigModel } from "./agent-models.ts";
 import { runRoutes } from "./api/runs.ts";
 import {
@@ -32,10 +31,12 @@ import {
 } from "./campaign-folders.ts";
 import { CHATGPT_API } from "./chatgpt.ts";
 import { ClusterResourcesBody, clusterResourcesRequest } from "./cluster-resources.ts";
+import { watchDrains } from "./clusters/drain.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
+import { setClusterRigResources } from "./clusters/resize.ts";
 import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "./copy-campaign.ts";
 import { Credential, newToken } from "./credential.ts";
-import { createDashboard, type RigImages } from "./dashboard.ts";
+import { createDashboard } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
 import { issueWaking, pendingFor, propagateChampion, WakeRefused } from "./issue.ts";
 import { addKit, kitAnswer, kitsAnswer } from "./kit-add.ts";
@@ -68,6 +69,7 @@ import {
   setRigSettings,
 } from "./rig-settings.ts";
 import type { RigUpdates } from "./rig-update.ts";
+import type { RigImages } from "./rigs/setup.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
   type LaunchRequest,
@@ -336,11 +338,6 @@ export interface ControlOptions {
   mcpServers?: McpServers | undefined;
   /** Updates of rigs to control's version from their pages (tests give their own, with short waits). */
   rigUpdates?: RigUpdates | undefined;
-  /**
-   * What the dashboard does that others call too (MCP, control's loop in main.ts): the dashboard
-   * fills it in. Made here when not given.
-   */
-  actions?: ControlActions | undefined;
 }
 
 export function createControlApi(
@@ -363,8 +360,6 @@ export function createControlApi(
   };
 
   const owner = Credential.from(tokens.admin);
-  // Filled in by the dashboard, offered by MCP too.
-  const actions: ControlActions = opts.actions ?? {};
   // What the dashboard, REST and MCP share, made once (parts.ts).
   const parts = controlParts(store, privateKeyPem, opts, viewOpts);
   const { secrets, chatgpt, runpodTests, mcpServers, tunnels, runpodRigs, runpodDriver } = parts;
@@ -1417,16 +1412,17 @@ export function createControlApi(
     admin,
     bodyLimit({ maxSize: 16 * 1024 }),
     async (c) => {
-      const resize = actions.setClusterRigResources;
-      if (!resize) return c.json({ error: "this control sets no rigs up on clusters" }, 404);
       const rig = c.req.param("rig");
       const raw: unknown = await c.req.json().catch(() => undefined);
       const body = ClusterResourcesBody.safeParse(raw);
       const out = body.success
-        ? await resize(rig, clusterResourcesRequest(body.data), "owner:api", {
-            wait: body.data.wait,
-            owner: true,
-          })
+        ? await setClusterRigResources(
+            parts,
+            rig,
+            clusterResourcesRequest(body.data),
+            "owner:api",
+            { wait: body.data.wait, owner: true },
+          )
         : ({ error: bodyRefusal(body.error), status: 400 } as const);
       if ("error" in out) {
         store.audit("owner:api", "refused", {
@@ -1609,6 +1605,8 @@ export function createControlApi(
     return cmd ? c.json(cmd) : c.json({ error: "not found" }, 404);
   });
 
+  // A draining cluster rig's pods restart once nothing runs on it (clusters/drain.ts).
+  watchDrains(parts, opts.drainWatchMs);
   app.route(
     "/",
     createDashboard(store, {
@@ -1623,14 +1621,8 @@ export function createControlApi(
       kits: opts.kits,
       probeRepo: opts.probeRepo,
       readKit: opts.readKit,
-      publicUrl: opts.publicUrl,
-      machineSsh: opts.machineSsh,
-      rigImages: opts.rigImages,
-      clusterKubectl: opts.clusterKubectl,
-      drainWatchMs: opts.drainWatchMs,
       cloudFetch: opts.cloudFetch,
       runpodTests,
-      actions,
       parts,
       mcpServers,
       runpodRigs,
@@ -1655,7 +1647,6 @@ export function createControlApi(
     runpodRigs,
     runpodDriver,
     driver: opts.driver,
-    actions,
     parts,
     mcpServers,
     publicUrl: opts.publicUrl,

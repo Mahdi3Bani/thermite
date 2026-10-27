@@ -1,6 +1,5 @@
 import { log, redact } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
-import type { ControlActions } from "./actions.ts";
 import type { ControlStore } from "./store.ts";
 import { OFFLINE_AFTER_MS } from "./views.ts";
 
@@ -14,12 +13,12 @@ import { OFFLINE_AFTER_MS } from "./views.ts";
  */
 export async function checkQuietRigs(o: {
   store: ControlStore;
-  check: ControlActions["checkRigPlace"];
+  /** Checks where a rig runs, as rigs/place.ts's checkRigPlace does; null: it can't reach it. */
+  check: (rig: string, by: string) => Promise<{ ok: boolean; words: string } | null>;
   staleAfterMs: number;
   offlineAfterMs?: number | undefined;
   now?: number | undefined;
 }): Promise<string[]> {
-  if (!o.check) return [];
   const now = o.now ?? Date.now();
   const offline = Math.max(o.offlineAfterMs ?? OFFLINE_AFTER_MS, o.staleAfterMs);
   const checked: string[] = [];

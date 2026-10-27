@@ -21,9 +21,9 @@ import {
  * Each agent's model on a rig, from outside the dashboard (goals 029, 070 and 074): REST's
  * `POST /v1/rigs/<rig>/model` and MCP's `set_rig_model` set one agent's model, or clear it, as a
  * row of Edit rig's section "2 · The agents" does; `GET /v1/rigs/<rig>/model` and MCP's
- * `rig_models` read them all. Both call the dashboard's own code (ControlActions.setRigModel and
- * rigModels, filled in by dashboard.ts), so Edit rig and its twins check and refuse alike. This
- * module holds what the twins share: the request's fields, its checks of shape, and the answer.
+ * `rig_models` read them all. Both call Edit rig's own code (setRigModel and rigModels in
+ * agent-models.ts), so Edit rig and its twins check and refuse alike. This module holds what the
+ * twins share: the request's fields, its checks of shape, and the answer.
  *
  * The agents (goal 074): the work, the workers and the planner; the advisors, the teachers, the
  * auditor and the review panel. The teachers take one or two models (`model`, and `second_model`

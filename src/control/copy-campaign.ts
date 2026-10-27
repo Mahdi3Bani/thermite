@@ -32,7 +32,7 @@ import { campaignModes } from "./views.ts";
  * `ideas`, `hypotheses`), each in place of its source's: its hash then changes with them.
  *
  * REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign and `thermite campaign copy` call it
- * through ControlActions.copyCampaign, which dashboard.ts fills in with the campaigns it knows.
+ * through copyACampaign, with the campaigns control knows from its rigs' reports too.
  */
 
 export interface CopyCampaignRequest {

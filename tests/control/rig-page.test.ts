@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ControlActions } from "../../src/control/actions.ts";
 import type { ClusterKubectl } from "../../src/control/clusters/kubectl.ts";
 import type { MachineSsh, SshTarget } from "../../src/control/machines/ssh.ts";
 import { RigUpdates } from "../../src/control/rig-update.ts";
 import { checkQuietRigs } from "../../src/control/rig-watch.ts";
+import { checkRigPlace, type PlaceParts } from "../../src/control/rigs/place.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { ControlStore } from "../../src/control/store.ts";
 import { rigView } from "../../src/control/views.ts";
@@ -54,7 +54,13 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
   const keys = generateSigningKeys();
-  const actions: ControlActions = {};
+  // What control checks a rig's place with: the same store, secrets, machine and cluster.
+  const places: PlaceParts = {
+    store,
+    secrets,
+    machineSsh: o.ssh ?? fakeMachine().ssh,
+    kube: o.kube ?? downCluster,
+  };
   const updates = new RigUpdates({
     store,
     privateKeyPem: keys.privateKeyPem,
@@ -72,12 +78,11 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
       offlineAfterMs: 15 * MIN,
       build: CONTROL,
       secrets,
-      machineSsh: o.ssh ?? fakeMachine().ssh,
-      clusterKubectl: o.kube ?? downCluster,
+      machineSsh: places.machineSsh,
+      clusterKubectl: places.kube,
       publicUrl: "https://control.example.com",
       rigImages: IMAGES,
       rigUpdates: updates,
-      actions,
     },
   });
   store.addMachine({
@@ -138,7 +143,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     store.setRigBuild(rig, "harness", b);
     store.setRigBuild(rig, "supervisor", b);
   };
-  return { store, keys, api, page, post, send, report, lastSeen, builds, updates, actions };
+  return { store, keys, api, page, post, send, report, lastSeen, builds, updates, places };
 }
 
 /** A rig control set up on gpu-host-1, which reports. */
@@ -601,7 +606,7 @@ describe("control looks where a quiet rig runs", () => {
     const quiet = () =>
       checkQuietRigs({
         store: s.store,
-        check: s.actions.checkRigPlace,
+        check: (rig, by) => checkRigPlace(s.places, rig, by),
         staleAfterMs: 3 * MIN,
         offlineAfterMs: 15 * MIN,
       });

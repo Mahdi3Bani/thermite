@@ -178,6 +178,9 @@ export function sshError(stderr: string): string {
   return `ssh failed: ${stderr.trim().split("\n").pop() ?? "no reason given"}`;
 }
 
+/** The last three lines of a script's output, as one line: why a step on a machine failed. */
+export const tail = (s: string) => s.trim().split("\n").slice(-3).join(" ").slice(0, 400);
+
 /** A fresh 0700 directory with the key (0600) and the pinned host keys, removed afterwards. */
 async function withKeyDir<T>(
   privateKey: string,

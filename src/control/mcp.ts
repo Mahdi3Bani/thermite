@@ -21,7 +21,6 @@ import { KbKind as KbKindSchema } from "../core/kb.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { USAGE_PERIODS } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
-import type { ControlActions } from "./actions.ts";
 import { agentEvent, agentRun } from "./agent-view.ts";
 import { briefingFromKb } from "./briefing.ts";
 import {
@@ -45,6 +44,10 @@ import {
   clusterResourcesFields,
   clusterResourcesRequest,
 } from "./cluster-resources.ts";
+import { clusterRigAction } from "./clusters/actions.ts";
+import { updateRigImages } from "./clusters/images.ts";
+import { setClusterRigResources } from "./clusters/resize.ts";
+import { addClusterRig, setClusterSlots } from "./clusters/rigs.ts";
 import {
   type CopyCampaignRequest,
   copyACampaign,
@@ -141,8 +144,6 @@ export interface McpOptions {
   runpodDriver?: RunpodDriver | undefined;
   /** The driver for other rigs, which a full reset restarts after its wipe. */
   driver?: DeploymentDriver | undefined;
-  /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
-  actions?: ControlActions | undefined;
   /** What control is made of (parts.ts): the operations MCP shares with the dashboard and REST. */
   parts: ControlParts;
   /** MCP servers for the agents (goal 068): the owner manages them here too. */
@@ -657,9 +658,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     );
 
     // Rigs on clusters, as Add a rig and Providers do them: the owner and operators.
-    const actions = opts.actions;
-    if (canCommand && actions?.addClusterRig) {
-      const add = actions.addClusterRig;
+    if (canCommand) {
       server.registerTool(
         "add_cluster_rig",
         {
@@ -695,7 +694,8 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             cpus?: number;
             memory_gib?: number;
           }) => {
-            const r = await add(
+            const r = await addClusterRig(
+              opts.parts,
               {
                 rig: a.rig,
                 cluster: a.cluster,
@@ -1059,8 +1059,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         ),
       );
     }
-    if (canCommand && actions?.clusterRigAction) {
-      const act = actions.clusterRigAction;
+    if (canCommand) {
       server.registerTool(
         "cluster_rig",
         {
@@ -1070,14 +1069,13 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           inputSchema: { rig: z.string().min(1), action: z.enum(["stop", "start", "restart"]) },
         },
         audited("cluster_rig", async (a: { rig: string; action: "stop" | "start" | "restart" }) => {
-          const r = await act(a.rig, a.action, actor);
+          const r = await clusterRigAction(opts.parts, a.rig, a.action, actor);
           if ("error" in r) throw new Error(r.error);
           return { rig: a.rig, said: r.ok };
         }),
       );
     }
-    if (canCommand && actions?.updateRigImages) {
-      const update = actions.updateRigImages;
+    if (canCommand) {
       server.registerTool(
         "update_rig_images",
         {
@@ -1095,7 +1093,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           },
         },
         audited("update_rig_images", async (a: { rig: string; wait?: boolean }) => {
-          const r = await update(a.rig, actor, { wait: a.wait });
+          const r = await updateRigImages(opts.parts, a.rig, actor, { wait: a.wait });
           if ("error" in r) throw new Error(r.error);
           return { rig: a.rig, said: r.ok };
         }),
@@ -1103,8 +1101,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     }
     // A cluster rig's GPUs, CPUs and memory (goal 118): the owner's and an operator's, within what
     // the slot and the cluster allow; the judge's share stays the owner's, as on Edit rig.
-    if (canCommand && actions?.setClusterRigResources) {
-      const resize = actions.setClusterRigResources;
+    if (canCommand) {
       const owner = role === "owner";
       server.registerTool(
         "set_cluster_rig_resources",
@@ -1115,17 +1112,19 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         },
         audited("set_cluster_rig_resources", async (a: ClusterResourcesBody & { rig: string }) => {
           const { rig, ...body } = a;
-          const r = await resize(rig, clusterResourcesRequest(body), actor, {
-            wait: body.wait,
-            owner,
-          });
+          const r = await setClusterRigResources(
+            opts.parts,
+            rig,
+            clusterResourcesRequest(body),
+            actor,
+            { wait: body.wait, owner },
+          );
           if ("error" in r) throw new Error(r.error);
           return { rig, said: r.ok };
         }),
       );
     }
-    if (canCommand && actions?.setClusterSlots) {
-      const set = actions.setClusterSlots;
+    if (canCommand) {
       server.registerTool(
         "set_cluster_slots",
         {
@@ -1135,7 +1134,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           inputSchema: { cluster: z.string().min(1), slots: z.array(z.string().min(1)).min(1) },
         },
         audited("set_cluster_slots", async (a: { cluster: string; slots: string[] }) => {
-          const why = await set(a.cluster, a.slots, actor);
+          const why = await setClusterSlots(opts.parts, a.cluster, a.slots, actor);
           if (why) throw new Error(why);
           return { cluster: a.cluster, slots: a.slots };
         }),
