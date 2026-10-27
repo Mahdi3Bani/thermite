@@ -534,10 +534,15 @@ export class RunpodLifecycle {
     );
     // What RunPod says now: the pod may run at once.
     const pod = await getPod(key, r.pod, this.fetchImpl).catch((e) => {
-      log("control", "could not read a pod after its start", {
-        pod: r.pod,
-        error: redact(errorText(e)),
-      });
+      log(
+        "control",
+        "could not read a pod after its start",
+        {
+          pod: r.pod,
+          error: redact(errorText(e)),
+        },
+        "warn",
+      );
       return undefined;
     });
     if (pod) {

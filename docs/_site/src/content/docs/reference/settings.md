@@ -22,9 +22,15 @@ Settings that belong to one campaign live in its [contract](contract.md) or in t
 - **Numbers.** The **Type** column says what each number setting takes. A value that is not a number, or is outside that, stops the service at start with the setting's name and what it takes, for example `THERMITE_POLL_SECONDS takes a number of seconds above 0, not "30s"`. Fractions work unless the type says integer or whole.
 - **Required settings.** A missing required setting stops the service at start with `missing environment variable <NAME>`. A required secret file that is empty stops it with `secret file for <NAME> is empty`.
 - **Addresses.** A `_LISTEN` setting is `host:port`. An empty host means every interface (`0.0.0.0`). A bad value stops the service with `bad listen address <value>`.
-- **Logs.** Every service writes one JSON object per line to its output: `{"at", "component", "msg", ...}`.
+- **Logs.** Every service writes one JSON object per line to its output: `{"at", "level", "component", "msg", ...}`, with the `run`, `trial`, `attempt`, `command` or `rig` the line is about among its fields. `level` is `debug`, `info`, `warn` (something went wrong and the service goes on: a refusal, a retry, a fallback) or `error` (something failed). A service writes the lines at its [`THERMITE_LOG_LEVEL`](#every-service) and above. `SIGUSR2` switches a running service between that level and `debug`, and back, and says so in a line; sent to a rig's broker, it reaches the rig's harness and supervisor too.
 
 The "Secret" column says whether a value is secret: **no**; a **path to a secret** (the file must be kept private); a **hash** (safe to keep in plain configuration); a **directory with secrets** (a volume that holds keys); or a **one-time code**, which is good for one enrollment only.
+
+## Every service
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_LOG_LEVEL` | `debug`, `info`, `warn` or `error` | `info` | no | The lowest level of the log lines the service writes. Anything else stops the service at start with `THERMITE_LOG_LEVEL takes debug, info, warn, error, not "<value>"` |
 
 ## Control
 

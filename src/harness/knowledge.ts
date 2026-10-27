@@ -232,12 +232,17 @@ export class Knowledge {
     const read = readKbItems(items);
     const parsed = read.items;
     for (const [kind, n] of untoldKinds(this.toldKinds, read.unknownKinds))
-      log("harness", "past research of an unknown kind left out", {
-        run,
-        kind,
-        items: n,
-        why: "control is newer than this rig: update the rig's images to get these items",
-      });
+      log(
+        "harness",
+        "past research of an unknown kind left out",
+        {
+          run,
+          kind,
+          items: n,
+          why: "control is newer than this rig: update the rig's images to get these items",
+        },
+        "warn",
+      );
     const skipped = items.length - parsed.length;
     // The earlier items first, when scratch was cleared: the README written below would hide
     // that they are missing.

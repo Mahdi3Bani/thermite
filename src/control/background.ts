@@ -26,7 +26,7 @@ export function inBackground(
     () => undefined,
     (err: unknown) => {
       const why = errorText(err);
-      log("control", "background work failed", { rig, placement, step, error: why });
+      log("control", "background work failed", { rig, placement, step, error: why }, "error");
       store.rigSetupEvent(rig, step, false, why);
       const now =
         placement === "machine"

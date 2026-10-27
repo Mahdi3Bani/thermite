@@ -87,7 +87,8 @@ export function linkSession(agent: Agent, link: SessionLink): void {
         refused = false;
       },
       (err) => {
-        if (!refused) log("worker", "a live line was not taken", { kind, error: String(err) });
+        if (!refused)
+          log("worker", "a live line was not taken", { kind, error: String(err) }, "warn");
         refused = true;
       },
     );

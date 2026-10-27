@@ -66,7 +66,7 @@ export async function relayLiveOnce(
   // Lines this control does not know (a newer harness's) are left out there: said once each.
   const answer = (await res.json().catch(() => ({}))) as { left_out?: Record<string, number> };
   for (const [what, n] of untoldKinds(toldLeftOut, answer.left_out ?? {}))
-    log("supervisor", "control left out live lines it does not know", { what, lines: n });
+    log("supervisor", "control left out live lines it does not know", { what, lines: n }, "warn");
   return { logId: batch.log_id, cursor: batch.next, ownCursor: own.next };
 }
 

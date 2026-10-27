@@ -1,12 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
+import { log } from "./log.ts";
 
-/** Reads a required environment variable. */
 /** Settings renamed on 2026-10-15 (unit -> rig): the old names still work, for a transition. */
 const RENAMED: Record<string, string> = {
   THERMITE_RIG_ID: "THERMITE_UNIT_ID",
   THERMITE_CONTROL_RIG_TOKENS_FILE: "THERMITE_CONTROL_UNIT_TOKENS_FILE",
 };
 
+/** Reads a required environment variable. */
 export function requireEnv(name: string, env: NodeJS.ProcessEnv = process.env): string {
   const old = RENAMED[name];
   const v = env[name] || (old ? env[old] : undefined);
@@ -78,8 +79,5 @@ export function redact(text: string): string {
     .slice(0, 2000);
 }
 
-export function log(component: string, msg: string, fields: Record<string, unknown> = {}): void {
-  process.stdout.write(
-    `${JSON.stringify({ at: new Date().toISOString(), component, msg, ...fields })}\n`,
-  );
-}
+// The log is common/log.ts; most parts still import it from here.
+export { log };

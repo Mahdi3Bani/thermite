@@ -180,7 +180,7 @@ async function stageSources(cfg: StagingConfig, cmd: SignedCommand): Promise<Sta
       return "ready";
     } catch (err) {
       const error = err instanceof Error ? err.message.slice(0, 500) : String(err);
-      log("supervisor", "staging failed", { command: id, error });
+      log("supervisor", "staging failed", { command: id, error }, "error");
       return { failed: `staging: ${error}` };
     }
   })();

@@ -127,7 +127,7 @@ export function createHarnessApi(
     if (!(err instanceof z.ZodError)) return c.json({ error: err.message }, status);
     const body = await c.req.json().catch(() => undefined);
     const why = refusalWords(err, body);
-    log("harness", "request refused", { method: c.req.method, path: c.req.path, why });
+    log("harness", "request refused", { method: c.req.method, path: c.req.path, why }, "warn");
     return c.json({ error: `invalid request: ${why}` }, status);
   });
 

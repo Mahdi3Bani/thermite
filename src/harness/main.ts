@@ -11,13 +11,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import {
-  log,
   optionalSecretFromFile,
   parseListen,
   requireEnv,
   secretFromFile,
   waitForFile,
 } from "../common/env.ts";
+import { log, startLogging } from "../common/log.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { claudeModelCheck, claudeOnce, mergeUsage, runClaudeTrial } from "./agents/claude-code.ts";
 import type { CliCompacted } from "./agents/cli-compaction.ts";
@@ -82,6 +82,7 @@ async function main(): Promise<void> {
   // world write.
   process.umask(0o022);
   const env = process.env;
+  startLogging("harness", env);
   const numbers = harnessNumbers(env);
   const rig = requireEnv("THERMITE_RIG_ID");
   const paths = {
@@ -686,9 +687,8 @@ async function main(): Promise<void> {
     // Research workers run in the harness the rig's route names: Pi (a worker process with the
     // research tools only) or OpenCode (its own tools plus `thermite-trial research`); a route
     // whose code trials run in Codex runs its research workers in Pi, which reaches the same
-    // provider (a ChatGPT sign-in or an OpenAI-compatible route). A Claude
-    // subscription runs only in Claude Code, and OpenCode's own (free) models only in OpenCode:
-    // say so, in words.
+    // provider (a ChatGPT sign-in or an OpenAI-compatible route). A Claude subscription runs only
+    // in Claude Code, and OpenCode's own (free) models only in OpenCode: say so, in words.
     runResearchTrial: async (spec, signal) => {
       const m = modelFor(spec.run);
       const cannot = !m
@@ -805,7 +805,7 @@ async function main(): Promise<void> {
         if (settings.get().judge && !service.draining) worked = await executor.tick();
         else if (service.draining) executor.expireLeases();
       } catch (err) {
-        log("harness", "executor error", { executor: id, error: String(err) });
+        log("harness", "executor error", { executor: id, error: String(err) }, "error");
       }
       if (!worked) await sleep(1000);
     }
@@ -815,7 +815,7 @@ async function main(): Promise<void> {
       try {
         await scheduler.tick();
       } catch (err) {
-        log("harness", "scheduler error", { error: String(err) });
+        log("harness", "scheduler error", { error: String(err) }, "error");
       }
       await sleep(2000);
     }
@@ -825,7 +825,7 @@ async function main(): Promise<void> {
       try {
         settlePropagations(ledger, "harness");
       } catch (err) {
-        log("harness", "propagation settle error", { error: String(err) });
+        log("harness", "propagation settle error", { error: String(err) }, "error");
       }
       // Hourly export for the supervisor to push (and an export command can force one). An
       // export's own event is not news, or an idle rig would export every hour forever.
@@ -839,7 +839,7 @@ async function main(): Promise<void> {
         try {
           await service.export("scheduler");
         } catch (err) {
-          log("harness", "export error", { error: String(err) });
+          log("harness", "export error", { error: String(err) }, "error");
         }
       }
       await sleep(5000);
@@ -877,6 +877,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log("harness", "fatal", { error: err instanceof Error ? err.stack : String(err) });
+  log("harness", "fatal", { error: err instanceof Error ? err.stack : String(err) }, "error");
   process.exit(1);
 });

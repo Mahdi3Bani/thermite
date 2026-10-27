@@ -204,7 +204,7 @@ export class RigUpdates {
     return this.run(rig, by, target)
       .catch((err) => {
         const why = redact(errorText(err));
-        log("control", "rig update failed", { rig, error: why });
+        log("control", "rig update failed", { rig, error: why }, "error");
         this.step(rig, "update_failed", false, why);
       })
       .finally(() => this.o.store.db.prepare("delete from rig_update where rig = ?").run(rig));

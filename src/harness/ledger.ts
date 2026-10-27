@@ -127,7 +127,7 @@ export class Ledger {
       } catch (rollback) {
         // A failed commit may have ended the transaction already: the first error is the one
         // to report, and the rollback's is logged beside it, never in its place (goal 163).
-        log("ledger", "rollback failed", { error: String(rollback), after: String(err) });
+        log("ledger", "rollback failed", { error: String(rollback), after: String(err) }, "error");
       }
       throw err;
     } finally {

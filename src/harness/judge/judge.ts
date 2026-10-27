@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
+import { log, logError, logWarn } from "../../common/log.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
 import { Audits, auditTrigger } from "../audits.ts";
@@ -261,7 +261,7 @@ export class Judge {
                 : await this.calibrate(job);
     } catch (err) {
       const reason = errorText(err);
-      log("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
+      logError("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
       this.note(`${job.kind} ${subject}: failed (${clipReason(reason)})`, this.jobRun(job));
       this.infraFailure(job, reason);
       return true;
@@ -276,7 +276,7 @@ export class Judge {
     } catch (err) {
       // Lost the lease (another holder owns the outcome now) or the ledger refused the write.
       const why = leaseLost(err) ? "its lease was lost: its new holder records it" : String(err);
-      log("judge", "could not record the outcome", { job: job.id, error: why });
+      logWarn("judge", "could not record the outcome", { job: job.id, error: why });
       return true;
     }
     // The outcome is recorded: what follows from it is logged as its own step (goal 163).
@@ -912,7 +912,7 @@ export class Judge {
       return await pass();
     } catch (err) {
       if (err instanceof FixedInfraError) throw err;
-      log("judge", "held-out pass failed", {
+      logError("judge", "held-out pass failed", {
         job: job.id,
         attempt: job.attempt,
         error: errorText(err),
@@ -952,7 +952,7 @@ export class Judge {
         const r = await runArm(ctx, champ, cell);
         if (r.kind !== "ok") {
           // An opaque reason: details of held-out cells never leave promotion code.
-          log("judge", "champion failed on a held-out cell", { job: job.id, reason: r.reason });
+          logWarn("judge", "champion failed on a held-out cell", { job: job.id, reason: r.reason });
           throw new FixedInfraError("champion failed on a held-out cell");
         }
         if (c.kind !== "ok") failed = heldOutKindOf(c);

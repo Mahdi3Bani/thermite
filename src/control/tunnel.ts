@@ -424,7 +424,7 @@ export class ControlTunnels {
           } catch (err) {
             // The call is answered all the same: the supervisor sees control's error, in words.
             const error = redact(errorText(err));
-            log("control", "pull mode: a rig's call failed", { rig, path: c.path, error });
+            log("control", "pull mode: a rig's call failed", { rig, path: c.path, error }, "error");
             return piecesOf(
               c.id,
               500,

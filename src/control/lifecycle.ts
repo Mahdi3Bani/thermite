@@ -337,7 +337,7 @@ async function advanceOnce(input: {
         detail: `${detail} (the rig's campaigns stay paused: resume them when it is safe)`,
       });
       if (onRunpod) store.rigSetupEvent(rig, "reset_failed", false, detail);
-      log("control", "reset failed", { rig, detail });
+      log("control", "reset failed", { rig, detail }, "error");
     };
     const limit = STEP_LIMIT_MS[state];
     if (limit && Date.now() - Date.parse(String(r.updated_at)) > limit) {

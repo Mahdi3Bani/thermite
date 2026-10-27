@@ -318,9 +318,14 @@ export class PodTunnel {
       });
       res.end(out);
     } catch (err) {
-      log("supervisor", "pull mode: a request from control failed", {
-        error: errorText(err),
-      });
+      log(
+        "supervisor",
+        "pull mode: a request from control failed",
+        {
+          error: errorText(err),
+        },
+        "error",
+      );
       this.nothing(res);
     }
   }

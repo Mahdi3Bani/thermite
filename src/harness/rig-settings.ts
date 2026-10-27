@@ -90,11 +90,16 @@ export class RigSettingsStore {
         const kept = `${file}.unreadable-${new Date().toISOString().replace(/[:.]/g, "-")}`;
         renameSync(file, kept);
         this.unreadable = { kept, error: String(err) };
-        log("harness", "the rig's settings file could not be read: kept aside, defaults apply", {
-          file,
-          kept,
-          error: String(err),
-        });
+        log(
+          "harness",
+          "the rig's settings file could not be read: kept aside, defaults apply",
+          {
+            file,
+            kept,
+            error: String(err),
+          },
+          "warn",
+        );
       }
     }
     // A file written before goal 079 kept every setting, defaults too: its 20-minute trial was

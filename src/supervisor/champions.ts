@@ -69,16 +69,26 @@ export async function uploadChampions(
       if (res.status === 201) {
         log("supervisor", "champion patch uploaded", { run: c.run, seq: c.seq });
       } else if (res.status === 422) {
-        log("supervisor", "control refused a champion patch", {
-          run: c.run,
-          seq: c.seq,
-          error: (await res.text()).slice(0, 300),
-        });
+        log(
+          "supervisor",
+          "control refused a champion patch",
+          {
+            run: c.run,
+            seq: c.seq,
+            error: (await res.text()).slice(0, 300),
+          },
+          "warn",
+        );
       } else {
         again.push(c);
       }
     } catch (err) {
-      log("supervisor", "champion upload error", { run: c.run, seq: c.seq, error: String(err) });
+      log(
+        "supervisor",
+        "champion upload error",
+        { run: c.run, seq: c.seq, error: String(err) },
+        "error",
+      );
       again.push(c);
     }
   }

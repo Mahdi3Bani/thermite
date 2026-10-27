@@ -483,7 +483,7 @@ export class RunpodTests {
     } catch (err) {
       // Any failure ends the test, and the pod with it.
       const why = redact(errorText(err));
-      log("control", "runpod test step failed", { id, phase: s.phase, error: why });
+      log("control", "runpod test step failed", { id, phase: s.phase, error: why }, "error");
       if (s.phase === "ending") {
         s.error = `control could not remove pod ${s.pod_id}: ${why}. It tries again.`;
       } else {

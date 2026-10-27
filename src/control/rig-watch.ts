@@ -41,10 +41,15 @@ export async function checkQuietRigs(o: {
     try {
       if (await o.check(u.id, "control")) checked.push(u.id);
     } catch (err) {
-      log("control", "a quiet rig's check failed", {
-        rig: u.id,
-        error: redact(errorText(err)),
-      });
+      log(
+        "control",
+        "a quiet rig's check failed",
+        {
+          rig: u.id,
+          error: redact(errorText(err)),
+        },
+        "error",
+      );
     }
   }
   return checked;

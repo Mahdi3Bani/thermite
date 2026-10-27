@@ -241,7 +241,12 @@ export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
         });
         cfg.onDelivered?.(cmd.envelope.kind, status === "delivered");
       } catch (err) {
-        log("supervisor", "command relay error", { id: cmd.envelope.id, error: String(err) });
+        log(
+          "supervisor",
+          "command relay error",
+          { id: cmd.envelope.id, error: String(err) },
+          "error",
+        );
       }
     }
   }

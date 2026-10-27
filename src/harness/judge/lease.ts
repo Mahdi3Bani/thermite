@@ -26,7 +26,12 @@ export async function whileLeased<T>(
     } catch (err) {
       // The lease is lost: whoever holds the job now owns its outcome; the work ends as it will.
       clearInterval(timer);
-      log("judge", "a lease renewal failed: the renewals stop", { ...what, error: String(err) });
+      log(
+        "judge",
+        "a lease renewal failed: the renewals stop",
+        { ...what, error: String(err) },
+        "error",
+      );
     }
   }, everyMs);
   timer.unref();

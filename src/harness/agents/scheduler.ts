@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { type Prompt, promptText } from "../../agents/prompt.ts";
 import { ownerMessageSections } from "../../agents/roles/shared.ts";
 import { renderWorkerBrief } from "../../agents/roles/worker.ts";
-import { log } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import { writeAtomic } from "../../common/fs.ts";
+import { log, logError, logWarn } from "../../common/log.ts";
 import { BRIEF_FILE, briefData, briefFile, briefSection } from "../../core/brief.ts";
 import { EXPERIMENT_DETAILS, type StoredRule } from "../../core/commands.ts";
 import type { Contract, ResearchContract } from "../../core/contract.ts";
@@ -397,7 +397,7 @@ export class Scheduler {
         this.o.research.report(id, "final");
       } catch (err) {
         this.finalFailed.add(id);
-        log("scheduler", "final report of a closed research run failed", {
+        logError("scheduler", "final report of a closed research run failed", {
           run: id,
           error: String(err),
         });
@@ -452,7 +452,7 @@ export class Scheduler {
         this.closeEnded(id, end, noPaper);
       } catch (err) {
         this.finalFailed.add(id);
-        log("scheduler", "an ended research run could not close", {
+        logWarn("scheduler", "an ended research run could not close", {
           run: id,
           error: String(err),
         });
@@ -486,7 +486,7 @@ export class Scheduler {
       try {
         this.applyStops();
       } catch (err) {
-        log("scheduler", "stop check failed", { error: String(err) });
+        logError("scheduler", "stop check failed", { error: String(err) });
       }
       if (!this.aborts.size && !this.planning && this.watcher) {
         clearInterval(this.watcher);

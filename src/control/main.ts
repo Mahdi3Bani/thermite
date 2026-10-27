@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
+import { startLogging } from "../common/log.ts";
 import { optionalNumberSetting, secondsSetting } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
@@ -22,6 +23,7 @@ import { ControlTunnels } from "./tunnel.ts";
 /** Control service entry point. Generates its signing key on first start. */
 async function main(): Promise<void> {
   const env = process.env;
+  startLogging("control", env);
   const dir = env.THERMITE_CONTROL_DIR ?? "/var/lib/thermite-control";
   mkdirSync(dir, { recursive: true });
   const keyPath = join(dir, "control-signing.key");
@@ -151,25 +153,29 @@ async function main(): Promise<void> {
   // Full resets advance as their evidence arrives.
   const resets = setInterval(() => {
     advanceResets({ store, privateKeyPem, driver, staleAfterMs }).catch((err) =>
-      log("control", "reset step error", { error: String(err) }),
+      log("control", "reset step error", { error: String(err) }, "error"),
     );
   }, 10_000);
   // Test pods move on as their pods do; every path ends with the pod removed.
   const tests = setInterval(() => {
     runpodTests
       .advance()
-      .catch((err) => log("control", "runpod test error", { error: String(err) }));
+      .catch((err) => log("control", "runpod test error", { error: String(err) }, "error"));
   }, 15_000);
   // Rigs in pull mode: each rig's next exchange starts as soon as its last one ends (an exchange
   // waits up to 20 s at the pod for the rig's calls), each failing rig after its retry time.
   const pulls = setInterval(() => {
-    tunnels.advance().catch((err) => log("control", "pull mode error", { error: String(err) }));
+    tunnels
+      .advance()
+      .catch((err) => log("control", "pull mode error", { error: String(err) }, "error"));
   }, 250);
   // Rigs on RunPod: each pod's status, price and spend; the owner's limits, where set; the stop,
   // start, restart or terminate under way. At start too: a limit a pod passed while control was
   // away stops it at once (goal 165).
   const followPods = () =>
-    runpodRigs.advance().catch((err) => log("control", "runpod rig error", { error: String(err) }));
+    runpodRigs
+      .advance()
+      .catch((err) => log("control", "runpod rig error", { error: String(err) }, "error"));
   void followPods();
   const launched = setInterval(followPods, 30_000);
   // Rigs control set up that stopped reporting: their containers checked once when they turn
@@ -179,7 +185,7 @@ async function main(): Promise<void> {
     if (watching) return;
     watching = true;
     checkQuietRigs({ store, check: actions.checkRigPlace, staleAfterMs, offlineAfterMs })
-      .catch((err) => log("control", "quiet rig check error", { error: String(err) }))
+      .catch((err) => log("control", "quiet rig check error", { error: String(err) }, "error"))
       .finally(() => {
         watching = false;
       });
@@ -187,7 +193,7 @@ async function main(): Promise<void> {
   // GPU clouds' prices, pods and spend, read again every 15 minutes.
   const clouds = setInterval(() => {
     refreshGpuClouds(store, secrets).catch((err) =>
-      log("control", "gpu cloud read error", { error: String(err) }),
+      log("control", "gpu cloud read error", { error: String(err) }, "error"),
     );
   }, 15 * 60_000);
   const stop = () => {
@@ -205,6 +211,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log("control", "fatal", { error: err instanceof Error ? err.stack : String(err) });
+  log("control", "fatal", { error: err instanceof Error ? err.stack : String(err) }, "error");
   process.exit(1);
 });

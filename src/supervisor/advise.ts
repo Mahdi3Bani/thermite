@@ -494,7 +494,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   const fail = (what: string, err: unknown, run?: string) => {
     s.errors++;
     s.last_error = `${what}: ${errorText(err)}`.slice(0, 500);
-    log("supervisor", "advisor error", { error: s.last_error });
+    log("supervisor", "advisor error", { error: s.last_error }, "error");
     say(run, "status", `${clip(s.last_error, 400)}`);
   };
   /**

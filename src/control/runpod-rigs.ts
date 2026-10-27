@@ -331,10 +331,15 @@ export class RunpodRigs {
     } catch (err) {
       // RunPod's answer can't be used: the pod goes, so it costs nothing more.
       await terminatePod(key, pod.id, this.fetchImpl).catch((e) =>
-        log("control", "could not remove a pod after a failed launch", {
-          pod: pod.id,
-          error: redact(errorText(e)),
-        }),
+        log(
+          "control",
+          "could not remove a pod after a failed launch",
+          {
+            pod: pod.id,
+            error: redact(errorText(e)),
+          },
+          "warn",
+        ),
       );
       this.store.dropTunnelRig(minted.rig, by);
       throw err;
@@ -519,7 +524,7 @@ export class RunpodRigs {
       }
     } catch (err) {
       s.error = redact(errorText(err));
-      log("control", "runpod rig step failed", { rig, error: s.error });
+      log("control", "runpod rig step failed", { rig, error: s.error }, "error");
     }
     // A refusal stays until a newer step in the rig's history (a full reset, say), not a read.
     if (s.refusal && this.store.rigSetupEvents(rig).length > s.refusal.steps) s.refusal = null;

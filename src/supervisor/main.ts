@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
+import { startLogging } from "../common/log.ts";
 import { numberSetting, secondsSetting } from "../common/settings.ts";
 import { untoldKinds } from "../core/kb.ts";
 import type { McpUse } from "../core/mcp.ts";
@@ -60,6 +61,7 @@ const OFF_AT_ZERO = { aboveMin: false, zeroMeans: "off" };
  */
 async function main(): Promise<void> {
   const env = process.env;
+  startLogging("supervisor", env);
   // How long the advisors' model calls may send no data (goal 079): a bad value stops it here.
   modelStallMs(env);
   const home = env.THERMITE_SUPERVISOR_HOME ?? "/var/lib/thermite-supervisor";
@@ -309,7 +311,7 @@ async function main(): Promise<void> {
             text: `advisor round done: ${n(did.teachers, "teacher run")}, ${n(did.sets, "directive set")}, ${n(did.audits, "audit")}, ${n(did.reviews, "review")}, ${did.papers ? `${n(did.papers, "research paper")}, ` : ""}${did.cards ? `${n(did.cards, "answer card")}, ` : ""}${n(did.errors, "error")}`,
           });
       } catch (err) {
-        log("supervisor", "advisor loop error", { error: String(err) });
+        log("supervisor", "advisor loop error", { error: String(err) }, "error");
         supervisorLive.append({
           source: "supervisor",
           kind: "status",
@@ -352,7 +354,7 @@ async function main(): Promise<void> {
         );
         failing = false;
       } catch (err) {
-        if (!failing) log("supervisor", "live relay error", { error: String(err) });
+        if (!failing) log("supervisor", "live relay error", { error: String(err) }, "error");
         failing = true;
       }
       const until = Date.now() + liveMs;
@@ -374,7 +376,7 @@ async function main(): Promise<void> {
         await relayCommandsOnce(cfg);
         failing = false;
       } catch (err) {
-        if (!failing) log("supervisor", "command relay error", { error: String(err) });
+        if (!failing) log("supervisor", "command relay error", { error: String(err) }, "error");
         failing = true;
       }
       if (wipeRequested) break;
@@ -411,7 +413,8 @@ async function main(): Promise<void> {
       mcpFailing = false;
     } catch (err) {
       // Control or the harness unreachable: the servers they gave last stay.
-      if (!mcpFailing) log("supervisor", "MCP servers error", { error: String(err).slice(0, 300) });
+      if (!mcpFailing)
+        log("supervisor", "MCP servers error", { error: String(err).slice(0, 300) }, "error");
       mcpFailing = true;
     }
   };
@@ -427,7 +430,7 @@ async function main(): Promise<void> {
         );
         failing = false;
       } catch (err) {
-        if (!failing) log("supervisor", "model route error", { error: String(err) });
+        if (!failing) log("supervisor", "model route error", { error: String(err) }, "error");
         failing = true;
       }
       await syncMcp();
@@ -455,16 +458,22 @@ async function main(): Promise<void> {
         kbState = r.state;
         if (r.items) log("supervisor", "past research synced", { items: r.items });
         for (const [kind, items] of untoldKinds(toldKinds, r.unknownKinds))
-          log("supervisor", "past research of an unknown kind left out", {
-            kind,
-            items,
-            why: "control is newer than this rig: update the rig's images to get these items",
-          });
+          log(
+            "supervisor",
+            "past research of an unknown kind left out",
+            {
+              kind,
+              items,
+              why: "control is newer than this rig: update the rig's images to get these items",
+            },
+            "warn",
+          );
         if (r.errors.length && !failing)
-          log("supervisor", "past research sync error", { errors: r.errors.slice(0, 5) });
+          log("supervisor", "past research sync error", { errors: r.errors.slice(0, 5) }, "error");
         failing = r.errors.length > 0;
       } catch (err) {
-        if (!failing) log("supervisor", "past research sync error", { error: String(err) });
+        if (!failing)
+          log("supervisor", "past research sync error", { error: String(err) }, "error");
         failing = true;
       }
       const until = Date.now() + kbMs;
@@ -485,7 +494,7 @@ async function main(): Promise<void> {
     } catch (err) {
       // Reporting failed; commands were still relayed. Keep whatever progress the round made.
       if (err instanceof RelayError) state = err.state;
-      log("supervisor", "relay error", { error: String(err) });
+      log("supervisor", "relay error", { error: String(err) }, "error");
     }
     if (wipeRequested) {
       // A full reset: the harness accepted its wipe. The supervisor wipes its own home too
@@ -545,10 +554,12 @@ async function main(): Promise<void> {
           method: "POST",
           headers: { authorization: `Bearer ${harnessToken}`, "content-type": "application/json" },
           body: JSON.stringify({ names: safe }),
-        }).catch((err) => log("supervisor", "outbox cleanup error", { error: String(err) }));
+        }).catch((err) =>
+          log("supervisor", "outbox cleanup error", { error: String(err) }, "error"),
+        );
       }
     } catch (err) {
-      log("supervisor", "export error", { error: String(err) });
+      log("supervisor", "export error", { error: String(err) }, "error");
     }
     if (championQueue.length && controlUrl && controlToken) {
       const left = await uploadChampions(
@@ -620,7 +631,7 @@ async function main(): Promise<void> {
         save(reportPath, reportState);
       }
     } catch (err) {
-      log("supervisor", "control report error", { error: String(err) });
+      log("supervisor", "control report error", { error: String(err) }, "error");
     }
     const until = Date.now() + intervalMs;
     // A wipe the command loop delivered is acted on at once, not at the next report.
@@ -636,6 +647,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log("supervisor", "fatal", { error: err instanceof Error ? err.stack : String(err) });
+  log("supervisor", "fatal", { error: err instanceof Error ? err.stack : String(err) }, "error");
   process.exit(1);
 });

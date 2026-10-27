@@ -46,7 +46,18 @@ export function recordInfraFailure(
     });
   } catch (err) {
     if (leaseLost(err))
-      log("judge", "a failed job's lease was lost: its new holder records it", { job: job.id });
-    else log("judge", "could not record a failed job", { job: job.id, error: String(err), reason });
+      log(
+        "judge",
+        "a failed job's lease was lost: its new holder records it",
+        { job: job.id },
+        "warn",
+      );
+    else
+      log(
+        "judge",
+        "could not record a failed job",
+        { job: job.id, error: String(err), reason },
+        "warn",
+      );
   }
 }

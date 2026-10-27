@@ -14,8 +14,8 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { log } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
+import { log, logError, logWarn, startLogging } from "../common/log.ts";
 import { podTunnelDirs } from "../core/tunnel.ts";
 import {
   effectiveGpuLists,
@@ -113,6 +113,7 @@ const supervisorMain = fileURLToPath(new URL("../supervisor/main.js", import.met
 const snapshotMain = fileURLToPath(new URL("./broker/snapshot-main.js", import.meta.url));
 const env = process.env;
 const { outboxGid, fatalHoldMs } = brokerNumbers(env);
+startLogging("broker", env, () => [child, supervisor]);
 /**
  * The state snapshot's key (THERMITE_STATE_SNAPSHOT_KEY, a launch value), taken out of the
  * broker's own environment before it starts anything: no part, no role and no program the broker
@@ -257,7 +258,7 @@ function readSecrets(): Record<string, string> {
     const dirOpen = (statSync(dirname(path)).mode & 0o055) !== 0;
     const fileOpen = (statSync(path).mode & 0o044) !== 0;
     if (dirOpen && fileOpen) {
-      log("broker", "fatal: a secret file stays readable by other users", { file: fileVar });
+      logError("broker", "fatal: a secret file stays readable by other users", { file: fileVar });
       fatalExit();
     }
   }
@@ -437,9 +438,7 @@ function prepareDevices(lists: GpuLists): GpuLayout | undefined {
       log(
         "broker",
         "device nodes kept their owner and mode: only the Landlock fence keeps roles off them",
-        {
-          nodes: kept,
-        },
+        { nodes: kept },
       );
     record = {
       ok: true,
@@ -455,7 +454,7 @@ function prepareDevices(lists: GpuLists): GpuLayout | undefined {
     layout = undefined;
     const error = errorText(err);
     record = { ok: false, mode: "dedicated", error };
-    log("broker", "could not set up the dedicated development card", { error });
+    logWarn("broker", "could not set up the dedicated development card", { error });
   }
   writeFileSync(layoutPath, `${JSON.stringify(record)}\n`, { mode: 0o644 });
   chmodSync(layoutPath, 0o644);
@@ -554,7 +553,7 @@ function startController(extraEnv: Record<string, string>): void {
       // Directories are prepared again only after a wipe (never the socket: it is in use).
       if (wipeIfMarked()) prepareDirectories();
     } catch (err) {
-      log("broker", "wipe failed; will retry at the next start", { error: String(err) });
+      logWarn("broker", "wipe failed; will retry at the next start", { error: String(err) });
     }
   }
   const startedAt = Date.now();
@@ -626,7 +625,7 @@ function prepareOneContainer(): SupervisorPaths {
       "THERMITE_TUNNEL_CONTROL_KEY_SHA256",
     ].filter((k) => !env[k]);
     if (missing.length || !/^[0-9a-fA-F]{64}$/.test(env.THERMITE_TUNNEL_CONTROL_KEY_SHA256 ?? "")) {
-      log("broker", "fatal: pull mode needs the launch's values", {
+      logError("broker", "fatal: pull mode needs the launch's values", {
         missing,
         hint: "THERMITE_TUNNEL_CONTROL_KEY_SHA256 is 64 hexadecimal characters",
       });
@@ -637,7 +636,7 @@ function prepareOneContainer(): SupervisorPaths {
   // The token the supervisor uses on the harness API: root's copy is the harness's secret file.
   const rootToken = env.THERMITE_SUPERVISOR_TOKEN_FILE;
   if (!rootToken) {
-    log("broker", "fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE");
+    logError("broker", "fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE");
     fatalExit();
   }
   if (!existsSync(rootToken)) {
@@ -697,7 +696,7 @@ async function awaitEnrollment(paths: SupervisorPaths): Promise<boolean> {
       said = waited;
       lastWhy = why;
       if (why)
-        log("broker", "refused what enrollment left: the harness waits", {
+        logWarn("broker", "refused what enrollment left: the harness waits", {
           why,
           waited_s: Math.round(waited / 1000),
         });
@@ -765,8 +764,8 @@ function startSupervisor(paths: SupervisorPaths): void {
   // processes runs now, so nothing of its can swap a path in its home for a link meanwhile.
   try {
     supervisorFiles(paths);
-  } catch (err) {
-    log("broker", "the supervisor's files could not be made: trying again", { error: String(err) });
+  } catch (e) {
+    logWarn("broker", "could not make the supervisor's files: trying again", { error: String(e) });
     setTimeout(() => startSupervisor(paths), 10_000);
     return;
   }
@@ -832,12 +831,12 @@ function prepareSnapshots(): SnapshotRecord | undefined {
     snapshotEvery = snapshotEveryMs(env);
     snapshotStopMs = stopBudgetMs(env);
   } catch (err) {
-    log("broker", "fatal: a snapshot setting is not valid", { error: String(err) });
+    logError("broker", "fatal: a snapshot setting is not valid", { error: String(err) });
     fatalExit();
   }
   const problem = layoutProblem(snapDir, areas);
   if (problem) {
-    log("broker", "fatal: the state snapshot can't be set up", { problem });
+    logError("broker", "fatal: the state snapshot can't be set up", { problem });
     fatalExit();
   }
   let shown: ReturnType<typeof prepareSnapshotDir>;
@@ -845,7 +844,7 @@ function prepareSnapshots(): SnapshotRecord | undefined {
     shown = prepareSnapshotDir(snapDir);
   } catch (err) {
     const error = errorText(err);
-    log("broker", "could not make the snapshot folder: no snapshot is taken or restored", {
+    logWarn("broker", "could not make the snapshot folder: no snapshot is taken or restored", {
       dir: snapDir,
       error,
     });
@@ -904,7 +903,7 @@ function prepareSnapshots(): SnapshotRecord | undefined {
         { dir: snapDir, left: old.left },
       );
   } catch (err) {
-    log("broker", "could not remove an unsealed snapshot an older image left", {
+    logWarn("broker", "could not remove an unsealed snapshot an older image left", {
       dir: snapDir,
       error: errorText(err),
     });
@@ -965,7 +964,7 @@ function prepareSnapshots(): SnapshotRecord | undefined {
       });
       return record;
     }
-    log("broker", "fatal: could not restore the rig's state from its snapshot", {
+    logError("broker", "fatal: could not restore the rig's state from its snapshot", {
       dir: snapDir,
       error: errorText(err),
     });
@@ -1012,7 +1011,7 @@ function snapshotJob(reason: string): SnapshotJob {
   const done = new Promise<boolean>((resolve) => {
     proc.on("exit", (code, signal) => {
       if (code !== 0)
-        log("broker", "the snapshot failed: the last one stays, and it is tried again", {
+        logWarn("broker", "the snapshot failed: the last one stays, and it is tried again", {
           reason,
           code,
           signal,
@@ -1020,7 +1019,7 @@ function snapshotJob(reason: string): SnapshotJob {
       resolve(code === 0);
     });
     proc.on("error", (err) => {
-      log("broker", "could not start the snapshot", { reason, error: err.message });
+      logWarn("broker", "could not start the snapshot", { reason, error: err.message });
       resolve(false);
     });
   });
@@ -1103,7 +1102,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
 }
 
 if (withSupervisor && !isRoot) {
-  log("broker", "fatal: the one-container image must run as root", {
+  logError("broker", "fatal: the one-container image must run as root", {
     hint: "the broker starts the supervisor and each role as users of their own",
   });
   fatalExit();
@@ -1121,7 +1120,7 @@ if (isRoot) {
   try {
     pod = withSupervisor ? prepareOneContainer() : undefined;
   } catch (err) {
-    log("broker", "fatal: could not prepare the rig's folders", {
+    logError("broker", "fatal: could not prepare the rig's folders", {
       error: errorText(err),
     });
     fatalExit();
@@ -1186,7 +1185,7 @@ if (isRoot) {
           if (enrolled) start();
         },
         (err) => {
-          log("broker", "fatal: could not give the harness control's key from enrollment", {
+          logError("broker", "fatal: could not give the harness control's key from enrollment", {
             error: errorText(err),
           });
           fatalExit();
@@ -1199,7 +1198,7 @@ if (isRoot) {
   if (snapDir) log("broker", "not root: no state snapshot is taken or restored", { dir: snapDir });
   startController({});
 } else {
-  log("broker", "fatal: not root, so roles cannot be separated", {
+  logError("broker", "fatal: not root, so roles cannot be separated", {
     hint: "run the harness container as root (the broker drops to role users), or set THERMITE_ALLOW_UNSEPARATED=1 for development only",
   });
   fatalExit();

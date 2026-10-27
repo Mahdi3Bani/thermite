@@ -70,7 +70,7 @@ function clearSetIdBits(dir: string): void {
       { stdio: "ignore" },
     );
   } catch (err) {
-    log("broker", "could not clear set-id bits", { dir, error: String(err) });
+    log("broker", "could not clear set-id bits", { dir, error: String(err) }, "warn");
   }
 }
 
@@ -206,7 +206,7 @@ export function startBrokerServer(opts: BrokerServerOptions): Server {
             res = { id, ok: true, result: await handle(req, opts) };
           } catch (err) {
             res = { id, ok: false, error: errorText(err) };
-            log("broker", "request refused", { error: res.error });
+            log("broker", "request refused", { error: res.error }, "warn");
           }
           if (!sock.destroyed) sock.write(`${JSON.stringify(res)}\n`);
         })();

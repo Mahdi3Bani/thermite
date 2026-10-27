@@ -458,7 +458,7 @@ export function createControlApi(
     const status = c.res.status;
     if (c.error || status >= 500) {
       const error = redact(c.error?.message ?? `status ${status}`);
-      log("control", "request failed", { method: c.req.method, path, status, error });
+      log("control", "request failed", { method: c.req.method, path, status, error }, "error");
       store.audit("control", "failed", { method: c.req.method, path, status, error });
       return;
     }
@@ -469,7 +469,7 @@ export function createControlApi(
     const why = back?.get("error") ?? back?.get("msgerror") ?? null;
     if (why || status >= 400) {
       const reason = redact(why ?? `status ${status}`);
-      log("control", "refused", { path, why: reason });
+      log("control", "refused", { path, why: reason }, "warn");
       store.audit("owner:ui", "refused", { path, why: reason });
     }
   });
@@ -529,7 +529,7 @@ export function createControlApi(
       store.kb();
     } catch (err) {
       const error = redact(errorText(err));
-      log("control", "knowledge base catch-up failed", { rig, error });
+      log("control", "knowledge base catch-up failed", { rig, error }, "error");
       store.audit("control", "kb_failed", { rig, error });
     }
     // A rig control marked failed (its update or start waited too long) that reports again
