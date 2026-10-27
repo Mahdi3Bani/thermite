@@ -87,7 +87,7 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 | Other packages | From the base's apt repository; not pinned | `git`, `tini`, `ca-certificates`. The build fails unless `setpriv`, `prlimit` and `taskset` exist |
 | Smoke kits and projects | This repository's `kits/` and `examples/` | `/opt/thermite/checks/kits`, `/opt/thermite/checks/examples`. The [smoke check](rig-checks.md#smoke-check) uses them |
 
-On the default base, the apt packages are Debian 12 ("bookworm") packages. The base must use apt (Debian or Ubuntu), because the image installs its packages with `apt-get`.
+On the default base, the apt packages are Debian 12 ("bookworm") packages. The base must use apt (Debian or Ubuntu), because the image installs its packages with `apt-get`. Before it installs them, each build upgrades the base's own system packages (`apt-get upgrade`), so an image built again takes the distribution's fixes. The supervisor, rig and control images do the same.
 
 ### The CUDA harness
 
@@ -162,7 +162,7 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 | Part | Detail |
 | --- | --- |
 | Base | `NODE_IMAGE` |
-| Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3` |
+| Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3`, after the base's own are upgraded |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
 | Compaction hook and plugin | The same as in the harness image, for advisors in Claude Code and OpenCode: `/opt/thermite/dist/harness/agents/compaction-hook.js` and `/opt/thermite/dist/harness/agents/opencode-plugin.js`. Each keeps an advisor's conversation before each of that program's compactions ([Compaction](limits-and-pacing.md#compaction)) |
 | Claude Code | `/usr/local/bin/claude`, only when built with `CLAUDE_CODE_VERSION`. Advisors on a Claude subscription need it |
@@ -192,7 +192,7 @@ podman build -t thermite-rig --build-arg HARNESS_IMAGE=localhost/thermite-harnes
 | Part | Detail |
 | --- | --- |
 | Thermite | Nothing: the harness image's `/opt/thermite` already holds the supervisor's code |
-| Packages | `openssh-client`, as in the supervisor image, for Git over SSH |
+| Packages | `openssh-client`, as in the supervisor image, for Git over SSH, after the harness image's own are upgraded |
 | User | `supervisor`, uid and gid 10001, home `/var/lib/thermite-supervisor/home`, as in the supervisor image. `/var/lib/thermite-supervisor` and its `home` are mode 0700 |
 | Set-id files | None. The build removes every setuid and setgid bit after the last package, and fails if one is left. RunPod does not stop a process from gaining privileges through such a file (`no_new_privs` is off there), so a role could otherwise run a setuid program as its owner |
 | `thermite-rig-start` | `/usr/local/bin/thermite-rig-start`, the entry point. See [How it starts](#how-it-starts) |
@@ -323,7 +323,7 @@ The [isolation check](rig-checks.md#the-one-container-image) checks the supervis
 | Part | Detail |
 | --- | --- |
 | Base | `NODE_IMAGE` |
-| Packages | `tini`, `ca-certificates`, `git`, `openssh-client` (for machines over SSH and Git over SSH), `unzip` |
+| Packages | `tini`, `ca-certificates`, `git`, `openssh-client` (for machines over SSH and Git over SSH), `unzip`, after the base's own are upgraded |
 | kubectl | `KUBECTL_VERSION`, v1.37.1 by default, checked against a pinned sha256, at `/usr/local/bin/kubectl`. The build stops with `no pinned kubectl for <arch>` on any architecture but amd64 and arm64. kubectl is under the Apache License 2.0: the `LICENSE` of the Kubernetes repository at that tag is kept in `/usr/local/share/doc/kubectl`, from `containers/control/kubectl/LICENSE` |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
 | User | `thermite`, uid and gid 10001, home `/var/lib/thermite-control`. It has a passwd entry because OpenSSH refuses a user without one |

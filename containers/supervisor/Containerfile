@@ -68,7 +68,10 @@ FROM ${NODE_IMAGE}
 # python3: for an operator's staging scripts, which put models and repo bundles into the inbox
 # before the supervisor starts (they run in this container). No bubblewrap: an advisor runs
 # Claude Code with its own sandbox off (src/harness/agents/claude-code.ts says why).
+# The base's system packages are upgraded first, so each build takes the distribution's fixes
+# (goal 125).
 RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
  && apt-get install -y --no-install-recommends git openssh-client tini ca-certificates python3 \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/thermite

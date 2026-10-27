@@ -13,7 +13,10 @@ FROM ${HARNESS_IMAGE}
 # What the supervisor image adds to its base that the harness image lacks: openssh-client (Git
 # over SSH), and the supervisor's user. ssh refuses a uid without a passwd entry, and finds
 # ~/.ssh from the entry's home (containers/supervisor/Containerfile).
+# The base's system packages are upgraded first, so each build takes the distribution's fixes
+# (goal 125).
 RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
  && apt-get install -y --no-install-recommends openssh-client \
  && rm -rf /var/lib/apt/lists/*
 RUN groupadd -g 10001 supervisor \

@@ -76,7 +76,10 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # The broker needs prlimit (process limits), setpriv (a dedicated development card's groups) and
 # taskset (timed runs on the judge card's local CPUs). No bubblewrap: the agents and the advisors
 # run Claude Code with its own sandbox off (src/harness/agents/claude-code.ts says why).
+# The base's system packages are upgraded first, so each build takes the distribution's fixes
+# (goal 125).
 RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
  && apt-get install -y --no-install-recommends git tini ca-certificates gcc g++ libc6-dev make \
       cmake ninja-build ccache python3 python3-numpy \
  && (command -v setpriv >/dev/null || apt-get install -y --no-install-recommends setpriv) \

@@ -25,7 +25,10 @@ RUN set -eu; arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     echo "$sum  /kubectl" | sha256sum -c -; chmod 0755 /kubectl
 
 FROM ${NODE_IMAGE}
+# The base's system packages are upgraded first, so each build takes the distribution's fixes
+# (goal 125).
 RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
  && apt-get install -y --no-install-recommends tini ca-certificates git openssh-client unzip \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/thermite
