@@ -26,6 +26,8 @@ The goals it completes:
 | [168](168-message-bus.goal) | NATS JetStream as the event log, the delivery and the queues between control, the supervisors and the dashboard |
 | [169](169-agents-in-their-terminal.goal) | Every role that takes the owner's messages in its program's own terminal, session logs as events, the Pi view, usage windows |
 | [170](170-one-hierarchy.goal) | One hierarchy: run IDs unique across rigs, a run registry, run-scoped addresses |
+| [173](173-recovery-and-health.goal) | Recovery and health: a copy before every migration, backup and restore, a disk floor, drains that end, bounded logs, health that checks |
+| [174](174-invalidate-evidence.goal) | Invalidate evidence: the owner withdraws bad evidence, and what depended on it follows |
 
 The [code clean-up guide](../code-clean-up-guide.md) holds the map of the code, the themes, the rules of shape, what to leave and the review guide; its section 8 places goals 166 to 171 in its order.
 
@@ -34,14 +36,14 @@ The [code clean-up guide](../code-clean-up-guide.md) holds the map of the code, 
 Each line is a set of small steps, each green on its own. A later step may start before an earlier one ends only where the two touch different files.
 
 1. **The rules of shape** go into [CONVENTIONS.md](../../../CONVENTIONS.md), in a commit of their own that the owner reviews (gate A), with the rule of goal 170 (a thing is addressed through what owns it). Then **the size check** (goal 125, step 2) and **the import-rule check** (a script in `npm run check` that fails, with today's exceptions listed by file).
-2. **The bugs:** goals 161, 162, 163, 164, 165 and 171, each fix with its regression test; the upgrade of each image's system packages (goal 125's decision), with the images built again; and goal 170's first steps: run IDs unique across rigs, a used name refused on every path, the champion's patch kept by ledger, and a run's export with its verdicts.
+2. **The bugs, and a way back:** goal 173's copy of the ledger and of `control.db` before every migration, first, before any step migrates a store; then goals 161, 162, 163, 164, 165 and 171, each fix with its regression test; the upgrade of each image's system packages (goal 125's decision), with the images built again; and goal 170's first steps: run IDs unique across rigs, a used name refused on every path, the champion's patch kept by ledger, and a run's export with its verdicts.
 3. **The shared homes:** `core` words (T1: event kinds with schemas in `core/events/`, `core/ids.ts`, verdicts, the agents' and roles' names), the toolkit in `common` (T3), and settings, errors and the logger (T4).
 4. **The tests' scaffolding** (T10), and golden tests of every role's whole prompt (goal 166), before the code they hold moves.
 5. **The foundations:** the link's contract in `core/link/` (T2: one module for each message, with its subject, schema, byte limit and signer); goal 168's spike in compose and its commands queue (its steps 0 and 1); the domain modules out of the dashboard (T5); the ledger's owners and one promotion (T6); the run on every event and control's run registry (goal 170); the table of agent programs with the roles and the tools (T7, goal 166).
 6. **The splits** (T8), the largest and most-changed first, with control's views by run and kept up to date as events arrive (goals 168 and 170) when `control/views.ts` splits, and `control/store.ts` last.
 7. **The folder moves** (T9), with run-scoped addresses under their campaign (goal 170) and the moves out of the harness into `src/agents/`.
 8. **The rest of the bus** (goal 168, steps 2 to 5: live lines and the dashboard's push, config and the knowledge base, the queues and the end of control's own copies, then every placement with RunPod's leaf node); **the record of every prompt and its surfaces** (goal 166); **the terminals** (goal 169: the session-log adapters and hook signals first, then the terminal host, the terminal mode, the signed steering, the live view, the Pi view, usage windows, the stand-ins and acceptance checks, and the token measurement, gate C).
-9. **Knowledge** (T11, with the knowledge base keyed by run), **growth** (T12), **dead code** (T13), **containers and CI** (T14).
+9. **Knowledge** (T11, with the knowledge base keyed by run), **growth** (T12), **dead code** (T13), **containers and CI** (T14); the rest of **recovery and health** (goal 173: backup and restore, the disk floor, drains that end, bounded logs, health routes that check and the probes that use them); and **invalidating evidence** (goal 174), once the ledger's owners and one promotion are in (step 5).
 10. **The audit's private security items:** each fixed, or kept with a recorded reason, as [SECURITY.md](../../../SECURITY.md) says. Their plan and their record stay in `.internal/`; no public file, issue or commit message describes a gap.
 11. **The end:** the full checks of [AGENTS.md](../../../AGENTS.md#checks) on the last commit, every acceptance check the changed parts need, CI green, and the goals verified.
 
@@ -54,6 +56,8 @@ Each line is a set of small steps, each green on its own. A later step may start
 - **E. The network rules.** A change to what a container may reach is the owner's decision, recorded in [decisions.md](../decisions.md).
 
 At a gate, or when a step can't go on without the owner, ask with the inline question (keep running, or pause) and wait; never loop on a block.
+
+**Open questions are asked when their step comes up.** A goal's open questions (goal 168 has seven, goal 125 two), and the reports' remaining questions in `.internal/reviews/v0.1.1-audit/`, each with its reviewer's recommendation, go to the owner before the step they decide starts, as goal 125 says. Each answer is recorded in its goal's Decisions; a step never starts on a question that decides it.
 
 ## Why
 
@@ -74,7 +78,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 
 - [ ] Gate A is passed: the rules of shape are in CONVENTIONS.md, reviewed by the owner.
 - [ ] Goals 161, 162, 163, 164, 165 and 171 are verified.
-- [ ] Goals 166, 168, 169 and 170 are verified.
+- [ ] Goals 166, 168, 169, 170, 173 and 174 are verified.
 - [ ] Goal 125 is verified: every theme of the guide is done or has a recorded reason.
 - [ ] The audit's private security items are each fixed or have a recorded reason, in `.internal/`.
 - [ ] The full checks, the docs build and check, and every acceptance check the changed parts need pass on the last commit, and CI is green.
@@ -89,6 +93,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 ## Progress
 
 - 2026-10-27 00:19 UTC: Goal written from the owner's words, from the audit's goals, the clean-up guide's order (section 8) and the owner's decisions.
+- 2026-10-27 00:24 UTC: The owner asked whether this goal covers every finding of the audit. Three did not have a goal: backups and health (the guide's questions 13 and 15) and invalidating evidence (question 25), with the operations findings on a full disk, drains, log size and probes. They are now goals 173 and 174, in the list and the order above, and the open questions are asked when their step comes up.
 
 ---
 
