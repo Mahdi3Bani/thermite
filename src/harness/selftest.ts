@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { writeAtomic } from "../common/fs.ts";
 import { keySha256 } from "../core/tunnel.ts";
 import { BrokerClient } from "./broker/client.ts";
 import {
@@ -43,7 +44,6 @@ import {
   UNSEALED_DIRS,
 } from "./broker/snapshot.ts";
 import { copyForRun } from "./judge/measure.ts";
-import { writeAtomic } from "./research/folder.ts";
 
 /**
  * Isolation self-test, run as root inside the harness container (`thermite selftest

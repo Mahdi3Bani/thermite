@@ -1,16 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { PAST_SEARCH_TOOL } from "../agents/tools/names.ts";
 import { log } from "../common/env.ts";
+import { writeAtomic } from "../common/fs.ts";
 import { type KbItemWire, kbPlural, readKbItems, untoldKinds } from "../core/kb.ts";
 import type { BriefingItem } from "./ledger.ts";
 
@@ -42,13 +35,6 @@ const part = (s: string) =>
     .replace(/[^A-Za-z0-9._-]+/g, "-")
     .replace(/^[.-]+/, "")
     .slice(0, 100) || "x";
-
-function writeAtomic(path: string, data: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp-${randomUUID().slice(0, 8)}`;
-  writeFileSync(tmp, data);
-  renameSync(tmp, path);
-}
 
 /** A front-block value: JSON, so a title or a URL can never break the block. */
 const v = (x: string | null) => (x === null ? "null" : JSON.stringify(x));

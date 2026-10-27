@@ -1,9 +1,11 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { log } from "../common/env.ts";
 import { errorText } from "../common/errors.ts";
+import { writeAtomic } from "../common/fs.ts";
+import { sameSecret } from "../common/secrets.ts";
 import { numberSetting } from "../common/settings.ts";
 import {
   controlCodeProof,
@@ -123,13 +125,6 @@ const CARRIED = [
   ...Object.values(BUILD_HEADERS),
 ];
 
-/** Writes a file whole or not at all. */
-function writeAtomic(path: string, text: string, mode: number): void {
-  writeFileSync(`${path}.tmp`, text, { mode });
-  chmodSync(`${path}.tmp`, mode);
-  renameSync(`${path}.tmp`, path);
-}
-
 /** This rig's keys: made once, at the first start, then read back (mode 0600). */
 export function podKeys(dir: string): TunnelKeys {
   const path = join(dir, "keys.json");
@@ -157,12 +152,6 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer | undefin
     req.on("error", () => resolve(undefined));
   });
 }
-
-const sameText = (a: string, b: string) => {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-};
 
 export class PodTunnel {
   private readonly o: PodTunnelOptions;
@@ -487,7 +476,7 @@ export class PodTunnel {
     const path = req.url ?? "";
     // Anyone but the supervisor (a lane in the same pod, say) gets the public port's 404.
     if (
-      !sameText(auth, `Bearer ${this.o.localToken}`) ||
+      !sameSecret(auth, `Bearer ${this.o.localToken}`) ||
       !path.startsWith(`/v1/rigs/${encodeURIComponent(this.o.rig)}/`)
     )
       return this.refuse(req, res);

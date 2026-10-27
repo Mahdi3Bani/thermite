@@ -1,4 +1,4 @@
-import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, createPublicKey, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +6,7 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { errorText } from "../common/errors.ts";
+import { sameSecret } from "../common/secrets.ts";
 import { type BriefingSeed, COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import {
   type AgentsContext,
@@ -523,11 +524,6 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     await next();
     c.header("content-security-policy", CSP);
   });
-  const sameBytes = (a: string, b: string) => {
-    const x = Buffer.from(a);
-    const y = Buffer.from(b);
-    return x.length === y.length && timingSafeEqual(x, y);
-  };
   // Keyed by control's own signing key and the owner's credential: stable across restarts, void
   // once the token changes, and not derivable from the token's hash alone (which is not secret).
   const tokenKey = createHash("sha256")
@@ -553,7 +549,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     if (!sid) return undefined;
     const s = store.uiSession(hashOf(sid));
     const now = Date.now();
-    if (!s || s.expiresAt <= now || !sameBytes(s.tokenFp, tokenFp)) return undefined;
+    if (!s || s.expiresAt <= now || !sameSecret(s.tokenFp, tokenFp)) return undefined;
     // Renewed at most once a day, so a session in use does not run out.
     if (s.expiresAt - now < sessionMs - DAY_MS) {
       store.extendUiSession(hashOf(sid), now + sessionMs);
@@ -616,7 +612,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     // Logging out needs no form token: the worst a forged logout does is sign the owner out.
     if (c.req.method === "POST" && c.req.path !== "/ui/logout") {
       const form = await c.req.parseBody();
-      if (!sameBytes(String(form.csrf ?? ""), csrfOf(sid))) return c.text("bad form token", 403);
+      if (!sameSecret(String(form.csrf ?? ""), csrfOf(sid))) return c.text("bad form token", 403);
     }
     await next();
   });

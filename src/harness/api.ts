@@ -1,10 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { log } from "../common/env.ts";
+import { sameSecret } from "../common/secrets.ts";
 import { laneLimits } from "../core/contract.ts";
 import { McpConnection, McpUnavailable } from "../core/mcp.ts";
 import { AdvisorAgent, CallUsage, UsageHarness } from "../core/usage.ts";
@@ -40,18 +40,12 @@ export interface ApiTokens {
   proposer?: string | undefined;
 }
 
-function tokenMatches(given: string, expected: string): boolean {
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 function allows(tokens: ApiTokens, scopes: Scope[], header: string | undefined): boolean {
   const h = header ?? "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : "";
   return scopes.some((s) => {
     const expected = tokens[s];
-    return expected !== undefined && expected.length > 0 && tokenMatches(token, expected);
+    return expected !== undefined && expected.length > 0 && sameSecret(token, expected);
   });
 }
 

@@ -1,8 +1,9 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { sameSecret } from "../common/secrets.ts";
 import { logStall, modelStallMs } from "../harness/agents/model-stall.ts";
 import { type ForwardTarget, forwardToProvider } from "../harness/model-forward.ts";
 
@@ -26,12 +27,6 @@ export interface AdvisorModelProxy {
 /** The path the proxy answers under, as the harness's proxy does. */
 export const ADVISOR_PROXY_PATH = "/v1/model-proxy";
 
-const same = (a: string, b: string) => {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-};
-
 /** Starts the proxy on a free local port. Close it when the call ends. */
 export async function serveAdvisorModel(
   target: ForwardTarget,
@@ -44,7 +39,7 @@ export async function serveAdvisorModel(
     const given = bearer.startsWith("Bearer ")
       ? bearer.slice(7)
       : (c.req.header("x-api-key") ?? "");
-    if (!same(given, token)) return c.json({ error: "unauthorized" }, 401);
+    if (!sameSecret(given, token)) return c.json({ error: "unauthorized" }, 401);
     return forwardToProvider(
       {
         method: c.req.method,

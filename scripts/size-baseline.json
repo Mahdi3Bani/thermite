@@ -10,10 +10,10 @@
       "lines": 1327
     },
     "src/control/api.ts": {
-      "lines": 1697
+      "lines": 1693
     },
     "src/control/dashboard.ts": {
-      "lines": 8790
+      "lines": 8786
     },
     "src/control/mcp-servers.ts": {
       "lines": 996
@@ -55,7 +55,7 @@
       "lines": 832
     },
     "src/harness/api.ts": {
-      "lines": 1016
+      "lines": 1010
     },
     "src/harness/broker.ts": {
       "lines": 1206

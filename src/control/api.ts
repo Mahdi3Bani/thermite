@@ -1,9 +1,10 @@
-import { createPublicKey, timingSafeEqual } from "node:crypto";
+import { createPublicKey } from "node:crypto";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { log, redact } from "../common/env.ts";
 import { answerOf, errorText, jsonBody } from "../common/errors.ts";
+import { sameSecret } from "../common/secrets.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
@@ -120,12 +121,6 @@ export interface ControlTokens {
   operator?: string | Credential | undefined;
   /** rig id -> token */
   rigs: Record<string, string>;
-}
-
-function eq(a: string, b: string): boolean {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
 }
 
 /** A list size from a query string: a whole number from 1 to 5000, or the default. */
@@ -427,7 +422,8 @@ export function createControlApi(
     } else {
       const token = bearer(c.req.header("authorization"));
       const expected = tokens.rigs[rig];
-      const ok = expected !== undefined ? eq(token, expected) : store.rigTokenMatches(rig, token);
+      const ok =
+        expected !== undefined ? sameSecret(token, expected) : store.rigTokenMatches(rig, token);
       if (!ok) return c.json({ error: "unauthorized" }, 401);
       // A retired rig is refused until the owner brings it back, whatever token it holds.
       if (store.rigRetired(rig)) return c.json({ error: "this rig is retired in control" }, 403);

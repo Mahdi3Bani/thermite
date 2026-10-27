@@ -23,6 +23,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { errorText } from "../../common/errors.ts";
+import { sameSecret } from "../../common/secrets.ts";
 import { minutesSetting, numberSetting, secondsSetting } from "../../common/settings.ts";
 import { oneContainer, supervisorPaths } from "./one-container.ts";
 import { IDS } from "./runner.ts";
@@ -35,7 +36,6 @@ import {
   SEAL_OVERHEAD,
   type SnapshotKeys,
   SnapshotRefused,
-  sameDigest,
   seal,
   unseal,
 } from "./seal.ts";
@@ -776,8 +776,8 @@ function openInto(
       writeAll(out, end.tail);
       if (
         end.digest.size !== e.size ||
-        !sameDigest(end.digest.sha256, e.sha256) ||
-        !sameDigest(end.digest.name, e.sealed)
+        !sameSecret(end.digest.sha256, e.sha256) ||
+        !sameSecret(end.digest.name, e.sealed)
       )
         throw new SnapshotRefused("its content is not the one the manifest names");
       return end.digest.size;

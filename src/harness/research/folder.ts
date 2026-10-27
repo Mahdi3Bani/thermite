@@ -14,6 +14,9 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ResearchFolderPaths } from "../../agents/tools/research.ts";
+// The folder's files are written whole (readers never see half of one), with the modes of the
+// controller's umask (022): every role reads them, and only the controller's user changes them.
+import { writeAtomic } from "../../common/fs.ts";
 import { BRIEF_FILE, briefFile } from "../../core/brief.ts";
 import { COMPACTIONS_DIR } from "../../core/compaction.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
@@ -76,19 +79,6 @@ export const SAVED_LANES_DIR = "research-work";
 export function folderRootOf(scratchRoot: string, run: string): string {
   if (!SAFE.test(run)) throw new Error(`not a run id for a folder: ${run}`);
   return join(scratchRoot, run);
-}
-
-/**
- * Writes a file of the folder whole or not at all: readers never see half of it. The file and any
- * folder it needs take their modes from the controller's umask (022), so every role reads them
- * and only the controller's user changes them (the isolation selftest writes its research probe
- * with it).
- */
-export function writeAtomic(path: string, data: string | Buffer): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp-${randomUUID().slice(0, 8)}`;
-  writeFileSync(tmp, data);
-  renameSync(tmp, path);
 }
 
 /** A file's bytes, never through a symlink. */
