@@ -54,7 +54,7 @@ The audit's lane 6 found the five searches; lane 15 (`.internal/reviews/v0.1.1-a
 - **Every write is signed and durable:** signed in the rig's ledger, kept by JetStream, acked by control only when stored.
 - **Items are data.** They quote web pages and other agents; agents read them as data to weigh, never as instructions.
 - **The network rules hold.** The harness reaches only DNS, the internet and its model endpoint; the supervisor carries every write and search. A change to what a container may reach is the owner's decision (goal [172](172-build-v011.goal)'s gate E).
-- **No default caps:** mechanical limits only (a file's size, a batch, a timeout), each with its default stated.
+- **No default caps:** mechanical limits only (a batch, a timeout), each with its default stated. A file's size has no limit unless the owner sets one in the knowledge base's settings on control; control's disk floor (goal [173](173-recovery-and-health.goal)) still holds.
 - **Downloads** (zvec-grep with its dependencies, the embedding model, a PDF text extractor) come with the owner's yes (goal 172's gate B): pinned, at least two weeks old, checked by hash, and credited in [CREDITS.md](../../../CREDITS.md).
 - **Docs follow the code,** in the same commit: the knowledge-base reference, the MCP and REST references, the command line, the Knowledge page and Start a run, the agents' tools, and known limits.
 
@@ -69,7 +69,7 @@ Each green on its own, with its tests and docs in the same commit. In goal 172's
 4. **Search by words** for the owner (REST, MCP and the command line; the Knowledge page in goal [176](176-knowledge-explorer.goal)) and Start a run's scope (continue or start fresh, granted collections).
 5. **A spike, with numbers:** zvec-grep's library in a worker on control over a copy of the items, measured for install size, cold index time, memory, disk, an update of 100 items and query times, at 30,000 and 100,000 items, against search by words. The owner decides go or no-go from the numbers.
 6. **Search by meaning:** the search worker and the model in control's image, the index's state, and the fall-back to words.
-7. **Files:** text extracted on control, each file stored once.
+7. **Files:** text extracted on control, each file stored once, with no size limit unless the owner sets one in the knowledge base's settings on control.
 8. **The old parts go:** past research copied to rigs and its poll, the `KB` stream to rigs, the five searches, and the search tool that always refuses, with the pages that named them.
 
 ## Done when
@@ -88,6 +88,7 @@ Each green on its own, with its tests and docs in the same commit. In goal 172's
 
 - 2026-10-27, owner: the blurbs, kept, made searchable by zvec-grep with a local model.
 - 2026-10-27, owner, replacing the first design: the knowledge base lives on control, with all its storage and indexes; one collection for each campaign; every agent reads it over MCP, and the roles allowed to write each write into their own slot, never changing another's items; items are blurbs or files; writes arrive as durable events on NATS; a run continues its campaign's collection or starts fresh; other campaigns' collections are read only, by grant. The words of the hierarchy matter ([decisions.md](../decisions.md#research-and-judging)).
+- 2026-10-27, owner, on question 5: a file has no size limit by default. The owner can set one in the knowledge base's settings on control.
 
 ## Open questions
 
@@ -97,7 +98,7 @@ Each with a recommendation.
 2. **The path for searches.** Through the supervisor's channel, which changes no network rule. Instead: the harness reaches control directly, a change to the network rules (gate E).
 3. **What "start fresh" means.** The run searches only its own run's items; its items are in the collection, and runs that continue it read them.
 4. **Which files are searched.** Markdown, plain text, HTML and PDF. Other files are kept whole but not searched.
-5. **The largest file.** A mechanical limit on control, with its default taken from the spike's numbers.
+5. **The largest file.** Answered by the owner, 2026-10-27: no limit by default; the owner can set one in the knowledge base's settings on control (Decisions).
 6. **May the owner write items?** Yes: in an `owner` slot of the run the item concerns, from the Knowledge page.
 7. **Links between items.** Supports, contradicts and follows, as fields of the writer's own item, shown on the Knowledge page.
 8. **The engine and the model.** zvec-grep's TypeScript library, the first release with the fix for its broken index, once it is two weeks old, and `potion-retrieval-32M` on the CPU, with search by words as the fall-back.
@@ -107,6 +108,7 @@ Each with a recommendation.
 - 2026-10-27 00:54 UTC: Goal written from the owner's words and the audit's lane 15.
 - 2026-10-27 01:42 UTC: The owner rejected the first design (indexes on the rigs, items only from events) and set this one: the knowledge base on control, one collection for each campaign, every agent on MCP, each writer in its own slot, blurbs and files arriving as durable events on NATS. The goal is rewritten and renamed (it was `175-knowledge-search.goal`), and the explainer is redrawn.
 - 2026-10-27 04:51 UTC: The owner asked for an explorer on the dashboard to read the knowledge base, search it and see what it stores. It is goal 176, mocked up; item 8 and step 4 point to it.
+- 2026-10-27 05:04 UTC: The owner answered question 5: no file size limit by default, one the owner can set in the knowledge base's settings on control. Recorded in Decisions, the constraints and step 7.
 
 ---
 
