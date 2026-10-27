@@ -23,6 +23,7 @@ import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type GoalChecks, goalChecks } from "../harness/goal-checks.ts";
 import { KitSchema } from "../harness/kit.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
+import { inBackground } from "./background.ts";
 import {
   campaignContract,
   contextApplies,
@@ -196,7 +197,7 @@ import {
   SPLIT_RESTARTS,
   settingsCount,
 } from "./rig-settings.ts";
-import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
+import { RigUpdates } from "./rig-update.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import type { RunpodRigView } from "./runpod-rig-view.ts";
@@ -365,6 +366,7 @@ import {
   podRuns,
   readySteps,
 } from "./ui/runpod-rig.ts";
+import { STEP_WORDS } from "./ui/setup-steps.ts";
 import { STYLE } from "./ui/style.ts";
 import {
   campaignUsageBlock,
@@ -5290,37 +5292,6 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
   const tail = (s: string) => s.trim().split("\n").slice(-3).join(" ").slice(0, 400);
   // The wait for a new rig's first report never keeps control (or a test) from exiting.
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms).unref());
-  const STEP_WORDS: Record<string, string> = {
-    enrolled: "Enrolled with control: a token of its own",
-    deployed: "Files and units written, images ready, services started",
-    first_report: "First report reached control",
-    deploy: "Setting it up",
-    stop: "Stopped",
-    start: "Started",
-    restart: "Restarted",
-    remove: "Removed from the machine",
-    applied: "Its objects applied in the cluster: namespace, secret, volume, deployments",
-    remove_cluster: "Removed from the cluster",
-    join_made: "Join command made",
-    join_revoked: "Join command revoked",
-    join_used: "Join command used: the rig fetched its files from control",
-    retired: "Retired: its token no longer works",
-    drain: "Draining: it starts nothing new until its work ends",
-    images: "Its deployments applied with new images",
-    images_running: "Its pods run the new images",
-    report_after_images: "A report reached control from the new images",
-    pods_running: "Its pods run again",
-    report_after_start: "A report reached control after the start",
-    resources: "Its deployments applied with new GPUs, CPUs or memory",
-    resources_running: "Its pods run with the new GPUs, CPUs or memory",
-    report_after_resources: "A report reached control after the change",
-    model_started: "Model download started",
-    model_done: "Model downloaded, its SHA-256 checked",
-    model_refused: "Model refused: its SHA-256 did not match, and the file was deleted",
-    model_failed: "Model download stopped",
-    check: "Control checked where it runs",
-    ...UPDATE_STEP_WORDS,
-  };
   /**
    * Waits for a new rig's first report (or, with `after`, a report after that time), for at most
    * 10 minutes; a setup event either way.
@@ -5847,7 +5818,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.addMachineRig(placed);
     store.rigSetupEvent(rig, "enrolled", true);
     const r = store.machineRig(rig) as MachineRig;
-    void deployRig(r, m, token.token).catch(() => {});
+    void inBackground(store, "machine", rig, "deploy", deployRig(r, m, token.token));
     return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
   });
   /** Add a rig on a cluster: checks the choices, enrolls the rig, then applies its objects. */
@@ -5979,7 +5950,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       created_by: by,
     });
     store.rigSetupEvent(rig, "enrolled", true);
-    void deployClusterRig(store.clusterRig(rig) as ClusterRig, k, token.token).catch(() => {});
+    const deploy = deployClusterRig(store.clusterRig(rig) as ClusterRig, k, token.token);
+    void inBackground(store, "cluster", rig, "applied", deploy);
     return { rig };
   };
   if (opts.actions) opts.actions.addClusterRig = addClusterRig;
@@ -6179,7 +6151,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           : `${rig} runs the new images when it starts again.`,
       };
     store.setClusterRigStatus(rig, "updating");
-    void awaitNewPods(r, k).catch(() => {});
+    void inBackground(store, "cluster", r.rig, "images_running", awaitNewPods(r, k));
     return {
       ok: retry
         ? `${rig}'s pods restart on control's images again (a retry).`
@@ -6399,7 +6371,13 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.audit(by, "cluster_rig_resources", { rig, from, to });
     if (stopped) return { ok: `${rig} has ${sizeWords(to)} when it starts again.` };
     store.setClusterRigStatus(rig, "updating");
-    void awaitNewPods(r, k, "resources").catch(() => {});
+    void inBackground(
+      store,
+      "cluster",
+      r.rig,
+      "resources_running",
+      awaitNewPods(r, k, "resources"),
+    );
     return { ok: `${rig}'s pods restart with ${sizeWords(to)}.` };
   };
   /** Checks and makes a change to a cluster rig's GPUs, CPUs or memory (REST and MCP). */
@@ -6503,13 +6481,12 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (!w || w.draining === null || w.trials > 0 || w.judge_jobs > 0) continue;
       store.rigSetupEvent(r.rig, "drain", true, "nothing runs any more: its pods restart now");
       moving.add(r.rig);
-      void (
-        r.pending
-          ? applyResize(r.rig, r.pending, "control:drain")
-          : updateClusterRigImages(r.rig, "control:drain", { wait: false })
-      )
-        .catch(() => {})
-        .finally(() => moving.delete(r.rig));
+      const move = r.pending
+        ? applyResize(r.rig, r.pending, "control:drain")
+        : updateClusterRigImages(r.rig, "control:drain", { wait: false });
+      void inBackground(store, "cluster", r.rig, r.pending ? "resources" : "images", move).finally(
+        () => moving.delete(r.rig),
+      );
     }
   }, opts.drainWatchMs ?? 10_000);
   drainWatch.unref?.();
@@ -6802,7 +6779,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     }
     store.rigSetupEvent(rig, "join_used", true, detail);
     // Pulling the images can take a while on a new machine: wait up to an hour.
-    void awaitFirstReport(rig, (st) => store.setJoinedRig(rig, { status: st }), 60).catch(() => {});
+    const first = awaitFirstReport(rig, (st) => store.setJoinedRig(rig, { status: st }), 60);
+    void inBackground(store, "joined", rig, "first_report", first);
     return c.text(body, 200, { "cache-control": "no-store" });
   });
 
@@ -6876,7 +6854,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (action === "start" || action === "restart") {
       // Running once its pods are and it has reported, as after an update.
       store.setClusterRigStatus(r.rig, "starting");
-      void awaitNewPods(r, k, "start").catch(() => {});
+      void inBackground(store, "cluster", r.rig, "pods_running", awaitNewPods(r, k, "start"));
     } else store.setClusterRigStatus(r.rig, action === "stop" ? "stopped" : "removed");
     if (action === "remove") store.retireRig(r.rig, by);
     store.audit(by, `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster });

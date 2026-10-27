@@ -166,7 +166,7 @@ Over MCP, the owner's and an operator's tokens do the same with `update_rig_imag
 
 ### Try again after a failure
 
-When a change to the rig's pods failed, its status says `failed`. This happens after a new rig's first wait, a start, a restart or an update. When the rig already has control's images, the block offers to apply them again; when control deploys other images, it offers **Update to these images** instead.
+When a change to the rig's pods failed, its status says `failed`. This happens after a new rig's first wait, a start, a restart or an update. It also happens when control's own work on the rig stopped with an error, such as kubectl that could not be reached: the rig's steps then show the step that failed, with the error, and control's log has `background work failed` with the rig's name. A rig never stays `deploying`, `starting`, `updating` or `draining` because of such an error. When the rig already has control's images, the block offers to apply them again; when control deploys other images, it offers **Update to these images** instead.
 
 1. Fix the cause first: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports).
 2. On the rig's page, the block says "The last change to its pods failed (see the steps above). Try it again on control's images:", with the two image names. Press **Try the update again**.

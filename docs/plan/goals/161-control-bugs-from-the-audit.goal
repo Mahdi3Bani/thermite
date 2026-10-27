@@ -31,8 +31,8 @@ CONVENTIONS.md: "Every bug that is found gets a regression test", "Nothing stops
 
 ## Done when
 
-- [ ] Each of the eight bugs is fixed, with a regression test that fails without the fix.
-- [ ] The pages that describe a changed state or answer follow, in the same commit.
+- [x] Each of the eight bugs is fixed, with a regression test that fails without the fix.
+- [x] The pages that describe a changed state or answer follow, in the same commit.
 - [ ] The fast checks pass, and the control acceptance check for items 4 to 8.
 
 ## Decisions
@@ -48,6 +48,7 @@ CONVENTIONS.md: "Every bug that is found gets a regression test", "Nothing stops
 - 2026-10-27 05:55 UTC: Bug 4 fixed: control's REST API answers a body that is not JSON with 400, and the refusals of `/v1/propagate`, a reset's confirm and cancel, and a second reset with 409, each in its own words (`tests/control/api-refusals.test.ts`; three of its tests fail without the fix). The first typed errors of the rules of shape are in `src/common/errors.ts` (`Refusal`, `BadInput`, and `answerOf`, which maps them to statuses in one place). The REST reference's statuses follow.
 - 2026-10-27 05:58 UTC: Bug 5 fixed: **Update to these images** reports `kubectl's answer is not a deployment` as a failure when kubectl's answer can't be read, never `already runs control's images` (`tests/control/dashboard/cluster-images.test.ts`, which fails without the fix). The reading is `deploymentEnv` in `src/control/clusters/deployment.ts`. The fake cluster of `tests/control/clusters-ui.test.ts` moved to `tests/helpers/fake-cluster.ts` for it.
 - 2026-10-27 06:01 UTC: Bugs 6 and 7 fixed: Add a rig refuses a GPU named twice ("Name each GPU once.", as the join form says; `tests/control/machines.test.ts`), and its preview applies control's own rule for the judge's share, at most 8 on each side, showing control's refusal (`JUDGE_SHARE_JS`, held to `judgeShareOf` for 0 to 17 GPUs in `tests/control/ui/add-rig-client.test.ts`). The dashboard's own copy of the rule now calls `judgeShareOf`.
+- 2026-10-27 06:03 UTC: Bug 8 fixed: the seven background deploys, updates, resizes and waits go through `inBackground` (`src/control/background.ts`). A failure is logged with its rig, recorded as a failed step in the rig's history, and a state that lasts only while the work goes on (deploying, starting, updating, draining, joining) becomes `failed` (`tests/control/background.test.ts`). The rig-history step words moved to `src/control/ui/setup-steps.ts`, so `dashboard.ts` shrinks. All eight bugs are fixed; the control acceptance check for items 4 to 8 is still to run.
 
 ---
 
