@@ -1,16 +1,16 @@
 ---
 id: "125"
 title: "Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.1.1"
 depends_on: ["026", "127"]
 created: 2026-10-24
-updated: 2026-10-26
+updated: 2026-10-27
 ---
 
 # 125 · Code clean-up: all of Thermite's code to its conventions, from file sizes and structure to duplication
 
-**Status:** `PROPOSED` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](_completed/026-ship-v0.1.0.goal), [127](_completed/127-clean-up-pre-audit.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [026](_completed/026-ship-v0.1.0.goal), [127](_completed/127-clean-up-pre-audit.goal)
 
 ## What
 
@@ -151,6 +151,7 @@ Known at the start, 2026-10-24:
 - 2026-10-26: The v0.1.1 audit (goal [160](_completed/160-v010-audit.goal)) wrote the [guide](../code-clean-up-guide.md) and moved the tests to `tests/`. The scope no longer holds the tests' move, and the order of work is the guide's. Its counts, from 2026-10-26, replace the ones under Audit where they differ: 33 production files over 800 lines, `control/dashboard.ts` at 8,875 lines.
 - 2026-10-26 20:41 UTC: The owner answered the guide's questions; the answers are under Decisions. v0.1.1 breaks compatibility with v0.1.0.
 - 2026-10-26 20:56 UTC: The owner named the knowledge base's folders collections, accepted the rules of shape, and put an upgrade of the images' system packages into v0.1.1's first code changes.
+- 2026-10-27 05:09 UTC: Started by goal 172. The accepted rules of shape are added to CONVENTIONS.md, with the owner's answers to the guide's questions 1, 4, 10, 18, 19 and 22 and goal 170's rule of address, for the owner's review (gate A).
 
 ---
 

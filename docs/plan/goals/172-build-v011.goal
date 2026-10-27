@@ -1,7 +1,7 @@
 ---
 id: "172"
 title: "Build v0.1.1: every goal the audit planned, in one order, to verified"
-status: READY
+status: IN_PROGRESS
 version: "0.1.1"
 depends_on: ["160"]
 created: 2026-10-27
@@ -10,7 +10,7 @@ updated: 2026-10-27
 
 # 172 · Build v0.1.1: every goal the audit planned, in one order, to verified
 
-**Status:** `READY` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.1](../roadmap.md#v011) · **Depends on:** [160](_completed/160-v010-audit.goal)
 
 ## What
 
@@ -99,6 +99,7 @@ The owner, 2026-10-27: "write a single .goal that outlines how to complete the a
 - 2026-10-27 00:57 UTC: The owner found the knowledge base is a store of blurbs, not a real knowledge base, and asked for a local model and search by zvec-grep. The audit's lane 15 designed it as goal 175, now in the list, step 9 and gate B.
 - 2026-10-27 01:42 UTC: The owner rejected goal 175's first design and set the knowledge base's: on control, one collection for each campaign, every agent on MCP, each writer in its own slot, writes as durable events on NATS. Goal 175 is rewritten (now `175-knowledge-base.goal`), and its line above and step 9 follow it.
 - 2026-10-27 04:51 UTC: The owner asked for an explorer of the knowledge base on the dashboard. It is goal 176, mocked up, in the list and step 9.
+- 2026-10-27 05:09 UTC: The owner launched this goal: the planning phase is over. Step 1 starts: the accepted rules of shape go into CONVENTIONS.md, in a commit of their own for the owner to review (gate A).
 
 ---
 
