@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { errorText } from "../../common/errors.ts";
 import { log, logError, logWarn } from "../../common/log.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
+import type { EventToRecord } from "../../core/events/kinds.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
 import { Audits, auditTrigger } from "../audits.ts";
 import { builderRole, runRole } from "../broker/devices.ts";
@@ -48,6 +49,7 @@ import {
   type HeldOutCell,
   type HeldOutKind,
   type HeldOutResult,
+  heldOutEvent,
   heldOutKindOf,
   heldOutKinds,
   heldOutMeasure,
@@ -140,7 +142,7 @@ interface Finish {
         clearFlaws?: string | undefined;
       }
     | undefined;
-  events?: { kind: string; subject: string; body: unknown }[] | undefined;
+  events?: EventToRecord[] | undefined;
   /** A port to queue once the job is recorded (goal 135). */
   port?: PortFound | undefined;
   enqueue?: Parameters<Ledger["enqueueJob"]>[0] | undefined;
@@ -193,9 +195,6 @@ class Stop extends Error {
 }
 
 const pct = (x: number) => `${(toFraction(x) * 100).toFixed(2)}%`;
-
-/** The most held-out cells one event names; the held_out table keeps them all. */
-const HELD_OUT_EVENT_CELLS = 50;
 
 export class Judge {
   private readonly o: Required<JudgeOptions>;
@@ -891,7 +890,7 @@ export class Judge {
           reasons: `${reasons}; vs champion seq ${champion.seq}`,
           judgedBy: this.o.owner,
         },
-        ...(ho ? { events: [this.heldOutEvent(job, run, attemptId, ho)] } : {}),
+        ...(ho ? { events: [heldOutEvent(job.id, run, attemptId, ho)] } : {}),
         lifecycle: "judged",
       };
       if (verdict !== "win_confirmed") return fin;
@@ -983,33 +982,6 @@ export class Judge {
   }
 
   /**
-   * The owner's event for a held-out record (goal 082): each cell's name, its kind of failure, and
-   * its value against its threshold where there is one. It reaches control and the rig's exports;
-   * no agent reads events, and the knowledge base does not take this one. Its subject is the
-   * attempt, or, for a goal run's champion (goal 086), the run, with `champion_seq`.
-   */
-  private heldOutEvent(
-    job: JobRow,
-    run: string,
-    subject: string,
-    ho: HeldOutResult,
-    championSeq?: number,
-  ): { kind: string; subject: string; body: unknown } {
-    return {
-      kind: "held_out_checked",
-      subject,
-      body: {
-        run,
-        job: job.id,
-        ...(championSeq !== undefined ? { champion_seq: championSeq } : {}),
-        pass: ho.pass,
-        cells: ho.cells.slice(0, HELD_OUT_EVENT_CELLS),
-        cells_total: ho.cells.length,
-      },
-    };
-  }
-
-  /**
    * What happens to a promotable result (goal 079: hands-off by default). An audit first when one
    * is triggered (open known flaws, a gain above the contract's audit trigger, a goal campaign's
    * adversarial checklist) and the rig has an auditor, or may have one (its supervisor has not
@@ -1057,7 +1029,7 @@ export class Judge {
     const skipped = trigger
       ? [
           {
-            kind: "audit_skipped",
+            kind: "audit_skipped" as const,
             subject: attemptId,
             body: { run, reason: trigger.reason, why: "this rig has no auditor" },
           },
@@ -1546,7 +1518,7 @@ export class Judge {
     if (done && !confirming) {
       return {
         result: summary,
-        events: [{ kind: "goal_report", subject: run, body: summary }],
+        events: [{ kind: "goal_report" as const, subject: run, body: summary }],
         enqueue: {
           kind: "validate",
           priority: 40,
@@ -1559,10 +1531,10 @@ export class Judge {
       result: summary,
       events: [
         // The owner's record of the champion's held-out check, before the report it decided.
-        ...(ho ? [this.heldOutEvent(job, run, run, ho, champion.seq)] : []),
-        { kind: "goal_report", subject: run, body: summary },
+        ...(ho ? [heldOutEvent(job.id, run, run, ho, champion.seq)] : []),
+        { kind: "goal_report" as const, subject: run, body: summary },
         ...(complete
-          ? [{ kind: "goal_complete", subject: run, body: { champion_seq: champion.seq } }]
+          ? [{ kind: "goal_complete" as const, subject: run, body: { champion_seq: champion.seq } }]
           : []),
       ],
       ...(complete ? { close: { run, reason: "every required goal is met" } } : {}),
@@ -1717,7 +1689,7 @@ export class Judge {
           judgedBy: this.o.owner,
           guards: results.map((r) => ({ goal: r.goal, status: r.status })),
         },
-        ...(ho ? { events: [this.heldOutEvent(job, run, attemptId, ho)] } : {}),
+        ...(ho ? { events: [heldOutEvent(job.id, run, attemptId, ho)] } : {}),
         lifecycle: "judged",
       };
       if (!ok) return fin;
@@ -1908,7 +1880,7 @@ export class Judge {
       };
       return {
         result: { baseline_failed: true, champion_seq: s.start.seq },
-        events: [{ kind: "baseline_failed", subject: run, body: failure }],
+        events: [{ kind: "baseline_failed" as const, subject: run, body: failure }],
       };
     }
   }
@@ -2069,6 +2041,6 @@ export class Judge {
         ? { card: this.o.card.uuid, card_index: this.o.card.index }
         : {}),
     };
-    return { result, events: [{ kind: "calibration", subject: run, body: result }] };
+    return { result, events: [{ kind: "calibration" as const, subject: run, body: result }] };
   }
 }

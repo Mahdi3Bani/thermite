@@ -11,6 +11,7 @@ import { type Contract, parseContract } from "../../src/core/contract.ts";
 import { Ledger, LedgerError, MAX_LEASE_EXPIRIES } from "../../src/harness/ledger.ts";
 import { MIGRATIONS } from "../../src/harness/schema.ts";
 import { goalFixture, hillClimbFixture } from "../helpers/fixtures.ts";
+import { otherKind } from "../helpers/kinds.ts";
 
 function contractOf(input: unknown): { contract: Contract; sha: string } {
   const r = parseContract(input);
@@ -541,10 +542,10 @@ describe("ledger", () => {
   test("nested transactions roll back only their own part", () => {
     const { ledger } = setup();
     ledger.tx(() => {
-      ledger.appendEvent("t", "outer", null, {});
+      ledger.appendEvent("t", otherKind("outer"), null, {});
       assert.throws(() =>
         ledger.tx(() => {
-          ledger.appendEvent("t", "inner", null, {});
+          ledger.appendEvent("t", otherKind("inner"), null, {});
           throw new Error("inner fails");
         }),
       );
@@ -696,7 +697,8 @@ describe("ledger", () => {
     let cursor = 0;
     const seen: number[] = [];
     for (let round = 0; round < 50; round++) {
-      for (let i = 0; i < (round % 7) + 1; i++) ledger.appendEvent("t", "tick", null, { round, i });
+      for (let i = 0; i < (round % 7) + 1; i++)
+        ledger.appendEvent("t", otherKind("tick"), null, { round, i });
       const page = ledger.eventsAfter(cursor, 3);
       seen.push(...page.events.map((e) => e.id));
       cursor = page.next;
@@ -723,7 +725,7 @@ describe("ledger", () => {
     const through = ledger.lastExport()?.through_event ?? 0;
     assert.equal(ledger.recordedAfter(through), true);
     assert.equal(ledger.recordedAfter(through, ["export_written"]), false);
-    ledger.appendEvent("t", "tick", null, {});
+    ledger.appendEvent("t", otherKind("tick"), null, {});
     assert.equal(ledger.recordedAfter(through, ["export_written"]), true);
   });
 });

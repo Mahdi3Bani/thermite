@@ -8,6 +8,7 @@ import { generateSigningKeys, signEnvelope } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api.ts";
 import { relayOnce } from "../../src/supervisor/relay.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
+import { otherKind } from "../helpers/kinds.ts";
 
 describe("supervisor relay between control and harness", () => {
   test("commands flow control -> supervisor -> harness and events flow back exactly once", async () => {
@@ -264,13 +265,15 @@ describe("supervisor relay between control and harness", () => {
     };
     const first = makeHarnessEnv("rig-a");
     harness = createHarnessApi(first.service, harnessTokens);
-    for (let i = 0; i < 5; i++) first.service.ledger.appendEvent("t", "old", null, { i });
+    for (let i = 0; i < 5; i++)
+      first.service.ledger.appendEvent("t", otherKind("old"), null, { i });
     const state = await relayOnce(cfg, { cursor: 0 });
     assert.equal(state.cursor, 5);
 
     const wiped = makeHarnessEnv("rig-a"); // a fresh ledger: event ids start at 1 again
     harness = createHarnessApi(wiped.service, harnessTokens);
-    for (let i = 0; i < 3; i++) wiped.service.ledger.appendEvent("t", "new", null, { i });
+    for (let i = 0; i < 3; i++)
+      wiped.service.ledger.appendEvent("t", otherKind("new"), null, { i });
     // A wiped harness also has a new signing key: control holds it until the owner accepts.
     await assert.rejects(relayOnce(cfg, state), /409/);
     // The owner accepts the key whose fingerprint they checked.
@@ -292,7 +295,7 @@ describe("supervisor relay between control and harness", () => {
     const store = new ControlStore(":memory:");
     const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
     const control = createControlApi(store, tokens, env.keys.privateKeyPem);
-    env.service.ledger.appendEvent("t", "real", null, {});
+    env.service.ledger.appendEvent("t", otherKind("real"), null, {});
     const snap = env.service.snapshot(0, 100) as Record<string, unknown>;
     const post = (body: unknown) =>
       control.request("/v1/rigs/rig-a/ingest", {

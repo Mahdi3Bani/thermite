@@ -22,6 +22,7 @@ import {
 import { createHarnessApi } from "../../src/harness/api.ts";
 import { RelayError, relayOnce } from "../../src/supervisor/relay.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
+import { otherKind } from "../helpers/kinds.ts";
 
 const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
 const owner = { authorization: `Bearer ${tokens.admin}`, "content-type": "application/json" };
@@ -166,7 +167,7 @@ describe("versions between control and its rigs", () => {
   test("an incompatible rig is refused, with the reason, on its reports and commands, until it runs a build control works with", async () => {
     const control = { version: "0.9.0", commit: null, protocol: 3, oldest_protocol: 2 };
     const s = setup(control);
-    s.env.service.ledger.appendEvent("t", "one", null, {});
+    s.env.service.ledger.appendEvent("t", otherKind("one"), null, {});
     s.rig.supervisor = hdrs({ version: "0.1.0", protocol: 1, oldest_protocol: 1 });
     const why =
       "Control cannot work with this rig: its supervisor speaks protocol 1, and control works with protocols 2 to 3. Update the rig's images.";
@@ -220,7 +221,7 @@ describe("versions between control and its rigs", () => {
 
   test("a harness control cannot work with is refused, though its supervisor is fine", async () => {
     const s = setup();
-    s.env.service.ledger.appendEvent("t", "one", null, {});
+    s.env.service.ledger.appendEvent("t", otherKind("one"), null, {});
     const own = buildInfo();
     s.env.service.build = { version: "9.0.0", commit: null, protocol: 70, oldest_protocol: 70 };
     const why = `Control cannot work with this rig: its harness works with protocol 70 or later, and control speaks protocol ${own.protocol}. Update control.`;
@@ -462,7 +463,7 @@ describe("a newer rig's fields that control does not know", () => {
 
   test("a signed report stays exact: a field a newer harness signed fails the signature; one the supervisor adds is dropped", async () => {
     const s = setup();
-    s.env.service.ledger.appendEvent("t", "one", null, {});
+    s.env.service.ledger.appendEvent("t", otherKind("one"), null, {});
     const snap = s.env.service.snapshot(0, 100) as Omit<
       Parameters<typeof reportBody>[0],
       "events"

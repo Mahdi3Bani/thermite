@@ -7,7 +7,7 @@ import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { AskOwner } from "../core/commands.ts";
 import type { Contract } from "../core/contract.ts";
 import { convertedRule, isLegacyRule } from "../core/directions.ts";
-import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
+import { currentBody, currentEvent, type EventKind, eventKinds } from "../core/names.ts";
 import { PROMOTABLE_VERDICTS } from "../core/verdicts.ts";
 import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "./judge/held-out.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
@@ -151,7 +151,7 @@ export class Ledger {
 
   // ---------------------------------------------------------------- events
 
-  appendEvent(actor: string, kind: string, subject: string | null, body: unknown): number {
+  appendEvent(actor: string, kind: EventKind, subject: string | null, body: unknown): number {
     return this.run(
       "insert into event (at, actor, kind, subject, body) values (?, ?, ?, ?, ?)",
       this.now(),
@@ -860,7 +860,7 @@ export class Ledger {
   }
 
   /** The leased jobs `where` picks go back to the queue, or are blocked, each with a `kind` event. */
-  private requeue(where: string, arg: SQLInputValue, actor: string, kind: string): number[] {
+  private requeue(where: string, arg: SQLInputValue, actor: string, kind: EventKind): number[] {
     return this.tx(() => {
       const rows = this.all<Row>(
         `select id, expiries, fence, attempt from job where state = 'leased' and ${where}`,
@@ -1404,7 +1404,7 @@ export class Ledger {
     rows: Omit<ExperimentRow, "created_at" | "updated_at">[],
     event: {
       actor: string;
-      kind: string;
+      kind: EventKind;
       run: string;
       body: { id: string } & Record<string, unknown>;
     },

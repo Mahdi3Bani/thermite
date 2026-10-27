@@ -173,7 +173,7 @@ export function parentScreened(
   const body = { verdict, delta, champion_seq: olderSeq ?? null, effect };
   return {
     result: { parent_screen: body },
-    events: [{ kind: "parent_screened", subject: attempt, body }],
+    events: [{ kind: "parent_screened" as const, subject: attempt, body }],
     ...(verdict === "win_screened" ? { port: { run, attempt, effect, why: PORT_WHY } } : {}),
   };
 }

@@ -1,3 +1,5 @@
+export type { EventKind } from "./events/kinds.ts";
+
 /**
  * The owner's names (2026-10-15): a unit is now a rig and an instance a run. Ledgers are
  * append-only, so events recorded before the rename keep their old kinds and body keys; readers

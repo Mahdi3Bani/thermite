@@ -1,3 +1,4 @@
+import type { EventToRecord } from "../../core/events/kinds.ts";
 import {
   HELD_OUT_KINDS,
   HELD_OUT_OWNER_WORDS,
@@ -115,4 +116,34 @@ export function heldOutCellsOf(detail: unknown): HeldOutCell[] {
     (c): c is HeldOutCell =>
       !!c && typeof c === "object" && typeof (c as HeldOutCell).cell === "string",
   );
+}
+
+/** The most held-out cells one event names; the held_out table keeps them all. */
+const HELD_OUT_EVENT_CELLS = 50;
+
+/**
+ * The owner's event for a held-out record (goal 082): each cell's name, its kind of failure, and
+ * its value against its threshold where there is one. It reaches control and the rig's exports;
+ * no agent reads events, and the knowledge base does not take this one. Its subject is the
+ * attempt, or, for a goal run's champion (goal 086), the run, with `champion_seq`.
+ */
+export function heldOutEvent(
+  job: number,
+  run: string,
+  subject: string,
+  ho: HeldOutResult,
+  championSeq?: number,
+): EventToRecord {
+  return {
+    kind: "held_out_checked",
+    subject,
+    body: {
+      run,
+      job,
+      ...(championSeq !== undefined ? { champion_seq: championSeq } : {}),
+      pass: ho.pass,
+      cells: ho.cells.slice(0, HELD_OUT_EVENT_CELLS),
+      cells_total: ho.cells.length,
+    },
+  };
 }
