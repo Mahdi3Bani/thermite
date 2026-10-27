@@ -166,10 +166,12 @@ async function main(): Promise<void> {
     tunnels.advance().catch((err) => log("control", "pull mode error", { error: String(err) }));
   }, 250);
   // Rigs on RunPod: each pod's status, price and spend; the owner's limits, where set; the stop,
-  // start, restart or terminate under way.
-  const launched = setInterval(() => {
+  // start, restart or terminate under way. At start too: a limit a pod passed while control was
+  // away stops it at once (goal 165).
+  const followPods = () =>
     runpodRigs.advance().catch((err) => log("control", "runpod rig error", { error: String(err) }));
-  }, 30_000);
+  void followPods();
+  const launched = setInterval(followPods, 30_000);
   // Rigs control set up that stopped reporting: their containers checked once when they turn
   // stale, and once more when they turn offline (rig-watch.ts).
   let watching = false;

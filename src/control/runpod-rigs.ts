@@ -43,6 +43,9 @@ const MIN_CUDA = "12.6";
 const VOLUME_PATH = "/workspace";
 export const DEFAULT_CONTAINER_DISK_GB = 40;
 export const DEFAULT_VOLUME_GB = 100;
+/** A gap between two of control's looks at a pod that means control was not running. */
+const AWAY_MS = 5 * 60_000;
+
 /** The shortest idle stop: a rig needs a few minutes between enrollment and its first run. */
 export const MIN_IDLE_STOP_MINUTES = 5;
 /**
@@ -411,7 +414,10 @@ export class RunpodRigs {
     return this.view(rig) as RunpodRigView;
   }
 
-  /** One step for every rig control follows. Control calls it every 30 s. */
+  /**
+   * One step for every rig control follows. Control calls it at start and every 30 s: it follows
+   * pods only while it runs, so a limit passed while it was away is acted on at once (goal 165).
+   */
   async advance(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
@@ -474,6 +480,8 @@ export class RunpodRigs {
     }
     const nowMs = this.now();
     const now = this.iso();
+    // When control last saw the pod: a long gap is time control was not running.
+    const seenAt = s.status_at ? Date.parse(s.status_at) : null;
     // What it cost up to now, at the price it ran at.
     s.spent_usd = spentBy(s, nowMs);
     if (s.billed_since) s.billed_since = now;
@@ -505,7 +513,7 @@ export class RunpodRigs {
             s.stopped_at = null;
             s.stopped_by = null;
           }
-          await this.limit(r, key, s, nowMs);
+          await this.limit(r, key, s, nowMs, seenAt);
         }
       }
     } catch (err) {
@@ -518,7 +526,13 @@ export class RunpodRigs {
   }
 
   /** The owner's limits, if set: a pod that reached one is stopped, its results sent out first. */
-  private async limit(r: StoredRunpodRig, key: string, s: RigState, nowMs: number): Promise<void> {
+  private async limit(
+    r: StoredRunpodRig,
+    key: string,
+    s: RigState,
+    nowMs: number,
+    seenAt: number | null,
+  ): Promise<void> {
     const enrolledAt = this.store.tunnelRig(r.rig)?.enrolled_at ?? null;
     if (s.idle_stop_minutes !== null && enrolledAt) this.noteWork(r.rig, s, nowMs);
     const spent = spentBy(s, nowMs);
@@ -534,7 +548,12 @@ export class RunpodRigs {
       )
         why = "idle_stop";
     }
-    if (why) await this.life.beginStop(r, s, key, "control", why);
+    if (!why) return;
+    if (seenAt !== null && nowMs - seenAt > AWAY_MS)
+      s.notes.push(
+        `Control was not running from ${new Date(seenAt).toISOString()}: the pod passed this limit meanwhile, and control stopped it as soon as it started again.`,
+      );
+    await this.life.beginStop(r, s, key, "control", why);
   }
 
   /** A rig control follows, its state and its key; throws, in words, when there is none. */

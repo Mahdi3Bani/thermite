@@ -101,7 +101,7 @@ When the update can't come from control, the banner says how to do it:
 | The isolation check after the update | Sends `rig_check` for the isolation check, and waits for its result | 30 minutes | It says why: it failed, the rig refused it (such as `not now: …`, while a judge job waits), or no result came |
 | Its runs resumed | Sends `resume_run` for each run it paused | | |
 
-The rig's volumes, tokens, key, ledger, runs and results stay. A trial in progress stops, and its experiment goes back to the top of the queue. On a machine the update writes only the two container units: the rig's secrets, keys, volumes and networks stay as they were. If a step fails, the banner shows **The update stopped**, and its steps say why.
+The rig's volumes, tokens, key, ledger, runs and results stay. A trial in progress stops, and its experiment goes back to the top of the queue. On a machine the update writes only the two container units: the rig's secrets, keys, volumes and networks stay as they were. If a step fails, the banner shows **The update stopped**, and its steps say why. An update that a restart of control cut short ends when control starts again: its paused runs resume, and the step **The update stopped** says `control restarted while it was` and what it was doing.
 
 ## The drain card
 

@@ -633,10 +633,25 @@ function schemaOne(db: DatabaseSync): void {
 }
 
 /**
+ * The updates to control's version under way (goal 165): their step and the runs they paused, so
+ * that a control restarted in the middle of one ends it and resumes those runs.
+ */
+function schemaTwo(db: DatabaseSync): void {
+  db.exec(`create table if not exists rig_update (
+  rig text primary key,
+  phase text not null,
+  paused text not null default '[]',
+  requested_by text not null,
+  started_at text not null,
+  updated_at text not null
+)`);
+}
+
+/**
  * Control's migrations, in order: the store's schema version is how many have run. A change to
  * the schema is a new function at the end, never an edit of one that has run.
  */
-const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [schemaOne];
+const STORE_MIGRATIONS: readonly ((db: DatabaseSync) => void)[] = [schemaOne, schemaTwo];
 
 /**
  * Brings the store to this code's schema. A store with tables in it is copied first (goal 173),

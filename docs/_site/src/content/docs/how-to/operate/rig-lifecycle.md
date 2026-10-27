@@ -103,7 +103,7 @@ Steps:
    - "Its runs resumed".
 3. When every step has its ✓, the banner says "Updated. It runs Thermite 0.2.0, as control does."
 
-If a step fails, it gets ✕ with the reason, the banner shows "The update stopped", and the runs it paused resume. When the images could not move, the rig keeps the images it had. The rig's volumes, tokens, key, ledger, runs and results stay in every case. [A rig's page](../../reference/rig-page.md#update-to-controls-version) describes each step and its limits.
+If a step fails, it gets ✕ with the reason, the banner shows "The update stopped", and the runs it paused resume. Control keeps an update's step and the runs it paused in its store: if control restarts in the middle of an update, it ends the update when it starts again, resumes those runs, and the history says `control restarted while it was` and the step. Press **Update to** again to finish it. When the images could not move, the rig keeps the images it had. The rig's volumes, tokens, key, ledger, runs and results stay in every case. [A rig's page](../../reference/rig-page.md#update-to-controls-version) describes each step and its limits.
 
 ### A rig on a cluster
 
@@ -198,6 +198,8 @@ Control records the address it gives each rig. A rig set up by a control too old
 
 Then, in the **Set up by control** block, open "Remove it from …", type `remove rig-1`, and press **Remove the rig**. On a machine, control stops the services and deletes the rig's units, files and volumes. On a cluster, it deletes the namespace it made, or the rig's objects in its slot. Either way it retires the rig, so its token stops working.
 
+Control refuses the remove while any result waits on the rig: the page says `rig-1 still holds results:`, what waits, and to export first. A rig whose results can't leave, such as one whose supervisor is broken, is removed with `discard rig-1` typed instead of `remove rig-1`: what it held is lost, and the audit log's `machine_rig_remove` or `cluster_rig_remove` entry says what had not left (`discarded`).
+
 **Joined:** run the **Remove** command from the rig's page, there. Then retire it.
 
 **The compose stack:** `docker compose down` stops it. `docker compose down -v` also deletes its volumes, with control's state and every result not pushed elsewhere.
@@ -242,7 +244,7 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
    | State | What happens | Limit |
    | --- | --- | --- |
    | `start` | Control pauses the rig's running runs, with the reason "full reset" | |
-   | `quiescing` | Control waits until no judge job is queued or running, and no command waits for the rig | 1 hour |
+   | `quiescing` | Control waits until the rig reports its runs paused, the judge has no job under way and none queued for a run that still runs, and no command waits for the rig. A paused run's queued jobs stay in the queue, and the export carries them | 1 hour |
    | `exporting` | The rig takes a [full export](../../reference/exports.md#normal-and-full-exports): what is new since its last export, plus its research archive, every run's research folder and a copy of its ledger | 30 minutes |
    | `verifying` | Control waits until the supervisor reports that export pushed to the results repository, or, for a rig without one, until control holds every file of it | 1 hour |
    | `awaiting_owner` | Control waits for you | 24 hours |

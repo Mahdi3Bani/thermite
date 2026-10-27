@@ -80,7 +80,6 @@ export class RigUpdates {
     pollMs: number;
     sleep: (ms: number) => Promise<void>;
   };
-  private readonly phases = new Map<string, Phase>();
 
   constructor(o: {
     store: ControlStore;
@@ -108,8 +107,46 @@ export class RigUpdates {
 
   /** What the update under way on this rig waits for, in words; null when none is under way. */
   waiting(rig: string): string | null {
-    const p = this.phases.get(rig);
+    const p = this.row(rig)?.phase as Phase | undefined;
     return p ? PHASE_WORDS[p] : null;
+  }
+
+  // The update under way on each rig is kept in the store, with the runs it paused (goal 165).
+  private row(rig: string) {
+    return this.o.store.db.prepare("select * from rig_update where rig = ?").get(rig) as
+      | { phase: string; paused: string; requested_by: string }
+      | undefined;
+  }
+
+  private setPhase(rig: string, phase: Phase, paused?: string[]): void {
+    const at = new Date().toISOString();
+    this.o.store.db
+      .prepare(
+        "update rig_update set phase = ?, paused = coalesce(?, paused), updated_at = ? where rig = ?",
+      )
+      .run(phase, paused ? JSON.stringify(paused) : null, at, rig);
+  }
+
+  /**
+   * At control's start: an update a restart of control cut short ends, and the runs it paused
+   * resume, with why in the rig's history (goal 165). Its target can't be asked again, so the
+   * update is the owner's to ask again from the rig's page.
+   */
+  endUnfinished(): void {
+    const left = this.o.store.db.prepare("select * from rig_update").all() as {
+      rig: string;
+      phase: string;
+      paused: string;
+      requested_by: string;
+    }[];
+    for (const u of left) {
+      void this.resume(u.rig, JSON.parse(u.paused) as string[], u.requested_by).then(() => {
+        const why = `control restarted while it was ${PHASE_WORDS[u.phase as Phase]?.toLowerCase().replace(/\.$/, "") ?? u.phase}: update the rig again from its page`;
+        log("control", "rig update ended by a restart", { rig: u.rig, phase: u.phase });
+        this.step(u.rig, "update_failed", false, why);
+        this.o.store.db.prepare("delete from rig_update where rig = ?").run(u.rig);
+      });
+    }
   }
 
   private view(rig: string): RigView | undefined {
@@ -155,16 +192,21 @@ export class RigUpdates {
    * on in the background: the promise it returns ends with it (the tests wait for it).
    */
   begin(rig: string, by: string, target: UpdateTarget): Promise<void> {
-    if (this.phases.has(rig))
+    if (this.row(rig))
       throw new Error(`An update of ${rig} is under way: wait until its steps end.`);
-    this.phases.set(rig, "pausing");
+    const at = new Date().toISOString();
+    this.o.store.db
+      .prepare(
+        "insert into rig_update (rig, phase, requested_by, started_at, updated_at) values (?, 'pausing', ?, ?, ?)",
+      )
+      .run(rig, by, at, at);
     return this.run(rig, by, target)
       .catch((err) => {
         const why = redact(err instanceof Error ? err.message : String(err));
         log("control", "rig update failed", { rig, error: why });
         this.step(rig, "update_failed", false, why);
       })
-      .finally(() => this.phases.delete(rig));
+      .finally(() => this.o.store.db.prepare("delete from rig_update where rig = ?").run(rig));
   }
 
   private async run(rig: string, by: string, target: UpdateTarget): Promise<void> {
@@ -199,6 +241,7 @@ export class RigUpdates {
         this.issue(rig, "pause_run", { run, reason: `control updates the rig to ${to}` }, by),
       );
       paused = running;
+      this.setPhase(rig, "pausing", paused);
       const took = await this.until(this.o.waits.pause, () =>
         ids.every((id) => this.o.store.command(id)?.status !== "pending"),
       );
@@ -214,7 +257,7 @@ export class RigUpdates {
       );
     }
     // 2. Move its containers onto control's images.
-    this.phases.set(rig, "applying");
+    this.setPhase(rig, "applying");
     const appliedAt = Date.now();
     try {
       this.step(rig, "update_images", true, await target.apply());
@@ -226,7 +269,7 @@ export class RigUpdates {
       return;
     }
     // 3. A report from control's version.
-    this.phases.set(rig, "reporting");
+    this.setPhase(rig, "reporting");
     let seen: RigView | undefined;
     const current = await this.until(this.o.waits.report, () => {
       seen = this.view(rig);
@@ -253,7 +296,7 @@ export class RigUpdates {
     }
     this.step(rig, "update_reported", true, `it runs Thermite ${to}`);
     // 4. Its isolation check, on the new images.
-    this.phases.set(rig, "isolation");
+    this.setPhase(rig, "isolation");
     // The check before this one, if any: the result wanted is a newer one (the rig's own clock
     // stamps it, so it is told apart by its start, not compared with control's time).
     const earlier = this.view(rig)?.checks.isolation?.started_at ?? null;
@@ -301,7 +344,7 @@ export class RigUpdates {
   /** Resumes the runs the update paused; a step only when it paused some. */
   private async resume(rig: string, runs: string[], by: string): Promise<void> {
     if (!runs.length) return;
-    this.phases.set(rig, "resuming");
+    this.setPhase(rig, "resuming");
     const done: string[] = [];
     const failed: string[] = [];
     for (const run of runs) {

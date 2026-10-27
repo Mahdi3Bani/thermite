@@ -55,6 +55,7 @@ import {
   sizeOf,
   sizeWords,
 } from "./cluster-resources.ts";
+import { type ClusterRigAction, clusterActionCalls } from "./clusters/actions.ts";
 import { deploymentEnv } from "./clusters/deployment.ts";
 import {
   type ClusterFacts,
@@ -175,7 +176,7 @@ import {
 } from "./providers.ts";
 import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
-import { exportLeft, resultsLeft } from "./results-left.ts";
+import { exportLeft, removeCheck, removeWords, resultsLeft } from "./results-left.ts";
 import {
   advisorsFileOf,
   agentModelsOf,
@@ -509,6 +510,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       staleAfterMs: opts.staleAfterMs,
       offlineAfterMs: opts.offlineAfterMs,
     });
+  updates.endUnfinished();
   // Only control's own script runs: even an escaping mistake cannot become code.
   app.use("/ui/*", async (c, next) => {
     await next();
@@ -5376,7 +5378,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       r.status === "removed" || r.status === "deploying"
         ? ""
         : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its pods") : act("stop", "Stop its pods")}${act("restart", "Restart them")}</div>
-<details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
+<details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. ${esc(removeWords(r.rig))}</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
     const want = controlImages(s.gpus);
     const keeps =
       "Its volume, tokens, runs and results stay. Running trials and the judge's job under way finish first: the rig starts nothing new meanwhile. Update now skips the wait: a trial in progress then stops, and its experiment goes back to the queue.";
@@ -5554,7 +5556,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       r.status === "removed" || r.status === "deploying"
         ? ""
         : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its services") : act("stop", "Stop its services")}${act("restart", "Restart them")}</div>
-<details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.machine)}</summary><div class="small muted" style="margin:6px 0">Stops its services and deletes its units, files and volumes on the machine, and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
+<details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.machine)}</summary><div class="small muted" style="margin:6px 0">Stops its services and deletes its units, files and volumes on the machine, and retires its token. ${esc(removeWords(r.rig))}</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
     return `<div class="block" ${placeAttrs(r.rig, r.status)}><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? gpuRoles(r.gpus, r.judge_gpus) : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${steps || `<div class="muted small">No step yet.</div>`}</div>${manage}</div></div>`;
   };
@@ -6784,11 +6786,15 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     return c.text(body, 200, { "cache-control": "no-store" });
   });
 
-  /** Stop, start, restart or remove a rig control set up on a cluster (its page, or MCP). */
+  /**
+   * Stop, start, restart or remove a rig control set up on a cluster (its page, or MCP); `said`
+   * goes in the audit log with it.
+   */
   const clusterRigAction = async (
     r: ClusterRig,
-    action: "stop" | "start" | "restart" | "remove",
+    action: ClusterRigAction,
     by: string,
+    said: Record<string, unknown> = {},
   ): Promise<{ ok: string } | { error: string }> => {
     if (
       // Stop and remove always work; a start or restart waits for the change under way.
@@ -6798,44 +6804,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       return { error: `${r.rig} is ${r.status}: wait until its page shows it running, or failed.` };
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
-    const sel = `app.kubernetes.io/instance=${r.rig}`;
-    const runs: string[][] =
-      action === "stop" || action === "start"
-        ? [
-            [
-              "scale",
-              "deployment",
-              "-n",
-              r.namespace,
-              "-l",
-              sel,
-              `--replicas=${action === "stop" ? 0 : 1}`,
-            ],
-          ]
-        : action === "restart"
-          ? [["rollout", "restart", "deployment", "-n", r.namespace, "-l", sel]]
-          : r.placement === "created"
-            ? [["delete", "namespace", r.namespace, "--wait=false", "--ignore-not-found"]]
-            : [
-                [
-                  "delete",
-                  "deployment,service,persistentvolumeclaim,secret",
-                  "-n",
-                  r.namespace,
-                  "-l",
-                  sel,
-                  "--ignore-not-found",
-                ],
-                [
-                  "delete",
-                  "resourceclaimtemplates",
-                  "-n",
-                  r.namespace,
-                  "-l",
-                  sel,
-                  "--ignore-not-found",
-                ],
-              ];
+    const runs = clusterActionCalls(r, action);
     for (const [i, args] of runs.entries()) {
       const out = await kube.kubectl(clusterTarget(k), args, undefined, 120_000);
       // A cluster without DRA has no resourceclaimtemplates: that last delete may fail harmlessly.
@@ -6857,7 +6826,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       void inBackground(store, "cluster", r.rig, "pods_running", awaitNewPods(r, k, "start"));
     } else store.setClusterRigStatus(r.rig, action === "stop" ? "stopped" : "removed");
     if (action === "remove") store.retireRig(r.rig, by);
-    store.audit(by, `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster });
+    store.audit(by, `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster, ...said });
     return { ok: `${STEP_WORDS[step]}.` };
   };
 
@@ -6899,13 +6868,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (!["stop", "start", "restart", "remove"].includes(action))
       return back("error", "No such action.");
     const f = await c.req.parseBody();
-    if (action === "remove" && String(f.confirm ?? "").trim() !== `remove ${r.rig}`)
-      return back("error", `Type "remove ${r.rig}" to remove it.`);
-    const done = await clusterRigAction(
-      r,
-      action as "stop" | "start" | "restart" | "remove",
-      "owner:ui",
-    );
+    const removing =
+      action === "remove" ? removeCheck(store, r.rig, String(f.confirm ?? "").trim()) : null;
+    if (removing && "refused" in removing) return back("error", removing.refused);
+    const done = await clusterRigAction(r, action as ClusterRigAction, "owner:ui", { ...removing });
     return "error" in done ? back("error", done.error) : back("ok", done.ok);
   });
   app.post("/ui/rigs/:rig/machine/:action", async (c) => {
@@ -6916,8 +6882,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (!["stop", "start", "restart", "remove"].includes(action))
       return back("error", "No such action.");
     const f = await c.req.parseBody();
-    if (action === "remove" && String(f.confirm ?? "").trim() !== `remove ${r.rig}`)
-      return back("error", `Type "remove ${r.rig}" to remove it.`);
+    const removing =
+      action === "remove" ? removeCheck(store, r.rig, String(f.confirm ?? "").trim()) : null;
+    if (removing && "refused" in removing) return back("error", removing.refused);
     const m = store.machine(r.machine);
     if (!m) return back("error", `The machine ${r.machine} is no longer in Providers.`);
     try {
@@ -6945,7 +6912,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       action === "stop" ? "stopped" : action === "remove" ? "removed" : "running",
     );
     if (action === "remove") store.retireRig(r.rig, "owner:ui");
-    store.audit("owner:ui", `machine_rig_${action}`, { rig: r.rig, machine: r.machine });
+    store.audit("owner:ui", `machine_rig_${action}`, {
+      rig: r.rig,
+      machine: r.machine,
+      ...removing,
+    });
     return back("ok", `${STEP_WORDS[action]}.`);
   });
   // ---------------------------------------------------------------- a rig's state (goal 012)

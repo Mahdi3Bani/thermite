@@ -3,19 +3,14 @@ import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   chownSync,
-  closeSync,
   existsSync,
-  fchmodSync,
-  fchownSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
-  writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,6 +38,7 @@ import {
   isRootOnly,
   isRunpodVariable,
   isSupervisorOnly,
+  makeSupervisorFiles,
   oneContainer,
   pullMode,
   readEnrollment,
@@ -639,22 +635,6 @@ function prepareOneContainer(): SupervisorPaths {
     }
     rmSync(env.THERMITE_CONTROL_PUBKEY_FILE as string, { force: true });
   }
-  mkdirSync(paths.home, { recursive: true });
-  if (statSync(paths.home).uid !== SU) {
-    execFileSync("chown", ["-R", "-P", `${SU}:${SG}`, paths.home], { stdio: "ignore" });
-  }
-  chmodSync(paths.home, 0o700);
-  rmSync(paths.tmp, { recursive: true, force: true });
-  mkdirSync(paths.tmp, { mode: 0o700 });
-  chownSync(paths.tmp, SU, SG);
-  // The inbox: the supervisor writes, the controller's group reads (setgid keeps the group on
-  // what is added); roles are in neither.
-  mkdirSync(paths.inbox, { recursive: true });
-  const inbox = statSync(paths.inbox);
-  if (inbox.uid !== SU || inbox.gid !== TG) {
-    execFileSync("chown", ["-R", "-P", `${SU}:${TG}`, paths.inbox], { stdio: "ignore" });
-  }
-  chmodSync(paths.inbox, 0o2750);
   // The token the supervisor uses on the harness API: root's copy is the harness's secret file.
   const rootToken = env.THERMITE_SUPERVISOR_TOKEN_FILE;
   if (!rootToken) {
@@ -667,18 +647,14 @@ function prepareOneContainer(): SupervisorPaths {
     writeFileSync(rootToken, randomBytes(32).toString("hex"), { mode: 0o600, flag: "wx" });
     log("broker", "made the token between the supervisor and the harness", { file: rootToken });
   }
-  const token = readFileSync(rootToken, "utf8").trim();
-  // The supervisor's copy: a new file (whatever was at the path goes), owned by it, 0600.
-  rmSync(paths.tokenFile, { recursive: true, force: true });
-  const fd = openSync(paths.tokenFile, "wx", 0o600);
-  try {
-    fchownSync(fd, SU, SG);
-    fchmodSync(fd, 0o600);
-    writeSync(fd, token);
-  } finally {
-    closeSync(fd);
-  }
+  supervisorFiles(paths);
   return paths;
+}
+
+/** The supervisor's files, with its copy of root's harness token (one-container image only). */
+function supervisorFiles(paths: SupervisorPaths): void {
+  const token = readFileSync(env.THERMITE_SUPERVISOR_TOKEN_FILE as string, "utf8").trim();
+  makeSupervisorFiles(paths, { uid: SU, gid: SG, inboxGid: TG }, token);
 }
 
 /** While the controller waits for enrollment, the broker says so at once and this often. */
@@ -784,6 +760,15 @@ function recordSupervisor(paths: SupervisorPaths): void {
 function startSupervisor(paths: SupervisorPaths): void {
   if (stopping) {
     finishIfStopped();
+    return;
+  }
+  // Made again before each start: a full reset's wipe empties its home (goal 165). None of its
+  // processes runs now, so nothing of its can swap a path in its home for a link meanwhile.
+  try {
+    supervisorFiles(paths);
+  } catch (err) {
+    log("broker", "the supervisor's files could not be made: trying again", { error: String(err) });
+    setTimeout(() => startSupervisor(paths), 10_000);
     return;
   }
   const startedAt = Date.now();

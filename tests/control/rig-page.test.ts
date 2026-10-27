@@ -163,7 +163,7 @@ async function control(o: { ssh?: MachineSsh; kube?: ClusterKubectl } = {}) {
     store.setRigBuild(rig, "harness", b);
     store.setRigBuild(rig, "supervisor", b);
   };
-  return { store, api, page, post, send, report, lastSeen, builds, updates, actions };
+  return { store, keys, api, page, post, send, report, lastSeen, builds, updates, actions };
 }
 
 /** A rig control set up on gpu-host-1, which reports. */
@@ -222,6 +222,57 @@ describe("a rig's page: its version", () => {
     const same = await s.page("/ui/rigs/own-1");
     assert.doesNotMatch(same, /data-state=/);
     assert.match(same, /data-version="current">0\.1\.0 <span class="muted">· as control/);
+  });
+
+  test("a control restarted during an update ends it, and the runs it paused resume (goal 165)", async () => {
+    // The machine never answers the update's script: control restarts while it waits there.
+    const m = fakeMachine();
+    const ssh: MachineSsh = {
+      ...m.ssh,
+      sshScript: (t, script, ...rest) =>
+        script.includes("echo updated")
+          ? new Promise(() => {})
+          : m.ssh.sshScript(t, script, ...rest),
+    };
+    const s = await control({ ssh });
+    machineRig(s, "gpu-1");
+    s.builds("gpu-1", OLD);
+    s.report("gpu-1", [
+      {
+        kind: "run_created",
+        subject: "run-1",
+        body: { campaign: "camp", mode: "hill_climb", seed: { repo: "p" } },
+      },
+    ]);
+    await s.post("/ui/rigs/gpu-1/update");
+    await until(() => s.store.pendingCommands("gpu-1").length === 1);
+    const pause = s.store.pendingCommands("gpu-1")[0]?.envelope;
+    s.store.ackCommand("gpu-1", pause?.id ?? "", "delivered", { source: "harness" });
+    await until(() => /Moving its containers/.test(s.updates.waiting("gpu-1") ?? ""));
+    // Control starts again on the same store: the update it kept there ends.
+    const after = new RigUpdates({
+      store: s.store,
+      privateKeyPem: s.keys.privateKeyPem,
+      control: CONTROL,
+      staleAfterMs: 3 * MIN,
+    });
+    after.endUnfinished();
+    await until(() => after.waiting("gpu-1") === null);
+    const resume = s.store.pendingCommands("gpu-1").find((c) => c.envelope.kind === "resume_run");
+    assert.deepEqual(resume?.envelope.payload, { run: "run-1" });
+    assert.deepEqual(
+      s.store
+        .rigSetupEvents("gpu-1")
+        .filter((e) => ["update_resumed", "update_failed"].includes(e.step))
+        .map((e) => [e.step, e.detail]),
+      [
+        ["update_resumed", "runs resumed: run-1"],
+        [
+          "update_failed",
+          "control restarted while it was moving its containers onto control's images: update the rig again from its page",
+        ],
+      ],
+    );
   });
 
   test("Update to control's version: pause, the images over SSH, a report, the isolation check, resume", async () => {

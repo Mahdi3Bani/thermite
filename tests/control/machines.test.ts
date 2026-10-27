@@ -359,6 +359,16 @@ describe("machines in Providers", () => {
       await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove" }),
       /Type "remove box-a"/,
     );
+    // Refused while its results have not left it (goal 165), with how to get them out.
+    const exports = (waiting: number) => ({ export: { remote: false, to: "control", waiting } });
+    s.store.setSupervisor("box-a", exports(2));
+    assert.match(
+      await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove box-a" }),
+      /box-a still holds results: 2 exports wait on the rig to go to control\. Use Export/,
+    );
+    assert.equal(s.store.machineRig("box-a")?.status, "running");
+    assert.equal(scripts.length, 3);
+    s.store.setSupervisor("box-a", exports(0));
     assert.match(
       await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove box-a" }),
       /ok=Removed/,

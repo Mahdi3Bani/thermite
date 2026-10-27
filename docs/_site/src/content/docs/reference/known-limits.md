@@ -45,7 +45,7 @@ Thermite never ends research by default. A hill climb runs until you pause or cl
 
 So with a paid model key, the agents spend for as long as the campaign runs. Before you give a rig a paid key, set a stop time or a budget ([Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md)). Also set a spending limit with your model provider: the contract's model spend limit counts only the workers' trials, and only on a rig that has token prices.
 
-The dashboard's RunPod launch form fills in an idle stop of 30 minutes, which you can change or clear; it stops the pod only when no run is at work ([Run a rig on RunPod](../how-to/install/runpod-rig.md)).
+The dashboard's RunPod launch form fills in an idle stop of 30 minutes, which you can change or clear; it stops the pod only when no run is at work ([Run a rig on RunPod](../how-to/install/runpod-rig.md)). Control checks a pod's spend limit and idle stop only while control runs: a pod goes on costing while control is down, and control stops it when it starts again ([Run a rig on RunPod](../how-to/install/runpod-rig.md#5-watch-its-cost-and-change-its-limits)).
 
 **Removed by:** no goal. It is a decision: [Why Thermite runs until the job is done](../explanation/runs-until-done.md) says why.
 

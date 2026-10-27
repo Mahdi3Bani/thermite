@@ -119,6 +119,9 @@ describe("full reset", () => {
   test("pause, export, verified push, wipe, restart; the harness starts again with a fresh ledger", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
+    // A job the judge has not taken: once the run is paused it stays queued, and the reset must
+    // not wait for it (goal 165).
+    const queued = env.ledger.enqueueJob({ kind: "validate", spec: { run: "js-1" }, actor: "t" });
     let wiped = false;
     env.service.onWipe = () => {
       wiped = true;
@@ -169,7 +172,11 @@ describe("full reset", () => {
     rs = await relayOnce(relay, rs); // the pause reaches the harness; the rig reports idle
     assert.equal(env.ledger.getRun("js-1")?.status, "paused");
     await step();
+    assert.equal(state(), "quiescing", "its queued job counts until control sees the run paused");
+    rs = await relayOnce(relay, rs); // the harness's report of the pause
+    await step();
     assert.equal(state(), "exporting");
+    assert.equal(env.ledger.jobById(queued)?.state, "queued");
     rs = await relayOnce(relay, rs); // the full export (the supervisor's acknowledgement)
     await step();
     assert.equal(state(), "exporting", "waits for the harness's own record of the export");

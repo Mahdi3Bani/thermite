@@ -1,8 +1,12 @@
+import { execFileSync } from "node:child_process";
 import { createPublicKey } from "node:crypto";
 import {
   chmodSync,
+  chownSync,
   closeSync,
   constants,
+  fchmodSync,
+  fchownSync,
   fstatSync,
   lstatSync,
   mkdirSync,
@@ -10,7 +14,9 @@ import {
   readSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import {
@@ -95,6 +101,45 @@ export function supervisorPaths(env: Env): SupervisorPaths {
     inbox: env.THERMITE_INBOX_DIR ?? "/inbox",
     tokenFile: join(home, "harness-token"),
   };
+}
+
+/**
+ * The supervisor's files: its home and temporary directory (its own, closed to every other user),
+ * the inbox it shares with the controller, and its copy of the token it uses on the harness API.
+ * The broker makes them at start and again before each start of the supervisor (goal 165): a full
+ * reset's wipe empties its home. Only while none of the supervisor's processes runs, so nothing
+ * can swap a path in its home for a link meanwhile.
+ */
+export function makeSupervisorFiles(
+  paths: SupervisorPaths,
+  ids: { uid: number; gid: number; inboxGid: number },
+  token: string,
+): void {
+  const { uid, gid, inboxGid } = ids;
+  mkdirSync(paths.home, { recursive: true });
+  if (statSync(paths.home).uid !== uid)
+    execFileSync("chown", ["-R", "-P", `${uid}:${gid}`, paths.home], { stdio: "ignore" });
+  chmodSync(paths.home, 0o700);
+  rmSync(paths.tmp, { recursive: true, force: true });
+  mkdirSync(paths.tmp, { mode: 0o700 });
+  chownSync(paths.tmp, uid, gid);
+  // The inbox: the supervisor writes, the controller's group reads (setgid keeps the group on
+  // what is added); roles are in neither.
+  mkdirSync(paths.inbox, { recursive: true });
+  const inbox = statSync(paths.inbox);
+  if (inbox.uid !== uid || inbox.gid !== inboxGid)
+    execFileSync("chown", ["-R", "-P", `${uid}:${inboxGid}`, paths.inbox], { stdio: "ignore" });
+  chmodSync(paths.inbox, 0o2750);
+  // Its copy of the token: a new file (whatever was at the path goes), owned by it, 0600.
+  rmSync(paths.tokenFile, { recursive: true, force: true });
+  const fd = openSync(paths.tokenFile, "wx", 0o600);
+  try {
+    fchownSync(fd, uid, gid);
+    fchmodSync(fd, 0o600);
+    writeSync(fd, token);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /**

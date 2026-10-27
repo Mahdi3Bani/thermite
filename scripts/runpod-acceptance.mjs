@@ -18,6 +18,8 @@
 //   start      the pod runs again with its launch values: root restores its state from the
 //              sealed snapshot on its fresh disk, every file verified, and it reports with the
 //              same keys, enrollment and token;
+//   reset      a full reset: an export leaves the pod, the harness and the supervisor wipe their
+//              state and start again in the pod, and both report again (goal 165);
 //   terminate  a full export leaves the pod, then the pod and its volume are removed, and the
 //              rig is retired.
 //
@@ -33,6 +35,7 @@ import { cleanEngine } from "./lib/smoke-env.mjs";
 
 // Control's side, in this process (Node.js strips the types of these files).
 const { createControlApi } = await import("../src/control/api.ts");
+const { advanceResets } = await import("../src/control/lifecycle.ts");
 const { RunpodRigs } = await import("../src/control/runpod-rigs.ts");
 const { SecretBox } = await import("../src/control/secrets.ts");
 const { ControlStore } = await import("../src/control/store.ts");
@@ -202,6 +205,12 @@ try {
     }, 500),
     setInterval(() => {
       rigs.advance().catch((err) => console.error(`runpod rigs: ${String(err)}`));
+    }, 2000),
+    setInterval(() => {
+      const privateKeyPem = keys.privateKeyPem;
+      advanceResets({ store, privateKeyPem, staleAfterMs: 180_000 }).catch((err) =>
+        console.error(`resets: ${String(err)}`),
+      );
     }, 2000),
   );
 
@@ -375,6 +384,36 @@ try {
     JSON.stringify(restored),
   );
 
+  // Full reset: the pod and its GPU stay. An export leaves the pod first; after the owner's
+  // confirmation the harness and the supervisor wipe their state and start again in the pod, the
+  // supervisor's files made again by root (goal 165), and both report again.
+  const resetAsked = await api(`/v1/rigs/${rig}/reset`, { confirm: `reset ${rig}` });
+  check(
+    resetAsked.status === 201,
+    "the owner asks for a full reset over REST",
+    resetAsked.body.error,
+  );
+  const resetOf = () => store.resets(50).find((r) => Number(r.id) === resetAsked.body.reset);
+  const resetIn = (...states) => (states.includes(String(resetOf()?.state)) ? true : undefined);
+  await until("the reset's export", () => resetIn("awaiting_owner", "failed", "cancelled"));
+  check(
+    resetIn("awaiting_owner"),
+    "the reset's export reached control, and the reset waits for the owner",
+    String(resetOf()?.detail),
+  );
+  const ledgerBefore = store.rigs().find((u) => u.id === rig)?.ledger_id;
+  await api(`/v1/resets/${resetAsked.body.reset}/confirm`, {});
+  await until("the wipe", () => resetIn("done", "failed"));
+  const wipedAt = Date.now();
+  check(resetIn("done"), "the rig wiped its state", String(resetOf()?.detail));
+  await until("a report from the wiped harness", () =>
+    store.rigs().find((u) => u.id === rig && u.ledger_id !== ledgerBefore),
+  );
+  await until("a report from the supervisor after the wipe", () =>
+    Date.parse(store.supervisor(rig)?.received_at ?? "") > wipedAt ? true : undefined,
+  );
+  check(true, "the harness reports a new ledger, and the supervisor reports again");
+
   // Terminate: a full export leaves the pod, then the pod and its volume go.
   const termAt = new Date().toISOString();
   const termAsked = await api(`/v1/rigs/${rig}/runpod/terminate`, { confirm: `terminate ${rig}` });
@@ -408,6 +447,8 @@ try {
     "runpod_stopped",
     "runpod_starting",
     "runpod_running",
+    "reset_requested",
+    "reset_done",
     "runpod_terminating",
     "runpod_terminated",
   ];

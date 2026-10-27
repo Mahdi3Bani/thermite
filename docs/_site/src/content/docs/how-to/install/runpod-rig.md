@@ -107,6 +107,8 @@ A number sets a limit, `off` clears it, and a limit you leave out stays.
 
 A pod that reaches a limit is stopped as in step 6: its runs are paused and its results sent out first. It is never removed. While the pod has cost its spend limit, control refuses to start it: raise or clear the limit first.
 
+**Control checks the limits, not the pod.** Control looks at each pod every 30 seconds while it runs, and the pod can't stop itself. While control is down, a pod goes on costing past its limits. When control starts again, its first look stops a pod that passed a limit meanwhile, and the pod's notes say `Control was not running from` the time it last looked.
+
 ## 6. Stop and start it
 
 A stopped pod costs nothing for its GPU, and keeps its volume, with the snapshot of the rig's state, until you start it again.

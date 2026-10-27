@@ -359,6 +359,29 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     assert.equal(s.cloud.stops().length, 1);
   });
 
+  test("a limit passed while control was away stops the pod at its first step, and says so (goal 165)", async () => {
+    const s = setup();
+    const v = await s.rigs.launch("runpod", { gpu: "RTX A4000", spend_limit_usd: 1 }, "owner:api");
+    await s.advance(60_000);
+    assert.deepEqual(s.cloud.stops(), [], "a minute: $0.00 of $1.00");
+    // Control stops for five hours, and starts again on the same store: its first step.
+    const back = Date.now() + 5 * HOUR;
+    const again = new RunpodRigs(s.store, s.secrets, s.tunnels, {
+      fetch: s.cloud.fetch,
+      image: IMAGE,
+      now: () => back,
+      privateKeyPem: generateSigningKeys().privateKeyPem,
+    });
+    await again.advance();
+    assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
+    const stopped = again.view(v.rig) as RunpodRigView;
+    assert.equal(stopped.stopped_by, "spend_limit");
+    assert.match(
+      stopped.notes.join(" "),
+      /Control was not running from .*: the pod passed this limit meanwhile, and control stopped it as soon as it started again\./,
+    );
+  });
+
   test("an idle stop counts only after enrollment, and only while no run is at work", async () => {
     const s = setup();
     const v = await s.rigs.launch(

@@ -9,7 +9,7 @@ import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import type { RunpodRigView } from "./runpod-rig-view.ts";
 import type { RunpodRigs } from "./runpod-rigs.ts";
 import type { ControlStore } from "./store.ts";
-import { rigView } from "./views.ts";
+import { type RigView, rigView } from "./views.ts";
 
 /**
  * Lifecycle: restarting a rig's containers, and the owner's full reset. Pause and resume are
@@ -363,9 +363,7 @@ async function advanceOnce(input: {
         }
         case "quiescing": {
           const v = rigView(store, rig, { staleAfterMs: input.staleAfterMs });
-          const busy = Number(v?.jobs.queued ?? 0) + Number(v?.jobs.leased ?? 0);
-          const pending = store.pendingCommands(rig).length;
-          if (busy > 0 || pending > 0) break;
+          if (judgeBusy(v) > 0 || store.pendingCommands(rig).length > 0) break;
           store.updateReset(id, {
             state: "exporting",
             command: issue("export_now", { full: true }),
@@ -486,4 +484,16 @@ export function inClusterApi(env: NodeJS.ProcessEnv): string {
   if (!host) return "https://kubernetes.default.svc";
   const port = env.KUBERNETES_SERVICE_PORT ?? "443";
   return `https://${host.includes(":") ? `[${host}]` : host}:${port}`;
+}
+
+/**
+ * The judge's jobs a full reset waits for before its export (goal 165): those under way, and the
+ * queued jobs it will still take. The reset paused the runs, and the judge never takes a paused or
+ * closed run's queued job: those stay in the queue, and the export carries them.
+ */
+export function judgeBusy(v: RigView | undefined): number {
+  if (!v) return 0;
+  const held = new Set(v.runs.filter((r) => r.status !== "running").map((r) => r.id));
+  const queued = v.judge.queued.filter((j) => !j.run || !held.has(j.run)).length;
+  return Number(v.jobs.leased ?? 0) + queued;
 }

@@ -23,7 +23,7 @@ describe("control's store migrations", () => {
     old.close();
 
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 1);
+    assert.equal(version(store.db), 2);
     const folder = store.db.prepare("select name from campaign_folder").get() as { name: string };
     assert.equal(folder.name, "speed");
     store.db.close();
@@ -45,9 +45,24 @@ describe("control's store migrations", () => {
   test("a new store is not copied", () => {
     const path = fresh();
     const store = new ControlStore(path);
-    assert.equal(version(store.db), 1);
+    assert.equal(version(store.db), 2);
     store.db.close();
     assert.deepEqual(copiesOf(path), []);
+  });
+
+  test("a store at version 1 is copied, then gets the table of updates under way (goal 165)", () => {
+    const path = fresh();
+    const one = new ControlStore(path);
+    one.db.exec("drop table rig_update; delete from schema_migrations where version = 2");
+    one.db.close();
+    const store = new ControlStore(path);
+    assert.equal(version(store.db), 2);
+    assert.ok(store.db.prepare("select 1 from sqlite_master where name = 'rig_update'").get());
+    store.db.close();
+    assert.deepEqual(
+      copiesOf(path).map((c) => c.version),
+      [1],
+    );
   });
 
   test("a store newer than this code is refused, naming the copy to restore", () => {
@@ -56,11 +71,11 @@ describe("control's store migrations", () => {
     old.exec(V010);
     old.close();
     const store = new ControlStore(path);
-    store.db.prepare("insert into schema_migrations (version) values (2)").run();
+    store.db.prepare("insert into schema_migrations (version) values (3)").run();
     store.db.close();
     assert.throws(
       () => new ControlStore(path),
-      /control store is at schema version 2, newer than this code's 1: .*the copy made then: .*control\.db\.v0\..*\.copy/,
+      /control store is at schema version 3, newer than this code's 2: .*the copy made then: .*control\.db\.v0\..*\.copy/,
     );
   });
 });
