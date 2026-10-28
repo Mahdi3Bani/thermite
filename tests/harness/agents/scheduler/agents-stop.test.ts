@@ -259,8 +259,9 @@ describe("agent scheduler: the agents stop", () => {
     const almost = 30 * 60_000 - 300;
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 10 } });
     await env.start();
-    const results = [wall(almost), wall(60_000)];
-    const one = provider(env, () => results.shift() ?? wall(60_000));
+    // Each result is made when its trial ends, so a slow round does not use up the 300 ms.
+    const results = [() => wall(almost), () => wall(60_000)];
+    const one = provider(env, () => (results.shift() ?? (() => wall(60_000)))());
     await one.round();
     assert.equal(one.events("agents_stopped").length, 0, "not yet 30 minutes");
     await new Promise((r) => setTimeout(r, 400));
