@@ -57,7 +57,7 @@ export function relayRoutes(app: Hono, api: ApiContext): void {
   app.get("/v1/rigs/:rig/git/kits/:repo/*", rigAuth, (c) => {
     const m = /^(.+)\.git$/.exec(c.req.param("repo"));
     const rel = c.req.path.split(`/git/kits/${c.req.param("repo")}/`)[1] ?? "";
-    const body = m && opts.kits ? opts.kits.file(m[1] as string, rel) : undefined;
+    const body = m && parts.kits ? parts.kits.file(m[1] as string, rel) : undefined;
     if (!body) return c.text("not found", 404);
     return c.body(new Uint8Array(body), 200, {
       "content-type": "application/octet-stream",

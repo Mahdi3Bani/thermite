@@ -13,16 +13,15 @@ import type { ApiContext } from "./context.ts";
  * from. The owner's token adds; the reader's reads too (MCP's kit_add takes an operator's).
  */
 export function kitRoutes(app: Hono, api: ApiContext): void {
-  const { store, opts, admin, reader } = api;
+  const { store, admin, reader } = api;
+  const { kits } = api.parts;
 
   app.get(KITS.path, reader, (c) =>
-    opts.kits
-      ? c.json(kitsAnswer(opts.kits))
-      : c.json({ error: "this control keeps no kits" }, 404),
+    kits ? c.json(kitsAnswer(kits)) : c.json({ error: "this control keeps no kits" }, 404),
   );
   app.get("/v1/kits/:name", reader, (c) => {
-    if (!opts.kits) return c.json({ error: "this control keeps no kits" }, 404);
-    const out = kitAnswer(opts.kits, c.req.param("name"));
+    if (!kits) return c.json({ error: "this control keeps no kits" }, 404);
+    const out = kitAnswer(kits, c.req.param("name"));
     return out.ok ? c.json(out.answer) : c.json({ error: out.error }, out.status);
   });
   app.post(
@@ -43,13 +42,13 @@ export function kitRoutes(app: Hono, api: ApiContext): void {
         store.auditLog.add("owner:api", "refused", { path, why: redact(error) });
         return c.json({ error }, status);
       };
-      if (!opts.kits) return refuse("this control keeps no kits", 404);
+      if (!kits) return refuse("this control keeps no kits", 404);
       const force = c.req.query("force");
       if (force !== undefined && !["", "true", "false", "1", "0"].includes(force))
         return refuse("force is true or false", 400);
       const out = await addKit(
         store,
-        opts.kits,
+        kits,
         {
           name,
           bundle: Buffer.from(await c.req.arrayBuffer()),

@@ -88,7 +88,7 @@ export function createControlApi(
     servers: mcpServers,
     admin,
     rigAuth,
-    publicUrl: opts.publicUrl,
+    publicUrl: parts.publicUrl,
   });
 
   // Where control keeps the exports rigs without a results repository send it (api/results.ts
@@ -120,7 +120,7 @@ export function createControlApi(
       secrets,
       chatgpt,
       providerFetch: opts.providerFetch,
-      kits: opts.kits,
+      kits: parts.kits,
       probeRepo: opts.probeRepo,
       readKit: opts.readKit,
       cloudFetch: opts.cloudFetch,
@@ -151,8 +151,8 @@ export function createControlApi(
     driver: opts.driver,
     parts,
     mcpServers,
-    publicUrl: opts.publicUrl,
-    kits: opts.kits,
+    publicUrl: parts.publicUrl,
+    kits: parts.kits,
   });
 
   return app;

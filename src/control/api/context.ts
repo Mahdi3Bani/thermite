@@ -124,6 +124,11 @@ export interface ControlOptions {
   rigUpdates?: RigUpdates | undefined;
   /** The message bus's users, when control runs the bus: a rig's new key gets its user there. */
   busUsers?: BusUsers | undefined;
+  /**
+   * Control's parts, made once by its main (parts.ts), whose loops use the same ones. Without
+   * them (a test's control), the API makes its own from the options above.
+   */
+  parts?: ControlParts | undefined;
 }
 
 /** What every section of the API takes, built once by createControlApi. */
@@ -177,8 +182,8 @@ export function apiContext(
   };
 
   const owner = Credential.from(tokens.admin);
-  // What the dashboard, REST and MCP share, made once (parts.ts).
-  const parts = controlParts(store, privateKeyPem, opts, viewOpts);
+  // What the dashboard, REST and MCP share, made once (parts.ts): by control's main, or here.
+  const parts = opts.parts ?? controlParts(store, privateKeyPem, opts, viewOpts);
   const { tunnels } = parts;
   tunnels.serveWith((rig, call) =>
     Promise.resolve(

@@ -9,23 +9,18 @@ import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
 import { createControlApi } from "./api.ts";
 import { BUS_USERS_SYNC_MS, BusUsers, busUsersFile } from "./bus/users.ts";
-import { realKubectl } from "./clusters/kubectl.ts";
 import { Credential } from "./credential.ts";
 import { followReports } from "./ingest.ts";
 import { sendCommandsOn } from "./issue/bus.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
-import { openSsh } from "./machines/ssh.ts";
-import { McpServers } from "./mcp-servers.ts";
+import { controlParts } from "./parts.ts";
 import { checkQuietRigs } from "./rig-watch.ts";
 import { checkRigPlace } from "./rigs/place.ts";
 import { refreshGpuClouds } from "./runpod.ts";
-import { RunpodRigs } from "./runpod-rigs.ts";
-import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { CONTROL_NUMBERS } from "./settings.ts";
 import { ControlStore } from "./store.ts";
-import { ControlTunnels } from "./tunnel.ts";
 
 /** Control service entry point. Generates its signing key on first start. */
 async function main(): Promise<void> {
@@ -107,44 +102,21 @@ async function main(): Promise<void> {
         reload: (seed) => reloadBus(natsUrl, seed),
       })
     : undefined;
-  // Test pods on GPU clouds, advanced by the loop below.
-  const runpodTests = new RunpodTests(store, secrets, {
-    image: env.THERMITE_RUNPOD_TEST_IMAGE || undefined,
-  });
-  // MCP servers for the agents (goal 068). An older control's outside knowledge bases become
-  // ordinary MCP servers here, once, with their tokens.
-  const mcpServers = new McpServers(store, secrets);
-  // Rigs in pull mode (on RunPod): control connects to each, in the loop below.
-  const tunnels = new ControlTunnels(store, secrets, privateKeyPem);
-  // Rigs the owner launches on RunPod: their pods, prices and spend, and each stop, start,
-  // restart and terminate under way, followed by the loop below.
-  const runpodRigs = new RunpodRigs(store, secrets, tunnels, {
-    image: env.THERMITE_RUNPOD_RIG_IMAGE || undefined,
-    staleAfterMs,
+  // What the dashboard, REST, MCP and the loops below share, made once here (parts.ts): the test
+  // pods on GPU clouds, the agents' MCP servers (goal 068), the rigs in pull mode and the rigs the
+  // owner launches on RunPod among them.
+  const parts = controlParts(
+    store,
     privateKeyPem,
-  });
-  // What the loop below needs to check where a quiet rig runs, as its page's Check again does.
-  const places = { store, secrets, machineSsh: openSsh, kube: realKubectl };
-  const server = serve({
-    fetch: createControlApi(store, tokens, privateKeyPem, {
+    {
       staleAfterMs,
-      offlineAfterMs,
-      driver,
-      requireKeyAcceptance,
-      sessionDays: readNumber(env, CONTROL_NUMBERS.sessionDays),
       secrets,
-      runpodTests,
-      mcpServers,
-      tunnels,
-      runpodRigs,
+      runpodTestImage: env.THERMITE_RUNPOD_TEST_IMAGE || undefined,
+      runpodRigImage: env.THERMITE_RUNPOD_RIG_IMAGE || undefined,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
-      // Exports from rigs without a results repository, kept in control's state.
-      exportsDir: join(dir, "exports"),
       // How rigs and the machines control sets rigs up on reach control.
       publicUrl: env.THERMITE_CONTROL_PUBLIC_URL || undefined,
-      // Who may use the message bus: a rig's new key gets its user there.
-      busUsers,
       // The images rigs on machines run (none: control can't set rigs up there).
       rigImages:
         env.THERMITE_RIG_HARNESS_IMAGE && env.THERMITE_RIG_SUPERVISOR_IMAGE
@@ -154,6 +126,22 @@ async function main(): Promise<void> {
               supervisor: env.THERMITE_RIG_SUPERVISOR_IMAGE,
             }
           : undefined,
+    },
+    { staleAfterMs, offlineAfterMs, control: buildInfo() },
+  );
+  const { runpodTests, tunnels, runpodRigs } = parts;
+  const server = serve({
+    fetch: createControlApi(store, tokens, privateKeyPem, {
+      staleAfterMs,
+      offlineAfterMs,
+      driver,
+      requireKeyAcceptance,
+      sessionDays: readNumber(env, CONTROL_NUMBERS.sessionDays),
+      parts,
+      // Exports from rigs without a results repository, kept in control's state.
+      exportsDir: join(dir, "exports"),
+      // Who may use the message bus: a rig's new key gets its user there.
+      busUsers,
     }).fetch,
     hostname: host,
     port,
@@ -222,7 +210,8 @@ async function main(): Promise<void> {
     watching = true;
     checkQuietRigs({
       store,
-      check: (rig, by) => checkRigPlace(places, rig, by),
+      // Where a quiet rig runs is checked as its page's Check again does.
+      check: (rig, by) => checkRigPlace(parts, rig, by),
       staleAfterMs,
       offlineAfterMs,
     })
