@@ -356,11 +356,13 @@ function watchAdvisor() {
 
 async function advisor() {
   const { runAdvisor } = await import("/opt/thermite/dist/supervisor/advisors/index.js");
+  // The auditor's own prompt, as its role renders it (goal 166), with the check's marker in its
+  // package.
+  const { renderAuditor } = await import("/opt/thermite/dist/agents/roles/index.js");
   const watch = watchAdvisor();
   const r = await runAdvisor({
     runtime: { name: "check", runtime: "claude-code", model: model.model, token: TOKEN, timeout_s: 120 },
-    system: "You audit a candidate change.",
-    prompt: "ADVISOR-CHECK Is this change clear?",
+    prompt: (f) => renderAuditor({ pkg: { question: "ADVISOR-CHECK Is this change clear?" } }, f),
     schema: {
       safeParse: (v) =>
         v && typeof v === "object" && typeof v.decision === "string"
