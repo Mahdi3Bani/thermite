@@ -1,3 +1,4 @@
+import { registrableDomain } from "../../agents/tools/fetcher.ts";
 import {
   CARD_ANSWER_MAX,
   CARD_CLAIMS_MAX,
@@ -17,7 +18,6 @@ import type { CardRow } from "../ledger/cards.ts";
 import type { ClaimRow } from "../ledger/claims.ts";
 import { type Ledger, LedgerError } from "../ledger/index.ts";
 import { checkCited } from "./checks.ts";
-import { registrableDomain } from "./fetcher.ts";
 
 /** A card's wire words and limits (their home: core/api/harness/research.ts). */
 export { CARD_ANSWER_MAX, CARD_GAP_MAX, CardInput, type CardSubmission, questionLabel };

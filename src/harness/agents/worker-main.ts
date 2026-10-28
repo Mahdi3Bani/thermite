@@ -1,14 +1,13 @@
 import { readFileSync } from "node:fs";
+import { modelConfigFromEnv, UsageSender } from "../../agents/model/index.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import { KEPT_MAX } from "../compactions.ts";
 import { apiCall } from "./api-call.ts";
 import type { ReplyNow, TrialProgress } from "./live-session.ts";
-import { modelConfigFromEnv } from "./model.ts";
-import { runResearchTrial } from "./research-worker.ts";
+import { runResearchTrial } from "./research/index.ts";
 import type { AnyTrial } from "./spawn.ts";
-import { UsageSender } from "./usage-meter.ts";
 import {
   type CompactionLink,
   type McpForAgent,

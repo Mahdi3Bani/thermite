@@ -1,15 +1,20 @@
+import type {
+  FoundCompaction,
+  KeptAt,
+  OnCompacted,
+  OwnConversation,
+} from "../../../agents/compaction/index.ts";
+import type { McpAccess } from "../../../agents/mcp/index.ts";
+import type { ModelConfig } from "../../../agents/model/index.ts";
+import type { PlanWindows } from "../../../agents/programs/index.ts";
 import type { ResearchFolderPaths } from "../../../agents/tools/research.ts";
 import type { Harness } from "../../../core/agents.ts";
 import type { LiveKind } from "../../../core/live.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, Runner } from "../../broker/runner.ts";
-import type { FoundCompaction, KeptAt, OnCompacted, OwnConversation } from "../cli-compaction.ts";
 import type { MessageInbox, TrialProgress } from "../live-session.ts";
-import type { McpAccess } from "../mcp-tools.ts";
-import type { ModelConfig } from "../model.ts";
-import type { PlanWindows } from "../plan-windows.ts";
 import type { ProviderLink } from "../provider-errors.ts";
-import type { ResearchTrialSpec } from "../research-worker.ts";
+import type { ResearchTrialSpec } from "../research/index.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "../worker/index.ts";
 
 /**

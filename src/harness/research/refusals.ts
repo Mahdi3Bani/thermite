@@ -1,6 +1,6 @@
+import { FetchRefused } from "../../agents/tools/fetcher.ts";
 import { errorText } from "../../common/errors.ts";
 import type { Ledger } from "../ledger/index.ts";
-import { FetchRefused } from "./fetcher.ts";
 
 /**
  * Fetches refused for a reason that lasts (goal 136): too large, outside the campaign's sites,

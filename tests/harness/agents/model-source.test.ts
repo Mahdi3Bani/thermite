@@ -8,8 +8,8 @@ import {
   buildModel,
   modelConfigFromEnv,
   modelEnv,
-} from "../../../src/harness/agents/model.ts";
-import { type ControlRoute, ModelSource } from "../../../src/harness/agents/model-source.ts";
+} from "../../../src/agents/model/index.ts";
+import { type ControlRoute, ModelSource } from "../../../src/harness/agents/model/source.ts";
 
 const route: ControlRoute = {
   name: "opencode",

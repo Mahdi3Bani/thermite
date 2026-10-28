@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { AGENTS_NUMBERS } from "../../src/agents/settings.ts";
 import { CLI_NUMBERS } from "../../src/cli/settings.ts";
 import {
   type NumberSpec,
@@ -66,6 +67,7 @@ describe("numeric settings stop the part at start with words (goal 164)", () => 
     const tables: Record<string, NumberSpec>[] = [
       CONTROL_NUMBERS,
       HARNESS_NUMBERS,
+      AGENTS_NUMBERS,
       BROKER_NUMBERS,
       SUPERVISOR_NUMBERS,
       CLI_NUMBERS,

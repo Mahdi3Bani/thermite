@@ -8,13 +8,13 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { Research } from "../../src/harness/research/research/index.ts";
 import type { HarnessService } from "../../src/harness/service/index.ts";
+import { AdvisorsConfig } from "../../src/supervisor/advisors/index.ts";
 import {
   type AdviseConfig,
   adviseOnce,
   emptyAdviseState,
-} from "../../src/supervisor/advise/index.ts";
-import { AdvisorsConfig } from "../../src/supervisor/advisors/index.ts";
-import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
+} from "../../src/supervisor/advisors/pass/index.ts";
+import { serveAdvisorTools } from "../../src/supervisor/advisors/tools/mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 import { cardsUpToDate } from "../helpers/research-cards.ts";

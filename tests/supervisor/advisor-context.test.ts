@@ -6,8 +6,6 @@ import { describe, test } from "node:test";
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
-import { adviseOnce, advisorKeeper, emptyAdviseState } from "../../src/supervisor/advise/index.ts";
-import { runtimeOf } from "../../src/supervisor/advisor-routes.ts";
 import {
   type AdvisorRuntime,
   AdvisorsConfig,
@@ -16,6 +14,12 @@ import {
   runAdvisor,
   withRunContext,
 } from "../../src/supervisor/advisors/index.ts";
+import {
+  adviseOnce,
+  advisorKeeper,
+  emptyAdviseState,
+} from "../../src/supervisor/advisors/pass/index.ts";
+import { runtimeOf } from "../../src/supervisor/advisors/routes.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 

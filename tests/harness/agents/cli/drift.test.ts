@@ -8,24 +8,21 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { CHATGPT_LIMIT_CODE, type ModelConfig } from "../../../../src/agents/model/index.ts";
+import { NO_CLAUDE_CODE } from "../../../../src/agents/programs/claude-code/index.ts";
+import { NO_CODEX } from "../../../../src/agents/programs/codex/index.ts";
+import { NO_OPENCODE, opencodeExitWords } from "../../../../src/agents/programs/opencode/index.ts";
 import { laneLimits } from "../../../../src/core/contract.ts";
+import { claudeOnce, runClaudeTrial } from "../../../../src/harness/agents/cli/claude-code.ts";
+import { codexOnce, runCodexTrial } from "../../../../src/harness/agents/cli/codex.ts";
+import { PLANNER_ROLE } from "../../../../src/harness/agents/cli/common.ts";
 import {
-  claudeOnce,
-  NO_CLAUDE_CODE,
-  runClaudeTrial,
-} from "../../../../src/harness/agents/claude-code/index.ts";
-import { codexOnce, NO_CODEX, runCodexTrial } from "../../../../src/harness/agents/codex/index.ts";
-import { CHATGPT_LIMIT_CODE, type ModelConfig } from "../../../../src/harness/agents/model.ts";
-import {
-  NO_OPENCODE,
   type OpencodeTrialDeps,
-  opencodeExitWords,
   opencodeModelCheck,
   opencodeOnce,
-  PLANNER_ROLE,
   runOpencodeResearchTrial,
   runOpencodeTrial,
-} from "../../../../src/harness/agents/opencode/index.ts";
+} from "../../../../src/harness/agents/cli/opencode.ts";
 import type { TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
 import { fakeProgramRunner, type Program } from "../../../helpers/fake-program.ts";
 

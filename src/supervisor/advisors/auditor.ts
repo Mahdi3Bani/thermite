@@ -1,9 +1,9 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { AUDITOR_SYSTEM } from "../../agents/roles/auditor.ts";
+import { JOURNAL_FIELD } from "../../agents/tools/notes.ts";
 import { CITATION_MAX, CITATIONS_MAX, REASONS_MAX } from "../../core/api/harness/advisors.ts";
 import { LenientNotes } from "../../core/journal.ts";
-import { JOURNAL_FIELD } from "../../harness/agents/notes-tool.ts";
 import type { AdvisorKeeper, AdvisorResult, AdvisorTools } from "./call.ts";
 import { type AdvisorsConfig, packageFit } from "./config.ts";
 import { OwnerAnswers, OwnerAnswersSchema } from "./owner-answers.ts";

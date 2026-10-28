@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, RunOutcome } from "../../broker/runner.ts";
@@ -9,7 +8,8 @@ import type { TrialResult } from "../worker/index.ts";
 /**
  * What the trial loops of the agent programs that run as command-line programs (OpenCode,
  * Claude Code, Codex) share (goal 125, T7): the limits as the agent reads them, why a limit
- * stopped the program, the nudge and the owner's messages, the usage hand-over and the PATH.
+ * stopped the program, the nudge and the owner's messages, and the usage hand-over (the PATH their
+ * agent's shell gets is in src/agents/programs/path.ts).
  */
 
 /**
@@ -108,19 +108,6 @@ export function takeUsage(
   usage: ((u: CallUsage) => void) | undefined,
 ): void {
   for (const u of t.calls.splice(0)) usage?.(u);
-}
-
-/** CUDA's tools (nvcc and the rest), where a CUDA development base image puts them. */
-const CUDA_BIN = "/usr/local/cuda/bin";
-
-/**
- * The PATH an agent's own shell gets under OpenCode, Claude Code and Codex: the system's places,
- * with CUDA's first when the image has it, as the CUDA base image's own PATH has it, so `nvcc` is
- * found by name on a CUDA rig. (Pi's commands get the image's PATH from the broker.) A fixed list,
- * not the harness's own PATH, so what an agent runs does not depend on how the harness started.
- */
-export function agentPath(exists: (path: string) => boolean = existsSync): string {
-  return `${exists(CUDA_BIN) ? `${CUDA_BIN}:` : ""}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
 }
 
 /**

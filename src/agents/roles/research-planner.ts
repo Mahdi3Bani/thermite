@@ -5,7 +5,7 @@ import { MEASURES_NOTHING } from "../../core/research-check.ts";
  * The research planner (goal 166): it plans a research run's next round. It gives each lane a
  * research task (a question, the gap it closes, the kind of source to read) and changes the
  * queue and the pool of hypotheses; code checks the answer before any of it is applied
- * (harness/agents/research-planner.ts). It runs in the harness, on the planner's model.
+ * (harness/agents/research/planner.ts). It runs in the harness, on the planner's model.
  */
 
 /** The most pool hypotheses the planner promotes in one round. */

@@ -2,19 +2,27 @@ import { readFileSync } from "node:fs";
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import type { z } from "zod";
+import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
+import { mcpAgentTools, mcpLine } from "../../../agents/mcp/index.ts";
+import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/names.ts";
 import { errorText } from "../../../common/errors.ts";
 import { PAGE_MAX, SEARCH_MAX } from "../../../core/api/harness/research.ts";
 import type { UsageRoute } from "../../../core/usage.ts";
-import { Compactor, summarizer } from "../../../harness/agents/compaction.ts";
-import { mcpAgentTools, mcpLine } from "../../../harness/agents/mcp-tools.ts";
-import { buildModel, type ModelConfig } from "../../../harness/agents/model.ts";
-import { PiMeter } from "../../../harness/agents/usage-meter.ts";
-import { CODE_TOOL_NAMES, CODE_TOOLS, runCodeTool, toolText } from "../../code-tools.ts";
-import { PAPER_TOOL_NAMES, PAPER_TOOLS, runPaperTool } from "../../paper-tools.ts";
-import { RESEARCH_TOOL_NAMES, RESEARCH_TOOLS, runResearchTool } from "../../research-tools.ts";
 import type { AdvisorCall, AdvisorCompaction, AdvisorResult, AdvisorUsage } from "../call.ts";
 import { type AdvisorRuntime, advisorRoute } from "../config.ts";
+import {
+  CODE_TOOL_NAMES,
+  CODE_TOOLS,
+  PAPER_TOOL_NAMES,
+  PAPER_TOOLS,
+  RESEARCH_TOOL_NAMES,
+  RESEARCH_TOOLS,
+  runCodeTool,
+  runPaperTool,
+  runResearchTool,
+  toolText,
+} from "../tools/index.ts";
 
 /**
  * A Pi advisor whose answer is refused for the same problems this many times running is stuck:

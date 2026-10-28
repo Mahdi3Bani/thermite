@@ -2,7 +2,6 @@ import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TSchema } from "@earendil-works/pi-ai";
 import type { z } from "zod";
-import type { UsageRoute } from "../../../core/usage.ts";
 import {
   codexCompactions,
   codexOwn,
@@ -10,17 +9,20 @@ import {
   opencodeEnded,
   opencodeOwn,
   readUnder,
-} from "../../../harness/agents/cli-conversation.ts";
-import { codexBin, codexExe } from "../../../harness/agents/codex/index.ts";
-import { mcpLine } from "../../../harness/agents/mcp-tools.ts";
-import type { ModelConfig } from "../../../harness/agents/model.ts";
+} from "../../../agents/compaction/index.ts";
+import { mcpLine } from "../../../agents/mcp/index.ts";
+import type { ModelConfig } from "../../../agents/model/index.ts";
 import {
+  codexBin,
+  codexExe,
   OPENCODE_PLUGIN,
   OPENCODE_PLUGIN_LINK,
   opencodeBin,
   opencodeExe,
   opencodeKeepEnv,
-} from "../../../harness/agents/opencode/index.ts";
+} from "../../../agents/programs/index.ts";
+import type { UsageRoute } from "../../../core/usage.ts";
+import type { AdvisorKeeper, AdvisorResult, AdvisorTools } from "../call.ts";
 import {
   codexAdvisorArgs,
   codexAdvisorConfig,
@@ -28,11 +30,10 @@ import {
   opencodeAdvisorConfig,
   readCodexAnswer,
   readOpencodeAnswer,
-} from "../../advisor-cli.ts";
-import { serveAdvisorModel } from "../../advisor-proxy.ts";
-import { serveAdvisorTools } from "../../past-mcp.ts";
-import type { AdvisorKeeper, AdvisorResult, AdvisorTools } from "../call.ts";
+} from "../cli.ts";
 import { type AdvisorRuntime, advisorRoute } from "../config.ts";
+import { serveAdvisorModel } from "../proxy.ts";
+import { serveAdvisorTools } from "../tools/index.ts";
 import { callId, collectCompactions, runCli } from "./cli.ts";
 
 /**

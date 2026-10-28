@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { buildModel } from "../../../src/harness/agents/model.ts";
+import { buildModel } from "../../../src/agents/model/index.ts";
 import {
   DataSeen,
   modelStallMs,
@@ -13,7 +13,7 @@ import {
   stalledFor,
   stallGuard,
   stallWords,
-} from "../../../src/harness/agents/model-stall.ts";
+} from "../../../src/agents/model/stall.ts";
 import {
   classifyProviderError,
   type FailureCount,

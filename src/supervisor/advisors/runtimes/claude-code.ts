@@ -1,6 +1,11 @@
 import { join } from "node:path";
 import type { z } from "zod";
-import type { UsageRoute } from "../../../core/usage.ts";
+import {
+  claudeCompactions,
+  claudeOwn,
+  claudeTranscript,
+} from "../../../agents/compaction/index.ts";
+import { mcpLine } from "../../../agents/mcp/index.ts";
 import {
   CLAUDE_BASE_ENV,
   claudeBin,
@@ -8,16 +13,11 @@ import {
   claudeExe,
   claudeHookSettings,
   claudeResultUsage,
-} from "../../../harness/agents/claude-code/index.ts";
-import {
-  claudeCompactions,
-  claudeOwn,
-  claudeTranscript,
-} from "../../../harness/agents/cli-conversation.ts";
-import { mcpLine } from "../../../harness/agents/mcp-tools.ts";
-import { serveAdvisorTools } from "../../past-mcp.ts";
+} from "../../../agents/programs/index.ts";
+import type { UsageRoute } from "../../../core/usage.ts";
 import type { AdvisorCall, AdvisorResult } from "../call.ts";
 import { type AdvisorRuntime, advisorRoute } from "../config.ts";
+import { serveAdvisorTools } from "../tools/index.ts";
 import { callId, collectCompactions, lastJsonObject, runCli } from "./cli.ts";
 
 /**

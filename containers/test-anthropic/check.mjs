@@ -44,7 +44,7 @@ const api = await startAnthropicStandIn({ token: TOKEN });
 async function harness() {
   const { BrokerClient } = await import("/opt/thermite/dist/harness/broker/client.js");
   const { claudeModelCheck, claudeOnce, runClaudeTrial } = await import(
-    "/opt/thermite/dist/harness/agents/claude-code/index.js"
+    "/opt/thermite/dist/harness/agents/cli/claude-code.js"
   );
   const runner = new BrokerClient("/run/thermite/broker.sock");
   const scratchDir = "/scratch/thermite";

@@ -3,16 +3,16 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { runClaudeTrial } from "../../../src/harness/agents/claude-code/index.ts";
-import { runCodexTrial } from "../../../src/harness/agents/codex/index.ts";
+import { runClaudeTrial } from "../../../src/harness/agents/cli/claude-code.ts";
+import { runCodexTrial } from "../../../src/harness/agents/cli/codex.ts";
 import {
   runOpencodeResearchTrial,
   runOpencodeTrial,
-} from "../../../src/harness/agents/opencode/index.ts";
+} from "../../../src/harness/agents/cli/opencode.ts";
 import {
   type ResearchTrialSpec,
   runResearchTrial,
-} from "../../../src/harness/agents/research-worker.ts";
+} from "../../../src/harness/agents/research/worker.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { runTrial, type TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import type { createHarnessApi } from "../../../src/harness/api/index.ts";

@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROLES } from "../../../src/agents/roles/index.ts";
 import { createHarnessApi } from "../../../src/harness/api/index.ts";
-import { adviseOnce, emptyAdviseState } from "../../../src/supervisor/advise/index.ts";
 import { AdvisorsConfig } from "../../../src/supervisor/advisors/index.ts";
+import { adviseOnce, emptyAdviseState } from "../../../src/supervisor/advisors/pass/index.ts";
 import { type Script, startFakeModel } from "../../helpers/fake-model.ts";
 
 /**

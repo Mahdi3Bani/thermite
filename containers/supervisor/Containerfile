@@ -67,7 +67,7 @@ RUN mkdir -p /out \
 FROM ${NODE_IMAGE}
 # python3: for an operator's staging scripts, which put models and repo bundles into the inbox
 # before the supervisor starts (they run in this container). No bubblewrap: an advisor runs
-# Claude Code with its own sandbox off (src/harness/agents/claude-code/index.ts says why).
+# Claude Code with its own sandbox off (src/agents/programs/claude-code/index.ts says why).
 # The base's system packages are upgraded first, so each build takes the distribution's fixes
 # (goal 125).
 RUN apt-get update \

@@ -1,5 +1,5 @@
+import { registrableDomain } from "../../../agents/tools/fetcher.ts";
 import type { TaskYield } from "../../queue.ts";
-import { registrableDomain } from "../fetcher.ts";
 import type { ResearchContext } from "./context.ts";
 
 /**

@@ -4,22 +4,21 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
-import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../src/agents/roles/worker.ts";
-import { laneLimits } from "../../../src/core/contract.ts";
-import type { CallUsage } from "../../../src/core/usage.ts";
+import { modelConfigFromEnv } from "../../../src/agents/model/index.ts";
 import {
   claudeArgs,
   claudeExitWords,
-  claudeModelCheck,
   claudeShell,
   closeClaudeRun,
   NO_CLAUDE_CODE,
   newClaudeTally,
   readClaudeEvents,
-  runClaudeTrial,
-} from "../../../src/harness/agents/claude-code/index.ts";
-import { modelConfigFromEnv } from "../../../src/harness/agents/model.ts";
-import { ControlRoute } from "../../../src/harness/agents/model-source.ts";
+} from "../../../src/agents/programs/claude-code/index.ts";
+import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../src/agents/roles/worker.ts";
+import { laneLimits } from "../../../src/core/contract.ts";
+import type { CallUsage } from "../../../src/core/usage.ts";
+import { claudeModelCheck, runClaudeTrial } from "../../../src/harness/agents/cli/claude-code.ts";
+import { ControlRoute } from "../../../src/harness/agents/model/source.ts";
 import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
 import { fakeProgramRunner } from "../../helpers/fake-program.ts";

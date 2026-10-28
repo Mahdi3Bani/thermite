@@ -1,7 +1,7 @@
+import type { ModelConfig } from "../../../agents/model/index.ts";
 import type { StoredRule } from "../../../core/commands.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import type { CallUsage } from "../../../core/usage.ts";
-import type { ModelConfig } from "../model.ts";
 import type { Assignment } from "../registry.ts";
 import { type Ask, type PlannerTries, plannerTries } from "./call.ts";
 import type { PlanTry } from "./causes.ts";

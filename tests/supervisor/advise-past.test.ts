@@ -15,13 +15,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { KbItemWire } from "../../src/core/kb.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
+import { AdvisorsConfig, auditOne, reviewOne } from "../../src/supervisor/advisors/index.ts";
 import {
   type AdviseConfig,
   adviseOnce,
   emptyAdviseState,
-} from "../../src/supervisor/advise/index.ts";
-import { AdvisorsConfig, auditOne, reviewOne } from "../../src/supervisor/advisors/index.ts";
-import { PAST_MCP_TOOL, servePastSearch } from "../../src/supervisor/past-mcp.ts";
+} from "../../src/supervisor/advisors/pass/index.ts";
+import { PAST_MCP_TOOL, servePastSearch } from "../../src/supervisor/advisors/tools/mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 import { kbFile } from "../helpers/kb-file.ts";

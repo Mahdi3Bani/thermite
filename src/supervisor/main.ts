@@ -9,6 +9,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { z } from "zod";
+import { McpGateway } from "../agents/mcp/index.ts";
+import { modelStallMs } from "../agents/model/index.ts";
 import { controlClient } from "../common/api/control.ts";
 import { harnessClient } from "../common/api/harness.ts";
 import { buildInfo } from "../common/build-info.ts";
@@ -26,15 +28,21 @@ import { EXPORTS_DONE, MCP_EVENTS } from "../core/api/harness/supervisor.ts";
 import { untoldKinds } from "../core/kb.ts";
 import { rigInboxPrefix } from "../core/link/users.ts";
 import type { McpUse } from "../core/mcp.ts";
-import { modelStallMs } from "../harness/agents/model-stall.ts";
-import { McpGateway } from "../harness/mcp-gateway.ts";
-import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise/index.ts";
-import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
-import { AdvisorsConfig, advisorsFileReport } from "./advisors/index.ts";
+import {
+  type AdviseState,
+  AdvisorsConfig,
+  adviseOnce,
+  advisorsFileReport,
+  type ControlAdvisors,
+  emptyAdviseState,
+  fetchControlAdvisors,
+  harnessAdvisors,
+  mergeAdvisors,
+  teachersCalled,
+} from "./advisors/index.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
-import { harnessAdvisors } from "./harness-advisors.ts";
 import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
 import { syncMcpServers } from "./mcp-sync.ts";

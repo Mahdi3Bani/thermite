@@ -17,7 +17,7 @@ import {
   removeFile,
   searchFiles,
   writeFile,
-} from "../../../src/harness/agents/research-files.ts";
+} from "../../../src/harness/agents/tools/files.ts";
 
 /** A folder with a record, a lane's working area, and a secret next to it (outside). */
 function folder() {

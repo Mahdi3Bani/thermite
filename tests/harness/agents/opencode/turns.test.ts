@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { runOpencodeTrial } from "../../../../src/harness/agents/opencode/index.ts";
+import { runOpencodeTrial } from "../../../../src/harness/agents/cli/opencode.ts";
 import type { TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../../src/harness/broker/runner.ts";
 

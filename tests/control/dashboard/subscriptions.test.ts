@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { ModelSource } from "../../../src/harness/agents/model-source.ts";
+import { ModelSource } from "../../../src/harness/agents/model/source.ts";
 import { syncModelRoute } from "../../../src/supervisor/model-route.ts";
 import { stack } from "./stack.ts";
 

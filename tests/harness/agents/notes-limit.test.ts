@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { NoteLimit, type NoteRequest } from "../../../src/agents/tools/notes.ts";
 import { laneLimits, parseContract } from "../../../src/core/contract.ts";
-import { NoteLimit, type NoteRequest } from "../../../src/harness/agents/notes-tool.ts";
 import { runTrial } from "../../../src/harness/agents/worker/index.ts";
 import { prepareWorkspace } from "../../../src/harness/agents/workspace.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";

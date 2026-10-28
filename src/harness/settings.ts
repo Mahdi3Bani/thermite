@@ -1,13 +1,12 @@
 import { type NumberSpec, readNumber } from "../common/settings.ts";
-import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../core/compaction.ts";
 import { MAX_LANES } from "../core/contract.ts";
 
 /**
  * The harness's number settings (goal 125, T4): each one's name, what it takes and its default,
  * in its own unit. The harness reads them through this table at its start, so a bad value stops
- * it then with the setting's name (goal 164); the docs check holds the settings page to it.
+ * it then with the setting's name (goal 164); the docs check holds the settings page to it. The
+ * model's settings, which the supervisor reads too, are the agents' (src/agents/settings.ts).
  */
-const TOKENS = { unit: "tokens", integer: true, zeroMeans: "unknown, none sent" };
 export const HARNESS_NUMBERS = {
   maxTurns: { name: "THERMITE_MAX_TURNS", rule: { integer: true, min: 1 } },
   researchMaxMb: { name: "THERMITE_RESEARCH_MAX_MB", rule: { unit: "MiB", aboveMin: true } },
@@ -27,17 +26,6 @@ export const HARNESS_NUMBERS = {
     name: "THERMITE_MAX_TRIALS",
     rule: { integer: true, max: MAX_LANES, zeroMeans: "no trials" },
     fallback: 1,
-  },
-  modelStallSeconds: {
-    name: "THERMITE_MODEL_STALL_SECONDS",
-    rule: { unit: "seconds", zeroMeans: "off" },
-    fallback: 600,
-  },
-  contextWindow: { name: "THERMITE_MODEL_CONTEXT_WINDOW", rule: TOKENS, fallback: 0 },
-  maxTokens: { name: "THERMITE_MODEL_MAX_TOKENS", rule: TOKENS, fallback: 0 },
-  compactAt: {
-    name: "THERMITE_MODEL_COMPACT_AT",
-    rule: { unit: "percent", integer: true, min: COMPACT_AT_MIN, max: COMPACT_AT_MAX },
   },
   judgeGpus: { name: "THERMITE_JUDGE_GPUS", rule: { integer: true, min: 1 } },
 } satisfies Record<string, NumberSpec>;

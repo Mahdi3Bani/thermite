@@ -1,9 +1,9 @@
 import { z } from "zod";
+import { stalledFor } from "../../agents/model/index.ts";
 import { log } from "../../common/env.ts";
 import { ExperimentText } from "../../core/commands.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { measurementIn, measurementRefusal } from "../../core/research-check.ts";
-import { stalledFor } from "../agents/model-stall.ts";
 import { KIND_WORDS, type ProviderErrorKind } from "../agents/provider-errors.ts";
 import { Registry } from "../agents/registry.ts";
 import { Journal } from "../journal.ts";

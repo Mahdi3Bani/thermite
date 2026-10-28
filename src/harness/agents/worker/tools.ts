@@ -1,12 +1,11 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
+import { mcpAgentTools } from "../../../agents/mcp/index.ts";
+import { NOTE_TOOL, type NoteLimit } from "../../../agents/tools/notes.ts";
 import { CODE_RESEARCH_TOOLS } from "../../../agents/tools/research.ts";
 import { errorText } from "../../../common/errors.ts";
 import { type LaneLimitValues, SHARED_DEV_RUN_S } from "../../../core/contract.ts";
-import { IDEA_TOOL, proposeIdea } from "../idea-tool.ts";
-import { mcpAgentTools } from "../mcp-tools.ts";
-import { NOTE_TOOL, type NoteLimit } from "../notes-tool.ts";
-import { researchAgentTools } from "../research-agent-tools.ts";
+import { IDEA_TOOL, proposeIdea, researchAgentTools } from "../tools/index.ts";
 import type { TrialClock } from "../trial-clock.ts";
 import type { McpForAgent, TrialDeps, TrialResult, TrialSpec } from "./spec.ts";
 

@@ -10,7 +10,7 @@ import {
   buildModel,
   type ModelConfig,
   modelConfigFromEnv,
-} from "../../../../src/harness/agents/model.ts";
+} from "../../../../src/agents/model/index.ts";
 import { plan, validatePlan } from "../../../../src/harness/agents/planner/index.ts";
 import { startFakeModel } from "../../../helpers/fake-model.ts";
 import { base, model } from "./setup.ts";

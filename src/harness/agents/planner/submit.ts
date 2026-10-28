@@ -4,13 +4,13 @@ import {
   PLANNER_ASK_SYSTEM,
   PLANNER_PI_SYSTEM,
 } from "../../../agents/roles/planner.ts";
-import { JOURNAL_FIELD } from "../notes-tool.ts";
+import { JOURNAL_FIELD } from "../../../agents/tools/notes.ts";
 
 /**
  * What a planner call is told and how it answers: its system prompt in Pi, where it answers with
  * submit_plan (whose description and parameters these are), and through another harness, where
  * it answers with JSON text. The hill climb's and goal campaign's plan and the research plan
- * (research-planner.ts) each have their own.
+ * (research/planner.ts) each have their own.
  */
 export interface PlannerCallSpec {
   system: string;

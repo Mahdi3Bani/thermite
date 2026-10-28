@@ -1,10 +1,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  MODEL_ENV_NAMES,
+  type ModelConfig,
+  modelEnv,
+  STALL_SETTING,
+} from "../../agents/model/index.ts";
 import type { Role, Runner } from "../broker/runner.ts";
-import { MODEL_ENV_NAMES, type ModelConfig, modelEnv } from "./model.ts";
-import { STALL_SETTING } from "./model-stall.ts";
-import type { ResearchTrialSpec } from "./research-worker.ts";
+import type { ResearchTrialSpec } from "./research/index.ts";
 import type { TrialResult, TrialSpec } from "./worker/index.ts";
 
 export type AnyTrial =

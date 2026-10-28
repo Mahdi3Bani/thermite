@@ -1,6 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "../../agents/roles/reviewer.ts";
+import { JOURNAL_FIELD } from "../../agents/tools/notes.ts";
 import { REASONS_MAX } from "../../core/api/harness/advisors.ts";
 import {
   ANSWER_CERTAINTIES,
@@ -8,14 +9,12 @@ import {
   QUESTION_DECISIONS,
 } from "../../core/api/harness/research.ts";
 import { LenientNotes } from "../../core/journal.ts";
-import { JOURNAL_FIELD } from "../../harness/agents/notes-tool.ts";
-import type { PastSearch } from "../past-mcp.ts";
-import type { AdvisorResearch } from "../research-tools.ts";
 import type { AdvisorKeeper, AdvisorMcp, AdvisorResult, AdvisorUsage } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
 import { OwnerAnswers, OwnerAnswersSchema } from "./owner-answers.ts";
 import { advisorPrompt, orderedPrompt } from "./prompt.ts";
 import { runAdvisor } from "./run.ts";
+import type { AdvisorResearch, PastSearch } from "./tools/index.ts";
 
 /**
  * A reviewer's reasons, cut to 8,000 characters rather than refused: a long but sound answer is

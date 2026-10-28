@@ -1,15 +1,14 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, Type } from "@earendil-works/pi-ai";
+import { type CompactionReport, Compactor, summarizer } from "../../../agents/compaction/index.ts";
+import { mcpLine } from "../../../agents/mcp/index.ts";
+import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/names.ts";
 import { routeRefusal } from "../../../core/agents.ts";
 import { canonicalJson } from "../../../core/canonical.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import { SEARCH_MAX } from "../../knowledge.ts";
-import { type CompactionReport, Compactor, summarizer } from "../compaction.ts";
-import { mcpLine } from "../mcp-tools.ts";
-import { buildModel, type ModelConfig } from "../model.ts";
 import { classifyProviderError, KIND_WORDS } from "../provider-errors.ts";
-import { PiMeter } from "../usage-meter.ts";
 import { PlannerCallError } from "./causes.ts";
 import type { PlannerPast } from "./context.ts";
 import { PLAN_SPEC, type PlannerCallSpec } from "./submit.ts";

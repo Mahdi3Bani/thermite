@@ -1,8 +1,7 @@
 import type { Agent, AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import type { buildModel } from "../model.ts";
+import type { buildModel, PiMeter } from "../../../agents/model/index.ts";
 import type { ProviderWatch } from "../provider-errors.ts";
-import type { PiMeter } from "../usage-meter.ts";
 
 /** What a Pi agent sends its provider, and how each call is watched (worker and research trials). */
 

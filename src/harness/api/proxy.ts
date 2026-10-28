@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { forwardToProvider } from "../../agents/model/index.ts";
 import { throughProxy } from "../../core/agents.ts";
-import { forwardToProvider } from "../model-forward.ts";
 import type { ApiContext } from "./context.ts";
 
 /** The model proxy, through which the agents' programs reach the rig's provider. */

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { mergeUsage, windowsOf } from "../../../src/harness/agents/plan-windows.ts";
+import { mergeUsage, windowsOf } from "../../../src/agents/programs/claude-code/windows.ts";
 
 const AT = 1_793_000_000;
 const iso = (s: number) => new Date(s * 1000).toISOString();

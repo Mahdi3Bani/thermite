@@ -1,9 +1,9 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { USAGE_BATCH } from "../../agents/model/index.ts";
 import { MODEL_CALLS } from "../../core/api/harness/advisors.ts";
 import { CallUsage } from "../../core/usage.ts";
-import { USAGE_BATCH } from "../agents/usage-meter.ts";
 import { type ApiContext, limitOf } from "./context.ts";
 
 /** Model usage (goal 075), each as its own code measured it: a Pi worker's, and the advisors'. */

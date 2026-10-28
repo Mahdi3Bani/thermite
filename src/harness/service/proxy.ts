@@ -1,9 +1,12 @@
 import { randomBytes } from "node:crypto";
+import type { McpCaller } from "../../agents/mcp/index.ts";
+import {
+  logStall,
+  type ModelConfig,
+  type ProviderErrorAnswer,
+  stallWords,
+} from "../../agents/model/index.ts";
 import type { LiveLog } from "../../core/live.ts";
-import type { ModelConfig } from "../agents/model.ts";
-import { logStall, stallWords } from "../agents/model-stall.ts";
-import type { McpCaller } from "../mcp-gateway.ts";
-import type { ProviderErrorAnswer } from "../model-forward.ts";
 
 /**
  * What the model proxy and the MCP gateway take from the service besides trials' tokens: the

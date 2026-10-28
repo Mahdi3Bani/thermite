@@ -1,12 +1,12 @@
 import { Agent } from "@earendil-works/pi-agent-core";
+import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
+import { mcpLine } from "../../../agents/mcp/index.ts";
+import { buildModel, PiMeter } from "../../../agents/model/index.ts";
 import { WORKER_PI_NOTES, WORKER_PI_SYSTEM } from "../../../agents/roles/worker.ts";
+import { NoteLimit } from "../../../agents/tools/notes.ts";
 import { errorText } from "../../../common/errors.ts";
 import { laneLimits } from "../../../core/contract.ts";
-import { Compactor, summarizer } from "../compaction.ts";
 import { linkSession } from "../live-session.ts";
-import { mcpLine } from "../mcp-tools.ts";
-import { buildModel } from "../model.ts";
-import { NoteLimit } from "../notes-tool.ts";
 import {
   classifyProviderError,
   type FailureCount,
@@ -15,7 +15,6 @@ import {
 } from "../provider-errors.ts";
 import { guardRepeats } from "../repeats.ts";
 import { TrialClock, trialBudget } from "../trial-clock.ts";
-import { PiMeter } from "../usage-meter.ts";
 import { keepGoing, lastAssistant, NUDGE } from "./keep-going.ts";
 import type { TrialDeps, TrialResult, TrialSpec } from "./spec.ts";
 import { watchedStream, withoutPastThinking } from "./stream.ts";

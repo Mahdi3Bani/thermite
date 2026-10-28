@@ -75,7 +75,7 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # projects (an inference engine, for example); Python 3 with numpy for kit run and check scripts.
 # The broker needs prlimit (process limits), setpriv (a dedicated development card's groups) and
 # taskset (timed runs on the judge card's local CPUs). No bubblewrap: the agents and the advisors
-# run Claude Code with its own sandbox off (src/harness/agents/claude-code/index.ts says why).
+# run Claude Code with its own sandbox off (src/agents/programs/claude-code/index.ts says why).
 # The base's system packages are upgraded first, so each build takes the distribution's fixes
 # (goal 125).
 RUN apt-get update \

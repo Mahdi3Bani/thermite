@@ -8,45 +8,5 @@
     "src/harness/selftest/index.ts"
   ],
   "src/cli/thermite/runpod.ts": ["src/control/runpod/rig-view.ts"],
-  "src/control/api/index.ts": ["src/control/dashboard/index.ts"],
-  "src/supervisor/advise/context.ts": ["src/harness/mcp-gateway.ts"],
-  "src/supervisor/advise/state.ts": ["src/harness/mcp-gateway.ts"],
-  "src/supervisor/advisor-cli.ts": [
-    "src/harness/agents/cli-compaction.ts",
-    "src/harness/agents/codex/index.ts",
-    "src/harness/agents/model.ts",
-    "src/harness/agents/opencode/index.ts"
-  ],
-  "src/supervisor/advisor-proxy.ts": [
-    "src/harness/agents/model-stall.ts",
-    "src/harness/model-forward.ts"
-  ],
-  "src/supervisor/advisors/auditor.ts": ["src/harness/agents/notes-tool.ts"],
-  "src/supervisor/advisors/call.ts": ["src/harness/agents/cli-compaction.ts"],
-  "src/supervisor/advisors/fetcher.ts": ["src/harness/research/fetcher.ts"],
-  "src/supervisor/advisors/review-panel.ts": ["src/harness/agents/notes-tool.ts"],
-  "src/supervisor/advisors/runtimes/claude-code.ts": [
-    "src/harness/agents/claude-code/index.ts",
-    "src/harness/agents/cli-conversation.ts",
-    "src/harness/agents/mcp-tools.ts"
-  ],
-  "src/supervisor/advisors/runtimes/cli.ts": [
-    "src/harness/agents/claude-code/index.ts",
-    "src/harness/agents/cli-conversation.ts"
-  ],
-  "src/supervisor/advisors/runtimes/opencode-codex.ts": [
-    "src/harness/agents/cli-conversation.ts",
-    "src/harness/agents/codex/index.ts",
-    "src/harness/agents/mcp-tools.ts",
-    "src/harness/agents/model.ts",
-    "src/harness/agents/opencode/index.ts"
-  ],
-  "src/supervisor/advisors/runtimes/pi.ts": [
-    "src/harness/agents/compaction.ts",
-    "src/harness/agents/mcp-tools.ts",
-    "src/harness/agents/model.ts",
-    "src/harness/agents/usage-meter.ts"
-  ],
-  "src/supervisor/advisors/teachers/answers.ts": ["src/harness/agents/notes-tool.ts"],
-  "src/supervisor/main.ts": ["src/harness/agents/model-stall.ts", "src/harness/mcp-gateway.ts"]
+  "src/control/api/index.ts": ["src/control/dashboard/index.ts"]
 }

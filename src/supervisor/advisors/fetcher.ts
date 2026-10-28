@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { Fetcher, FetchRefused } from "../../harness/research/fetcher.ts";
+import { Fetcher, FetchRefused } from "../../agents/tools/fetcher.ts";
 
 /**
  * A guarded web fetch for advisors (no private addresses), archived in the supervisor's home,

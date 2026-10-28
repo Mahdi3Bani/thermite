@@ -2,7 +2,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import type { McpCaller } from "../mcp-gateway.ts";
+import type { McpCaller } from "../../agents/mcp/index.ts";
 import { type ApiContext, Unauthorized } from "./context.ts";
 
 /** The MCP gateway, through which the workers and the planner call their run's MCP servers. */

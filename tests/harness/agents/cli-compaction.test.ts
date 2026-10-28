@@ -5,36 +5,30 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import {
-  claudeCompactionEnv,
-  claudeOnce,
-  newClaudeTally,
-  readClaudeEvents,
-  runClaudeTrial,
-} from "../../../src/harness/agents/claude-code/index.ts";
-import {
   type CliCompacted,
   CliCompactions,
   codexCompactPrompt,
   compactionTokens,
   type KeptAt,
-} from "../../../src/harness/agents/cli-compaction.ts";
+} from "../../../src/agents/compaction/cli.ts";
+import {
+  claudeCompactionEnv,
+  newClaudeTally,
+  readClaudeEvents,
+} from "../../../src/agents/programs/claude-code/index.ts";
 import {
   codexConfig,
-  codexOnce,
   newCodexTally,
   readCodexEvents,
-  runCodexTrial,
-} from "../../../src/harness/agents/codex/index.ts";
-import {
-  OPENCODE_PLUGIN,
-  opencodeConfig,
-  opencodeOnce,
-  runOpencodeTrial,
-} from "../../../src/harness/agents/opencode/index.ts";
+} from "../../../src/agents/programs/codex/index.ts";
+import { OPENCODE_PLUGIN, opencodeConfig } from "../../../src/agents/programs/opencode/index.ts";
 import type {
   OpencodeCompaction,
   OpencodePluginContext,
-} from "../../../src/harness/agents/opencode-plugin.ts";
+} from "../../../src/agents/programs/opencode/plugin.ts";
+import { claudeOnce, runClaudeTrial } from "../../../src/harness/agents/cli/claude-code.ts";
+import { codexOnce, runCodexTrial } from "../../../src/harness/agents/cli/codex.ts";
+import { opencodeOnce, runOpencodeTrial } from "../../../src/harness/agents/cli/opencode.ts";
 import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
 

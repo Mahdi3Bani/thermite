@@ -3,13 +3,13 @@ import { randomBytes } from "node:crypto";
 import { describe, type TestContext, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { claudeArgs } from "../../src/harness/agents/claude-code/index.ts";
-import { codexConfig, codexEnv } from "../../src/harness/agents/codex/index.ts";
-import { claudeMcpConfig } from "../../src/harness/agents/mcp-tools.ts";
-import { opencodeConfig } from "../../src/harness/agents/opencode/index.ts";
+import { McpGateway } from "../../src/agents/mcp/gateway.ts";
+import { claudeMcpConfig } from "../../src/agents/mcp/tools.ts";
+import { claudeArgs } from "../../src/agents/programs/claude-code/index.ts";
+import { codexConfig, codexEnv } from "../../src/agents/programs/codex/index.ts";
+import { opencodeConfig } from "../../src/agents/programs/opencode/index.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
-import { McpGateway } from "../../src/harness/mcp-gateway.ts";
 import { startFakeMcp } from "../helpers/fake-mcp.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 

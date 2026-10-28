@@ -2,12 +2,11 @@ import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "../../agents/roles/final-writer.ts";
 import { PAPER_EXPERIMENT_FIELDS, PAPER_MAX } from "../../core/api/harness/research.ts";
-import type { AdvisorPaper } from "../paper-tools.ts";
-import type { AdvisorResearch } from "../research-tools.ts";
 import type { AdvisorKeeper, AdvisorResult } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
 import { advisorPrompt } from "./prompt.ts";
 import { runAdvisor } from "./run.ts";
+import type { AdvisorPaper, AdvisorResearch } from "./tools/index.ts";
 
 /**
  * The final writer's answer (goal 112): the whole paper, and its next experiments as items, each

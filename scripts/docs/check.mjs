@@ -400,6 +400,7 @@ if (settingsPage) {
 const numberTables = [
   (await import("../../src/control/settings.ts")).CONTROL_NUMBERS,
   (await import("../../src/harness/settings.ts")).HARNESS_NUMBERS,
+  (await import("../../src/agents/settings.ts")).AGENTS_NUMBERS,
   (await import("../../src/harness/broker/settings.ts")).BROKER_NUMBERS,
   (await import("../../src/supervisor/settings.ts")).SUPERVISOR_NUMBERS,
   (await import("../../src/cli/settings.ts")).CLI_NUMBERS,

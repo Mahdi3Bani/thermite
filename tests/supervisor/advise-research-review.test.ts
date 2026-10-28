@@ -12,12 +12,12 @@ import {
 } from "../../src/harness/research/review/index.ts";
 import { Reviews } from "../../src/harness/reviews.ts";
 import type { HarnessService } from "../../src/harness/service/index.ts";
+import { AdvisorsConfig, researchPrompt, reviewOne } from "../../src/supervisor/advisors/index.ts";
 import {
   type AdviseConfig,
   adviseOnce,
   emptyAdviseState,
-} from "../../src/supervisor/advise/index.ts";
-import { AdvisorsConfig, researchPrompt, reviewOne } from "../../src/supervisor/advisors/index.ts";
+} from "../../src/supervisor/advisors/pass/index.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { fillResearch, makeResearchRun, writeCards } from "../helpers/research-run.ts";
 

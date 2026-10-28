@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseContract } from "../../../src/core/contract.ts";
-import { runResearchTrial } from "../../../src/harness/agents/research-worker.ts";
+import { runResearchTrial } from "../../../src/harness/agents/research/worker.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { ResearchFolder } from "../../../src/harness/research/folder.ts";
 import { Research } from "../../../src/harness/research/research/index.ts";

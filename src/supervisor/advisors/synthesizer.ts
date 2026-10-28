@@ -10,12 +10,12 @@ import {
   CERTAINTIES,
   GAP_KINDS,
 } from "../../core/api/harness/research.ts";
-import type { AdvisorResearch } from "../research-tools.ts";
 import type { AdvisorKeeper, AdvisorResult } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
 import { orderedPrompt } from "./prompt.ts";
 import { leniently } from "./review-panel.ts";
 import { runAdvisor } from "./run.ts";
+import type { AdvisorResearch } from "./tools/index.ts";
 
 /**
  * The synthesizer's answer (goal 117): one card for each question of its request. Read leniently,

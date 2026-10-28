@@ -3,28 +3,32 @@ import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { claudeEnv } from "../../../src/agents/programs/claude-code/index.ts";
+import { codexEnv } from "../../../src/agents/programs/codex/index.ts";
+import {
+  newTally,
+  opencodeConfig,
+  opencodeModelId,
+  readOpencodeEvents,
+  runEnv,
+} from "../../../src/agents/programs/opencode/index.ts";
+import { agentPath } from "../../../src/agents/programs/path.ts";
 import { RESEARCH_WORKER_SYSTEM } from "../../../src/agents/roles/research-worker.ts";
 import { laneLimits } from "../../../src/core/contract.ts";
 import type { CallUsage } from "../../../src/core/usage.ts";
-import { claudeEnv } from "../../../src/harness/agents/claude-code/index.ts";
-import { codexEnv } from "../../../src/harness/agents/codex/index.ts";
 import {
-  agentPath,
   breachError,
   CHECK_ROLE,
   limitsNote,
-  newTally,
-  OPENCODE_MEMORY,
-  opencodeConfig,
-  opencodeModelCheck,
-  opencodeModelId,
-  opencodeOnce,
   PLANNER_ROLE,
-  readOpencodeEvents,
-  runEnv,
+} from "../../../src/harness/agents/cli/common.ts";
+import {
+  OPENCODE_MEMORY,
+  opencodeModelCheck,
+  opencodeOnce,
   runOpencodeResearchTrial,
   runOpencodeTrial,
-} from "../../../src/harness/agents/opencode/index.ts";
+} from "../../../src/harness/agents/cli/opencode.ts";
 import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
 

@@ -7,13 +7,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { STE_SHORT_RULES } from "../../src/agents/roles/final-writer.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
+import { AdvisorsConfig } from "../../src/supervisor/advisors/index.ts";
 import {
   type AdviseConfig,
   adviseOnce,
   emptyAdviseState,
-} from "../../src/supervisor/advise/index.ts";
-import { AdvisorsConfig } from "../../src/supervisor/advisors/index.ts";
-import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
+} from "../../src/supervisor/advisors/pass/index.ts";
+import { serveAdvisorTools } from "../../src/supervisor/advisors/tools/mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { cardsUpToDate } from "../helpers/research-cards.ts";
 import { answeredResearchRun, goodPaper } from "../helpers/research-paper.ts";

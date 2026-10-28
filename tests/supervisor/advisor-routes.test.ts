@@ -3,12 +3,12 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { AdvisorsConfig, advisorsFileReport } from "../../src/supervisor/advisors/index.ts";
 import {
   fetchControlAdvisors,
   mergeAdvisors,
   runtimeOf,
-} from "../../src/supervisor/advisor-routes.ts";
-import { AdvisorsConfig, advisorsFileReport } from "../../src/supervisor/advisors/index.ts";
+} from "../../src/supervisor/advisors/routes.ts";
 
 const route = (o: Partial<Record<string, unknown>> = {}) => ({
   name: "p",

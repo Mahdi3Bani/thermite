@@ -5,12 +5,12 @@ import { join } from "node:path";
 import type { Writable } from "node:stream";
 import type { TSchema } from "@earendil-works/pi-ai";
 import type { z } from "zod";
+import type { Own } from "../../../agents/compaction/index.ts";
+import { CLAUDE_TOKEN_FD } from "../../../agents/programs/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import type { CallUsage, UsageRoute } from "../../../core/usage.ts";
-import { CLAUDE_TOKEN_FD } from "../../../harness/agents/claude-code/index.ts";
-import type { Own } from "../../../harness/agents/cli-conversation.ts";
-import type { CliAnswer } from "../../advisor-cli.ts";
 import type { AdvisorCompaction, AdvisorKeeper, AdvisorResult, AdvisorUsage } from "../call.ts";
+import type { CliAnswer } from "../cli.ts";
 
 /** A call's id, for the names of its kept conversations: when it started. */
 export const callId = () => new Date().toISOString().replace(/[:.]/g, "-");

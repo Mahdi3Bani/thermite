@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { advisorKeeper } from "../../src/supervisor/advise/index.ts";
 import { type AdvisorRuntime, runAdvisor } from "../../src/supervisor/advisors/index.ts";
+import { advisorKeeper } from "../../src/supervisor/advisors/pass/index.ts";
 
 /**
  * An advisor's own program compacting its call (goal 070): Claude Code's PreCompact hook, Codex's

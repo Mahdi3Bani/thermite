@@ -1,6 +1,6 @@
 /**
  * A research worker's tools, one list for both harnesses: Pi offers them as tools
- * (research-worker.ts), OpenCode's agent runs them as `thermite-trial research ...` commands
+ * (harness/agents/research/), OpenCode's agent runs them as `thermite-trial research ...` commands
  * (trial-cli.ts). Each is one operation of the harness's research service; the harness binds it
  * to the trial's run and lane, fetches and archives, and its code decides what is verified.
  */

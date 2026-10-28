@@ -1,4 +1,10 @@
 import { join } from "node:path";
+import { type McpCaller, McpGateway } from "../../agents/mcp/index.ts";
+import {
+  type ModelConfig,
+  modelStallMs,
+  type ProviderErrorAnswer,
+} from "../../agents/model/index.ts";
 import { buildInfo } from "../../common/build-info.ts";
 import type { McpConnect } from "../../common/mcp-client.ts";
 import type { AdvisorQueueRequest } from "../../core/api/harness/advisors.ts";
@@ -10,16 +16,12 @@ import type { Hardware } from "../../core/hardware.ts";
 import { LiveLog } from "../../core/live.ts";
 import { type McpUse, McpUses } from "../../core/mcp.ts";
 import type { BuildInfo } from "../../core/version.ts";
-import type { ModelConfig } from "../agents/model.ts";
-import type { ControlRoute, ModelSource } from "../agents/model-source.ts";
-import { modelStallMs } from "../agents/model-stall.ts";
+import type { ControlRoute, ModelSource } from "../agents/model/index.ts";
 import type { Compactions } from "../compactions.ts";
 import { Journal } from "../journal.ts";
 import { Knowledge } from "../knowledge.ts";
 import { type Ledger, LedgerError } from "../ledger/index.ts";
-import { type McpCaller, McpGateway } from "../mcp-gateway.ts";
 import { type AdvisorRole, OwnerMessages } from "../messages.ts";
-import type { ProviderErrorAnswer } from "../model-forward.ts";
 import { ExperimentQueue } from "../queue.ts";
 import { Cards } from "../research/cards.ts";
 import { folderRootOf, SAVED_LANES_DIR } from "../research/folder.ts";

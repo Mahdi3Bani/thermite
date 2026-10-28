@@ -7,9 +7,9 @@ import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { CODEX_ADVISOR_OFF } from "../../src/supervisor/advisor-cli.ts";
-import { serveAdvisorModel } from "../../src/supervisor/advisor-proxy.ts";
+import { CODEX_ADVISOR_OFF } from "../../src/supervisor/advisors/cli.ts";
 import { type AdvisorRuntime, runAdvisor } from "../../src/supervisor/advisors/index.ts";
+import { serveAdvisorModel } from "../../src/supervisor/advisors/proxy.ts";
 
 /**
  * Advisors in OpenCode v2 and the Codex CLI in the supervisor (goal 073), each with a stand-in

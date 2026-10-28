@@ -1,4 +1,7 @@
 import { dirname, join } from "node:path";
+import { CliCompactions } from "../../../agents/compaction/index.ts";
+import { mcpLine } from "../../../agents/mcp/index.ts";
+import { readNew } from "../../../agents/programs/index.ts";
 import { RESEARCH_WORKER_SYSTEM } from "../../../agents/roles/research-worker.ts";
 import { NOTE_USAGE } from "../../../agents/tools/names.ts";
 import {
@@ -9,9 +12,6 @@ import {
 import { type LaneLimitValues, laneLimits } from "../../../core/contract.ts";
 import { notesInstruction } from "../../../core/journal.ts";
 import type { Role, Runner, RunOutcome } from "../../broker/runner.ts";
-import { CliCompactions } from "../cli-compaction.ts";
-import { mcpLine } from "../mcp-tools.ts";
-import { readNew } from "../opencode/events.ts";
 import { afterProgramFailure, type FailureCount, failingOf } from "../provider-errors.ts";
 import { trialBudget } from "../trial-clock.ts";
 import { stopNudging, type TrialResult } from "../worker/index.ts";

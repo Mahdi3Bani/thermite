@@ -16,13 +16,13 @@ import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { signEnvelope } from "../../src/core/commands.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
-import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advise/index.ts";
 import {
   AdvisorsConfig,
   lastJsonObject,
   runAdvisor,
   teacherRound,
 } from "../../src/supervisor/advisors/index.ts";
+import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advisors/pass/index.ts";
 import { stageCommand } from "../../src/supervisor/staging.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";

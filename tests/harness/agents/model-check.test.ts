@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { checkModel } from "../../../src/harness/agents/model-check.ts";
+import { checkModel } from "../../../src/harness/agents/model/check.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 
 const route = (url: string) => ({

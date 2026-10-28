@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { parseContract } from "../../src/core/contract.ts";
-import { ModelSource } from "../../src/harness/agents/model-source.ts";
+import { ModelSource } from "../../src/harness/agents/model/source.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { resolveInbox } from "../../src/harness/imports.ts";

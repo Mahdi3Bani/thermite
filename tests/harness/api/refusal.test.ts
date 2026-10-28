@@ -3,7 +3,7 @@ import { describe, type TestContext, test } from "node:test";
 import { z } from "zod";
 import { CLAIM_LIMITS_WORDS, researchTool } from "../../../src/agents/tools/research.ts";
 import { Registry } from "../../../src/harness/agents/registry.ts";
-import { researchAgentTools } from "../../../src/harness/agents/research-agent-tools.ts";
+import { researchAgentTools } from "../../../src/harness/agents/tools/research.ts";
 import { researchHelp, trialCli } from "../../../src/harness/agents/trial-cli.ts";
 import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { pathWords, REFUSAL_PROBLEMS, refusalWords } from "../../../src/harness/api/refusal.ts";

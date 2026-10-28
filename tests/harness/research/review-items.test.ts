@@ -5,7 +5,7 @@ import {
   RESEARCH_REVIEW,
   SATURATION_TASKS,
 } from "../../../src/core/research-check.ts";
-import type { ResearchTrialSpec } from "../../../src/harness/agents/research-worker.ts";
+import type { ResearchTrialSpec } from "../../../src/harness/agents/research/worker.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import type { Ledger } from "../../../src/harness/ledger/index.ts";

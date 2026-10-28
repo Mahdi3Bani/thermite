@@ -93,7 +93,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] No page lists the projects and kits that a rig holds with their full commits; the dashboard shows 8-character prefixes, and full commits are only in events.
 - [ ] The Leaderboard page has no link anywhere in the dashboard (`src/control/ui/components/index.ts`). Since goal 063 removed the campaign page's Cross-verified column, it is the only page that shows cross-verification. Since `4e132a6` a hill climb's campaign page links it and shows `cross-verified on …`; the sidebar still has no entry.
 - [ ] The dashboard sends only avoid, try and always rules, one at a time, from the run's Planner tab, and only adds to the rules in force; `priority`, `lane_count` and `note`, and replacing the rules, need the command line, REST or MCP (`src/control/dashboard/live.ts`, `src/control/ui/commands/forms.ts`, `src/control/ui/campaigns/queue/index.ts`).
-- [x] Fixed in part in `2b16289`: each advisor error, and a teacher that gave no review with its reason, is now a line in Live under **Advisors**. The rig's Advisors row still shows only a count (`src/control/dashboard/rigs/page.ts`, `src/supervisor/advise/context.ts`).
+- [x] Fixed in part in `2b16289`: each advisor error, and a teacher that gave no review with its reason, is now a line in Live under **Advisors**. The rig's Advisors row still shows only a count (`src/control/dashboard/rigs/page.ts`, `src/supervisor/advisors/pass/context.ts`).
 - [ ] Accepting a rig's key whose fingerprint changed since the page loaded returns to the rig page with no message (`src/control/dashboard/attempt.ts`).
 
 ### New campaign
@@ -127,7 +127,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] The judge can read a goal's threshold from a field that a check prints, but the assignment check refuses any name that is not a kit metric (`src/core/kit.ts`, `src/harness/judge/goals.ts`).
 - [ ] A goal's threshold is an absolute number: a goal cannot ask for a gain over the seed's own measurement, so no goal on the smoke kit fits every machine (`src/core/contract.ts`).
 - [ ] `notes` reach only hill-climb and goal workers; research workers and the research plan never read them (`src/harness/agents/scheduler/briefs.ts`).
-- [ ] A research `scope` domain with capital letters never matches, because only the fetched host is lowercased (`src/harness/research/fetcher.ts`).
+- [ ] A research `scope` domain with capital letters never matches, because only the fetched host is lowercased (`src/agents/tools/fetcher.ts`).
 - [ ] The CUDA smoke kit always builds for `sm_60`: its build script reads `CUDA_ARCH`, which a build never gets (`kits/smoke-cuda/bench/build.sh`, `src/harness/judge/builds.ts`).
 
 ### Budgets and run time
@@ -141,7 +141,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 
 ### Judge and agents
 
-- [ ] A Pi research worker's tool answers are cut at 14,000 characters of JSON, so `read_file`, which returns up to 20,000 characters, can never give its whole text (`src/agents/tools/research.ts`, `src/harness/agents/research-files.ts`; worked out from the code).
+- [ ] A Pi research worker's tool answers are cut at 14,000 characters of JSON, so `read_file`, which returns up to 20,000 characters, can never give its whole text (`src/agents/tools/research.ts`, `src/harness/agents/tools/files.ts`; worked out from the code).
 - [ ] The planner's fallback plan follows **avoid** and **always assign**, but a **try** only for a direction already in use; a new direction name in a **try** is ignored until the model planner runs (`src/harness/agents/planner/fallback.ts`).
 - [x] Fixed in `9a8f803`. Under the OpenCode harness the planner never plans: `askPlanner` replaces the sentence "Answer only by calling submit_plan once.", but `SYSTEM` breaks it over two lines, so the JSON instruction never reaches the model, both tries are refused, and every epoch uses the fallback plan after several minutes. No test reads the prompt (`src/harness/agents/planner/call.ts`). Found by running tutorial 2.
 - [ ] A model that answers "rate limit exceeded" ends each trial at once, and the next trial starts within seconds; a user expects the rig to wait before trying again (`src/harness/agents/scheduler/provider.ts`). Found by running tutorial 2.
@@ -152,27 +152,27 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 
 ### Models and subscriptions
 
-- [ ] **Effort** on Edit rig does nothing under OpenCode v2: its config and command line carry no reasoning effort (`src/harness/agents/opencode/program.ts`).
+- [ ] **Effort** on Edit rig does nothing under OpenCode v2: its config and command line carry no reasoning effort (`src/agents/programs/opencode/index.ts`).
 - [ ] Edit rig offers the `xhigh` and `max` efforts for every provider, but only a Claude subscription takes them; the others get `high` (`src/control/api/model-routes.ts`, `src/control/dashboard/rigs/edit.ts`).
 - [ ] Research mode cannot use a Claude subscription or OpenCode's own free models, and nothing warns before the run starts (`src/harness/controller/agents.ts`). Partly fixed: research trials run in OpenCode when the agents' harness is OpenCode, so its free models serve research there (`e8a557b`), and the dashboard refuses to start a research run where such a model would run in Pi (`301853e`, `d1d34e8`). Still open: a Claude subscription fails only at each trial, with nothing before the start.
 - [ ] The model check tests only the workers' model, not a planner or advisor model given on Edit rig (`src/harness/service/checks.ts`).
-- [ ] A Claude model on an image without Claude Code fails the model check with the spawn's error, not a message that the image has no Claude Code (`src/harness/agents/claude-code/program.ts`).
-- [ ] An OpenAI-compatible provider needs an API key even when its model server needs none (`src/control/store/providers.ts`, `src/harness/agents/model.ts`).
-- [ ] A ChatGPT sign-in's access token lasts an hour and only control renews it, so a rig whose control is away for longer, or that has a `chatgpt` route from its own settings, loses its model with no warning (`src/control/providers/chatgpt.ts`, `src/harness/agents/model.ts`).
+- [ ] A Claude model on an image without Claude Code fails the model check with the spawn's error, not a message that the image has no Claude Code (`src/agents/programs/claude-code/index.ts`).
+- [ ] An OpenAI-compatible provider needs an API key even when its model server needs none (`src/control/store/providers.ts`, `src/agents/model/index.ts`).
+- [ ] A ChatGPT sign-in's access token lasts an hour and only control renews it, so a rig whose control is away for longer, or that has a `chatgpt` route from its own settings, loses its model with no warning (`src/control/providers/chatgpt.ts`, `src/agents/model/index.ts`).
 - [ ] A ChatGPT sign-in that has started is lost when control restarts, because it is kept in memory only (`src/control/providers/chatgpt.ts`).
 - [ ] Edit rig's model groups do not say which harness they need, as Providers does ("OpenCode harness only", "ChatGPT subscription: Pi or OpenCode"), so the rule shows only as an error on save (`src/control/dashboard/rigs/edit.ts`).
 - [ ] Out-of-date texts on Providers: the intro names only Pi and OpenCode v2 as harnesses, and an unknown type gives "A provider is OpenAI-compatible or Anthropic." (`src/control/dashboard/settings/page.ts`, `src/control/dashboard/settings/providers.ts`).
 
 ### Supervisor and advisors
 
-- [ ] Teacher rounds also advise the **Judge smoke** check's own run while it runs, which costs a round of a paid model for no use (`src/supervisor/advise/teachers.ts`).
+- [ ] Teacher rounds also advise the **Judge smoke** check's own run while it runs, which costs a round of a paid model for no use (`src/supervisor/advisors/pass/teachers.ts`).
 - [ ] An advisors file with a panel of one reviewer (or two with the same name) loads; only a posted review is refused later (`src/supervisor/advisors/config.ts`, `src/harness/reviews.ts`).
 - [ ] No command checks an advisors file before the supervisor reads it, so a mistake shows only after a restart, as an error in the supervisor's log (`src/supervisor/advisors/config.ts`).
-- [ ] The advisors' `max_usd_per_day` counts only `openai` advisors in the advisors file with prices set; advisors given a model on Edit rig, and `cli` and `claude-code` advisors, count as $0, and Edit rig has no price field (`src/supervisor/advisor-routes.ts`, `src/supervisor/advise/teachers.ts`).
-- [ ] The spending check runs before each role's part of a round, not before each call, so one round can go past the limit (`src/supervisor/advise/context.ts`).
+- [ ] The advisors' `max_usd_per_day` counts only `openai` advisors in the advisors file with prices set; advisors given a model on Edit rig, and `cli` and `claude-code` advisors, count as $0, and Edit rig has no price field (`src/supervisor/advisors/routes.ts`, `src/supervisor/advisors/pass/teachers.ts`).
+- [ ] The spending check runs before each role's part of a round, not before each call, so one round can go past the limit (`src/supervisor/advisors/pass/context.ts`).
 - [ ] Advisors on rigs that control sets up come only from Edit rig, so they cannot have `fetch_domains`, a knowledge base, a spending limit or another `teacher_minutes`. Since goal 065, their teacher pair can search an outside knowledge base granted to the campaign.
 - [ ] A review goal needs a review panel of two or more: with none, or with a panel of one (which the schema accepts), its reviews are never answered and the owner cannot accept it directly (`src/harness/reviews.ts`, `src/supervisor/advisors/config.ts`).
-- [ ] With two teachers and no combiner, only the first answer is used, so the second call is spent for nothing; a teacher pair from Edit rig always has two (`src/supervisor/advisors/teachers/round.ts`, `src/supervisor/advisor-routes.ts`).
+- [ ] With two teachers and no combiner, only the first answer is used, so the second call is spent for nothing; a teacher pair from Edit rig always has two (`src/supervisor/advisors/teachers/round.ts`, `src/supervisor/advisors/routes.ts`).
 - [ ] The combiner's prompt always says "Two independent reviewers", also when there is one teacher (`src/agents/roles/merged-by.ts`).
 - [ ] The advisors file is read only when the supervisor starts, while Edit rig's roles are read every round (`src/supervisor/main.ts`).
 - [ ] The supervisor image has no agent command line for the `cli` advisor runtime, and nothing says how to add one (`containers/supervisor/Containerfile`).

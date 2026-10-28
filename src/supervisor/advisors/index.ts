@@ -15,19 +15,22 @@
  * fetch, the run's past research, an optional knowledge-base search); Claude Code for a Claude
  * subscription (only Claude Code may use one), with none of its own tools and only the
  * past-research search, the teachers' reads and the kit's MCP tools, served to it over MCP on
- * localhost
- * (past-mcp.ts); OpenCode v2 or the Codex CLI (goal 073), set up the same way, each through a
- * key-adding proxy for the call (advisor-cli.ts, advisor-proxy.ts); or a command-line agent given
- * the prompt on stdin and expected to print one JSON object. None gets a shell or file tools from
+ * localhost (tools/mcp.ts); OpenCode v2 or the Codex CLI (goal 073), set up the same way, each
+ * through a key-adding proxy for the call (cli.ts, proxy.ts); or a command-line agent given the
+ * prompt on stdin and expected to print one JSON object. None gets a shell or file tools from
  * Thermite: the supervisor holds git and model credentials, and anything an advisor reads may be
  * prompt-injected.
  *
  * Each part is a module in advisors/: the advisors file and each advisor's runtime (config.ts);
- * what a call takes and gives (call.ts); one call (run.ts), in Pi, Claude Code, OpenCode, Codex or
- * a command-line agent (runtimes/); the prompt (prompt.ts); each role with its answer: the teachers
- * and their merged by model (teachers/), the auditor, the review panel, the final writer and the
- * synthesizer, with the answers to the owner's messages that they share (owner-answers.ts); and
- * the guarded web fetch (fetcher.ts). The rest of the supervisor imports them from this file.
+ * the models control gives the advisors (routes.ts); what a call takes and gives (call.ts); one
+ * call (run.ts), in Pi, Claude Code, OpenCode, Codex or a command-line agent (runtimes/), with
+ * OpenCode's and Codex's settings and model proxy for the call (cli.ts, proxy.ts); the advisors'
+ * tools (tools/); the prompt (prompt.ts); each role with its answer: the teachers and their
+ * merged by model (teachers/), the auditor, the review panel, the final writer and the
+ * synthesizer, with the answers to the owner's messages that they share (owner-answers.ts); the
+ * guarded web fetch (fetcher.ts); the pass, which runs each role's part in turn (pass/); and which
+ * advisors decide, as the harness is told (harness.ts). The rest of the supervisor imports them
+ * from this file.
  */
 
 export { AuditAnswer, auditOne } from "./auditor.ts";
@@ -53,6 +56,13 @@ export {
 } from "./config.ts";
 export { advisorFetcher } from "./fetcher.ts";
 export { WriterAnswer, writePaper } from "./final-writer.ts";
+export { harnessAdvisors } from "./harness.ts";
+export {
+  type AdviseState,
+  adviseOnce,
+  emptyAdviseState,
+  teachersCalled,
+} from "./pass/index.ts";
 export { advisorPrompt } from "./prompt.ts";
 export {
   isResearchPackage,
@@ -64,6 +74,7 @@ export {
   researchPrompt,
   reviewOne,
 } from "./review-panel.ts";
+export { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./routes.ts";
 export { runAdvisor } from "./run.ts";
 export { lastJsonObject } from "./runtimes/cli.ts";
 export { SynthesizerAnswer, synthesisProblems, synthesizeCards } from "./synthesizer.ts";

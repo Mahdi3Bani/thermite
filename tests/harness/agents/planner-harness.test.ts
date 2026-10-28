@@ -5,9 +5,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
+import type { ModelConfig } from "../../../src/agents/model/index.ts";
 import { callUsage } from "../../../src/core/usage.ts";
-import type { ModelConfig } from "../../../src/harness/agents/model.ts";
-import { ModelSource } from "../../../src/harness/agents/model-source.ts";
+import { ModelSource } from "../../../src/harness/agents/model/source.ts";
 import {
   type PlannerCallOptions,
   plannerHarness,

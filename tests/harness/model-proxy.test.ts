@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { ModelSource } from "../../src/harness/agents/model-source.ts";
+import { ModelSource } from "../../src/harness/agents/model/source.ts";
 import { classifyProviderError } from "../../src/harness/agents/provider-errors.ts";
 import { Registry } from "../../src/harness/agents/registry.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";

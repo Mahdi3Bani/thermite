@@ -13,12 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import {
-  CLAUDE_HOOK,
-  claudeArgs,
-  claudeHookSettings,
-} from "../../../src/harness/agents/claude-code/index.ts";
-import { keptLine } from "../../../src/harness/agents/cli-compaction.ts";
+import { keptLine } from "../../../src/agents/compaction/cli.ts";
 import {
   claudeBefore,
   claudeCompactions,
@@ -34,16 +29,21 @@ import {
   opencodeOwn,
   opencodeSessionMarkdown,
   readUnder,
-} from "../../../src/harness/agents/cli-conversation.ts";
+} from "../../../src/agents/compaction/conversation.ts";
 import {
   claudePostCompact,
   claudePreCompact,
   type Settle,
-} from "../../../src/harness/agents/compaction-hook.ts";
+} from "../../../src/agents/programs/claude-code/compaction-hook.ts";
+import {
+  CLAUDE_HOOK,
+  claudeArgs,
+  claudeHookSettings,
+} from "../../../src/agents/programs/claude-code/index.ts";
 import {
   compactionPlugin,
   type OpencodeCompaction,
-} from "../../../src/harness/agents/opencode-plugin.ts";
+} from "../../../src/agents/programs/opencode/plugin.ts";
 
 /**
  * The conversations Claude Code, the Codex CLI and OpenCode keep of their own (goal 070), as
@@ -617,7 +617,7 @@ function fakeOpencode(o: { parent?: string; context?: unknown[] } = {}) {
 
 describe("Thermite's OpenCode plugin (goal 070)", () => {
   test("its module is what OpenCode 2.0.32 loads: a default export with an id and a setup", async () => {
-    const m = (await import("../../../src/harness/agents/opencode-plugin.ts")) as {
+    const m = (await import("../../../src/agents/programs/opencode/plugin.ts")) as {
       default: { id: unknown; setup: unknown };
     };
     assert.equal(m.default.id, "thermite-compaction");

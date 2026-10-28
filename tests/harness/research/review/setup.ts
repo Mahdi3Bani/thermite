@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestContext } from "node:test";
-import type { ResearchTrialSpec } from "../../../../src/harness/agents/research-worker.ts";
+import type { ResearchTrialSpec } from "../../../../src/harness/agents/research/worker.ts";
 import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
 import type { Research } from "../../../../src/harness/research/research/index.ts";

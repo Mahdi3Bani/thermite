@@ -1,3 +1,4 @@
+import type { ModelConfig } from "../agents/model/index.ts";
 import {
   type CallContext,
   CallUsage,
@@ -6,7 +7,6 @@ import {
   type UsageHarness,
   type UsageRoute,
 } from "../core/usage.ts";
-import type { ModelConfig } from "./agents/model.ts";
 import { type Ledger, LedgerError } from "./ledger/index.ts";
 
 /**

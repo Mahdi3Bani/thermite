@@ -8,9 +8,9 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import type { CliCompacted } from "../../../src/agents/compaction/cli.ts";
+import type { ModelConfig } from "../../../src/agents/model/index.ts";
 import { HARNESSES, PROVIDER_TYPES, programForApi } from "../../../src/core/agents.ts";
-import type { CliCompacted } from "../../../src/harness/agents/cli-compaction.ts";
-import type { ModelConfig } from "../../../src/harness/agents/model.ts";
 import {
   AGENT_PROGRAMS,
   isCliProgram,

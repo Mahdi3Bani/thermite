@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { claudeCompactionEnv } from "../../../src/harness/agents/claude-code/index.ts";
-import { type ModelConfig, withAgentsContext } from "../../../src/harness/agents/model.ts";
+import { type ModelConfig, withAgentsContext } from "../../../src/agents/model/index.ts";
+import { claudeCompactionEnv } from "../../../src/agents/programs/claude-code/index.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";

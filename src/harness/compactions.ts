@@ -1,9 +1,9 @@
+import type { CliCompacted, KeptAt } from "../agents/compaction/index.ts";
 import { errorText } from "../common/errors.ts";
 import type { Harness } from "../core/agents.ts";
 import { COMPACTIONS_DIR, compactionFile } from "../core/compaction.ts";
 import { KB_BODY_MAX } from "../core/kb-index.ts";
 import type { LiveLog } from "../core/live.ts";
-import type { CliCompacted, KeptAt } from "./agents/cli-compaction.ts";
 import type { Ledger } from "./ledger/index.ts";
 
 /**

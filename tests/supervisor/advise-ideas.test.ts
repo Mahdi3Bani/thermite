@@ -8,18 +8,18 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { parseContract } from "../../src/core/contract.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import {
-  type AdviseConfig,
-  adviseOnce,
-  emptyAdviseState,
-  teachersCalled,
-} from "../../src/supervisor/advise/index.ts";
-import {
   AdvisorsConfig,
   Opportunity,
   opportunityExperiment,
   teacherRound,
 } from "../../src/supervisor/advisors/index.ts";
-import { serveAdvisorTools } from "../../src/supervisor/past-mcp.ts";
+import {
+  type AdviseConfig,
+  adviseOnce,
+  emptyAdviseState,
+  teachersCalled,
+} from "../../src/supervisor/advisors/pass/index.ts";
+import { serveAdvisorTools } from "../../src/supervisor/advisors/tools/mcp.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";

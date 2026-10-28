@@ -1,10 +1,14 @@
 import { join } from "node:path";
+import {
+  type ModelConfig,
+  modelConfigFromEnv,
+  withAgentsContext,
+} from "../../agents/model/index.ts";
+import { mergeUsage, type PlanWindows } from "../../agents/programs/index.ts";
 import { log } from "../../common/log.ts";
 import type { CliOnceDeps } from "../agents/cli/once.ts";
 import { DevRuns } from "../agents/devrun.ts";
-import { type ModelConfig, modelConfigFromEnv, withAgentsContext } from "../agents/model.ts";
-import { ModelSource } from "../agents/model-source.ts";
-import { mergeUsage, type PlanWindows } from "../agents/plan-windows.ts";
+import { ModelSource } from "../agents/model/index.ts";
 import {
   CLI_PROGRAMS,
   programOf,

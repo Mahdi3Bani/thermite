@@ -7,8 +7,8 @@ import { elapsedWords, type Progress } from "../../src/control/command-progress.
 import { issueCommand } from "../../src/control/issue/index.ts";
 import { SecretBox } from "../../src/control/secrets.ts";
 import { FOLLOW_CORE_JS, FOLLOW_JS } from "../../src/control/ui/commands/client.ts";
-import type { RigCheckReport } from "../../src/harness/agents/model-check.ts";
-import { ModelSource } from "../../src/harness/agents/model-source.ts";
+import type { RigCheckReport } from "../../src/harness/agents/model/check.ts";
+import { ModelSource } from "../../src/harness/agents/model/source.ts";
 import { controlStack, signIn } from "../helpers/control-stack.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 

@@ -9,23 +9,23 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { mcpLine } from "../../../../src/agents/mcp/tools.ts";
+import type { ModelConfig } from "../../../../src/agents/model/index.ts";
+import type { PlanWindows } from "../../../../src/agents/programs/claude-code/windows.ts";
 import { RESEARCH_WORKER_SYSTEM } from "../../../../src/agents/roles/research-worker.ts";
 import { laneLimits } from "../../../../src/core/contract.ts";
 import type { CallUsage } from "../../../../src/core/usage.ts";
-import { claudeProgram } from "../../../../src/harness/agents/claude-code/program.ts";
+import { claudeProgram } from "../../../../src/harness/agents/cli/claude-code.ts";
+import { codexProgram } from "../../../../src/harness/agents/cli/codex.ts";
 import { runCliTrial } from "../../../../src/harness/agents/cli/loop.ts";
 import { cliAsk, cliModelCheck, cliOnce } from "../../../../src/harness/agents/cli/once.ts";
+import { opencodeProgram } from "../../../../src/harness/agents/cli/opencode.ts";
 import type {
   CliProgram,
   CliTally,
   CliTrialDeps,
 } from "../../../../src/harness/agents/cli/program.ts";
-import { codexProgram } from "../../../../src/harness/agents/codex/program.ts";
-import { mcpLine } from "../../../../src/harness/agents/mcp-tools.ts";
-import type { ModelConfig } from "../../../../src/harness/agents/model.ts";
-import { opencodeProgram } from "../../../../src/harness/agents/opencode/program.ts";
-import type { PlanWindows } from "../../../../src/harness/agents/plan-windows.ts";
-import type { ResearchTrialSpec } from "../../../../src/harness/agents/research-worker.ts";
+import type { ResearchTrialSpec } from "../../../../src/harness/agents/research/worker.ts";
 import type { TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
 import type { RunRequest } from "../../../../src/harness/broker/runner.ts";
 import { fakeProgramRunner, type Program } from "../../../helpers/fake-program.ts";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { CHATGPT_LIMIT_CODE } from "../../../src/harness/agents/model.ts";
+import { CHATGPT_LIMIT_CODE } from "../../../src/agents/model/index.ts";
 import {
   afterProgramFailure,
   classifyProviderError,

@@ -10,7 +10,7 @@ import {
   type ResearchPlannerInput,
   researchPlannerContext,
   validateResearchPlan,
-} from "../../../src/harness/agents/research-planner.ts";
+} from "../../../src/harness/agents/research/planner.ts";
 import type { QueueBrief } from "../../../src/harness/queue.ts";
 import type { QuestionState, ResearchState } from "../../../src/harness/research/shares.ts";
 

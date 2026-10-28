@@ -1,5 +1,5 @@
+import { NOT_HANDED } from "../../../agents/mcp/index.ts";
 import type { Contract } from "../../../core/contract.ts";
-import { NOT_HANDED } from "../../mcp-gateway.ts";
 import type { SchedulerContext } from "./context.ts";
 
 /**

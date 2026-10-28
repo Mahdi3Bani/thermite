@@ -5,16 +5,16 @@ import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import {
-  type AdviseConfig,
-  adviseOnce,
-  emptyAdviseState,
-} from "../../src/supervisor/advise/index.ts";
-import {
   AdvisorsConfig,
   AuditAnswer,
   DirectiveSet,
   TeacherReview,
 } from "../../src/supervisor/advisors/index.ts";
+import {
+  type AdviseConfig,
+  adviseOnce,
+  emptyAdviseState,
+} from "../../src/supervisor/advisors/pass/index.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 

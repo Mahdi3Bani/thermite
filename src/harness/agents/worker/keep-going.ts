@@ -1,5 +1,5 @@
 import type { Agent } from "@earendil-works/pi-agent-core";
-import type { Compactor } from "../compaction.ts";
+import type { Compactor } from "../../../agents/compaction/index.ts";
 import {
   classifyProviderError,
   type FailureCount,

@@ -10,7 +10,7 @@ import type { Research } from "../../../research/research/index.ts";
 import { briefGaps } from "../../../research/review/index.ts";
 import { focusOf, limitsInForce, PLANNER } from "../../coordinator.ts";
 import type { Assignment } from "../../registry.ts";
-import type { ResearchTrialSpec } from "../../research-worker.ts";
+import type { ResearchTrialSpec } from "../../research/index.ts";
 import type { TrialResult } from "../../worker/index.ts";
 import { campaignBrief, notesAndPast, withOwnerMessages } from "../briefs.ts";
 import type { SchedulerContext } from "../context.ts";

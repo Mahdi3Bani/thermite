@@ -11,7 +11,7 @@ import {
   MAX_LANES_REASON,
   parseContract,
 } from "../../src/core/contract.ts";
-import { CHECK_ROLE, PLANNER_ROLE } from "../../src/harness/agents/opencode/index.ts";
+import { CHECK_ROLE, PLANNER_ROLE } from "../../src/harness/agents/cli/common.ts";
 import { IDS, RoleSchema, RunRequest, roleIds } from "../../src/harness/broker/runner.ts";
 import { ALL_ROLES, nprocFor } from "../../src/harness/broker/server.ts";
 import { lanesFromEnv } from "../../src/harness/rig-settings.ts";

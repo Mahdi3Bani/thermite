@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { CHATGPT_API } from "../../src/core/agents.ts";
+import { chatgptRequest, chatgptRouteAllowed } from "../../src/agents/model/chatgpt.ts";
 import {
   buildModel,
   CHATGPT_LIMIT_WAIT_MS,
   usageLimitRetry,
-} from "../../src/harness/agents/model.ts";
+} from "../../src/agents/model/index.ts";
+import { CHATGPT_API } from "../../src/core/agents.ts";
 import { workerRoute } from "../../src/harness/agents/spawn.ts";
-import { chatgptRequest, chatgptRouteAllowed } from "../../src/harness/chatgpt.ts";
 
 /** One Responses API stream that says "hello" and completes. */
 function helloStream(): Response {

@@ -4,15 +4,15 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { OUTPUT_MAX, READ_MAX, researchOutput } from "../../../src/agents/tools/research.ts";
-import { runResearchTrial } from "../../../src/harness/agents/research-worker.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
-import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import {
   blockedAddress,
   htmlToText,
   registrableDomain,
-} from "../../../src/harness/research/fetcher.ts";
+} from "../../../src/agents/tools/fetcher.ts";
+import { OUTPUT_MAX, READ_MAX, researchOutput } from "../../../src/agents/tools/research.ts";
+import { runResearchTrial } from "../../../src/harness/agents/research/worker.ts";
+import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
+import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import type { makeHarnessEnv } from "../../helpers/harness-env.ts";
 import { researchEnv } from "../../helpers/research-run.ts";

@@ -1,4 +1,4 @@
-import { registrableDomain } from "../fetcher.ts";
+import { registrableDomain } from "../../../agents/tools/fetcher.ts";
 import type { ResearchContext } from "./context.ts";
 
 /** A run's figures: its corpus, its claims and how many are corroborated, and its last hour. */

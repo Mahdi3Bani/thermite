@@ -1,14 +1,17 @@
 import type { TSchema } from "@earendil-works/pi-ai";
 import type { z } from "zod";
+import type { KeptAt } from "../../agents/compaction/index.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
 import type { CallUsage, UsageRoute } from "../../core/usage.ts";
-import type { KeptAt } from "../../harness/agents/cli-compaction.ts";
-import type { AdvisorCode } from "../code-tools.ts";
-import type { AdvisorPaper } from "../paper-tools.ts";
-import type { AdvisorServers, PastSearch } from "../past-mcp.ts";
-import type { AdvisorResearch } from "../research-tools.ts";
 import type { AdvisorRuntime } from "./config.ts";
+import type {
+  AdvisorCode,
+  AdvisorPaper,
+  AdvisorResearch,
+  AdvisorServers,
+  PastSearch,
+} from "./tools/index.ts";
 
 /**
  * One advisor call (runAdvisor): a role prompt, the tools, and an output schema; the model answers

@@ -1,15 +1,14 @@
 import { randomUUID } from "node:crypto";
+import type { OnceKeeping } from "../../../agents/compaction/index.ts";
+import { type McpCaller, mcpAgentTools } from "../../../agents/mcp/index.ts";
+import { type ModelConfig, withAgentsContext } from "../../../agents/model/index.ts";
 import { type Harness, programForApi } from "../../../core/agents.ts";
 import type { Contract } from "../../../core/contract.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import type { CallUsage } from "../../../core/usage.ts";
-import type { McpCaller } from "../../mcp-gateway.ts";
 import { routeOf } from "../../usage.ts";
 import type { CliHarness } from "../cli/program.ts";
-import type { OnceKeeping } from "../cli-compaction.ts";
 import { PLANNER } from "../coordinator.ts";
-import { mcpAgentTools } from "../mcp-tools.ts";
-import { type ModelConfig, withAgentsContext } from "../model.ts";
 import type { Ask, PlannerCompaction, PlannerMcp, PlannerPast } from "../planner/index.ts";
 import { isCliProgram, programOf } from "../programs.ts";
 import { pastResearch } from "./briefs.ts";

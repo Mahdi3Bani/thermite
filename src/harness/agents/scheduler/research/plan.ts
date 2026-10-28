@@ -14,7 +14,7 @@ import {
   planResearch,
   type ResearchPlannerInput,
   type ResearchPlanResult,
-} from "../../research-planner.ts";
+} from "../../research/index.ts";
 import { directivesOf, laneCountOf, type SchedulerContext } from "../context.ts";
 import { plannerCompaction, plannerNotes, plannerRoute } from "../planner-call.ts";
 import { watch } from "../watch.ts";

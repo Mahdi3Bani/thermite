@@ -3,22 +3,24 @@ import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { WORKER_CODEX_SYSTEM } from "../../../src/agents/roles/worker.ts";
-import { laneLimits } from "../../../src/core/contract.ts";
+import { modelConfigFromEnv } from "../../../src/agents/model/index.ts";
 import {
   codexArgs,
   codexConfig,
   codexExitWords,
-  codexLimitsNote,
-  codexModelCheck,
   NO_CODEX,
   newCodexTally,
   readCodexEvents,
-  runCodexTrial,
   tomlString,
-} from "../../../src/harness/agents/codex/index.ts";
-import { modelConfigFromEnv } from "../../../src/harness/agents/model.ts";
-import { ControlRoute } from "../../../src/harness/agents/model-source.ts";
+} from "../../../src/agents/programs/codex/index.ts";
+import { WORKER_CODEX_SYSTEM } from "../../../src/agents/roles/worker.ts";
+import { laneLimits } from "../../../src/core/contract.ts";
+import {
+  codexLimitsNote,
+  codexModelCheck,
+  runCodexTrial,
+} from "../../../src/harness/agents/cli/codex.ts";
+import { ControlRoute } from "../../../src/harness/agents/model/source.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import type { TrialSpec } from "../../../src/harness/agents/worker/index.ts";
 import {
