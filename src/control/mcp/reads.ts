@@ -9,8 +9,7 @@ import {
   runQueue,
 } from "../run-lists.ts";
 import { modelUsage } from "../usage.ts";
-import { agentEvent, agentRun } from "../views/agent.ts";
-import { currentChampion, leaderboard } from "../views/index.ts";
+import { agentEvent, agentRun, currentChampion, leaderboard } from "../views/index.ts";
 import type { ToolContext } from "./context.ts";
 
 /**

@@ -4,12 +4,11 @@ import { log } from "../../common/env.ts";
 import { ExperimentText } from "../../core/commands.ts";
 import type { LiveKind } from "../../core/live.ts";
 import { measurementIn, measurementRefusal } from "../../core/research-check.ts";
-import { KIND_WORDS, type ProviderErrorKind } from "../agents/provider-errors.ts";
-import { Registry } from "../agents/registry.ts";
+import { KIND_WORDS, type ProviderErrorKind, Registry } from "../agents/index.ts";
 import { Journal } from "../journal.ts";
 import { LedgerError } from "../ledger/index.ts";
 import { messageText, type OwnerMessages } from "../messages.ts";
-import { NOTE_REPEATS } from "../research/research/index.ts";
+import { NOTE_REPEATS } from "../research/index.ts";
 import type { HarnessService } from "./index.ts";
 import type { ReplyNow } from "./watch.ts";
 

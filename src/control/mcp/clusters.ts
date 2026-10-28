@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { RIG_ID_SENTENCE } from "../../core/ids.ts";
-import { clusterRigAction } from "../clusters/actions.ts";
-import { updateRigImages } from "../clusters/images.ts";
-import { setClusterRigResources } from "../clusters/resize.ts";
 import {
+  addClusterRig,
   type ClusterResourcesBody,
   clusterResourcesFields,
   clusterResourcesRequest,
-} from "../clusters/resources.ts";
-import { addClusterRig, setClusterSlots } from "../clusters/rigs.ts";
+  clusterRigAction,
+  setClusterRigResources,
+  setClusterSlots,
+  updateRigImages,
+} from "../clusters/index.ts";
 import type { ToolContext } from "./context.ts";
 
 /** Rigs on clusters, as Add a rig and Providers do them: the owner and operators. */

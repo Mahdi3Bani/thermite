@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { JOURNAL_FIELD } from "../../../agents/tools/notes.ts";
+import { JOURNAL_FIELD } from "../../../agents/tools/index.ts";
 import { ExperimentId, QueuePosition } from "../../../core/commands.ts";
 import { RESEARCH_TASK_KINDS } from "../../../core/directions.ts";
 import { LenientNotes } from "../../../core/journal.ts";

@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { listProcesses, type Proc } from "../broker/process.ts";
-import { type Role, roleIds } from "../broker/runner.ts";
+import { listProcesses, type Proc, type Role, roleIds } from "../broker/index.ts";
 
 /**
  * Whether the rig is too busy for the isolation selftest. Each probe ends by killing every process

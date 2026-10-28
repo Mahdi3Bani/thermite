@@ -1,5 +1,5 @@
 import { canonicalJson } from "../../core/canonical.ts";
-import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "../judge/held-out.ts";
+import { type HeldOutKind, heldOutCellsOf, heldOutKinds } from "../judge/index.ts";
 import { LedgerPart, type Row } from "./part.ts";
 
 /** The `held_out` table: the held-out checks' results. */

@@ -6,34 +6,28 @@ import {
   CONTEXT_WINDOW_MIN,
 } from "../../core/compaction.ts";
 import {
+  archiveCampaign,
+  type CopyCampaignRequest,
   campaignContextAnswer,
   campaignContextFields,
-  setCampaignContext,
-} from "../campaigns/context.ts";
-import {
-  type CopyCampaignRequest,
+  campaignFoldersAnswer,
   copyACampaign,
   copyCampaignAnswer,
   copyCampaignFields,
-} from "../campaigns/copy.ts";
-import {
-  archiveCampaign,
-  campaignFoldersAnswer,
   createFolder,
   deleteFolder,
   FOLDER_NAME_MAX,
   moveCampaign,
   renameFolder,
   type ShelfOutcome,
-  unarchiveCampaign,
-} from "../campaigns/folders.ts";
-import {
   type StartRunBody,
+  setCampaignContext,
   startARun,
   startRunAnswer,
   startRunFields,
   startRunRequest,
-} from "../campaigns/start-run.ts";
+  unarchiveCampaign,
+} from "../campaigns/index.ts";
 import { rigView } from "../views/index.ts";
 import type { ToolContext } from "./context.ts";
 

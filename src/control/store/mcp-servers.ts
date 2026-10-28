@@ -1,5 +1,5 @@
 import { log } from "../../common/env.ts";
-import { type McpStatus, type McpTool, orNull, type Row, str } from "../mcp-servers/table.ts";
+import { type McpStatus, type McpTool, orNull, type Row, str } from "../mcp-servers/index.ts";
 import { keyHint, type SecretBox } from "../secrets.ts";
 import { StorePart } from "./part.ts";
 

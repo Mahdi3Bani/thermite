@@ -9,7 +9,7 @@ import {
   type UsageRow,
   type UsageSums,
 } from "../../core/usage.ts";
-import { HARNESS_NAMES } from "../rigs/model.ts";
+import { HARNESS_NAMES } from "../rigs/index.ts";
 import type { Harness, ProviderModel } from "../store/index.ts";
 import { campaignHref, esc, icon, infoLabel, modeAvatar } from "./components/index.ts";
 

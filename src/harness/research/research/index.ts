@@ -1,4 +1,4 @@
-import { CODE_RESEARCH_TOOLS, researchTool } from "../../../agents/tools/research.ts";
+import { CODE_RESEARCH_TOOLS, researchTool } from "../../../agents/tools/index.ts";
 import { log } from "../../../common/env.ts";
 import { type Ledger, LedgerError } from "../../ledger/index.ts";
 import type { TaskYield } from "../../queue.ts";

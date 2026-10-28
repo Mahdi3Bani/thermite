@@ -1,5 +1,4 @@
-import type { ClaimRow } from "../ledger/claims.ts";
-import type { Ledger } from "../ledger/index.ts";
+import type { ClaimRow, Ledger } from "../ledger/index.ts";
 
 /**
  * The checks research text shares (goal 112): a finding a worker records and an answer the review

@@ -1,7 +1,6 @@
 import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
 import type { RigView, RunView } from "../../views/index.ts";
-import { esc, icon, runHref } from "../components/index.ts";
-import { card } from "../components/need-card.ts";
+import { card, esc, icon, runHref } from "../components/index.ts";
 import { clip } from "../words/index.ts";
 import { short } from "./change.ts";
 import { decidedState } from "./decided.ts";

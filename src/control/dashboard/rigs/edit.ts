@@ -7,28 +7,31 @@ import {
 } from "../../../core/compaction.ts";
 import { MAX_LANES } from "../../../core/contract.ts";
 import type { RigSettingsChange } from "../../../core/rig-settings.ts";
-import type { ClusterFacts } from "../../clusters/facts.ts";
-import { prepareResize } from "../../clusters/resize.ts";
-import { asksNothing, type ClusterResourcesRequest } from "../../clusters/resources.ts";
+import {
+  asksNothing,
+  type ClusterFacts,
+  type ClusterResourcesRequest,
+  prepareResize,
+} from "../../clusters/index.ts";
 import { issueCommand } from "../../issue/index.ts";
-import { MAX_RIG_GPUS } from "../../machines/deploy.ts";
-import { contextCapRefusal, isOpencodeOwn } from "../../providers/models.ts";
+import { MAX_RIG_GPUS } from "../../machines/index.ts";
+import { contextCapRefusal, isOpencodeOwn } from "../../providers/index.ts";
 import {
   type AgentModelPlan,
+  advisorsFileOf,
   applyAgentModel,
   checkAgentModel,
   clearRigModel,
   giveRigModel,
-} from "../../rigs/agent-models.ts";
-import { advisorsFileOf, neededHarness, opencodeOnly } from "../../rigs/model.ts";
-import {
+  neededHarness,
+  opencodeOnly,
   QUIET_TIP,
   quietField,
   type RigPart,
   rigSettingsChange,
   SPLIT_RESTARTS,
   settingsCount,
-} from "../../rigs/settings.ts";
+} from "../../rigs/index.ts";
 import {
   AGENT_ROLES,
   type AgentRole,
@@ -42,13 +45,13 @@ import {
 } from "../../store/index.ts";
 import { infoLabel } from "../../ui/campaigns/new/index.ts";
 import { esc, hardwareLine } from "../../ui/components/index.ts";
-import { EDIT_RIG_JS } from "../../ui/rigs/edit/client.ts";
 import {
   type AgentLineId,
   type AgentLineNow,
   type AgentModelGroup,
   type AgentModelOption,
   agentsTable,
+  EDIT_RIG_JS,
 } from "../../ui/rigs/edit/index.ts";
 import { listText } from "../../ui/words/index.ts";
 import type { Dashboard } from "../context.ts";

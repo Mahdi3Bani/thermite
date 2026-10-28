@@ -1,15 +1,17 @@
 import { questionName, RESEARCH_REVIEW, SATURATION_TASKS } from "../../../core/research-check.ts";
-import type { MessageView, RigView, RunView } from "../../views/index.ts";
 import {
   type HypothesisView,
   type ItemDecisionView,
+  type MessageView,
   questionKey,
   questionYield,
   type ReviewItemView,
+  type RigView,
+  type RunView,
   recentShares,
   type StandingView,
   type TaskYieldView,
-} from "../../views/research.ts";
+} from "../../views/index.ts";
 import {
   ago,
   esc,

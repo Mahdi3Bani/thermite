@@ -1,5 +1,5 @@
 import type { Contract } from "../../../core/contract.ts";
-import { startingPoint } from "../../judge/baseline.ts";
+import { startingPoint } from "../../judge/index.ts";
 import type { Ledger } from "../../ledger/index.ts";
 import type { SchedulerContext } from "./context.ts";
 

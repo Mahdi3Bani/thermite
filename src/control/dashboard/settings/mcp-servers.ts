@@ -6,8 +6,8 @@ import {
   type McpServerInput,
   type McpServers,
   namedBy,
+  redirectUriOf,
 } from "../../mcp-servers/index.ts";
-import { redirectUriOf } from "../../mcp-servers/routes.ts";
 import type { ControlStore } from "../../store/index.ts";
 import { infoLabel } from "../../ui/campaigns/new/index.ts";
 import { ago, esc, icon } from "../../ui/components/index.ts";

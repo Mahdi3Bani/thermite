@@ -1,7 +1,7 @@
 import type { ServerType } from "@hono/node-server";
 import { log } from "../../common/log.ts";
-import type { Scheduler } from "../agents/scheduler/index.ts";
-import type { Judge } from "../judge/judge.ts";
+import type { Scheduler } from "../agents/index.ts";
+import type { Judge } from "../judge/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import { settlePropagations } from "../propagation.ts";
 import type { RigSettingsStore } from "../rig-settings.ts";

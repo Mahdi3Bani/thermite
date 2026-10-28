@@ -1,6 +1,6 @@
-import { type Evidence, evidenceOf, Registry } from "./agents/registry.ts";
+import { type Evidence, evidenceOf, Registry } from "./agents/index.ts";
 import { GitError, readableDiff, treeFile, treeFiles } from "./git.ts";
-import { clipReason } from "./judge/reasons.ts";
+import { clipReason } from "./judge/index.ts";
 import { type Ledger, LedgerError } from "./ledger/index.ts";
 import type { ExperimentQueue } from "./queue.ts";
 import { shownViolations, violationsOf } from "./v0.ts";

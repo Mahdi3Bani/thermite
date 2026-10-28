@@ -1,14 +1,22 @@
 import type { CliCompacted } from "../../agents/compaction/index.ts";
 import type { ModelConfig } from "../../agents/model/index.ts";
-import type { ResearchFolderPaths } from "../../agents/tools/research.ts";
+import type { ResearchFolderPaths } from "../../agents/tools/index.ts";
 import { type Harness, type ProviderType, programForApi, reaches } from "../../core/agents.ts";
-import type { Role } from "../broker/runner.ts";
-import { claudeProgram } from "./cli/claude-code.ts";
-import { codexProgram } from "./cli/codex.ts";
-import { runCliTrial } from "./cli/loop.ts";
-import { type CliAskOptions, type CliOnceDeps, cliAsk, cliModelCheck } from "./cli/once.ts";
-import { opencodeProgram } from "./cli/opencode.ts";
-import type { CliHarness, CliProgram, CliTally, CliTrialDeps } from "./cli/program.ts";
+import type { Role } from "../broker/index.ts";
+import {
+  type CliAskOptions,
+  type CliHarness,
+  type CliOnceDeps,
+  type CliProgram,
+  type CliTally,
+  type CliTrialDeps,
+  claudeProgram,
+  cliAsk,
+  cliModelCheck,
+  codexProgram,
+  opencodeProgram,
+  runCliTrial,
+} from "./cli/index.ts";
 import { checkModel, type RigCheckReport } from "./model/index.ts";
 import type { ResearchTrialSpec } from "./research/index.ts";
 import { spawnTrial } from "./spawn.ts";

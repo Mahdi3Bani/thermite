@@ -13,7 +13,7 @@ import {
   type ResearchPackage,
   type ResearchVerdicts,
   reviewerGaps,
-} from "../research/review/index.ts";
+} from "../research/index.ts";
 import {
   type ResearchReviewPackage,
   type ReviewKind,

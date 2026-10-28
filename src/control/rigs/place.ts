@@ -1,7 +1,6 @@
 import { errorText } from "../../common/errors.ts";
-import { checkClusterRig } from "../clusters/rigs.ts";
-import { checkScript, readCheck } from "../machines/deploy.ts";
-import { tail } from "../machines/ssh.ts";
+import { checkClusterRig } from "../clusters/index.ts";
+import { checkScript, readCheck, tail } from "../machines/index.ts";
 import type { ControlParts } from "../parts.ts";
 
 /** What a check of where a rig runs needs: the store, the secrets, and the ways to reach it. */

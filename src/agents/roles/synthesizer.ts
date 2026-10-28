@@ -1,5 +1,5 @@
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
-import { RUN_RESEARCH_TOOLS } from "../tools/names.ts";
+import { RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 
 /**
  * The synthesizer (goal 166): it keeps one answer card for each of a research run's questions,

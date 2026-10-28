@@ -6,7 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/names.ts";
+import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import { SEARCH_MAX } from "../../../core/api/harness/research.ts";
 import { type AdvisorCode, CODE_TOOL_NAMES, registerCodeTools } from "./code.ts";

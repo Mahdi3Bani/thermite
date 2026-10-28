@@ -2,7 +2,7 @@ import { errorText } from "../../common/errors.ts";
 import { inBackground } from "../background.ts";
 import { issueCommand } from "../issue/index.ts";
 import type { ControlParts } from "../parts.ts";
-import { controlAddress } from "../rigs/setup.ts";
+import { controlAddress } from "../rigs/index.ts";
 import type { Cluster, ClusterRig, ClusterRigResize, ClusterRigSize } from "../store/index.ts";
 import { rigSettingsOf } from "../views/index.ts";
 import { type ClusterFacts, type SlotQuota, slotQuota } from "./facts.ts";

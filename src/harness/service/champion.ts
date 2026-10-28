@@ -3,7 +3,7 @@ import { errorText, Refusal } from "../../common/errors.ts";
 import type { CommandPayloads } from "../../core/commands.ts";
 import { Audits } from "../audits.ts";
 import { updateRef } from "../git.ts";
-import { portReplaced } from "../judge/ports.ts";
+import { portReplaced } from "../judge/index.ts";
 import { type Ledger, LedgerError } from "../ledger/index.ts";
 import type { HarnessService } from "./index.ts";
 import { decidingRun, requireRun } from "./runs.ts";

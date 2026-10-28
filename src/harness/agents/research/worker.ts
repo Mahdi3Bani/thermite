@@ -3,18 +3,17 @@ import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
 import { mcpAgentTools, mcpLine } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
+import { RESEARCH_WORKER_NOTES, RESEARCH_WORKER_SYSTEM } from "../../../agents/roles/index.ts";
 import {
-  RESEARCH_WORKER_NOTES,
-  RESEARCH_WORKER_SYSTEM,
-} from "../../../agents/roles/research-worker.ts";
-import { NOTE_TOOL, NoteLimit, type NoteRequest } from "../../../agents/tools/notes.ts";
-import {
+  NOTE_TOOL,
+  NoteLimit,
+  type NoteRequest,
   READ_MAX,
   RESEARCH_TOOLS,
   type ResearchFolderPaths,
   researchFolderNote,
   researchOutput,
-} from "../../../agents/tools/research.ts";
+} from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { CallUsage } from "../../../core/usage.ts";

@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { NOTE_KINDS, type NoteAbout, NoteInput, type NoteKind } from "../core/journal.ts";
 import type { LiveLog } from "../core/live.ts";
-import { type Ledger, LedgerError } from "./ledger/index.ts";
-import type { JournalNoteRow } from "./ledger/journal.ts";
-import { foldText } from "./research/checks.ts";
+import { type JournalNoteRow, type Ledger, LedgerError } from "./ledger/index.ts";
+import { foldText } from "./research/index.ts";
 
 /**
  * A run's field notes (goal 065): what its workers, its planner and its advisors write down as

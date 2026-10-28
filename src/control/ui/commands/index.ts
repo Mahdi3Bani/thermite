@@ -1,5 +1,8 @@
 import { ago, esc } from "../components/index.ts";
 
+export { FOLLOW_JS } from "./client.ts";
+export { formPayload } from "./forms.ts";
+
 /** A command as the Commands page lists it. */
 export interface ListedCommand {
   rig: string;

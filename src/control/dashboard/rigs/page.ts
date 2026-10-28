@@ -1,6 +1,5 @@
 import type { Hono } from "hono";
-import { resourcesWords, sizeWords } from "../../clusters/resources.ts";
-import { rigWork, workWords } from "../../clusters/rigs.ts";
+import { resourcesWords, rigWork, sizeWords, workWords } from "../../clusters/index.ts";
 import {
   checkRow,
   checkRowsOf,
@@ -10,8 +9,8 @@ import {
   takingModel,
 } from "../../command-progress.ts";
 import { exportLeft, removeWords, resultsLeft } from "../../results-left.ts";
-import { controlAddress, controlImages } from "../../rigs/setup.ts";
-import { MIN_IDLE_STOP_MINUTES } from "../../runpod/rigs.ts";
+import { controlAddress, controlImages } from "../../rigs/index.ts";
+import { MIN_IDLE_STOP_MINUTES } from "../../runpod/index.ts";
 import {
   type ClusterRig,
   fingerprint,
@@ -41,8 +40,7 @@ import {
 } from "../../ui/rigs/runpod.ts";
 import { stateBanners, stateRows, stateSummary, versionFact } from "../../ui/rigs/states.ts";
 import { span } from "../../ui/words/index.ts";
-import { runCampaign } from "../../views/facts.ts";
-import type { RigView } from "../../views/index.ts";
+import { type RigView, runCampaign } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import {
   gpuRoles,

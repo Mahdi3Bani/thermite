@@ -10,7 +10,7 @@ import { canonicalUses, type McpUse, sameUses, usesWords } from "../../core/mcp.
 import { folderCommit, hasCommit, initMirror, showFile, updateRef } from "../git.ts";
 import { importBundle, importFile } from "../imports.ts";
 import { ExperimentInput } from "../queue.ts";
-import { startingHypotheses } from "../research/research/index.ts";
+import { startingHypotheses } from "../research/index.ts";
 import type { HarnessService } from "./index.ts";
 import { pauseOthers } from "./runs.ts";
 

@@ -1,10 +1,18 @@
 import { chownSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { BrokerClient } from "../broker/client.ts";
-import { builderRole, cardsOf, judgeCardOf, readLayout, runRole } from "../broker/devices.ts";
-import { IDS, type Role, walk } from "../broker/runner.ts";
-import { SNAPSHOT_KEY_VAR } from "../broker/seal.ts";
-import { copyForRun } from "../judge/measure.ts";
+import {
+  BrokerClient,
+  builderRole,
+  cardsOf,
+  IDS,
+  judgeCardOf,
+  type Role,
+  readLayout,
+  runRole,
+  SNAPSHOT_KEY_VAR,
+  walk,
+} from "../broker/index.ts";
+import { copyForRun } from "../judge/index.ts";
 import { isolationBusy } from "./busy.ts";
 import {
   containerChecks,

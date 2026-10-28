@@ -3,9 +3,9 @@ import { RIG_ID_SENTENCE } from "../../core/ids.ts";
 import { inBackground } from "../background.ts";
 import { newToken } from "../credential.ts";
 import { issueCommand } from "../issue/index.ts";
-import { MAX_RIG_GPUS } from "../machines/deploy.ts";
+import { MAX_RIG_GPUS } from "../machines/index.ts";
 import type { ControlParts } from "../parts.ts";
-import { awaitFirstReport, controlAddress, judgeShare, rigTaken, sleep } from "../rigs/setup.ts";
+import { awaitFirstReport, controlAddress, judgeShare, rigTaken, sleep } from "../rigs/index.ts";
 import { type Cluster, type ClusterRig, RIG_ID } from "../store/index.ts";
 import {
   type ClusterFacts,

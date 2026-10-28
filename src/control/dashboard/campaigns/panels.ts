@@ -2,10 +2,11 @@ import type { McpUse } from "../../../core/mcp.ts";
 import {
   campaignContract,
   contractContext,
+  copiedFromWords,
+  copiedMcpWords,
   ownModels,
   rigContext,
-} from "../../campaigns/context.ts";
-import { copiedFromWords, copiedMcpWords } from "../../campaigns/copy.ts";
+} from "../../campaigns/index.ts";
 import { campaignMcpServers } from "../../mcp-servers/index.ts";
 import { startLine, startNote } from "../../ui/campaigns/context/index.ts";
 import { copyDrawer, suggestCopyName } from "../../ui/campaigns/copy/index.ts";

@@ -1,11 +1,10 @@
 import { log } from "../../common/log.ts";
-import type { DevRuns } from "../agents/devrun.ts";
-import type { GpuCard } from "../broker/devices.ts";
-import { Judge, type PromotionPolicy } from "../judge/judge.ts";
-import { jobsAtStart } from "../judge/lease.ts";
+import type { DevRuns } from "../agents/index.ts";
+import type { GpuCard } from "../broker/index.ts";
+import { Judge, jobsAtStart, type PromotionPolicy } from "../judge/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { HarnessService } from "../service/index.ts";
-import type { TargetDriver } from "../targets/driver.ts";
+import type { TargetDriver } from "../targets/index.ts";
 import type { ControllerContext } from "./context.ts";
 
 /**

@@ -1,6 +1,5 @@
 import { BRIEF_WHOLE_CHARS, briefOf } from "../../../core/brief.ts";
-import { esc, infoLabel } from "../components/index.ts";
-import { MD_CORE_JS, mdHtml } from "../components/markdown.ts";
+import { esc, infoLabel, MD_CORE_JS, mdHtml } from "../components/index.ts";
 
 /**
  * A campaign's brief on the screens (goal 078): New campaign's step 2, The brief, takes it for

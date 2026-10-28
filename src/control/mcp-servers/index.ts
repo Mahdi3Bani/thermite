@@ -39,6 +39,7 @@ export {
   researchMcpRefusal,
 } from "./campaigns.ts";
 export type { SignInDone } from "./oauth.ts";
+export { mountMcpServerRoutes, redirectUriOf, ServerBody, serverJson } from "./routes.ts";
 export type { SignIn } from "./sign-in.ts";
 export {
   MCP_AUTHS,
@@ -47,6 +48,9 @@ export {
   type McpServerInput,
   type McpStatus,
   type McpTool,
+  orNull,
+  type Row,
+  str,
 } from "./table.ts";
 
 /**

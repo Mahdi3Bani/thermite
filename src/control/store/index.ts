@@ -55,6 +55,7 @@ import { UsageRecords } from "./usage.ts";
 
 export { cursorOf } from "./audit.ts";
 export type { RigComponent, StoredBuild } from "./builds.ts";
+export type { BusIdentityName } from "./bus.ts";
 export type { CampaignSources, CopiedFrom } from "./campaigns.ts";
 export type {
   Cluster,
@@ -68,6 +69,7 @@ export type { GitAccess } from "./git-access.ts";
 export type { JoinedRig } from "./joined.ts";
 export { OPEN_TRIAL_LINES } from "./live.ts";
 export type { Machine, MachineRig } from "./machines.ts";
+export type { McpServerRows } from "./mcp-servers.ts";
 export { AGENT_ROLES, type AgentRole, codexTakes, harnessOf } from "./models.ts";
 export type { ModelProvider, ProviderModel } from "./providers.ts";
 export type { RigRefusal } from "./refusals.ts";

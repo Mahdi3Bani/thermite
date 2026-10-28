@@ -1,7 +1,11 @@
 import { notesInstruction } from "../../core/journal.ts";
 import { linesSection, type Prompt, prompt } from "../prompt.ts";
-import { NOTE_USAGE } from "../tools/names.ts";
-import { CODE_RESEARCH_TOOLS, codeResearchNote, researchCommands } from "../tools/research.ts";
+import {
+  CODE_RESEARCH_TOOLS,
+  codeResearchNote,
+  NOTE_USAGE,
+  researchCommands,
+} from "../tools/index.ts";
 
 /**
  * The worker (goal 166): one trial on one experiment in a hill-climb or goal run. It changes the

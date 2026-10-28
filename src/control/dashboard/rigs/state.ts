@@ -1,11 +1,9 @@
 import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
-import { updateRigImages } from "../../clusters/images.ts";
+import { updateRigImages } from "../../clusters/index.ts";
 import { notSent } from "../../command-progress.ts";
-import { updateScript } from "../../machines/deploy.ts";
-import { tail } from "../../machines/ssh.ts";
-import { checkRigPlace } from "../../rigs/place.ts";
-import { controlImages } from "../../rigs/setup.ts";
+import { tail, updateScript } from "../../machines/index.ts";
+import { checkRigPlace, controlImages } from "../../rigs/index.ts";
 import { type Dashboard, wantsJson } from "../context.ts";
 import { rigHelpers, updateFollowUrl } from "./shared.ts";
 

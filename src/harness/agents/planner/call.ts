@@ -1,5 +1,5 @@
 import type { ModelConfig } from "../../../agents/model/index.ts";
-import { PLANNER_ASK_SYSTEM } from "../../../agents/roles/planner.ts";
+import { PLANNER_ASK_SYSTEM } from "../../../agents/roles/index.ts";
 import { LenientNotes, type NoteInput } from "../../../core/journal.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import { causeOf, causeWords, PlannerCallError, type PlanTry } from "./causes.ts";

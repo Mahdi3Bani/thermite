@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { registrableDomain } from "../agents/tools/fetcher.ts";
-import { RUN_RESEARCH_TOOLS } from "../agents/tools/names.ts";
+import { RUN_RESEARCH_TOOLS, registrableDomain } from "../agents/tools/index.ts";
 import {
   PAGE_DEFAULT,
   PAGE_MAX,
@@ -14,8 +13,15 @@ import { clip } from "../core/kb-index.ts";
 import { FILE_BYTES_MAX, READ_LINES_DEFAULT, READ_LINES_MAX } from "./evidence.ts";
 import { searchLimit, searchWords } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger/index.ts";
-import { cardFile, cardHistory, cardsOf, questionLabel } from "./research/cards.ts";
-import { cardPath, readNoFollow, sectionPath } from "./research/folder.ts";
+import {
+  cardFile,
+  cardHistory,
+  cardPath,
+  cardsOf,
+  questionLabel,
+  readNoFollow,
+  sectionPath,
+} from "./research/index.ts";
 
 /**
  * What the teachers may read of a run's own research (goal 098), read only, through the harness:

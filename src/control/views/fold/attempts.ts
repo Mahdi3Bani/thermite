@@ -1,5 +1,7 @@
 import { HELD_OUT_EVENT_CELLS } from "../../../core/held-out.ts";
 import { clip } from "../../../core/kb-index.ts";
+// metric-values.ts imports views/index.ts, which loads fold/index.ts, which reads ATTEMPTS as it
+// loads. So this file is loaded only through fold/index.ts: imported first, it stops at that read.
 import { metricValuesOf } from "../../metric-values.ts";
 import { frozen } from "../sharing.ts";
 import type { AttemptView, HeldOutView } from "../types.ts";

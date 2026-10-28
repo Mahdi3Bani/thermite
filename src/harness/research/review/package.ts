@@ -1,4 +1,4 @@
-import { registrableDomain } from "../../../agents/tools/fetcher.ts";
+import { registrableDomain } from "../../../agents/tools/index.ts";
 import type { ResearchContract } from "../../../core/contract.ts";
 import { MEASURES_NOTHING, questionLabel } from "../../../core/research-check.ts";
 import type { Ledger } from "../../ledger/index.ts";

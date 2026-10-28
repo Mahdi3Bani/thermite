@@ -8,7 +8,7 @@ import { prepareDirectories, prepareOutbox, prepareSocket, readSecrets } from ".
 import { assertDevices, chooseRunCpus, currentLists, prepareDevices } from "./gpu.ts";
 import { pullMode } from "./one-container.ts";
 import { startBrokerServer } from "./server.ts";
-import { prepareSnapshots, startSnapshots, writeSnapshotRecord } from "./snapshot/start.ts";
+import { prepareSnapshots, startSnapshots, writeSnapshotRecord } from "./snapshot/index.ts";
 import {
   awaitEnrollment,
   prepareOneContainer,

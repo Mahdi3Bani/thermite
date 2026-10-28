@@ -48,8 +48,12 @@ import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
 import { syncMcpServers } from "./mcp-sync.ts";
 import { ModelDownloads } from "./model-download.ts";
 import { syncModelRouteRound } from "./model-route.ts";
-import { commandPollMs, followCommands } from "./relay/commands.ts";
 import {
+  BUS_KEY_FILE,
+  busKey,
+  busKeyFigure,
+  commandPollMs,
+  followCommands,
   healCursor,
   oneAtATime,
   RelayError,
@@ -57,7 +61,6 @@ import {
   relayCommandsOnce,
   relayOnce,
 } from "./relay/index.ts";
-import { BUS_KEY_FILE, busKey, busKeyFigure } from "./relay/key.ts";
 import { dailyReport } from "./report.ts";
 import { SUPERVISOR_NUMBERS, supervisorMs } from "./settings.ts";
 import { stageCommand } from "./staging.ts";

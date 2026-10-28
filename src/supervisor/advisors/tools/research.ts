@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { RUN_RESEARCH_TOOLS } from "../../../agents/tools/names.ts";
+import { RUN_RESEARCH_TOOLS } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import {
   PAGE_MAX,

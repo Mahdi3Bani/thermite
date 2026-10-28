@@ -1,6 +1,6 @@
 import { canonicalJson } from "../../core/canonical.ts";
 import type { Contract } from "../../core/contract.ts";
-import { clipReason, REASONS_CHARS } from "../judge/reasons.ts";
+import { clipReason, REASONS_CHARS } from "../judge/index.ts";
 import { LedgerPart, type Row } from "./part.ts";
 
 /** What a goal's check found, and the goal's status it leads to. */

@@ -4,24 +4,26 @@ import { type McpUse, sameUses } from "../../../core/mcp.ts";
 import { queueTarget, queueTargetNote } from "../../../core/queue-target.ts";
 import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
 import {
-  campaignContract,
-  contractContext,
-  ownModels,
-  rigContext,
-  setCampaignContext,
-} from "../../campaigns/context.ts";
-import {
+  askOwnerFrom,
   type CopyCampaignOutcome,
   type CopyCampaignRequest,
+  campaignContract,
+  contractContext,
   copiedFromWords,
   copyACampaign,
-} from "../../campaigns/copy.ts";
-import { askOwnerFrom } from "../../campaigns/new.ts";
-import { type StartRunRequest, startARun } from "../../campaigns/start-run.ts";
+  ownModels,
+  rigContext,
+  type StartRunRequest,
+  setCampaignContext,
+  startARun,
+} from "../../campaigns/index.ts";
 import { commandFollowUrl, commandProgress } from "../../command-progress.ts";
 import { campaignBriefBlock } from "../../ui/campaigns/brief.ts";
-import { CAMPAIGN_CONTEXT_JS } from "../../ui/campaigns/context/client.ts";
-import { type ContextRig, contextBlock } from "../../ui/campaigns/context/index.ts";
+import {
+  CAMPAIGN_CONTEXT_JS,
+  type ContextRig,
+  contextBlock,
+} from "../../ui/campaigns/context/index.ts";
 import { postedUses } from "../../ui/campaigns/copy/index.ts";
 import { howChecked, howCheckedDetails } from "../../ui/campaigns/goal-checks.ts";
 import { earlierRuns, isRigCheck, lastActivity } from "../../ui/campaigns/list.ts";

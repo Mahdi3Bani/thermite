@@ -1,6 +1,6 @@
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { SecretBox } from "../secrets.ts";
-import type { McpServerRows } from "../store/mcp-servers.ts";
+import type { McpServerRows } from "../store/index.ts";
 
 /**
  * The servers' table (goal 068): a server as control shows it, and the rows with their sealed

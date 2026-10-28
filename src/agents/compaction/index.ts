@@ -9,7 +9,7 @@ import { estimateContextTokens, estimateMessageTokens } from "@earendil-works/pi
 import { errorText } from "../../common/errors.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { buildModel, type ModelConfig, type PiMeter } from "../model/index.ts";
-import { COMPACTION_SYSTEM } from "../roles/compaction.ts";
+import { COMPACTION_SYSTEM } from "../roles/index.ts";
 
 /**
  * Compaction (goal 070), for the harness's agents and the supervisor's advisors: in Pi (this
@@ -41,6 +41,7 @@ export {
   type Own,
   opencodeEnded,
   opencodeOwn,
+  readOwn,
   readUnder,
 } from "./conversation.ts";
 

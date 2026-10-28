@@ -17,8 +17,8 @@ import {
   readOpencodeEvents,
   runEnv,
 } from "../../../agents/programs/index.ts";
-import { WORKER_OPENCODE_SYSTEM } from "../../../agents/roles/worker.ts";
-import type { ResearchFolderPaths } from "../../../agents/tools/research.ts";
+import { WORKER_OPENCODE_SYSTEM } from "../../../agents/roles/index.ts";
+import type { ResearchFolderPaths } from "../../../agents/tools/index.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { ResearchTrialSpec } from "../research/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";

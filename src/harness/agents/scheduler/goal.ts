@@ -1,4 +1,4 @@
-import { clipReason } from "../../judge/reasons.ts";
+import { clipReason } from "../../judge/index.ts";
 import type { Ledger } from "../../ledger/index.ts";
 import type { GoalReport } from "../planner/index.ts";
 import { BRIEF_GOAL_CHARS, type SchedulerContext } from "./context.ts";

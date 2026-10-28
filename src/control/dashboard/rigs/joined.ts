@@ -1,17 +1,19 @@
 import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
 import { inBackground } from "../../background.ts";
-import { actOnClusterRig, type ClusterRigAction } from "../../clusters/actions.ts";
-import { cancelDrain } from "../../clusters/drain.ts";
-import { updateRigImages } from "../../clusters/images.ts";
-import { setClusterRigResources } from "../../clusters/resize.ts";
+import {
+  actOnClusterRig,
+  type ClusterRigAction,
+  cancelDrain,
+  setClusterRigResources,
+  updateRigImages,
+} from "../../clusters/index.ts";
 import { notSent } from "../../command-progress.ts";
 import { newToken } from "../../credential.ts";
 import { joinMachineScript, joinNamespaceManifest } from "../../join.ts";
-import { manageScript, type RigAction } from "../../machines/deploy.ts";
-import { tail } from "../../machines/ssh.ts";
+import { manageScript, type RigAction, tail } from "../../machines/index.ts";
 import { removeCheck } from "../../results-left.ts";
-import { awaitFirstReport, STEP_WORDS } from "../../rigs/setup.ts";
+import { awaitFirstReport, STEP_WORDS } from "../../rigs/index.ts";
 import { fingerprint } from "../../store/index.ts";
 import { type Ctx, type Dashboard, wantsJson } from "../context.ts";
 import { placeFollowUrl, rigHelpers } from "./shared.ts";

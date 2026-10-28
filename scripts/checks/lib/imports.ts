@@ -5,6 +5,12 @@
 // main.ts, which makes the part, may), and production code never imports tests or scripts.
 // Today's exceptions are listed by file in scripts/import-exceptions.json; the check fails on a
 // new one, and on a listed one that is gone, until the list is lowered, so the list only shrinks.
+//
+// And a folder that is a module is imported through its index.ts (CONVENTIONS.md, "Folders and
+// names"): production code outside the folder imports its index.ts, never a file inside it. A
+// module is every folder under a part but the namespaces below, and every folder with an
+// index.ts. Nested modules are reached through the outermost one that does not hold the importer;
+// inside a module, files import each other directly. The exceptions never excuse this rule.
 
 /** The exceptions, from the repository's root. */
 export const EXCEPTIONS_PATH = "scripts/import-exceptions.json";
@@ -22,12 +28,35 @@ const FOR_PARTS = ["core", "common", "agents"];
 /** For each file, the imports it may keep for now, each removed when its code moves. */
 export type Exceptions = Record<string, string[]>;
 
-export type Rule = "part" | "core-io" | "page" | "tests";
+/**
+ * Namespaces: folders whose files are each an entry or a contract of their own, imported one by
+ * one, so they have no index.ts and the folder rule does not hold them. An entry that ends in
+ * `/**` takes the folders below it too; one of those with an index.ts is a module all the same.
+ */
+export const NAMESPACES: readonly string[] = [
+  // The command line's commands, which its main.ts starts.
+  "src/cli/thermite",
+  // One client for each API.
+  "src/common/api",
+  // Route sections, each registered by the dashboard's index.ts.
+  "src/control/dashboard/**",
+  // Pages, each used where it is shown.
+  "src/control/ui/**",
+  // One module for each API's routes.
+  "src/core/api/**",
+  // The events' kinds and bodies, and the message bus's contracts.
+  "src/core/events",
+  "src/core/link",
+];
+
+export type Rule = "part" | "core-io" | "page" | "tests" | "folder";
 export interface Broken {
   file: string;
   /** The file imported, from the repository's root, or a module name such as node:fs. */
   target: string;
   rule: Rule;
+  /** For the folder rule: the index.ts to import instead. */
+  index?: string;
 }
 
 /**
@@ -71,8 +100,45 @@ export function isMain(path: string): boolean {
   return /^src\/[^/]+\/main\.ts$/.test(path);
 }
 
-/** The rule one import breaks, if it breaks one. Only production code (`src/`) is held to it. */
-export function broken(file: string, spec: string): Broken | null {
+/** Whether a folder (`src/…`, no slash at the end) is a namespace. */
+export function isNamespace(folder: string): boolean {
+  return NAMESPACES.some((n) =>
+    n.endsWith("/**")
+      ? folder === n.slice(0, -3) || folder.startsWith(n.slice(0, -2))
+      : folder === n,
+  );
+}
+
+/**
+ * The outermost module that holds `target` but not `file`, or none: the folder whose index.ts
+ * `file` must import. `indexed` is the folders that have an index.ts.
+ */
+export function moduleOf(
+  file: string,
+  target: string,
+  indexed: ReadonlySet<string>,
+): string | null {
+  const part = /^src\/[^/]+/.exec(target)?.[0];
+  if (!part) return null;
+  let outer: string | null = null;
+  for (let d = target.slice(0, target.lastIndexOf("/")); d.length > part.length; ) {
+    if (file.startsWith(`${d}/`)) break;
+    if (indexed.has(d) || !isNamespace(d)) outer = d;
+    d = d.slice(0, d.lastIndexOf("/"));
+  }
+  return outer;
+}
+
+/**
+ * The rule one import breaks, if it breaks one. Only production code (`src/`) is held to it.
+ * `indexed` is the folders that have an index.ts. An import that breaks the part or page rule is
+ * reported as that, so a listed exception keeps its rule.
+ */
+export function broken(
+  file: string,
+  spec: string,
+  indexed: ReadonlySet<string> = new Set(),
+): Broken | null {
   const from = partOf(file);
   if (!from) return null;
   if (!spec.startsWith(".")) {
@@ -84,23 +150,26 @@ export function broken(file: string, spec: string): Broken | null {
   if (target.startsWith("tests/") || target.startsWith("scripts/"))
     return { file, target, rule: "tests" };
   const to = partOf(target);
-  if (!to || to === from) {
-    if (to === "control" && isPage(target) && !isPage(file) && !isMain(file))
-      return { file, target, rule: "page" };
-    return null;
-  }
-  const allowed = SHARED[from] ?? FOR_PARTS;
-  return allowed.includes(to) ? null : { file, target, rule: "part" };
+  if (to && to !== from && !(SHARED[from] ?? FOR_PARTS).includes(to))
+    return { file, target, rule: "part" };
+  if (to === "control" && to === from && isPage(target) && !isPage(file) && !isMain(file))
+    return { file, target, rule: "page" };
+  const folder = to ? moduleOf(file, target, indexed) : null;
+  if (!folder || target === `${folder}/index.ts`) return null;
+  return { file, target, rule: "folder", index: `${folder}/index.ts` };
 }
 
 /** Every broken import in a set of files, read through `read`. */
 export function scan(files: readonly string[], read: (file: string) => string): Broken[] {
+  const indexed = new Set(
+    files.filter((f) => f.endsWith("/index.ts")).map((f) => f.slice(0, -"/index.ts".length)),
+  );
   const out: Broken[] = [];
   for (const file of files) {
     if (!/\.(?:ts|mts|cts)$/.test(file)) continue;
     const seen = new Set<string>();
     for (const spec of importsOf(read(file))) {
-      const b = broken(file, spec);
+      const b = broken(file, spec, indexed);
       if (b && !seen.has(b.target)) {
         seen.add(b.target);
         out.push(b);
@@ -110,7 +179,7 @@ export function scan(files: readonly string[], read: (file: string) => string): 
   return out.sort((a, b) => a.file.localeCompare(b.file) || a.target.localeCompare(b.target));
 }
 
-/** New broken imports, and listed exceptions that are gone. */
+/** New broken imports, and listed exceptions that are gone. No list excuses the folder rule. */
 export function compare(
   found: readonly Broken[],
   exceptions: Exceptions,
@@ -119,7 +188,7 @@ export function compare(
     Object.entries(exceptions).flatMap(([file, ts]) => ts.map((t) => `${file} ${t}`)),
   );
   const now = new Set(found.map((b) => `${b.file} ${b.target}`));
-  const added = found.filter((b) => !listed.has(`${b.file} ${b.target}`));
+  const added = found.filter((b) => b.rule === "folder" || !listed.has(`${b.file} ${b.target}`));
   const gone = [...listed]
     .filter((k) => !now.has(k))
     .map((k) => {
@@ -129,10 +198,11 @@ export function compare(
   return { added, gone };
 }
 
-/** The exceptions now: what is broken, by file, sorted. */
+/** The exceptions now: what is broken, by file, sorted; never the folder rule's. */
 export function listOf(found: readonly Broken[]): Exceptions {
   const out: Exceptions = {};
   for (const b of found) {
+    if (b.rule === "folder") continue;
     const targets = out[b.file] ?? [];
     targets.push(b.target);
     out[b.file] = targets;
@@ -170,9 +240,14 @@ const RULE_WORDS: Record<Rule, string> = {
     "core does no I/O apart from node:crypto. Do the I/O in common, and keep the contract in core",
   page: "a domain module imports page code. Move the shared word or rule out of control/ui/, or move the page code into it",
   tests: "production code imports tests or scripts",
+  folder: "code outside a folder that is a module imports a file inside it",
 };
 
 /** One broken import in words, with what to do. */
 export function brokenText(b: Broken): string {
+  if (b.rule === "folder") {
+    const folder = (b.index ?? "").slice(0, -"/index.ts".length);
+    return `${b.file} imports ${b.target}: ${RULE_WORDS.folder}. Import the folder's interface, ${b.index}, instead, and export what this file needs there. If ${folder}/ has no index.ts, give it one. A folder whose files are each an entry or a contract of their own is a namespace instead: name it in NAMESPACES in scripts/checks/lib/imports.ts (CONVENTIONS.md, "Folders and names").`;
+  }
   return `${b.file} imports ${b.target}: ${RULE_WORDS[b.rule]} (CONVENTIONS.md, "The parts and how they import").`;
 }

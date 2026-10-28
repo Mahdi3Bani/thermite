@@ -1,4 +1,4 @@
-import { gpuSplit } from "../machines/deploy.ts";
+import { gpuSplit } from "../machines/index.ts";
 
 /**
  * A rig on a Kubernetes cluster, as the objects control applies with `kubectl apply -f -`: the

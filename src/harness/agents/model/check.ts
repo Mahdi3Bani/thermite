@@ -1,7 +1,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { buildModel, type ModelConfig } from "../../../agents/model/index.ts";
-import { MODEL_CHECK_PI_SYSTEM, modelCheckPiPrompt } from "../../../agents/roles/model-check.ts";
+import { MODEL_CHECK_PI_SYSTEM, modelCheckPiPrompt } from "../../../agents/roles/index.ts";
 import { errorText } from "../../../common/errors.ts";
 
 /** What a rig check found: whether it passed, in a sentence, and the details behind it. */

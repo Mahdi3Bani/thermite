@@ -1,7 +1,15 @@
 import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
-import { CHECK_SCRIPT, type MachineFacts, missing, parseFacts } from "../../machines/facts.ts";
-import { RECIPES, type RecipeId, recipeScript, scriptSha } from "../../machines/recipes.ts";
+import {
+  CHECK_SCRIPT,
+  type MachineFacts,
+  missing,
+  parseFacts,
+  RECIPES,
+  type RecipeId,
+  recipeScript,
+  scriptSha,
+} from "../../machines/index.ts";
 import type { Dashboard } from "../context.ts";
 import { machineUrl } from "./shared.ts";
 

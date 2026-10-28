@@ -1,7 +1,6 @@
 import { clockUtc, commandProgress } from "../../command-progress.ts";
 import type { CommandRow, ControlStore } from "../../store/index.ts";
-import type { RigView } from "../../views/index.ts";
-import { type OpenTrial, workOf } from "../../views/work.ts";
+import { type OpenTrial, type RigView, workOf } from "../../views/index.ts";
 import { ago, esc, fmtInt, icon, infoLabel } from "../components/index.ts";
 import { clip, span } from "../words/index.ts";
 

@@ -1,5 +1,5 @@
 import type { AgentsContext } from "../../../../core/compaction.ts";
-import type { OwnModel } from "../../../campaigns/context.ts";
+import type { OwnModel } from "../../../campaigns/index.ts";
 import type { McpServer } from "../../../mcp-servers/index.ts";
 import type { GitAccess } from "../../../store/index.ts";
 import { podStopped, type RigView } from "../../../views/index.ts";
@@ -7,6 +7,9 @@ import { esc, infoLabel } from "../../components/index.ts";
 import { type BriefDraft, briefPane } from "../brief.ts";
 import { contextFields, fieldValues } from "../context/index.ts";
 import { kitMcpSection } from "./mcp.ts";
+
+export { NEW_CAMPAIGN_JS } from "./client.ts";
+export { AGENT_WORDS, serverRow } from "./mcp.ts";
 
 // infoLabel lives in components.ts (the Agents' context imports it too); pages import it from here.
 export { infoLabel };

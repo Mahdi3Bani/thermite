@@ -4,10 +4,9 @@ import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
 import { FolderSchema } from "../../../core/contract.ts";
 import { McpUses } from "../../../core/mcp.ts";
-import { ownModels } from "../../campaigns/context.ts";
-import { askOwnerFrom, startCampaign } from "../../campaigns/new.ts";
-import { kitSummary, unpackKit } from "../../kits/upload.ts";
-import { sameModel } from "../../providers/models.ts";
+import { askOwnerFrom, ownModels, startCampaign } from "../../campaigns/index.ts";
+import { kitSummary, unpackKit } from "../../kits/index.ts";
+import { sameModel } from "../../providers/index.ts";
 import { probeRepository, readKitManifest } from "../../repo-probe.ts";
 import {
   agentsModelMissing,
@@ -15,12 +14,12 @@ import {
   harnessKept,
   opencodeOnlyModel,
   researchNeedsOpencode,
-} from "../../rigs/agent-models.ts";
-import { sendSplit, splitFor } from "../../rigs/gpu-split.ts";
-import { COPY_JS } from "../../ui/campaigns/copy/client.ts";
-import { NEW_CAMPAIGN_JS } from "../../ui/campaigns/new/client.ts";
-import { newCampaignBody } from "../../ui/campaigns/new/index.ts";
-import { PLANNER_JS } from "../../ui/campaigns/queue/client.ts";
+  sendSplit,
+  splitFor,
+} from "../../rigs/index.ts";
+import { COPY_JS } from "../../ui/campaigns/copy/index.ts";
+import { NEW_CAMPAIGN_JS, newCampaignBody } from "../../ui/campaigns/new/index.ts";
+import { PLANNER_JS } from "../../ui/campaigns/queue/index.ts";
 import { campaignHref, runKey } from "../../ui/components/index.ts";
 import { PROVIDERS_JS } from "../../ui/providers/client.ts";
 import type { Ctx, Dashboard } from "../context.ts";

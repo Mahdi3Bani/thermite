@@ -1,6 +1,6 @@
 import { shellQuote } from "../common/exec.ts";
-import { asList, type ClusterRigPlan, clusterRigObjects } from "./clusters/manifests.ts";
-import { deployScript, manageScript, type RigPlan, type RigSecrets } from "./machines/deploy.ts";
+import { asList, type ClusterRigPlan, clusterRigObjects } from "./clusters/index.ts";
+import { deployScript, manageScript, type RigPlan, type RigSecrets } from "./machines/index.ts";
 
 /**
  * "Join a rig yourself": for a place control can't connect to, such as a machine

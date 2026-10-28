@@ -10,7 +10,7 @@ import {
 import { join } from "node:path";
 import { log } from "../../common/log.ts";
 import { generateSigningKeys } from "../../core/commands.ts";
-import type { PromotionPolicy } from "../judge/judge.ts";
+import type { PromotionPolicy } from "../judge/index.ts";
 import { Ledger } from "../ledger/index.ts";
 import { lanesFromEnv, RigSettingsStore, trialMinutesFromEnv } from "../rig-settings.ts";
 import { NOT_BEFORE_FILE, wipeIfRequested } from "../service/index.ts";

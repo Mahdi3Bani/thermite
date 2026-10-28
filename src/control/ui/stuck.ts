@@ -1,9 +1,7 @@
 import { clockUtc, commandProgress } from "../command-progress.ts";
 import type { ControlStore } from "../store/index.ts";
-import type { RigView, RunView } from "../views/index.ts";
-import { workOf } from "../views/work.ts";
-import { ago, esc, fmtInt, icon, runHref } from "./components/index.ts";
-import { card } from "./components/need-card.ts";
+import { type RigView, type RunView, workOf } from "../views/index.ts";
+import { ago, card, esc, fmtInt, icon, runHref } from "./components/index.ts";
 import type { Forms, Need } from "./operator/index.ts";
 import { lastDone } from "./rigs/drain.ts";
 import { clip, span } from "./words/index.ts";

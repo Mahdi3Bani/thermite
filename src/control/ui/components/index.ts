@@ -3,17 +3,30 @@ import { isRigCheck } from "../../../core/ids.ts";
 import { ANSWERED, RESEARCH_REVIEW } from "../../../core/research-check.ts";
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../../core/verdicts.ts";
 import { championWords } from "../../metric-values.ts";
-import { championsInForce, runCampaign } from "../../views/facts.ts";
 import {
   type CampaignView,
   campaignViews,
+  championsInForce,
   newestRun,
   podStopped,
   type RigView,
   type RunView,
+  runCampaign,
 } from "../../views/index.ts";
 import { STYLE } from "../style/index.ts";
 import { ICON_LINKS } from "./icons.ts";
+
+export {
+  bestGainWords,
+  championCard,
+  gainChip,
+  measuredWords,
+  startWords,
+  valuesPairWords,
+} from "./gains.ts";
+export { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./icons.ts";
+export { MD_CORE_JS, mdHtml } from "./markdown.ts";
+export { card } from "./need-card.ts";
 
 /** Everything the dashboard writes into HTML goes through esc (rig data is never markup). */
 export function esc(v: unknown): string {

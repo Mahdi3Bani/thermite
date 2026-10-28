@@ -1,18 +1,18 @@
 import type { ResearchContract } from "../../../../core/contract.ts";
 import { questionLabel } from "../../../../core/research-check.ts";
 import type { Experiment } from "../../../queue.ts";
-import { hypothesisTask } from "../../../research/hypothesis-evidence.ts";
-import type { Research } from "../../../research/research/index.ts";
 import {
   gapOf,
+  hypothesisTask,
   nextGap,
   nextQuestion,
   type QuestionState,
+  type Research,
   type ResearchState,
   researchState,
   taskDetails,
   took,
-} from "../../../research/shares.ts";
+} from "../../../research/index.ts";
 import { type Directive, PLANNER } from "../../coordinator.ts";
 import type { Assignment, EpochRecord } from "../../registry.ts";
 import { directivesOf, laneCountOf, type SchedulerContext } from "../context.ts";

@@ -1,4 +1,4 @@
-import { FetchRefused } from "../../agents/tools/fetcher.ts";
+import { FetchRefused } from "../../agents/tools/index.ts";
 import { errorText } from "../../common/errors.ts";
 import type { Ledger } from "../ledger/index.ts";
 

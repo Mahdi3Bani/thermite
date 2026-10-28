@@ -10,8 +10,9 @@ import {
 import type { McpServer } from "../../../mcp-servers/index.ts";
 import { esc } from "../../components/index.ts";
 import { contextFields, fieldValues } from "../context/index.ts";
-import { infoLabel } from "../new/index.ts";
-import { AGENT_WORDS, serverRow } from "../new/mcp.ts";
+import { AGENT_WORDS, infoLabel, serverRow } from "../new/index.ts";
+
+export { COPY_JS } from "./client.ts";
 
 /**
  * The Copy panel on a campaign's page (goal 069, as the owner approved its mockup on

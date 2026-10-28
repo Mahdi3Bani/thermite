@@ -1,5 +1,5 @@
 import { harnessConfirmed } from "./issue/index.ts";
-import { sameModel } from "./providers/models.ts";
+import { sameModel } from "./providers/index.ts";
 import type { CommandRow, ControlStore } from "./store/index.ts";
 import { foldCheck, type RigCheckView, type RigModelView, readModelInfo } from "./views/index.ts";
 

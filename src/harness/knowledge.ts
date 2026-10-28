@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { PAST_SEARCH_TOOL } from "../agents/tools/names.ts";
+import { PAST_SEARCH_TOOL } from "../agents/tools/index.ts";
 import { log } from "../common/env.ts";
 import { writeAtomic } from "../common/fs.ts";
 import { SEARCH_DEFAULT, SEARCH_MAX } from "../core/api/harness/research.ts";

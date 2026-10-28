@@ -1,5 +1,5 @@
 import { canonicalJson } from "../../core/canonical.ts";
-import { clipReason, REASONS_CHARS } from "../judge/reasons.ts";
+import { clipReason, REASONS_CHARS } from "../judge/index.ts";
 import { LedgerError, LedgerPart, type Row } from "./part.ts";
 
 export interface InvalidationResult {

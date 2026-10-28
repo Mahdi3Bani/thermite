@@ -2,7 +2,7 @@ import { judgeGpusByDefault } from "../../../core/hardware.ts";
 import type { Progress } from "../../command-progress.ts";
 import { newToken } from "../../credential.ts";
 import { JOIN_HOURS, joinCommand, joinedCommands } from "../../join.ts";
-import { controlImages, STEP_WORDS } from "../../rigs/setup.ts";
+import { controlImages, STEP_WORDS } from "../../rigs/index.ts";
 import type { JoinedRig } from "../../store/index.ts";
 import { ago, esc } from "../../ui/components/index.ts";
 import { podRuns } from "../../ui/rigs/runpod.ts";

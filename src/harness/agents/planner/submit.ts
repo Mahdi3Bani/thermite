@@ -1,10 +1,6 @@
 import { type TSchema, Type } from "@earendil-works/pi-ai";
-import {
-  PLAN_LIMITS,
-  PLANNER_ASK_SYSTEM,
-  PLANNER_PI_SYSTEM,
-} from "../../../agents/roles/planner.ts";
-import { JOURNAL_FIELD } from "../../../agents/tools/notes.ts";
+import { PLAN_LIMITS, PLANNER_ASK_SYSTEM, PLANNER_PI_SYSTEM } from "../../../agents/roles/index.ts";
+import { JOURNAL_FIELD } from "../../../agents/tools/index.ts";
 
 /**
  * What a planner call is told and how it answers: its system prompt in Pi, where it answers with

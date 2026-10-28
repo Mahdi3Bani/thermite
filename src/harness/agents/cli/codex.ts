@@ -11,7 +11,7 @@ import {
   newCodexTally,
   readCodexEvents,
 } from "../../../agents/programs/index.ts";
-import { WORKER_CODEX_SYSTEM } from "../../../agents/roles/worker.ts";
+import { WORKER_CODEX_SYSTEM } from "../../../agents/roles/index.ts";
 import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";

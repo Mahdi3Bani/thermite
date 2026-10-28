@@ -12,13 +12,14 @@ import {
 import { MAX_LANES } from "../../core/contract.ts";
 import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../../core/directions.ts";
 import { McpUses, sameUses, usesWords } from "../../core/mcp.ts";
-import { campaignContextRefusal } from "../campaigns/context.ts";
+import { campaignContextRefusal } from "../campaigns/index.ts";
 import { mcpRefusal } from "../mcp-servers/index.ts";
 import { usedRunRefusal } from "../run-names.ts";
 import type { ControlStore } from "../store/index.ts";
-import { currentChampion } from "../views/facts.ts";
-import { type RigView, type RunView, rigView } from "../views/index.ts";
+import { currentChampion, type RigView, type RunView, rigView } from "../views/index.ts";
 import { publishCommand, unpublishCommand } from "./bus.ts";
+
+export { sendCommandsOn } from "./bus.ts";
 
 /** Each advisor's name in a sentence (goal 074), and its verb. */
 const ROLE_NAME: Record<AdvisorRole, { name: string; is: string }> = {

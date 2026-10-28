@@ -1,6 +1,8 @@
 import type { AgentsContext } from "../../../../core/compaction.ts";
-import type { OwnModel, RigContext } from "../../../campaigns/context.ts";
+import type { OwnModel, RigContext } from "../../../campaigns/index.ts";
 import { esc, infoLabel } from "../../components/index.ts";
+
+export { CAMPAIGN_CONTEXT_JS, CC_CORE_JS } from "./client.ts";
 
 /**
  * A campaign's own Agents' context (goal 070, as the owner approved its revised mockup on

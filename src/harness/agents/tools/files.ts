@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { moreText, READ_MAX, type ResearchFolderPaths } from "../../../agents/tools/research.ts";
+import { moreText, READ_MAX, type ResearchFolderPaths } from "../../../agents/tools/index.ts";
 
 /**
  * A Pi research worker's file tools over its research folder (OpenCode's agent uses its own shell

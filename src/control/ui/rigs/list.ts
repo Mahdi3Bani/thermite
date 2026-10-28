@@ -1,8 +1,7 @@
 import type { BuildInfo } from "../../../core/version.ts";
-import { rigVersionWords } from "../../rigs/update.ts";
-import type { RunpodRigView } from "../../runpod/rig-view.ts";
-import { runCampaign } from "../../views/facts.ts";
-import type { RigView } from "../../views/index.ts";
+import { rigVersionWords } from "../../rigs/index.ts";
+import type { RunpodRigView } from "../../runpod/index.ts";
+import { type RigView, runCampaign } from "../../views/index.ts";
 import { infoLabel } from "../campaigns/new/index.ts";
 import { esc, hardwareLine, runHref } from "../components/index.ts";
 import { runFigure } from "../operator/index.ts";

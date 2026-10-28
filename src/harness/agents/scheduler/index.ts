@@ -1,5 +1,5 @@
 import type { Contract } from "../../../core/contract.ts";
-import { baselineState } from "../../judge/baseline.ts";
+import { baselineState } from "../../judge/index.ts";
 import { type Coordinator, keepsWorking } from "../coordinator.ts";
 import type { Registry } from "../registry.ts";
 import {
@@ -15,14 +15,13 @@ import { awaitingGoalReport, waitingForConfirmation } from "./goal.ts";
 import { maybeForkRound, updateLaneBests } from "./lanes.ts";
 import { planEpoch } from "./plan.ts";
 import { type AgentsStopped, agentsStopped, stopAgents, waitingForLimit } from "./provider.ts";
-import { finishClosedResearch, finishEndedResearch } from "./research/end.ts";
-import { researchTick } from "./research/tick.ts";
+import { finishClosedResearch, finishEndedResearch, researchTick } from "./research/index.ts";
 import { lanesInRound, roundOver, waitsForJudge } from "./rounds.ts";
 import { dropSetupExperiments, isSetupRound, noteBaseline, planSetupEpoch } from "./setup.ts";
 import { experimentFor, startTrial } from "./trials.ts";
 import { applyResets, applyStops, shutdown } from "./watch.ts";
 
-export { questionDetails } from "../../research/shares.ts";
+export { questionDetails } from "../../research/index.ts";
 export {
   MCP_WAIT_MS,
   type PlannerCallOptions,

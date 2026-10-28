@@ -1,5 +1,5 @@
 import type { Ledger } from "../ledger/index.ts";
-import { drainSpans } from "../service/drain.ts";
+import { drainSpans } from "../service/index.ts";
 
 /**
  * When a run's agents could not work, merged and in order, for its research clock, which leaves

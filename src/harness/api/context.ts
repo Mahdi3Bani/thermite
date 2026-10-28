@@ -3,10 +3,10 @@ import { bodyLimit } from "hono/body-limit";
 import { answerOf } from "../../common/errors.ts";
 import { sameSecret } from "../../common/secrets.ts";
 import type { Route } from "../../core/api/route.ts";
-import { Registry } from "../agents/registry.ts";
-import type { Runner } from "../broker/runner.ts";
+import { Registry } from "../agents/index.ts";
+import type { Runner } from "../broker/index.ts";
 import { LedgerError } from "../ledger/index.ts";
-import type { Research } from "../research/research/index.ts";
+import type { Research } from "../research/index.ts";
 import type { HarnessService } from "../service/index.ts";
 
 /**

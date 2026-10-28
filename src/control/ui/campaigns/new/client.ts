@@ -7,7 +7,7 @@
  */
 
 import { BRIEF_CORE_JS, BRIEF_PAGE_JS } from "../brief.ts";
-import { CC_CORE_JS } from "../context/client.ts";
+import { CC_CORE_JS } from "../context/index.ts";
 
 /**
  * The page-free part for an uploaded kit's MCP servers (goal 068), as the browser runs it: the

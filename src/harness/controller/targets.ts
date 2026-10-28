@@ -8,12 +8,10 @@ import {
   parseIndexList,
   readLayout,
   runRole,
-} from "../broker/devices.ts";
+} from "../broker/index.ts";
 import { collectHardware } from "../hardware.ts";
 import type { HarnessService } from "../service/index.ts";
-import { CpuDriver } from "../targets/cpu.ts";
-import { CudaDriver, smiAs, smiAsRun } from "../targets/cuda.ts";
-import type { TargetDriver } from "../targets/driver.ts";
+import { CpuDriver, CudaDriver, smiAs, smiAsRun, type TargetDriver } from "../targets/index.ts";
 import type { ControllerContext } from "./context.ts";
 
 /**

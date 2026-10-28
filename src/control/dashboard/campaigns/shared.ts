@@ -4,11 +4,14 @@ import { KitSchema } from "../../../core/kit.ts";
 import { type KbKind, PICKABLE } from "../../kb.ts";
 import type { ChecksSource } from "../../ui/campaigns/goal-checks.ts";
 import { isRigCheck, workCard } from "../../ui/campaigns/list.ts";
-import { bestGainWords } from "../../ui/components/gains.ts";
-import { icon, modeName, num, pct, runLiveHref } from "../../ui/components/index.ts";
+import { bestGainWords, icon, modeName, num, pct, runLiveHref } from "../../ui/components/index.ts";
 import { runBrief } from "../../ui/operator/index.ts";
-import { currentChampion } from "../../views/facts.ts";
-import type { CampaignView, RigView, RunView } from "../../views/index.ts";
+import {
+  type CampaignView,
+  currentChampion,
+  type RigView,
+  type RunView,
+} from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 
 /** A campaign's headline figure: its best run's gain, goals met or verified claims. */

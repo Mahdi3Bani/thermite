@@ -12,6 +12,9 @@ import { RESEARCH } from "./research.ts";
 import { RULES } from "./rules.ts";
 import { emptyRun, RUNS } from "./runs.ts";
 
+export { foldCheck, type RigCheckView } from "./checks.ts";
+export type { GoalChecks, GoalValues } from "./goals.ts";
+
 /**
  * A rig's events folded into what its view shows, one event at a time: its runs with their
  * attempts, the judge's jobs, the rig's checks and its newest events. What it holds depends only

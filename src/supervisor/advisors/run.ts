@@ -1,9 +1,6 @@
 import type { z } from "zod";
 import type { AdvisorCall, AdvisorResult } from "./call.ts";
-import { runClaudeCode } from "./runtimes/claude-code.ts";
-import { runCli } from "./runtimes/cli.ts";
-import { runCliHarness } from "./runtimes/opencode-codex.ts";
-import { runPi } from "./runtimes/pi.ts";
+import { runClaudeCode, runCli, runCliHarness, runPi } from "./runtimes/index.ts";
 
 /**
  * Runs one advisor call: a role prompt, the tools, and an output schema. The model answers by

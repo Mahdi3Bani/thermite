@@ -4,14 +4,14 @@ import type { z } from "zod";
 import { redact } from "../../common/env.ts";
 import { CAMPAIGN_CONTEXT, CAMPAIGN_COPY, START_RUN } from "../../core/api/control/owner.ts";
 import {
-  CampaignContextBody,
-  campaignContextAnswer,
-  setCampaignContext,
-} from "../campaigns/context.ts";
-import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "../campaigns/copy.ts";
-import {
   archiveCampaign,
+  bodyRefusal,
+  CampaignContextBody,
+  CopyCampaignBody,
+  campaignContextAnswer,
   campaignFoldersAnswer,
+  copyACampaign,
+  copyCampaignAnswer,
   createFolder,
   deleteFolder,
   FolderNameBody,
@@ -19,15 +19,13 @@ import {
   moveCampaign,
   renameFolder,
   type ShelfOutcome,
-  unarchiveCampaign,
-} from "../campaigns/folders.ts";
-import {
-  bodyRefusal,
   StartRunBody,
+  setCampaignContext,
   startARun,
   startRunAnswer,
   startRunRequest,
-} from "../campaigns/start-run.ts";
+  unarchiveCampaign,
+} from "../campaigns/index.ts";
 import { rigView } from "../views/index.ts";
 import type { ApiContext } from "./context.ts";
 

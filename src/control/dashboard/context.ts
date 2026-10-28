@@ -5,15 +5,14 @@ import { buildInfo } from "../../common/build-info.ts";
 import { sameSecret } from "../../common/secrets.ts";
 import { McpServers } from "../mcp-servers/index.ts";
 import type { PageOptions } from "../pages.ts";
-import { ChatGPTLogins } from "../providers/chatgpt.ts";
-import { RigUpdates } from "../rigs/update.ts";
+import { ChatGPTLogins } from "../providers/index.ts";
+import { RigUpdates } from "../rigs/index.ts";
 import { SESSION_DAYS } from "../settings.ts";
 import type { ControlStore } from "../store/index.ts";
 import { infoLabel } from "../ui/campaigns/new/index.ts";
 import { esc, type Shell, shell } from "../ui/components/index.ts";
 import { type Forms, type Need, needs as operatorNeeds } from "../ui/operator/index.ts";
-import { runCampaign } from "../views/facts.ts";
-import { OFFLINE_AFTER_MS, type RigView, type RunView } from "../views/index.ts";
+import { OFFLINE_AFTER_MS, type RigView, type RunView, runCampaign } from "../views/index.ts";
 
 const DAY_MS = 24 * 3_600_000;
 /** What Close run does, in its ⋯ menu on a run's page (goal 087). */

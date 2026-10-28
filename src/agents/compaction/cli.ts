@@ -1,7 +1,7 @@
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import type { LiveKind } from "../../core/live.ts";
 import type { ModelConfig } from "../model/index.ts";
-import { COMPACTION_SYSTEM } from "../roles/compaction.ts";
+import { COMPACTION_SYSTEM } from "../roles/index.ts";
 import { fenced } from "./conversation.ts";
 
 /**

@@ -1,10 +1,16 @@
-import { currentChampion, runCampaign } from "../../views/facts.ts";
-import type { AttemptView, JudgeJob, RigView, RunView } from "../../views/index.ts";
-import { gainChip } from "../components/gains.ts";
+import {
+  type AttemptView,
+  currentChampion,
+  type JudgeJob,
+  type RigView,
+  type RunView,
+  runCampaign,
+} from "../../views/index.ts";
 import {
   ago,
   attemptHref,
   esc,
+  gainChip,
   icon,
   reportingTag,
   runHref,

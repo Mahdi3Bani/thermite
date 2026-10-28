@@ -1,6 +1,4 @@
-import { cardsOf, type GpuLayout, judgeCardOf } from "../broker/devices.ts";
-import type { Role } from "../broker/runner.ts";
-import { UNSEALED_DIRS } from "../broker/snapshot/index.ts";
+import { cardsOf, type GpuLayout, judgeCardOf, type Role, UNSEALED_DIRS } from "../broker/index.ts";
 
 /**
  * What each role probes, and how a result reads: the kinds of probe, the script each role runs,

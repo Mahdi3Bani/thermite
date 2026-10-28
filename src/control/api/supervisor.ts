@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { BadInput, jsonBody } from "../../common/errors.ts";
 import { FIGURES } from "../../core/api/control/rigs.ts";
 import { isUserKey, USER_KEY_WORDS } from "../../core/link/users.ts";
-import { type BusUsers, takeRigBusKey } from "../bus/users.ts";
+import { type BusUsers, takeRigBusKey } from "../bus/index.ts";
 import { reportPlace } from "../ingest.ts";
 import { modelSteps } from "../model-steps.ts";
 import type { ControlStore } from "../store/index.ts";

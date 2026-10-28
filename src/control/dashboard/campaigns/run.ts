@@ -8,14 +8,15 @@ import {
   researchBlock,
   reviewsTab,
 } from "../../ui/campaigns/research.ts";
-import { championCard, gainChip, startWords } from "../../ui/components/gains.ts";
 import {
   ago,
   attemptHref,
+  championCard,
   deltaCell,
   esc,
   fmtInt,
   gainChart,
+  gainChip,
   kpi,
   moreText,
   num,
@@ -23,6 +24,7 @@ import {
   runHref,
   runKey,
   stackBar,
+  startWords,
 } from "../../ui/components/index.ts";
 import { journalTab } from "../../ui/knowledge.ts";
 import {
@@ -39,8 +41,13 @@ import {
 import { type RunUsage, runStatsTab, runUsageTop } from "../../ui/usage.ts";
 import { auditReason, clip, jobText, runStatusText, signed } from "../../ui/words/index.ts";
 import { pricingOf, usageData } from "../../usage.ts";
-import { championsInForce, currentChampion, runCampaign } from "../../views/facts.ts";
-import type { RigView, RunView } from "../../views/index.ts";
+import {
+  championsInForce,
+  currentChampion,
+  type RigView,
+  type RunView,
+  runCampaign,
+} from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { campaignHelpers } from "./shared.ts";
 

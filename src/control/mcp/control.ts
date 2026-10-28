@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { providersWithUsage } from "../providers/plan-usage.ts";
+import { providersWithUsage } from "../providers/index.ts";
 import { modelPrices, setModelPrice } from "../usage.ts";
 import type { ToolContext } from "./context.ts";
 

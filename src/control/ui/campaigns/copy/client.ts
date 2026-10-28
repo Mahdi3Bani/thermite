@@ -1,5 +1,5 @@
 import { NAME_PATTERN, NAME_WORDS, RIG_CHECK_PREFIX } from "../../../../core/ids.ts";
-import { CC_CORE_JS } from "../context/client.ts";
+import { CC_CORE_JS } from "../context/index.ts";
 
 /**
  * The Copy panel's script (goal 069), served from control (/ui/assets/copy.js; no inline script

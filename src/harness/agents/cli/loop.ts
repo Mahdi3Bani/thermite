@@ -2,16 +2,16 @@ import { dirname, join } from "node:path";
 import { CliCompactions } from "../../../agents/compaction/index.ts";
 import { mcpLine } from "../../../agents/mcp/index.ts";
 import { readNew } from "../../../agents/programs/index.ts";
-import { RESEARCH_WORKER_SYSTEM } from "../../../agents/roles/research-worker.ts";
-import { NOTE_USAGE } from "../../../agents/tools/names.ts";
+import { RESEARCH_WORKER_SYSTEM } from "../../../agents/roles/index.ts";
 import {
+  NOTE_USAGE,
   type ResearchFolderPaths,
   researchCommands,
   researchFolderNote,
-} from "../../../agents/tools/research.ts";
+} from "../../../agents/tools/index.ts";
 import { type LaneLimitValues, laneLimits } from "../../../core/contract.ts";
 import { notesInstruction } from "../../../core/journal.ts";
-import type { Role, Runner, RunOutcome } from "../../broker/runner.ts";
+import type { Role, Runner, RunOutcome } from "../../broker/index.ts";
 import { afterProgramFailure, type FailureCount, failingOf } from "../provider-errors.ts";
 import { trialBudget } from "../trial-clock.ts";
 import { stopNudging, type TrialResult } from "../worker/index.ts";

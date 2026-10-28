@@ -11,7 +11,7 @@ import {
   COMPACT_AT_MIN,
   compactAtRefusal,
 } from "../../core/compaction.ts";
-import { isOpencodeOwn } from "../providers/models.ts";
+import { isOpencodeOwn } from "../providers/index.ts";
 import {
   type AgentRole,
   type ControlStore,

@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { SYNTHESIZER_SYSTEM } from "../../agents/roles/synthesizer.ts";
+import { SYNTHESIZER_SYSTEM } from "../../agents/roles/index.ts";
 import {
   CARD_ANSWER_MAX,
   CARD_CLAIMS_MAX,

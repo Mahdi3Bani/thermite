@@ -6,8 +6,8 @@ import {
   RESEARCH_PLAN_LIMITS,
   RESEARCH_PLANNER_ASK_SYSTEM,
   RESEARCH_PLANNER_PI_SYSTEM,
-} from "../../../agents/roles/research-planner.ts";
-import { JOURNAL_FIELD } from "../../../agents/tools/notes.ts";
+} from "../../../agents/roles/index.ts";
+import { JOURNAL_FIELD } from "../../../agents/tools/index.ts";
 import type { BriefData } from "../../../core/brief.ts";
 import { canonicalJson } from "../../../core/canonical.ts";
 import { QueuePosition } from "../../../core/commands.ts";
@@ -24,10 +24,9 @@ import {
 import type { CallUsage } from "../../../core/usage.ts";
 import { NOTES_ARE_DATA, type notesData } from "../../journal.ts";
 import { briefingData } from "../../knowledge.ts";
-import type { HypothesisRow } from "../../ledger/hypotheses.ts";
-import type { BriefingItem, Ledger } from "../../ledger/index.ts";
+import type { BriefingItem, HypothesisRow, Ledger } from "../../ledger/index.ts";
 import type { QueueBrief } from "../../queue.ts";
-import { type ResearchState, taskDetails } from "../../research/shares.ts";
+import { type ResearchState, taskDetails } from "../../research/index.ts";
 import type { Directive } from "../coordinator.ts";
 import {
   type Ask,

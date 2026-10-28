@@ -1,5 +1,5 @@
 import type { BuildInfo } from "../../../core/version.ts";
-import { rigVersionWords, UPDATE_STEP_WORDS } from "../../rigs/update.ts";
+import { rigVersionWords, UPDATE_STEP_WORDS } from "../../rigs/index.ts";
 import type { RigView } from "../../views/index.ts";
 import { infoLabel } from "../campaigns/new/index.ts";
 import { ago, esc, icon } from "../components/index.ts";

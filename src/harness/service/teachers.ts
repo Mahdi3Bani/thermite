@@ -2,8 +2,7 @@ import { briefData } from "../../core/brief.ts";
 import type { StructuredDirective } from "../../core/commands.ts";
 import { isLegacyRule } from "../../core/directions.ts";
 import { queueTarget, ruleRefusal } from "../../core/queue-target.ts";
-import { handedOut, rulesInForce } from "../agents/coordinator.ts";
-import { Registry } from "../agents/registry.ts";
+import { handedOut, Registry, rulesInForce } from "../agents/index.ts";
 import {
   listChampionFiles,
   oneAttempt,
@@ -14,7 +13,7 @@ import {
 } from "../evidence.ts";
 import { NOTES_ARE_DATA, notesData } from "../journal.ts";
 import { LedgerError } from "../ledger/index.ts";
-import { researchState, stateBrief } from "../research/shares.ts";
+import { researchState, stateBrief } from "../research/index.ts";
 import { backgroundFor } from "./decisions.ts";
 import type { HarnessService } from "./index.ts";
 import { requireRun } from "./runs.ts";

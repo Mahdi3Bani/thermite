@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { log } from "../../common/env.ts";
 import { errorText, Refusal } from "../../common/errors.ts";
-import type { ControlRoute, ModelInfo, RigCheckReport } from "../agents/model/index.ts";
+import type { ControlRoute, ModelInfo, RigCheckReport } from "../agents/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { HarnessService } from "./index.ts";
 

@@ -3,13 +3,24 @@ import { serve } from "@hono/node-server";
 import { parseListen } from "../common/env.ts";
 import { log, startLogging } from "../common/log.ts";
 import { createHarnessApi } from "./api/index.ts";
-import { agentLinks, agentParts, createScheduler } from "./controller/agents.ts";
-import { addIsolationCheck, addModelCheck, addSmokeCheck } from "./controller/checks.ts";
-import { controllerContext, promotionPolicy } from "./controller/context.ts";
-import { createJudges, reclaimJobs } from "./controller/judges.ts";
-import { startLoops } from "./controller/loops.ts";
-import { openState, rigSettings } from "./controller/state.ts";
-import { gpuSplitAtStart, rigHardware, targetDrivers } from "./controller/targets.ts";
+import {
+  addIsolationCheck,
+  addModelCheck,
+  addSmokeCheck,
+  agentLinks,
+  agentParts,
+  controllerContext,
+  createJudges,
+  createScheduler,
+  gpuSplitAtStart,
+  openState,
+  promotionPolicy,
+  reclaimJobs,
+  rigHardware,
+  rigSettings,
+  startLoops,
+  targetDrivers,
+} from "./controller/index.ts";
 import { HarnessService } from "./service/index.ts";
 
 /**

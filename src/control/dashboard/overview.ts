@@ -5,7 +5,6 @@ import { ago, campaignHref, esc } from "../ui/components/index.ts";
 import { runBrief, timeline } from "../ui/operator/index.ts";
 import { metricsBody } from "../ui/usage.ts";
 import { usageData } from "../usage.ts";
-import { runCampaign } from "../views/facts.ts";
 import {
   type CampaignView,
   campaignModes,
@@ -13,6 +12,7 @@ import {
   podStopped,
   type RigView,
   type RunView,
+  runCampaign,
 } from "../views/index.ts";
 import { campaignHelpers, copiedBy, headline } from "./campaigns/shared.ts";
 import { campaignOfRun, type Dashboard } from "./context.ts";

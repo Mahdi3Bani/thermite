@@ -2,16 +2,11 @@ import { errorText } from "../../common/errors.ts";
 import { log, logError, logWarn } from "../../common/log.ts";
 import { Audits } from "../audits.ts";
 import { Conclusions } from "../conclusions.ts";
-import type { JobRow } from "../ledger/index.ts";
-import type { RunJob } from "../ledger/jobs.ts";
+import type { JobRow, RunJob } from "../ledger/index.ts";
 import { BASELINE_PRIORITY, baselineDue, baselineState } from "./baseline.ts";
 import { type Finish, JudgeContext, type JudgeOptions } from "./context.ts";
 import { leaseLost } from "./failure.ts";
-import { baseline } from "./jobs/baseline.ts";
-import { calibrate } from "./jobs/calibrate.ts";
-import { confirm } from "./jobs/confirm.ts";
-import { evaluate } from "./jobs/evaluate.ts";
-import { validate } from "./jobs/validate.ts";
+import { baseline, calibrate, confirm, evaluate, validate } from "./jobs/index.ts";
 import { queuePort } from "./ports.ts";
 import { clipReason } from "./reasons.ts";
 

@@ -1,7 +1,7 @@
 import { NOTES_GUIDE } from "../../core/journal.ts";
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
 import type { Section } from "../prompt.ts";
-import { PAST_SEARCH_TOOL, RUN_RESEARCH_TOOLS } from "../tools/names.ts";
+import { PAST_SEARCH_TOOL, RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 
 /**
  * Text that every advisor's instructions share (goal 166): how field notes, the campaign's brief, the lanes at work,

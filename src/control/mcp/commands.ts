@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { CommandKind } from "../../core/commands.ts";
 import { briefingFromKb } from "../briefing.ts";
-import { queueFromRecords } from "../campaigns/queue-copy.ts";
+import { queueFromRecords } from "../campaigns/index.ts";
 import { issueWaking, propagateChampion } from "../issue/index.ts";
 import type { ToolContext } from "./context.ts";
 

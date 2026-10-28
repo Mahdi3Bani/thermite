@@ -10,8 +10,12 @@ import {
   RUNPOD_STOP,
   RUNPOD_TERMINATE,
 } from "../../core/api/control/owner.ts";
-import { type LaunchRequest, type LimitsChange, podLogQuery } from "../runpod/rigs.ts";
-import type { TestRequest } from "../runpod/tests.ts";
+import {
+  type LaunchRequest,
+  type LimitsChange,
+  podLogQuery,
+  type TestRequest,
+} from "../runpod/index.ts";
 import type { ApiContext } from "./context.ts";
 
 /**

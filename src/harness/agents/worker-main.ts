@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { modelConfigFromEnv, UsageSender } from "../../agents/model/index.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
-import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
+import type { Runner, RunOutcome, RunRequest } from "../broker/index.ts";
 import { KEPT_MAX } from "../compactions.ts";
 import { apiCall } from "./api-call.ts";
 import type { ReplyNow, TrialProgress } from "./live-session.ts";

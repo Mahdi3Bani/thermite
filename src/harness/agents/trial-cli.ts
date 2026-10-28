@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { NOTE_USAGE } from "../../agents/tools/names.ts";
 import {
   CLAIM_LIMITS_WORDS,
+  NOTE_USAGE,
   RESEARCH_TOOLS,
   researchOutput,
   researchTool,
-} from "../../agents/tools/research.ts";
+} from "../../agents/tools/index.ts";
 import { errorText } from "../../common/errors.ts";
 import { apiCall } from "./api-call.ts";
 

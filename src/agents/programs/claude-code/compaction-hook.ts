@@ -11,7 +11,7 @@ import {
 import { isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import { claudeCompactions, readOwn } from "../../compaction/conversation.ts";
+import { claudeCompactions, readOwn } from "../../compaction/index.ts";
 
 /**
  * Claude Code's compaction hooks (goal 070), as one program. Thermite's settings for the run

@@ -1,6 +1,6 @@
 import { compactAtRefusal, compactAtWords } from "../../core/compaction.ts";
 import { listText } from "../../core/words.ts";
-import { cappedWindow, capWords, contextCapRefusal, isOpencodeOwn } from "../providers/models.ts";
+import { cappedWindow, capWords, contextCapRefusal, isOpencodeOwn } from "../providers/index.ts";
 import {
   type AgentRole,
   type ControlStore,

@@ -3,7 +3,7 @@ import { type Message, Type } from "@earendil-works/pi-ai";
 import { type CompactionReport, Compactor, summarizer } from "../../../agents/compaction/index.ts";
 import { mcpLine } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
-import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/names.ts";
+import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/index.ts";
 import { routeRefusal } from "../../../core/agents.ts";
 import { canonicalJson } from "../../../core/canonical.ts";
 import type { CallUsage } from "../../../core/usage.ts";

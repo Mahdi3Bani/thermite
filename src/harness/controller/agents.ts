@@ -6,23 +6,22 @@ import {
 } from "../../agents/model/index.ts";
 import { mergeUsage, type PlanWindows } from "../../agents/programs/index.ts";
 import { log } from "../../common/log.ts";
-import type { CliOnceDeps } from "../agents/cli/once.ts";
-import { DevRuns } from "../agents/devrun.ts";
-import { ModelSource } from "../agents/model/index.ts";
 import {
   CLI_PROGRAMS,
+  type CliOnceDeps,
+  DevRuns,
+  laneCacheEnv,
+  ModelSource,
   programOf,
   researchProgramOf,
   researchRefusal,
+  Scheduler,
   type TrialLink,
-} from "../agents/programs.ts";
-import { Scheduler } from "../agents/scheduler/index.ts";
-import { laneCacheEnv } from "../agents/workspace.ts";
-import { effectiveGpuLists } from "../broker/devices.ts";
+} from "../agents/index.ts";
+import { effectiveGpuLists } from "../broker/index.ts";
 import { Compactions, compactionOf } from "../compactions.ts";
 import type { Ledger } from "../ledger/index.ts";
-import { ResearchFolder, SAVED_LANES_DIR } from "../research/folder.ts";
-import { Research } from "../research/research/index.ts";
+import { Research, ResearchFolder, SAVED_LANES_DIR } from "../research/index.ts";
 import type { RigSettingsStore } from "../rig-settings.ts";
 import type { HarnessService } from "../service/index.ts";
 import { routeOf } from "../usage.ts";

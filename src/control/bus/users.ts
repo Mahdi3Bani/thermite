@@ -4,8 +4,7 @@ import { errorText } from "../../common/errors.ts";
 import { writeAtomic } from "../../common/fs.ts";
 import { isUserKey, userKeyFingerprint, usersFile } from "../../core/link/users.ts";
 import type { SecretBox } from "../secrets.ts";
-import type { BusIdentityName } from "../store/bus.ts";
-import type { ControlStore } from "../store/index.ts";
+import type { BusIdentityName, ControlStore } from "../store/index.ts";
 
 /**
  * Who may use the message bus (goal 168). Each rig's supervisor makes its own key and registers

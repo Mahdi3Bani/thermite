@@ -20,8 +20,8 @@ import {
   PROMPT_VAR,
   readClaudeEvents,
 } from "../../../agents/programs/index.ts";
-import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../agents/roles/worker.ts";
-import type { Role, Runner } from "../../broker/runner.ts";
+import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../agents/roles/index.ts";
+import type { Role, Runner } from "../../broker/index.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";
 import { runCliTrial } from "./loop.ts";

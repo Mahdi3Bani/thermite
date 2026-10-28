@@ -2,14 +2,17 @@ import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
 import { RIG_ID_SENTENCE } from "../../../core/ids.ts";
 import { inBackground } from "../../background.ts";
-import { type ClusterFacts, clusterLine } from "../../clusters/facts.ts";
-import { addClusterRig, NS } from "../../clusters/rigs.ts";
+import { addClusterRig, type ClusterFacts, clusterLine, NS } from "../../clusters/index.ts";
 import { newToken } from "../../credential.ts";
 import type { JoinedSpec, JoinForm } from "../../join.ts";
-import { deployScript, MAX_RIG_GPUS } from "../../machines/deploy.ts";
-import { factsLine, type MachineFacts } from "../../machines/facts.ts";
-import { tail } from "../../machines/ssh.ts";
-import { awaitFirstReport, judgeShare, rigTaken } from "../../rigs/setup.ts";
+import {
+  deployScript,
+  factsLine,
+  MAX_RIG_GPUS,
+  type MachineFacts,
+  tail,
+} from "../../machines/index.ts";
+import { awaitFirstReport, judgeShare, rigTaken } from "../../rigs/index.ts";
 import {
   type Cluster,
   fingerprint,

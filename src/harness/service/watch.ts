@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AppendEvent } from "../../core/events/bodies.ts";
 import type { LiveEntry } from "../../core/live.ts";
-import type { ReplyNow } from "../agents/live-session.ts";
-import { SAME_ANSWER } from "../agents/repeats.ts";
+import { type ReplyNow, SAME_ANSWER } from "../agents/index.ts";
 
 /**
  * What each open trial is doing, for the owner and the teachers (goal 143): when it last sent a

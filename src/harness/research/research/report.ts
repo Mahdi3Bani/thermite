@@ -1,7 +1,6 @@
 import { cutSaid } from "../../../core/kb-index.ts";
 import { hypothesisStatusWords, questionLabel } from "../../../core/research-check.ts";
-import type { ClaimRow, FindingRow } from "../../ledger/claims.ts";
-import { LedgerError } from "../../ledger/index.ts";
+import { type ClaimRow, type FindingRow, LedgerError } from "../../ledger/index.ts";
 import { answersSection } from "../cards.ts";
 import { claimNumbers, numbersIn } from "../checks.ts";
 import { Papers } from "../paper/index.ts";

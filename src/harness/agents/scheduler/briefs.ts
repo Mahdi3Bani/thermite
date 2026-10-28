@@ -1,14 +1,12 @@
 import { join } from "node:path";
 import { type Prompt, promptText } from "../../../agents/prompt.ts";
-import { ownerMessageSections } from "../../../agents/roles/shared.ts";
-import { renderWorkerBrief } from "../../../agents/roles/worker.ts";
+import { ownerMessageSections, renderWorkerBrief } from "../../../agents/roles/index.ts";
 import { writeAtomic } from "../../../common/fs.ts";
 import { log } from "../../../common/log.ts";
 import { BRIEF_FILE, briefFile, briefSection } from "../../../core/brief.ts";
 import type { Contract } from "../../../core/contract.ts";
 import { NOTES_ARE_DATA, notesText } from "../../journal.ts";
-import { baselineState, SETUP_FAMILY } from "../../judge/baseline.ts";
-import { clipReason } from "../../judge/reasons.ts";
+import { baselineState, clipReason, SETUP_FAMILY } from "../../judge/index.ts";
 import { briefingText, pastResearchLine } from "../../knowledge.ts";
 import { messageText } from "../../messages.ts";
 import type { Experiment } from "../../queue.ts";

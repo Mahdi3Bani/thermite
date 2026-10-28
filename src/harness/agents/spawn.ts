@@ -7,7 +7,7 @@ import {
   modelEnv,
   STALL_SETTING,
 } from "../../agents/model/index.ts";
-import type { Role, Runner } from "../broker/runner.ts";
+import type { Role, Runner } from "../broker/index.ts";
 import type { ResearchTrialSpec } from "./research/index.ts";
 import type { TrialResult, TrialSpec } from "./worker/index.ts";
 

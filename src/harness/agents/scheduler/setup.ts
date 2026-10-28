@@ -1,7 +1,6 @@
 import { EXPERIMENT_DETAILS } from "../../../core/commands.ts";
 import type { Contract } from "../../../core/contract.ts";
-import { type BaselineState, SETUP_FAMILY } from "../../judge/baseline.ts";
-import { clipReason } from "../../judge/reasons.ts";
+import { type BaselineState, clipReason, SETUP_FAMILY } from "../../judge/index.ts";
 import { focusOf, type Handout, PLANNER } from "../coordinator.ts";
 import { lanesOf } from "../planner/index.ts";
 import type { Assignment, EpochRecord } from "../registry.ts";

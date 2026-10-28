@@ -1,9 +1,11 @@
 import { EFFORTS } from "../../../../core/agents.ts";
 import { COMPACT_AT_DEFAULT } from "../../../../core/compaction.ts";
-import type { AdvisorSetupView, AdvisorsFileView } from "../../../rigs/model.ts";
+import type { AdvisorSetupView, AdvisorsFileView } from "../../../rigs/index.ts";
 import type { AgentRole } from "../../../store/index.ts";
 import { infoLabel } from "../../campaigns/new/index.ts";
 import { esc } from "../../components/index.ts";
+
+export { EDIT_RIG_JS } from "./client.ts";
 
 /**
  * Edit rig's section "2 · The agents" (goals 070, 073 and 074, as the owner approved the revised

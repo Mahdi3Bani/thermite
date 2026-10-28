@@ -5,7 +5,7 @@ import type { z } from "zod";
 import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
 import { mcpAgentTools, mcpLine } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
-import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/names.ts";
+import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import { PAGE_MAX, SEARCH_MAX } from "../../../core/api/harness/research.ts";
 import type { UsageRoute } from "../../../core/usage.ts";

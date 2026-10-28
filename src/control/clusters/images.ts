@@ -1,7 +1,7 @@
 import { inBackground } from "../background.ts";
 import { issueCommand } from "../issue/index.ts";
 import type { ControlParts } from "../parts.ts";
-import { controlAddress, controlImages } from "../rigs/setup.ts";
+import { controlAddress, controlImages } from "../rigs/index.ts";
 import { deploymentEnv } from "./deployment.ts";
 import { kubeError } from "./kubectl.ts";
 import { asList, clusterNames, clusterRigDeployments } from "./manifests.ts";

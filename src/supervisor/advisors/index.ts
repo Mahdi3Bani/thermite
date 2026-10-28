@@ -76,7 +76,7 @@ export {
 } from "./review-panel.ts";
 export { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./routes.ts";
 export { runAdvisor } from "./run.ts";
-export { lastJsonObject } from "./runtimes/cli.ts";
+export { lastJsonObject } from "./runtimes/index.ts";
 export { SynthesizerAnswer, synthesisProblems, synthesizeCards } from "./synthesizer.ts";
 export {
   DirectiveSet,
@@ -86,5 +86,6 @@ export {
   ResearchOpportunity,
   researchOpportunityExperiment,
   TeacherReview,
-} from "./teachers/answers.ts";
-export { type TeacherRun, teacherRound } from "./teachers/round.ts";
+  type TeacherRun,
+  teacherRound,
+} from "./teachers/index.ts";

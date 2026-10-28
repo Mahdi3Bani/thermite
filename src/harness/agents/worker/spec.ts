@@ -1,11 +1,11 @@
 import type { CompactionReport } from "../../../agents/compaction/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
-import type { NoteRequest } from "../../../agents/tools/notes.ts";
+import type { NoteRequest } from "../../../agents/tools/index.ts";
 import type { McpCallResult } from "../../../common/mcp-client.ts";
 import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { McpToolInfo } from "../../../core/mcp.ts";
 import type { CallUsage } from "../../../core/usage.ts";
-import type { Role, Runner } from "../../broker/runner.ts";
+import type { Role, Runner } from "../../broker/index.ts";
 import type { SessionLink } from "../live-session.ts";
 import type { ProviderErrorKind, TrialFailing } from "../provider-errors.ts";
 import type { IdeaInput } from "../tools/index.ts";

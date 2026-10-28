@@ -5,7 +5,7 @@ import { log } from "../../../common/log.ts";
 import type { Contract } from "../../../core/contract.ts";
 import { newTrialId } from "../../../core/ids.ts";
 import type { LiveKind } from "../../../core/live.ts";
-import type { Role } from "../../broker/runner.ts";
+import type { Role } from "../../broker/index.ts";
 import type { Experiment, TaskYield } from "../../queue.ts";
 import { focusOf, limitsInForce, PLANNER, resultOf } from "../coordinator.ts";
 import { failedTooLong } from "../provider-errors.ts";

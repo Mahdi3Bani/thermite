@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { errorText } from "../../common/errors.ts";
 import { judgeGpusByDefault } from "../../core/hardware.ts";
-import { MAX_RIG_GPUS } from "../machines/deploy.ts";
+import { MAX_RIG_GPUS } from "../machines/index.ts";
 import type { ClusterRig, ClusterRigSize } from "../store/index.ts";
 import type { ClusterFacts, SlotQuota } from "./facts.ts";
 import { rigResources } from "./manifests.ts";

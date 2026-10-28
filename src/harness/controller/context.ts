@@ -6,10 +6,9 @@ import {
   secretFromFile,
   waitForFile,
 } from "../../common/env.ts";
-import type { ApiTokens } from "../api/context.ts";
-import { BrokerClient } from "../broker/client.ts";
-import { LocalRunner, type Runner } from "../broker/runner.ts";
-import type { PromotionPolicy } from "../judge/judge.ts";
+import type { ApiTokens } from "../api/index.ts";
+import { BrokerClient, LocalRunner, type Runner } from "../broker/index.ts";
+import type { PromotionPolicy } from "../judge/index.ts";
 import type { HarnessPaths } from "../service/index.ts";
 import { harnessNumbers } from "../settings.ts";
 

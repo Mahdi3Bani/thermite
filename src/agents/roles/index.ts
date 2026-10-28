@@ -26,6 +26,36 @@ import {
   WORKER_PI_SYSTEM,
 } from "./worker.ts";
 
+export { AUDITOR_SYSTEM } from "./auditor.ts";
+export { COMPACTION_SYSTEM } from "./compaction.ts";
+export { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "./final-writer.ts";
+export { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM } from "./merged-by.ts";
+export {
+  MODEL_CHECK_PI_SYSTEM,
+  modelCheckPiPrompt,
+  modelCheckProgramPrompt,
+} from "./model-check.ts";
+export { PLAN_LIMITS, PLANNER_ASK_SYSTEM, PLANNER_PI_SYSTEM } from "./planner.ts";
+export {
+  PROMOTE_PER_ROUND,
+  RESEARCH_PLAN_LIMITS,
+  RESEARCH_PLANNER_ASK_SYSTEM,
+  RESEARCH_PLANNER_PI_SYSTEM,
+} from "./research-planner.ts";
+export { RESEARCH_WORKER_NOTES, RESEARCH_WORKER_SYSTEM } from "./research-worker.ts";
+export { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "./reviewer.ts";
+export { ownerMessageSections } from "./shared.ts";
+export { SYNTHESIZER_SYSTEM } from "./synthesizer.ts";
+export { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "./teacher.ts";
+export {
+  renderWorkerBrief,
+  WORKER_CLAUDE_CODE_SYSTEM,
+  WORKER_CODEX_SYSTEM,
+  WORKER_OPENCODE_SYSTEM,
+  WORKER_PI_NOTES,
+  WORKER_PI_SYSTEM,
+} from "./worker.ts";
+
 /**
  * Every agent role Thermite runs (goal 166), in one table: what each does, where it runs, which
  * model and agent programs it uses, whether the owner's messages reach it, and its fixed texts.

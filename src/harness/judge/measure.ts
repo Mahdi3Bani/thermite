@@ -11,8 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { cellParams, cellTimeoutS, type Kit, paramsText } from "../../core/kit.ts";
-import { runSupervised } from "../broker/process.ts";
-import { type Role, type Runner, type RunOutcome, walk } from "../broker/runner.ts";
+import { type Role, type Runner, type RunOutcome, runSupervised, walk } from "../broker/index.ts";
 import type { BuildManifest, BuildStore } from "./builds.ts";
 import { expandArgv } from "./kits.ts";
 import { clipReason } from "./reasons.ts";

@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { errorText } from "../../common/errors.ts";
 import { commandFollowUrl, commandProgress, notSent } from "../command-progress.ts";
 import { issueCommand, nobodyReads, panelReviews } from "../issue/index.ts";
-import { HARNESS_NAMES } from "../rigs/model.ts";
+import { HARNESS_NAMES } from "../rigs/index.ts";
 import { lastActivity } from "../ui/campaigns/list.ts";
 import {
   ago,
@@ -26,8 +26,13 @@ import {
 } from "../ui/live.ts";
 import { waitingOn } from "../ui/operator/index.ts";
 import { clip, signed } from "../ui/words/index.ts";
-import { currentChampion, runCampaign } from "../views/facts.ts";
-import { podStopped, type RigView, type RunView } from "../views/index.ts";
+import {
+  currentChampion,
+  podStopped,
+  type RigView,
+  type RunView,
+  runCampaign,
+} from "../views/index.ts";
 import { type Dashboard, wantsJson } from "./context.ts";
 
 /**

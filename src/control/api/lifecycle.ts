@@ -8,7 +8,7 @@ import {
   RESTART,
 } from "../../core/api/control/owner.ts";
 import { advanceResets, cancelReset, confirmReset } from "../lifecycle.ts";
-import { runpodResetRefusal } from "../runpod/lifecycle.ts";
+import { runpodResetRefusal } from "../runpod/index.ts";
 import type { ApiContext } from "./context.ts";
 
 /**

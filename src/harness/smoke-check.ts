@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { git as gitRun, gitText } from "../common/git.ts";
 import { RIG_CHECK_PREFIX } from "../core/ids.ts";
 import { JUDGED_LIFECYCLES } from "../core/verdicts.ts";
-import type { RigCheckReport } from "./agents/model/index.ts";
+import type { RigCheckReport } from "./agents/index.ts";
 import type { HarnessService } from "./service/index.ts";
 
 /**

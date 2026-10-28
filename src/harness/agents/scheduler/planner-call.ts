@@ -7,7 +7,7 @@ import type { Contract } from "../../../core/contract.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import { routeOf } from "../../usage.ts";
-import type { CliHarness } from "../cli/program.ts";
+import type { CliHarness } from "../cli/index.ts";
 import { PLANNER } from "../coordinator.ts";
 import type { Ask, PlannerCompaction, PlannerMcp, PlannerPast } from "../planner/index.ts";
 import { isCliProgram, programOf } from "../programs.ts";

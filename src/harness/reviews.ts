@@ -11,7 +11,7 @@ import {
   questionReasons,
   RESEARCH_REVIEW,
   type ResearchPackage,
-} from "./research/review/index.ts";
+} from "./research/index.ts";
 
 const clip = (s: string, n: number) => {
   const t = s.replace(/\s+/g, " ").trim();

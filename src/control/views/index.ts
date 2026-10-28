@@ -9,11 +9,12 @@
  * made from rigs' views: the leaderboard, the campaigns and a run's directions.
  */
 
+export { agentEvent, agentRun } from "./agent.ts";
 export { FoldCache, keepFolds, rigView } from "./cache.ts";
 export { type CampaignView, campaignModes, campaignViews, newestRun } from "./campaigns.ts";
 export { runDirections } from "./directions.ts";
 export { championsInForce, currentChampion, runCampaign } from "./facts.ts";
-export { foldCheck, type RigCheckView } from "./fold/checks.ts";
+export { foldCheck, type RigCheckView } from "./fold/index.ts";
 export { type LeaderEntry, leaderboard } from "./leaderboard.ts";
 export {
   OFFLINE_AFTER_MS,
@@ -23,6 +24,16 @@ export {
   reportingState,
   rigSettingsOf,
 } from "./report.ts";
+export {
+  type HypothesisView,
+  type ItemDecisionView,
+  questionKey,
+  questionYield,
+  type ReviewItemView,
+  recentShares,
+  type StandingView,
+  type TaskYieldView,
+} from "./research.ts";
 export { podStopped, rigEvents } from "./rig.ts";
 export type {
   AttemptView,
@@ -41,3 +52,4 @@ export type {
   SetupView,
   StoredEvent,
 } from "./types.ts";
+export { type OpenTrial, workOf } from "./work.ts";

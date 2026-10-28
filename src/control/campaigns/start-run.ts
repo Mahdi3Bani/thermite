@@ -3,17 +3,18 @@ import { errorText } from "../../common/errors.ts";
 import type { BriefingSeed } from "../../core/commands.ts";
 import { AskOwner } from "../../core/commands.ts";
 import { briefingSeedOf, type KbItem, PICKABLE, queueSeedOf } from "../kb.ts";
-import type { KitRepos } from "../kits/repos.ts";
+import type { KitRepos } from "../kits/index.ts";
 import type { ControlParts } from "../parts.ts";
-import { sameModel } from "../providers/models.ts";
+import { sameModel } from "../providers/index.ts";
 import {
   agentsModelMissing,
   giveRigModel,
   harnessKept,
   opencodeOnlyModel,
   researchNeedsOpencode,
-} from "../rigs/agent-models.ts";
-import { sendSplit, splitFor } from "../rigs/gpu-split.ts";
+  sendSplit,
+  splitFor,
+} from "../rigs/index.ts";
 import type { ControlStore } from "../store/index.ts";
 import {
   type ContextApplies,

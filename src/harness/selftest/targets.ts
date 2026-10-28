@@ -1,8 +1,7 @@
 import { chmodSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeAtomic } from "../../common/fs.ts";
-import { LAYOUT_FILE, type LayoutRecord } from "../broker/devices.ts";
-import { type Role, walk } from "../broker/runner.ts";
+import { LAYOUT_FILE, type LayoutRecord, type Role, walk } from "../broker/index.ts";
 
 /**
  * What the role probes aim at in the rig's folders: a research folder written for the selftest,

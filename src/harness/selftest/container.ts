@@ -9,19 +9,17 @@ import {
 import { dirname, join } from "node:path";
 import { keySha256 } from "../../core/tunnel.ts";
 import {
+  IDS,
+  inspectSnapshotFolder,
+  lookWords,
   oneContainer,
+  SNAPSHOT_KEY_VAR,
+  SNAPSHOT_RECORD,
+  type SnapshotRecord,
   SUPERVISOR_RECORD,
   type SupervisorRecord,
   supervisorPaths,
-} from "../broker/one-container.ts";
-import { IDS } from "../broker/runner.ts";
-import { SNAPSHOT_KEY_VAR } from "../broker/seal.ts";
-import {
-  inspectSnapshotFolder,
-  lookWords,
-  SNAPSHOT_RECORD,
-  type SnapshotRecord,
-} from "../broker/snapshot/index.ts";
+} from "../broker/index.ts";
 import { isFailure } from "./probes.ts";
 
 /**

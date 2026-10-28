@@ -1,5 +1,5 @@
 import { PAPER_PARTS } from "../../core/research-check.ts";
-import { RUN_RESEARCH_TOOLS } from "../tools/names.ts";
+import { RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 
 /**
  * The final writer (goal 166): when a research run ends, it writes the run's research paper, in

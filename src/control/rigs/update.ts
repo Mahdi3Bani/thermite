@@ -16,17 +16,6 @@ import { type RigView, rigView } from "../views/index.ts";
  * A rig that does not report gets the pause too late to matter: the update goes on without it.
  */
 
-/** The steps of an update, in words (the rig's page and its history). */
-export const UPDATE_STEP_WORDS: Record<string, string> = {
-  update_started: "Update to control's version asked",
-  update_paused: "Its runs paused at a safe point",
-  update_images: "Its containers moved onto control's images",
-  update_reported: "A report reached control from control's version",
-  update_isolation: "The isolation check after the update",
-  update_resumed: "Its runs resumed",
-  update_failed: "The update stopped",
-};
-
 /** Where an update moves a rig: what control does there, in its own way. */
 export interface UpdateTarget {
   /**

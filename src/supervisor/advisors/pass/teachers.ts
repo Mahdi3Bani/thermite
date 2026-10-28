@@ -1,6 +1,6 @@
 import { BRIEF, DIRECTIVES, RUNS, type RunRow } from "../../../core/api/harness/advisors.ts";
 import type { AdvisorsConfig } from "../config.ts";
-import { teacherRound } from "../teachers/round.ts";
+import { teacherRound } from "../teachers/index.ts";
 import type { AdviseContext } from "./context.ts";
 import { clip, harnessOf } from "./shared.ts";
 import type { AdviseConfig, AdviseState } from "./state.ts";

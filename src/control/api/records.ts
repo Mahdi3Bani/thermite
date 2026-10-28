@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { copiedFromRecords, untriedOf } from "../campaigns/queue-copy.ts";
+import { copiedFromRecords, untriedOf } from "../campaigns/index.ts";
 import { cursorOf } from "../store/index.ts";
 import { rigView } from "../views/index.ts";
 import { type ApiContext, clampLimit } from "./context.ts";

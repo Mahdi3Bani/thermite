@@ -5,7 +5,7 @@ import {
   researchOutput,
   researchTool,
   SOURCE_PARAM,
-} from "../../../agents/tools/research.ts";
+} from "../../../agents/tools/index.ts";
 
 /**
  * The research tools as Pi offers them: a research trial has all of them, a hill-climb or goal

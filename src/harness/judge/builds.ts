@@ -16,7 +16,7 @@ import {
 import { dirname, join } from "node:path";
 import { canonicalJson, sha256Hex } from "../../core/canonical.ts";
 import type { Kit } from "../../core/kit.ts";
-import type { Role, Runner } from "../broker/runner.ts";
+import type { Role, Runner } from "../broker/index.ts";
 import { exportTree } from "../git.ts";
 import type { Ledger } from "../ledger/index.ts";
 

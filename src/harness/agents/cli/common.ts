@@ -1,6 +1,6 @@
 import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { CallUsage } from "../../../core/usage.ts";
-import type { Role, RunOutcome } from "../../broker/runner.ts";
+import type { Role, RunOutcome } from "../../broker/index.ts";
 import type { MessageInbox } from "../live-session.ts";
 import type { ProgramStep } from "../provider-errors.ts";
 import type { TrialResult } from "../worker/index.ts";

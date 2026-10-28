@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { KEY_PROVIDER_TYPES } from "../../../core/agents.ts";
 import { compactAtWords } from "../../../core/compaction.ts";
 import { isFree } from "../../../core/usage.ts";
-import { type ClusterFacts, clusterLine } from "../../clusters/facts.ts";
+import { type ClusterFacts, clusterLine } from "../../clusters/index.ts";
 import {
   checkRow,
   checkRowsOf,
@@ -10,14 +10,30 @@ import {
   modelFollowUrl,
   takingModel,
 } from "../../command-progress.ts";
-import { factsLine, type MachineFacts, missing } from "../../machines/facts.ts";
-import { RECIPES, type RecipeId, recipeScript, scriptSha } from "../../machines/recipes.ts";
-import { fingerprint as fingerprintOf } from "../../machines/ssh.ts";
-import { CHATGPT_REDIRECT } from "../../providers/chatgpt.ts";
-import { ANTHROPIC_BASE, capWords, isOpencodeOwn } from "../../providers/models.ts";
-import { HARNESS_NAMES } from "../../rigs/model.ts";
-import { type RunpodFacts, runpodLine } from "../../runpod/cloud.ts";
-import { cheapestGpu, DEFAULT_DISK_GB, type TestView } from "../../runpod/tests.ts";
+import {
+  factsLine,
+  fingerprint as fingerprintOf,
+  type MachineFacts,
+  missing,
+  RECIPES,
+  type RecipeId,
+  recipeScript,
+  scriptSha,
+} from "../../machines/index.ts";
+import {
+  ANTHROPIC_BASE,
+  CHATGPT_REDIRECT,
+  capWords,
+  isOpencodeOwn,
+} from "../../providers/index.ts";
+import { HARNESS_NAMES } from "../../rigs/index.ts";
+import {
+  cheapestGpu,
+  DEFAULT_DISK_GB,
+  type RunpodFacts,
+  runpodLine,
+  type TestView,
+} from "../../runpod/index.ts";
 import {
   HARNESSES,
   type Machine,

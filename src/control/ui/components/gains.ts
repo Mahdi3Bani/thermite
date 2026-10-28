@@ -7,8 +7,7 @@ import {
   valuesByCase,
   valuesWords,
 } from "../../metric-values.ts";
-import { currentChampion } from "../../views/facts.ts";
-import type { RunView } from "../../views/index.ts";
+import { currentChampion, type RunView } from "../../views/index.ts";
 import { signed } from "../words/index.ts";
 import { esc, infoLabel } from "./index.ts";
 

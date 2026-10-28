@@ -1,6 +1,5 @@
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../../core/verdicts.ts";
-import { runCampaign } from "../../views/facts.ts";
-import type { AttemptView, RigView, RunView } from "../../views/index.ts";
+import { type AttemptView, type RigView, type RunView, runCampaign } from "../../views/index.ts";
 import { ago, esc, liveHref, moreText, runHref } from "../components/index.ts";
 import { auditReason, verdictText } from "../words/index.ts";
 import { cap, evidence, short } from "./change.ts";

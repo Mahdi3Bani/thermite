@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { Role, Runner } from "../broker/runner.ts";
+import type { Role, Runner } from "../broker/index.ts";
 import { exportTree } from "../git.ts";
 
 const run = promisify(execFile);

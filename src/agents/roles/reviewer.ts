@@ -1,5 +1,5 @@
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
-import { RUN_RESEARCH_TOOLS } from "../tools/names.ts";
+import { RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 import { ADVISOR_NOTES, BRIEF_GUIDE, PAST_GUIDE } from "./shared.ts";
 
 /**

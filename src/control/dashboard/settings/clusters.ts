@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { checkClusterNow, setClusterSlots } from "../../clusters/rigs.ts";
+import { checkClusterNow, setClusterSlots } from "../../clusters/index.ts";
 import type { Dashboard } from "../context.ts";
 import { settingsUrl } from "./shared.ts";
 

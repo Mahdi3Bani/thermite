@@ -1,7 +1,6 @@
-import { judgeShareOf } from "../clusters/resources.ts";
+import { judgeShareOf } from "../clusters/index.ts";
 import type { ControlParts } from "../parts.ts";
 import type { ClusterRig } from "../store/index.ts";
-import { UPDATE_STEP_WORDS } from "./update.ts";
 
 /**
  * What setting a rig up takes, wherever control sets it up (on a machine, on a cluster, or where
@@ -15,6 +14,17 @@ export interface RigImages {
   harnessCuda?: string | undefined;
   supervisor: string;
 }
+
+/** The steps of an update, in words (the rig's page and its history), as update.ts records them. */
+export const UPDATE_STEP_WORDS: Record<string, string> = {
+  update_started: "Update to control's version asked",
+  update_paused: "Its runs paused at a safe point",
+  update_images: "Its containers moved onto control's images",
+  update_reported: "A report reached control from control's version",
+  update_isolation: "The isolation check after the update",
+  update_resumed: "Its runs resumed",
+  update_failed: "The update stopped",
+};
 
 /** Each step of a rig's history (set up, moved, stopped, failed) in words, as its page shows it. */
 export const STEP_WORDS: Record<string, string> = {

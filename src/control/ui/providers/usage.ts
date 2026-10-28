@@ -1,4 +1,4 @@
-import { CHATGPT_USAGE_PAGE, type PlanUsage, type PlanWindow } from "../../providers/plan-usage.ts";
+import { CHATGPT_USAGE_PAGE, type PlanUsage, type PlanWindow } from "../../providers/index.ts";
 import { ago, esc } from "../components/index.ts";
 
 /**

@@ -1,6 +1,8 @@
-import type { RunpodFacts, RunpodGpu } from "../../../runpod/cloud.ts";
+import type { RunpodFacts, RunpodGpu } from "../../../runpod/index.ts";
 import { infoLabel } from "../../campaigns/new/index.ts";
 import { ago, esc, icon } from "../../components/index.ts";
+
+export { RUNPOD_LAUNCH_JS } from "./client.ts";
 
 /**
  * Launch on RunPod (goal 022): the owner picks a GPU from RunPod's list with its price, a count,

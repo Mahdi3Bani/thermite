@@ -1,7 +1,7 @@
 import type { AskOwner, BriefingSeed } from "../../core/commands.ts";
 import { parseContract } from "../../core/contract.ts";
 import { issueWaking, type PodWaker } from "../issue/index.ts";
-import type { KitRepos } from "../kits/repos.ts";
+import type { KitRepos } from "../kits/index.ts";
 import { nextRunName } from "../run-names.ts";
 import type { CampaignSources, ControlStore } from "../store/index.ts";
 import { buildCampaign } from "./builder.ts";

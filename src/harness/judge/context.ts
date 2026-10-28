@@ -6,11 +6,10 @@ import type { Contract, GoalContract, HillClimbContract } from "../../core/contr
 import type { EventToRecord } from "../../core/events/bodies.ts";
 import type { Kit } from "../../core/kit.ts";
 import { toFraction } from "../../core/stats.ts";
-import { builderRole, runRole } from "../broker/devices.ts";
-import type { Runner } from "../broker/runner.ts";
+import { builderRole, type Runner, runRole } from "../broker/index.ts";
 import type { JobRow, Ledger } from "../ledger/index.ts";
 import type { HarnessService } from "../service/index.ts";
-import type { TargetDriver } from "../targets/driver.ts";
+import type { TargetDriver } from "../targets/index.ts";
 import { BASELINE_BLOCKS, type Baseline, baselineDir, baselineOf } from "./baseline.ts";
 import { BuildStore } from "./builds.ts";
 import type { Decision } from "./decide.ts";

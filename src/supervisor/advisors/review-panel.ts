@@ -1,7 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "../../agents/roles/reviewer.ts";
-import { JOURNAL_FIELD } from "../../agents/tools/notes.ts";
+import { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "../../agents/roles/index.ts";
+import { JOURNAL_FIELD } from "../../agents/tools/index.ts";
 import { REASONS_MAX } from "../../core/api/harness/advisors.ts";
 import {
   ANSWER_CERTAINTIES,

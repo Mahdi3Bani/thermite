@@ -7,7 +7,7 @@ import {
   renameFolder,
   type ShelfOutcome,
   unarchiveCampaign,
-} from "../../campaigns/folders.ts";
+} from "../../campaigns/index.ts";
 import { campaignHref } from "../../ui/components/index.ts";
 import { campaignModes } from "../../views/index.ts";
 import { backTo, type Ctx, type Dashboard } from "../context.ts";

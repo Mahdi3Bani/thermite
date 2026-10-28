@@ -1,6 +1,5 @@
 import type { AttemptView, RigView, RunView } from "../../views/index.ts";
-import { gainChip, measuredWords } from "../components/gains.ts";
-import { ago, attemptHref, esc } from "../components/index.ts";
+import { ago, attemptHref, esc, gainChip, measuredWords } from "../components/index.ts";
 import { clip, listText, runStatusText, signed, verdictText } from "../words/index.ts";
 
 /**

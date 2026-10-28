@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { commandFollowUrl, commandProgress } from "../command-progress.ts";
 import { attemptHref, campaignHref, esc, runHref } from "../ui/components/index.ts";
 import { attemptDetail, needs as operatorNeeds } from "../ui/operator/index.ts";
-import { runCampaign } from "../views/facts.ts";
+import { runCampaign } from "../views/index.ts";
 import type { Dashboard } from "./context.ts";
 
 /**

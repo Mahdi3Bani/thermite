@@ -1,4 +1,4 @@
-import type { RunpodRigs } from "../runpod/rigs.ts";
+import type { RunpodRigs } from "../runpod/index.ts";
 import type { ControlStore } from "../store/index.ts";
 
 /** Steps of a rig's setup and management given by default (goal 138): the newest. */

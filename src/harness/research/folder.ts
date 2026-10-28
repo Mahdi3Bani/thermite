@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ResearchFolderPaths } from "../../agents/tools/research.ts";
+import type { ResearchFolderPaths } from "../../agents/tools/index.ts";
 // The folder's files are written whole (readers never see half of one), with the modes of the
 // controller's umask (022): every role reads them, and only the controller's user changes them.
 import { writeAtomic } from "../../common/fs.ts";
@@ -27,11 +27,9 @@ import {
   questionLabel,
   REQUIRED_HYPOTHESES,
 } from "../../core/research-check.ts";
-import type { Role, Runner } from "../broker/runner.ts";
+import type { Role, Runner } from "../broker/index.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
-import type { HypothesisRow } from "../ledger/hypotheses.ts";
-import type { Ledger } from "../ledger/index.ts";
-import type { LaneFileChange } from "../ledger/lane-files.ts";
+import type { HypothesisRow, LaneFileChange, Ledger } from "../ledger/index.ts";
 import { cardFile, cardHistory } from "./cards.ts";
 
 /** The order hypotheses are listed in: those that need a verdict first (goal 117). */

@@ -1,5 +1,5 @@
 import type { JobRow } from "../ledger/index.ts";
-import { readThrottle, throttledFraction } from "../targets/cgroup.ts";
+import { readThrottle, throttledFraction } from "../targets/index.ts";
 import { InfraError, type JudgeContext } from "./context.ts";
 import type { Block } from "./decide.ts";
 import { type Arm, type MeasureContext, runArm } from "./measure.ts";

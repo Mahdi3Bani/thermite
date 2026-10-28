@@ -44,10 +44,18 @@ import { LedgerVerdicts } from "./verdicts.ts";
  * also appends an event, so the supervisor can stream changes with a cursor.
  */
 
+export type { CardRow } from "./cards.ts";
 export type { PromoteResult } from "./champions.ts";
-export { MAX_LEASE_EXPIRIES } from "./jobs.ts";
+export type { ClaimRow, FindingRow } from "./claims.ts";
+export type { HypothesisRow } from "./hypotheses.ts";
+export { MAX_LEASE_EXPIRIES, type RunJob } from "./jobs.ts";
+export type { JournalNoteRow } from "./journal.ts";
+export type { LaneFileChange } from "./lane-files.ts";
+export type { MessageRow } from "./messages.ts";
 export { LedgerError } from "./part.ts";
 export type { AttemptInput, BriefingItem, ExperimentRow, JobRow, RunRow } from "./rows.ts";
+export type { SourceRow } from "./sources.ts";
+export type { EpochSource, FamilyStatus } from "./trials.ts";
 export type { InvalidationResult } from "./verdicts.ts";
 
 export class Ledger {

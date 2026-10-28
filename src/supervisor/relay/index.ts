@@ -18,6 +18,9 @@ import {
 } from "../../core/link/report.ts";
 import { buildHeaders } from "../../core/version.ts";
 
+export { commandPollMs, followCommands } from "./commands.ts";
+export { BUS_KEY_FILE, busKey, busKeyFigure } from "./key.ts";
+
 /**
  * The supervisor's deterministic relay: report the harness's new events to control, then relay
  * control's pending signed commands to the harness and acknowledge each outcome. It never

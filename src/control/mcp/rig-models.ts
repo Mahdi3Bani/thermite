@@ -1,14 +1,15 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { COMPACT_AT_DEFAULT, COMPACT_AT_MAX, COMPACT_AT_MIN } from "../../core/compaction.ts";
-import { rigModels, setRigModel } from "../rigs/agent-models.ts";
 import {
   type RigModelBody,
   rigModelAnswer,
   rigModelFields,
   rigModelRequest,
+  rigModels,
   rigModelsAnswer,
-} from "../rigs/model.ts";
+  setRigModel,
+} from "../rigs/index.ts";
 import type { ControlStore } from "../store/index.ts";
 import type { Audited } from "./rig-reads.ts";
 

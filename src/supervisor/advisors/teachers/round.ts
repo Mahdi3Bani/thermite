@@ -1,6 +1,10 @@
 import type { z } from "zod";
-import { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM } from "../../../agents/roles/merged-by.ts";
-import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "../../../agents/roles/teacher.ts";
+import {
+  MERGED_BY_SYSTEM,
+  RESEARCH_MERGED_BY_SYSTEM,
+  RESEARCH_TEACHER_SYSTEM,
+  TEACHER_SYSTEM,
+} from "../../../agents/roles/index.ts";
 import { StructuredDirective } from "../../../core/commands.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import { ideaWords, ruleRefusal } from "../../../core/queue-target.ts";

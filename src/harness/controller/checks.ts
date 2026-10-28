@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { programOf } from "../agents/programs.ts";
+import { programOf } from "../agents/index.ts";
 import {
   busyReason,
   isolationBusy,
@@ -9,7 +9,7 @@ import {
 } from "../selftest/index.ts";
 import type { HarnessService } from "../service/index.ts";
 import { checksDir, smokeCheck } from "../smoke-check.ts";
-import type { TargetDriver } from "../targets/driver.ts";
+import type { TargetDriver } from "../targets/index.ts";
 import type { AgentLinks } from "./agents.ts";
 import type { ControllerContext } from "./context.ts";
 

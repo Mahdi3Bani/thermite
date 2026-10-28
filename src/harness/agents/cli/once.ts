@@ -5,9 +5,9 @@ import { CliCompactions, type OnceKeeping, reclaim } from "../../../agents/compa
 import type { McpAccess } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
 import type { PlanWindows } from "../../../agents/programs/index.ts";
-import { modelCheckProgramPrompt } from "../../../agents/roles/model-check.ts";
+import { modelCheckProgramPrompt } from "../../../agents/roles/index.ts";
 import type { CallUsage } from "../../../core/usage.ts";
-import type { Role, Runner } from "../../broker/runner.ts";
+import type { Role, Runner } from "../../broker/index.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import { CHECK_ROLE, PLANNER_ROLE, takeUsage } from "./common.ts";
 import { setUp } from "./loop.ts";

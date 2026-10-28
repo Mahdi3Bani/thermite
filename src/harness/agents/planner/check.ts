@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PLAN_LIMITS } from "../../../agents/roles/planner.ts";
+import { PLAN_LIMITS } from "../../../agents/roles/index.ts";
 import { canonicalJson } from "../../../core/canonical.ts";
 import { DIRECTIVE_KINDS, QueuePosition } from "../../../core/commands.ts";
 import { asToken, DirectionRef, directionName, notADirection } from "../../../core/directions.ts";
