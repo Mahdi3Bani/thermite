@@ -65,7 +65,7 @@ Research workers have no search of their own: their `search` tool answers that t
 
 ## Runs of several days are not yet proven
 
-Thermite is built to run unattended for as long as a campaign takes, and to recover from crashes and restarts. Its own tests run campaigns for minutes to a few hours: the longest, `scripts/research-longrun.mjs`, runs a research campaign for about two hours by default and kills the harness's controller halfway. The test that proves runs of several days has not run yet: several campaigns in all three modes, for days, with crashes, restarts, a full disk and a lost model along the way.
+Thermite is built to run unattended for as long as a campaign takes, and to recover from crashes and restarts. Its own tests run campaigns for minutes to a few hours: the longest, `scripts/acceptance/research-longrun.mjs`, runs a research campaign for about two hours by default and kills the harness's controller halfway. The test that proves runs of several days has not run yet: several campaigns in all three modes, for days, with crashes, restarts, a full disk and a lost model along the way.
 
 **Removed by:** [goal 049](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/049-multi-day-test-fire.goal), The multi-day test fire (v0.5.0). If a long run goes wrong for you, [report it](../project/getting-help.md).
 

@@ -16,7 +16,7 @@ import {
   partOf,
   resolve,
   scan,
-} from "../../scripts/lib/imports.ts";
+} from "../../scripts/checks/lib/imports.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 

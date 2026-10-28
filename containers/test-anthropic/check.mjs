@@ -1,4 +1,4 @@
-// Test only (scripts/claude-real-acceptance.mjs): Thermite's own calls of Claude Code, run in the
+// Test only (scripts/acceptance/claude-real.mjs): Thermite's own calls of Claude Code, run in the
 // harness container with the image's real Claude Code and the stand-in for Anthropic's API
 // (anthropic.mjs). It prints one JSON line: { checks: [{ name, ok, detail }], peakRssBytes }, the
 // last the peak memory the broker recorded for Claude Code's runs in the first trial.

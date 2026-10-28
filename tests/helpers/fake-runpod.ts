@@ -7,7 +7,7 @@
  * one STARTING until control reads it, then RUNNING; a stopped pod is EXITED with no GPU; a
  * terminated pod is gone. A running pod costs its GPU's price times its GPUs an hour.
  *
- * Hooks put something real behind a pod: the RunPod acceptance (scripts/runpod-acceptance.mjs)
+ * Hooks put something real behind a pod: the RunPod acceptance (scripts/acceptance/runpod.mjs)
  * starts a container of the rig image for each pod and points the pod's proxy address at it.
  *
  * A pod's log (GET /v2/pods/{id}/logs) is Server-Sent Events as RunPod sends them: a comment

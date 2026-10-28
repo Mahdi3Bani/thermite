@@ -1,6 +1,6 @@
 /**
  * The command line's usage text: `thermite help` prints it, and so does a command given wrongly
- * (which exits 2). The docs check (scripts/docs-check.mjs) reads every command and option from it.
+ * (which exits 2). The docs check (scripts/docs/check.mjs) reads every command and option from it.
  */
 export const USAGE = `usage: thermite <command> [options]
 

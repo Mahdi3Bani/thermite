@@ -1,10 +1,10 @@
 # Releases. On a tag v*, it builds the control, harness (CPU and CUDA) and supervisor images from
 # their Containerfiles, and the one-container rig image for RunPod on the CUDA harness, and pushes
 # them to GitHub's container registry, tagged with the commit. Then it checks each published image
-# (scripts/check-images.ts): pulled by digest with no sign-in, it reports the commit, carries no
+# (scripts/release/check-images.ts): pulled by digest with no sign-in, it reports the commit, carries no
 # Claude Code, no key and, for the rig image, no set-id file (goal 010). Only images that hold get
 # the version's tag. Then it writes the release bundle, a compose file that pins those images by
-# digest and a short readme (scripts/release-bundle.ts), and attaches both to a draft GitHub
+# digest and a short readme (scripts/release/bundle.ts), and attaches both to a draft GitHub
 # Release.
 #
 # Run by hand (Actions › release › Run workflow) with "publish" ticked, it pushes and checks the
@@ -27,7 +27,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - containers/**
-      - scripts/release-bundle.ts
+      - scripts/release/bundle.ts
       - src/release/**
       - tests/release/**
   workflow_dispatch:
@@ -347,7 +347,7 @@ jobs:
           merge-multiple: true
       - name: Check each published image
         run: |
-          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/check-images.ts \
+          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/release/check-images.ts \
             --registry '${{ needs.version.outputs.registry }}' \
             --commit "$GITHUB_SHA" --digests digests --summary "$GITHUB_STEP_SUMMARY"
 
@@ -414,7 +414,7 @@ jobs:
       # The script needs no packages: only Node.js and the files in the repository.
       - name: Write the bundle from the images' digests
         run: |
-          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/release-bundle.ts \
+          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/release/bundle.ts \
             --version '${{ needs.version.outputs.version }}' \
             --registry '${{ needs.version.outputs.registry }}' \
             --repo-url '${{ github.server_url }}/${{ github.repository }}' \

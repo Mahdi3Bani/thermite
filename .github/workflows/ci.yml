@@ -147,7 +147,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: node scripts/rig-image-acceptance.mjs
+      - run: node scripts/acceptance/rig-image.mjs
         env:
           COMPOSE: docker compose
 
@@ -166,7 +166,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: node scripts/runpod-acceptance.mjs
+      - run: node scripts/acceptance/runpod.mjs
         env:
           COMPOSE: docker compose
 
@@ -202,8 +202,8 @@ jobs:
             ^src/(control|harness|supervisor)/main\.ts$
             ^src/harness/controller/
             ^src/supervisor/relay(\.ts|/)
-            ^scripts/(compose-smoke|stage-smoke)\.mjs$
-            ^scripts/lib/
+            ^scripts/acceptance/(compose-smoke|stage-smoke)\.mjs$
+            ^scripts/acceptance/lib/
             ^\.github/workflows/ci\.yml$
           # The rig image and the harness image under it, the broker, the isolation selftest and
           # pull mode's enrollment.
@@ -214,8 +214,8 @@ jobs:
             ^tests/harness/broker/
             ^src/harness/selftest(\.ts|/)
             ^src/(core|control)/tunnel\.ts$
-            ^scripts/rig-image-acceptance\.mjs$
-            ^scripts/lib/
+            ^scripts/acceptance/rig-image\.mjs$
+            ^scripts/acceptance/lib/
             ^\.github/workflows/ci\.yml$
           # Rigs on RunPod, pull mode, results sent to control, and the rig image.
           RUNPOD: |
@@ -228,15 +228,15 @@ jobs:
             ^src/supervisor/relay(\.ts|/)
             ^tests/helpers/fake-runpod\.ts$
             ^containers/rig/
-            ^scripts/runpod-acceptance\.mjs$
-            ^scripts/lib/
+            ^scripts/acceptance/runpod\.mjs$
+            ^scripts/acceptance/lib/
             ^\.github/workflows/ci\.yml$
           # The images and compose files, the release bundle, the quick start's pages, the sample
           # and the smoke kit the rig's check runs, and this test itself.
           QUICK_START: |
             ^containers/
             ^compose[^/]*\.yaml$
-            ^scripts/release-bundle\.ts$
+            ^scripts/release/bundle\.ts$
             ^src/release/
             ^tests/release/
             ^docs/_site/src/content/docs/tutorials/(first-run|agents-with-a-free-model)\.md$
@@ -244,8 +244,8 @@ jobs:
             ^docs/_site/src/content/docs/how-to/operate/troubleshoot\.md$
             ^examples/
             ^kits/smoke-cpu/
-            ^scripts/quick-start-acceptance(\.mjs$|/)
-            ^scripts/lib/
+            ^scripts/acceptance/quick-start(\.mjs$|/)
+            ^scripts/acceptance/lib/
             ^tests/helpers/quick-start\.ts$
             ^tests/docs/quick-start\.test\.ts$
             ^\.github/workflows/ci\.yml$
@@ -280,8 +280,8 @@ jobs:
             fi
           done
 
-  # The quick start on a clean runner, as a tester follows it (scripts/quick-start-acceptance.mjs):
-  # this commit's images in a release bundle written by scripts/release-bundle.ts, init and up,
+  # The quick start on a clean runner, as a tester follows it (scripts/acceptance/quick-start.mjs):
+  # this commit's images in a release bundle written by scripts/release/bundle.ts, init and up,
   # the rig's checks, thermite doctor, then the sample campaign in examples/matmul-cpu to the
   # judge's first verdict, with the scripted model of the agents acceptance (no key, no network
   # model). It reads its steps from the tutorials, so a page that breaks the quick start fails it.
@@ -297,7 +297,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: node scripts/quick-start-acceptance.mjs
+      - run: node scripts/acceptance/quick-start.mjs
         env:
           COMPOSE: docker compose
       # What each check found, and how long each step took.

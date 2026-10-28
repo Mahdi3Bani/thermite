@@ -59,12 +59,12 @@ The `two-rigs` profile adds a second rig (`local-2`), which the control and stee
 To work on the dashboard without a stack, run a demo with synthetic campaigns and rigs:
 
 ```sh
-node --experimental-strip-types scripts/dashboard-demo.ts   # http://127.0.0.1:8810/ui
+node --experimental-strip-types scripts/dev/dashboard-demo/main.ts   # http://127.0.0.1:8810/ui
 ```
 
 It prints the token to sign in with. One of its runs has a made-up experiment queue: experiments tried, in progress and up next, a lane's idea and a hand-out. The same run has five made-up field notes on its **Journal** tab, from lane-1, lane-2, the planner, the auditor and a teacher, and the **Knowledge** page shows a folder for each of the demo's campaigns, built from their events. The demo has no campaign saved on control or assigned through it and no owner's messages, so it shows no **Start a run** and no kept messages; the dashboard's tests cover those. One of them (`tests/control/dashboard/run-page.test.ts`) also drives the **Experiments** and **Planner** tabs through a real harness: it adds, moves and drops experiments, and adds and removes a rule in free words. The dashboard's tests use a smaller fixture with the shapes the harness writes (`tests/helpers/control-demo.ts`): a goal campaign with attempts held for audits, a run at work, and a hill climb with an approval and an auditor's block, field notes and a research note.
 
-The documentation's screenshots come from the demo, whose data is made up. With the demo running, `node scripts/docs-screenshots.mjs` takes them again: the Overview, the Campaigns list, a run's page, the run's **Experiments** and **Journal** tabs, Live for a run at work, the **Knowledge** page and a rig's page, at 1440×900 in the light theme, as WebP files in `docs/_site/src/assets/screenshots/`. It needs a local Chrome or Chromium (`--chrome PATH`); `--out DIR` writes the files elsewhere, to look at them first.
+The documentation's screenshots come from the demo, whose data is made up. With the demo running, `node scripts/docs/screenshots.mjs` takes them again: the Overview, the Campaigns list, a run's page, the run's **Experiments** and **Journal** tabs, Live for a run at work, the **Knowledge** page and a rig's page, at 1440×900 in the light theme, as WebP files in `docs/_site/src/assets/screenshots/`. It needs a local Chrome or Chromium (`--chrome PATH`); `--out DIR` writes the files elsewhere, to look at them first.
 
 ## Journals and the knowledge base
 
@@ -131,11 +131,11 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 ## Agents without a model
 
-`node scripts/agents-acceptance.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one round and plays two workers, which edit, build, use the device and submit through the real harness image. Then the rig's agents move to OpenCode: a hill-climb trial submits with `thermite-trial`, and a research run's trial runs the research tools as `thermite-trial research` commands. Its fetch names your machine, so the harness's fetcher must refuse it as a private address; its note, report section and progress must come back from the harness. From its working area, its shell must read and search the run's research folder, be refused when it tries to change the harness's files there or add to them, and the file it writes must be saved and recorded when the trial ends.
+`node scripts/acceptance/agents.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one round and plays two workers, which edit, build, use the device and submit through the real harness image. Then the rig's agents move to OpenCode: a hill-climb trial submits with `thermite-trial`, and a research run's trial runs the research tools as `thermite-trial research` commands. Its fetch names your machine, so the harness's fetcher must refuse it as a private address; its note, report section and progress must come back from the harness. From its working area, its shell must read and search the run's research folder, be refused when it tries to change the harness's files there or add to them, and the file it writes must be saved and recorded when the trial ends.
 
 ## A long research run
 
-`node scripts/research-longrun.mjs` runs a research campaign for a set time (`MINUTES`, 125 by default) with a scripted worker.
+`node scripts/acceptance/research-longrun.mjs` runs a research campaign for a set time (`MINUTES`, 125 by default) with a scripted worker.
 
 - It reads real public pages, at about one page every two minutes, with robots.txt respected.
 - It records quote-verified claims, and kills the harness controller once halfway.
@@ -144,7 +144,7 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 ## The steering acceptance test
 
-`node scripts/steering-acceptance.mjs` runs two rigs with a scripted model on your machine. It checks:
+`node scripts/acceptance/steering.mjs` runs two rigs with a scripted model on your machine. It checks:
 
 - directives from the teachers (two, and their merged by model) and their attribution in the next round;
 - an audit block holding a confirmed win, and a cleared audit letting the next one promote;
@@ -156,16 +156,16 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 ## The quick-start test
 
-`node scripts/quick-start-acceptance.mjs` follows the quick start as a tester does: [Your first run](_site/src/content/docs/tutorials/first-run.md), then [Hand the work to agents](_site/src/content/docs/tutorials/agents-with-a-free-model.md) to the judge's first verdict on the sample in `examples/matmul-cpu`.
+`node scripts/acceptance/quick-start.mjs` follows the quick start as a tester does: [Your first run](_site/src/content/docs/tutorials/first-run.md), then [Hand the work to agents](_site/src/content/docs/tutorials/agents-with-a-free-model.md) to the judge's first verdict on the sample in `examples/matmul-cpu`.
 
-1. **The release, from your copy.** It builds the control, harness and supervisor images, and writes the release bundle for them with `scripts/release-bundle.ts`, pinned by digest. With Podman the images stay in local storage. With Docker they go to a registry container on `127.0.0.1`, so that each one has a digest. The CUDA harnesses and the RunPod rig image are not built: the bundle names the CPU harness in their place, and no step uses them.
+1. **The release, from your copy.** It builds the control, harness and supervisor images, and writes the release bundle for them with `scripts/release/bundle.ts`, pinned by digest. With Podman the images stay in local storage. With Docker they go to a registry container on `127.0.0.1`, so that each one has a digest. The CUDA harnesses and the RunPod rig image are not built: the bundle names the CPU harness in their place, and no step uses them.
 2. **The pages' own steps.** `tests/helpers/quick-start.ts` reads the tutorials, the command line section of [Install Thermite on one machine](_site/src/content/docs/how-to/install/one-machine.md#the-command-line) and [Check the machine](_site/src/content/docs/how-to/operate/troubleshoot.md#check-the-machine). The test runs each shell block as written, in a new folder, with the line for your container tool. It types the values the pages give, presses the buttons they name, and checks the words they quote: the init's last line, Overview's first line, the smoke check's result and its verdict counts, the model check, the kit's summary, the campaign's start and its pause.
-3. **Only what cannot work before a release.** The release's files come from a small server on your computer, and the source from your copy's tracked files, committed and tagged as the release and served by `git daemon`. The agents' model is the scripted model of the agents test (`scripts/lib/scripted-model.mjs`), added as an OpenAI-compatible provider, under OpenCode v2 as the page says. **Look it up** reads only `https://` addresses, so the test looks the tag up itself. The doctor checks the scripted model's address. When a page no longer has what one of these changes is for, the test fails.
+3. **Only what cannot work before a release.** The release's files come from a small server on your computer, and the source from your copy's tracked files, committed and tagged as the release and served by `git daemon`. The agents' model is the scripted model of the agents test (`scripts/acceptance/lib/scripted-model.mjs`), added as an OpenAI-compatible provider, under OpenCode v2 as the page says. **Look it up** reads only `https://` addresses, so the test looks the tag up itself. The doctor checks the scripted model's address. When a page no longer has what one of these changes is for, the test fails.
 
 It needs port 8800 free and no volumes of a compose project named `thermite`: it stops before it builds anything otherwise. It removes its stack, its volumes, its images, dangling images and its folder at the end, and writes a report to `.dev/acceptance/`. `KEEP=1` leaves the stack and the folder.
 
 ```sh
-COMPOSE="podman compose" node scripts/quick-start-acceptance.mjs
+COMPOSE="podman compose" node scripts/acceptance/quick-start.mjs
 ```
 
 A change to the steps of those pages runs this test in CI. Run `node scripts/test.mjs tests/docs/quick-start.test.ts` first: it reads the pages as the test does, and fails at once when a step, a value or a quoted line it needs has gone.
@@ -174,8 +174,8 @@ A change to the steps of those pages runs this test in CI. Run `node scripts/tes
 
 [AGENTS.md](../AGENTS.md#checks) lists the rest, each with when it is needed: control (two rigs), new campaign, machines over SSH, clusters on kind, rig deploy, multi-GPU, Claude Code (a stand-in for it), real Claude Code (a stand-in for Anthropic's API), Codex, the one-container rig image, RunPod (against a fake RunPod API) and the paid RunPod run (by hand, with the owner's OK to spend). Each uses local stand-ins, never a real host or cluster, except the paid RunPod run. Two of them check more than their names say:
 
-- **New campaign** (`scripts/campaign-acceptance.mjs`) creates a campaign through the New campaign form, which starts a try of its kit, then starts the campaign's own run from the campaign's page (**Start a run**) with the agents on. The rig gets a model route that nothing answers (`THERMITE_MODEL_BASE_URL=http://127.0.0.1:9/v1`), so control lets the agents start and they fail at once; the script submits the changes itself.
-- **Clusters on kind** (`scripts/cluster-acceptance.mjs`) keeps control's records on a Podman volume. After the slot's rig reports, it tags both rig images `:accept-update`, loads them into kind and restarts control with them. Then it checks that the rig's page offers **Update to these images**, that the rig's new pods run those images and report again, and that its volume claim and secret are unchanged. Next it gives the slot a quota (3 CPUs, 8 GiB) and moves the rig from the namespace's defaults onto 2 CPUs and 6 GiB with `POST /v1/rigs/<rig>/cluster/resources`: a size above the quota must be refused in words, and the rig's new pods must run with the new limits and report again, with its volume claim and secret unchanged. The update and the change of size are tried on the slot's CPU rig only: kind has no GPUs, so a new number of GPUs is the unit tests'.
+- **New campaign** (`scripts/acceptance/campaign.mjs`) creates a campaign through the New campaign form, which starts a try of its kit, then starts the campaign's own run from the campaign's page (**Start a run**) with the agents on. The rig gets a model route that nothing answers (`THERMITE_MODEL_BASE_URL=http://127.0.0.1:9/v1`), so control lets the agents start and they fail at once; the script submits the changes itself.
+- **Clusters on kind** (`scripts/acceptance/cluster.mjs`) keeps control's records on a Podman volume. After the slot's rig reports, it tags both rig images `:accept-update`, loads them into kind and restarts control with them. Then it checks that the rig's page offers **Update to these images**, that the rig's new pods run those images and report again, and that its volume claim and secret are unchanged. Next it gives the slot a quota (3 CPUs, 8 GiB) and moves the rig from the namespace's defaults onto 2 CPUs and 6 GiB with `POST /v1/rigs/<rig>/cluster/resources`: a size above the quota must be refused in words, and the rig's new pods must run with the new limits and report again, with its volume claim and secret unchanged. The update and the change of size are tried on the slot's CPU rig only: kind has no GPUs, so a new number of GPUs is the unit tests'.
 
 ## Releases
 
@@ -183,9 +183,9 @@ A release is made from a tag. `.github/workflows/release.yml` runs on every tag 
 
 1. **Version.** It takes the version from the tag (`v0.1.0` gives `0.1.0`) and stops unless it is `package.json`'s version, or a pre-release of it such as `0.1.0-rc.1`.
 2. **Images.** It builds six images from their Containerfiles and pushes them to `ghcr.io/<owner>/`: `thermite-control`, `thermite-harness` (CPU) and `thermite-supervisor` for amd64 and arm64 (arm64 under QEMU), and two CUDA harnesses in the `thermite-harness` package: CUDA 12.6 for amd64, with tags that end in `-cuda`, and CUDA 13.0 for amd64 and arm64, with tags that end in `-cuda13` (built, but not yet run on a GPU: see [Known limits](_site/src/content/docs/reference/known-limits.md#the-cuda-13-harness-is-untested)). Their bases, `nvidia/cuda:12.6.3-devel-ubuntu22.04` and `nvidia/cuda:13.0.3-devel-ubuntu24.04`, are pinned by digest in the workflow. In the CUDA 12 job, it builds `thermite-rig`, the one-container rig image for RunPod, for amd64 with tags that end in `-cuda`, on the CUDA harness named by the digest it was just pushed with. Each image is pushed with a tag of the commit's first 12 characters, and labelled with the source repository, the version and the commit. Every build but the rig image's gets `THERMITE_COMMIT`, and the harness builds `THERMITE_IMAGE_ID`; the rig image keeps the CUDA harness's. No build sets `CLAUDE_CODE_VERSION`.
-3. **Checks.** `scripts/check-images.ts` pulls each pushed image by its digest, on a runner that never signed in, and holds it to `src/release/checks.ts`: it pulls without signing in (its package is public), it reports the release's commit in `THERMITE_COMMIT`, it carries no Claude Code, it has no set-id file (every Containerfile clears set-id bits last, and its build fails if one is left), it sets no key, token or password in its environment, and it is published for each platform its image has (arm64 too, where it has one). The harnesses and the rig image also report `THERMITE_IMAGE_ID` and carry neither socat nor bubblewrap; the supervisor and the rig image name no STE checker. The step summary lists each image with its digest and its result. An image that fails stops the release.
+3. **Checks.** `scripts/release/check-images.ts` pulls each pushed image by its digest, on a runner that never signed in, and holds it to `src/release/checks.ts`: it pulls without signing in (its package is public), it reports the release's commit in `THERMITE_COMMIT`, it carries no Claude Code, it has no set-id file (every Containerfile clears set-id bits last, and its build fails if one is left), it sets no key, token or password in its environment, and it is published for each platform its image has (arm64 too, where it has one). The harnesses and the rig image also report `THERMITE_IMAGE_ID` and carry neither socat nor bubblewrap; the supervisor and the rig image name no STE checker. The step summary lists each image with its digest and its result. An image that fails stops the release.
 4. **Version tags.** Each image that passed gets the version's tag (`0.1.0`, `0.1.0-cuda` or `0.1.0-cuda13`), a copy of the checked manifest, so the version's tag and the commit's name the same digest.
-5. **Bundle.** `scripts/release-bundle.ts` fills in `containers/release/compose.template.yaml` and `containers/release/README.template.md` with the images' digests, and the workflow attaches `compose.yaml` and `README.md` to a **draft** GitHub Release. A maintainer reads the draft and publishes it.
+5. **Bundle.** `scripts/release/bundle.ts` fills in `containers/release/compose.template.yaml` and `containers/release/README.template.md` with the images' digests, and the workflow attaches `compose.yaml` and `README.md` to a **draft** GitHub Release. A maintainer reads the draft and publishes it.
 
 The template is the repository's `compose.yaml` with `image:` lines in place of `build:` lines, this release's images as control's rig image defaults (the RunPod rig image in `THERMITE_RUNPOD_RIG_IMAGE` too), and an `init` service that runs `thermite local init`. `tests/release/bundle.test.ts` fails when the two drift apart, and the script refuses to write a bundle from a template that has drifted: a change to `compose.yaml`'s services goes into the template in the same commit.
 
@@ -195,7 +195,7 @@ To test the workflow without publishing, run it by hand without **publish**. A p
 
 ```sh
 mkdir -p digests   # one file per image: control, harness, harness-cuda, harness-cuda13, supervisor, rig-cuda, each with sha256:…
-node --experimental-strip-types scripts/release-bundle.ts --version 0.1.0 \
+node --experimental-strip-types scripts/release/bundle.ts --version 0.1.0 \
   --registry ghcr.io/iammrduncan --repo-url https://github.com/iammrduncan/thermite \
   --digests digests --out bundle
 ```

@@ -2,7 +2,7 @@
  * The checks of each published image (goal 010): what the release workflow holds an image to
  * after it pushes it and before the image gets its version's tag. The owner moved the RunPod rig
  * image from the lab to Thermite's release on 2026-10-24, with the lab's rules for it. These
- * functions decide; scripts/check-images.ts pulls each image with no sign-in and runs PROBE in it.
+ * functions decide; scripts/release/check-images.ts pulls each image with no sign-in and runs PROBE in it.
  */
 import { IMAGES, type ImageKey } from "./bundle.ts";
 

@@ -25,7 +25,7 @@ import { GPU_OVERRIDE } from "../../src/cli/machine.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "../../src/cli/thermite/main.ts");
-const DEV_INIT = join(import.meta.dirname, "..", "..", "scripts", "dev-init.mjs");
+const DEV_INIT = join(import.meta.dirname, "..", "..", "scripts", "dev", "init.mjs");
 
 /** Every path under `root`, relative, with its type and permission bits. */
 function tree(root: string, rel = ""): string[] {

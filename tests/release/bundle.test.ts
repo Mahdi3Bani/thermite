@@ -19,7 +19,7 @@ import {
 
 const run = promisify(execFile);
 const ROOT = join(import.meta.dirname, "..", "..");
-const SCRIPT = join(ROOT, "scripts", "release-bundle.ts");
+const SCRIPT = join(ROOT, "scripts", "release", "bundle.ts");
 const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
 const COMPOSE = read("compose.yaml");
 const TEMPLATE = read("containers/release/compose.template.yaml");

@@ -22,7 +22,7 @@ This page lists where each part of Thermite listens, which networks join them, w
 | 22/tcp, or the machine's own | A machine's SSH server | Control, to check the machine and set rigs up on it | The machine's **SSH port** on the Providers page, 22 by default |
 | The cluster's API server | Kubernetes | Control's `kubectl`, to set rigs up on a cluster, and later to stop, start, restart, update or remove them | The cluster's kubeconfig |
 | 8000/tcp | A RunPod test pod's probe | Control, through RunPod's proxy, at an address with a random token in its path | Fixed |
-| 8810/tcp | The dashboard demo (`scripts/dashboard-demo.ts`) | A browser | `--port` |
+| 8810/tcp | The dashboard demo (`scripts/dev/dashboard-demo/main.ts`) | A browser | `--port` |
 
 Two Unix sockets matter too:
 

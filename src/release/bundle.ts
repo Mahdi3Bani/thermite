@@ -1,7 +1,7 @@
 /**
  * The release bundle: a compose file that pins the published images by digest, and a short
  * readme. The release workflow (.github/workflows/release.yml) pushes the images, then
- * scripts/release-bundle.ts fills in the templates in containers/release/ with their digests.
+ * scripts/release/bundle.ts fills in the templates in containers/release/ with their digests.
  * These functions do the filling and the checks, with no files or network of their own.
  */
 

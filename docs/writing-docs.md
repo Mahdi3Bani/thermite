@@ -82,7 +82,7 @@ sidebar:
 - **Show, then tell.** Put a working example near the top: the command, the file, the screen.
 - **Only what exists.** Every command, option, setting, route and field on a page exists in the code. A planned feature gets one line and a link to its goal in the [roadmap](plan/roadmap.md), never a description as if it existed. Pages describe how Thermite behaves, not what has been done lately.
 - **No default caps, stated correctly.** Thermite never ends research by default. Don't call a per-process limit, pacing or back-pressure something that "stops" a campaign. Caps exist only when someone sets them. A page that uses a paid key says to set a budget or a stop time first.
-- **Public content.** Use made-up names: `gpu-host-1`, `rig-1`, `control.example.com`, `git.example.com`. Never a real host, address, account or private repository. Screenshots come only from the dashboard demo (`scripts/dashboard-demo.ts`), whose data is made up.
+- **Public content.** Use made-up names: `gpu-host-1`, `rig-1`, `control.example.com`, `git.example.com`. Never a real host, address, account or private repository. Screenshots come only from the dashboard demo (`scripts/dev/dashboard-demo/main.ts`), whose data is made up.
 
 ### Each type
 
@@ -119,7 +119,7 @@ A test follows the quick start as a tester would: [Your first run](_site/src/con
 - keep the steps numbered (`## 4. Sign in`): the test finds them by number;
 - quote what the screen shows exactly, in a code span.
 
-`node scripts/test.mjs tests/docs/quick-start.test.ts` reads the pages as the test does, in a second. The whole test is `scripts/quick-start-acceptance.mjs`: see [the contributor guide](local-development.md#the-quick-start-test).
+`node scripts/test.mjs tests/docs/quick-start.test.ts` reads the pages as the test does, in a second. The whole test is `scripts/acceptance/quick-start.mjs`: see [the contributor guide](local-development.md#the-quick-start-test).
 
 ## When Thermite changes
 

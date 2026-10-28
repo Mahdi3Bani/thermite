@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Test only (scripts/codex-acceptance.mjs): a stand-in for the Codex CLI's headless mode
+// Test only (scripts/acceptance/codex.mjs): a stand-in for the Codex CLI's headless mode
 // (`codex exec --json`, the prompt on stdin). It prints the JSON events Codex prints (the thread,
 // its items, the turn's tokens) and does what each of Thermite's calls asks: the model check's
 // echo, the planner's JSON plan, a trial's change and its submission with thermite-trial, or the

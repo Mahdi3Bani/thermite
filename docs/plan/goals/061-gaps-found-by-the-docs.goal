@@ -41,9 +41,9 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 
 ### Rigs control sets up
 
-- [x] **Rigs that control sets up on a machine, and machines joined with a join command, never report.** Fixed in `4ec8705`. The setup script (`deployScript`, `src/control/machines/deploy.ts`) runs `umask 077`, so the rig's `keys` folder is mode 0700 and the harness's controller (user `thermite`) cannot read control's public key; it times out every 2 minutes. `scripts/rig-deploy-acceptance.mjs` passed only after `chmod 0755` on that folder by hand. Clusters are not affected. Found by following the install guides.
+- [x] **Rigs that control sets up on a machine, and machines joined with a join command, never report.** Fixed in `4ec8705`. The setup script (`deployScript`, `src/control/machines/deploy.ts`) runs `umask 077`, so the rig's `keys` folder is mode 0700 and the harness's controller (user `thermite`) cannot read control's public key; it times out every 2 minutes. `scripts/acceptance/rig-deploy.mjs` passed only after `chmod 0755` on that folder by hand. Clusters are not affected. Found by following the install guides.
 - [ ] After a join command's script fails its checks, the rig's page still says the rig `fetched its files; waiting for its first report` and asks for the rig to be removed (`src/control/join.ts`, `src/control/dashboard/rigs/joined.ts`, `src/control/dashboard/rigs/shared.ts`).
-- [ ] Once, in a cluster run, control stopped answering right after a joined rig's objects were removed and the rig was retired; the next run passed. Not diagnosed (`scripts/cluster-acceptance.mjs`, run with a join step added).
+- [ ] Once, in a cluster run, control stopped answering right after a joined rig's objects were removed and the rig was retired; the next run passed. Not diagnosed (`scripts/acceptance/cluster.mjs`, run with a join step added).
 - [ ] Control cannot give the rigs it sets up (on machines, on clusters and by join) any setting beyond a fixed few: no results repository, advisors file, model prices or `THERMITE_MAX_TRIALS` (`src/control/machines/deploy.ts`, `src/control/clusters/manifests.ts`, `src/control/join.ts`).
 - [ ] The machine check reads Podman's version but does not compare it with the 4.4 that rigs need, and the join script checks only that `podman` exists (`src/control/machines/facts.ts`, `src/control/join.ts`).
 - [ ] The machine check can test whether the machine reaches the image registry, but control never gives it the registry's address, so a machine that cannot pull the images is found only when the deploy fails (`src/control/dashboard/settings/machines.ts`, `src/control/machines/facts.ts`).
@@ -57,7 +57,7 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 - [ ] A tag pushed again with new content never reaches a rig: machines pull only a missing tag, and clusters use `IfNotPresent` (`src/control/machines/deploy.ts`, `src/control/clusters/manifests.ts`).
 - [ ] The machine install recipe writes the NVIDIA CDI spec to `/var/run/cdi/nvidia.yaml`, and the join script and the rig page use `/etc/cdi/nvidia.yaml`; a spec under `/var/run` may not be there after a reboot (`src/control/machines/recipes.ts`; not confirmed).
 - [ ] Control's Quadlet units set no `LogDriver`, so where Podman gives them the `passthrough` driver, `podman logs` shows nothing for a machine rig (`src/control/machines/deploy.ts`; not confirmed).
-- [ ] Cluster acceptance runs CPU rigs only: neither the device plugin path nor the DRA path for GPUs is tested (`scripts/cluster-acceptance.mjs`).
+- [ ] Cluster acceptance runs CPU rigs only: neither the device plugin path nor the DRA path for GPUs is tested (`scripts/acceptance/cluster.mjs`).
 - [ ] A join command is used up when its script is fetched, before the script's checks run, so any missing piece on the machine means a new command (`src/control/join.ts`).
 - [ ] A RunPod test pod's cost on its card is the hourly price times the time it ran, without the storage that RunPod also bills (`src/control/runpod/tests.ts`).
 

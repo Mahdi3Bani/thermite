@@ -1,5 +1,5 @@
 #!/bin/sh
-# Test only (scripts/claude-real-acceptance.mjs): writes the supervisor token and control's public
+# Test only (scripts/acceptance/claude-real.mjs): writes the supervisor token and control's public
 # key as compose's secrets and volumes would, then starts the harness as usual (the broker as root,
 # which closes /tmp to the roles and runs each one's work under the GPU fence).
 set -eu

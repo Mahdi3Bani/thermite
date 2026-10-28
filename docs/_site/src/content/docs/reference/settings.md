@@ -379,7 +379,7 @@ The smoke and acceptance scripts in `scripts/` read these. They are not settings
 | `THERMITE_PROJECT` | not set | A compose project name, so a second stack can run beside the usual one |
 | `THERMITE_CONTROL_PORT` | `8800` | Where the scripts reach control, as in the compose file |
 | `THERMITE_ENGINE_SOCKET_HOST` | Podman's socket, when Podman has one | The steering acceptance: the engine socket for `compose.lifecycle.yaml`. With none, the restarts are not tested |
-| `MINUTES`, `PACE_SECONDS`, `SEEDS` | `125`, `120`, two built-in pages | The research long run (`scripts/research-longrun.mjs`): its length in minutes, the wait at the start of each trial in seconds, and its seed pages as comma-separated URLs |
+| `MINUTES`, `PACE_SECONDS`, `SEEDS` | `125`, `120`, two built-in pages | The research long run (`scripts/acceptance/research-longrun.mjs`): its length in minutes, the wait at the start of each trial in seconds, and its seed pages as comma-separated URLs |
 | `THERMITE_FAKE_CLAUDE` | not set | `1`: lets the stand-in for Claude Code in the Claude Code acceptance's test image run. Without it, or a marker file in that image, the stand-in refuses to run |
 | `THERMITE_FAKE_CODEX` | not set | `1`: lets the stand-in for the Codex CLI in the Codex acceptance's test image run. Without it, or a marker file in that image, the stand-in refuses to run |
 
