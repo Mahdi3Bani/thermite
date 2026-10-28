@@ -14,7 +14,9 @@ This page lists where each part of Thermite listens, which networks join them, w
 | --- | --- | --- | --- |
 | 8800/tcp | Control: the dashboard (`/ui`), the REST API (`/v1`), MCP (`/mcp`) and `/metrics` | People, scripts and agents; every rig's supervisor | `THERMITE_CONTROL_LISTEN`, default `0.0.0.0:8800` |
 | 8700/tcp | The harness API | The rig's own supervisor. Inside the harness container, its workers and tools on `127.0.0.1` | `THERMITE_LISTEN`, default `0.0.0.0:8700` |
-| none | The supervisor | Outside pull mode it listens on no port. It connects out to its harness and to control | |
+| none | The supervisor | Outside pull mode it listens on no port. It connects out to its harness and to control, and to the message bus when it has one | |
+| 4222/tcp | The message bus: the NATS server of the compose stack's `nats` service, with the `bus` profile | Control and the supervisors, when `THERMITE_NATS_URL` names it. Never the harness | `THERMITE_NATS_URL`, `nats://nats:4222` under compose |
+| 8222/tcp, on the `nats` container's own `127.0.0.1` | The NATS server's monitoring | Its health check, inside the container. Nothing outside the container reaches it | Fixed in the compose file |
 | 8790/tcp | The supervisor of a rig in [pull mode](../explanation/trust.md#rigs-in-pull-mode), on every interface | Control alone, through RunPod's proxy, under a random path. Everything else gets an empty 404 | `THERMITE_TUNNEL_PORT`, `8790` in control's launch values and in the one-container rig image |
 | A free port on `127.0.0.1` | The supervisor in pull mode: its own calls to control wait there for control's next exchange | The supervisor alone: the port takes only a token that lives in the supervisor's memory, and answers anything else with an empty 404 | Chosen at start |
 | 22/tcp, or the machine's own | A machine's SSH server | Control, to check the machine and set rigs up on it | The machine's **SSH port** on the Providers page, 22 by default |
@@ -34,6 +36,7 @@ Two Unix sockets matter too:
 - Control's port is published on the host at `127.0.0.1` only, port `THERMITE_CONTROL_PORT` (default 8800): `http://127.0.0.1:8800/ui`.
 - The harness's port is not published. Supervisors reach it as `http://harness:8700` (and `http://harness-2:8700` with the `two-rigs` profile).
 - Supervisors reach control as `http://control:8800`.
+- With the `bus` profile, control and the supervisors reach the message bus as `nats://nats:4222`. Its port is not published.
 
 ### On machines and clusters
 
@@ -49,10 +52,10 @@ Two Unix sockets matter too:
 | --- | --- | --- |
 | `rig` | Internal: no way out | `harness`, `supervisor` |
 | `rig2` | Internal | `harness-2`, `supervisor-2` (the `two-rigs` profile) |
-| `control` | Normal | `control`, `supervisor`, `supervisor-2` |
+| `control` | Normal | `control`, `supervisor`, `supervisor-2`, and `nats` with the `bus` profile |
 | `egress` | Normal: the way out | `harness`, `supervisor`, `harness-2`, `supervisor-2` |
 
-The harness is not on the `control` network. Control and the harness also get the host name `host.docker.internal`, so they can reach a model server on the host. A release's compose file also has an `init` service, which makes the local tokens: it has no network at all (`network_mode: none`).
+The harness is not on the `control` network, so it never reaches control or the message bus. Control and the harness also get the host name `host.docker.internal`, so they can reach a model server on the host. A release's compose file also has an `init` service, which makes the local tokens: it has no network at all (`network_mode: none`).
 
 ### Machines
 
@@ -87,6 +90,7 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 | Harness | `/inbox` | Read-only: project and kit bundles and [model files](model-files.md) the supervisor fetched |
 | Harness | `/outbox` | Exports, written by the harness |
 | Harness | `/keys` | Read-only: control's public key |
+| NATS, the `nats` service | `/data` | JetStream's store: the `REPORTS` stream, every rig's reports sent over the bus, kept for good. Control's consumer of it, `control-reports`, keeps its place there |
 | Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, the exports waiting to be sent to control (`export-uploads.json`), where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`). In pull mode also `tunnel/` (`THERMITE_TUNNEL_DIR`, 0700: the pod's keys, its enrollment and the nonces it has seen) and `enrolled/` (`THERMITE_TUNNEL_ENROLLED_DIR`: `control.pub`, `rig.json` and `rig.env` for the harness) |
 | Supervisor | `/inbox` | Read and write: what it fetches for the harness |
 | Supervisor | `/outbox` | Read-only: the harness's exports |
@@ -120,6 +124,7 @@ A full reset empties the harness's state, scratch and outbox, keeping only the r
 | `outbox`, `outbox2` | a harness and its supervisor | `/outbox` | read-write in the harness; read-only in the supervisor |
 | `supervisor-home`, `supervisor2-home` | supervisor, supervisor-2 | `/var/lib/thermite-supervisor` | read-write |
 | `results` | both supervisors | `/results` | read-write. The default results repository is `file:///results/results.git` |
+| `nats-data` | nats, with the `bus` profile | `/data` | read-write |
 | `./.dev/advisors` (a folder) | both supervisors | `/etc/thermite/advisors` | read-only |
 | `.` (the folder that holds `compose.yaml`) | init, in a release's compose file | `/work` | read-write. It runs as root, with only the capabilities `CHOWN`, `DAC_OVERRIDE` and `FOWNER` |
 

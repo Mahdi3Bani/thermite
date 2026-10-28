@@ -785,6 +785,8 @@ Each rig's supervisor calls these with the rig's own token, for its own rig only
 | 409 | `report from the future` (more than 5 minutes ahead of control's clock) |
 | 409 | `Control cannot work with this rig: …`, when the harness's build in the report, or the supervisor's, has a protocol control cannot work with ([Rig versions](#rig-versions)) |
 
+With `THERMITE_NATS_URL` set, the supervisor publishes the same reports to the message bus instead, and control takes them from there with these checks too, and these words in its log: see [Reports over the message bus](../explanation/how-the-parts-talk.md#reports-over-the-message-bus). The route still takes reports from rigs that are not on the bus.
+
 ## Rig versions
 
 Control, each rig's harness and each rig's supervisor report their builds, and control compares the rig's with its own. A build is Thermite's version (from `package.json`), the source commit the image was built from, and the protocol: the version of the contract between control and a rig. This release speaks protocol 1.

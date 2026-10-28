@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
+import { busUrl, natsBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
@@ -9,6 +10,7 @@ import { buildInfo } from "../core/version.ts";
 import { createControlApi } from "./api.ts";
 import { realKubectl } from "./clusters/kubectl.ts";
 import { Credential } from "./credential.ts";
+import { followReports } from "./ingest.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
 import { openSsh } from "./machines/ssh.ts";
@@ -83,6 +85,10 @@ async function main(): Promise<void> {
   // Offline after 15 minutes without a report (never before it is stale).
   const offlineAfterMs = readNumber(env, CONTROL_NUMBERS.offlineSeconds) * 1000;
   const driver = driverFromEnv(env);
+  // Optional: the owner accepts each rig's first report key (no trust on first use).
+  const requireKeyAcceptance = env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1";
+  // The message bus (goal 168): with THERMITE_NATS_URL, rigs' reports arrive there too.
+  const natsUrl = busUrl(env);
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
   const secrets = SecretBox.fromFile(
@@ -111,8 +117,7 @@ async function main(): Promise<void> {
       staleAfterMs,
       offlineAfterMs,
       driver,
-      // Optional: the owner accepts each rig's first report key (no trust on first use).
-      requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
+      requireKeyAcceptance,
       sessionDays: readNumber(env, CONTROL_NUMBERS.sessionDays),
       secrets,
       runpodTests,
@@ -148,7 +153,14 @@ async function main(): Promise<void> {
       .filter((r) => !r.retired_at)
       .map((r) => r.rig),
     lifecycle: driver?.kind ?? null,
+    bus: natsUrl ? new URL(natsUrl).host : null,
   });
+  // Reports from the bus, folded through the ingest route's checks as they arrive.
+  const bus = natsUrl ? natsBus(natsUrl, "control") : undefined;
+  if (bus)
+    followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
+      log("control", "reports from the bus stopped", { error: String(err) }, "error"),
+    );
   // Full resets advance as their evidence arrives.
   const resets = setInterval(() => {
     advanceResets({ store, privateKeyPem, driver, staleAfterMs }).catch((err) =>

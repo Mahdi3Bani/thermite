@@ -1,5 +1,12 @@
+import type { Bus } from "../common/bus.ts";
 import { log } from "../common/env.ts";
 import type { SignedCommand } from "../core/commands.ts";
+import {
+  REPORT_MAX_BYTES,
+  reportFits,
+  reportMessageId,
+  reportSubject,
+} from "../core/link/report.ts";
 import { buildHeaders } from "../core/version.ts";
 
 /**
@@ -7,6 +14,10 @@ import { buildHeaders } from "../core/version.ts";
  * control's pending signed commands to the harness and acknowledge each outcome. It never
  * creates or alters commands; it has no signing key.
  */
+
+/** What the relay needs of the message bus: a publish by message id that waits for the ack. */
+export type ReportBus = Pick<Bus, "publish">;
+
 export interface RelayConfig {
   rig: string;
   harnessUrl: string;
@@ -27,6 +38,11 @@ export interface RelayConfig {
   held?: Map<string, SignedCommand> | undefined;
   /** Of those, the ones whose sources are still being fetched: control keeps them alive. */
   staging?: Set<string> | undefined;
+  /**
+   * The message bus (THERMITE_NATS_URL, goal 168): reports go there instead of to control's ingest
+   * route. Commands still come over HTTP.
+   */
+  bus?: ReportBus | undefined;
 }
 
 export interface RelayState {
@@ -88,8 +104,9 @@ export class RelayError extends Error {
 }
 
 /**
- * One relay round. The cursor advances only when control took the events. Commands are relayed
- * even if reporting failed, each on its own: one command's failure never holds up the others.
+ * One relay round. The cursor advances only when control took the events, or, on the bus, when
+ * the bus's server has them. Commands are relayed even if reporting failed, each on its own: one
+ * command's failure never holds up the others.
  */
 export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<RelayState> {
   const f = cfg.fetchImpl ?? fetch;
@@ -106,7 +123,13 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
           cfg.harnessToken,
         ),
         "snapshot",
-      ) as { ledger_id: string; next: number; events: unknown[] } & Record<string, unknown>;
+      ) as {
+        ledger_id: string;
+        cursor: number;
+        next: number;
+        events: unknown[];
+        generated_at: string;
+      } & Record<string, unknown>;
       if (ledgerId !== undefined && snap.ledger_id !== ledgerId && cursor !== 0) {
         // The harness ledger was reset or replaced: its events are numbered from 1 again.
         log("supervisor", "harness ledger changed; restarting the cursor", {
@@ -129,7 +152,24 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
         throw new Error(
           `the harness reports as rig ${snap.rig}, but this supervisor is ${cfg.rig}`,
         );
-      if (cfg.controlUrl && cfg.controlToken) {
+      if (cfg.bus) {
+        // Passed through untouched, as below. The cursor moves once the server has the page.
+        const body = JSON.stringify(snap);
+        if (!reportFits(Buffer.byteLength(body))) {
+          const n = snap.events.length;
+          if (n <= 1)
+            throw new Error(`a report of ${n} events is over the bus's ${REPORT_MAX_BYTES} bytes`);
+          pageLimit = Math.floor(n / 2);
+          log("supervisor", "report page too large for the bus; halving it", { page: pageLimit });
+          continue;
+        }
+        const id = reportMessageId(snap);
+        const ack = await cfg.bus.publish(reportSubject(cfg.rig), body, {
+          id,
+          headers: buildHeaders(),
+        });
+        if (ack.duplicate) log("supervisor", "the bus had this report already", { id });
+      } else if (cfg.controlUrl && cfg.controlToken) {
         // Passed through untouched: the supervisor cannot sign for the harness.
         const r = await call(
           f,

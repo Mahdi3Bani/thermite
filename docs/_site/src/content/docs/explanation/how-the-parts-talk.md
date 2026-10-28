@@ -12,6 +12,7 @@ sidebar:
 flowchart LR
   B[Browser, scripts, MCP clients] -->|pages, REST, MCP| C[Control]
   S[Supervisor] -->|reports, live lines, figures, exports| C
+  S -.->|reports, with the bus| N[NATS, with JetStream] -.-> C
   C -->|commands, settings, past research, kits| S
   S -->|commands, settings, content in /inbox| H[Harness]
   H -->|events, live lines, exports in /outbox| S
@@ -44,6 +45,14 @@ Each channel keeps its own place, so a call that fails is simply made again at t
 - **Events** carry a cursor. Control takes a page only if it follows on from the last one it has, and tells the supervisor where to start if it does not. A page that control refuses as too large is sent again in halves.
 - **Commands** stay pending on control until the harness's outcome comes back. The harness takes each one once, whatever the number of times it is delivered.
 - **Live lines** are a view of what is happening now, and control keeps only the latest of them; the record is the events.
+
+### Reports over the message bus
+
+The events can also travel on a message bus: a NATS server with JetStream, which the compose stack runs as its `nats` service with the `bus` profile. When `THERMITE_NATS_URL` names it for control and the supervisor, the supervisor publishes each page of events, as the harness signed it, to the rig's own subject, `thermite.rig.<rig>.report`, in the `REPORTS` stream, instead of posting it to control. Control reads the stream with one consumer, one message at a time, in order, and takes each page with the same checks as a page posted to it. The other channels in the table stay on HTTP, and the supervisor still reads its harness's new events every `THERMITE_POLL_SECONDS`.
+
+- **The supervisor moves on once the bus has a page.** A page's message id names its ledger and its events, so a page published twice is kept once. A page too large for one message, 8 MiB, goes in halves.
+- **The stream keeps every report:** no limit on their count, size or age, and none can be deleted.
+- **Control can't send the supervisor back.** A page control has already is passed over. A page it refuses is recorded as one posted to it would be (a gap in the events, for one, is `report_refused` in its audit log), its log says why in a line `report from the bus refused`, and it reads on. No answer reaches the supervisor, so nothing sends that page again.
 
 ### A rig on RunPod
 

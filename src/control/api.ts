@@ -6,10 +6,11 @@ import { log, redact } from "../common/env.ts";
 import { answerOf, errorText, jsonBody } from "../common/errors.ts";
 import { sameSecret } from "../common/secrets.ts";
 import { sha256Hex } from "../core/canonical.ts";
-import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
+import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import { RIG_ID_WORDS } from "../core/ids.ts";
+import { readReport } from "../core/link/report.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
-import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
+import { type BuildInfo, buildFromHeaders, buildInfo } from "../core/version.ts";
 import { rigModels, setRigModel } from "./agent-models.ts";
 import { runRoutes } from "./api/runs.ts";
 import {
@@ -38,6 +39,7 @@ import { CopyCampaignBody, copyACampaign, copyCampaignAnswer } from "./copy-camp
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
+import { takeReport } from "./ingest.ts";
 import { issueWaking, pendingFor, propagateChampion, WakeRefused } from "./issue.ts";
 import { addKit, kitAnswer, kitsAnswer } from "./kit-add.ts";
 import { KIT_BUNDLE_MAX, type KitRepos } from "./kit-repos.ts";
@@ -94,7 +96,6 @@ import {
   type Effort,
   fingerprint,
   type Harness,
-  type IngestReport,
   type ModelProvider,
   RIG_ID,
 } from "./store.ts";
@@ -142,35 +143,6 @@ function clampLimit(raw: string | undefined, fallback: number): number {
 function bearer(header: string | undefined): string {
   return header?.startsWith("Bearer ") ? header.slice(7) : "";
 }
-
-/**
- * The harness's signed report, as its supervisor relays it. A field this control does not know is
- * dropped, in the report or in an event, and the signature (over reportBody) is checked on what is
- * left. So the signed part stays exact: a field a newer harness signs there fails the check. New
- * data goes in an event's `body` or the `summary`, which are kept as they came (goal 012).
- */
-const IngestBody = z.object({
-  rig: z.string().min(1),
-  ledger_id: z.string().min(1),
-  cursor: z.number().int().min(0),
-  next: z.number().int().min(0),
-  events: z.array(
-    z.object({
-      id: z.number().int().positive(),
-      at: z.iso.datetime(),
-      actor: z.string(),
-      kind: z.string(),
-      subject: z.string().nullable(),
-      body: z.unknown(),
-      run: z.string().nullable().optional(),
-    }),
-  ),
-  summary: z.unknown(),
-  generated_at: z.iso.datetime(),
-  latest_event: z.number().int().min(0),
-  rig_pubkey: z.string().min(1).optional(),
-  signature: z.string().min(1).optional(),
-});
 
 const IssueBody = z.object({
   rig: z.string().min(1),
@@ -462,85 +434,12 @@ export function createControlApi(
 
   app.get("/v1/health", (c) => c.json({ ok: true }));
 
+  // A report the rig's supervisor posts; with the message bus, control also folds them from there.
+  const intake = { store, control, requireKeyAcceptance: Boolean(opts.requireKeyAcceptance) };
   app.post("/v1/rigs/:rig/ingest", rigAuth, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
-    const body = IngestBody.parse(await jsonBody(c.req));
-    const rig = c.req.param("rig");
-    if (body.rig !== rig) return c.json({ error: "rig mismatch" }, 403);
-    // Reports are signed by the harness: the supervisor relays them but cannot forge them.
-    if (!body.signature || !body.rig_pubkey) return c.json({ error: "unsigned report" }, 400);
-    const key = store.rigKey(rig);
-    const offered = body.rig_pubkey.trim();
-    // A key is pinned or held only if the report it came with verifies under it.
-    if (!verifyJson(reportBody(body), body.signature, offered)) {
-      store.audit(`rig:${rig}`, "report_rejected", { reason: "bad signature" });
-      return c.json({ error: "bad report signature" }, 403);
-    }
-    if (!key.pubkey) {
-      // First contact: pinned, unless the owner must accept every rig's first key.
-      if (opts.requireKeyAcceptance) {
-        if (key.pending?.trim() !== offered) store.holdKey(rig, offered);
-        return c.json({ error: "the rig's key waits for the owner's acceptance" }, 409);
-      }
-      store.pinKey(rig, offered);
-    } else if (key.pubkey.trim() !== offered) {
-      if (key.pending?.trim() !== offered) store.holdKey(rig, offered);
-      return c.json({ error: "rig key changed: the owner must accept the new key" }, 409);
-    }
-    // Freshness and completeness: no report from a ledger this rig has left, no gap in the
-    // event stream, and nothing older than the newest report already taken.
-    const fresh = store.reportCheck(rig, {
-      ledgerId: body.ledger_id,
-      cursor: body.cursor,
-      generatedAt: body.generated_at,
-    });
-    if (!fresh.ok) {
-      store.audit(`rig:${rig}`, "report_refused", { reason: fresh.reason });
-      return c.json({ error: fresh.reason, expected_cursor: fresh.expectedCursor }, 409);
-    }
-    if (Date.parse(body.generated_at) > Date.now() + 5 * 60_000)
-      return c.json({ error: "report from the future" }, 409);
-    // The harness's build, from the signed summary of a fresh report (none from a harness before
-    // version checks): recorded, and the report refused while its protocol and control's do not
-    // meet. A replayed old report never gets this far, so it cannot change the recorded build.
-    store.setRigBuild(rig, "harness", readBuild((body.summary as { build?: unknown })?.build));
-    const refused = checkRig(store, rig, control);
-    if (refused) {
-      store.countRefusedCall(rig);
-      return c.json({ error: refused }, 409);
-    }
-    const added = store.ingest(body as IngestReport);
-    // Into the knowledge base now, while this report's ledger is the rig's (it reads only a rig's
-    // current ledger). After a failure the next report or read catches up.
-    try {
-      store.kb();
-    } catch (err) {
-      const error = redact(errorText(err));
-      log("control", "knowledge base catch-up failed", { rig, error }, "error");
-      store.audit("control", "kb_failed", { rig, error });
-    }
-    // A rig control marked failed (its update or start waited too long) that reports again
-    // works: say so, and show it as running.
-    const placed = store.clusterRig(rig);
-    if (placed?.status === "failed") {
-      store.setClusterRigStatus(rig, "running");
-      // Named for the wait that ended: its first report, one after new images, or after a start.
-      const failed = store
-        .rigSetupEvents(rig)
-        .filter((x) => !x.ok)
-        .at(-1)?.step;
-      const step =
-        failed === "first_report"
-          ? "first_report"
-          : failed === "pods_running" || failed === "report_after_start"
-            ? "report_after_start"
-            : failed === "resources" ||
-                failed === "resources_running" ||
-                failed === "report_after_resources"
-              ? "report_after_resources"
-              : "report_after_images";
-      store.rigSetupEvent(rig, step, true, "it reported after the wait ended");
-    }
-    return c.json({ added });
+    const read = readReport(await jsonBody(c.req));
+    const [status, answer] = takeReport(intake, c.req.param("rig"), read);
+    return c.json(answer, status);
   });
 
   app.get("/v1/rigs/:rig/commands/pending", rigAuth, (c) =>

@@ -20,7 +20,7 @@ export function dc(env, ...args) {
   const out = sh(compose[0], [...compose.slice(1), ...project, ...args], {
     env: { ...process.env, ...env },
   });
-  if (args[0] === "down") cleanEngine();
+  if (args.includes("down")) cleanEngine();
   return out;
 }
 

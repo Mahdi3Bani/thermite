@@ -2,6 +2,10 @@
 // Local compose smoke test: build and start control and one rig, assign the smoke campaign
 // through control, submit one candidate as a proposer, and wait until its verdict reaches
 // control. Usage: COMPOSE="podman compose" node scripts/compose-smoke.mjs (or "docker compose").
+//
+// With THERMITE_NATS_URL=nats://nats:4222, the stack runs with the `bus` profile and the
+// supervisor sends its reports over the message bus (goal 168): the smoke then checks that they
+// reached control that way. Either way it prints how long events took to reach control.
 import {
   assign,
   candidatePatch,
@@ -14,10 +18,49 @@ import {
   until,
 } from "./lib/smoke-env.mjs";
 
-const composeEnv = { THERMITE_POLL_SECONDS: "3", THERMITE_CALIBRATION_BLOCKS: "0" };
+const bus = process.env.THERMITE_NATS_URL ?? "";
+const composeEnv = {
+  THERMITE_POLL_SECONDS: "3",
+  THERMITE_CALIBRATION_BLOCKS: "0",
+  THERMITE_NATS_URL: bus,
+};
+const profile = bus ? ["--profile", "bus"] : [];
+const stack = (...args) => dc(composeEnv, ...profile, ...args);
+
+/**
+ * Seconds from each event's time at the rig to control holding it, from control's own store, for
+ * the events from the run's start on (the rig's start waits for its first report). Both times are
+ * from the same machine's clock.
+ */
+function eventDelays() {
+  const read = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync("/var/lib/thermite-control/control.db",{readOnly:true});process.stdout.write(JSON.stringify(db.prepare("select kind, at, received_at from rig_event where rig = 'local-1' order by seq").all()))`;
+  const rows = JSON.parse(stack("exec", "-T", "control", "node", "-e", read));
+  const start = rows.findIndex((r) => r.kind === "run_created");
+  return rows
+    .slice(Math.max(0, start))
+    .map((r) => (Date.parse(r.received_at) - Date.parse(r.at)) / 1000)
+    .sort((a, b) => a - b);
+}
+
+/** The reports stream and control's consumer of it, from the NATS server's own monitoring. */
+function busState() {
+  const url = "http://127.0.0.1:8222/jsz?streams=true&consumers=true";
+  const jsz = JSON.parse(stack("exec", "-T", "nats", "wget", "-q", "-O", "-", url));
+  const stream = (jsz.account_details ?? [])
+    .flatMap((a) => a.stream_detail ?? [])
+    .find((s) => s.name === "REPORTS");
+  const consumer = (stream?.consumer_detail ?? []).find((c) => c.name === "control-reports");
+  return {
+    messages: stream?.state?.messages ?? 0,
+    lastSeq: stream?.state?.last_seq ?? 0,
+    ackedTo: consumer?.ack_floor?.stream_seq ?? 0,
+    pending: (consumer?.num_pending ?? 0) + (consumer?.num_ack_pending ?? 0),
+  };
+}
+
 const env = prepare();
-console.log("compose: build and start");
-dc(composeEnv, "up", "-d", "--build");
+console.log(`compose: build and start (reports over ${bus ? "the message bus" : "HTTP"})`);
+stack("up", "-d", "--build");
 try {
   await until("control health", async () => (await fetch(`${control}/v1/health`)).ok);
   await assign(env, "smoke-1");
@@ -41,7 +84,7 @@ try {
     for (const e of evs.slice(-25))
       console.log("event:", e.at, e.kind, JSON.stringify(e.body ?? {}).slice(0, 300));
     try {
-      console.log(dc(composeEnv, "logs", "--tail", "60", "harness"));
+      console.log(stack("logs", "--tail", "60", "harness"));
     } catch {
       // The logs are for the reader only: the failure below is the result.
     }
@@ -50,7 +93,25 @@ try {
   const kinds = [...new Set((await events()).map((e) => e.kind))];
   console.log("events at control:", kinds.join(", "));
   console.log("verdict:", verdict);
+  if (bus) {
+    // The reports came over the bus: the stream holds them, and control acked each one it folded.
+    const state = await until(
+      "control folded every report on the bus",
+      async () => {
+        const s = busState();
+        return s.messages > 0 && s.pending === 0 && s.ackedTo === s.lastSeq ? s : undefined;
+      },
+      60_000,
+      1000,
+    );
+    console.log("reports on the bus:", JSON.stringify(state));
+  }
+  const delays = eventDelays();
+  const at = (q) => delays[Math.min(delays.length - 1, Math.floor(q * delays.length))] ?? 0;
+  console.log(
+    `seconds from an event to control holding it, over ${bus ? "the bus" : "HTTP"} (${delays.length} events): median ${at(0.5).toFixed(2)}, 90th percentile ${at(0.9).toFixed(2)}, max ${(delays.at(-1) ?? 0).toFixed(2)}`,
+  );
   console.log("compose smoke: OK");
 } finally {
-  if (process.env.KEEP !== "1") dc(composeEnv, "down", "-v");
+  if (process.env.KEEP !== "1") stack("down", "-v");
 }

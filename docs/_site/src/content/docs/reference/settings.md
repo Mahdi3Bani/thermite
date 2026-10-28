@@ -100,6 +100,14 @@ A lifecycle driver lets control restart a rig's containers: the button **Restart
 
 The `kubernetes` driver restarts a component by deleting its pods, which the rig's Deployment then makes again. Its service account lists and deletes pods in each rig's namespace. It is for rigs deployed on Kubernetes by other means. Rigs that control sets up on a cluster don't use it: control restarts them with the cluster's kubeconfig (**Restart them** on the rig's page), and names the namespaces it creates from the cluster's **Namespace for each rig**, `thermite-{rig}` by default, the same as the driver's default. If your rigs' namespaces have other names, set `THERMITE_K8S_NAMESPACE` to match them.
 
+### The message bus
+
+Rigs' reports can reach control over a message bus, a NATS server with JetStream, instead of each supervisor posting them to control's API. See [Reports over the message bus](../explanation/how-the-parts-talk.md#reports-over-the-message-bus).
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_NATS_URL` | `nats://` address | not set | no | The NATS server control reads rigs' reports from, for example `nats://nats:4222` in the compose stack. Control makes the `REPORTS` stream there and reads it as each report arrives, with the same checks as a report posted to its API, which it still takes too. A server it can't reach is tried again every 5 seconds; its log says so once, as `following failed; trying again`, until it works. Not set: reports come only over HTTP. Anything but a `nats://` address stops control at start with `THERMITE_NATS_URL takes a nats:// address, such as nats://nats:4222, not "<value>"` |
+
 ## Harness
 
 The harness container runs a **broker**, which runs as root and starts the other processes as separate users, and the **controller**, which is the harness service itself. Both read the variables below.
@@ -242,6 +250,7 @@ The Codex CLI speaks only OpenAI's Responses API, so `codex` goes only with `THE
 | `THERMITE_HARNESS_TOKEN_FILE` | path | required | path to a secret | The supervisor's token for the harness: the same token as the harness's `THERMITE_SUPERVISOR_TOKEN_FILE` |
 | `CONTROL_URL` | URL | not set | no | Control's address. Not set: the supervisor reports nowhere and fetches no commands |
 | `THERMITE_CONTROL_TOKEN_FILE` | path | not set | path to a secret | The rig's token for control. Without it the supervisor still starts, but sends control nothing and fetches nothing from it: no reports, commands, live view, model, advisors' models or past research |
+| `THERMITE_NATS_URL` | `nats://` address | not set | no | The message bus control reads reports from, for example `nats://nats:4222` in the compose stack. Set, the supervisor publishes each report to it instead of posting it to control, and moves on once the bus has it; commands, the live view and the rest still come and go over HTTP. A page of events too large for one message (8 MiB with its headers) goes as two halves instead; a single event too large for one stops the reports there, and the supervisor's log says so. Not set: reports go to control's API. Anything but a `nats://` address stops the supervisor at start, as for control |
 
 ### Pull mode
 
@@ -333,13 +342,21 @@ The model settings have only the names in [The rig's own model](#the-rigs-own-mo
 
 | Service | Passed from your shell or `.env`, with its default | Fixed in `compose.yaml` |
 | --- | --- | --- |
-| control | `THERMITE_CONTROL_STALE_SECONDS` (180); `THERMITE_CONTROL_OFFLINE_SECONDS` (900); `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_RUNPOD_RIG_IMAGE`, `THERMITE_RUNPOD_TEST_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS` and `THERMITE_LIFECYCLE` (all empty) | `THERMITE_CONTROL_DIR`, `THERMITE_CONTROL_LISTEN`, `THERMITE_CONTROL_ADMIN_TOKEN_FILE`, `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_RIG_TOKENS_FILE`, `THERMITE_CONTROL_PUBKEY_EXPORT` (`/keys/control-signing.pub`), `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES` |
+| control | `THERMITE_CONTROL_STALE_SECONDS` (180); `THERMITE_CONTROL_OFFLINE_SECONDS` (900); `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_RUNPOD_RIG_IMAGE`, `THERMITE_RUNPOD_TEST_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS`, `THERMITE_LIFECYCLE` and `THERMITE_NATS_URL` (all empty) | `THERMITE_CONTROL_DIR`, `THERMITE_CONTROL_LISTEN`, `THERMITE_CONTROL_ADMIN_TOKEN_FILE`, `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_RIG_TOKENS_FILE`, `THERMITE_CONTROL_PUBKEY_EXPORT` (`/keys/control-signing.pub`), `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES` |
 | harness | `THERMITE_PROMOTION` (`auto`); `THERMITE_CALIBRATION_BLOCKS` (6); `THERMITE_MODEL_BASE_URL`, `THERMITE_MODEL` and `THERMITE_MODEL_REASONING_EFFORT` (empty); `THERMITE_MODEL_CONTEXT_WINDOW` (0); `THERMITE_MODEL_MAX_TOKENS` (empty); `THERMITE_MAX_TRIALS` (1); `THERMITE_TRIAL_MINUTES` (empty); `THERMITE_MAX_TURNS`, `THERMITE_RESEARCH_MAX_MB`, `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (empty); `THERMITE_EXPORT_MINUTES` (60) | `THERMITE_RIG_ID` (`local-1`), `THERMITE_TARGET` (`cpu`), `THERMITE_CONTROL_PUBKEY_FILE`, `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` |
-| supervisor | `THERMITE_POLL_SECONDS` (60); `THERMITE_COMMAND_POLL_SECONDS` (5); `THERMITE_MODEL_ROUTE_POLL_SECONDS` (30); `THERMITE_LIVE_INTERVAL_MS` (3000); `THERMITE_RESULTS_REMOTE` (`file:///results/results.git`, a repository on a shared volume); `THERMITE_ADVISORS_FILE` (empty); `THERMITE_KB_SYNC_SECONDS` (180) | `THERMITE_RIG_ID` (`local-1`), `HARNESS_URL`, `CONTROL_URL`, `THERMITE_HARNESS_TOKEN_FILE`, `THERMITE_CONTROL_TOKEN_FILE` |
+| supervisor | `THERMITE_POLL_SECONDS` (60); `THERMITE_COMMAND_POLL_SECONDS` (5); `THERMITE_MODEL_ROUTE_POLL_SECONDS` (30); `THERMITE_LIVE_INTERVAL_MS` (3000); `THERMITE_RESULTS_REMOTE` (`file:///results/results.git`, a repository on a shared volume); `THERMITE_ADVISORS_FILE` (empty); `THERMITE_KB_SYNC_SECONDS` (180); `THERMITE_NATS_URL` (empty) | `THERMITE_RIG_ID` (`local-1`), `HARNESS_URL`, `CONTROL_URL`, `THERMITE_HARNESS_TOKEN_FILE`, `THERMITE_CONTROL_TOKEN_FILE` |
 
 Each service's build in the repository's `compose.yaml` also takes `THERMITE_COMMIT` from your shell or `.env` (empty), as the [build argument](#build-arguments) of the same name: for example `THERMITE_COMMIT=$(git rev-parse HEAD) docker compose build`.
 
 The defaults match the code's, except `THERMITE_RESULTS_REMOTE`, which the code leaves unset. A release's `compose.yaml` passes the same settings with the same defaults, with one difference: `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_RUNPOD_RIG_IMAGE` and `THERMITE_RUNPOD_TEST_IMAGE` default to that release's published images, pinned by digest (both RunPod settings to its rig image). It builds nothing, so it takes no `THERMITE_COMMIT`: the published images carry their commit already. The second rig of the `two-rigs` profile (`harness-2` and `supervisor-2`, rig `local-2`) takes the same settings, except that its harness does not pass `THERMITE_RESEARCH_MAX_MB` or the two prices.
+
+The compose file also has a `nats` service, the message bus: the NATS server from its official image, pinned by digest, with JetStream. It starts only with the `bus` profile, and the reports go over it only when `THERMITE_NATS_URL` names it too, for control and the supervisors alike:
+
+```sh
+THERMITE_NATS_URL=nats://nats:4222 docker compose --profile bus up -d
+```
+
+Its settings are fixed in the compose file: the largest message, 8 MiB, which the reports' contract keeps to; monitoring on the container's own loopback, for its health check; and JetStream's store on its volume. It asks for no sign-in: only the services on the `control` network reach it, which the harnesses are not on, and control checks each report's signature as it does over HTTP. Without the profile, the stack runs as before, and the reports go to control over HTTP.
 
 On a machine with NVIDIA GPUs, `thermite local init` also writes `compose.gpu.yaml`, which changes the harness of `local-1` only: `THERMITE_TARGET` `cuda-gpu`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS` (or `THERMITE_GPU_INDEX` `0` for one GPU), the GPUs themselves, and the CUDA image: beside a release's `compose.yaml`, the release's CUDA harness, which `THERMITE_RIG_HARNESS_CUDA_IMAGE` in `.env` replaces; beside the repository's, one it builds on the CUDA base. See [`local init`](command-line.md#local-init).
 

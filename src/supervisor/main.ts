@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { busUrl, natsBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
 import { untoldKinds } from "../core/kb.ts";
@@ -73,6 +74,11 @@ async function main(): Promise<void> {
   const pull = await startPullMode(env, rig, home);
   const controlUrl = pull?.controlUrl ?? env.CONTROL_URL?.replace(/\/$/, "");
   const controlToken = pull?.controlToken ?? optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE");
+  // The message bus (goal 168): with THERMITE_NATS_URL, reports go there instead of to control's
+  // ingest route; a bad address stops the supervisor here.
+  const natsUrl = busUrl(env);
+  const bus = natsUrl ? natsBus(natsUrl, `supervisor ${rig}`) : undefined;
+  if (natsUrl) log("supervisor", "reports go over the message bus", { bus: new URL(natsUrl).host });
   // A full reset keeps the tunnel's keys and enrollment: control's trust in the pod stays.
   const keepOnWipe = new Set(
     (pull?.dirs ?? []).filter((d) => dirname(d) === home).map((d) => basename(d)),
@@ -94,6 +100,7 @@ async function main(): Promise<void> {
     harnessToken,
     controlUrl,
     controlToken,
+    bus,
     held: new Map(),
     staging: new Set<string>(),
     stage: (cmd: Parameters<typeof stageCommand>[1]) =>
