@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { currentAgent, currentEvent } from "../../src/core/names.ts";
+import { currentAgent, currentBody, currentEvent, eventKinds } from "../../src/core/names.ts";
 
 /** Records written under v0.1.0's names read under the public ones (goal 125, T1). */
 describe("the agents' public names", () => {
@@ -29,5 +29,24 @@ describe("the agents' public names", () => {
     assert.deepEqual(old("review_panel", { result: "panel" }), { result: "panel" });
     const now = { id: 2, kind: "model_call", body: { agent: "workers" } };
     assert.equal(currentEvent(now), now);
+  });
+});
+
+describe("the old names of kinds and keys", () => {
+  test("an old kind and an old key read under the new names", () => {
+    const e = currentEvent({ kind: "instance_created", body: { instance: "r-1", unit: "u" } });
+    assert.deepEqual(e, { kind: "run_created", body: { run: "r-1", rig: "u" } });
+    assert.deepEqual(eventKinds("run_status"), ["run_status", "instance_status"]);
+    assert.deepEqual(eventKinds("verdict"), ["verdict"]);
+  });
+
+  test("the names every object has are no old names", () => {
+    for (const name of ["constructor", "toString", "hasOwnProperty", "valueOf", "__proto__"]) {
+      const e = { kind: name, body: { [name]: 1, by: "panel" } };
+      assert.equal(currentEvent(e), e);
+      assert.equal(currentBody(e.body), e.body);
+      assert.equal(currentAgent(name), name);
+      assert.deepEqual(eventKinds(name), [name]);
+    }
   });
 });
