@@ -24,11 +24,21 @@ const NOTE =
 
 const INTRO = `Thermite runs 15 agent roles. Each role's fixed instructions are in its own module in \`src/agents/roles/\`, and \`src/agents/roles/index.ts\` lists every role in one table. This page is written from that table, so the texts below are the ones the code sends, word for word.
 
-A run adds to these texts each time it calls a role: the campaign's brief, the run's rules and queue, field notes, past research and your messages. Those parts are put together where the role is called. Every role advises or proposes; none of them measures, judges or promotes (see [Why agents never judge](../explanation/why-agents-never-judge.md)).
+A run adds to these texts each time it calls a role: the campaign's brief, the run's rules and queue, field notes, past research and your messages. One function in the role's module puts them together for a run, named under each role below; the harness and the supervisor gather what the run adds and send what that function renders, and no prompt is built anywhere else. Every prompt sent is kept with its run: a run's **Prompts** tab on the dashboard shows each one, with where each part came from, and so do \`GET /v1/runs/{run}/prompts\`, the \`agent_prompts\` MCP tool and \`thermite agents show ROLE --run RUN\` (see [What a run's agents were sent](#what-a-runs-agents-were-sent)). Every role advises or proposes; none of them measures, judges or promotes (see [Why agents never judge](../explanation/why-agents-never-judge.md)).
 
 | Role | What it does | Runs in | Model | Programs | Your messages reach it |
 | --- | --- | --- | --- | --- | --- |
 `;
+
+const SENT = `## What a run's agents were sent
+
+Each prompt is kept whole, compressed, in the rig's ledger and in the run's export (\`prompts.jsonl.gz\`), never in the run's research folder, which the workers read. Control gets an \`agent_prompt\` event for each one: its role, agent program, lane and trial or call, the version of the role's text, and each section with its source and size. The event carries the text of each section up to 8,000 characters of the prompt in all; a section past that says it is cut. A fixed text of a role, listed below, is named by its SHA-256, and control shows it from its own copy of the definitions.
+
+Each section's source says where it comes from: \`role\` (the role's own text), \`assignment\`, \`contract\`, \`campaign brief\`, \`queue\`, \`planner\`, \`judge\`, \`ledger\` (the run's record), \`field notes and past research\`, \`owner\` (your messages), \`kit\` (its MCP servers), \`rig\` (the rig's and the lane's limits), \`package\` (what an advisor reads), \`check\` (what code found wrong with a planner's last answer) and \`left out\`.
+
+A worker's or a planner's first message is cut to fit its model's window, by the advisors' rule: the window at its compaction point less 30%. Your messages and the role's own text stay whole; the largest of the run's parts are cut first, and the message says what was cut and where the rest is. Without a known window, nothing is cut.
+
+The agent programs read no instructions of their own from the project: Claude Code reads no \`CLAUDE.md\`, and Codex no \`AGENTS.md\`. OpenCode's pinned version has no such switch that Thermite has checked yet.`;
 
 const cell = (s) => s.replace(/\|/g, "\\|");
 const anchor = (name) =>
@@ -52,9 +62,9 @@ export async function agentsPage() {
         return `### ${r.name}: ${x.what}\n\n\`\`\`text\n${x.text}\n\`\`\``;
       })
       .join("\n\n");
-    return `## ${r.name}\n\n${r.what} Its module: \`src/agents/roles/\`, role \`${r.id}\`.\n\n${texts}`;
+    return `## ${r.name}\n\n${r.what} Its module: \`src/agents/roles/\`, role \`${r.id}\`. Its prompt for a run is put together by \`${r.render.name}\`.\n\n${texts}`;
   }).join("\n\n");
-  return `${FRONT}\n${NOTE}\n${INTRO}${rows}\n\n${sections}\n`;
+  return `${FRONT}\n${NOTE}\n${INTRO}${rows}\n\n${SENT}\n\n${sections}\n`;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

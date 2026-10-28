@@ -20,7 +20,6 @@ import {
   PROMPT_VAR,
   readClaudeEvents,
 } from "../../../agents/programs/index.ts";
-import { WORKER_CLAUDE_CODE_SYSTEM } from "../../../agents/roles/index.ts";
 import type { Role, Runner } from "../../broker/index.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";
@@ -86,7 +85,6 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
   name: "Claude Code",
   prefix: "claude",
   eventsVar: "THERMITE_CLAUDE_EVENTS",
-  system: WORKER_CLAUDE_CODE_SYSTEM,
   turnWords: "each model reply is one",
   memory: CLAUDE_CODE_MEMORY,
   bin: claudeBin,

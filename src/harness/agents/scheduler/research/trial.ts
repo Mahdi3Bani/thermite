@@ -10,7 +10,7 @@ import { focusOf, limitsInForce, PLANNER } from "../../coordinator.ts";
 import type { Assignment } from "../../registry.ts";
 import type { ResearchTrialSpec } from "../../research/index.ts";
 import type { TrialResult } from "../../worker/index.ts";
-import { campaignBrief, notesAndPast, withOwnerMessages } from "../briefs.ts";
+import { campaignBrief, notesAndPast, withOwnerSections } from "../briefs.ts";
 import type { SchedulerContext } from "../context.ts";
 import { afterTrial } from "../provider.ts";
 import { finishExperiment, trialLine, withProgress } from "../trials.ts";
@@ -95,7 +95,7 @@ export function startResearchTrial(
     "status",
     `research trial on ${a.lane}: ${a.family}, ${got.x.title}`,
   );
-  const fullBrief = withOwnerMessages(sched, id, run, a.lane, brief);
+  const fullBrief = withOwnerSections(sched, id, run, a.lane, brief);
   const limits = limitsInForce(sched.ledger, run, contract);
   const abort = new AbortController();
   sched.aborts.set(a.lane, abort);

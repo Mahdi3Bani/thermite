@@ -5,6 +5,7 @@ import {
   modelStallMs,
   type ProviderErrorAnswer,
 } from "../../agents/model/index.ts";
+import type { Prompt } from "../../agents/prompt.ts";
 import { buildInfo } from "../../common/build-info.ts";
 import type { McpConnect } from "../../common/mcp-client.ts";
 import type { AdvisorQueueRequest } from "../../core/api/harness/advisors.ts";
@@ -22,6 +23,7 @@ import { Journal } from "../journal.ts";
 import { Knowledge } from "../knowledge.ts";
 import { type Ledger, LedgerError } from "../ledger/index.ts";
 import { type AdvisorRole, OwnerMessages } from "../messages.ts";
+import type { PreviewAsk } from "../prompts.ts";
 import { ExperimentQueue } from "../queue.ts";
 import { Cards, folderRootOf, Papers, SAVED_LANES_DIR } from "../research/index.ts";
 import type { ReviewKind } from "../reviews.ts";
@@ -164,6 +166,11 @@ export class HarnessService {
 
   /** A research run's folder as files, for its export (main.ts sets it). */
   researchFolder?: ((run: string) => { root: string; files: string[] }) | undefined;
+  /**
+   * The prompt a role would be sent next in a run, rendered with no side effect (goal 166; the
+   * controller sets it, from its scheduler).
+   */
+  promptPreview?: ((run: string, ask: PreviewAsk) => Prompt) | undefined;
   /**
    * Each compaction of an agent's conversation (goal 070): the conversation kept in the run's
    * research folder, and the record of it (main.ts sets it, with the research folder).
@@ -590,6 +597,10 @@ export class HarnessService {
 
   liveBatch(after: number, limit: number): unknown {
     return reports.liveBatch(this, this.rigKeys, after, limit);
+  }
+
+  liveMessages(after: number, limit: number): unknown {
+    return reports.liveMessages(this, this.rigKeys, after, limit);
   }
 
   snapshot(cursor: number, limit: number): unknown {

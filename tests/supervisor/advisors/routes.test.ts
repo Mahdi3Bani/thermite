@@ -9,6 +9,7 @@ import {
   mergeAdvisors,
   runtimeOf,
 } from "../../../src/supervisor/advisors/routes.ts";
+import { testPrompt } from "../../helpers/advisor-prompt.ts";
 
 const route = (o: Partial<Record<string, unknown>> = {}) => ({
   name: "p",
@@ -286,9 +287,11 @@ process.stdin.on("end", () => {
         effort: "high",
         timeout_s: 30,
       },
-      system: "You audit changes.",
       // As large as an audit's package may be: more than one command-line argument may hold.
-      prompt: `Please look at this change.\n${"x".repeat(200_000)}`,
+      prompt: testPrompt(
+        "You audit changes.",
+        `Please look at this change.\n${"x".repeat(200_000)}`,
+      ),
       schema: AuditAnswer,
       answerSchema: Type.Object({}),
     });

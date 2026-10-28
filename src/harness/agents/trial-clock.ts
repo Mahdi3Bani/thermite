@@ -15,9 +15,6 @@ export const COMMAND_MARGIN_MS = 3 * 60_000;
 /** Nearer the end than the margin, a command still gets this long at most (a git diff). */
 export const LAST_COMMAND_MS = 60_000;
 
-/** The time a trial ends at, in words: 20:38 UTC. */
-export const endWords = (at: number) => `${new Date(at).toISOString().slice(11, 16)} UTC`;
-
 /** A command's time limit, and whether the trial's end set it rather than the command's own. */
 export interface CommandTime {
   timeoutMs?: number;
@@ -124,23 +121,4 @@ function untilAborted(
 /** A result with one more line of text at its end. */
 function withLine(r: AgentToolResult, line: string): AgentToolResult {
   return { ...r, content: [...r.content, { type: "text", text: line }] };
-}
-
-/**
- * What a trial's prompt says of its length and turns (goal 079): only the limits someone set, and
- * without either, to submit once the change works. With its end (goal 144): when it ends, in UTC.
- */
-export function trialBudget(
-  minutes: number | undefined,
-  maxTurns: number | undefined,
-  turn: string,
-  endsAt?: number,
-): string {
-  const time = minutes === undefined ? "" : `${minutes} minutes`;
-  const end =
-    time && endsAt !== undefined && Number.isFinite(endsAt) ? `, to ${endWords(endsAt)}` : "";
-  const turns = maxTurns === undefined ? "" : `at most ${maxTurns} turns (${turn})`;
-  if (!time && !turns) return "Submit once your change works.";
-  const parts = [time + end, turns].filter(Boolean);
-  return `This trial lasts ${parts.join(end && turns ? ", and " : " and ")}. Submit before it ends.`;
 }

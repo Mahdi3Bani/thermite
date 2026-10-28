@@ -2,6 +2,7 @@ import { createUser, fromSeed } from "@nats-io/nkeys";
 import { log, redact } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
 import { writeAtomic } from "../../common/fs.ts";
+import { LIVE_RUNS_PER_RIG } from "../../core/link/live.ts";
 import { isUserKey, userKeyFingerprint, usersFile } from "../../core/link/users.ts";
 import type { SecretBox } from "../secrets.ts";
 import type { BusIdentityName, ControlStore } from "../store/index.ts";
@@ -16,8 +17,12 @@ import type { BusIdentityName, ControlStore } from "../store/index.ts";
 /** The setting that names the users file control writes for the bus's server. */
 export const BUS_USERS_FILE_SETTING = "THERMITE_NATS_USERS_FILE";
 
-/** How often control brings the users file to its store, for a rig retired or a reload failed. */
-export const BUS_USERS_SYNC_MS = 60_000;
+/**
+ * How often control brings the users file to its store: for a rig retired, a run a rig may now
+ * publish the live lines of, or a reload that failed. A look that finds nothing changed writes
+ * nothing and asks no reload.
+ */
+export const BUS_USERS_SYNC_MS = 5_000;
 
 /**
  * The users file's path, from its setting. Control needs one when it runs the bus: the server
@@ -98,6 +103,8 @@ export class BusUsers {
   private written: string | undefined;
   /** Whether the server took the file as last written. */
   private reloaded = false;
+  /** Whether the last sync failed: a failure is logged in full once, then quietly until one works. */
+  private failing = false;
   private last: Promise<void> = Promise.resolve();
 
   constructor(o: BusUsersOptions) {
@@ -111,12 +118,14 @@ export class BusUsers {
     return this.control.seed;
   }
 
-  /** The users file's text now. */
+  /** The users file's text now: each rig's user with the runs control's run registry gives it. */
   text(): string {
     const { store } = this.o;
+    const runs = store.runRegistry.runsByRig(LIVE_RUNS_PER_RIG);
     const rigs = store.busKeys
       .rigKeys()
-      .filter((r) => store.enrollments.knownRig(r.rig) && !store.retired.get(r.rig));
+      .filter((r) => store.enrollments.knownRig(r.rig) && !store.retired.get(r.rig))
+      .map((r) => ({ ...r, runs: runs.get(r.rig) ?? [] }));
     return usersFile({ control: this.control.publicKey, system: this.system.publicKey, rigs });
   }
 
@@ -143,18 +152,23 @@ export class BusUsers {
       }
     } catch (err) {
       const error = errorText(err);
-      log("control", "the bus's users not written; trying again", { ...where, error }, "error");
+      const level = this.failing ? "debug" : "error";
+      log("control", "the bus's users not written; trying again", { ...where, error }, level);
+      this.failing = true;
       return;
     }
     if (this.reloaded) return;
     try {
       await this.o.reload(this.system.seed);
       this.reloaded = true;
+      this.failing = false;
       log("control", "the bus's server reloaded its users", { users: usersIn(text) });
     } catch (err) {
       const error = redact(errorText(err)).replace(/\bU[A-Z2-7]{55}\b/g, "U…");
       const what = { error, again_in_s: BUS_USERS_SYNC_MS / 1000 };
-      log("control", "the bus's server did not reload its users; trying again", what, "warn");
+      const level = this.failing ? "debug" : "warn";
+      log("control", "the bus's server did not reload its users; trying again", what, level);
+      this.failing = true;
     }
   }
 }

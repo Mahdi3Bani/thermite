@@ -1,4 +1,5 @@
 import type { ModelConfig } from "../../../agents/model/index.ts";
+import type { Prompt } from "../../../agents/prompt.ts";
 import type { StoredRule } from "../../../core/commands.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import type { CallUsage } from "../../../core/usage.ts";
@@ -110,6 +111,8 @@ export async function plan(
   compaction?: PlannerCompaction,
   /** Each model call's usage in Pi (goal 075); another harness's goes with `ask`. */
   usage?: (u: CallUsage) => void,
+  /** Keeps each try's prompt, as it is sent (goal 166). */
+  sent?: (p: Prompt) => void,
 ): Promise<PlanResult> {
   let r: PlannerTries<ReturnType<typeof validatePlan>["plan"]> | undefined;
   if (model) {
@@ -124,6 +127,7 @@ export async function plan(
       mcp,
       compaction,
       usage,
+      sent,
     });
     const p = r.plan;
     if (p) {

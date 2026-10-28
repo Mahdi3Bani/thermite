@@ -1,7 +1,8 @@
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { type KeyPairPem, reportBody, signJson } from "../../core/commands.ts";
-import { liveBody } from "../../core/live.ts";
+import { liveGroups } from "../../core/link/live.ts";
+import { type LiveEntry, liveBody } from "../../core/live.ts";
 import { writeExport } from "../outbox.ts";
 import type { HarnessService } from "./index.ts";
 
@@ -18,7 +19,35 @@ export function liveBatch(
   limit: number,
 ): unknown {
   const { entries, next } = svc.live.since(after, limit);
-  const batch = { rig: svc.rig, log_id: svc.live.id, from: after, next, entries };
+  return signedLines(rigKeys, { rig: svc.rig, log_id: svc.live.id, from: after, next, entries });
+}
+
+/**
+ * Lines of the live log after `after`, as the message bus's messages: the lines of each run's
+ * source in a batch of their own (core/link/live.ts), each signed like a whole batch.
+ */
+export function liveMessages(
+  svc: HarnessService,
+  rigKeys: KeyPairPem | undefined,
+  after: number,
+  limit: number,
+): unknown {
+  const { entries, next } = svc.live.since(after, limit);
+  const batch = { rig: svc.rig, log_id: svc.live.id, from: after, next };
+  return {
+    log_id: svc.live.id,
+    next,
+    messages: liveGroups(entries).map((group) =>
+      signedLines(rigKeys, { ...batch, entries: group }),
+    ),
+  };
+}
+
+/** A batch of live lines, signed with the rig's key when it has one. */
+function signedLines(
+  rigKeys: KeyPairPem | undefined,
+  batch: { rig: string; log_id: string; from: number; next: number; entries: LiveEntry[] },
+): unknown {
   return rigKeys
     ? {
         ...batch,

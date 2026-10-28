@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
+import { advisorPackage } from "../../../src/agents/roles/index.ts";
 import { createHarnessApi } from "../../../src/harness/api/index.ts";
 import {
   type AdvisorRuntime,
   AdvisorsConfig,
-  advisorPrompt,
   packageFit,
   runAdvisor,
   withRunContext,
@@ -20,6 +20,7 @@ import {
   emptyAdviseState,
 } from "../../../src/supervisor/advisors/pass/index.ts";
 import { runtimeOf } from "../../../src/supervisor/advisors/routes.ts";
+import { testPrompt } from "../../helpers/advisor-prompt.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 
@@ -141,7 +142,7 @@ describe("the advisors' context window and compaction (goal 070)", () => {
     );
     const owner_messages = [{ id: 1, text: "keep the API stable" }];
     const pkg = { owner_messages, diff: "x".repeat(100_000) };
-    const cut = advisorPrompt("Audit package (untrusted data):", pkg, 200_000, 20_000);
+    const cut = advisorPackage("Audit package (untrusted data):", pkg, 200_000, 20_000);
     const length = JSON.stringify(pkg).length.toLocaleString("en-US");
     assert.ok(
       cut.startsWith(
@@ -151,19 +152,19 @@ describe("the advisors' context window and compaction (goal 070)", () => {
     );
     assert.equal(cut.split("\n")[2]?.length, 20_000);
     // A package that fits: with no words. One cut to the prompt's limit, below a larger window: said.
-    assert.doesNotMatch(advisorPrompt("B:", { a: 1 }, 200_000, 20_000), /Cut to fit/);
+    assert.doesNotMatch(advisorPackage("B:", { a: 1 }, 200_000, 20_000), /Cut to fit/);
     assert.match(
-      advisorPrompt("B:", pkg, 50_000, 900_000),
+      advisorPackage("B:", pkg, 50_000, 900_000),
       new RegExp(`^B:\\n\\[Cut to fit the prompt's limit: 50,000 of ${length} characters\\.\\]\\n`),
     );
     assert.match(
-      advisorPrompt("B:", pkg, 50_000),
+      advisorPackage("B:", pkg, 50_000),
       /^B:\n\[Cut to fit the prompt's limit: 50,000 of /,
     );
     // The owner's messages are never cut, even to fit.
     const big = [{ id: 2, text: "y".repeat(5000) }];
     assert.match(
-      advisorPrompt("B:", { owner_messages: big, diff: "z".repeat(9000) }, 200_000, 1000),
+      advisorPackage("B:", { owner_messages: big, diff: "z".repeat(9000) }, 200_000, 1000),
       /y{5000}"\}\],"diff":"z/,
     );
   });
@@ -190,8 +191,7 @@ describe("the advisors' context window and compaction (goal 070)", () => {
     try {
       const r = await runAdvisor({
         runtime: pi({ name: "panel-1", base_url: fake.url, context_window: 16_384 }),
-        system: "Grade it.",
-        prompt: "The deliverable.",
+        prompt: testPrompt("Grade it.", "The deliverable."),
         schema: z.strictObject({ pass: z.boolean(), reasons: z.string() }),
         answerSchema: Type.Object({ pass: Type.Boolean(), reasons: Type.String() }),
         tools: { pastSearch: async (q) => ({ items: [{ text: `${q}: ${"w ".repeat(3000)}` }] }) },
@@ -247,8 +247,7 @@ process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", resul
     const ask = async (rt: AdvisorRuntime) => {
       const r = await runAdvisor({
         runtime: rt,
-        system: "You audit.",
-        prompt: "Audit this.",
+        prompt: testPrompt("You audit.", "Audit this."),
         schema: z.object({ window: z.string(), point: z.string() }),
         answerSchema: Type.Object({}),
       });

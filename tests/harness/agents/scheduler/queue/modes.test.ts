@@ -6,6 +6,7 @@ import { parseContract } from "../../../../../src/core/contract.ts";
 import { Scheduler } from "../../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../../src/harness/broker/runner.ts";
 import { Research } from "../../../../../src/harness/research/research/index.ts";
+import { briefText } from "../../../../helpers/brief-text.ts";
 import { startFakeModel } from "../../../../helpers/fake-model.ts";
 import { researchFixture } from "../../../../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../../../../helpers/harness-env.ts";
@@ -192,7 +193,7 @@ describe("research runs use the queue", () => {
         tokensOut: 0,
       }),
       runResearchTrial: async (spec) => {
-        briefs.push(spec.brief);
+        briefs.push(briefText(spec.brief));
         return { stopped: "finished", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       },
     });

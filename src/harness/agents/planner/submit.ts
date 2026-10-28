@@ -1,16 +1,16 @@
 import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { PLAN_LIMITS, PLANNER_ASK_SYSTEM, PLANNER_PI_SYSTEM } from "../../../agents/roles/index.ts";
+import type { Prompt } from "../../../agents/prompt.ts";
+import { PLAN_LIMITS, type PlannerInput, renderPlanner } from "../../../agents/roles/index.ts";
 import { JOURNAL_FIELD } from "../../../agents/tools/index.ts";
 
 /**
- * What a planner call is told and how it answers: its system prompt in Pi, where it answers with
- * submit_plan (whose description and parameters these are), and through another harness, where
- * it answers with JSON text. The hill climb's and goal campaign's plan and the research plan
- * (research/planner.ts) each have their own.
+ * What a planner call is told and how it answers: its prompt, from its role's definition (goal
+ * 166), and in Pi its one tool, submit_plan (whose description and parameters these are);
+ * through another harness it answers with JSON text. The hill climb's and goal campaign's plan
+ * and the research plan (research/planner.ts) each have their own.
  */
 export interface PlannerCallSpec {
-  system: string;
-  askSystem: string;
+  render(i: PlannerInput): Prompt;
   description: string;
   parameters: TSchema;
 }
@@ -143,8 +143,7 @@ const PLAN_PARAMETERS = Type.Object({
 
 /** The hill climb's and goal campaign's planner call. */
 export const PLAN_SPEC: PlannerCallSpec = {
-  system: PLANNER_PI_SYSTEM,
-  askSystem: PLANNER_ASK_SYSTEM,
+  render: renderPlanner,
   description: "Submit this round's plan: each lane's experiment, and your changes to the queue.",
   parameters: PLAN_PARAMETERS,
 };

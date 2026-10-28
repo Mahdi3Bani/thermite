@@ -163,6 +163,20 @@ export class RigEvents extends StorePart {
   }
 
   /**
+   * The prompts a run's agents were sent on a rig (goal 166), oldest first: each `agent_prompt`
+   * event's body, with when the rig recorded it and its ledger.
+   */
+  prompts(rig: string, run: string): { at: string; ledger_id: string; body: unknown }[] {
+    const rows = this.db
+      .prepare(
+        `select at, ledger_id, body from rig_event
+           where rig = ? and kind = 'agent_prompt' and run = ? order by seq`,
+      )
+      .all(rig, run) as { at: string; ledger_id: string; body: string }[];
+    return rows.map((r) => ({ at: r.at, ledger_id: r.ledger_id, body: JSON.parse(r.body) }));
+  }
+
+  /**
    * The rig's signed record that a champion was published: its sha256, base commit and ledger
    * (the newest, should a run of that name have been in an earlier ledger).
    */

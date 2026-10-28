@@ -1,10 +1,6 @@
 import type { z } from "zod";
-import {
-  MERGED_BY_SYSTEM,
-  RESEARCH_MERGED_BY_SYSTEM,
-  RESEARCH_TEACHER_SYSTEM,
-  TEACHER_SYSTEM,
-} from "../../../agents/roles/index.ts";
+import type { Prompt } from "../../../agents/prompt.ts";
+import { renderMergedBy, renderTeacher } from "../../../agents/roles/index.ts";
 import { StructuredDirective } from "../../../core/commands.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import { ideaWords, ruleRefusal } from "../../../core/queue-target.ts";
@@ -17,7 +13,6 @@ import type {
   AdvisorUsage,
 } from "../call.ts";
 import { type AdvisorsConfig, packageFit } from "../config.ts";
-import { advisorPrompt } from "../prompt.ts";
 import { runAdvisor } from "../run.ts";
 import {
   checkPortfolio,
@@ -63,6 +58,8 @@ export interface TeacherRun {
   compactions?: AdvisorCompaction[] | undefined;
   /** Each call's model usage in this round, by whose it was (goal 075). */
   usage: ({ agent: AdvisorAgent } & AdvisorUsage)[];
+  /** The prompts the round's calls sent (goal 166), for the harness to keep. */
+  sent: Prompt[];
 }
 
 /** Experiments without repeats: the first of each idea's words. */
@@ -125,6 +122,7 @@ export async function teacherRound(input: {
     tokens: { in: 0, out: 0 },
     usd: 0,
     usage: [],
+    sent: [],
   };
   const count = (r: AdvisorResult<unknown>, agent: AdvisorAgent) => {
     run.tokens.in += r.tokensIn;
@@ -132,14 +130,14 @@ export async function teacherRound(input: {
     run.usd += r.usd;
     if (r.compactions?.length) run.compactions = [...(run.compactions ?? []), ...r.compactions];
     if (r.usage?.calls.length) run.usage.push({ agent, ...r.usage });
+    run.sent.push(...(r.sent ?? []));
   };
-  const head = `Brief of run ${input.run}${input.why ? ` (${input.why})` : ""}:`;
+  const brief = { research, run: input.run, why: input.why, brief: input.brief };
   const results = await Promise.all(
     input.config.teachers.map((t) =>
       runAdvisor({
         runtime: t,
-        system: research ? RESEARCH_TEACHER_SYSTEM : TEACHER_SYSTEM,
-        prompt: advisorPrompt(head, input.brief, 120_000, packageFit(t)),
+        prompt: (f) => renderTeacher({ ...brief, fit: packageFit(t) }, f),
         schema: TeacherReview,
         answerSchema: research ? ResearchTeacherAnswer : TeacherAnswer,
         tools: input.tools,
@@ -190,21 +188,17 @@ export async function teacherRound(input: {
   const mergedBy = input.config.teachers.length >= 2 ? input.config.merged_by : undefined;
   if (mergedBy) {
     // The reviews whole; the brief cut to what the merged by model's window leaves beside them.
-    const reviews = JSON.stringify(
-      good.map((g, i) => ({
-        reviewer: g.teacher,
-        summary: g.review.summary,
-        portfolio: portfolios[i],
-        recommendations: g.review.recommendations,
-        experiments: g.review.experiments,
-        moves: g.review.moves,
-      })),
-    );
-    const fit = packageFit(mergedBy);
+    const reviews = good.map((g, i) => ({
+      reviewer: g.teacher,
+      summary: g.review.summary,
+      portfolio: portfolios[i],
+      recommendations: g.review.recommendations,
+      experiments: g.review.experiments,
+      moves: g.review.moves,
+    }));
     const r = await runAdvisor({
       runtime: mergedBy,
-      system: research ? RESEARCH_MERGED_BY_SYSTEM : MERGED_BY_SYSTEM,
-      prompt: `${advisorPrompt(head, input.brief, 120_000, fit === undefined ? undefined : Math.max(0, fit - reviews.length))}\n\nReviews:\n${reviews}`,
+      prompt: (f) => renderMergedBy({ ...brief, fit: packageFit(mergedBy), reviews }, f),
       schema: DirectiveSet,
       answerSchema: research ? ResearchDirectiveAnswer : DirectiveAnswer,
       keeper: input.keeper,

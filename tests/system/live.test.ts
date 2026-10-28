@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { runEntryHtml } from "../../src/control/ui/live.ts";
-import { relayLiveOnce, supervisorLive } from "../../src/supervisor/live.ts";
+import { relayLiveOnce, supervisorLive } from "../../src/supervisor/live/index.ts";
 import { relayOnce } from "../../src/supervisor/relay/index.ts";
 import { ADMIN, controlStack } from "../helpers/control-stack.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";

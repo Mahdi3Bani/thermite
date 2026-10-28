@@ -13,13 +13,13 @@ import {
   runEnv,
 } from "../../../../src/agents/programs/opencode/index.ts";
 import { agentPath } from "../../../../src/agents/programs/path.ts";
+import { limitsNote } from "../../../../src/agents/roles/index.ts";
 import { RESEARCH_WORKER_SYSTEM } from "../../../../src/agents/roles/research-worker.ts";
 import { laneLimits } from "../../../../src/core/contract.ts";
 import type { CallUsage } from "../../../../src/core/usage.ts";
 import {
   breachError,
   CHECK_ROLE,
-  limitsNote,
   PLANNER_ROLE,
 } from "../../../../src/harness/agents/cli/common.ts";
 import {

@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { SYNTHESIZER_SYSTEM } from "../../agents/roles/index.ts";
+import { renderSynthesizer } from "../../agents/roles/index.ts";
 import {
   CARD_ANSWER_MAX,
   CARD_CLAIMS_MAX,
@@ -12,7 +12,6 @@ import {
 } from "../../core/api/harness/research.ts";
 import type { AdvisorKeeper, AdvisorResult } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
-import { orderedPrompt } from "./prompt.ts";
 import { leniently } from "./review-panel.ts";
 import { runAdvisor } from "./run.ts";
 import type { AdvisorResearch } from "./tools/index.ts";
@@ -161,23 +160,7 @@ export async function synthesizeCards(input: {
   let refusedOnce = false;
   return runAdvisor({
     runtime: input.runtime,
-    system: SYNTHESIZER_SYSTEM,
-    prompt: orderedPrompt(
-      "Answer cards request (untrusted data):",
-      input.pkg,
-      packageFit(input.runtime),
-      [
-        "kind",
-        "title",
-        "topic",
-        "rules",
-        "certainty",
-        "min_independent_domains",
-        "shortened",
-        "questions",
-      ],
-      "The rules and each question's card and rubric come first, and its new claims last; read the claims cut from the end with the tools, or wait for the next request.",
-    ),
+    prompt: (f) => renderSynthesizer({ pkg: input.pkg, fit: packageFit(input.runtime) }, f),
     schema: SynthesizerAnswer,
     answerSchema: SynthesizerAnswerSchema,
     keeper: input.keeper,

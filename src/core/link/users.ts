@@ -2,6 +2,7 @@ import { fromPublic } from "@nats-io/nkeys";
 import { sha256Hex } from "../canonical.ts";
 import { RIG_ID } from "../ids.ts";
 import { COMMAND_STREAM, commandConsumerName, commandSubject } from "./commands.ts";
+import { LIVE_RUNS_PER_RIG, liveSubject, rigLiveSubject } from "./live.ts";
 import { reportSubject } from "./report.ts";
 
 /**
@@ -60,17 +61,29 @@ export interface Permissions {
 /** The JetStream API's subjects: the server answers a request on these. */
 const API = "$JS.API";
 
+/** A subject's last token as a pattern: any source. */
+const anySource = (subject: string) => subject.replace(/\.[^.]+$/, ".*");
+
 /**
- * What a rig's user may do: publish its own reports; make, read and take from its own consumer of
- * the commands stream, and ack what it took. The server checks that a consumer it makes takes the
- * rig's own commands alone: the subject names the consumer's filter.
+ * What a rig's user may do: publish its own reports, and the live lines of its own runs and its
+ * own (`runs`: the runs control's run registry gives the rig, the newest LIVE_RUNS_PER_RIG); make,
+ * read and take from its own consumer of the commands stream, and ack what it took. The server
+ * checks that a consumer it makes takes the rig's own commands alone: the subject names the
+ * consumer's filter. A run whose name a subject can't hold has no subject of its own.
  */
-export function rigPermissions(rig: string): Permissions {
+export function rigPermissions(rig: string, runs: readonly string[] = []): Permissions {
   const consumer = `${COMMAND_STREAM}.${commandConsumerName(rig)}`;
+  const own = anySource(rigLiveSubject(rig, "judge"));
+  const live = runs
+    .slice(0, LIVE_RUNS_PER_RIG)
+    .map((run) => anySource(liveSubject(rig, { run, source: "judge" })))
+    .filter((s) => s !== own);
   return {
     publish: {
       allow: [
         reportSubject(rig),
+        own,
+        ...new Set(live),
         `${API}.CONSUMER.CREATE.${consumer}.${commandSubject(rig)}`,
         `${API}.CONSUMER.INFO.${consumer}`,
         `${API}.CONSUMER.MSG.NEXT.${consumer}`,
@@ -92,11 +105,14 @@ const SYSTEM_PERMISSIONS: Permissions = {
   subscribe: { allow: ["_INBOX.>"] },
 };
 
-/** The users the server knows: control's two keys, and each rig's that has one registered. */
+/**
+ * The users the server knows: control's two keys, and each rig's that has one registered, with
+ * the runs control gives it.
+ */
 export interface BusUserKeys {
   control: string;
   system: string;
-  rigs: readonly { rig: string; key: string }[];
+  rigs: readonly { rig: string; key: string; runs?: readonly string[] | undefined }[];
 }
 
 /**
@@ -114,7 +130,7 @@ export function usersFile(u: BusUserKeys): string {
       jetstream: "enabled",
       users: [
         { nkey: u.control },
-        ...rigs.map((r) => ({ nkey: r.key, permissions: rigPermissions(r.rig) })),
+        ...rigs.map((r) => ({ nkey: r.key, permissions: rigPermissions(r.rig, r.runs) })),
       ],
     },
     [SYSTEM_ACCOUNT]: { users: [{ nkey: u.system, permissions: SYSTEM_PERMISSIONS }] },

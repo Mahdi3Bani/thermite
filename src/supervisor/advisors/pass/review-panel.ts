@@ -34,6 +34,7 @@ export async function answerReviews(ctx: AdviseContext): Promise<void> {
     tryFailed,
     fail,
     usageOut,
+    promptsOut,
     receipts,
     notesOut,
   } = ctx;
@@ -99,6 +100,7 @@ export async function answerReviews(ctx: AdviseContext): Promise<void> {
         for (const { runtime, r } of calls) {
           count(r);
           await usageOut(pkg.run, `review ${pkg.id}`, "review_panel", r.usage);
+          await promptsOut(pkg.run, `review ${pkg.id}`, r.sent);
           compactions.push(...(r.compactions ?? []));
           if (!r.output) {
             unanswered.push({ reviewer: runtime.name, why: clip(r.error ?? "no answer", 300) });

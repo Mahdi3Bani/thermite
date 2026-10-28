@@ -1,8 +1,8 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
-import { mcpLine } from "../../../agents/mcp/index.ts";
 import { buildModel, PiMeter } from "../../../agents/model/index.ts";
-import { WORKER_PI_NOTES, WORKER_PI_SYSTEM } from "../../../agents/roles/index.ts";
+import { messageText, type Prompt, systemText } from "../../../agents/prompt.ts";
+import { renderWorker, type TrialProgram, windowFit } from "../../../agents/roles/index.ts";
 import { NoteLimit } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import { laneLimits } from "../../../core/contract.ts";
@@ -14,7 +14,7 @@ import {
   ProviderWatch,
 } from "../provider-errors.ts";
 import { guardRepeats } from "../repeats.ts";
-import { TrialClock, trialBudget } from "../trial-clock.ts";
+import { TrialClock } from "../trial-clock.ts";
 import { keepGoing, lastAssistant, NUDGE } from "./keep-going.ts";
 import type { TrialDeps, TrialResult, TrialSpec } from "./spec.ts";
 import { watchedStream, withoutPastThinking } from "./stream.ts";
@@ -47,6 +47,33 @@ export { watchedStream, withoutPastThinking } from "./stream.ts";
  * what goes to the provider (stream.ts), and how the trial goes on until it ends (keep-going.ts).
  */
 
+/** Pi, as a trial's prompt names it. */
+export const PI_TRIAL: TrialProgram = {
+  id: "pi",
+  name: "Pi",
+  turnWords: "each model reply is one",
+};
+
+/** A trial's prompt in Pi (goal 166), from the worker's definition, ending at `startedAt` plus its length. */
+export function piTrialPrompt(
+  spec: TrialSpec,
+  mcpServers: readonly string[],
+  startedAt: number,
+  fit?: number,
+): Prompt {
+  return renderWorker({
+    program: PI_TRIAL,
+    brief: spec.brief,
+    mcpServers,
+    limits: spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }),
+    editablePaths: spec.editablePaths,
+    minutes: spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined,
+    maxTurns: spec.maxTurns,
+    endsAt: spec.wallMs !== undefined ? startedAt + spec.wallMs : undefined,
+    fit,
+  });
+}
+
 export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialResult> {
   const result: TrialResult = {
     stopped: "no_submission",
@@ -59,6 +86,16 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   // Without the contract's limits: the defaults (the server enforces the contract's own).
   const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
   const clock = new TrialClock(spec.wallMs); // the trial's length, when it has one (goal 144)
+  // Its prompt, as the harness rendered and recorded it; else rendered here, naming the MCP
+  // servers that gave it tools.
+  const sent =
+    spec.sent ??
+    piTrialPrompt(
+      spec,
+      [...new Set((deps.mcp?.tools ?? []).map((t) => t.server))],
+      clock.started,
+      windowFit(deps.model.contextWindow, deps.model.compactAt),
+    );
   const notes = new NoteLimit(limits.notesPerTurn); // the notes of one reply (goal 147)
   const tools = trialTools(spec, deps, result, { limits, clock, notes });
 
@@ -69,7 +106,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const watch = new ProviderWatch();
   const agent = new Agent({
     initialState: {
-      systemPrompt: `${WORKER_PI_SYSTEM}\n\n${WORKER_PI_NOTES}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
+      systemPrompt: systemText(sent),
       model,
       tools: clock.wrap(guardRepeats(tools, () => compactor.count)),
       thinkingLevel,
@@ -160,9 +197,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   // The trial's failed model calls in a row, and since when (goal 079), over all its replies.
   const failures: FailureCount = { failures: 0, rateWaits: 0 };
   try {
-    await agent.prompt(
-      `${spec.brief}\n\n${trialBudget(minutes, maxTurns, "each model reply is one", wallMs === undefined ? undefined : started + wallMs)}`,
-    );
+    await agent.prompt(messageText(sent));
     // A model that stops of its own accord without submitting is told to go on (goal 079): for
     // as long as it keeps working (a tool call since the last nudge), with no number unless the
     // campaign sets lanes.limits.nudges. A nudge it answers without any work ends the trial, its

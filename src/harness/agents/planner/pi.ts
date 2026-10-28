@@ -1,8 +1,8 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, Type } from "@earendil-works/pi-ai";
 import { type CompactionReport, Compactor, summarizer } from "../../../agents/compaction/index.ts";
-import { mcpLine } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
+import { messageText, type Prompt, systemText } from "../../../agents/prompt.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/index.ts";
 import { routeRefusal } from "../../../core/agents.ts";
 import { canonicalJson } from "../../../core/canonical.ts";
@@ -69,7 +69,7 @@ function pastSearchTool(search: PlannerPast["search"]) {
 
 export async function callPlanner(
   cfg: ModelConfig,
-  context: string,
+  sent: Prompt,
   signal?: AbortSignal,
   search?: PlannerPast["search"],
   mcp?: PlannerMcp,
@@ -87,7 +87,7 @@ export async function callPlanner(
   let captured: unknown;
   const agent = new Agent({
     initialState: {
-      systemPrompt: mcp?.tools.length ? `${spec.system}\n\n${mcpLine(mcp.servers)}` : spec.system,
+      systemPrompt: systemText(sent),
       model,
       thinkingLevel,
       tools: [
@@ -169,7 +169,7 @@ export async function callPlanner(
   const cancel = () => agent.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   try {
-    if (!signal?.aborted) await agent.prompt(context);
+    if (!signal?.aborted) await agent.prompt(messageText(sent));
   } finally {
     signal?.removeEventListener("abort", cancel);
   }

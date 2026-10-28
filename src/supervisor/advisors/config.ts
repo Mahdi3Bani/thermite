@@ -1,8 +1,8 @@
 import { z } from "zod";
+import { windowFit } from "../../agents/roles/index.ts";
 import { EFFORTS } from "../../core/agents.ts";
 import {
   type AgentsContext,
-  COMPACT_AT_DEFAULT,
   COMPACT_AT_MAX,
   COMPACT_AT_MIN,
   contextApplied,
@@ -280,17 +280,12 @@ export function withRunContext(
   };
 }
 
-/** Characters per token, as Pi estimates them. */
-const CHARS_PER_TOKEN = 3.5;
-
 /**
  * The most characters of a one-call package (a brief, an audit's or a review's) that fit an
  * advisor's window: the compaction point less 30% of the window (half the window at the default
- * point), so the call has room to work before it compacts. Undefined when the window is unknown.
+ * point), so the call has room to work before it compacts (windowFit, the same rule as a worker's
+ * and a planner's first message). Undefined when the window is unknown.
  */
 export function packageFit(rt: AdvisorRuntime): number | undefined {
-  const window = advisorWindow(rt);
-  if (window <= 0) return undefined;
-  const at = rt.runtime === "cli" ? COMPACT_AT_DEFAULT : (rt.compact_at ?? COMPACT_AT_DEFAULT);
-  return Math.floor(window * Math.max(0.2, (at - 30) / 100) * CHARS_PER_TOKEN);
+  return windowFit(advisorWindow(rt), rt.runtime === "cli" ? undefined : rt.compact_at);
 }

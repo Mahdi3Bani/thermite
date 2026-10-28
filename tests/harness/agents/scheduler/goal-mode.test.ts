@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
+import { briefText } from "../../../helpers/brief-text.ts";
 import { startFakeModel } from "../../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../../helpers/judge-env.ts";
 
@@ -62,13 +63,13 @@ describe("agent scheduler", () => {
         if (o.hold) {
           await new Promise<void>((resolve) => {
             waiting.push(resolve);
-            briefs.push(spec.brief);
+            briefs.push(briefText(spec.brief));
             signal.addEventListener("abort", () => {
               aborted++;
               resolve();
             });
           });
-        } else briefs.push(spec.brief);
+        } else briefs.push(briefText(spec.brief));
         return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       },
     });

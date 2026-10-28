@@ -1,6 +1,16 @@
+import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
+import type { LaneLimitValues } from "../../core/contract.ts";
 import { NOTES_GUIDE } from "../../core/journal.ts";
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
-import type { Section } from "../prompt.ts";
+import { mcpLine } from "../mcp/index.ts";
+import {
+  type Prompt,
+  prompt,
+  type Section,
+  type Source,
+  section,
+  sectionsText,
+} from "../prompt.ts";
 import { PAST_SEARCH_TOOL, RUN_RESEARCH_TOOLS } from "../tools/index.ts";
 
 /**
@@ -27,7 +37,7 @@ export const RESEARCH_GUIDE = `The brief's research, when it has one, is what th
  * The owner's messages for a worker (goal 166): those kept in force, then those its lane has not
  * read yet, each after a blank line. Each message's text is given whole, as the owner wrote it.
  */
-export function ownerMessageSections(
+export function renderOwnerMessages(
   kept: readonly string[],
   waiting: readonly string[],
 ): Section[] {
@@ -53,5 +63,175 @@ export function ownerMessageSections(
           },
         ]
       : []),
+  ];
+}
+
+/**
+ * The lane's limits, as an agent in a program must know them: the program and its commands share
+ * them. `memory`: what the program itself uses, in words, when it is known.
+ */
+export function limitsNote(limits: LaneLimitValues, program: string, memory?: string): string {
+  return `Memory: ${limits.runRssMib} MiB for everything your lane runs at once, ${program} itself included${memory ? ` (it uses ${memory})` : ""}. A command that takes it over the limit is killed (your shell tool reports "Killed by SIGKILL"): run it again with less parallelism (for example make -j2) or a smaller input, or as a development run, which has its own limit. Disk: ${limits.workspaceMib} MiB, and at most 50,000 files, for this trial's directory, ${program}'s own files included; going over ends the trial.`;
+}
+
+/** The program an advisor runs in, and what it adds around the advisor's own text. */
+export interface AdvisorFrame {
+  /** pi, claude-code, opencode, codex, or cli for a command-line agent. */
+  program: string;
+  /** The MCP servers its instructions name (in Pi, those that gave tools). */
+  mcpServers: readonly string[];
+  /** In a program, which has no answer tool: the answer's JSON Schema, which it is told. */
+  answerSchema?: unknown;
+}
+
+/**
+ * An advisor's prompt (goal 166): its role's text and the MCP line, then its package. Pi gets them
+ * as the system text and the first message, and answers with its answer tool; a program gets one
+ * text, which ends with the answer's shape.
+ */
+export function advisorPromptOf(
+  role: string,
+  own: readonly Section[],
+  pkg: readonly Section[],
+  f: AdvisorFrame,
+): Prompt {
+  const system = [...own, section("mcp", "kit", mcpLine(f.mcpServers), "\n\n")];
+  if (f.program === "pi") return prompt(role, f.program, { system, message: pkg });
+  const [first, ...rest] = pkg;
+  return prompt(role, f.program, {
+    message: [
+      ...system,
+      ...(first ? [{ ...first, sep: "\n\n" }] : []),
+      ...rest,
+      section(
+        "answer",
+        "role",
+        `Answer with exactly one JSON object${f.answerSchema ? `, of this shape (JSON Schema): ${JSON.stringify(f.answerSchema)}` : ""}.`,
+        "\n\n",
+      ),
+    ],
+  });
+}
+
+/**
+ * An advisor's package: its brief or package as JSON, cut to `max` characters. The owner's
+ * messages go first and are never cut, so a large diff cannot hide one the supervisor then
+ * records as read. `fit`: the most characters that fit the advisor's window (packageFit, goal
+ * 070); when it is the lower and the package is longer, the package is cut to it, and the prompt
+ * says so in words: "cut to fit the window: N of M characters".
+ */
+export function advisorPackage(
+  head: string,
+  data: unknown,
+  max: number,
+  fit?: number | undefined,
+): string {
+  const owner =
+    data && typeof data === "object" && !Array.isArray(data) && "owner_messages" in data;
+  let json: string;
+  let keep = 0;
+  if (owner) {
+    const { owner_messages, ...rest } = data as Record<string, unknown>;
+    json = JSON.stringify({ owner_messages, ...rest });
+    keep = JSON.stringify({ owner_messages }).length + 1000;
+  } else json = JSON.stringify(data) ?? "";
+  const byWindow = fit !== undefined && fit < max;
+  const limit = Math.max(byWindow ? fit : max, keep);
+  if (json.length <= limit) return `${head}\n${json}`;
+  // A cut is always said (goal 117): the end of a package lost without a word misled reviewers.
+  return `${head}\n[Cut to fit ${byWindow ? "the window" : "the prompt's limit"}: ${limit.toLocaleString("en-US")} of ${json.length.toLocaleString("en-US")} characters.]\n${json.slice(0, limit)}`;
+}
+
+/**
+ * A package with the keys it must answer first, never cut to a fixed size: it may take what the
+ * advisor's window allows (200,000 characters at least). A cut is said, with `after`: what comes
+ * first and how to read what was cut.
+ */
+export function orderedPackage(
+  label: string,
+  pkg: unknown,
+  fit: number | undefined,
+  first: readonly string[],
+  after: string,
+): string {
+  const p = pkg as Record<string, unknown>;
+  const ordered: Record<string, unknown> = {};
+  for (const k of first) if (k in p) ordered[k] = p[k];
+  for (const [k, v] of Object.entries(p)) if (!(k in ordered)) ordered[k] = v;
+  const limit = Math.max(200_000, fit ?? 0);
+  const text = advisorPackage(label, ordered, limit);
+  const whole = advisorPackage(label, ordered, Number.POSITIVE_INFINITY).length;
+  return text.length < whole
+    ? text.replace(
+        label,
+        `${label}\n[Cut to fit: ${limit.toLocaleString("en-US")} of ${whole.toLocaleString("en-US")} characters. ${after}]`,
+      )
+    : text;
+}
+
+/** Characters per token, as Pi estimates them. */
+const CHARS_PER_TOKEN = 3.5;
+
+/**
+ * The most characters of a first message or a package that fit a model's window (the owner's
+ * decision 8 of goal 166, the advisors' rule): the compaction point less 30% of the window (half
+ * the window at the default point), so the call has room to work before it compacts. Undefined
+ * when the window is unknown. A mechanical limit on one payload, never a cap on research.
+ */
+export function windowFit(window: number | undefined, compactAt?: number): number | undefined {
+  if (!window || window <= 0) return undefined;
+  const at = compactAt ?? COMPACT_AT_DEFAULT;
+  return Math.floor(window * Math.max(0.2, (at - 30) / 100) * CHARS_PER_TOKEN);
+}
+
+/** The sections a cut to the window keeps whole: the role's and the program's, and the owner's. */
+const WHOLE: readonly Source[] = ["role", "program", "owner", "kit", "rig", "check", "left out"];
+
+/** The least of a section a cut keeps. */
+const KEPT_AT_LEAST = 400;
+
+/**
+ * A first message cut to fit `fit` characters (decision 8): the role's own text and the owner's
+ * messages stay whole; the largest of the run's sections are cut first, each to no less than
+ * KEPT_AT_LEAST characters, and each says so; a last section says what was cut and where the rest
+ * is (`where`). A message that fits, or no window known, is as it was.
+ */
+export function fitToWindow(
+  sections: readonly Section[],
+  fit: number | undefined,
+  where: string,
+): Section[] {
+  const out = [...sections];
+  if (fit === undefined) return out;
+  let over = sectionsText(out).length - fit;
+  const cut: string[] = [];
+  while (over > 0) {
+    const i = out.reduce(
+      (best, s, k) =>
+        !WHOLE.includes(s.source) &&
+        !cut.includes(s.id) &&
+        s.text.length > KEPT_AT_LEAST &&
+        (best < 0 || s.text.length > (out[best] as Section).text.length)
+          ? k
+          : best,
+      -1,
+    );
+    if (i < 0) break;
+    const s = out[i] as Section;
+    const keep = Math.max(KEPT_AT_LEAST, s.text.length - over - 120);
+    const text = `${s.text.slice(0, keep)}\n[Cut to fit the model's window: ${keep.toLocaleString("en-US")} of ${s.text.length.toLocaleString("en-US")} characters.]`;
+    over -= s.text.length - text.length;
+    out[i] = { ...s, text };
+    cut.push(s.id);
+  }
+  if (!cut.length) return out;
+  return [
+    ...out,
+    section(
+      "left-out",
+      "left out",
+      `# Cut to fit the model's window\nThis message is cut to ${fit.toLocaleString("en-US")} characters, the model's window at its compaction point less 30%: ${cut.join(", ")} lost their ends. ${where}`,
+      "\n\n",
+    ),
   ];
 }

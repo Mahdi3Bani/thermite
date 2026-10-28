@@ -4,9 +4,11 @@
 // control. Usage: COMPOSE="podman compose" node scripts/acceptance/compose-smoke.mjs (or "docker compose").
 //
 // With THERMITE_NATS_URL=nats://nats:4222, the stack runs with the `bus` profile and the
-// supervisor sends its reports over the message bus (goal 168): the smoke then checks that they
-// reached control that way. Either way it prints how long events took to reach control.
+// supervisor sends its reports and live lines over the message bus (goal 168): the smoke then
+// checks that they reached control that way. Either way it prints how long events took to reach
+// control.
 import {
+  api,
   assign,
   candidatePatch,
   control,
@@ -105,6 +107,22 @@ try {
       1000,
     );
     console.log("reports on the bus:", JSON.stringify(state));
+    // The live lines came over the bus too: control's state of the bus says it took them, and the
+    // supervisor's figures say it published them.
+    const live = await until(
+      "live lines over the bus",
+      async () => {
+        const { body } = await api("/v1/bus");
+        const rig = body.live?.rigs?.find((r) => r.rig === "local-1");
+        const stream = body.streams?.find((x) => x.name === "LIVE");
+        return stream?.messages > 0 && rig?.taken > 0 && rig?.supervisor?.published > 0
+          ? { messages: stream.messages, taken: body.live.taken, rig }
+          : undefined;
+      },
+      60_000,
+      1000,
+    );
+    console.log("live lines on the bus:", JSON.stringify(live));
   }
   const delays = eventDelays();
   const at = (q) => delays[Math.min(delays.length - 1, Math.floor(q * delays.length))] ?? 0;

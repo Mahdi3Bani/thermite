@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { busState } from "../bus/index.ts";
 import { providersWithUsage } from "../providers/index.ts";
 import { modelPrices, setModelPrice } from "../usage.ts";
 import type { ToolContext } from "./context.ts";
 
 /**
- * Control itself, for whoever runs it (not the agents of a campaign): its log and its providers.
+ * Control itself, for whoever runs it (not the agents of a campaign): its log, its providers and
+ * the message bus's state.
  */
 export function registerControl(tools: ToolContext): void {
   const { server, store, opts, audited } = tools;
@@ -106,6 +108,17 @@ export function registerControl(tools: ToolContext): void {
         check_error: g.check_error,
       })),
     })),
+  );
+
+  server.registerTool(
+    "bus_state",
+    {
+      title: "The message bus's state",
+      description:
+        "The message bus (NATS with JetStream), as control sees it now. With it off: {on: false}. With it on: its server (host and port); reachable, and error in words when control could not reach it within 5 seconds; streams, each stream control makes (REPORTS, COMMANDS, LIVE) with its messages, bytes, subjects, first_at and last_at, and each consumer with pending (not handed yet), ack_pending (handed, not acked) and redelivered; and live, the live stream's figures: kept (how long and how much the stream keeps: seconds, messages_per_subject, bytes, and message_bytes, the largest message), taken (since control started: messages and lines it took, left_out lines it does not know or of another subject, refused messages by why), and rigs, each rig's lines taken and its supervisor's own counts since it started: published and dropped, in all and by subject for the 100 subjects it used last. Holds no keys or tokens.",
+      inputSchema: {},
+    },
+    audited("bus_state", () => busState(store, opts.parts.bus)),
   );
 }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ANSWERED, briefGaps } from "../../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../../src/harness/reviews.ts";
+import { briefText } from "../../../helpers/brief-text.ts";
 import { goodReviewer } from "../../../helpers/research-paper.ts";
 import { RESEARCH_QUESTIONS } from "../../../helpers/research-run.ts";
 import {
@@ -204,7 +205,7 @@ describe("a passed review closes the run with its decisions (goals 112 and 117)"
     const ids = s.ids as Ids;
     const briefs: string[] = [];
     const sch = scheduler(s, async (spec) => {
-      briefs.push(spec.brief);
+      briefs.push(briefText(spec.brief));
       return done;
     });
     s.ranFor(3);

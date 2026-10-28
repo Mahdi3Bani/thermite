@@ -2,7 +2,7 @@ import type { Hono, MiddlewareHandler } from "hono";
 import { buildInfo } from "../../common/build-info.ts";
 import { sameSecret } from "../../common/secrets.ts";
 import { type BuildInfo, buildFromHeaders } from "../../core/version.ts";
-import type { BusUsers } from "../bus/index.ts";
+import type { BusUsers, BusView } from "../bus/index.ts";
 import type { ClusterKubectl } from "../clusters/index.ts";
 import { Credential } from "../credential.ts";
 import type { KitRepos } from "../kits/index.ts";
@@ -123,6 +123,8 @@ export interface ControlOptions {
   rigUpdates?: RigUpdates | undefined;
   /** The message bus's users, when control runs the bus: a rig's new key gets its user there. */
   busUsers?: BusUsers | undefined;
+  /** The message bus, for its state (REST, MCP, /metrics): a test's control gives its own. */
+  bus?: BusView | undefined;
   /**
    * Control's parts, made once by its main (parts.ts), whose loops use the same ones. Without
    * them (a test's control), the API makes its own from the options above.

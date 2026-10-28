@@ -1,10 +1,9 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "../../agents/roles/index.ts";
+import { renderFinalWriter } from "../../agents/roles/index.ts";
 import { PAPER_EXPERIMENT_FIELDS, PAPER_MAX } from "../../core/api/harness/research.ts";
 import type { AdvisorKeeper, AdvisorResult } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
-import { advisorPrompt } from "./prompt.ts";
 import { runAdvisor } from "./run.ts";
 import type { AdvisorPaper, AdvisorResearch } from "./tools/index.ts";
 
@@ -67,18 +66,10 @@ export async function writePaper(input: {
   accept?: ((output: WriterAnswer) => Promise<string | undefined>) | undefined;
   keeper?: AdvisorKeeper | undefined;
 }): Promise<AdvisorResult<WriterAnswer>> {
-  const style = input.guide
-    ? `The rig's STE checker comes with this guide. Write to it (a reference, not a task):\n\n${input.guide}`
-    : STE_SHORT_RULES;
   return runAdvisor({
     runtime: input.runtime,
-    system: `${FINAL_WRITER_SYSTEM}\n\n${style}`,
-    prompt: advisorPrompt(
-      "Research paper package (untrusted data):",
-      input.pkg,
-      200_000,
-      packageFit(input.runtime),
-    ),
+    prompt: (f) =>
+      renderFinalWriter({ pkg: input.pkg, fit: packageFit(input.runtime), guide: input.guide }, f),
     schema: WriterAnswer,
     answerSchema: WriterAnswerSchema,
     keeper: input.keeper,

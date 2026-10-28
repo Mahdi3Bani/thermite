@@ -10,7 +10,6 @@ import {
   opencodeOwn,
   readUnder,
 } from "../../../agents/compaction/index.ts";
-import { mcpLine } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
 import {
   codexBin,
@@ -21,6 +20,8 @@ import {
   opencodeExe,
   opencodeKeepEnv,
 } from "../../../agents/programs/index.ts";
+import { messageText, type Prompt } from "../../../agents/prompt.ts";
+import type { AdvisorFrame } from "../../../agents/roles/index.ts";
 import type { UsageRoute } from "../../../core/usage.ts";
 import type { AdvisorKeeper, AdvisorResult, AdvisorTools } from "../call.ts";
 import {
@@ -45,8 +46,7 @@ import { callId, collectCompactions, runCli } from "./cli.ts";
 export async function runCliHarness<S extends z.ZodType>(
   rt: Extract<AdvisorRuntime, { runtime: "opencode" | "codex" }>,
   input: {
-    system: string;
-    prompt: string;
+    prompt(f: AdvisorFrame): Prompt;
     schema: S;
     answerSchema: TSchema;
     tools?: AdvisorTools | undefined;
@@ -162,10 +162,14 @@ export async function runCliHarness<S extends z.ZodType>(
         // Its model usage, as its JSON events report it.
         usage: { route: advisorRoute(rt) as UsageRoute },
       },
-      servers.length ? `${input.system}\n\n${mcpLine(servers.map((s) => s.name))}` : input.system,
-      input.prompt,
+      messageText(
+        input.prompt({
+          program: rt.runtime,
+          mcpServers: servers.map((s) => s.name),
+          answerSchema: input.answerSchema,
+        }),
+      ),
       input.schema,
-      input.answerSchema,
     );
   } finally {
     await proxy?.close();

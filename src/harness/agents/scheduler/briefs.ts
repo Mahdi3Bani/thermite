@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { type Prompt, promptText } from "../../../agents/prompt.ts";
-import { ownerMessageSections, renderWorkerBrief } from "../../../agents/roles/index.ts";
+import type { Section } from "../../../agents/prompt.ts";
+import { renderOwnerMessages, renderWorkerBrief } from "../../../agents/roles/index.ts";
 import { writeAtomic } from "../../../common/fs.ts";
 import { log } from "../../../common/log.ts";
 import { BRIEF_FILE, briefFile, briefSection } from "../../../core/brief.ts";
@@ -41,14 +41,19 @@ export function pastResearch(
 /**
  * The campaign's brief for a worker's trial brief (goal 078): BRIEF.md in the run's folder, the
  * whole text, and the section the trial brief carries (whole, or cut with where the rest is).
- * "" when the contract has none.
+ * "" when the contract has none. A preview (goal 166) writes no file.
  */
-export function campaignBrief(sched: SchedulerContext, run: string, contract: Contract): string {
+export function campaignBrief(
+  sched: SchedulerContext,
+  run: string,
+  contract: Contract,
+  preview = false,
+): string {
   const file = briefFile(contract);
   if (!file) return "";
   const path = join(sched.o.service.knowledge.folder(run), BRIEF_FILE);
   try {
-    writeAtomic(path, file);
+    if (!preview) writeAtomic(path, file);
   } catch (err) {
     log("scheduler", "the brief's file not written", { run, error: String(err) });
   }
@@ -58,20 +63,22 @@ export function campaignBrief(sched: SchedulerContext, run: string, contract: Co
 /**
  * What a worker's brief adds from the run's record and from past research: the background the
  * owner picked, where the run's past research is, and the field notes (its lane's newest 10,
- * and the newest 5 decisions and lessons of other writers). All of it is marked as data.
+ * and the newest 5 decisions and lessons of other writers). All of it is marked as data. A preview
+ * (goal 166) leaves the run's past research folder as it is.
  */
 export function notesAndPast(
   sched: SchedulerContext,
   run: string,
   lane: string,
   reader: "worker" | "research",
+  preview = false,
 ): string[] {
   const out: string[] = [];
   const background = briefingText(sched.ledger.runs.briefing(run));
   if (background) out.push(background);
   const knowledge = sched.o.service.knowledge;
   try {
-    knowledge.show(run);
+    if (!preview) knowledge.show(run);
   } catch (err) {
     log("scheduler", "past research not shown", { run, error: String(err) });
   }
@@ -98,52 +105,35 @@ export function notesAndPast(
 }
 
 /**
- * The brief with the owner's messages for this trial: those kept in force (to everyone working
- * or to this lane) in every new trial's brief until the owner removes them, then those its lane
- * has not read yet. Both are read by this trial once its agent is at work (code and research
- * trials alike).
+ * A trial's brief with the owner's messages for it, as sections of their own (goal 166): those
+ * kept in force (to everyone working or to this lane) in every new trial's brief until the owner
+ * removes them, then those its lane has not read yet. Both are read by this trial once its agent
+ * is at work (code and research trials alike). A research trial's brief is one text. A preview
+ * (goal 166) marks none as given.
  */
-export function withOwnerMessages(
-  sched: SchedulerContext,
-  id: string,
-  run: string,
-  lane: string,
-  brief: string,
-): string {
-  return promptText(
-    withOwnerSections(sched, id, run, lane, {
-      role: "brief",
-      sections: [{ id: "brief", source: "role", text: brief }],
-    }),
-  );
-}
-
-/** The same, for a brief in sections (goal 166): the owner's messages as sections of their own. */
 export function withOwnerSections(
   sched: SchedulerContext,
   id: string,
   run: string,
   lane: string,
-  brief: Prompt,
-): Prompt {
+  brief: string | readonly Section[],
+  preview = false,
+): Section[] {
+  const sections: Section[] =
+    typeof brief === "string" ? [{ id: "brief", source: "assignment", text: brief }] : [...brief];
   const inbox = sched.o.service.messages;
   const kept = inbox.inForce(run, lane);
   const waiting = inbox
     .waitingForTrial({ id, run, lane })
     .filter((m) => !kept.some((k) => k.id === m.id));
-  if (!kept.length && !waiting.length) return brief;
+  if (!kept.length && !waiting.length) return sections;
   // Read when the trial's agent is at work, not now: a trial that fails first leaves them.
-  sched.o.service.briefed(
-    { id, run, lane },
-    [...kept, ...waiting].map((m) => m.id),
-  );
-  return {
-    ...brief,
-    sections: [
-      ...brief.sections,
-      ...ownerMessageSections(kept.map(messageText), waiting.map(messageText)),
-    ],
-  };
+  if (!preview)
+    sched.o.service.briefed(
+      { id, run, lane },
+      [...kept, ...waiting].map((m) => m.id),
+    );
+  return [...sections, ...renderOwnerMessages(kept.map(messageText), waiting.map(messageText))];
 }
 
 /** The worker's brief (goal 166): gathered only from the ledger and this lane's own history. */
@@ -157,7 +147,8 @@ export function brief(
   k: number,
   perEpoch: number,
   start: string,
-): Prompt {
+  preview = false,
+): Section[] {
   const fam = sched.registry.families(run).find((f) => f.id === a.family);
   const attempts = sched.registry.evidence(run, 3, a.lane).map((e) => {
     const v = e.verdict ? sched.ledger.verdicts.current(e.attempt) : undefined;
@@ -223,7 +214,7 @@ export function brief(
         }
       : undefined,
     attempts,
-    campaignBrief: campaignBrief(sched, run, contract),
-    notesAndPast: notesAndPast(sched, run, a.lane, "worker"),
+    campaignBrief: campaignBrief(sched, run, contract, preview),
+    notesAndPast: notesAndPast(sched, run, a.lane, "worker", preview),
   });
 }

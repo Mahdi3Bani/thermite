@@ -5,7 +5,6 @@ import {
   claudeOwn,
   claudeTranscript,
 } from "../../../agents/compaction/index.ts";
-import { mcpLine } from "../../../agents/mcp/index.ts";
 import {
   CLAUDE_BASE_ENV,
   claudeBin,
@@ -14,6 +13,7 @@ import {
   claudeHookSettings,
   claudeResultUsage,
 } from "../../../agents/programs/index.ts";
+import { messageText } from "../../../agents/prompt.ts";
 import type { UsageRoute } from "../../../core/usage.ts";
 import type { AdvisorCall, AdvisorResult } from "../call.ts";
 import { type AdvisorRuntime, advisorRoute } from "../config.ts";
@@ -109,10 +109,14 @@ export async function runClaudeCode<S extends z.ZodType>(
           },
         },
       },
-      t?.mcp?.servers.length ? `${input.system}\n\n${mcpLine(t.mcp.servers)}` : input.system,
-      input.prompt,
+      messageText(
+        input.prompt({
+          program: "claude-code",
+          mcpServers: t?.mcp?.servers ?? [],
+          answerSchema: input.answerSchema,
+        }),
+      ),
       input.schema,
-      input.answerSchema,
     );
   } finally {
     await past?.close();

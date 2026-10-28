@@ -15,7 +15,8 @@ export type RunRef = Pick<RunView, "id" | "campaign">;
 
 /**
  * A run page's tabs. Stats: its model use in detail (goal 075), for a run with agents or spend.
- * Reviews and Hypotheses: a research run's (goals 116 and 117).
+ * Reviews and Hypotheses: a research run's (goals 116 and 117). Prompts: what its agents were
+ * sent (goal 166).
  */
 export const RUN_TABS = [
   "overview",
@@ -26,6 +27,7 @@ export const RUN_TABS = [
   "attempts",
   "history",
   "planner",
+  "prompts",
   "stats",
 ] as const;
 export type RunTab = (typeof RUN_TABS)[number];
@@ -40,8 +42,10 @@ export const RUN_ROUTES = {
   /** One of RUN_TABS but the overview; registered after the routes below, which it would match. */
   tab: "/ui/campaigns/:campaign/runs/:run/:tab",
   attempt: "/ui/campaigns/:campaign/runs/:run/attempts/:attempt",
+  /** One prompt a run's agent was sent (goal 166). */
+  prompt: "/ui/campaigns/:campaign/runs/:run/prompts/:id",
   live: "/ui/campaigns/:campaign/runs/:run/live",
-  liveLines: "/ui/campaigns/:campaign/runs/:run/live.json",
+  liveStream: "/ui/campaigns/:campaign/runs/:run/live/stream",
   message: "/ui/campaigns/:campaign/runs/:run/message",
   paper: "/ui/campaigns/:campaign/runs/:run/paper.md",
   champion: "/ui/campaigns/:campaign/runs/:run/champions/:file",
@@ -71,8 +75,8 @@ export const runLiveHref = (r: RunRef, o: { w?: string; compose?: boolean } = {}
   return `${runHref(r)}/live${query ? `?${query}` : ""}`;
 };
 
-/** A run's Live lines after a line, as its page fetches them. */
-export const runLiveLinesHref = (r: RunRef) => `${runHref(r)}/live.json`;
+/** A run's new Live lines, pushed to its page as they come (server-sent events). */
+export const runLiveStreamHref = (r: RunRef) => `${runHref(r)}/live/stream`;
 
 /** Where the owner's message to a run's agents is sent, from Live and the Planner tab. */
 export const runMessageHref = (r: RunRef) => `${runHref(r)}/message`;
@@ -94,5 +98,5 @@ export const rigHref = (rig: string) => `/ui/rigs/${enc(rig)}`;
 export const liveHref = (rig: string, source?: string) =>
   `${rigHref(rig)}/live${source ? `?source=${enc(source)}` : ""}`;
 
-/** A rig's Live lines after a line, as its page fetches them. */
-export const rigLiveLinesHref = (rig: string) => `${rigHref(rig)}/live.json`;
+/** A rig's new Live lines, pushed to its page as they come (server-sent events). */
+export const rigLiveStreamHref = (rig: string) => `${rigHref(rig)}/live/stream`;

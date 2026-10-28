@@ -8,7 +8,13 @@ import {
   type MsgRequest,
   type StreamConfig,
 } from "@nats-io/jetstream";
-import { connect, headers, type NatsConnection, nkeyAuthenticator } from "@nats-io/transport-node";
+import {
+  connect,
+  errors,
+  headers,
+  type NatsConnection,
+  nkeyAuthenticator,
+} from "@nats-io/transport-node";
 import { reloadSubject } from "../core/link/users.ts";
 import { log } from "./env.ts";
 
@@ -16,8 +22,8 @@ import { log } from "./env.ts";
  * The message bus (goal 168): a NATS server with JetStream, which control runs. Control and the
  * rigs' supervisors reach it through this module alone, which hides the NATS library behind a few
  * calls: a publish that waits for the server's ack, a durable consumer whose messages are handed
- * over one at a time, a stream made, and a message removed. The harness and the agents never
- * reach the bus.
+ * over one at a time, a stream made, a message removed, and the streams' state. The harness and
+ * the agents never reach the bus.
  */
 
 /** The setting that names the server. Not set: the part keeps to HTTP. */
@@ -32,6 +38,8 @@ export const BUS_RETRY_MS = 5_000;
 export const BUS_REMOVE_LOOK_MAX = 1000;
 /** How long a request for the server to reload its users may wait for the answer. It then fails. */
 export const BUS_RELOAD_TIMEOUT_MS = 10_000;
+/** How many consumers of a stream its state lists, at most: then it says how many it left out. */
+export const BUS_STATE_CONSUMERS_MAX = 200;
 
 /** The server's ack: the message's place in the stream, and whether it had the message's id. */
 export interface Published {
@@ -56,6 +64,29 @@ export interface BusMessage {
 export interface BusSignIn {
   seed: Uint8Array;
   inboxPrefix?: string | undefined;
+}
+
+/** A stream as the server has it now, with what each of its consumers has still to take. */
+export interface StreamState {
+  name: string;
+  messages: number;
+  bytes: number;
+  /** How many subjects hold its messages. */
+  subjects: number;
+  /** When its oldest and its newest message came; null while it holds none. */
+  first_at: string | null;
+  last_at: string | null;
+  consumers: {
+    name: string;
+    /** Messages it has not been handed yet. */
+    pending: number;
+    /** Messages it was handed and has not acked yet. */
+    ack_pending: number;
+    /** Messages it was handed more than once. */
+    redelivered: number;
+  }[];
+  /** Consumers past BUS_STATE_CONSUMERS_MAX, left out of the list. */
+  consumers_left_out: number;
 }
 
 export type StreamSettings = Partial<StreamConfig> & { name: string };
@@ -99,7 +130,21 @@ export interface Bus {
    * False when it is not there, as when a work queue's consumer took it already.
    */
   remove(stream: string, subject: string, id: string): Promise<boolean>;
+  /** The state of each of these streams the server has; a stream not made yet is left out. */
+  streams(names: readonly string[]): Promise<StreamState[]>;
   close(): Promise<void>;
+}
+
+/**
+ * Whether the server refused a publish for good, so that the same message would be refused
+ * again: its user may not publish to the subject, or the stream refused the message itself. Any
+ * other failure, such as no ack in time or no stream yet, may pass.
+ */
+export function refusedForGood(err: unknown): boolean {
+  let e: unknown = err;
+  for (let depth = 0; e instanceof Error && depth < 5; depth++, e = e.cause)
+    if (e instanceof errors.PermissionViolationError || e instanceof JetStreamApiError) return true;
+  return false;
 }
 
 /** The bus's address from its setting, or undefined when not set. A bad one stops the part. */
@@ -298,6 +343,47 @@ export function natsBus(url: string, name: string, signIn?: BusSignIn): Bus {
         after = m.seq;
       }
       return false;
+    },
+    async streams(names) {
+      const jsm = await jetstreamManager(await connection());
+      const out: StreamState[] = [];
+      for (const name of names) {
+        let info: Awaited<ReturnType<typeof jsm.streams.info>>;
+        try {
+          info = await jsm.streams.info(name);
+        } catch (err) {
+          if (err instanceof JetStreamApiError && err.code === JetStreamApiCodes.StreamNotFound)
+            continue;
+          throw err;
+        }
+        const st = info.state;
+        const consumers: StreamState["consumers"] = [];
+        let leftOut = 0;
+        for await (const c of jsm.consumers.list(name)) {
+          if (consumers.length >= BUS_STATE_CONSUMERS_MAX) {
+            leftOut++;
+            continue;
+          }
+          consumers.push({
+            name: c.name,
+            pending: c.num_pending,
+            ack_pending: c.num_ack_pending,
+            redelivered: c.num_redelivered,
+          });
+        }
+        const at = (ts: string) => (st.messages && !ts.startsWith("0001") ? ts : null);
+        out.push({
+          name,
+          messages: st.messages,
+          bytes: st.bytes,
+          subjects: st.num_subjects ?? 0,
+          first_at: at(st.first_ts),
+          last_at: at(st.last_ts),
+          consumers,
+          consumers_left_out: leftOut,
+        });
+      }
+      return out;
     },
     async close() {
       closed = true;

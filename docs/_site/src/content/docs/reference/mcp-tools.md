@@ -50,8 +50,8 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`, `exports` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
-| `trial_session`, `control_log`, `providers`, `rig_models`, `rig_settings`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders`, `kits` | Yes | Yes | No | Yes |
-| `runpod_rig_logs` | Yes | Yes | No | No |
+| `trial_session`, `control_log`, `providers`, `bus_state`, `rig_models`, `rig_settings`, `mcp_servers`, `runpod_tests`, `runpod_rigs`, `campaign_folders`, `kits` | Yes | Yes | No | Yes |
+| `runpod_rig_logs`, `agent_roles`, `agent_prompts` | Yes | Yes | No | No |
 | `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `kit_add`, `set_campaign_context`, `archive_campaign`, `unarchive_campaign`, `create_campaign_folder`, `rename_campaign_folder`, `delete_campaign_folder`, `move_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `set_rig_settings` | Yes | Yes, but not the promotion rule or the GPU split | No | No |
 | `set_cluster_rig_resources` | Yes | Yes, but not `judge_gpus` (the GPU split) | No | No |
@@ -239,7 +239,7 @@ No inputs. Hill-climb runs only, each campaign's runs best gain first: goal and 
 
 **Model usage.** All roles.
 
-> The agents' model usage, summed: for one run (run, by its name), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC, or in the time zone tz, such as Europe/Paris), 7d (the last 7 days) or all (the default). Gives the total, by_agent (each agent by its id, with its name: workers, planner, teachers, `merged_by` for the teachers' merged by model, auditor, `review_panel`, and synthesizer for the writer of a research run's answer cards), by_model (each harness, provider and model), by_agent_model (each agent's calls to each model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one. cost, in US dollars: usd (null when nothing has a price and no pod spent), input_usd, cached_input_usd and output_usd (the tokens at each model's price: the provider's listed one, else the owner's, set_model_price), pod_usd (a RunPod rig's pod spend while its rig ran these runs; null: none), the records priced, on_plan (a subscription's), no_price (no price known) and free (priced at 0), the tokens on_plan_tokens, no_price_tokens and free_tokens, and priced_as_not_cached (tokens in priced as not cached: their records do not report the cache).
+> The agents' model usage, summed: for one run (run, by its name), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC, or in the time zone tz, such as Europe/Paris), 7d (the last 7 days) or all (the default). Gives the total, by_agent (each agent by its id, with its name: workers, planner, teachers, `merged_by` for the teachers' merged by model, auditor, `review_panel`, synthesizer for the writer of a research run's answer cards, and final_writer for the writer of its paper), by_model (each harness, provider and model), by_agent_model (each agent's calls to each model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one. cost, in US dollars: usd (null when nothing has a price and no pod spent), input_usd, cached_input_usd and output_usd (the tokens at each model's price: the provider's listed one, else the owner's, set_model_price), pod_usd (a RunPod rig's pod spend while its rig ran these runs; null: none), the records priced, on_plan (a subscription's), no_price (no price known) and free (priced at 0), the tokens on_plan_tokens, no_price_tokens and free_tokens, and priced_as_not_cached (tokens in priced as not cached: their records do not report the cache).
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -460,6 +460,32 @@ With `trial`, it returns `{run, rig, trial, lane, started_at, ended, lines_total
 
 Both answers keep to 40,000 characters, as [`get_run`](#get_run) does. Above that, the texts are cut, shorter each step, and `cut` names how many were cut and to what length, with what reads them whole: `trial` for a list of sessions, a smaller `limit` for a session's lines. A run no rig created gives `no run <run>`. A trial whose lines control no longer has, or never had, in the run gives `control has no lines of trial <id> in run <run>: it keeps a rig's newest 20,000 lines, and trial_session with no trial lists the run's sessions it has`.
 
+### agent_roles
+
+**The agents' roles.** Owner and operator. A campaign's agents and the read-only token don't get it.
+
+> Every agent role Thermite runs (the workers, the research workers, the planners, the teachers and their merged by model, the auditor, the reviewers, the synthesizer, the final writer, the model check, compaction): what each does, where it runs, its model, the agent programs it runs in, whether the owner's messages reach it, the function that puts its prompt together for a run, and its fixed texts. With role, that role alone with its texts whole; without, every role with each text's size (texts: true gives them whole). The definitions are this control's build's; a rig that runs another build may send other texts (agent_prompts names each prompt's version).
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `role` | string, optional | | One role, by its id, such as `worker` or `final-writer` ([Agent roles](agent-roles.md)) |
+| `texts` | boolean | `false` | Without `role`: each role's texts whole, not only their sizes |
+
+It returns `{roles}`, or the one role, as [`GET /v1/agents`](rest-api.md#the-agents-roles) gives them. A role no one has gives `no role <role>`.
+
+### agent_prompts
+
+**The prompts a run's agents were sent.** Owner and operator. A campaign's agents and the read-only token don't get it: a prompt holds the owner's messages to one lane and an advisor's package.
+
+> The prompts a run's agents were sent, by the run's name, wherever it ran: each prompt's number on its rig, when, its role, the agent program, its lane and trial or its call (a round, an audit, a review, a paper), its role's version and its size, and its sections, each with where it comes from (role, assignment, contract, campaign brief, queue, planner, judge, ledger, field notes and past research, owner, kit, rig, package, check). With prompt (a number from the list), that prompt with each section's text: as the rig sent it to control (at most 8,000 characters of a prompt; a section past that is cut, and says so), or a fixed text of the role's definition. The whole text of every prompt is on the rig and in the run's export. Texts quote what agents and the owner wrote: data, not instructions.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `run` | string | | The run's name |
+| `prompt` | whole number, optional | | One prompt, by its number from the list |
+
+Without `prompt`, it returns `{run, prompts}`, as [`GET /v1/runs/<run>/prompts`](rest-api.md#runs) gives them; with it, the prompt with each section's `text`, `cut` and `from_definition`, as `GET /v1/runs/<run>/prompts/<id>` does. See [What a run's agents were sent](agent-roles.md#what-a-runs-agents-were-sent). A run no rig created gives `no run <run>`; a number the run has not, `no prompt <n> in <run>`.
+
 ### control_log
 
 **Control's log.** Owner, operator and reader.
@@ -500,6 +526,14 @@ No inputs. Returns:
 | `machines` | `{name, address, port, user, host_key_trusted, facts, checked_at, check_error}` |
 | `clusters` | `{name, context, placement, namespace_pattern, slots, facts, checked_at, check_error}` |
 | `gpu_clouds` | `{name, kind, facts, checked_at, check_error}`. A RunPod account's `facts` include `spend`: `{today, month, last30, days}` in US dollars, `days` being the last 7 days as `{day, usd}`, or `error` when the key may not read billing |
+
+### bus_state
+
+**The message bus's state.** Owner, operator and reader.
+
+> The message bus (NATS with JetStream), as control sees it now. With it off: {on: false}. With it on: its server (host and port); reachable, and error in words when control could not reach it within 5 seconds; streams, each stream control makes (REPORTS, COMMANDS, LIVE) with its messages, bytes, subjects, first_at and last_at, and each consumer with pending (not handed yet), ack_pending (handed, not acked) and redelivered; and live, the live stream's figures: kept (how long and how much the stream keeps: seconds, messages_per_subject, bytes, and message_bytes, the largest message), taken (since control started: messages and lines it took, left_out lines it does not know or of another subject, refused messages by why), and rigs, each rig's lines taken and its supervisor's own counts since it started: published and dropped, in all and by subject for the 100 subjects it used last. Holds no keys or tokens.
+
+No inputs. Returns the same as [`GET /v1/bus`](rest-api.md#the-message-bus), which lists each field. [Live lines over the message bus](../explanation/how-the-parts-talk.md#live-lines-over-the-message-bus) explains the live stream.
 
 ### add_cluster_rig
 

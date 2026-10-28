@@ -9,10 +9,10 @@ import {
   RUN_ROUTES,
   RUN_TABS,
   rigHref,
-  rigLiveLinesHref,
+  rigLiveStreamHref,
   runHref,
   runLiveHref,
-  runLiveLinesHref,
+  runLiveStreamHref,
   runMessageHref,
   runTab,
 } from "../../../src/control/ui/urls.ts";
@@ -40,7 +40,7 @@ test("a run's links hang from its campaign, and an attempt's from its run", () =
   );
   // Everyone is the filter Live starts on: no part of the address.
   assert.equal(runLiveHref(run, { w: "all" }), "/ui/campaigns/sort-speed/runs/sort-speed-3/live");
-  assert.equal(runLiveLinesHref(run), "/ui/campaigns/sort-speed/runs/sort-speed-3/live.json");
+  assert.equal(runLiveStreamHref(run), "/ui/campaigns/sort-speed/runs/sort-speed-3/live/stream");
   assert.equal(runMessageHref(run), "/ui/campaigns/sort-speed/runs/sort-speed-3/message");
   assert.equal(paperHref(run), "/ui/campaigns/sort-speed/runs/sort-speed-3/paper.md");
   assert.equal(
@@ -60,7 +60,7 @@ test("a rig's own links are the rig's: its page and its whole Live", () => {
   assert.equal(rigHref("gpu-1"), "/ui/rigs/gpu-1");
   assert.equal(liveHref("gpu-1"), "/ui/rigs/gpu-1/live");
   assert.equal(liveHref("gpu-1", "trial:t-1"), "/ui/rigs/gpu-1/live?source=trial%3At-1");
-  assert.equal(rigLiveLinesHref("gpu-1"), "/ui/rigs/gpu-1/live.json");
+  assert.equal(rigLiveStreamHref("gpu-1"), "/ui/rigs/gpu-1/live/stream");
 });
 
 test("each link is the path of the route that answers it; every tab but the overview has its part", () => {
@@ -70,7 +70,7 @@ test("each link is the path of the route that answers it; every tab but the over
   assert.equal(route(RUN_ROUTES.run, at), runHref(run));
   assert.equal(route(RUN_ROUTES.attempt, { ...at, attempt: "a-1" }), attemptHref(run, "a-1"));
   assert.equal(route(RUN_ROUTES.live, at), runLiveHref(run));
-  assert.equal(route(RUN_ROUTES.liveLines, at), runLiveLinesHref(run));
+  assert.equal(route(RUN_ROUTES.liveStream, at), runLiveStreamHref(run));
   assert.equal(route(RUN_ROUTES.message, at), runMessageHref(run));
   assert.equal(route(RUN_ROUTES.paper, at), paperHref(run));
   assert.equal(route(RUN_ROUTES.champion, { ...at, file: "2.patch" }), championPatchHref(run, 2));
@@ -79,7 +79,7 @@ test("each link is the path of the route that answers it; every tab but the over
     assert.equal(runTab(tab), tab);
   }
   // The routes beside the tabs are not tabs; nor is the overview, which has no part.
-  for (const part of ["overview", "live", "live.json", "message", "paper.md", "steering", ""])
+  for (const part of ["overview", "live", "stream", "message", "paper.md", "steering", ""])
     assert.equal(runTab(part), undefined, part);
   // No address of a run's names its rig.
   for (const pattern of Object.values(RUN_ROUTES)) assert.doesNotMatch(pattern, /rig/);

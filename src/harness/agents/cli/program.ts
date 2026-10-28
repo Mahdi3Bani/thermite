@@ -7,6 +7,7 @@ import type {
 import type { McpAccess } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
 import type { PlanWindows } from "../../../agents/programs/index.ts";
+import type { Prompt } from "../../../agents/prompt.ts";
 import type { ResearchFolderPaths } from "../../../agents/tools/index.ts";
 import type { Harness } from "../../../core/agents.ts";
 import type { LiveKind } from "../../../core/live.ts";
@@ -134,8 +135,6 @@ export interface CliProgram<T extends CliTally> {
   prefix: string;
   /** The variable that names its events file to the shell that starts it. */
   eventsVar: string;
-  /** The worker's instructions for this program. */
-  system: string;
   /** What one turn is, as the trial's budget says it. */
   turnWords: string;
   /** What the program itself uses, in words, when it is known (the limits note says it). */
@@ -245,4 +244,6 @@ export interface CliTrialDeps extends ProviderLink {
    */
   keptAt?: KeptAt | undefined;
   compacted?: OnCompacted | undefined;
+  /** Keeps the prompt that starts the trial, as it is sent (goal 166). */
+  sent?: ((p: Prompt) => void) | undefined;
 }

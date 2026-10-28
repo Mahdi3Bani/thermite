@@ -21,6 +21,7 @@ import {
 import { effectiveGpuLists } from "../broker/index.ts";
 import { Compactions, compactionOf } from "../compactions.ts";
 import type { Ledger } from "../ledger/index.ts";
+import { keepPrompt } from "../prompts.ts";
 import { Research, ResearchFolder, SAVED_LANES_DIR } from "../research/index.ts";
 import type { RigSettingsStore } from "../rig-settings.ts";
 import type { HarnessService } from "../service/index.ts";
@@ -185,6 +186,9 @@ export function agentLinks(
       providerAnswer: (since) => service.providerAnswerSince(spec.trialId, since),
       waiting: (w) => service.trialWait(trial, w),
       env: laneCacheEnv(paths.scratchDir, spec.lane),
+      // The prompt that starts the trial, kept whole in the ledger (goal 166).
+      sent: (p) =>
+        keepPrompt(service.ledger, spec.run, p, { lane: spec.lane, trial: spec.trialId }),
       signal,
     };
   };
@@ -301,5 +305,7 @@ export function createScheduler(
     route: info.source,
     model: info.model ?? null,
   });
+  // The rig's API previews a role's next prompt with it (goal 166).
+  service.promptPreview = (run, ask) => scheduler.preview(run, ask);
   return scheduler;
 }

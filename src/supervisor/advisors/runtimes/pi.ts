@@ -3,8 +3,9 @@ import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-age
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import type { z } from "zod";
 import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
-import { mcpAgentTools, mcpLine } from "../../../agents/mcp/index.ts";
+import { mcpAgentTools } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
+import { messageText, systemText } from "../../../agents/prompt.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
 import { PAGE_MAX, SEARCH_MAX } from "../../../core/api/harness/research.ts";
@@ -243,12 +244,15 @@ export async function runPi<S extends z.ZodType>(
   const usage: AdvisorUsage = { ...(advisorRoute(rt) as UsageRoute), calls: [] };
   result.usage = usage;
   const meter = new PiMeter((u) => usage.calls.push(u));
+  // Its instructions name the MCP servers that gave it tools.
+  const sent = input.prompt({
+    program: "pi",
+    mcpServers: [...new Set((t.mcp?.tools ?? []).map((x) => x.server))],
+  });
   const agent = new Agent({
     // The effort chosen for this advisor; without it the agent would never think.
     initialState: {
-      systemPrompt: t.mcp?.tools.length
-        ? `${input.system}\n\n${mcpLine([...new Set(t.mcp.tools.map((x) => x.server))])}`
-        : input.system,
+      systemPrompt: systemText(sent),
       model,
       thinkingLevel,
       tools,
@@ -344,7 +348,7 @@ export async function runPi<S extends z.ZodType>(
     }
   });
   try {
-    await agent.prompt(input.prompt);
+    await agent.prompt(messageText(sent));
   } catch (err) {
     result.error ??= errorText(err);
   } finally {

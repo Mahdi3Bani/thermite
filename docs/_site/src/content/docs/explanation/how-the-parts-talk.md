@@ -11,8 +11,9 @@ sidebar:
 ```mermaid
 flowchart LR
   B[Browser, scripts, MCP clients] -->|pages, REST, MCP| C[Control]
+  C -->|Live's new lines, pushed| B
   S[Supervisor] -->|reports, live lines, figures, exports| C
-  S -.->|reports, with the bus| N[NATS, with JetStream] -.-> C
+  S -.->|reports and live lines, with the bus| N[NATS, with JetStream] -.-> C
   C -.->|commands, with the bus| N -.-> S
   C -->|commands, settings, past research, kits| S
   S -->|commands, settings, content in /inbox| H[Harness]
@@ -50,7 +51,7 @@ Each channel keeps its own place, so a call that fails is simply made again at t
 
 ### Reports over the message bus
 
-The events can also travel on a message bus: a NATS server with JetStream, which the compose stack runs as its `nats` service with the `bus` profile. When `THERMITE_NATS_URL` names it for control and the supervisor, the supervisor publishes each page of events, as the harness signed it, to the rig's own subject, `thermite.rig.<rig>.report`, in the `REPORTS` stream, instead of posting it to control. Control reads the stream with one consumer, one message at a time, in order, and takes each page with the same checks as a page posted to it. Commands travel on the bus too, below. The other channels in the table stay on HTTP, and the supervisor still reads its harness's new events every `THERMITE_POLL_SECONDS`.
+The events can also travel on a message bus: a NATS server with JetStream, which the compose stack runs as its `nats` service with the `bus` profile. When `THERMITE_NATS_URL` names it for control and the supervisor, the supervisor publishes each page of events, as the harness signed it, to the rig's own subject, `thermite.rig.<rig>.report`, in the `REPORTS` stream, instead of posting it to control. Control reads the stream with one consumer, one message at a time, in order, and takes each page with the same checks as a page posted to it. Commands and live lines travel on the bus too, below. The other channels in the table stay on HTTP, and the supervisor still reads its harness's new events every `THERMITE_POLL_SECONDS`.
 
 - **The supervisor moves on once the bus has a page.** A page's message id names its ledger and its events, so a page published twice within two minutes is kept once. A page too large for one message, 8 MiB, goes in halves.
 - **The stream keeps every report:** no limit on their count, size or age, and none can be deleted.
@@ -67,6 +68,21 @@ With the same setting, control publishes each command it issues to the rig's own
 - **The stream is a work queue.** A command the supervisor acked is gone from it. It holds up to 100 commands for each rig, and a command for at most a week: a full queue refuses the next command, which stays pending on control for the poll.
 - **A cancelled command is taken off the bus,** so the rig's supervisor never delivers it, unless the supervisor had taken it already.
 
+### Live lines over the message bus
+
+With the same setting, the supervisor publishes the live lines to the bus instead of posting them to control. It still reads its harness's new lines every `THERMITE_LIVE_INTERVAL_MS`, and the harness hands them over ready for the bus: the lines of each source of each run (the planner's, the judge's, one trial's) in a message of their own, signed by the harness as a batch sent over HTTP is. Each message goes to its run's subject, `thermite.run.<run>.live.<source>`, in the `LIVE` stream. A line that names no run, such as the judge's between runs, goes to the rig's own subject, `thermite.rig.<rig>.live.<source>`. In a subject, a trial's source is `trial-<trial>`, and the rig travels in the message's `Thermite-Rig` header. The supervisor's own lines, its advisors', go the same way, unsigned, as they always have.
+
+- **The stream is a view.** It keeps a message for an hour at most, at most 1,000 messages of each subject, and 256 MiB in all. When one of these is reached, the oldest messages go first, so a publish is never refused for room, and long lines can't fill the disk that the reports need. A message holds at most 1 MiB: the harness puts a source's lines in more than one message when they would not fit, and never cuts a line.
+- **Control folds them in order,** with its consumer `control-live`, into the same live view as lines posted to it, after the same checks: the harness's signature against the rig's accepted key, and the supervisor's unsigned lines only under its own source. It also checks that its run registry gives the run to the rig. A message it refuses is counted by why, logged as `live lines from the bus refused`, and passed over: the live view is not a record. While control is away, the stream keeps the lines for it, for an hour at most.
+- **What control refuses is not shown later.** A message that fails control's checks, such as one from a rig whose new key the owner has not accepted yet, is left out and counted, where a post over HTTP is sent again until control takes it. Live lines are a view of what the agents are doing, not a record: the rig's ledger and its reports keep the record.
+- **A run the bus doesn't open to the rig yet.** A rig may publish only its own runs' live lines and its own (below). Control gives the rig's user a new run within seconds of assigning it, or of the rig's first report of a run it made itself, such as a rig check. Until then, the supervisor sends that run's lines on the rig's own subject, each line still naming its run, and control takes them there.
+- **The supervisor counts what it published and what it dropped,** in its figures: in all, and by subject for the 100 subjects it used last. It drops a message only when the bus refuses it on the rig's own subject too, or when it is too large. When the bus does not answer, the supervisor keeps its place and sends the round again; the bus keeps each message once, by its id: its log and its first and last line.
+- **The live view's posts go.** With the bus, the supervisor no longer posts live lines to control. A rig without the bus still does.
+
+### The bus's state
+
+Control's `GET /v1/bus`, the MCP tool `bus_state` and `/metrics` show the bus as control sees it: whether control reaches its server, each stream with its messages and what each consumer has still to take, and the live stream's figures, from control (the lines it took and the messages it refused, by why) and from each rig's supervisor (the lines it published and dropped). The owner's and the reader's tokens read it. [The REST API](../reference/rest-api.md#the-message-bus) lists its fields.
+
 ### Who may use the message bus
 
 Only control and the rigs' supervisors sign in to the bus, each with a NATS user key of its own, an nkey. The server knows each key by its public part. The secret part, the key's seed, never leaves the part that made it.
@@ -74,17 +90,17 @@ Only control and the rigs' supervisors sign in to the bus, each with a NATS user
 - **A rig's supervisor makes its own key** the first time it starts with the bus, and keeps the seed in its state folder, `bus-key.seed`. It sends the key's public part to control on its regular call, the one that carries its figures, which the rig's token already authenticates: once before its first report, then with every call.
 - **Control writes the server's users.** It records the key for the rig, writes every user to the users file that the server's settings include, and asks the server to reload the file, which the server does without a restart. Control answers the supervisor's call once the server has reloaded, so the supervisor can sign in at once. A rig with no key registered has no user.
 - **A new key replaces the old one.** A supervisor that lost its state folder makes a new key at its next start. Control keeps the change as a step in the rig's history, `bus_key_changed`, and in its audit log, `rig_bus_key_changed`, each with the fingerprints of the old key and the new one, and the old key no longer signs in. A full reset keeps the key.
-- **A retired rig's user goes** within a minute: control looks at its users every 60 seconds. A rig brought back has its user again.
+- **Control looks at its users every 5 seconds.** It writes the file, and asks the server to reload it, only when the users changed: a rig retired loses its user, a rig brought back has it again, and a run control gives a rig opens that run's live lines to the rig.
 
 Each user may do only its part:
 
 | User | May |
 | --- | --- |
 | Control | Everything on the bus: make the streams, fold the reports, publish commands and take back a cancelled one |
-| A rig's supervisor | Publish to its own report subject, `thermite.rig.<rig>.report`; make, read and take from its own consumer of the commands, `rig-<rig>-commands`, which the server lets take only the rig's own subject; ack what it took; and receive replies only under its own inbox, `_INBOX.rig.<rig>` |
+| A rig's supervisor | Publish to its own report subject, `thermite.rig.<rig>.report`; publish its own live lines, `thermite.rig.<rig>.live.*`, and those of each run that control's run registry gives the rig (assigned to it, or made there), `thermite.run.<run>.live.*`, the newest 1,000; make, read and take from its own consumer of the commands, `rig-<rig>-commands`, which the server lets take only the rig's own subject; ack what it took; and receive replies only under its own inbox, `_INBOX.rig.<rig>` |
 | Control's system user | Ask the server to reload its users |
 
-So a rig can't publish another rig's reports, take another rig's commands or read another rig's consumer, and a key the server does not know is refused. The bus's credentials add to the signatures and do not replace them: each report still carries the harness's signature, and each command control's.
+So a rig can't publish another rig's reports or the live lines of another rig's runs, take another rig's commands or read another rig's consumer, and a key the server does not know is refused. The bus's credentials add to the signatures and do not replace them: each report still carries the harness's signature, and each command control's.
 
 ### A rig on RunPod
 
@@ -112,7 +128,7 @@ The advisors run in the supervisor, not in the harness. They reach their models 
 
 ## People and programs
 
-- **The dashboard** is pages that control renders. Live asks control for new lines every 2 seconds while its tab is open, and a page that follows a change (a command's progress, a rig's set-up) asks every 2 seconds for its first 2 minutes, then every 5. Other pages show what control had when they were loaded.
+- **The dashboard** is pages that control renders. Live gets its new lines pushed: control sends them to the page as server-sent events as soon as it has them, from the message bus or over HTTP alike, and the browser connects again on its own after a drop, from the last line it has. A page that falls behind, with more than 500 lines waiting for it, keeps what it shows, gets the newest 500, and says how many lines it did not get. A page that follows a change (a command's progress, a rig's set-up) asks every 2 seconds for its first 2 minutes, then every 5. Other pages show what control had when they were loaded.
 - **REST** and **MCP** answer on demand. MCP uses streamable HTTP, and each request is answered on its own.
 - **The command line** calls control's REST API, or a rig's harness on the rig's own machine.
 
@@ -125,7 +141,7 @@ Because each hop waits for its timer, the time a change takes to show is the sum
 | A change | Its way | At most, by default |
 | --- | --- | --- |
 | A command, such as **Pause** | control → supervisor → harness | 5 seconds; with the message bus, a fraction of a second |
-| A step of an agent, in Live | agent → harness → supervisor → control → Live | about 3 seconds, then Live's next refresh |
+| A step of an agent, in Live | agent → harness → supervisor → control → Live | about 3 seconds; Live shows it as soon as control has it |
 | A verdict, on the run's page | judge → ledger → supervisor → control | 60 seconds, then a reload of the page |
 | A new model route | control → supervisor → harness | 30 seconds |
 | New items in the knowledge base, for a running run | control → supervisor → the run's folder | 180 seconds |

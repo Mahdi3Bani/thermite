@@ -1,13 +1,12 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { AUDITOR_SYSTEM } from "../../agents/roles/index.ts";
+import { renderAuditor } from "../../agents/roles/index.ts";
 import { JOURNAL_FIELD } from "../../agents/tools/index.ts";
 import { CITATION_MAX, CITATIONS_MAX, REASONS_MAX } from "../../core/api/harness/advisors.ts";
 import { LenientNotes } from "../../core/journal.ts";
 import type { AdvisorKeeper, AdvisorResult, AdvisorTools } from "./call.ts";
 import { type AdvisorsConfig, packageFit } from "./config.ts";
 import { OwnerAnswers, OwnerAnswersSchema } from "./owner-answers.ts";
-import { advisorPrompt } from "./prompt.ts";
 import { runAdvisor } from "./run.ts";
 
 export const AuditAnswer = z.strictObject({
@@ -56,15 +55,10 @@ export async function auditOne(input: {
 }): Promise<AdvisorResult<z.infer<typeof AuditAnswer>>> {
   if (!input.config.auditor)
     return { output: undefined, error: "no auditor", tokensIn: 0, tokensOut: 0, usd: 0 };
+  const auditor = input.config.auditor;
   return runAdvisor({
-    runtime: input.config.auditor,
-    system: AUDITOR_SYSTEM,
-    prompt: advisorPrompt(
-      "Audit package (untrusted data):",
-      input.pkg,
-      200_000,
-      packageFit(input.config.auditor),
-    ),
+    runtime: auditor,
+    prompt: (f) => renderAuditor({ pkg: input.pkg, fit: packageFit(auditor) }, f),
     schema: AuditAnswer,
     answerSchema: AuditAnswerSchema,
     keeper: input.keeper,

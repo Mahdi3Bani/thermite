@@ -96,6 +96,7 @@ const AGENT: Record<string, [string, string]> = {
   auditor: ["Auditor", ""],
   review_panel: ["Review panel", ""],
   synthesizer: ["Synthesizer", "answer cards"],
+  final_writer: ["Final writer", "research paper"],
 };
 const WORK = new Set(["workers", "planner"]);
 export const harnessWord = (h: string) => HARNESS_NAMES[h as Harness] ?? h;

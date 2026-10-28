@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import type { TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
+import { briefText } from "../../../helpers/brief-text.ts";
 import {
   CRASH_KERNEL,
   FAST_KERNEL,
@@ -65,7 +66,7 @@ describe("a hill climb's rounds and its baseline (goal 115)", () => {
     await env.service.applyCommand(env.assign);
     const briefs: string[] = [];
     const scheduler = schedulerFor(env, async (spec) => {
-      briefs.push(spec.brief);
+      briefs.push(briefText(spec.brief));
       return undefined;
     });
     assert.equal(await scheduler.tick(), false);
@@ -94,7 +95,7 @@ describe("a hill climb's rounds and its baseline (goal 115)", () => {
     const briefs: string[] = [];
     const kernels = [WRONG_KERNEL, FAST_KERNEL];
     const scheduler = schedulerFor(env, async (spec) => {
-      briefs.push(spec.brief);
+      briefs.push(briefText(spec.brief));
       return kernels.shift();
     });
 

@@ -17,7 +17,6 @@ import {
   readOpencodeEvents,
   runEnv,
 } from "../../../agents/programs/index.ts";
-import { WORKER_OPENCODE_SYSTEM } from "../../../agents/roles/index.ts";
 import type { ResearchFolderPaths } from "../../../agents/tools/index.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { ResearchTrialSpec } from "../research/index.ts";
@@ -52,7 +51,6 @@ export const opencodeProgram: CliProgram<OpencodeTally> = {
   research: true,
   prefix: "opencode",
   eventsVar: "THERMITE_OPENCODE_EVENTS",
-  system: WORKER_OPENCODE_SYSTEM,
   turnWords: "each model reply is one",
   memory: OPENCODE_MEMORY,
   bin: opencodeBin,

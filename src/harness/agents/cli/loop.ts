@@ -1,25 +1,16 @@
 import { dirname, join } from "node:path";
 import { CliCompactions } from "../../../agents/compaction/index.ts";
-import { mcpLine } from "../../../agents/mcp/index.ts";
 import { readNew } from "../../../agents/programs/index.ts";
-import { RESEARCH_WORKER_SYSTEM } from "../../../agents/roles/index.ts";
-import {
-  NOTE_USAGE,
-  type ResearchFolderPaths,
-  researchCommands,
-  researchFolderNote,
-} from "../../../agents/tools/index.ts";
+import { messageText } from "../../../agents/prompt.ts";
+import { renderResearchWorker, renderWorker, windowFit } from "../../../agents/roles/index.ts";
 import { type LaneLimitValues, laneLimits } from "../../../core/contract.ts";
-import { notesInstruction } from "../../../core/journal.ts";
 import type { Role, Runner, RunOutcome } from "../../broker/index.ts";
 import { afterProgramFailure, type FailureCount, failingOf } from "../provider-errors.ts";
-import { trialBudget } from "../trial-clock.ts";
 import { stopNudging, type TrialResult } from "../worker/index.ts";
 import {
   AFTER_SUBMIT_MS,
   breachError,
   CarriedMessages,
-  limitsNote,
   NUDGE,
   ownerLines,
   takeUsage,
@@ -89,39 +80,6 @@ function startRun<T extends CliTally>(
     nproc: o.limits.processes,
     captureBytes: 4096,
   });
-}
-
-/** What a research worker in a program is told about its tools, on top of the research brief. */
-function researchPrompt(
-  limits: LaneLimitValues,
-  brief: string,
-  minutes: number | undefined,
-  folder: ResearchFolderPaths,
-  program: { name: string; memory?: string | undefined },
-): string {
-  return `${RESEARCH_WORKER_SYSTEM}
-
-Your research tools are commands you run with your shell tool:
-
-${researchCommands()}
-
-Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command.
-
-To propose another research task for the run's queue (the planner or the campaign's owner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--question N] (N: the index of the question it is about, from 0). A task that only a measurement could settle is refused: record it as a next experiment instead.
-
-${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: run, experiment, attempt, source, claim, finding, round, trial or message; no --about: the run)`)} Field notes are not research notes (add_note), which record what sources say for the report.
-
-${researchFolderNote(folder)} Your shell starts in your working area; use grep, rg and your file tools on the folder.
-
-${limitsNote(limits, program.name, program.memory)}
-
-${brief}${
-  minutes !== undefined
-    ? `
-
-This trial lasts ${minutes} minutes.`
-    : ""
-}`;
 }
 
 /**
@@ -204,11 +162,33 @@ export async function runCliTrial<T extends CliTally>(
   const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
-  const mcp = run.mcp ? `\n\n${mcpLine(run.mcp.servers)}` : "";
-  // A research prompt keeps its MCP line last.
-  let message = code
-    ? `${p.system}${mcp}\n\n${limitsNote(limits, p.name, p.memory)}\n\n${spec.brief}\n\nThe editable paths: ${trial.spec.editablePaths.join(", ")}. ${trialBudget(minutes, spec.maxTurns, p.turnWords, deadline)}`
-    : `${researchPrompt(limits, spec.brief, minutes, trial.folder, p)}${mcp}`;
+  // Its prompt, from its role's definition (goal 166).
+  const mcpServers = run.mcp?.servers ?? [];
+  // Cut to the model's window, when the route says it (decision 8).
+  const fit = windowFit(deps.model.contextWindow, deps.model.compactAt);
+  const sent = code
+    ? renderWorker({
+        program: p,
+        brief: spec.brief,
+        mcpServers,
+        limits,
+        editablePaths: trial.spec.editablePaths,
+        minutes,
+        maxTurns: spec.maxTurns,
+        endsAt: deadline,
+        fit,
+      })
+    : renderResearchWorker({
+        program: p,
+        brief: spec.brief,
+        mcpServers,
+        folder: trial.folder,
+        limits,
+        minutes,
+        fit,
+      });
+  deps.sent?.(sent);
+  let message = messageText(sent);
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {

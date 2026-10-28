@@ -1,9 +1,10 @@
 import type { Hono } from "hono";
-import { errorText } from "../../common/errors.ts";
-import { commandFollowUrl, commandProgress, notSent } from "../command-progress.ts";
-import { issueCommand, nobodyReads, panelReviews } from "../issue/index.ts";
-import { HARNESS_NAMES } from "../rigs/index.ts";
-import { lastActivity } from "../ui/campaigns/list.ts";
+import { streamSSE } from "hono/streaming";
+import { errorText } from "../../../common/errors.ts";
+import { commandFollowUrl, commandProgress, notSent } from "../../command-progress.ts";
+import { issueCommand, nobodyReads, panelReviews } from "../../issue/index.ts";
+import { HARNESS_NAMES } from "../../rigs/index.ts";
+import { lastActivity } from "../../ui/campaigns/list.ts";
 import {
   ago,
   esc,
@@ -13,26 +14,26 @@ import {
   num,
   runCompleted,
   runState,
-} from "../ui/components/index.ts";
+} from "../../ui/components/index.ts";
 import {
   liveEntryHtml,
   liveLinesHtml,
   resultJoin,
   runEntryHtml,
   runLinesHtml,
-} from "../ui/live.ts";
-import { waitingOn } from "../ui/operator/index.ts";
+} from "../../ui/live.ts";
+import { waitingOn } from "../../ui/operator/index.ts";
 import {
   liveHref,
   RUN_ROUTES,
   rigHref,
-  rigLiveLinesHref,
+  rigLiveStreamHref,
   runHref,
   runLiveHref,
-  runLiveLinesHref,
+  runLiveStreamHref,
   runMessageHref,
-} from "../ui/urls.ts";
-import { clip, earlierWords, signed } from "../ui/words/index.ts";
+} from "../../ui/urls.ts";
+import { clip, earlierWords, signed } from "../../ui/words/index.ts";
 import {
   currentChampion,
   podStopped,
@@ -40,12 +41,14 @@ import {
   type RunOnRig,
   type RunView,
   runCampaign,
-} from "../views/index.ts";
-import { type Ctx, type Dashboard, wantsJson } from "./context.ts";
+} from "../../views/index.ts";
+import { type Ctx, type Dashboard, wantsJson } from "../context.ts";
+import { type LiveFeed, type PushedLine, pushLive, pushStart, recheckIds } from "./push.ts";
 
 /**
  * Live, one run at a time (goal 063), under the run's address, with the owner's messages to its
- * agents; and one rig's sessions over every run.
+ * agents; and one rig's sessions over every run. Each page's new lines are pushed to it as control
+ * gets them (push.ts).
  */
 export function liveRoutes(app: Hono, dash: Dashboard): void {
   const { cmdForm, csrf, moreMenu, opts, page, pauseMenu, runOf, store, views } = dash;
@@ -231,7 +234,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         flush: true,
       },
       `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div data-fw-top></div><div class="lchips">${chips}<span class="grow"></span><span data-part="lkept">${keptBox}</span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
-<div class="transcript lstream" id="transcript" data-poll="${esc(runLiveLinesHref(r))}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.rigEvents.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
+<div class="transcript lstream" id="transcript" data-stream="${esc(runLiveStreamHref(r))}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.rigEvents.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
 <div data-part="lnotice">${notice}</div>${box}</section></div>`,
       vs,
     );
@@ -248,34 +251,43 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     );
   });
 
-  app.get(RUN_ROUTES.liveLines, (c) => {
-    const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
+  /**
+   * One run's lines, as its Live page draws them: each tagged with its filters and its source; a
+   * result also as the part it adds to its call's row.
+   */
+  const runFeed = (rig: string, run: string): LiveFeed => {
+    const draw = (lines: ReturnType<typeof store.liveLines.ofRun>): PushedLine[] => {
+      const now = Date.now();
+      const messages = store.rigEvents.runMessages(rig, run);
+      return lines.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        src: e.source,
+        html: runEntryHtml(e, now, messages),
+        ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
+      }));
+    };
+    return {
+      rig,
+      after: (after, limit) => draw(store.liveLines.ofRun(rig, run, after, limit)),
+      newest: (limit) => draw(store.liveLines.runTail(rig, run, limit)),
+      count: (after) => store.liveLines.countOfRun(rig, run, after),
+      // Lines drawn before their event came, drawn again once it has.
+      redraw: (ids) =>
+        draw(store.liveLines.ofRun(rig, run, 0, ids.length, ids))
+          .map((y) => ({ id: y.id, html: y.html }))
+          .filter((y) => !y.html.includes('data-recheck="1"')),
+    };
+  };
+
+  // The run's new lines, pushed to its Live page.
+  app.get(RUN_ROUTES.liveStream, (c) => {
     const x = named(c);
     if (!x) return c.json({ error: "no such run in this campaign" }, 404);
-    const rig = x.rig.id;
-    const run = x.run.id;
-    const now = Date.now();
-    const messages = store.rigEvents.runMessages(rig, run);
-    const entries = store.liveLines.ofRun(rig, run, after, 500).map((e) => ({
-      id: e.id,
-      kind: e.kind,
-      src: e.source,
-      html: runEntryHtml(e, now, messages),
-      ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
-    }));
-    // Lines drawn before their event came (recheck=ids), drawn again once it has.
-    const ids = String(c.req.query("recheck") ?? "")
-      .split(",")
-      .map(Number)
-      .filter((n) => Number.isInteger(n) && n > 0)
-      .slice(0, 50);
-    const redrawn = ids.length
-      ? store.liveLines
-          .ofRun(rig, run, 0, 50, ids)
-          .map((e) => ({ id: e.id, html: runEntryHtml(e, now, messages) }))
-          .filter((y) => !y.html.includes('data-recheck="1"'))
-      : [];
-    return c.json({ entries, redrawn });
+    const feed = runFeed(x.rig.id, x.run.id);
+    const after = pushStart(c.req.header("last-event-id"), c.req.query("after"));
+    const recheck = recheckIds(c.req.query("recheck"));
+    return streamSSE(c, (stream) => pushLive(stream, store, feed, { after, recheck }));
   });
 
   // The owner's message to a run's agents, from its Live and its Planner tab: a signed command
@@ -430,22 +442,33 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         flush: true,
       },
       `<aside class="sessions"><div class="section" style="margin-top:4px">Sessions</div>${list}</aside>
-<div class="transcript-wrap">${head}<div class="transcript" id="transcript" data-poll="${esc(rigLiveLinesHref(u.id))}" data-source="${esc(source)}" data-after="${after}">${out.join("") || `<div class="empty">No live lines yet. They appear here as the rig's agents and judge work.</div>`}</div>${composer}</div>`,
+<div class="transcript-wrap">${head}<div class="transcript" id="transcript" data-stream="${esc(rigLiveStreamHref(u.id))}" data-source="${esc(source)}" data-after="${after}">${out.join("") || `<div class="empty">No live lines yet. They appear here as the rig's agents and judge work.</div>`}</div>${composer}</div>`,
       vs,
     );
   });
 
-  app.get("/ui/rigs/:rig/live.json", (c) => {
-    const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
+  // The rig's new lines, or one source's, pushed to its Live page: each line as the page shows
+  // it; a result also as the part it adds to its call's row.
+  app.get("/ui/rigs/:rig/live/stream", (c) => {
+    const rig = c.req.param("rig");
+    if (!views().some((u) => u.id === rig)) return c.json({ error: "no such rig" }, 404);
     const source = c.req.query("source") || undefined;
-    const now = Date.now();
-    // Each line as the page shows it; a result also as the part it adds to its call's row.
-    const entries = store.liveLines.after(c.req.param("rig"), after, 500, source).map((e) => ({
-      id: e.id,
-      kind: e.kind,
-      html: liveEntryHtml(e, { showWho: !source, name: sourceName, now }),
-      ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
-    }));
-    return c.json({ entries });
+    const draw = (lines: ReturnType<typeof store.liveLines.after>): PushedLine[] => {
+      const now = Date.now();
+      return lines.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        html: liveEntryHtml(e, { showWho: !source, name: sourceName, now }),
+        ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
+      }));
+    };
+    const feed: LiveFeed = {
+      rig,
+      after: (after, limit) => draw(store.liveLines.after(rig, after, limit, source)),
+      newest: (limit) => draw(store.liveLines.tail(rig, limit, source)),
+      count: (after) => store.liveLines.count(rig, after, source),
+    };
+    const after = pushStart(c.req.header("last-event-id"), c.req.query("after"));
+    return streamSSE(c, (stream) => pushLive(stream, store, feed, { after, recheck: [] }));
   });
 }

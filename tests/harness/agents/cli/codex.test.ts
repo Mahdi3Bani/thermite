@@ -13,13 +13,10 @@ import {
   readCodexEvents,
   tomlString,
 } from "../../../../src/agents/programs/codex/index.ts";
+import { limitsNote } from "../../../../src/agents/roles/index.ts";
 import { WORKER_CODEX_SYSTEM } from "../../../../src/agents/roles/worker.ts";
 import { laneLimits } from "../../../../src/core/contract.ts";
-import {
-  codexLimitsNote,
-  codexModelCheck,
-  runCodexTrial,
-} from "../../../../src/harness/agents/cli/codex.ts";
+import { codexModelCheck, runCodexTrial } from "../../../../src/harness/agents/cli/codex.ts";
 import { ControlRoute } from "../../../../src/harness/agents/model/source.ts";
 import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import type { TrialSpec } from "../../../../src/harness/agents/worker/index.ts";
@@ -212,6 +209,8 @@ describe("the Codex CLI", () => {
     assert.match(c, /^wire_api = "responses"$/m);
     assert.match(c, /^model_reasoning_effort = "none"$/m, "off sends none");
     assert.match(c, /^web_search = "disabled"$/m);
+    // The project's AGENTS.md never joins the prompt (goal 166).
+    assert.match(c, /^project_doc_max_bytes = 0$/m);
     assert.match(c, /\[analytics\]\nenabled = false/);
     assert.match(c, /\[history\]\npersistence = "none"/);
     // Top-level keys come before the first table, as TOML needs.
@@ -226,7 +225,7 @@ describe("the Codex CLI", () => {
     assert.doesNotMatch(WORKER_CODEX_SYSTEM, /set timeout to 0/);
     assert.match(WORKER_CODEX_SYSTEM, /thermite-trial submit --hypothesis/);
     assert.match(WORKER_CODEX_SYSTEM, /keep field notes with "thermite-trial note --kind KIND/);
-    const limits = codexLimitsNote(laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }));
+    const limits = limitsNote(laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }), "Codex");
     assert.match(limits, /Codex itself included\./);
     assert.doesNotMatch(limits, /OpenCode|500 MiB/);
   });

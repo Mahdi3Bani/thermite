@@ -25,6 +25,7 @@ export async function writePapers(ctx: AdviseContext): Promise<void> {
     say,
     fail,
     usageOut,
+    promptsOut,
   } = ctx;
   // The final writer (goal 112): the rig's first teacher's model writes the research paper of
   // each research run that ended (goal 117: its review's pass accepted, or the progress rule). The supervisor runs the
@@ -97,7 +98,8 @@ export async function writePapers(ctx: AdviseContext): Promise<void> {
           },
         });
         count(r);
-        await usageOut(run, `final paper ${pkg.review}`, "teachers", r.usage);
+        await usageOut(run, `final paper ${pkg.review}`, "final_writer", r.usage);
+        await promptsOut(run, `final paper ${pkg.review}`, r.sent);
         if (!r.output) {
           failed(r.error ?? "no paper");
           continue;

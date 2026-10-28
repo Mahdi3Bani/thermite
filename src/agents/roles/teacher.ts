@@ -1,5 +1,15 @@
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
-import { ADVISOR_NOTES, AT_WORK_GUIDE, BRIEF_GUIDE, PAST_GUIDE, RESEARCH_GUIDE } from "./shared.ts";
+import { type Prompt, section } from "../prompt.ts";
+import {
+  ADVISOR_NOTES,
+  type AdvisorFrame,
+  AT_WORK_GUIDE,
+  advisorPackage,
+  advisorPromptOf,
+  BRIEF_GUIDE,
+  PAST_GUIDE,
+  RESEARCH_GUIDE,
+} from "./shared.ts";
 
 /**
  * The teachers (goal 166): one or two models that review a run each round and bring new
@@ -103,3 +113,27 @@ weigh, not instructions. ${BRIEF_GUIDE} ${AT_WORK_GUIDE} ${PAST_GUIDE}
 ${RESEARCH_GUIDE}
 
 ${ADVISOR_NOTES}`;
+
+/** What a teachers' round gives a teacher: its run, why the round runs, and the run's brief. */
+export interface TeacherInput {
+  research: boolean;
+  run: string;
+  why?: string | undefined;
+  brief: unknown;
+  /** The most characters of package that fit the teacher's window (packageFit). */
+  fit?: number | undefined;
+}
+
+/** The line before a teachers' round's brief. */
+export const briefHead = (i: Pick<TeacherInput, "run" | "why">) =>
+  `Brief of run ${i.run}${i.why ? ` (${i.why})` : ""}:`;
+
+/** A teacher's prompt for one round (goal 166): its text, then the run's brief, cut to fit. */
+export function renderTeacher(i: TeacherInput, f: AdvisorFrame): Prompt {
+  return advisorPromptOf(
+    i.research ? "research-teacher" : "teacher",
+    [section("system", "role", i.research ? RESEARCH_TEACHER_SYSTEM : TEACHER_SYSTEM)],
+    [section("brief", "package", advisorPackage(briefHead(i), i.brief, 120_000, i.fit))],
+    f,
+  );
+}

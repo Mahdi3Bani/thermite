@@ -1,11 +1,11 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import type { ModelConfig } from "../../../agents/model/index.ts";
+import type { Prompt } from "../../../agents/prompt.ts";
 import {
   PROMOTE_PER_ROUND,
   RESEARCH_PLAN_LIMITS,
-  RESEARCH_PLANNER_ASK_SYSTEM,
-  RESEARCH_PLANNER_PI_SYSTEM,
+  renderResearchPlanner,
 } from "../../../agents/roles/index.ts";
 import { JOURNAL_FIELD } from "../../../agents/tools/index.ts";
 import type { BriefData } from "../../../core/brief.ts";
@@ -627,8 +627,7 @@ const Change = Type.Object({
 
 /** The research planner's call: its prompts and its tool. */
 export const RESEARCH_PLAN_SPEC: PlannerCallSpec = {
-  system: RESEARCH_PLANNER_PI_SYSTEM,
-  askSystem: RESEARCH_PLANNER_ASK_SYSTEM,
+  render: renderResearchPlanner,
   description:
     "Submit this round's research plan: each lane's task, your changes to the queue, and the hypotheses you promote or retire.",
   parameters: Type.Object({
@@ -711,6 +710,8 @@ export async function planResearch(
   mcp?: PlannerMcp,
   compaction?: PlannerCompaction,
   usage?: (u: CallUsage) => void,
+  /** Keeps each try's prompt, as it is sent (goal 166). */
+  sent?: (p: Prompt) => void,
 ): Promise<ResearchPlanResult> {
   if (!model) return { source: "fallback", tries: 0, valid: false, rawViolations: [] };
   const r = await plannerTries({
@@ -724,6 +725,7 @@ export async function planResearch(
     mcp,
     compaction,
     usage,
+    sent,
   });
   return {
     source: r.plan ? "planner" : "fallback",

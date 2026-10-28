@@ -9,4 +9,4 @@ export {
   type ResearchPlannerInput,
   type ResearchPlanResult,
 } from "./planner.ts";
-export { type ResearchTrialSpec, runResearchTrial } from "./worker.ts";
+export { piResearchPrompt, type ResearchTrialSpec, runResearchTrial } from "./worker.ts";

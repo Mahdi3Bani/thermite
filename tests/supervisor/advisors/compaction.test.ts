@@ -7,6 +7,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { type AdvisorRuntime, runAdvisor } from "../../../src/supervisor/advisors/index.ts";
 import { advisorKeeper } from "../../../src/supervisor/advisors/pass/index.ts";
+import { testPrompt } from "../../helpers/advisor-prompt.ts";
 
 /**
  * An advisor's own program compacting its call (goal 070): Claude Code's PreCompact hook, Codex's
@@ -143,8 +144,7 @@ async function advise(rt: AdvisorRuntime) {
   const said: string[] = [];
   const r = await runAdvisor({
     runtime: rt,
-    system: "You audit.",
-    prompt: "Audit this.",
+    prompt: testPrompt("You audit.", "Audit this."),
     schema: Answer,
     answerSchema: Type.Object({ ok: Type.Boolean() }),
     keeper: advisorKeeper(home, "r-1", (text) => said.push(text)),
@@ -252,8 +252,7 @@ describe("an advisor's own program compacting its call (goal 070)", () => {
           context_window: 0,
           timeout_s: 30,
         },
-        system: "You audit.",
-        prompt: "Audit this.",
+        prompt: testPrompt("You audit.", "Audit this."),
         schema: Answer,
         answerSchema: Type.Object({ ok: Type.Boolean() }),
       }),

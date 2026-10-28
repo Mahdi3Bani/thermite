@@ -3,12 +3,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import type { Prompt } from "../../../src/agents/prompt.ts";
 import { runClaudeTrial } from "../../../src/harness/agents/cli/claude-code.ts";
 import { runCodexTrial } from "../../../src/harness/agents/cli/codex.ts";
 import {
   runOpencodeResearchTrial,
   runOpencodeTrial,
 } from "../../../src/harness/agents/cli/opencode.ts";
+import { runPiTrial } from "../../../src/harness/agents/programs.ts";
 import {
   type ResearchTrialSpec,
   runResearchTrial,
@@ -22,11 +24,12 @@ import {
   type RunOutcome,
   type RunRequest,
 } from "../../../src/harness/broker/runner.ts";
+import { keepPrompt } from "../../../src/harness/prompts.ts";
 import type { Research } from "../../../src/harness/research/research/index.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 import { makeResearchRun } from "../../helpers/research-run.ts";
-import { golden, laneTool, PLAN, recorder, sections } from "./capture.ts";
+import { golden, kept, keptInput, laneTool, PLAN, recorder, sections } from "./capture.ts";
 
 /**
  * The work's roles' whole prompts: the planners, the workers and the research workers, in Pi and in
@@ -74,19 +77,35 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
       runner,
       model,
       owner: "prompts-test",
+      // As a rig runs it in Pi (programs.ts): its prompt rendered and kept by the harness, then
+      // the worker, here in this process.
       runTrial: (spec) =>
-        runTrial(spec, {
-          runner,
-          laneTool,
-          model,
-          submit: (req) => env.service.submitForTrial(String(spec.token), req) as never,
-          status: async (id) => env.service.attemptStatus(id),
-          // As worker-main.ts wires them, so the worker has the tools it has on a rig.
-          devRun: async () => ({}),
-          idea: async () => ({ experiment: "x-000000000000" }),
-          note: async () => ({ note: 1 }),
-          research: async () => ({}),
-        }),
+        runPiTrial(
+          { mode: "code", spec },
+          {
+            handOverUsage: () => () => undefined,
+            sent: (p) =>
+              keepPrompt(env.service.ledger, spec.run, p, { lane: spec.lane, trial: spec.trialId }),
+            runner,
+            scratchDir: env.paths.scratchDir,
+            port: 0,
+            signal: undefined,
+            model: undefined,
+          },
+          async (trial) =>
+            runTrial(trial.spec as TrialSpec, {
+              runner,
+              laneTool,
+              model,
+              submit: (req) => env.service.submitForTrial(String(spec.token), req) as never,
+              status: async (id) => env.service.attemptStatus(id),
+              // As worker-main.ts wires them, so the worker has the tools it has on a rig.
+              devRun: async () => ({}),
+              idea: async () => ({ experiment: "x-000000000000" }),
+              note: async () => ({ note: 1 }),
+              research: async () => ({}),
+            }),
+        ),
     });
     await scheduler.tick();
     await scheduler.idle();
@@ -95,6 +114,8 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     const paths = [env.paths.scratchDir, env.paths.stateDir, env.root, tmpdir()];
     golden("planner.pi", sent.get("planner"), paths);
     golden("worker.pi", sent.get("worker"), paths);
+    kept(env.service.ledger, "planner", sent.get("planner"));
+    kept(env.service.ledger, "worker", sent.get("worker"));
   });
 
   test("a research run's planner and worker, in Pi", async () => {
@@ -151,6 +172,7 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     const paths = [scratchDir, stateDir, r.env.root, r.base, tmpdir()];
     golden("research-planner.pi", sent.get("research-planner"), paths);
     golden("research-worker.pi", sent.get("research-worker"), paths);
+    kept(r.env.service.ledger, "research-planner", sent.get("research-planner"));
   });
 
   test("a hill-climb run's worker in OpenCode, Claude Code and Codex: what each program is given", async () => {
@@ -209,6 +231,12 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
     };
     const common = {
       apiUrl: "http://127.0.0.1:8700",
+      // Kept by the harness as the CLI trial loop renders it (goal 166).
+      sent: (p: Prompt) =>
+        keepPrompt(env.service.ledger, spec?.run ?? "", p, {
+          lane: spec?.lane,
+          trial: spec?.trialId,
+        }),
       live: () => undefined,
       progress: () => undefined,
       submitted: () => undefined,
@@ -282,6 +310,7 @@ describe("every role's whole prompt for a sample run (goal 166)", () => {
         ["command", command],
         ["standard input", String(given.stdin)],
       ]);
+      keptInput(env.service.ledger, "worker", String(given.stdin));
     }
   });
 

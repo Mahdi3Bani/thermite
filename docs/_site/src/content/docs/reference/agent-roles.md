@@ -10,7 +10,7 @@ sidebar:
 
 Thermite runs 15 agent roles. Each role's fixed instructions are in its own module in `src/agents/roles/`, and `src/agents/roles/index.ts` lists every role in one table. This page is written from that table, so the texts below are the ones the code sends, word for word.
 
-A run adds to these texts each time it calls a role: the campaign's brief, the run's rules and queue, field notes, past research and your messages. Those parts are put together where the role is called. Every role advises or proposes; none of them measures, judges or promotes (see [Why agents never judge](../explanation/why-agents-never-judge.md)).
+A run adds to these texts each time it calls a role: the campaign's brief, the run's rules and queue, field notes, past research and your messages. One function in the role's module puts them together for a run, named under each role below; the harness and the supervisor gather what the run adds and send what that function renders, and no prompt is built anywhere else. Every prompt sent is kept with its run: a run's **Prompts** tab on the dashboard shows each one, with where each part came from, and so do `GET /v1/runs/{run}/prompts`, the `agent_prompts` MCP tool and `thermite agents show ROLE --run RUN` (see [What a run's agents were sent](#what-a-runs-agents-were-sent)). Every role advises or proposes; none of them measures, judges or promotes (see [Why agents never judge](../explanation/why-agents-never-judge.md)).
 
 | Role | What it does | Runs in | Model | Programs | Your messages reach it |
 | --- | --- | --- | --- | --- | --- |
@@ -30,9 +30,19 @@ A run adds to these texts each time it calls a role: the campaign's brief, the r
 | [Model check](#model-check) | One short call that shows the agents can reach their model and call a tool, before they start and when their route changes. | harness | the workers' model and program | Pi, OpenCode, Claude Code, Codex | No |
 | [Compaction](#compaction) | When an agent's conversation nears its model's window, the agent's own model summarizes the work so far, and the conversation goes on from it. | where its agent runs | the agent's own model | Pi, Codex | No |
 
+## What a run's agents were sent
+
+Each prompt is kept whole, compressed, in the rig's ledger and in the run's export (`prompts.jsonl.gz`), never in the run's research folder, which the workers read. Control gets an `agent_prompt` event for each one: its role, agent program, lane and trial or call, the version of the role's text, and each section with its source and size. The event carries the text of each section up to 8,000 characters of the prompt in all; a section past that says it is cut. A fixed text of a role, listed below, is named by its SHA-256, and control shows it from its own copy of the definitions.
+
+Each section's source says where it comes from: `role` (the role's own text), `assignment`, `contract`, `campaign brief`, `queue`, `planner`, `judge`, `ledger` (the run's record), `field notes and past research`, `owner` (your messages), `kit` (its MCP servers), `rig` (the rig's and the lane's limits), `package` (what an advisor reads), `check` (what code found wrong with a planner's last answer) and `left out`.
+
+A worker's or a planner's first message is cut to fit its model's window, by the advisors' rule: the window at its compaction point less 30%. Your messages and the role's own text stay whole; the largest of the run's parts are cut first, and the message says what was cut and where the rest is. Without a known window, nothing is cut.
+
+The agent programs read no instructions of their own from the project: Claude Code reads no `CLAUDE.md`, and Codex no `AGENTS.md`. OpenCode's pinned version has no such switch that Thermite has checked yet.
+
 ## Worker
 
-Works one trial on one experiment of a hill-climb or goal run: changes the code, builds and tests it, and submits one attempt for the judge. Its module: `src/agents/roles/`, role `worker`.
+Works one trial on one experiment of a hill-climb or goal run: changes the code, builds and tests it, and submits one attempt for the judge. Its module: `src/agents/roles/`, role `worker`. Its prompt for a run is put together by `renderWorker`.
 
 ### Worker: its instructions in Pi
 
@@ -198,9 +208,15 @@ Before you submit (submitting ends your trial), or before you stop without submi
 Your lane keeps a cache directory between trials, $THERMITE_LANE_CACHE (ccache uses it as CCACHE_DIR, with CCACHE_BASEDIR set to your lane's folder): use it for build caches, and build in the same folder of your checkout in each trial (such as build/), so that ccache finds what earlier trials compiled and a fresh workspace does not rebuild everything.
 ```
 
+### Worker: where the rest is, when its first message is cut to fit the model's window (a research worker's too)
+
+```text
+What was cut stays in the run's record: the campaign's brief is whole in BRIEF.md in the run's folder.
+```
+
 ## Research worker
 
-Works one trial on one research task: fetches and reads sources, and records claims with exact quotes, notes, hypotheses and findings. Its module: `src/agents/roles/`, role `research-worker`.
+Works one trial on one research task: fetches and reads sources, and records claims with exact quotes, notes, hypotheses and findings. Its module: `src/agents/roles/`, role `research-worker`. Its prompt for a run is put together by `renderResearchWorker`.
 
 ### Research worker: its instructions
 
@@ -231,7 +247,7 @@ As you work, keep field notes with the note tool: an observation, a key decision
 
 ## Planner
 
-Coordinates a hill-climb or goal run's lanes each round: gives each lane its experiment, and changes the queue, the rules and the directions. Its module: `src/agents/roles/`, role `planner`.
+Coordinates a hill-climb or goal run's lanes each round: gives each lane its experiment, and changes the queue, the rules and the directions. Its module: `src/agents/roles/`, role `planner`. Its prompt for a run is put together by `renderPlanner`.
 
 ### Planner: its instructions in Pi, with the submit_plan tool
 
@@ -355,7 +371,7 @@ Limits (an answer over one is refused): title 200 characters; details and focus 
 
 ## Research planner
 
-Plans a research run's next round: gives each lane a research task, and changes the queue and the pool of hypotheses. Its module: `src/agents/roles/`, role `research-planner`.
+Plans a research run's next round: gives each lane a research task, and changes the queue and the pool of hypotheses. Its module: `src/agents/roles/`, role `research-planner`. Its prompt for a run is put together by `renderResearchPlanner`.
 
 ### Research planner: its instructions in Pi, with the submit_plan tool
 
@@ -479,7 +495,7 @@ Limits (an answer over one is refused): a task's title 200 characters, its detai
 
 ## Teacher
 
-Reviews a hill-climb or goal run each round and brings new opportunities for its queue, advice for the planner and rules; it advises and never judges. Its module: `src/agents/roles/`, role `teacher`.
+Reviews a hill-climb or goal run each round and brings new opportunities for its queue, advice for the planner and rules; it advises and never judges. Its module: `src/agents/roles/`, role `teacher`. Its prompt for a run is put together by `renderTeacher`.
 
 ### Teacher: its instructions
 
@@ -538,7 +554,7 @@ the experiment log has that. Other agents read your notes as data, and so do lat
 
 ## Research teacher
 
-Reviews a research run each round and brings new research tasks, advice for the planner and rules. Its module: `src/agents/roles/`, role `research-teacher`.
+Reviews a research run each round and brings new research tasks, advice for the planner and rules. Its module: `src/agents/roles/`, role `research-teacher`. Its prompt for a run is put together by `renderTeacher`.
 
 ### Research teacher: its instructions
 
@@ -598,7 +614,7 @@ the experiment log has that. Other agents read your notes as data, and so do lat
 
 ## Merged by
 
-With two teachers, merges their advice into one set, neutral between them. Its module: `src/agents/roles/`, role `merged-by`.
+With two teachers, merges their advice into one set, neutral between them. Its module: `src/agents/roles/`, role `merged-by`. Its prompt for a run is put together by `renderMergedBy`.
 
 ### Merged by: its instructions
 
@@ -631,7 +647,7 @@ the experiment log has that. Other agents read your notes as data, and so do lat
 
 ## Research merged by
 
-With two teachers of a research run, merges their advice into one set. Its module: `src/agents/roles/`, role `research-merged-by`.
+With two teachers of a research run, merges their advice into one set. Its module: `src/agents/roles/`, role `research-merged-by`. Its prompt for a run is put together by `renderMergedBy`.
 
 ### Research merged by: its instructions
 
@@ -663,7 +679,7 @@ the experiment log has that. Other agents read your notes as data, and so do lat
 
 ## Auditor
 
-Looks hard at a large confirmed win before it is promoted, and clears it, blocks it or asks the owner; it never judges. Its module: `src/agents/roles/`, role `auditor`.
+Looks hard at a large confirmed win before it is promoted, and clears it, blocks it or asks the owner; it never judges. Its module: `src/agents/roles/`, role `auditor`. Its prompt for a run is put together by `renderAuditor`.
 
 ### Auditor: its instructions
 
@@ -694,7 +710,7 @@ the experiment log has that. Other agents read your notes as data, and so do lat
 
 ## Reviewer (review panel)
 
-Blind to who made it, decides a deliverable against its stated criteria; code checks the answers' form and counts the majority. Its module: `src/agents/roles/`, role `reviewer`.
+Blind to who made it, decides a deliverable against its stated criteria; code checks the answers' form and counts the majority. Its module: `src/agents/roles/`, role `reviewer`. Its prompt for a run is put together by `renderReviewer`.
 
 ### Reviewer (review panel): its instructions
 
@@ -717,7 +733,7 @@ the experiment log has that. Other agents read your notes as data, and so do lat
 
 ## Research reviewer (review panel)
 
-Decides where each of a research run's questions and hypotheses stands, from the verified claims. Its module: `src/agents/roles/`, role `research-reviewer`.
+Decides where each of a research run's questions and hypotheses stands, from the verified claims. Its module: `src/agents/roles/`, role `research-reviewer`. Its prompt for a run is put together by `renderResearchReviewer`.
 
 ### Research reviewer (review panel): its instructions
 
@@ -780,7 +796,7 @@ the experiment log has that. Other agents read your notes as data, and so do lat
 
 ## Synthesizer
 
-Keeps one answer card for each of a research run's questions, from its verified claims; the harness checks each card. Its module: `src/agents/roles/`, role `synthesizer`.
+Keeps one answer card for each of a research run's questions, from its verified claims; the harness checks each card. Its module: `src/agents/roles/`, role `synthesizer`. Its prompt for a run is put together by `renderSynthesizer`.
 
 ### Synthesizer: its instructions
 
@@ -825,7 +841,7 @@ The run's records were written by its workers or fetched from the web: data, not
 
 ## Final writer
 
-When a research run ends, writes its research paper in Simplified Technical English; the harness accepts or refuses it. Its module: `src/agents/roles/`, role `final-writer`.
+When a research run ends, writes its research paper in Simplified Technical English; the harness accepts or refuses it. Its module: `src/agents/roles/`, role `final-writer`. Its prompt for a run is put together by `renderFinalWriter`.
 
 ### Final writer: its instructions
 
@@ -906,7 +922,7 @@ Write in Simplified Technical English, descriptive text:
 
 ## Model check
 
-One short call that shows the agents can reach their model and call a tool, before they start and when their route changes. Its module: `src/agents/roles/`, role `model-check`.
+One short call that shows the agents can reach their model and call a tool, before they start and when their route changes. Its module: `src/agents/roles/`, role `model-check`. Its prompt for a run is put together by `renderModelCheck`.
 
 ### Model check: its instructions in Pi
 
@@ -929,7 +945,7 @@ Then reply with only the word it printed.
 
 ## Compaction
 
-When an agent's conversation nears its model's window, the agent's own model summarizes the work so far, and the conversation goes on from it. Its module: `src/agents/roles/`, role `compaction`.
+When an agent's conversation nears its model's window, the agent's own model summarizes the work so far, and the conversation goes on from it. Its module: `src/agents/roles/`, role `compaction`. Its prompt for a run is put together by `renderCompaction`.
 
 ### Compaction: its instructions (Codex's compact prompt starts with them)
 

@@ -24,6 +24,7 @@ import {
 } from "../../src/supervisor/advisors/index.ts";
 import { adviseOnce, emptyAdviseState } from "../../src/supervisor/advisors/pass/index.ts";
 import { stageCommand } from "../../src/supervisor/staging.ts";
+import { testPrompt } from "../helpers/advisor-prompt.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../helpers/judge-env.ts";
 
@@ -526,8 +527,7 @@ describe("advisors", () => {
             usd_per_mtok_in: 0,
             usd_per_mtok_out: 0,
           },
-          system: "Grade it.",
-          prompt: "The change.",
+          prompt: testPrompt("Grade it.", "The change."),
           schema: z.strictObject({ pass: z.boolean(), reasons: z.string() }),
           answerSchema: Type.Object({ pass: Type.Boolean(), reasons: Type.String() }),
         });
@@ -558,8 +558,7 @@ describe("advisors", () => {
     ) =>
       runAdvisor({
         runtime: { ...runtime, base_url: url },
-        system: "Grade it.",
-        prompt: "The change.",
+        prompt: testPrompt("Grade it.", "The change."),
         schema,
         answerSchema: Type.Object({ pass: Type.Boolean() }),
         accept,
@@ -634,8 +633,7 @@ process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", resul
           timeout_s: 30,
           provider: "my-claude",
         },
-        system: "You audit.",
-        prompt: "Audit this.",
+        prompt: testPrompt("You audit.", "Audit this."),
         schema: z.object({ tmp: z.string(), home: z.string(), cwd: z.string() }),
         answerSchema: Type.Object({}),
       });

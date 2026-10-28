@@ -148,6 +148,17 @@ export const USAGE = `usage: thermite <command> [options]
   kit list --control URL --token-file F [--json]
                                       the kits control keeps (owner's or reader's token): each
                                       one's head, commits and kit.json's name and target
+  agents list --control URL --token-file F [--json]
+                                      the agents' roles (owner's token): each
+                                      one's name and what it does
+  agents show ROLE [--run RUN [--prompt N] [--sections]] --control URL --token-file F [--json]
+                                      a role's definition: its model, programs, the function
+                                      that puts its prompt together and its fixed texts. With
+                                      --run, the prompt the run's agent in that role was sent
+                                      (the newest, or prompt N): each section with its source
+                                      and text; --sections lists the sources only. Control has
+                                      at most 8,000 characters of a prompt's own text; the
+                                      whole is on the rig and in the run's export
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name

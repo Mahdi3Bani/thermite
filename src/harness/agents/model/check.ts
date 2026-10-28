@@ -1,7 +1,8 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { buildModel, type ModelConfig } from "../../../agents/model/index.ts";
-import { MODEL_CHECK_PI_SYSTEM, modelCheckPiPrompt } from "../../../agents/roles/index.ts";
+import { messageText, systemText } from "../../../agents/prompt.ts";
+import { renderModelCheck } from "../../../agents/roles/index.ts";
 import { errorText } from "../../../common/errors.ts";
 
 /** What a rig check found: whether it passed, in a sentence, and the details behind it. */
@@ -31,10 +32,11 @@ type Reply = {
 export async function checkModel(cfg: ModelConfig, timeoutMs = 120_000): Promise<RigCheckReport> {
   const { models, model, thinkingLevel } = buildModel(cfg);
   const word = `thermite-${Math.random().toString(36).slice(2, 8)}`;
+  const sent = renderModelCheck({ program: "pi", word });
   let echoed: string | undefined;
   const agent = new Agent({
     initialState: {
-      systemPrompt: MODEL_CHECK_PI_SYSTEM,
+      systemPrompt: systemText(sent),
       model,
       thinkingLevel,
       tools: [
@@ -60,7 +62,7 @@ export async function checkModel(cfg: ModelConfig, timeoutMs = 120_000): Promise
   }, timeoutMs);
   let thrown: string | undefined;
   try {
-    await agent.prompt(modelCheckPiPrompt(word));
+    await agent.prompt(messageText(sent));
   } catch (err) {
     thrown = errorText(err);
   } finally {

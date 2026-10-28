@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { pushedOf, readPushed } from "../../helpers/sse.ts";
 import { stack } from "./stack.ts";
 
 /**
@@ -44,10 +45,14 @@ describe("control dashboard", () => {
     assert.doesNotMatch(html, /<script>/);
     const js = await s.get("/ui/assets/app.js");
     assert.match(js.headers.get("content-type") ?? "", /javascript/);
-    const json = (await (await s.get("/ui/rigs/rig-a/live.json?after=0")).json()) as {
-      entries: unknown[];
-    };
-    assert.equal(json.entries.length, 2);
+    // The page's new lines are pushed to it: from the start here, both lines in one event.
+    const pushed = await readPushed(await s.get("/ui/rigs/rig-a/live/stream?after=0"), (e) =>
+      e.some((x) => x.event === "lines"),
+    );
+    const [first] = pushedOf<{ entries: unknown[] }>(pushed, "lines");
+    assert.equal(first?.entries.length, 2);
+    // The poll it replaced is gone.
+    assert.equal((await s.get("/ui/rigs/rig-a/live.json?after=0")).status, 404);
     // The rig-wide view sends you to each run's own Live to message its agents.
     assert.match(
       await (await s.get("/ui/rigs/rig-a/live?source=judge")).text(),
@@ -252,14 +257,16 @@ describe("control dashboard", () => {
       /<option value="lane-1" data-hint="lane-1[^"]*reads it (at its next step|when it can[^"]*)" selected>/,
     );
     assert.match(html, /<optgroup label="Advisors">/);
-    // The feed for this run only, each line tagged.
-    const json = (await (
-      await s.get("/ui/campaigns/js-sum/runs/js-1/live.json?after=0")
-    ).json()) as {
-      entries: { src: string; html: string }[];
-    };
-    assert.ok(json.entries.length >= 12);
+    // The push for this run only, each line tagged, with no line of the other run.
+    assert.match(html, /data-stream="\/ui\/campaigns\/js-sum\/runs\/js-1\/live\/stream"/);
+    const pushed = await readPushed(
+      await s.get("/ui/campaigns/js-sum/runs/js-1/live/stream?after=0"),
+      (e) => e.some((x) => x.event === "lines"),
+    );
+    const [json] = pushedOf<{ entries: { src: string; html: string }[] }>(pushed, "lines");
+    assert.ok(json && json.entries.length >= 12);
     assert.ok(json.entries.every((e) => e.html.includes("data-who=")));
+    assert.ok(!json.entries.some((e) => e.html.includes("another run's line")));
   });
 
   test("control refuses a message nothing would read, or one with no words, and says why", async () => {

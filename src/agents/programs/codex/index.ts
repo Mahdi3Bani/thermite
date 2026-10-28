@@ -92,6 +92,8 @@ export function codexConfig(
     ...(keptAt ? [`compact_prompt = ${tomlString(codexCompactPrompt(keptAt))}`] : []),
     'web_search = "disabled"',
     "check_for_update_on_startup = false",
+    // No AGENTS.md of the project's (goal 166): the prompt is what the role's definition rendered.
+    "project_doc_max_bytes = 0",
     "",
     "[model_providers.thermite]",
     'name = "Thermite route"',

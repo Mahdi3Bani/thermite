@@ -1,4 +1,12 @@
-import type { Bus, BusMessage, Handled, Published, StreamSettings } from "../../src/common/bus.ts";
+import { errors } from "@nats-io/transport-node";
+import type {
+  Bus,
+  BusMessage,
+  Handled,
+  Published,
+  StreamSettings,
+  StreamState,
+} from "../../src/common/bus.ts";
 
 /** A message the fake bus keeps. */
 export interface Kept {
@@ -24,8 +32,9 @@ function takes(pattern: string, subject: string): boolean {
  * published to a subject one of them takes, once by its id, and removes one by its id. `take`
  * hands a subject's messages to a handler as a work queue's consumer does.
  */
-export class FakeBus implements Pick<Bus, "publish" | "makeStream" | "remove"> {
-  readonly streams = new Map<string, StreamSettings>();
+export class FakeBus implements Pick<Bus, "publish" | "makeStream" | "remove" | "streams"> {
+  /** The streams made, by name. */
+  readonly made = new Map<string, StreamSettings>();
   readonly kept: Kept[] = [];
   /** The ids the bus remembers; forgetIds() stands for its duplicate window passing. */
   private readonly ids = new Set<string>();
@@ -34,9 +43,11 @@ export class FakeBus implements Pick<Bus, "publish" | "makeStream" | "remove"> {
   failing = false;
   /** Set: each publish waits for it before the server answers. */
   hold: Promise<void> | undefined;
+  /** Set: the subjects the publishing user may not publish to, as the server refuses them. */
+  refuse: ((subject: string) => boolean) | undefined;
 
   async makeStream(stream: StreamSettings): Promise<void> {
-    this.streams.set(stream.name, stream);
+    this.made.set(stream.name, stream);
   }
 
   async publish(
@@ -46,7 +57,11 @@ export class FakeBus implements Pick<Bus, "publish" | "makeStream" | "remove"> {
   ): Promise<Published> {
     await this.hold;
     if (this.failing) throw new Error("TimeoutError: no ack from the server");
-    const stream = [...this.streams.values()].find((s) =>
+    if (this.refuse?.(subject)) {
+      const why = `Permissions Violation for Publish to "${subject}"`;
+      throw new Error(why, { cause: new errors.PermissionViolationError(why, "publish", subject) });
+    }
+    const stream = [...this.made.values()].find((s) =>
       (s.subjects ?? []).some((p) => takes(p, subject)),
     );
     if (!stream) throw new Error(`no stream on the bus takes ${subject} yet: control makes it`);
@@ -61,6 +76,29 @@ export class FakeBus implements Pick<Bus, "publish" | "makeStream" | "remove"> {
     if (at < 0) return false;
     this.kept.splice(at, 1);
     return true;
+  }
+
+  /** Each stream made, with the messages it keeps; no consumers. */
+  async streams(names: readonly string[]): Promise<StreamState[]> {
+    return names.flatMap((name) => {
+      const stream = this.made.get(name);
+      if (!stream) return [];
+      const kept = this.kept.filter((m) =>
+        (stream.subjects ?? []).some((p) => takes(p, m.subject)),
+      );
+      return [
+        {
+          name,
+          messages: kept.length,
+          bytes: kept.reduce((n, m) => n + Buffer.byteLength(m.data), 0),
+          subjects: new Set(kept.map((m) => m.subject)).size,
+          first_at: null,
+          last_at: null,
+          consumers: [],
+          consumers_left_out: 0,
+        },
+      ];
+    });
   }
 
   /** The duplicate window passes: a message id published before is new again. */

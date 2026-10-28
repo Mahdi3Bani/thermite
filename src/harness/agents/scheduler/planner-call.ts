@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { OnceKeeping } from "../../../agents/compaction/index.ts";
 import { type McpCaller, mcpAgentTools } from "../../../agents/mcp/index.ts";
 import { type ModelConfig, withAgentsContext } from "../../../agents/model/index.ts";
+import type { Prompt } from "../../../agents/prompt.ts";
 import { type Harness, programForApi } from "../../../core/agents.ts";
 import type { Contract } from "../../../core/contract.ts";
 import type { NoteInput } from "../../../core/journal.ts";
 import type { CallUsage } from "../../../core/usage.ts";
+import { keepPrompt } from "../../prompts.ts";
 import { routeOf } from "../../usage.ts";
 import type { CliHarness } from "../cli/index.ts";
 import { PLANNER } from "../coordinator.ts";
@@ -36,7 +38,7 @@ export function plannerHarness(m: ModelConfig | undefined, own: boolean): Harnes
 /**
  * How the planner is called this round (goals 068, 070, 073, 075): its model, the harness it
  * runs in (`ask` when not Pi), the MCP servers the run's kit gives it, where its model calls are
- * recorded, and the run's past research it may read. The hill climb's and goal campaign's plan
+ * recorded, where its prompts are kept, and the run's past research it may read. The hill climb's and goal campaign's plan
  * and the research plan share it.
  */
 export async function plannerRoute(
@@ -51,6 +53,8 @@ export async function plannerRoute(
   usage: ((u: CallUsage) => void) | undefined;
   past: PlannerPast | undefined;
   pastLine: string | undefined;
+  /** Keeps each try's prompt (goal 166). */
+  sent: (p: Prompt) => void;
 }> {
   // The planner's own model when control gave it one; else the workers'. A campaign's own
   // context settings apply to it too: the lower window, and the campaign's point (goal 070).
@@ -87,7 +91,11 @@ export async function plannerRoute(
   const through = sched.o.ask;
   const ask: Ask | undefined =
     isCliProgram(via) && m && through
-      ? (prompt, sig, o) => through(via, m, prompt, sig, withMcp(o))
+      ? Object.assign(
+          (prompt: string, sig?: AbortSignal, o?: Parameters<Ask>[2]) =>
+            through(via, m, prompt, sig, withMcp(o)),
+          { program: via },
+        )
       : undefined;
   const mcp: PlannerMcp | undefined = mcpServers.length
     ? {
@@ -106,7 +114,9 @@ export async function plannerRoute(
   const past: PlannerPast | undefined = pastLine
     ? { search: (q, o) => knowledge.search(run, q, o), dir: knowledge.dir(run) }
     : undefined;
-  return { m, ask, mcp, usage, past, pastLine };
+  // Each try's prompt, kept whole in the ledger (goal 166).
+  const sent = (p: Prompt) => keepPrompt(sched.o.service.ledger, run, p, { call: `epoch ${n}` });
+  return { m, ask, mcp, usage, past, pastLine, sent };
 }
 
 /** The planner's field notes, recorded as the planner's; a problem is a line in its live view. */

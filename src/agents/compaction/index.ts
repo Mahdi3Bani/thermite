@@ -9,7 +9,8 @@ import { estimateContextTokens, estimateMessageTokens } from "@earendil-works/pi
 import { errorText } from "../../common/errors.ts";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { buildModel, type ModelConfig, type PiMeter } from "../model/index.ts";
-import { COMPACTION_SYSTEM } from "../roles/index.ts";
+import { messageText, systemText } from "../prompt.ts";
+import { renderCompaction } from "../roles/index.ts";
 
 /**
  * Compaction (goal 070), for the harness's agents and the supervisor's advisors: in Pi (this
@@ -539,17 +540,12 @@ export function summaryTranscript(messages: AgentMessage[], budget: number): str
 export function summarizer(cfg: ModelConfig, meter?: PiMeter | undefined) {
   const { models, model, thinkingLevel } = buildModel(cfg);
   return async (transcript: string, signal?: AbortSignal): Promise<string> => {
+    const sent = renderCompaction({ program: "pi", transcript });
     const reply = await models.completeSimple(
       model,
       {
-        systemPrompt: COMPACTION_SYSTEM,
-        messages: [
-          {
-            role: "user",
-            content: `The conversation so far:\n\n${transcript}\n\nWrite the summary now.`,
-            timestamp: Date.now(),
-          },
-        ],
+        systemPrompt: systemText(sent),
+        messages: [{ role: "user", content: messageText(sent), timestamp: Date.now() }],
       },
       {
         // The model's own reply limit, or (none known) none sent (goal 079).

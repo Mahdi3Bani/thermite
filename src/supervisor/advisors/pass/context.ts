@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpCaller } from "../../../agents/mcp/index.ts";
+import { type Prompt, promptRecord } from "../../../agents/prompt.ts";
 import { log } from "../../../common/env.ts";
 import { errorText } from "../../../common/errors.ts";
 import type { AdvisorRole } from "../../../core/agents.ts";
@@ -28,6 +29,7 @@ import {
   researchList,
   TRY_ERROR_MAX,
 } from "../../../core/api/harness/advisors.ts";
+import { type ADVISOR_PROMPT_ROLES, KEEP_PROMPT } from "../../../core/api/harness/prompts.ts";
 import {
   RESEARCH_KINDS,
   type ResearchKind,
@@ -226,6 +228,24 @@ export function adviseContext(cfg: AdviseConfig, state: AdviseState) {
     say(run, "status", `${clip(s.last_error, 400)}`);
   };
   /**
+   * The prompts an advisor's call sent (goal 166), handed to the harness to keep with its run,
+   * whole. A failure is the advisor's error line; the advisor's work stands.
+   */
+  const promptsOut = async (run: string | undefined, call: string, sent: Prompt[] | undefined) => {
+    if (!run) return;
+    for (const p of sent ?? []) {
+      try {
+        const record = promptRecord(p, { call });
+        await harness.call(KEEP_PROMPT, {
+          body: { ...record, run, role: record.role as (typeof ADVISOR_PROMPT_ROLES)[number] },
+        });
+      } catch (err) {
+        fail(`the ${p.role}'s prompt for ${run}`, err, run);
+        return;
+      }
+    }
+  };
+  /**
    * An advisor's model usage in a run (goal 075), handed to the harness with its round: the
    * harness records each call in the run's history. A failure is the advisor's error line, and
    * those calls are not recorded; the advisor's work stands.
@@ -375,6 +395,7 @@ export function adviseContext(cfg: AdviseConfig, state: AdviseState) {
     tryFailed,
     fail,
     usageOut,
+    promptsOut,
     receipts,
     toQueue,
     notesOut,

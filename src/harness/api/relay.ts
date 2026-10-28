@@ -1,8 +1,9 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import {
   COMMANDS,
   EXPORTS_DONE,
   LIVE,
+  LIVE_MESSAGES,
   LIVE_PAGE_DEFAULT,
   SNAPSHOT,
   SNAPSHOT_PAGE_DEFAULT,
@@ -40,14 +41,24 @@ export function reportRoutes(app: Hono, { service, supervisor }: ApiContext): vo
 
 /** The live log. */
 export function liveRoutes(app: Hono, { service, supervisor }: ApiContext): void {
-  // The live log, signed, for the supervisor to relay to control.
-  app.get(LIVE.path, supervisor, (c) => {
+  /** The page a request asks for; undefined unless `after` is a whole number from 0, `limit` from 1. */
+  const pageOf = (c: Context) => {
     const after = Number(c.req.query("after") ?? "0");
     const limit = Math.min(Number(c.req.query("limit") ?? LIVE_PAGE_DEFAULT), LIVE_BATCH_MAX);
-    if (!Number.isInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1) {
-      return c.json({ error: "bad after or limit" }, 400);
-    }
-    return c.json(service.liveBatch(after, limit) as object);
+    const good = Number.isInteger(after) && after >= 0 && Number.isInteger(limit) && limit >= 1;
+    return good ? { after, limit } : undefined;
+  };
+  // The live log, signed, for the supervisor to relay to control.
+  app.get(LIVE.path, supervisor, (c) => {
+    const p = pageOf(c);
+    if (!p) return c.json({ error: "bad after or limit" }, 400);
+    return c.json(service.liveBatch(p.after, p.limit) as object);
+  });
+  // The same, as the message bus's messages, for the supervisor to publish.
+  app.get(LIVE_MESSAGES.path, supervisor, (c) => {
+    const p = pageOf(c);
+    if (!p) return c.json({ error: "bad after or limit" }, 400);
+    return c.json(service.liveMessages(p.after, p.limit) as object);
   });
 }
 

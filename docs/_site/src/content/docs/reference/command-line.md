@@ -178,6 +178,17 @@ usage: thermite <command> [options]
   kit list --control URL --token-file F [--json]
                                       the kits control keeps (owner's or reader's token): each
                                       one's head, commits and kit.json's name and target
+  agents list --control URL --token-file F [--json]
+                                      the agents' roles (owner's token): each
+                                      one's name and what it does
+  agents show ROLE [--run RUN [--prompt N] [--sections]] --control URL --token-file F [--json]
+                                      a role's definition: its model, programs, the function
+                                      that puts its prompt together and its fixed texts. With
+                                      --run, the prompt the run's agent in that role was sent
+                                      (the newest, or prompt N): each section with its source
+                                      and text; --sections lists the sources only. Control has
+                                      at most 8,000 characters of a prompt's own text; the
+                                      whole is on the rig and in the run's export
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -665,6 +676,24 @@ A refusal ends the command with `control refused the kit (<status>): ` and contr
 
 ```sh
 npx thermite kit list --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+### `agents list`
+
+`thermite agents list` lists every agent role Thermite runs (`GET /v1/agents`), with the owner's token: one line for each, `<id>  <name>: <what it does>`. `--json` prints the route's answer. [Agent roles](agent-roles.md) lists the same roles with their texts.
+
+```sh
+npx thermite agents list --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+### `agents show`
+
+`thermite agents show ROLE` shows one role's definition (`GET /v1/agents/<role>`): what it does, its model and agent programs, the function that puts its prompt together for a run, and each of its fixed texts, under a `# <id>: <where it goes>` line.
+
+With `--run RUN`, it shows the newest prompt the run's agent in that role was sent, or the one `--prompt N` names (`GET /v1/runs/<run>/prompts/<id>`): a first line with its number, rig, role, agent program, lane, trial or call, its role's version and its size, then each section under `# <part> · <id> · from <source> · <n> characters`, with its text. A section from the role's definition says so; one control has only part of says `cut: the whole is on the rig and in the run's export`. `--sections` prints those lines alone, without the texts. `--json` prints the route's answer. A run that sent no prompt to that role ends with `<run> has sent no <role> a prompt yet` (exit 2). See [What a run's agents were sent](agent-roles.md#what-a-runs-agents-were-sent).
+
+```sh
+npx thermite agents show worker --run matmul-3 --sections --control https://control.example.com --token-file ~/thermite-owner-token
 ```
 
 ### `mcp`

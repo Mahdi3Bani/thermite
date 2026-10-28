@@ -5,6 +5,7 @@ import { describe, type TestContext, test } from "node:test";
 import { type CommandKind, signEnvelope } from "../../../src/core/commands.ts";
 import { Scheduler } from "../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
+import { briefText } from "../../helpers/brief-text.ts";
 import { startFakeModel } from "../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 
@@ -111,7 +112,7 @@ async function briefOfOneTrial(t: TestContext): Promise<string> {
     backoffBaseMs: 0,
     backoffMaxMs: 0,
     runTrial: async (spec) => {
-      briefs.push(spec.brief);
+      briefs.push(briefText(spec.brief));
       return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
     },
   });

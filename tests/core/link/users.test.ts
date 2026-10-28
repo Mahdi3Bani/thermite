@@ -57,11 +57,12 @@ describe("who may do what on the message bus", () => {
     assert.ok(!key.includes(fp));
   });
 
-  test("a rig may publish its own reports and take its own commands, and nothing else", () => {
+  test("a rig may publish its own reports and live lines and take its own commands, and nothing else", () => {
     assert.deepEqual(rigPermissions("rig-a"), {
       publish: {
         allow: [
           "thermite.rig.rig-a.report",
+          "thermite.rig.rig-a.live.*",
           "$JS.API.CONSUMER.CREATE.COMMANDS.rig-rig-a-commands.thermite.rig.rig-a.cmd",
           "$JS.API.CONSUMER.INFO.COMMANDS.rig-rig-a-commands",
           "$JS.API.CONSUMER.MSG.NEXT.COMMANDS.rig-rig-a-commands",
@@ -72,15 +73,31 @@ describe("who may do what on the message bus", () => {
     });
     // The consumer it may make is the one the supervisor follows its commands with.
     const c = commandConsumerConfig("rig-a");
-    const create = rigPermissions("rig-a").publish.allow[1] ?? "";
+    const create = rigPermissions("rig-a").publish.allow[2] ?? "";
     assert.ok(create.endsWith(`.${c.durable_name}.${c.filter_subject}`));
     assert.equal(rigInboxPrefix("rig-a"), "_INBOX.rig.rig-a");
     // Nothing of one rig's is in another's: no subject of rig-a's is open to rig-b.
     const b = JSON.stringify(rigPermissions("rig-b"));
     assert.ok(!b.includes("rig-a"));
-    assert.ok(!b.includes("*"), "no wildcard but the end of its own subjects");
+    assert.ok(!/\*(?!")/.test(b), "no wildcard but the source of its own live subjects");
     for (const bad of ["rig.a", "rig-a.>", "*", "", "Rig-A"])
       assert.throws(() => rigPermissions(bad), /not a rig's name/, bad);
+  });
+
+  test("a rig may publish the live lines of the runs control gives it, the newest 1000", () => {
+    const allow = (runs: string[]) => rigPermissions("rig-a", runs).publish.allow;
+    assert.deepEqual(allow(["sort-3", "sort-2", "sort-3"]).slice(0, 4), [
+      "thermite.rig.rig-a.report",
+      "thermite.rig.rig-a.live.*",
+      "thermite.run.sort-3.live.*",
+      "thermite.run.sort-2.live.*",
+    ]);
+    // A run named before goal 170 has no subject of its own: its lines go on the rig's.
+    assert.deepEqual(allow(["Old.Run"]), allow([]));
+    const many = Array.from({ length: 1200 }, (_, i) => `run-${i}`);
+    const runs = allow(many).filter((s) => s.startsWith("thermite.run."));
+    assert.equal(runs.length, 1000);
+    assert.equal(runs[0], "thermite.run.run-0.live.*", "the newest first");
   });
 
   test("the users file: control may do everything, each rig its own, and a system user reloads", () => {
@@ -90,7 +107,7 @@ describe("who may do what on the message bus", () => {
       system: keys.system,
       rigs: [
         { rig: "rig-b", key: keys.b },
-        { rig: "rig-a", key: keys.a },
+        { rig: "rig-a", key: keys.a, runs: ["sort-3"] },
       ],
     });
     assert.match(text, /^# The message bus's users, written by Thermite's control/);
@@ -100,7 +117,7 @@ describe("who may do what on the message bus", () => {
     assert.equal(accounts[BUS_ACCOUNT]?.jetstream, "enabled");
     assert.deepEqual(accounts[BUS_ACCOUNT]?.users, [
       { nkey: keys.control },
-      { nkey: keys.a, permissions: rigPermissions("rig-a") },
+      { nkey: keys.a, permissions: rigPermissions("rig-a", ["sort-3"]) },
       { nkey: keys.b, permissions: rigPermissions("rig-b") },
     ]);
     assert.deepEqual(accounts[SYSTEM_ACCOUNT]?.users, [

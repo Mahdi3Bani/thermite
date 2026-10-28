@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { RigView } from "../../../../src/control/views/index.ts";
 import type { HarnessService } from "../../../../src/harness/service/index.ts";
-import { relayLiveOnce } from "../../../../src/supervisor/live.ts";
+import { relayLiveOnce } from "../../../../src/supervisor/live/index.ts";
 import {
   controlStack,
   RIG_TOKEN,

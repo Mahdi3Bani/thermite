@@ -2,6 +2,7 @@ import type { AdvisorRole, Harness } from "../agents.ts";
 import type { Mode } from "../contract.ts";
 import type { GoalCellValues, GoalCheck } from "../goal/index.ts";
 import type { HeldOutCell } from "../held-out.ts";
+import type { AgentPromptBody } from "../prompts.ts";
 import type { RigSettings } from "../rig-settings.ts";
 import type { EventKind } from "./kinds.ts";
 
@@ -400,6 +401,8 @@ export interface EventBodies {
     round?: number | undefined;
   };
   agent_message_unkept: { message: number };
+  /** A prompt a run's agent was sent (goal 166): its sections and sources (core/prompts.ts). */
+  agent_prompt: AgentPromptBody;
 
   // ---------------------------------------------------------------- models and MCP servers
   model_call: {

@@ -1,18 +1,21 @@
 import type { z } from "zod";
-import { ApiError } from "../common/api/call.ts";
-import { controlClient } from "../common/api/control.ts";
-import { harnessClient } from "../common/api/harness.ts";
-import { log } from "../common/env.ts";
-import { LIVE as LIVE_TO_CONTROL } from "../core/api/control/rigs.ts";
-import { LIVE, LIVE_PAGE_DEFAULT } from "../core/api/harness/supervisor.ts";
-import type { AnswerOf } from "../core/api/route.ts";
-import { untoldKinds } from "../core/kb.ts";
-import { LiveLog } from "../core/live.ts";
+import { ApiError } from "../../common/api/call.ts";
+import { controlClient } from "../../common/api/control.ts";
+import { harnessClient } from "../../common/api/harness.ts";
+import { log } from "../../common/env.ts";
+import { LIVE as LIVE_TO_CONTROL } from "../../core/api/control/rigs.ts";
+import { LIVE, LIVE_PAGE_DEFAULT } from "../../core/api/harness/supervisor.ts";
+import type { AnswerOf } from "../../core/api/route.ts";
+import { untoldKinds } from "../../core/kb.ts";
+import { LiveLog } from "../../core/live.ts";
+
+export { type LiveBusConfig, LiveCounts, publishLiveOnce } from "./bus.ts";
 
 /**
  * The live relay: every few seconds, the harness's newest live-log lines (signed by the harness)
  * go to control, with the supervisor's own lines (its advisors; unsigned, and labelled so). The
- * supervisor passes the harness's batch through untouched: it cannot sign for the harness.
+ * supervisor passes the harness's batch through untouched: it cannot sign for the harness. With
+ * the message bus, they go there instead (bus.ts), and control takes them from the bus.
  */
 export interface LiveRelayConfig {
   rig: string;
@@ -34,7 +37,7 @@ export interface LiveRelayState {
 export const supervisorLive = new LiveLog({ max: 1000 });
 
 /** The supervisor's own lines one call carries, within the most control takes (OWN_LINES_MAX). */
-const OWN_LINES_PER_CALL = 200;
+export const OWN_LINES_PER_CALL = 200;
 
 export async function relayLiveOnce(
   cfg: LiveRelayConfig,

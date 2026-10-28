@@ -150,6 +150,28 @@ export const LIVE = {
 } as const satisfies Route;
 
 /**
+ * The live log's lines after `after`, as the message bus's messages (core/link/live.ts's
+ * liveGroups): the lines of each run's source in a batch of their own, each signed as LIVE's batch
+ * is. The supervisor publishes each one to its subject, untouched.
+ */
+export const LIVE_MESSAGES = {
+  method: "GET",
+  path: "/v1/live/messages",
+  what: "live messages",
+  answer: z.looseObject({
+    log_id: z.string(),
+    next: z.number(),
+    messages: z.array(
+      z.looseObject({
+        entries: z
+          .array(z.looseObject({ seq: z.number(), source: z.string(), run: z.string().optional() }))
+          .min(1),
+      }),
+    ),
+  }),
+} as const satisfies Route;
+
+/**
  * Past research for a run's folder, from control's knowledge base: its items, and the folders the
  * run's campaign may read now (one no longer listed is removed).
  */

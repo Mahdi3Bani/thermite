@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
-import type { TSchema } from "@earendil-works/pi-ai";
 import type { z } from "zod";
 import type { Own } from "../../../agents/compaction/index.ts";
 import { CLAUDE_TOKEN_FD } from "../../../agents/programs/index.ts";
@@ -135,10 +134,9 @@ export function runCli<S extends z.ZodType>(
      */
     collect?: ((home: string) => AdvisorCompaction[]) | undefined;
   },
-  system: string,
-  prompt: string,
+  /** Its whole prompt: the role's text, the package and the answer's shape (advisorPromptOf). */
+  stdin: string,
   schema: S,
-  answerSchema?: TSchema | undefined,
 ): Promise<AdvisorResult<z.infer<S>>> {
   // Its own empty home, working directory and temporary folder, and its own process group (killed
   // as a whole). Without TMPDIR, Claude Code would make its folder in /tmp, which the one-container
@@ -256,9 +254,7 @@ export function runCli<S extends z.ZodType>(
     // A leftover grandchild holding the pipes cannot keep the call open: after the command
     // exits, what it printed within two seconds is its answer.
     child.on("exit", () => setTimeout(() => finish(), 2000).unref());
-    // A command-line agent has no answer tool: it is told the answer's shape.
-    child.stdin.end(
-      `${system}\n\n${prompt}\n\nAnswer with exactly one JSON object${answerSchema ? `, of this shape (JSON Schema): ${JSON.stringify(answerSchema)}` : ""}.`,
-    );
+    // A command-line agent has no answer tool: its prompt ends with the answer's shape.
+    child.stdin.end(stdin);
   });
 }

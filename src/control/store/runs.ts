@@ -159,6 +159,24 @@ export class RunRegistry extends StorePart {
       .run(r.run, r.rig, r.campaign, r.ledgerId, r.at);
   }
 
+  /**
+   * Each rig's runs, newest first, `max` at most for each rig: those it created, and those control
+   * assigned it that were not refused. What the rig's user on the message bus may publish the
+   * live lines of.
+   */
+  runsByRig(max: number): Map<string, string[]> {
+    const rows = this.db
+      .prepare(`select run, rig from (${USED}) order by coalesce(created_at, assigned_at) desc`)
+      .all() as { run: string; rig: string }[];
+    const out = new Map<string, string[]>();
+    for (const r of rows) {
+      const runs = out.get(r.rig) ?? [];
+      if (runs.length < max) runs.push(r.run);
+      out.set(r.rig, runs);
+    }
+    return out;
+  }
+
   /** The run names used so far that start with `prefix`. */
   usedNames(prefix = ""): Set<string> {
     const like = `${prefix.replace(/[\\%_]/g, "\\$&")}%`;

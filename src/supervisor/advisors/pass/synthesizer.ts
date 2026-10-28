@@ -19,6 +19,7 @@ export async function writeCards(ctx: AdviseContext): Promise<void> {
     say,
     fail,
     usageOut,
+    promptsOut,
   } = ctx;
   // The synthesizer (goal 117): the rig's first teacher's model, as the final writer's, rewrites
   // the answer card of each question of a running research run whose evidence changed since its
@@ -57,7 +58,9 @@ export async function writeCards(ctx: AdviseContext): Promise<void> {
           keeper: keeperFor(run),
         });
         count(r);
-        await usageOut(run, `cards ${new Date().toISOString()}`, "synthesizer", r.usage);
+        const call = `cards ${new Date().toISOString()}`;
+        await usageOut(run, call, "synthesizer", r.usage);
+        await promptsOut(run, call, r.sent);
         if (!r.output) {
           fail(
             `the answer cards of ${run} (tried again at the next round)`,

@@ -1,5 +1,16 @@
+import type { LaneLimitValues } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import { HYPOTHESES_RULE, MEASURES_NOTHING } from "../../core/research-check.ts";
+import { mcpLine } from "../mcp/index.ts";
+import { type Prompt, prompt, type Section, section } from "../prompt.ts";
+import {
+  NOTE_USAGE,
+  type ResearchFolderPaths,
+  researchCommands,
+  researchFolderNote,
+} from "../tools/index.ts";
+import { fitToWindow, limitsNote } from "./shared.ts";
+import { briefSections, TRIAL_CUT_WHERE, type TrialProgram } from "./worker.ts";
 
 /**
  * The research worker (goal 166): one trial on one research task. It fetches and reads sources,
@@ -27,3 +38,101 @@ is about, from 0: your brief names each question both ways, "Question 1 (index 0
 
 /** A research worker's field notes, told apart from its research notes. */
 export const RESEARCH_WORKER_NOTES = `${notesInstruction("with the note tool")} Field notes are not research notes (add_note), which record what sources say for the report.`;
+
+/** What one research trial's prompt takes: its program, the run's part and the trial's tools. */
+export interface ResearchWorkerInput {
+  program: TrialProgram;
+  /** The run's part, as the harness gathered it (a text is one section): the brief, then the owner's messages. */
+  brief: string | readonly Section[];
+  mcpServers: readonly string[];
+  /** The run's research folder and the lane's working area in it. */
+  folder?: ResearchFolderPaths | undefined;
+  /** In Pi: whether it has the idea tool and the note tool. */
+  idea?: boolean | undefined;
+  note?: boolean | undefined;
+  /** In a program: the lane's limits, and the trial's length when one is set. */
+  limits: LaneLimitValues;
+  minutes?: number | undefined;
+  /** The most characters its first message may take (windowFit); none: the window is unknown. */
+  fit?: number | undefined;
+}
+
+/**
+ * A research trial's prompt (goal 166). In Pi: its instructions, its folder and file tools, the
+ * idea tool and the MCP line as the system text, and the brief and its field notes as the first
+ * message. In OpenCode, one message: the instructions, its research commands, the folder, the
+ * limits, the brief and the trial's length, then the MCP line.
+ */
+export function renderResearchWorker(i: ResearchWorkerInput): Prompt {
+  const brief = briefSections(i.brief);
+  const mcp = section("mcp", "kit", mcpLine(i.mcpServers), "\n\n");
+  if (i.program.id === "pi")
+    return prompt("research-worker", "pi", {
+      system: [
+        section("instructions", "role", RESEARCH_WORKER_SYSTEM),
+        section(
+          "folder",
+          "role",
+          i.folder
+            ? `${researchFolderNote(i.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
+            : "",
+          "\n\n",
+        ),
+        section(
+          "idea",
+          "role",
+          i.idea
+            ? "To propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on."
+            : "",
+          "\n\n",
+        ),
+        mcp,
+      ],
+      // With the note tool, the brief says how to keep field notes, and how they differ from
+      // research notes.
+      message: fitToWindow(
+        [...brief, section("field-notes", "role", i.note ? RESEARCH_WORKER_NOTES : "", "\n\n")],
+        i.fit,
+        TRIAL_CUT_WHERE,
+      ),
+    });
+  const [first, ...rest] = brief;
+  return prompt("research-worker", i.program.id, {
+    message: fitToWindow(
+      [
+        section("instructions", "role", RESEARCH_WORKER_SYSTEM),
+        section("commands", "role", researchCommandsText(), "\n\n"),
+        section(
+          "folder",
+          "role",
+          `${i.folder ? researchFolderNote(i.folder) : ""} Your shell starts in your working area; use grep, rg and your file tools on the folder.`,
+          "\n\n",
+        ),
+        section("limits", "rig", limitsNote(i.limits, i.program.name, i.program.memory), "\n\n"),
+        ...(first ? [{ ...first, sep: "\n\n" }, ...rest] : []),
+        section(
+          "budget",
+          "rig",
+          i.minutes !== undefined ? `This trial lasts ${i.minutes} minutes.` : "",
+          "\n\n",
+        ),
+        mcp,
+      ],
+      i.fit,
+      TRIAL_CUT_WHERE,
+    ),
+  });
+}
+
+/** A research worker's commands in a program, which runs Thermite's tools with its shell. */
+function researchCommandsText(): string {
+  return `Your research tools are commands you run with your shell tool:
+
+${researchCommands()}
+
+Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command.
+
+To propose another research task for the run's queue (the planner or the campaign's owner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--question N] (N: the index of the question it is about, from 0). A task that only a measurement could settle is refused: record it as a next experiment instead.
+
+${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: run, experiment, attempt, source, claim, finding, round, trial or message; no --about: the run)`)} Field notes are not research notes (add_note), which record what sources say for the report.`;
+}

@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
+import { advisorPackage } from "../../src/agents/roles/index.ts";
 import {
   BRIEF_FILE,
   BRIEF_WHOLE_CHARS,
@@ -17,7 +18,7 @@ import { parseContract } from "../../src/core/contract.ts";
 import { questionDetails, Scheduler } from "../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { Research } from "../../src/harness/research/research/index.ts";
-import { advisorPrompt } from "../../src/supervisor/advisors/index.ts";
+import { briefText } from "../helpers/brief-text.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
@@ -74,7 +75,7 @@ async function hillClimb(t: TestContext, brief: Record<string, unknown> = BRIEF)
     backoffBaseMs: 0,
     backoffMaxMs: 0,
     runTrial: async (spec) => {
-      briefs.push(spec.brief);
+      briefs.push(briefText(spec.brief));
       return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
     },
   });
@@ -272,7 +273,7 @@ describe("a campaign's brief (goal 078)", () => {
         tokensOut: 0,
       }),
       runResearchTrial: async (spec) => {
-        briefs.push(spec.brief);
+        briefs.push(briefText(spec.brief));
         return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       },
     });
@@ -352,7 +353,7 @@ describe("a campaign's brief (goal 078)", () => {
     const pkg = (await env.service.auditPackages())[0] as unknown as Record<string, unknown>;
     assert.deepEqual(pkg.campaign_brief, briefData(BRIEF));
     // In the auditor's prompt, before the diff: a package cut to the window loses the diff first.
-    const prompt = advisorPrompt("Audit package (untrusted data):", pkg, 200_000);
+    const prompt = advisorPackage("Audit package (untrusted data):", pkg, 200_000);
     assert.ok(prompt.indexOf('"campaign_brief"') < prompt.indexOf('"diff"'));
     assert.ok(prompt.includes(JSON.stringify(NOTES)), "whole");
   });

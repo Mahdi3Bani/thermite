@@ -28,6 +28,7 @@ import { LedgerMeasurements } from "./measurements.ts";
 import { LedgerMessages } from "./messages.ts";
 import { migrateLedger } from "./migrate.ts";
 import { LedgerError, type Row } from "./part.ts";
+import { LedgerPrompts } from "./prompts.ts";
 import { LedgerPropagations } from "./propagations.ts";
 import { LedgerReports } from "./reports.ts";
 import { LedgerReviews } from "./reviews.ts";
@@ -53,6 +54,7 @@ export type { JournalNoteRow } from "./journal.ts";
 export type { LaneFileChange } from "./lane-files.ts";
 export type { MessageRow } from "./messages.ts";
 export { LedgerError } from "./part.ts";
+export type { PromptRow } from "./prompts.ts";
 export type { AttemptInput, BriefingItem, ExperimentRow, JobRow, RunRow } from "./rows.ts";
 export type { SourceRow } from "./sources.ts";
 export type { EpochSource, FamilyStatus } from "./trials.ts";
@@ -91,6 +93,8 @@ export class Ledger {
   readonly conclusions: LedgerConclusions;
   readonly journal: LedgerJournal;
   readonly propagations: LedgerPropagations;
+  /** The whole text of every prompt a run's agents were sent (goal 166). */
+  readonly prompts: LedgerPrompts;
   private readonly clock: () => Date;
 
   private constructor(db: DatabaseSync, clock: () => Date) {
@@ -125,6 +129,7 @@ export class Ledger {
     this.conclusions = new LedgerConclusions(this, db, clock);
     this.journal = new LedgerJournal(this, db, clock);
     this.propagations = new LedgerPropagations(this, db, clock);
+    this.prompts = new LedgerPrompts(this, db, clock);
   }
 
   static open(path: string, clock: () => Date = () => new Date()): Ledger {

@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { copiedFromRecords, untriedOf } from "../campaigns/index.ts";
 import { cursorOf } from "../store/index.ts";
 import { findRun, rigView } from "../views/index.ts";
+import { agentRoutes } from "./agents.ts";
 import { type ApiContext, clampLimit } from "./context.ts";
 import { runRoutes } from "./runs.ts";
 
@@ -75,4 +76,6 @@ export function recordRoutes(app: Hono, api: ApiContext): void {
     find: (run) => findRun(store, run, viewOpts),
     untried: (r, campaign) => copiedFromRecords(store, campaign, untriedOf(r).slice(0, 500)),
   });
+  // The agents' roles, and the prompts a run's agents were sent (src/control/api/agents.ts).
+  agentRoutes(app, admin, { store, find: (run) => findRun(store, run, viewOpts) });
 }

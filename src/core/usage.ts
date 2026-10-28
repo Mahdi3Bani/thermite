@@ -12,8 +12,9 @@ import { currentAgent } from "./names.ts";
 
 /**
  * The agents a record names: `merged_by` is the teachers' merged by model, `review_panel` the
- * review panel (goal 074's names) and `synthesizer` the writer of a research run's answer cards
- * (goal 117), on the first teacher's model. Records from before v0.1.1 named the first two
+ * review panel (goal 074's names), `synthesizer` the writer of a research run's answer cards
+ * (goal 117) and `final_writer` the writer of its paper (goal 112), each recorded under its own
+ * name (goal 166), on the first teacher's model. Records from before v0.1.1 named the first two
  * `combiner` and `panel`; core/names.ts reads them under these names.
  */
 export const USAGE_AGENTS = [
@@ -24,6 +25,7 @@ export const USAGE_AGENTS = [
   "auditor",
   "review_panel",
   "synthesizer",
+  "final_writer",
 ] as const;
 export const UsageAgent = z.enum(USAGE_AGENTS);
 export type UsageAgent = z.infer<typeof UsageAgent>;
@@ -35,6 +37,7 @@ export const ADVISOR_AGENTS = [
   "auditor",
   "review_panel",
   "synthesizer",
+  "final_writer",
 ] as const;
 export const AdvisorAgent = z.enum(ADVISOR_AGENTS);
 export type AdvisorAgent = z.infer<typeof AdvisorAgent>;
@@ -48,6 +51,7 @@ export const AGENT_WORDS: Record<UsageAgent, string> = {
   auditor: "Auditor",
   review_panel: "Review panel",
   synthesizer: "Synthesizer",
+  final_writer: "Final writer",
 };
 
 /** The programs an agent's calls run in. */

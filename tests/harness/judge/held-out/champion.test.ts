@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { type Prompt, promptText } from "../../../../src/agents/prompt.ts";
+import { type Section, sectionsText } from "../../../../src/agents/prompt.ts";
 import { brief as workerBrief } from "../../../../src/harness/agents/scheduler/briefs.ts";
 import type { SchedulerContext } from "../../../../src/harness/agents/scheduler/context.ts";
 import {
@@ -108,7 +108,8 @@ describe("the champion's held-out check (goal 086)", () => {
     const inside = {
       waitingForConfirmation: (run: string) => waitingForConfirmation(sched, run),
       goalReport: (run: string, seq: number) => agentsGoalReport(env.ledger, run, seq),
-      brief: (...args: unknown[]) => (workerBrief as (...a: unknown[]) => Prompt)(sched, ...args),
+      brief: (...args: unknown[]) =>
+        (workerBrief as (...a: unknown[]) => Section[])(sched, ...args),
     };
     assert.equal(inside.waitingForConfirmation("js-1"), true);
     await env.drain();
@@ -180,7 +181,7 @@ describe("the champion's held-out check (goal 086)", () => {
     // check's words. The attempt's own held-out record passed, and still says so.
     const goalReport = JSON.stringify(inside.goalReport("js-1", 2));
     assert.match(goalReport, /"not_confirmed":"a held-out check failed the kit's check"/);
-    const brief = promptText(
+    const brief = sectionsText(
       inside.brief(
         "js-1",
         env.service.contractFor("js-1"),

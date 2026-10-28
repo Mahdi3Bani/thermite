@@ -1,5 +1,6 @@
 import type { CompactionReport } from "../../../agents/compaction/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
+import type { Prompt, Section } from "../../../agents/prompt.ts";
 import type { NoteRequest } from "../../../agents/tools/index.ts";
 import type { McpCallResult } from "../../../common/mcp-client.ts";
 import type { LaneLimitValues } from "../../../core/contract.ts";
@@ -29,8 +30,16 @@ export interface TrialSpec {
   parentCommit: string;
   /** The contract's editable paths (globs): only changes there are submitted. */
   editablePaths: string[];
-  /** The assignment and context, as the planner and the ledger give them. */
-  brief: string;
+  /**
+   * The run's part of its prompt, as the scheduler gathered it from the ledger: the assignment
+   * and its context, then the owner's messages, each section with its source (a text is one).
+   */
+  brief: string | readonly Section[];
+  /**
+   * Its whole prompt, as the harness rendered it from the worker's definition and recorded it
+   * (goal 166); without it, the worker renders it from the brief.
+   */
+  sent?: Prompt | undefined;
   /** The trial's length: none unless the campaign or the rig sets one (goal 079). */
   wallMs?: number | undefined;
   /** A cap on the trial's turns: none unless configured (the owner's direction, 2026-10-15). */

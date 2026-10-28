@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { promptText } from "../../../agents/prompt.ts";
 import { errorText } from "../../../common/errors.ts";
 import { log } from "../../../common/log.ts";
 import type { Contract } from "../../../core/contract.ts";
@@ -158,25 +157,23 @@ export function startTrial(
           workspaceRoot: ws.dir,
           parentCommit: parent,
           editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
-          brief: promptText(
-            withOwnerSections(
+          brief: withOwnerSections(
+            sched,
+            id,
+            run,
+            a.lane,
+            brief(
               sched,
-              id,
               run,
-              a.lane,
-              brief(
-                sched,
-                run,
-                contract,
-                epoch,
-                a,
-                got.x,
-                k,
-                perEpoch,
-                parent === champion.commit_sha
-                  ? `the champion (seq ${champion.seq})`
-                  : `your lane's best attempt ${best}`,
-              ),
+              contract,
+              epoch,
+              a,
+              got.x,
+              k,
+              perEpoch,
+              parent === champion.commit_sha
+                ? `the champion (seq ${champion.seq})`
+                : `your lane's best attempt ${best}`,
             ),
           ),
           wallMs: limits.trialMinutes ? limits.trialMinutes * 60_000 : sched.o.trialWallMs,

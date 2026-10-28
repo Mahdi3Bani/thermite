@@ -211,6 +211,8 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       // since the last export (goal 065), one file per export beside its events.
       const per = /^(journal|research-notes|briefing|knowledge)\.jsonl$/.exec(rel);
       if (per) files[`${per[1]}/${name}.jsonl`] = join(dir, rel);
+      // The prompts the runs' agents were sent since then (goal 166), compressed.
+      if (rel === "prompts.jsonl.gz") files[`prompts/${name}.jsonl.gz`] = join(dir, rel);
       // Attempts, and published champions (what other rigs fetch to judge them themselves).
       if (
         rel.startsWith("attempts/") ||

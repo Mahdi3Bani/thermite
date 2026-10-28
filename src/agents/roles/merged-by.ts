@@ -1,5 +1,13 @@
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
-import { ADVISOR_NOTES, BRIEF_GUIDE } from "./shared.ts";
+import { type Prompt, section } from "../prompt.ts";
+import {
+  ADVISOR_NOTES,
+  type AdvisorFrame,
+  advisorPackage,
+  advisorPromptOf,
+  BRIEF_GUIDE,
+} from "./shared.ts";
+import { briefHead, type TeacherInput } from "./teacher.ts";
 
 /**
  * The teachers' merged by model (goal 166): with two teachers, it merges their advice into one
@@ -45,3 +53,21 @@ each with its why. The teachers keep their own field notes; write yours only for
 taught you. ${BRIEF_GUIDE}
 
 ${ADVISOR_NOTES}`;
+
+/**
+ * The merged by model's prompt (goal 166): its text, the teachers' brief cut to what its window
+ * leaves beside their reviews, then the reviews whole.
+ */
+export function renderMergedBy(i: TeacherInput & { reviews: unknown }, f: AdvisorFrame): Prompt {
+  const reviews = JSON.stringify(i.reviews);
+  const fit = i.fit === undefined ? undefined : Math.max(0, i.fit - reviews.length);
+  return advisorPromptOf(
+    i.research ? "research-merged-by" : "merged-by",
+    [section("system", "role", i.research ? RESEARCH_MERGED_BY_SYSTEM : MERGED_BY_SYSTEM)],
+    [
+      section("brief", "package", advisorPackage(briefHead(i), i.brief, 120_000, fit)),
+      section("reviews", "package", `Reviews:\n${reviews}`, "\n\n"),
+    ],
+    f,
+  );
+}

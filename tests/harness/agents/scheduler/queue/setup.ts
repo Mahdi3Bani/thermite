@@ -11,6 +11,7 @@ import { Scheduler } from "../../../../../src/harness/agents/scheduler/index.ts"
 import type { TrialResult, TrialSpec } from "../../../../../src/harness/agents/worker/index.ts";
 import { LocalRunner } from "../../../../../src/harness/broker/runner.ts";
 import type { LedgerEvent } from "../../../../../src/harness/ledger/rows.ts";
+import { briefText } from "../../../../helpers/brief-text.ts";
 import { startFakeModel } from "../../../../helpers/fake-model.ts";
 import { makeJudgeEnv } from "../../../../helpers/judge-env.ts";
 
@@ -78,7 +79,7 @@ export async function setup(
     runTrial:
       o.trial ??
       (async (spec) => {
-        briefs[spec.lane] = [...(briefs[spec.lane] ?? []), spec.brief];
+        briefs[spec.lane] = [...(briefs[spec.lane] ?? []), briefText(spec.brief)];
         return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       }),
   });

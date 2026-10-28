@@ -32,36 +32,10 @@ export async function planEpoch(
   contract: Contract,
   n: number,
 ): Promise<void> {
-  const laneCount = laneCountOf(sched, run, contract);
-  // The owner's messages to the planner and to everyone working, not read yet.
-  const owner = sched.o.service.messages.waitingForPlanner(run);
+  const input = plannerInput(sched, run, contract, n);
+  const { laneCount } = input;
+  const owner = input.ownerMessages ?? [];
   const lanes = lanesOf(laneCount);
-  const champion = sched.ledger.champions.current(run);
-  const input: PlannerInput = {
-    run,
-    epoch: n,
-    laneCount,
-    objective: objectiveOf(contract),
-    editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
-    champion: { seq: champion.seq, gain: championGain(sched.ledger, run) },
-    families: sched.registry.families(run),
-    evidence: sched.registry.evidence(run, 30),
-    queue: sched.o.service.queue.brief(run),
-    laneState: sched.coordinator.laneState(run, lanes),
-    directives: directivesOf(sched, run),
-    directions: sched.o.service.queue.directions(run),
-    laneBests: Object.fromEntries(lanes.map((l) => [l, sched.registry.laneBest(run, l)])),
-    // The campaign's brief from its author, whole (goal 078).
-    campaignBrief: briefData(contract),
-    ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
-    goalReport: contract.mode === "goal" ? goalReport(sched.ledger, run, champion.seq) : undefined,
-    // The run's newest field notes, the owner's picks from past research, and where the run's
-    // past research is: all data for the planner to weigh.
-    notes: notesData(sched.o.service.journal.newest(run, 20)),
-    briefing: sched.ledger.runs.briefing(run),
-    // The queue's target (goal 081): the planner tops the queue up to it with distinct ideas.
-    queueTarget: queueTarget(contract, laneCount),
-  };
   const live = sched.o.service.live;
   live.append({
     source: "planner",
@@ -98,6 +72,7 @@ export async function planEpoch(
         r.mcp,
         plannerCompaction(sched, run),
         r.usage,
+        r.sent,
       );
   } finally {
     sched.planning = undefined;
@@ -297,4 +272,43 @@ export async function planEpoch(
         : j,
     ),
   );
+}
+
+/** A round's planner input: what the planner is told of the run, read from its record only. */
+export function plannerInput(
+  sched: SchedulerContext,
+  run: string,
+  contract: Contract,
+  n: number,
+): PlannerInput {
+  const laneCount = laneCountOf(sched, run, contract);
+  // The owner's messages to the planner and to everyone working, not read yet.
+  const owner = sched.o.service.messages.waitingForPlanner(run);
+  const lanes = lanesOf(laneCount);
+  const champion = sched.ledger.champions.current(run);
+  return {
+    run,
+    epoch: n,
+    laneCount,
+    objective: objectiveOf(contract),
+    editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
+    champion: { seq: champion.seq, gain: championGain(sched.ledger, run) },
+    families: sched.registry.families(run),
+    evidence: sched.registry.evidence(run, 30),
+    queue: sched.o.service.queue.brief(run),
+    laneState: sched.coordinator.laneState(run, lanes),
+    directives: directivesOf(sched, run),
+    directions: sched.o.service.queue.directions(run),
+    laneBests: Object.fromEntries(lanes.map((l) => [l, sched.registry.laneBest(run, l)])),
+    // The campaign's brief from its author, whole (goal 078).
+    campaignBrief: briefData(contract),
+    ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
+    goalReport: contract.mode === "goal" ? goalReport(sched.ledger, run, champion.seq) : undefined,
+    // The run's newest field notes, the owner's picks from past research, and where the run's
+    // past research is: all data for the planner to weigh.
+    notes: notesData(sched.o.service.journal.newest(run, 20)),
+    briefing: sched.ledger.runs.briefing(run),
+    // The queue's target (goal 081): the planner tops the queue up to it with distinct ideas.
+    queueTarget: queueTarget(contract, laneCount),
+  };
 }

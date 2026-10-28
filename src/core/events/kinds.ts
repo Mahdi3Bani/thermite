@@ -8,6 +8,7 @@ export const EVENT_KINDS = [
   "agent_message",
   "agent_message_read",
   "agent_message_unkept",
+  "agent_prompt",
   "agents_resumed",
   "agents_stopped",
   "agents_wait_for_limit",

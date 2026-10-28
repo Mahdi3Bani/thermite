@@ -75,6 +75,10 @@ describe("the harness's API has one contract (core/api/harness/)", () => {
       supervisor.SNAPSHOT.answer.safeParse(await get("/v1/snapshot?cursor=0&limit=500")).success,
     );
     assert.ok(supervisor.LIVE.answer.safeParse(await get("/v1/live?after=0&limit=500")).success);
+    env.service.live.append({ source: "judge", kind: "log", text: "idle" });
+    const messages = await get("/v1/live/messages?after=0&limit=500");
+    assert.ok(supervisor.LIVE_MESSAGES.answer.safeParse(messages).success);
+    assert.equal((messages as { messages: unknown[] }).messages.length, 1);
     assert.ok(supervisor.SETTINGS.answer.safeParse(await get("/v1/settings")).success);
     assert.ok(supervisor.MCP_SERVERS_GET.answer.safeParse(await get("/v1/mcp-servers")).success);
     assert.ok(advisors.RUNS.answer.safeParse(await get("/v1/runs")).success);

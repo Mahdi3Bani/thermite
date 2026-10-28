@@ -69,6 +69,7 @@ export async function teachRuns(ctx: AdviseContext): Promise<void> {
     say,
     fail,
     usageOut,
+    promptsOut,
     receipts,
     toQueue,
     notesOut,
@@ -196,6 +197,7 @@ export async function teachRuns(ctx: AdviseContext): Promise<void> {
         s.teacher_runs++;
         count({ tokensIn: run.tokens.in, tokensOut: run.tokens.out, usd: run.usd });
         for (const u of run.usage) await usageOut(inst.id, round, u.agent, u);
+        await promptsOut(inst.id, round, run.sent);
         for (const r of run.reviews) {
           const recs = r.review?.recommendations ?? [];
           say(

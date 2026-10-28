@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "../../agents/roles/index.ts";
+import { type LeftOut, renderResearchReviewer, renderReviewer } from "../../agents/roles/index.ts";
 import { JOURNAL_FIELD } from "../../agents/tools/index.ts";
 import { REASONS_MAX } from "../../core/api/harness/advisors.ts";
 import {
@@ -12,7 +12,6 @@ import { LenientNotes } from "../../core/journal.ts";
 import type { AdvisorKeeper, AdvisorMcp, AdvisorResult, AdvisorUsage } from "./call.ts";
 import { type AdvisorRuntime, packageFit } from "./config.ts";
 import { OwnerAnswers, OwnerAnswersSchema } from "./owner-answers.ts";
-import { advisorPrompt, orderedPrompt } from "./prompt.ts";
 import { runAdvisor } from "./run.ts";
 import type { AdvisorResearch, PastSearch } from "./tools/index.ts";
 
@@ -174,34 +173,6 @@ export type ReviewOutput = z.infer<typeof PanelAnswer> & {
 /** A research run's package (goal 112), as the harness marks it. */
 type ResearchAnswer = z.infer<typeof ResearchPanelAnswer>;
 
-/**
- * A research review's prompt. Every reviewer must answer every item to decide, so the package is
- * never cut to a fixed size: it may take what the reviewer's window allows (200,000 characters at
- * least), and what the reviewers must answer comes first (the criteria, which items to decide, the
- * questions, then the hypotheses, those to decide first), with past research last, which the
- * reviewers can read with their tools. A cut is said.
- */
-export function researchPrompt(label: string, pkg: unknown, fit: number | undefined): string {
-  return orderedPrompt(
-    label,
-    pkg,
-    fit,
-    [
-      "kind",
-      "title",
-      "topic",
-      "criteria",
-      "decide",
-      "corpus",
-      "shortened",
-      "campaign_brief",
-      "questions",
-      "hypotheses",
-    ],
-    "The items to decide come first; read what was cut from the end with the tools.",
-  );
-}
-
 /** A research package's items to decide; a package from before goal 117 has no decide: all of them. */
 type ItemsPackage = {
   decide?: { questions?: number[]; hypotheses?: string[] };
@@ -217,7 +188,7 @@ const toDecide = (pkg: ItemsPackage) => ({
 export function leftOut(
   pkg: ItemsPackage,
   answer: Pick<ResearchAnswer, "questions" | "hypotheses">,
-): { questions: number[]; hypotheses: string[] } {
+): LeftOut {
   const asked = new Set(answer.questions.map((q) => q.index));
   const judged = new Set(answer.hypotheses.map((h) => h.id));
   const items = toDecide(pkg);
@@ -225,19 +196,6 @@ export function leftOut(
     questions: items.questions.filter((i) => !asked.has(i)),
     hypotheses: items.hypotheses.filter((id) => !judged.has(id)),
   };
-}
-
-/** What a reviewer is told when it is asked again for what its answer left out. */
-function leftOutWords(left: { questions: number[]; hypotheses: string[] }): string {
-  const parts = [
-    ...(left.questions.length ? [`questions ${left.questions.join(", ")}`] : []),
-    ...(left.hypotheses.length
-      ? [
-          `a verdict on ${left.hypotheses.length === 1 ? "hypothesis" : "hypotheses"} ${left.hypotheses.join(", ")}`,
-        ]
-      : []),
-  ];
-  return `Your answer to this review left out ${parts.join(" and ")}, so your verdict on them cannot count. Answer only what you left out: in questions, one item for each of those questions, with the verdict answered, insufficient or open; in hypotheses, one verdict for each hypothesis in the package below, with the word supported, refuted or undecided. The package's decide lists only what you left out, and its hypotheses are only those. Keep pass and reasons as you gave them, or change them if what you answer now changes them.`;
 }
 
 /** An answer with what a second answer gave for the items the first left out. */
@@ -280,20 +238,18 @@ export async function reviewOne(input: {
       ...(input.mcp ? { mcp: input.mcp } : {}),
       ...(input.research ? { research: input.research } : {}),
     };
-    const ask = (prompt: string) =>
+    const fit = packageFit(input.runtime);
+    const ask = (o: { pkg: unknown; leftOut?: LeftOut | undefined }) =>
       runAdvisor({
         runtime: input.runtime,
-        system: RESEARCH_REVIEWER_SYSTEM,
-        prompt,
+        prompt: (f) => renderResearchReviewer({ ...o, fit }, f),
         schema: ResearchPanelAnswer,
         answerSchema: ResearchPanelAnswerSchema,
         keeper: input.keeper,
         ...(Object.keys(tools).length ? { tools } : {}),
       });
     const pkg = input.pkg as ItemsPackage;
-    const fit = packageFit(input.runtime);
-    const label = "Research review package (untrusted data):";
-    let r = await ask(researchPrompt(label, input.pkg, fit));
+    let r = await ask({ pkg: input.pkg });
     // A question or hypothesis to decide that an answer left out counts as no answer: the
     // reviewer is asked once more, for what it left out only, with the package's other
     // hypotheses taken out, and what it gives is added to its answer.
@@ -301,17 +257,14 @@ export async function reviewOne(input: {
     const left = out ? leftOut(pkg, out) : undefined;
     if (out && left && (left.questions.length || left.hypotheses.length)) {
       const only = new Set(left.hypotheses);
-      const again = await ask(
-        `${leftOutWords(left)}\n\n${researchPrompt(
-          label,
-          {
-            ...pkg,
-            decide: left,
-            hypotheses: (pkg.hypotheses ?? []).filter((h) => only.has(h.id)),
-          },
-          fit,
-        )}`,
-      );
+      const again = await ask({
+        pkg: {
+          ...pkg,
+          decide: left,
+          hypotheses: (pkg.hypotheses ?? []).filter((h) => only.has(h.id)),
+        },
+        leftOut: left,
+      });
       r = {
         ...r,
         output: again.output ? fillIn(out, again.output, left) : out,
@@ -321,6 +274,7 @@ export async function reviewOne(input: {
         ...(r.compactions || again.compactions
           ? { compactions: [...(r.compactions ?? []), ...(again.compactions ?? [])] }
           : {}),
+        ...(r.sent || again.sent ? { sent: [...(r.sent ?? []), ...(again.sent ?? [])] } : {}),
         ...(r.usage || again.usage
           ? {
               usage: {
@@ -347,13 +301,7 @@ export async function reviewOne(input: {
   }
   return runAdvisor({
     runtime: input.runtime,
-    system: REVIEWER_SYSTEM,
-    prompt: advisorPrompt(
-      "Review package (untrusted data):",
-      input.pkg,
-      200_000,
-      packageFit(input.runtime),
-    ),
+    prompt: (f) => renderReviewer({ pkg: input.pkg, fit: packageFit(input.runtime) }, f),
     schema: PanelAnswer,
     answerSchema: PanelAnswerSchema,
     keeper: input.keeper,

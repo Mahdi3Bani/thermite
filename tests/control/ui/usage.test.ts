@@ -288,7 +288,7 @@ describe("model use on the screens (goal 075)", () => {
     // The Stats tab, last, after Planner.
     assert.match(
       html,
-      /Planner<\/a><a class="" href="\/ui\/campaigns\/matmul\/runs\/r-1\/stats">Stats<\/a><\/nav>/,
+      /Planner<\/a><a class="" href="\/ui\/campaigns\/matmul\/runs\/r-1\/prompts">Prompts<\/a><a class="" href="\/ui\/campaigns\/matmul\/runs\/r-1\/stats">Stats<\/a><\/nav>/,
     );
     const stats = await s.page("/ui/campaigns/matmul/runs/r-1/stats");
     assert.match(stats, /<a class="on" href="[^"]*\/stats">Stats<\/a>/);

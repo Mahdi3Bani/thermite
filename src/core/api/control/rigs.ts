@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LIVE_FIGURE_SUBJECTS } from "../../link/live.ts";
 import { SignedReport } from "../../link/report.ts";
 import { LiveBatchWire } from "../../live.ts";
 import { McpConnection, McpUnavailable } from "../../mcp.ts";
@@ -116,6 +117,20 @@ const Bytes = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const Short = z.string().max(FIGURE_TEXT_MAX);
 const ExportNames = z.array(z.string().regex(/^[0-9A-Za-z-]{1,80}$/)).max(FIGURE_EXPORTS_MAX);
 
+/** Lines published to the bus and dropped there. */
+const LiveLines = z.object({ published: Count, dropped: Count });
+
+/**
+ * The live lines a supervisor on the message bus published there and dropped, since it started
+ * (goal 168): in all, and by subject for the LIVE_FIGURE_SUBJECTS it used last.
+ */
+export const LiveFigures = LiveLines.extend({
+  subjects: z
+    .record(z.string().max(200), LiveLines)
+    .refine((r) => Object.keys(r).length <= LIVE_FIGURE_SUBJECTS, "too many subjects"),
+});
+export type LiveFigures = z.infer<typeof LiveFigures>;
+
 /**
  * What a supervisor may say about itself. A field this control does not know, at any level, is
  * dropped, never stored or shown: a newer supervisor that reports more still has the rest of its
@@ -197,6 +212,8 @@ export const SupervisorFigures = z.object({
     .optional(),
   /** The public part of the rig's key on the message bus (goal 168), checked by control. */
   bus_key: z.string().max(100).optional(),
+  /** Its live lines on the message bus. A malformed one is dropped, not the figures. */
+  live: LiveFigures.optional().catch(undefined),
 });
 
 /**

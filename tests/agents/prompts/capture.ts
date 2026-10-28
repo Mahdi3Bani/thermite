@@ -4,7 +4,9 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROLES } from "../../../src/agents/roles/index.ts";
+import { partText } from "../../../src/core/prompts.ts";
 import { createHarnessApi } from "../../../src/harness/api/index.ts";
+import type { Ledger } from "../../../src/harness/ledger/index.ts";
 import { AdvisorsConfig } from "../../../src/supervisor/advisors/index.ts";
 import { adviseOnce, emptyAdviseState } from "../../../src/supervisor/advisors/pass/index.ts";
 import { type Script, startFakeModel } from "../../helpers/fake-model.ts";
@@ -188,4 +190,44 @@ export async function adviseRound(
   );
   await fake.close();
   return keys;
+}
+
+/** Every prompt a ledger keeps, whole, of one role. */
+function keptOf(ledger: Ledger, role: string) {
+  return ledger.runs
+    .list()
+    .flatMap((r) => ledger.prompts.list(r.id))
+    .filter((p) => p.role === role)
+    .map((p) => ledger.prompts.get(p.id))
+    .filter((p) => p !== undefined);
+}
+
+/**
+ * Holds that what a role's model was sent is, byte for byte, a prompt its role's definition
+ * rendered and the harness kept (goal 166): text built outside a definition would differ from the
+ * record, which is made only from what the role's render function gave.
+ */
+export function kept(ledger: Ledger, role: string, sent: Sent | undefined): void {
+  assert.ok(sent, `${role}: no request was sent`);
+  const records = keptOf(ledger, role);
+  assert.ok(records.length, `${role}: no prompt was kept`);
+  assert.ok(
+    records.some(
+      (r) =>
+        partText(r.sections, "system") === sent.system &&
+        partText(r.sections, "message") === sent.first,
+    ),
+    `${role}: what was sent is not the prompt kept`,
+  );
+}
+
+/** The same for a program, which gets its whole prompt on its standard input. */
+export function keptInput(ledger: Ledger, role: string, input: string): void {
+  const records = keptOf(ledger, role);
+  assert.ok(
+    records.some(
+      (r) => !partText(r.sections, "system") && partText(r.sections, "message") === input,
+    ),
+    `${role}: what the program was given is not the prompt kept`,
+  );
 }

@@ -202,6 +202,17 @@ describe("the final writer writes the research paper (goal 112)", () => {
       counts: { error: 0, warning: 0, info: 0 },
     });
     assert.equal((accepted.experiments as unknown[]).length, 1);
+    // Its model calls are the final writer's, under its own name (goal 166), not the teachers'.
+    const calls = s.events("model_call");
+    assert.ok(calls.length >= 1);
+    assert.ok(
+      calls.every((c) => c.agent === "final_writer"),
+      JSON.stringify(calls[0]),
+    );
+    // And its prompt is kept with the run, as its role rendered it.
+    const kept = s.events("agent_prompt").filter((p) => p.role === "final-writer");
+    assert.equal(kept.length, 1);
+    assert.match(String(kept[0]?.call), /^final paper /);
   });
 
   test("in Pi, a paper the checks refuse goes back to the writer within its call, and it revises", async (t) => {

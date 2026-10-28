@@ -1,9 +1,10 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { Compactor, summarizer } from "../../../agents/compaction/index.ts";
-import { mcpAgentTools, mcpLine } from "../../../agents/mcp/index.ts";
+import { mcpAgentTools } from "../../../agents/mcp/index.ts";
 import { buildModel, type ModelConfig, PiMeter } from "../../../agents/model/index.ts";
-import { RESEARCH_WORKER_NOTES, RESEARCH_WORKER_SYSTEM } from "../../../agents/roles/index.ts";
+import { messageText, type Prompt, type Section, systemText } from "../../../agents/prompt.ts";
+import { renderResearchWorker, windowFit } from "../../../agents/roles/index.ts";
 import {
   NOTE_TOOL,
   NoteLimit,
@@ -11,11 +12,10 @@ import {
   READ_MAX,
   RESEARCH_TOOLS,
   type ResearchFolderPaths,
-  researchFolderNote,
   researchOutput,
 } from "../../../agents/tools/index.ts";
 import { errorText } from "../../../common/errors.ts";
-import type { LaneLimitValues } from "../../../core/contract.ts";
+import { type LaneLimitValues, laneLimits } from "../../../core/contract.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import { linkSession, type SessionLink } from "../live-session.ts";
 import { type FailureCount, failingOf, ProviderWatch } from "../provider-errors.ts";
@@ -33,7 +33,7 @@ import {
 } from "../tools/index.ts";
 import { TrialClock } from "../trial-clock.ts";
 import type { CompactionLink, McpForAgent, ProviderWait, TrialResult } from "../worker/index.ts";
-import { keepGoing, watchedStream, withoutPastThinking } from "../worker/index.ts";
+import { keepGoing, PI_TRIAL, watchedStream, withoutPastThinking } from "../worker/index.ts";
 
 /**
  * A research trial in Pi: a fresh agent session with the research tools and file tools over its
@@ -49,7 +49,10 @@ export interface ResearchTrialSpec {
   token?: string | undefined;
   run: string;
   lane: string;
-  brief: string;
+  /** The run's part of its prompt, as the scheduler gathered it (see TrialSpec); a text is one. */
+  brief: string | readonly Section[];
+  /** Its whole prompt, as the harness rendered and recorded it (goal 166; see TrialSpec). */
+  sent?: Prompt | undefined;
   /** The trial's length: none unless the campaign or the rig sets one (goal 079). */
   wallMs?: number | undefined;
   /** A cap on the trial's turns: none unless configured. */
@@ -85,6 +88,20 @@ const out = (value: unknown) => ({
   content: [{ type: "text" as const, text: researchOutput(value) }],
   details: {},
 });
+
+/** A research trial's prompt in Pi (goal 166), from the research worker's definition. */
+export function piResearchPrompt(
+  spec: ResearchTrialSpec,
+  o: { mcpServers: readonly string[]; idea: boolean; note: boolean; fit?: number | undefined },
+): Prompt {
+  return renderResearchWorker({
+    program: PI_TRIAL,
+    brief: spec.brief,
+    ...o,
+    folder: spec.folder,
+    limits: spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } }),
+  });
+}
 
 export async function runResearchTrial(
   spec: ResearchTrialSpec,
@@ -160,13 +177,18 @@ export async function runResearchTrial(
   const meter = deps.modelUsage ? new PiMeter(deps.modelUsage) : undefined;
   // The provider's error answers, for a rate limit's time (goal 079).
   const watch = new ProviderWatch();
+  // Its prompt, as the harness rendered and recorded it; else rendered here.
+  const sent =
+    spec.sent ??
+    piResearchPrompt(spec, {
+      mcpServers: [...new Set((deps.mcp?.tools ?? []).map((t) => t.server))],
+      idea: deps.idea !== undefined,
+      note: deps.note !== undefined,
+      fit: windowFit(deps.model.contextWindow, deps.model.compactAt),
+    });
   const agent = new Agent({
     initialState: {
-      systemPrompt: `${
-        spec.folder
-          ? `${RESEARCH_WORKER_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
-          : RESEARCH_WORKER_SYSTEM
-      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
+      systemPrompt: systemText(sent),
       model,
       tools: clock.wrap(guardRepeats(tools, () => compactor.count)),
       thinkingLevel,
@@ -228,7 +250,7 @@ export async function runResearchTrial(
   try {
     // With the note tool, the brief says how to keep field notes, and how they differ from
     // research notes.
-    await agent.prompt(deps.note ? `${spec.brief}\n\n${RESEARCH_WORKER_NOTES}` : spec.brief);
+    await agent.prompt(messageText(sent));
     // A cut-off reply, a failed call or a full context (compacted) does not end a research trial
     // before its time; only a conversation that does not fit even compacted does, and failures
     // that stop the run's agents.

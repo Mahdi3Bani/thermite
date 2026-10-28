@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Hono } from "hono";
 import { buildInfo } from "../../common/build-info.ts";
 import type { ControlStore } from "../store/index.ts";
+import { registerAgentReads } from "./agents.ts";
 import { registerCampaignSettings, registerRunStarts } from "./campaigns.ts";
 import { registerAddClusterRig, registerClusterRigs } from "./clusters.ts";
 import { registerCommands } from "./commands.ts";
@@ -44,6 +45,8 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
   // Control itself, for whoever runs it (not the agents of a campaign): its log and its providers.
   if (role !== "agent") {
     registerRigReads(server, audited, store, opts.runpodRigs, role !== "reader");
+    // The agents' roles and a run's prompts (goal 166): the owner's and an operator's.
+    registerAgentReads(tools);
     registerControl(tools);
     registerAddClusterRig(tools);
     // Each agent's model, as Edit rig's section "2 · The agents" (goal 029): read by every

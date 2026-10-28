@@ -20,6 +20,7 @@ import {
   cardsOf,
 } from "../../../src/harness/research/cards.ts";
 import type { Research } from "../../../src/harness/research/research/index.ts";
+import { briefText } from "../../helpers/brief-text.ts";
 import {
   DOMAINS,
   SIX_QUESTIONS,
@@ -558,7 +559,7 @@ describe("the cards in the brief, the folder, the report and the teachers' brief
       research: s.research as Research,
       runTrial: async () => done,
       runResearchTrial: async (spec: ResearchTrialSpec) => {
-        briefs.push(spec.brief);
+        briefs.push(briefText(spec.brief));
         return done;
       },
       maxConcurrent: 1,

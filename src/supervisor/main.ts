@@ -44,7 +44,13 @@ import { type ChampionUpload, championsIn, uploadChampions } from "./champions.t
 import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
 import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
-import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
+import {
+  LiveCounts,
+  type LiveRelayState,
+  publishLiveOnce,
+  relayLiveOnce,
+  supervisorLive,
+} from "./live/index.ts";
 import { syncMcpServers } from "./mcp-sync.ts";
 import { ModelDownloads } from "./model-download.ts";
 import { syncModelRouteRound } from "./model-route.ts";
@@ -124,9 +130,11 @@ async function main(): Promise<void> {
         })
       : undefined;
   if (natsUrl)
-    log("supervisor", "reports and commands go over the message bus", {
+    log("supervisor", "reports, commands and live lines go over the message bus", {
       bus: new URL(natsUrl).host,
     });
+  // The live lines it published to the bus and dropped there, by subject, for its figures.
+  const liveCounts = bus ? new LiveCounts() : undefined;
   // A full reset keeps the tunnel's keys and enrollment, and the rig's key on the bus: control's
   // trust in the rig stays.
   const keepOnWipe = new Set(
@@ -334,6 +342,7 @@ async function main(): Promise<void> {
       : null,
     // The rig's key on the bus, its public part: control gives it a user.
     ...busKeyFigure(key),
+    ...(liveCounts ? { live: liveCounts.figures() } : {}),
   });
 
   // With the bus, the figures go once now, before the first report: control gives the rig's key
@@ -437,17 +446,22 @@ async function main(): Promise<void> {
   const advisingDone = advising();
 
   // The live view: the harness's live log (signed) and the supervisor's own lines, every few
-  // seconds. Independent of the 60 s report relay.
+  // seconds. Independent of the 60 s report relay. With the bus, published there instead of
+  // posted to control.
   const liveMs = supervisorMs(env, SUPERVISOR_NUMBERS.liveIntervalMs);
   const living = async () => {
     let liveState: LiveRelayState = { cursor: 0, ownCursor: 0 };
     let failing = false;
-    while (!stopping && controlUrl && liveMs > 0) {
+    const on = { rig, harnessUrl, harnessToken };
+    while (!stopping && (bus || controlUrl) && liveMs > 0) {
       try {
-        liveState = await relayLiveOnce(
-          { rig, harnessUrl, harnessToken, controlUrl, controlToken },
-          liveState,
-        );
+        liveState =
+          bus && liveCounts
+            ? await publishLiveOnce(
+                { ...on, bus, counts: liveCounts, own: supervisorLive },
+                liveState,
+              )
+            : await relayLiveOnce({ ...on, controlUrl, controlToken }, liveState);
         failing = false;
       } catch (err) {
         if (!failing) log("supervisor", "live relay error", { error: String(err) }, "error");

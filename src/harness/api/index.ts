@@ -7,6 +7,7 @@ import type { HarnessService } from "../service/index.ts";
 import { advisorRoutes } from "./advisors.ts";
 import { type ApiTokens, apiContext, type HarnessApiExtras, statusFor } from "./context.ts";
 import { mcpRoutes } from "./mcp.ts";
+import { promptRoutes } from "./prompts.ts";
 import { proxyRoutes } from "./proxy.ts";
 import { refusalWords } from "./refusal.ts";
 import { exportRoutes, liveRoutes, reportRoutes } from "./relay.ts";
@@ -56,6 +57,7 @@ export function createHarnessApi(
   liveRoutes(app, api);
   trialRoutes(app, api);
   usageRoutes(app, api);
+  promptRoutes(app, api);
   exportRoutes(app, api);
   workRoutes(app, api);
 

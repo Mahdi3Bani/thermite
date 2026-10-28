@@ -1,23 +1,42 @@
-import { AUDITOR_SYSTEM } from "./auditor.ts";
-import { COMPACTION_SYSTEM } from "./compaction.ts";
-import { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "./final-writer.ts";
-import { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM } from "./merged-by.ts";
+import type { Prompt } from "../prompt.ts";
+import { AUDITOR_SYSTEM, renderAuditor } from "./auditor.ts";
+import { COMPACTION_SYSTEM, renderCompaction } from "./compaction.ts";
+import { FINAL_WRITER_SYSTEM, renderFinalWriter, STE_SHORT_RULES } from "./final-writer.ts";
+import { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM, renderMergedBy } from "./merged-by.ts";
 import {
   MODEL_CHECK_PI_SYSTEM,
   modelCheckPiPrompt,
   modelCheckProgramPrompt,
+  renderModelCheck,
 } from "./model-check.ts";
-import { PLAN_LIMITS_TEXT, PLANNER_ASK_SYSTEM, PLANNER_PI_SYSTEM } from "./planner.ts";
+import {
+  PLAN_LIMITS_TEXT,
+  PLANNER_ASK_SYSTEM,
+  PLANNER_PI_SYSTEM,
+  renderPlanner,
+} from "./planner.ts";
 import {
   RESEARCH_PLAN_LIMITS_TEXT,
   RESEARCH_PLANNER_ASK_SYSTEM,
   RESEARCH_PLANNER_PI_SYSTEM,
+  renderResearchPlanner,
 } from "./research-planner.ts";
-import { RESEARCH_WORKER_NOTES, RESEARCH_WORKER_SYSTEM } from "./research-worker.ts";
-import { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "./reviewer.ts";
-import { SYNTHESIZER_SYSTEM } from "./synthesizer.ts";
-import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "./teacher.ts";
 import {
+  RESEARCH_WORKER_NOTES,
+  RESEARCH_WORKER_SYSTEM,
+  renderResearchWorker,
+} from "./research-worker.ts";
+import {
+  RESEARCH_REVIEWER_SYSTEM,
+  REVIEWER_SYSTEM,
+  renderResearchReviewer,
+  renderReviewer,
+} from "./reviewer.ts";
+import { renderSynthesizer, SYNTHESIZER_SYSTEM } from "./synthesizer.ts";
+import { RESEARCH_TEACHER_SYSTEM, renderTeacher, TEACHER_SYSTEM } from "./teacher.ts";
+import {
+  renderWorker,
+  TRIAL_CUT_WHERE,
   WORKER_CLAUDE_CODE_SYSTEM,
   WORKER_CODEX_SYSTEM,
   WORKER_HOW_TO_WORK,
@@ -26,41 +45,78 @@ import {
   WORKER_PI_SYSTEM,
 } from "./worker.ts";
 
-export { AUDITOR_SYSTEM } from "./auditor.ts";
-export { COMPACTION_SYSTEM } from "./compaction.ts";
-export { FINAL_WRITER_SYSTEM, STE_SHORT_RULES } from "./final-writer.ts";
-export { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM } from "./merged-by.ts";
+export { AUDITOR_SYSTEM, renderAuditor } from "./auditor.ts";
+export {
+  COMPACTION_SYSTEM,
+  type KeptAt,
+  renderCompaction,
+} from "./compaction.ts";
+export { FINAL_WRITER_SYSTEM, renderFinalWriter, STE_SHORT_RULES } from "./final-writer.ts";
+export { MERGED_BY_SYSTEM, RESEARCH_MERGED_BY_SYSTEM, renderMergedBy } from "./merged-by.ts";
 export {
   MODEL_CHECK_PI_SYSTEM,
   modelCheckPiPrompt,
   modelCheckProgramPrompt,
+  renderModelCheck,
 } from "./model-check.ts";
-export { PLAN_LIMITS, PLANNER_ASK_SYSTEM, PLANNER_PI_SYSTEM } from "./planner.ts";
+export {
+  PLAN_LIMITS,
+  PLANNER_ASK_SYSTEM,
+  PLANNER_PI_SYSTEM,
+  type PlannerInput,
+  renderPlanner,
+} from "./planner.ts";
 export {
   PROMOTE_PER_ROUND,
   RESEARCH_PLAN_LIMITS,
   RESEARCH_PLANNER_ASK_SYSTEM,
   RESEARCH_PLANNER_PI_SYSTEM,
+  renderResearchPlanner,
 } from "./research-planner.ts";
-export { RESEARCH_WORKER_NOTES, RESEARCH_WORKER_SYSTEM } from "./research-worker.ts";
-export { RESEARCH_REVIEWER_SYSTEM, REVIEWER_SYSTEM } from "./reviewer.ts";
-export { ownerMessageSections } from "./shared.ts";
-export { SYNTHESIZER_SYSTEM } from "./synthesizer.ts";
-export { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "./teacher.ts";
 export {
+  RESEARCH_WORKER_NOTES,
+  RESEARCH_WORKER_SYSTEM,
+  type ResearchWorkerInput,
+  renderResearchWorker,
+} from "./research-worker.ts";
+export {
+  type LeftOut,
+  RESEARCH_REVIEWER_SYSTEM,
+  REVIEWER_SYSTEM,
+  renderResearchReviewer,
+  renderReviewer,
+} from "./reviewer.ts";
+export {
+  type AdvisorFrame,
+  advisorPackage,
+  limitsNote,
+  orderedPackage,
+  renderOwnerMessages,
+  windowFit,
+} from "./shared.ts";
+export { renderSynthesizer, SYNTHESIZER_SYSTEM } from "./synthesizer.ts";
+export { RESEARCH_TEACHER_SYSTEM, renderTeacher, TEACHER_SYSTEM } from "./teacher.ts";
+export {
+  renderWorker,
   renderWorkerBrief,
+  type TrialBudget,
+  type TrialProgram,
+  trialBudget,
   WORKER_CLAUDE_CODE_SYSTEM,
   WORKER_CODEX_SYSTEM,
   WORKER_OPENCODE_SYSTEM,
   WORKER_PI_NOTES,
   WORKER_PI_SYSTEM,
+  type WorkerBriefInput,
+  type WorkerInput,
 } from "./worker.ts";
 
 /**
  * Every agent role Thermite runs (goal 166), in one table: what each does, where it runs, which
- * model and agent programs it uses, whether the owner's messages reach it, and its fixed texts.
- * A role's texts live in its own module in this folder; what a run adds to them (the brief, the
- * rules, the queue, the owner's messages) is put together where the role is called.
+ * model and agent programs it uses, whether the owner's messages reach it, its fixed texts, and
+ * the one function that puts its prompt together for a run. A role's texts and that function live
+ * in its own module in this folder: the harness and the supervisor gather what a run adds (the
+ * brief, the rules, the queue, the owner's messages) and send what the function renders.
  */
 
 /** One fixed text of a role, by its place in the role's instructions. */
@@ -87,6 +143,8 @@ export interface RoleDefinition {
   /** Whether the owner's messages (message_agent) reach it. */
   messages: boolean;
   texts: readonly RoleText[];
+  /** The one function that puts its prompt together for a run (goal 166). */
+  render: (...input: never[]) => Prompt;
 }
 
 const WORKER_PROGRAMS = ["Pi", "OpenCode", "Claude Code", "Codex"] as const;
@@ -101,6 +159,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the workers' model",
     programs: WORKER_PROGRAMS,
     messages: true,
+    render: renderWorker,
     texts: [
       { id: "pi", what: "its instructions in Pi", text: WORKER_PI_SYSTEM },
       { id: "pi-notes", what: "field notes and sources, after them in Pi", text: WORKER_PI_NOTES },
@@ -116,6 +175,11 @@ export const ROLES: readonly RoleDefinition[] = [
         what: "how it works, at the end of its brief",
         text: WORKER_HOW_TO_WORK.join("\n"),
       },
+      {
+        id: "cut",
+        what: "where the rest is, when its first message is cut to fit the model's window (a research worker's too)",
+        text: TRIAL_CUT_WHERE,
+      },
     ],
   },
   {
@@ -126,6 +190,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the workers' model",
     programs: ["Pi", "OpenCode"],
     messages: true,
+    render: renderResearchWorker,
     texts: [
       { id: "system", what: "its instructions", text: RESEARCH_WORKER_SYSTEM },
       { id: "notes", what: "field notes, after its brief", text: RESEARCH_WORKER_NOTES },
@@ -139,6 +204,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the planner's model, else the workers'",
     programs: WORKER_PROGRAMS,
     messages: true,
+    render: renderPlanner,
     texts: [
       {
         id: "pi",
@@ -161,6 +227,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the planner's model, else the workers'",
     programs: WORKER_PROGRAMS,
     messages: true,
+    render: renderResearchPlanner,
     texts: [
       {
         id: "pi",
@@ -183,6 +250,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "each teacher's model",
     programs: ADVISOR_PROGRAMS,
     messages: true,
+    render: renderTeacher,
     texts: [{ id: "system", what: "its instructions", text: TEACHER_SYSTEM }],
   },
   {
@@ -193,6 +261,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "each teacher's model",
     programs: ADVISOR_PROGRAMS,
     messages: true,
+    render: renderTeacher,
     texts: [{ id: "system", what: "its instructions", text: RESEARCH_TEACHER_SYSTEM }],
   },
   {
@@ -203,6 +272,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the merged-by model",
     programs: ADVISOR_PROGRAMS,
     messages: false,
+    render: renderMergedBy,
     texts: [{ id: "system", what: "its instructions", text: MERGED_BY_SYSTEM }],
   },
   {
@@ -213,6 +283,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the merged-by model",
     programs: ADVISOR_PROGRAMS,
     messages: false,
+    render: renderMergedBy,
     texts: [{ id: "system", what: "its instructions", text: RESEARCH_MERGED_BY_SYSTEM }],
   },
   {
@@ -223,6 +294,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the auditor's model",
     programs: ADVISOR_PROGRAMS,
     messages: true,
+    render: renderAuditor,
     texts: [{ id: "system", what: "its instructions", text: AUDITOR_SYSTEM }],
   },
   {
@@ -233,6 +305,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the review panel's model, run as three reviewers",
     programs: ADVISOR_PROGRAMS,
     messages: true,
+    render: renderReviewer,
     texts: [{ id: "system", what: "its instructions", text: REVIEWER_SYSTEM }],
   },
   {
@@ -243,6 +316,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the review panel's model, run as three reviewers",
     programs: ADVISOR_PROGRAMS,
     messages: true,
+    render: renderResearchReviewer,
     texts: [{ id: "system", what: "its instructions", text: RESEARCH_REVIEWER_SYSTEM }],
   },
   {
@@ -253,6 +327,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the first teacher's model",
     programs: ADVISOR_PROGRAMS,
     messages: false,
+    render: renderSynthesizer,
     texts: [{ id: "system", what: "its instructions", text: SYNTHESIZER_SYSTEM }],
   },
   {
@@ -263,6 +338,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the first teacher's model",
     programs: ADVISOR_PROGRAMS,
     messages: false,
+    render: renderFinalWriter,
     texts: [
       { id: "system", what: "its instructions", text: FINAL_WRITER_SYSTEM },
       { id: "ste", what: "the short STE rules, with no STE checker", text: STE_SHORT_RULES },
@@ -276,6 +352,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the workers' model and program",
     programs: WORKER_PROGRAMS,
     messages: false,
+    render: renderModelCheck,
     texts: [
       { id: "pi", what: "its instructions in Pi", text: MODEL_CHECK_PI_SYSTEM },
       { id: "pi-prompt", what: "what it asks in Pi", text: modelCheckPiPrompt("<word>") },
@@ -294,6 +371,7 @@ export const ROLES: readonly RoleDefinition[] = [
     model: "the agent's own model",
     programs: ["Pi", "Codex"],
     messages: false,
+    render: renderCompaction,
     texts: [
       {
         id: "system",

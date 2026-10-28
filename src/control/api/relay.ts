@@ -5,7 +5,7 @@ import { ACK, GIT_ACCESS, INGEST, LIVE, PENDING_COMMANDS } from "../../core/api/
 import { readReport } from "../../core/link/report.ts";
 import { takeReport } from "../ingest.ts";
 import { cancelCommand, pendingFor } from "../issue/index.ts";
-import { takeLive } from "../live-in.ts";
+import { takeLive } from "../live/index.ts";
 import type { ApiContext } from "./context.ts";
 import { supervisorRoutes } from "./supervisor.ts";
 
@@ -45,7 +45,7 @@ export function relayRoutes(app: Hono, api: ApiContext): void {
   // The supervisor's own figures, with its key on the bus (api/supervisor.ts).
   supervisorRoutes(app, rigAuth, { store, busUsers: opts.busUsers });
 
-  // The live view: the harness's signed lines, and the supervisor's own (live-in.ts).
+  // The live view: the harness's signed lines, and the supervisor's own (live/take.ts).
   app.post(LIVE.path, rigAuth, bodyLimit({ maxSize: LIVE.maxBytes }), async (c) => {
     const [status, answer] = takeLive(store, c.req.param("rig"), await jsonBody(c.req));
     return c.json(answer, status);

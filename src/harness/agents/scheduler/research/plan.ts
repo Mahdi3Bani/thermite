@@ -82,6 +82,7 @@ export async function planResearchEpoch(
         r.mcp,
         plannerCompaction(sched, run),
         r.usage,
+        r.sent,
       );
     } finally {
       sched.planning = undefined;

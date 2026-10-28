@@ -1,8 +1,11 @@
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import type { LiveKind } from "../../core/live.ts";
 import type { ModelConfig } from "../model/index.ts";
-import { COMPACTION_SYSTEM } from "../roles/index.ts";
+import { messageText } from "../prompt.ts";
+import { type KeptAt, renderCompaction } from "../roles/index.ts";
 import { fenced } from "./conversation.ts";
+
+export type { KeptAt } from "../roles/index.ts";
 
 /**
  * Compaction in OpenCode v2, the Codex CLI and Claude Code (goal 070). Each compacts its own
@@ -51,21 +54,6 @@ export type OwnConversation = (
 ) => { markdown: string; summary?: string | undefined } | undefined;
 
 /**
- * Where a CLI agent's conversation is kept before each of its compactions (goal 070), set before
- * the agent starts, so its own summary can name it.
- */
-export interface KeptAt {
-  /** The folder: its path as the agent sees it, or (`place`) within that place. */
-  dir: string;
-  /** The file names' stem: the kept file for compaction n is `<dir>/<stem>-<n>.md`. */
-  stem: string;
-  /** Whether the agent can read the file (a worker can; the planner and the advisors cannot). */
-  readable: boolean;
-  /** Where `dir` is, in words, when it is not a path the agent sees ("the supervisor's records"). */
-  place?: string | undefined;
-}
-
-/**
  * A one-prompt call's compactions (a planner call, goal 070): where the conversation is kept,
  * the document's title, and who keeps and records each compaction the call reports.
  */
@@ -87,35 +75,16 @@ export async function reclaim(
   if (typeof runner.reclaim === "function") await runner.reclaim(dir).catch(() => undefined);
 }
 
-/** The placeholder for the compaction's number, in the line a hook or plugin adds. */
-export const NUMBER = "{n}";
-
-/** The kept file of compaction `n` (`{n}`: the placeholder), as the agent sees it. */
-export const keptFile = (at: KeptAt, n: number | string): string =>
-  `${at.dir.replace(/\/+$/, "")}/${at.stem}-${n}.md`;
-
 /**
  * The line Claude Code's hook and OpenCode's plugin add to a compaction's instructions, with
  * `{n}` for its number: where Thermite keeps the conversation, for the summary to name.
  */
-export function keptLine(at: KeptAt): string {
-  const file = `${keptFile(at, NUMBER)}${at.place ? ` (${at.place})` : ""}`;
-  return at.readable
-    ? `Thermite keeps the whole conversation before this compaction in ${file}. Name that file in your summary, and say that the agent can read it there for any detail the summary leaves out.`
-    : `Thermite keeps the whole conversation before this compaction in ${file}. Name that file in your summary, as where the conversation is kept.`;
-}
+export const keptLine = (at: KeptAt): string =>
+  messageText(renderCompaction({ program: "claude-code", kept: at }));
 
-/**
- * Codex's compaction prompt (its `compact_prompt`): Thermite's own summary prompt, which Pi's
- * compactions use too, with where the conversation is kept. Codex reads it when it starts, so it
- * cannot know the compaction's number: it names the folder and the file names.
- */
-export function codexCompactPrompt(at: KeptAt): string {
-  const dir = at.dir.replace(/\/+$/, "");
-  return `${COMPACTION_SYSTEM}
-
-Thermite keeps the whole conversation before this point in ${dir}/${at.place ? ` (${at.place})` : ""}, as the newest file named ${at.stem}-<number>.md (the number counts this conversation's compactions from 1). Name that file in your summary${at.readable ? ", and say that the agent can read it there for any detail the summary leaves out" : ", as where the conversation is kept"}.`;
-}
+/** Codex's compaction prompt (its `compact_prompt`): Thermite's own, with where it keeps it. */
+export const codexCompactPrompt = (at: KeptAt): string =>
+  messageText(renderCompaction({ program: "codex", kept: at }));
 
 /** The compaction point in tokens, for a route with a known window; undefined without one. */
 export function compactionTokens(m: Pick<ModelConfig, "contextWindow" | "compactAt">) {

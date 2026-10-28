@@ -27,6 +27,7 @@ export async function answerAudits(ctx: AdviseContext): Promise<void> {
     say,
     fail,
     usageOut,
+    promptsOut,
     receipts,
     toQueue,
     notesOut,
@@ -118,6 +119,7 @@ export async function answerAudits(ctx: AdviseContext): Promise<void> {
         });
         count(r);
         await usageOut(pkg.run, `audit ${pkg.attempt}`, "auditor", r.usage);
+        await promptsOut(pkg.run, `audit ${pkg.attempt}`, r.sent);
         if (!r.output) {
           await failed(pkg, key, r.error);
           continue;

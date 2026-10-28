@@ -1,5 +1,6 @@
 import { createPublicKey } from "node:crypto";
 import type { BuildInfo } from "../core/version.ts";
+import type { BusView } from "./bus/index.ts";
 import { type ClusterKubectl, realKubectl } from "./clusters/index.ts";
 import type { KitRepos } from "./kits/index.ts";
 import { RunpodDriver } from "./lifecycle.ts";
@@ -49,6 +50,8 @@ export interface ControlParts {
   runpodRigs: RunpodRigs;
   /** Their stop, start, restart and terminate, beside the driver THERMITE_LIFECYCLE names. */
   runpodDriver: RunpodDriver;
+  /** The message bus (THERMITE_NATS_URL), for its state; none: control runs without it. */
+  bus?: BusView | undefined;
   /** Every rig as control sees it now (views.ts), through the folds control keeps. */
   views(): RigView[];
   /** A run wherever it ran (goal 170), read now; undefined for a run no rig created. */
@@ -74,6 +77,7 @@ export interface PartsOptions {
   tunnels?: ControlTunnels | undefined;
   runpodRigs?: RunpodRigs | undefined;
   runpodRigImage?: string | undefined;
+  bus?: BusView | undefined;
 }
 
 /** Control's parts, made from the store, its key and its options. */
@@ -122,6 +126,7 @@ export function controlParts(
     tunnels,
     runpodRigs,
     runpodDriver: new RunpodDriver(runpodRigs),
+    bus: opts.bus,
     views: () => folds.views(viewOpts),
     run: (id) => folds.run(id, viewOpts),
     campaignRuns: (campaign) => folds.campaignRuns(campaign, viewOpts),

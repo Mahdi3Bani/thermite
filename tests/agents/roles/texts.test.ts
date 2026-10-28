@@ -40,6 +40,7 @@ import {
 import { SYNTHESIZER_SYSTEM } from "../../../src/agents/roles/synthesizer.ts";
 import { RESEARCH_TEACHER_SYSTEM, TEACHER_SYSTEM } from "../../../src/agents/roles/teacher.ts";
 import {
+  TRIAL_CUT_WHERE,
   WORKER_CLAUDE_CODE_SYSTEM,
   WORKER_CODEX_SYSTEM,
   WORKER_HOW_TO_WORK,
@@ -61,6 +62,7 @@ const TEXTS: Record<string, string> = {
   "worker.claude-code.system": WORKER_CLAUDE_CODE_SYSTEM,
   "worker.codex.system": WORKER_CODEX_SYSTEM,
   "worker.how-to-work": WORKER_HOW_TO_WORK.join("\n"),
+  "worker.cut": TRIAL_CUT_WHERE,
   "research-worker.system": RESEARCH_WORKER_SYSTEM,
   "research-worker.notes": RESEARCH_WORKER_NOTES,
   "planner.task": PLANNER_TASK,

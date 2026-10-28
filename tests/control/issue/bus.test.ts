@@ -44,7 +44,7 @@ async function control(o: { bus?: boolean } = {}) {
 describe("control's commands on the message bus", () => {
   test("a command control issues is recorded, and published to its rig's subject as signed", async () => {
     const c = await control();
-    assert.deepEqual(c.bus.streams.get(COMMAND_STREAM), COMMAND_STREAM_CONFIG, "control made it");
+    assert.deepEqual(c.bus.made.get(COMMAND_STREAM), COMMAND_STREAM_CONFIG, "control made it");
     const id = c.pause();
     // Recorded at once: the store stays the record, and the command's status there the truth.
     assert.equal(c.store.commands.get(id)?.status, "pending");

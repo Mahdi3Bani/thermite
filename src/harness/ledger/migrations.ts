@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "../schema/index.ts";
+import { PROMPT_TABLE } from "./prompts.ts";
 import { eventRunColumn } from "./runs.ts";
 
 /**
@@ -18,4 +19,6 @@ export const LEDGER_MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))
   `,
   // 23: each event's run (goal 170), worked out for the events already recorded.
   eventRunColumn,
+  // 24: the whole text of every prompt a run's agents were sent (goal 166).
+  PROMPT_TABLE,
 ];

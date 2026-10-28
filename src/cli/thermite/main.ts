@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { errorText } from "../../common/errors.ts";
+import { thermiteAgents } from "./agents.ts";
 import { thermiteCampaign, thermiteRun } from "./campaigns.ts";
 import { thermiteAssign, thermiteAssignPayload, thermiteCommand } from "./issue.ts";
 import { thermiteKit } from "./kits.ts";
@@ -54,6 +55,8 @@ async function main(argv: string[]): Promise<void> {
       return thermiteCampaign(rest);
     case "kit":
       return thermiteKit(rest);
+    case "agents":
+      return thermiteAgents(rest);
     case "mcp":
       return thermiteMcp(rest);
     case "command":

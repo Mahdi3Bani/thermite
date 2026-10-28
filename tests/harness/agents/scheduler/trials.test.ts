@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { Scheduler } from "../../../../src/harness/agents/scheduler/index.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
+import { briefText } from "../../../helpers/brief-text.ts";
 import { startFakeModel } from "../../../helpers/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../../../helpers/judge-env.ts";
 
@@ -238,7 +239,7 @@ export function work() {
       model: { baseUrl: fake.url, model: "m", apiKey: "k", contextWindow: 32000, maxTokens: 2000 },
       owner: "scheduler-test",
       runTrial: async (spec) => {
-        briefs.push(spec.brief);
+        briefs.push(briefText(spec.brief));
         if (briefs.length > 1)
           return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
         const r = await env.service.submitForTrial(String(spec.token), {

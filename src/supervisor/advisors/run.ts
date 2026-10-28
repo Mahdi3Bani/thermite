@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { messageText, type Prompt } from "../../agents/prompt.ts";
 import type { AdvisorCall, AdvisorResult } from "./call.ts";
 import { runClaudeCode, runCli, runCliHarness, runPi } from "./runtimes/index.ts";
 
@@ -8,11 +9,32 @@ import { runClaudeCode, runCli, runCliHarness, runPi } from "./runtimes/index.ts
  * again with its problems, until the same problems come back SAME_REFUSALS times running.
  */
 export async function runAdvisor<S extends z.ZodType>(
-  input: AdvisorCall<S>,
+  call: AdvisorCall<S>,
 ): Promise<AdvisorResult<z.infer<S>>> {
+  // Each prompt its runtime renders and sends, for the harness to keep (goal 166).
+  const sent: Prompt[] = [];
+  const input: AdvisorCall<S> = {
+    ...call,
+    prompt: (f) => {
+      const p = call.prompt(f);
+      sent.push(p);
+      return p;
+    },
+  };
+  const r = await dispatch(input);
+  return sent.length ? { ...r, sent } : r;
+}
+
+function dispatch<S extends z.ZodType>(input: AdvisorCall<S>): Promise<AdvisorResult<z.infer<S>>> {
   const rt = input.runtime;
   if (rt.runtime === "cli")
-    return runCli(rt, input.system, input.prompt, input.schema, input.answerSchema);
+    return runCli(
+      rt,
+      messageText(
+        input.prompt({ program: "cli", mcpServers: [], answerSchema: input.answerSchema }),
+      ),
+      input.schema,
+    );
   if (rt.runtime === "claude-code") return runClaudeCode(rt, input);
   if (rt.runtime === "opencode" || rt.runtime === "codex") return runCliHarness(rt, input);
   return runPi(rt, input);

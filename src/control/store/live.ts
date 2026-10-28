@@ -1,3 +1,5 @@
+import { log } from "../../common/env.ts";
+import { errorText } from "../../common/errors.ts";
 import { MAX_LANES } from "../../core/contract.ts";
 import type { LiveEntry } from "../../core/live.ts";
 import { type Row, StorePart } from "./part.ts";
@@ -13,14 +15,52 @@ export const OPEN_TRIAL_LINES = 400;
 /** How many stuck trials left running control remembers (goal 143); a trial ends in hours. */
 const TRIALS_LEFT_MAX = 1000;
 
+/** One run's lines on its rig: its own, and the judge's and the supervisor's that name no run. */
+const OF_RUN = "(run = ? or (run is null and source in ('judge', 'supervisor')))";
+
 export class LiveLines extends StorePart {
+  /** Told of each rig that has new lines, once they are stored: the Live pages' pushes. */
+  private readonly watchers = new Set<(rig: string) => void>();
+
+  /** Tells `fn` each time a rig has new lines, until the function it returns is called. */
+  watch(fn: (rig: string) => void): () => void {
+    this.watchers.add(fn);
+    return () => {
+      this.watchers.delete(fn);
+    };
+  }
+
   /**
    * Stores live-log lines (duplicates by log id and sequence are ignored) and keeps only the
    * newest `keep` lines of the rig, and each open trial's newest OPEN_TRIAL_LINES: a trial that
    * writes many lines can't push out another's (goal 143). The open trials are those the rig's
-   * last report lists.
+   * last report lists. Then tells the watchers, when it stored any.
    */
   add(rig: string, logId: string, entries: LiveEntry[], signed: boolean, keep = 20_000): number {
+    const added = this.keepLines(rig, logId, entries, signed, keep);
+    if (!added) return added;
+    for (const fn of this.watchers) {
+      try {
+        fn(rig);
+      } catch (err) {
+        log(
+          "control",
+          "a watcher of the live view failed",
+          { rig, error: errorText(err) },
+          "error",
+        );
+      }
+    }
+    return added;
+  }
+
+  private keepLines(
+    rig: string,
+    logId: string,
+    entries: LiveEntry[],
+    signed: boolean,
+    keep: number,
+  ): number {
     const now = new Date().toISOString();
     return this.tx(() => {
       const insert = this.db.prepare(
@@ -156,9 +196,7 @@ export class LiveLines extends StorePart {
     const only = ids?.length ? ` and id in (${ids.map(() => "?").join(",")})` : "";
     const rows = this.db
       .prepare(
-        `select * from rig_live where rig = ? and id > ?
-           and (run = ? or (run is null and source in ('judge', 'supervisor')))${only}
-         order by id limit ?`,
+        `select * from rig_live where rig = ? and id > ? and ${OF_RUN}${only} order by id limit ?`,
       )
       .all(rig, after, run, ...(ids ?? []), limit) as Row[];
     return rows.map((r) => ({
@@ -200,12 +238,32 @@ export class LiveLines extends StorePart {
   ): (LiveEntry & { id: number; signed: boolean })[] {
     const top = this.db
       .prepare(
-        `select id from rig_live where rig = ?
-           and (run = ? or (run is null and source in ('judge', 'supervisor')))
-         order by id desc limit 1 offset ?`,
+        `select id from rig_live where rig = ? and ${OF_RUN} order by id desc limit 1 offset ?`,
       )
       .get(rig, run, limit) as { id: number } | undefined;
     return this.ofRun(rig, run, top?.id ?? 0, limit);
+  }
+
+  /** How many of one run's lines there are after `after`, as ofRun reads them. */
+  countOfRun(rig: string, run: string, after: number): number {
+    const row = this.db
+      .prepare(`select count(*) as n from rig_live where rig = ? and id > ? and ${OF_RUN}`)
+      .get(rig, after, run) as { n: number };
+    return Number(row.n);
+  }
+
+  /** How many lines of a rig there are after `after`; of one source if given, as after() reads. */
+  count(rig: string, after: number, source?: string): number {
+    const row = (
+      source
+        ? this.db
+            .prepare("select count(*) as n from rig_live where rig = ? and id > ? and source = ?")
+            .get(rig, after, source)
+        : this.db
+            .prepare("select count(*) as n from rig_live where rig = ? and id > ?")
+            .get(rig, after)
+    ) as { n: number };
+    return Number(row.n);
   }
 
   /** The newest live lines of a rig, newest last (for a page's first view). */

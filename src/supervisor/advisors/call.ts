@@ -1,6 +1,8 @@
 import type { TSchema } from "@earendil-works/pi-ai";
 import type { z } from "zod";
 import type { KeptAt } from "../../agents/compaction/index.ts";
+import type { Prompt } from "../../agents/prompt.ts";
+import type { AdvisorFrame } from "../../agents/roles/index.ts";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
 import type { CallUsage, UsageRoute } from "../../core/usage.ts";
@@ -19,8 +21,11 @@ import type {
  */
 export interface AdvisorCall<S extends z.ZodType> {
   runtime: AdvisorRuntime;
-  system: string;
-  prompt: string;
+  /**
+   * The role's prompt (goal 166), rendered by its definition (src/agents/roles/) for the program
+   * the call runs in: its runtime gives the frame.
+   */
+  prompt(f: AdvisorFrame): Prompt;
   schema: S;
   answerSchema: TSchema;
   tools?: AdvisorTools | undefined;
@@ -44,6 +49,8 @@ export interface AdvisorResult<T> {
   compactions?: AdvisorCompaction[] | undefined;
   /** The call's model usage (goal 075); none for a command-line agent or a call that never ran. */
   usage?: AdvisorUsage | undefined;
+  /** The prompts the call sent, as its role rendered them (goal 166), for the harness to keep. */
+  sent?: Prompt[] | undefined;
 }
 
 /** An advisor call's model usage (goal 075): where it ran, and each record. */

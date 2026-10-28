@@ -4,12 +4,12 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
+import { advisorPackage } from "../../../../src/agents/roles/index.ts";
 import { signEnvelope } from "../../../../src/core/commands.ts";
 import { createHarnessApi } from "../../../../src/harness/api/index.ts";
 import {
   AdvisorsConfig,
   AuditAnswer,
-  advisorPrompt,
   PanelAnswer,
   TeacherReview,
 } from "../../../../src/supervisor/advisors/index.ts";
@@ -125,7 +125,7 @@ describe("the owner's messages to the advisors", () => {
 
   test("an advisor's prompt puts the owner's messages first and never cuts them", () => {
     const owner_messages = [{ id: 1, text: "keep the API stable" }];
-    const p = advisorPrompt(
+    const p = advisorPackage(
       "Audit package:",
       { diff: "x".repeat(300_000), owner_messages },
       200_000,
@@ -141,11 +141,11 @@ describe("the owner's messages to the advisors", () => {
     // Messages longer than the cut are kept whole, with a little of the rest.
     const big = [{ id: 2, text: "y".repeat(5000) }];
     assert.match(
-      advisorPrompt("B:", { diff: "z".repeat(9000), owner_messages: big }, 1000),
+      advisorPackage("B:", { diff: "z".repeat(9000), owner_messages: big }, 1000),
       /y{5000}"\}\],"diff":"z/,
     );
     assert.equal(
-      advisorPrompt("B:", { a: 1 }, 3),
+      advisorPackage("B:", { a: 1 }, 3),
       "B:\n[Cut to fit the prompt's limit: 3 of 7 characters.]\n{\"a",
     );
   });

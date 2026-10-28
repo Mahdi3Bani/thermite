@@ -11,11 +11,8 @@ import {
   newCodexTally,
   readCodexEvents,
 } from "../../../agents/programs/index.ts";
-import { WORKER_CODEX_SYSTEM } from "../../../agents/roles/index.ts";
-import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { RigCheckReport } from "../model/index.ts";
 import type { TrialResult, TrialSpec } from "../worker/index.ts";
-import { limitsNote } from "./common.ts";
 import { runCliTrial } from "./loop.ts";
 import { type CliOnceDeps, type CliOnceOptions, cliModelCheck, cliOnce } from "./once.ts";
 import type { CliProgram, CliTrialDeps } from "./program.ts";
@@ -52,7 +49,6 @@ export const codexProgram: CliProgram<CodexTally> = {
   name: "Codex",
   prefix: "codex",
   eventsVar: "THERMITE_CODEX_EVENTS",
-  system: WORKER_CODEX_SYSTEM,
   turnWords: "each message or tool call is one",
   bin: codexBin,
   exe: codexExe,
@@ -107,9 +103,6 @@ export const codexProgram: CliProgram<CodexTally> = {
   },
   check: { baseUrl: (m) => m.baseUrl },
 };
-
-/** The lane's limits as the agent must know them: Codex and its commands share them. */
-export const codexLimitsNote = (limits: LaneLimitValues) => limitsNote(limits, "Codex");
 
 /** One worker trial in the Codex CLI: the CLI trial loop (cli/loop.ts) with Codex's entry. */
 export function runCodexTrial(spec: TrialSpec, deps: CliTrialDeps): Promise<TrialResult> {

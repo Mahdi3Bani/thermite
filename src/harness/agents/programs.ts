@@ -1,5 +1,6 @@
 import type { CliCompacted } from "../../agents/compaction/index.ts";
 import type { ModelConfig } from "../../agents/model/index.ts";
+import { type TrialProgram, windowFit } from "../../agents/roles/index.ts";
 import type { ResearchFolderPaths } from "../../agents/tools/index.ts";
 import { type Harness, type ProviderType, programForApi, reaches } from "../../core/agents.ts";
 import type { Role } from "../broker/index.ts";
@@ -18,9 +19,9 @@ import {
   runCliTrial,
 } from "./cli/index.ts";
 import { checkModel, type RigCheckReport } from "./model/index.ts";
-import type { ResearchTrialSpec } from "./research/index.ts";
+import { piResearchPrompt, type ResearchTrialSpec } from "./research/index.ts";
 import { spawnTrial } from "./spawn.ts";
-import type { TrialResult, TrialSpec } from "./worker/index.ts";
+import { PI_TRIAL, piTrialPrompt, type TrialResult, type TrialSpec } from "./worker/index.ts";
 import { prepareResearchArea } from "./workspace.ts";
 
 /**
@@ -56,6 +57,8 @@ export interface AgentProgram {
   id: Harness;
   /** Its name in what people read. */
   name: string;
+  /** What a trial's prompt says of it (goal 166): its name, its turns and its own memory. */
+  trial: TrialProgram;
   /** Whether it reaches a provider of this kind (core/agents.ts). */
   reaches(api: ProviderType | undefined): boolean;
   /** Whether it runs research trials (Pi and OpenCode do). */
@@ -74,32 +77,58 @@ export interface AgentProgram {
   modelCheck(m: ModelConfig, deps: CliOnceDeps): Promise<RigCheckReport>;
 }
 
+/**
+ * A trial in Pi: its prompt, from its role's definition, rendered and kept here in the harness
+ * (goal 166), then the worker process, which sends it as it is. `spawn`: the worker process
+ * (spawn.ts); tests run the worker in their own.
+ */
+export async function runPiTrial(
+  t: AgentTrial,
+  link: Pick<
+    TrialLink,
+    "handOverUsage" | "sent" | "runner" | "scratchDir" | "port" | "signal" | "model"
+  >,
+  spawn: typeof spawnTrial = spawnTrial,
+): Promise<TrialResult> {
+  // Its worker hands its model usage over with the trial's token while the trial runs.
+  const close = link.handOverUsage("pi");
+  try {
+    const mcpServers = t.spec.mcpServers ?? [];
+    // Cut to the model's window, when the route says it (decision 8).
+    const fit = windowFit(link.model?.contextWindow, link.model?.compactAt);
+    const sent =
+      t.mode === "code"
+        ? piTrialPrompt(t.spec, mcpServers, Date.now(), fit)
+        : piResearchPrompt(
+            { ...t.spec, folder: t.folder },
+            { mcpServers, idea: true, note: true, fit },
+          );
+    link.sent?.(sent);
+    return await spawn(
+      t.mode === "code"
+        ? { kind: "code", spec: { ...t.spec, sent } }
+        : { kind: "research", spec: { ...t.spec, folder: t.folder, sent } },
+      link.runner,
+      link.scratchDir,
+      link.port,
+      link.signal,
+      link.model,
+    );
+  } finally {
+    close();
+  }
+}
+
 /** Pi: each trial in a worker process of its own, as the lane's agent user (spawn.ts). */
 const pi: AgentProgram = {
   id: "pi",
   name: "Pi",
+  trial: PI_TRIAL,
   reaches: (api) => reaches("pi", api),
   research: true,
   plannerFollows: true,
   runsAs: (lane) => lane.replace(/^lane-/, "agent-") as Role,
-  runTrial: async (t, link) => {
-    // Its worker hands its model usage over with the trial's token while the trial runs.
-    const close = link.handOverUsage("pi");
-    try {
-      return await spawnTrial(
-        t.mode === "code"
-          ? { kind: "code", spec: t.spec }
-          : { kind: "research", spec: { ...t.spec, folder: t.folder } },
-        link.runner,
-        link.scratchDir,
-        link.port,
-        link.signal,
-        link.model,
-      );
-    } finally {
-      close();
-    }
-  },
+  runTrial: (t, link) => runPiTrial(t, link),
   modelCheck: (m) => checkModel(m),
 };
 
@@ -111,6 +140,7 @@ function cli<T extends CliTally>(p: CliProgram<T>, plannerFollows: boolean): Cli
   return {
     id: p.id,
     name: p.name,
+    trial: { id: p.id, name: p.name, turnWords: p.turnWords, memory: p.memory },
     reaches: (api) => reaches(p.id, api),
     research: p.research === true,
     plannerFollows,

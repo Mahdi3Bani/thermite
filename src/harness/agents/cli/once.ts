@@ -5,7 +5,8 @@ import { CliCompactions, type OnceKeeping, reclaim } from "../../../agents/compa
 import type { McpAccess } from "../../../agents/mcp/index.ts";
 import type { ModelConfig } from "../../../agents/model/index.ts";
 import type { PlanWindows } from "../../../agents/programs/index.ts";
-import { modelCheckProgramPrompt } from "../../../agents/roles/index.ts";
+import { messageText } from "../../../agents/prompt.ts";
+import { renderModelCheck } from "../../../agents/roles/index.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, Runner } from "../../broker/index.ts";
 import type { RigCheckReport } from "../model/index.ts";
@@ -197,7 +198,7 @@ export async function cliModelCheck<T extends CliTally>(
   const t = await cliOnce(
     p,
     model,
-    tool ? modelCheckProgramPrompt(word, `${tool} tool`) : modelCheckProgramPrompt(word),
+    messageText(renderModelCheck({ program: p.id, word, tool })),
     deps,
     { role: CHECK_ROLE, timeoutMs, tools: tool },
   );

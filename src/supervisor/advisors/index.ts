@@ -63,7 +63,6 @@ export {
   emptyAdviseState,
   teachersCalled,
 } from "./pass/index.ts";
-export { advisorPrompt } from "./prompt.ts";
 export {
   isResearchPackage,
   leftOut,
@@ -71,7 +70,6 @@ export {
   ResearchPanelAnswer,
   type ResearchReviewAnswers,
   type ReviewOutput,
-  researchPrompt,
   reviewOne,
 } from "./review-panel.ts";
 export { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./routes.ts";

@@ -10,12 +10,15 @@ export const CLAUDE_TOKEN_FD = 3;
 /**
  * What every Claude Code run here has in its environment, the agents' and the supervisor's
  * advisors': where the token is (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR), never the token, and no
- * update checks, reports or other traffic. Never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: it would turn on
- * Claude Code's own sandbox, which cannot start in a rig (index.ts's opening comment says why).
+ * update checks, reports or other traffic. It reads no CLAUDE.md of the project's or anyone's
+ * (goal 166): an agent's prompt is only what its role's definition rendered, which Thermite keeps.
+ * Never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: it would turn on Claude Code's own sandbox, which cannot
+ * start in a rig (index.ts's opening comment says why).
  */
 export const CLAUDE_BASE_ENV: Readonly<Record<string, string>> = {
   CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: String(CLAUDE_TOKEN_FD),
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+  CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
   DISABLE_AUTOUPDATER: "1",
 };
 

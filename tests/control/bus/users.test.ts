@@ -6,6 +6,7 @@ import { describe, test } from "node:test";
 import { createUser, fromSeed } from "@nats-io/nkeys";
 import {
   BUS_USERS_FILE_SETTING,
+  BUS_USERS_SYNC_MS,
   BusUsers,
   busUsersFile,
   takeRigBusKey,
@@ -196,6 +197,26 @@ describe("each rig's key on the message bus", () => {
     // Taken now: the next sync with nothing new asks nothing.
     await s.users.sync();
     assert.equal(s.server.calls.length, calls + 1);
+  });
+
+  test("the runs control's run registry gives a rig open their live subjects to its user", async () => {
+    const s = setup();
+    const key = user();
+    await s.figures("rig-a", key);
+    const calls = s.server.calls.length;
+    const at = new Date().toISOString();
+    const created = { kind: "run_created", subject: "sort-3", body: { campaign: "sort" }, at };
+    s.store.runRegistry.registerRunCreated("rig-a", "ledger-1", created);
+    s.store.runRegistry.registerRunCreated("rig-b", "ledger-2", { ...created, subject: "other-1" });
+    // Looked at every few seconds: a new run is written, and the server reloads once.
+    assert.equal(BUS_USERS_SYNC_MS, 5000);
+    await s.users.sync();
+    assert.equal(s.server.calls.length, calls + 1);
+    const users = accountsIn(s.file)[BUS_ACCOUNT]?.users ?? [];
+    assert.deepEqual(users[1], { nkey: key, permissions: rigPermissions("rig-a", ["sort-3"]) });
+    assert.ok(!JSON.stringify(users[1]).includes("other-1"), "another rig's run is not rig-a's");
+    await s.users.sync();
+    assert.equal(s.server.calls.length, calls + 1, "nothing changed: no reload");
   });
 
   test("a rig retired loses its user at the next sync; a rig not on the bus has none", async () => {

@@ -1,7 +1,8 @@
 /**
  * The dashboard's only script, served from control itself (CSP script-src 'self'; nothing inline
- * runs). It streams the live view; pages never reload by themselves. Live lines are built with
- * DOM text nodes only: rig data never becomes markup here either.
+ * runs). It streams the live view, from control's push of new lines (server-sent events, on
+ * connect-src 'self'); pages never reload by themselves. Each line comes formatted and escaped
+ * from control (ui/live.ts); a line the script makes itself is built with DOM text nodes only.
  */
 export const CLIENT_JS = `
 (() => {
@@ -10,8 +11,8 @@ export const CLIENT_JS = `
   // ------------------------------------------------ the live view
   const tr = $("#transcript");
   if (tr) {
-    // Where the page's lines come from (control's address for them), and whose they are.
-    const lines = tr.dataset.poll || "", source = tr.dataset.source || "", run = tr.dataset.run || "";
+    // Where the page's new lines come from (control's push of them), and whose they are.
+    const lines = tr.dataset.stream || "", source = tr.dataset.source || "", run = tr.dataset.run || "";
     let after = Number(tr.dataset.after || "0");
     let follow = true;
     const near = () => tr.scrollHeight - tr.scrollTop - tr.clientHeight < 120;
@@ -61,20 +62,32 @@ export const CLIENT_JS = `
         }
       }
     };
-    const poll = async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const q = new URLSearchParams({ after: String(after) });
-        // Lines waiting for their event, to be drawn again once control has it.
-        const waiting = run ? [...tr.querySelectorAll("[data-recheck]")].map((el) => el.dataset.id).filter(Boolean).slice(-50) : [];
-        if (waiting.length) q.set("recheck", waiting.join(","));
-        if (!run && source) q.set("source", source);
-        const res = await fetch(lines + "?" + q, { credentials: "same-origin" });
-        if (!res.ok) return;
-        const body = await res.json();
+    // New lines are pushed as control gets them. The browser connects again on its own after a
+    // drop, and control goes on after the last line the page has (its last event's id).
+    const q = new URLSearchParams({ after: String(after) });
+    // Lines waiting for their event, drawn again once control has it.
+    const waiting = run ? [...tr.querySelectorAll("[data-recheck]")].map((el) => el.dataset.id).filter(Boolean).slice(-50) : [];
+    if (waiting.length) q.set("recheck", waiting.join(","));
+    if (!run && source) q.set("source", source);
+    const pushed = lines && window.EventSource ? new EventSource(lines + "?" + q) : null;
+    const said = (ev) => { try { return JSON.parse(ev.data); } catch { return {}; } };
+    const stamp = () => {
+      const st = $("#live-state .sub");
+      if (st) st.textContent = "live · " + new Date().toISOString().slice(11, 19) + " UTC";
+    };
+    if (pushed) {
+      // The status bar says when the page last heard from control: a line, or a quiet beat.
+      pushed.addEventListener("open", stamp);
+      pushed.addEventListener("beat", stamp);
+      pushed.addEventListener("lines", (ev) => {
+        const body = said(ev);
         const stick = follow && near();
-        for (const e of body.entries || []) { add(e); after = Math.max(after, e.id); }
-        for (const r of body.redrawn || []) {
+        for (const e of body.entries || []) { if (e.id <= after) continue; add(e); after = e.id; }
+        if (stick && (body.entries || []).length) tr.scrollTop = tr.scrollHeight;
+        stamp();
+      });
+      pushed.addEventListener("redrawn", (ev) => {
+        for (const r of said(ev).redrawn || []) {
           const old = tr.querySelector('[data-id="' + r.id + '"]');
           if (!old) continue;
           old.insertAdjacentHTML("afterend", r.html);
@@ -82,12 +95,20 @@ export const CLIENT_JS = `
           old.remove();
           if (el && el.dataset && el.dataset.who !== undefined) el.hidden = !shows(el);
         }
-        if (stick && (body.entries || []).length) tr.scrollTop = tr.scrollHeight;
-        const st = $("#live-state .sub");
-        if (st) st.textContent = "live · " + new Date().toISOString().slice(11, 19) + " UTC";
-      } catch {}
-    };
-    setInterval(poll, 2000);
+      });
+      // The page fell behind: it keeps what it shows, and says how many lines it did not get.
+      pushed.addEventListener("missed", (ev) => {
+        const n = Number(said(ev).lines) || 0;
+        if (!n) return;
+        const row = document.createElement("div");
+        row.className = "lv-div lv-missed";
+        if (run) row.dataset.who = "all";
+        const text = document.createElement("span");
+        text.textContent = n + (n === 1 ? " line is" : " lines are") + " not shown here: they came faster than this page could take them.";
+        row.append(text);
+        tr.append(row);
+      });
+    }
 
     // The filters and the message box go together: the lane you watch is the one you write to.
     const box = $("form.lcomposer");

@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { jsonBody } from "../../common/errors.ts";
-import { metricsText } from "../metrics.ts";
+import { busMetricsText, metricsText } from "../metrics.ts";
 import { modelPrices, modelUsage, setModelPrice, usageQueryRefusal } from "../usage.ts";
 import type { ApiContext } from "./context.ts";
 
@@ -10,10 +10,11 @@ import type { ApiContext } from "./context.ts";
  * them, the owner's sets a price.
  */
 export function usageRoutes(app: Hono, api: ApiContext): void {
-  const { store, opts, admin, reader } = api;
+  const { store, opts, parts, admin, reader } = api;
 
-  app.get("/metrics", reader, (c) =>
-    c.text(metricsText(store, opts.staleAfterMs), 200, {
+  // With the message bus, its series follow control's own.
+  app.get("/metrics", reader, async (c) =>
+    c.text(metricsText(store, opts.staleAfterMs) + (await busMetricsText(store, parts.bus)), 200, {
       "content-type": "text/plain; version=0.0.4",
     }),
   );

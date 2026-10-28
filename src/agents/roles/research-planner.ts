@@ -1,5 +1,7 @@
 import { NOTES_GUIDE } from "../../core/journal.ts";
 import { MEASURES_NOTHING } from "../../core/research-check.ts";
+import type { Prompt } from "../prompt.ts";
+import { type PlannerInput, plannerPrompt } from "./planner.ts";
 
 /**
  * The research planner (goal 166): it plans a research run's next round. It gives each lane a
@@ -79,5 +81,17 @@ ${NOTES_GUIDE} Put yours in journal, for example a key decision of this round an
 /** In Pi, the research planner answers with its one tool. */
 export const RESEARCH_PLANNER_PI_SYSTEM = `${RESEARCH_PLANNER_TASK} ${RESEARCH_PLAN_LIMITS_TEXT} Answer only by calling submit_plan once.`;
 
-/** Through another harness, it answers with the plan as JSON text and no tools. */
-export const RESEARCH_PLANNER_ASK_SYSTEM = `${RESEARCH_PLANNER_TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "task": "an id from queue.up_next or queue.proposed, or the ref of one you add", "why": "..."}], "add": [{"ref": "new-1", "question": 0, "gap": "...", "source_kind": "...", "title": "...", "details": "...", "kind": "explore", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "promote": [{"id": "h-...", "why": "..."}], "retire": [{"id": "h-...", "why": "..."}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. ${RESEARCH_PLAN_LIMITS_TEXT} Use no tools.`;
+/** Through another harness, it answers with the plan as JSON text. */
+const RESEARCH_PLANNER_ASK = `${RESEARCH_PLANNER_TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "task": "an id from queue.up_next or queue.proposed, or the ref of one you add", "why": "..."}], "add": [{"ref": "new-1", "question": 0, "gap": "...", "source_kind": "...", "title": "...", "details": "...", "kind": "explore", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "promote": [{"id": "h-...", "why": "..."}], "retire": [{"id": "h-...", "why": "..."}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. ${RESEARCH_PLAN_LIMITS_TEXT}`;
+
+/** The same, with no tools: what a call with no past research and no MCP servers is told. */
+export const RESEARCH_PLANNER_ASK_SYSTEM = `${RESEARCH_PLANNER_ASK} Use no tools.`;
+
+/** A research run's planner call (goal 166): as the planner's, with its own texts. */
+export function renderResearchPlanner(i: PlannerInput): Prompt {
+  return plannerPrompt(
+    "research-planner",
+    { pi: RESEARCH_PLANNER_PI_SYSTEM, ask: RESEARCH_PLANNER_ASK },
+    i,
+  );
+}

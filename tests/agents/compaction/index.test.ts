@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { CompactionReport } from "../../../src/agents/compaction/index.ts";
+import type { Section } from "../../../src/agents/prompt.ts";
+import { renderOwnerMessages } from "../../../src/agents/roles/index.ts";
 import { runResearchTrial } from "../../../src/harness/agents/research/worker.ts";
 import { type CompactionLink, runTrial } from "../../../src/harness/agents/worker/index.ts";
 import { prepareWorkspace } from "../../../src/harness/agents/workspace.ts";
@@ -63,7 +65,7 @@ async function codeTrial(o: {
   script: Parameters<typeof startFakeModel>[0];
   contextWindow: number;
   compactAt?: number;
-  brief?: string;
+  brief?: string | Section[];
   link?: CompactionLink | undefined;
 }) {
   const env = makeJudgeEnv();
@@ -310,8 +312,12 @@ describe("compaction in Pi (goal 070)", () => {
     const r = await codeTrial({
       contextWindow: 4096,
       link: k.link,
-      // A brief far larger than the window: no compaction can make it fit.
-      brief: `Make work() faster. ${"Background. ".repeat(2000)}`,
+      // An owner's message far larger than the window: the first message's cut to the window
+      // keeps it whole (goal 166), and no compaction can make it fit.
+      brief: [
+        { id: "brief", source: "assignment", text: "Make work() faster." },
+        ...renderOwnerMessages([`Background. ${"Background. ".repeat(2000)}`], []),
+      ],
       script: ({ messages }) => {
         if (isSummary(messages as Sent)) {
           summaries++;
@@ -337,7 +343,11 @@ describe("compaction in Pi (goal 070)", () => {
     let calls = 0;
     const r = await codeTrial({
       contextWindow: 4096,
-      brief: `Make work() faster. ${"Background. ".repeat(2000)}`,
+      // Over the window, and kept whole by the first message's cut: an owner's message.
+      brief: [
+        { id: "brief", source: "assignment", text: "Make work() faster." },
+        ...renderOwnerMessages([`Background. ${"Background. ".repeat(2000)}`], []),
+      ],
       script: ({ messages }) => {
         if (isSummary(messages as Sent)) return { text: "SUMMARY: a change is written." };
         calls++;

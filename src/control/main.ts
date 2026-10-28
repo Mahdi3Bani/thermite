@@ -15,6 +15,7 @@ import { followReports } from "./ingest.ts";
 import { sendCommandsOn } from "./issue/index.ts";
 import { KitRepos } from "./kits/index.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
+import { followLive, LiveTaken } from "./live/index.ts";
 import { controlParts } from "./parts.ts";
 import { checkQuietRigs, checkRigPlace } from "./rigs/index.ts";
 import { refreshGpuClouds } from "./runpod/index.ts";
@@ -84,8 +85,8 @@ async function main(): Promise<void> {
   const driver = driverFromEnv(env);
   // Optional: the owner accepts each rig's first report key (no trust on first use).
   const requireKeyAcceptance = env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1";
-  // The message bus (goal 168): with THERMITE_NATS_URL, rigs' reports arrive there too, and
-  // commands leave there too.
+  // The message bus (goal 168): with THERMITE_NATS_URL, rigs' reports and live lines arrive
+  // there too, and commands leave there too.
   const natsUrl = busUrl(env);
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
@@ -102,9 +103,14 @@ async function main(): Promise<void> {
         reload: (seed) => reloadBus(natsUrl, seed),
       })
     : undefined;
+  // Control's connection to the bus, signed in as its own user; and what it took from the live
+  // stream, which the bus's state shows.
+  const bus =
+    natsUrl && busUsers ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed }) : undefined;
+  const liveTaken = new LiveTaken();
   // What the dashboard, REST, MCP and the loops below share, made once here (parts.ts): the test
   // pods on GPU clouds, the agents' MCP servers (goal 068), the rigs in pull mode and the rigs the
-  // owner launches on RunPod among them.
+  // owner launches on RunPod among them, and the bus.
   const parts = controlParts(
     store,
     privateKeyPem,
@@ -126,6 +132,7 @@ async function main(): Promise<void> {
               supervisor: env.THERMITE_RIG_SUPERVISOR_IMAGE,
             }
           : undefined,
+      bus: bus && natsUrl ? { server: new URL(natsUrl).host, bus, live: liveTaken } : undefined,
     },
     { staleAfterMs, offlineAfterMs, control: buildInfo() },
   );
@@ -160,17 +167,19 @@ async function main(): Promise<void> {
     lifecycle: driver?.kind ?? null,
     bus: natsUrl ? new URL(natsUrl).host : null,
   });
-  // Reports from the bus, folded through the ingest route's checks as they arrive; and each
-  // command control issues, published to its rig's subject as well as kept in the store. The
-  // users file is written first, so that the server can start, and kept up to date after.
-  const bus =
-    natsUrl && busUsers ? natsBus(natsUrl, "control", { seed: busUsers.controlSeed }) : undefined;
+  // Reports from the bus, folded through the ingest route's checks as they arrive; live lines,
+  // folded into the live view as they arrive; and each command control issues, published to its
+  // rig's subject as well as kept in the store. The users file is written first, so that the
+  // server can start, and kept up to date after.
   let usersSync: NodeJS.Timeout | undefined;
   if (bus && busUsers) {
     void busUsers.sync();
     usersSync = setInterval(() => void busUsers.sync(), BUS_USERS_SYNC_MS);
     followReports(bus, { store, control: buildInfo(), requireKeyAcceptance }).catch((err) =>
       log("control", "reports from the bus stopped", { error: String(err) }, "error"),
+    );
+    followLive(bus, { store, taken: liveTaken }).catch((err) =>
+      log("control", "live lines from the bus stopped", { error: String(err) }, "error"),
     );
     sendCommandsOn(store, bus).catch((err) =>
       log("control", "commands stream not made", { error: String(err) }, "error"),

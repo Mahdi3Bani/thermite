@@ -292,6 +292,8 @@ describe("Claude Code", () => {
     // Claude Code's own sandbox stays off: the scrub would make it mandatory.
     assert.equal(run.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, undefined);
     assert.equal(run.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1");
+    // The project's CLAUDE.md never joins the prompt (goal 166).
+    assert.equal(run.env?.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
     assert.equal(run.env?.HOME, join(a, "claude-home"));
     assert.equal(run.env?.THERMITE_TRIAL_AUTH, "trial.tok");
     assert.equal(run.env?.THERMITE_PROXY_AUTH, undefined, "no key-adding proxy for a subscription");

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { CODEX_ADVISOR_OFF } from "../../../src/supervisor/advisors/cli.ts";
 import { type AdvisorRuntime, runAdvisor } from "../../../src/supervisor/advisors/index.ts";
 import { serveAdvisorModel } from "../../../src/supervisor/advisors/proxy.ts";
+import { testPrompt } from "../../helpers/advisor-prompt.ts";
 
 /**
  * Advisors in OpenCode v2 and the Codex CLI in the supervisor (goal 073), each with a stand-in
@@ -150,8 +151,7 @@ async function call(kind: "codex" | "opencode", runtime: AdvisorRuntime) {
   try {
     return await runAdvisor({
       runtime,
-      system: "You audit.",
-      prompt: "Audit package: the package to read.",
+      prompt: testPrompt("You audit.", "Audit package: the package to read."),
       schema: Facts,
       answerSchema: Type.Object({ decision: Type.String() }),
       tools: {
@@ -204,6 +204,7 @@ describe("advisors in OpenCode and the Codex CLI", () => {
     assert.match(f.config, /\[skills\]\ninclude_instructions = false/);
     assert.match(f.config, /model_reasoning_effort = "high"/);
     assert.match(f.config, /web_search = "disabled"/);
+    assert.match(f.config, /^project_doc_max_bytes = 0$/m);
     // The model through the call's proxy: the CLI holds a credential made for the call; the
     // provider sees its own key, and only that.
     assert.equal(f.proxy_auth, "set");
@@ -369,8 +370,7 @@ describe("advisors in OpenCode and the Codex CLI", () => {
         context_window: 0,
         timeout_s: 60,
       },
-      system: "s",
-      prompt: "p",
+      prompt: testPrompt("s", "p"),
       schema: z.object({ decision: z.string() }),
       answerSchema: Type.Object({}),
     });
@@ -389,8 +389,7 @@ describe("advisors in OpenCode and the Codex CLI", () => {
           context_window: 0,
           timeout_s: 60,
         },
-        system: "s",
-        prompt: "p",
+        prompt: testPrompt("s", "p"),
         schema: z.strictObject({ decision: z.enum(["clear", "block"]) }),
         answerSchema: Type.Object({}),
       });
@@ -407,8 +406,7 @@ describe("advisors in OpenCode and the Codex CLI", () => {
           context_window: 0,
           timeout_s: 60,
         },
-        system: "s",
-        prompt: "p",
+        prompt: testPrompt("s", "p"),
         schema: z.object({ decision: z.string() }),
         answerSchema: Type.Object({}),
       });

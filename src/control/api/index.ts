@@ -7,6 +7,7 @@ import { ExportFiles } from "../exports.ts";
 import { mountMcp } from "../mcp/index.ts";
 import { mountMcpServerRoutes } from "../mcp-servers/index.ts";
 import type { ControlStore } from "../store/index.ts";
+import { busRoutes } from "./bus.ts";
 import { campaignRoutes } from "./campaigns.ts";
 import { commandRoutes, commandStatusRoutes } from "./commands.ts";
 import { apiContext, type ControlOptions, type ControlTokens } from "./context.ts";
@@ -97,6 +98,7 @@ export function createControlApi(
   lifecycleRoutes(app, api);
   rigRoutes(app, api);
   usageRoutes(app, api);
+  busRoutes(app, api);
   kitRoutes(app, api);
   rigRecordRoutes(app, api);
   commandRoutes(app, api);

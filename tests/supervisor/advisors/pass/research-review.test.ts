@@ -3,6 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
+import { messageText } from "../../../../src/agents/prompt.ts";
+import { renderResearchReviewer } from "../../../../src/agents/roles/index.ts";
 import { createHarnessApi } from "../../../../src/harness/api/index.ts";
 import {
   type CheckedReviewer,
@@ -12,11 +14,7 @@ import {
 } from "../../../../src/harness/research/review/index.ts";
 import { Reviews } from "../../../../src/harness/reviews.ts";
 import type { HarnessService } from "../../../../src/harness/service/index.ts";
-import {
-  AdvisorsConfig,
-  researchPrompt,
-  reviewOne,
-} from "../../../../src/supervisor/advisors/index.ts";
+import { AdvisorsConfig, reviewOne } from "../../../../src/supervisor/advisors/index.ts";
 import {
   type AdviseConfig,
   adviseOnce,
@@ -24,6 +22,10 @@ import {
 } from "../../../../src/supervisor/advisors/pass/index.ts";
 import { startFakeModel } from "../../../helpers/fake-model.ts";
 import { fillResearch, makeResearchRun, writeCards } from "../../../helpers/research-run.ts";
+
+/** A research review's package as a reviewer in Pi reads it. */
+const reviewText = (pkg: unknown, fit: number | undefined) =>
+  messageText(renderResearchReviewer({ pkg, fit }, { program: "pi", mcpServers: [] }));
 
 /**
  * Goals 112 and 117: the supervisor's review panel answers a research run's package with a
@@ -344,11 +346,11 @@ describe("the review panel answers a research run's package (goal 112)", () => {
     const whole = JSON.stringify(pkg).length;
     assert.ok(whole > 350_000);
     // A window that takes it all: nothing is cut, every hypothesis is there.
-    const roomy = researchPrompt("P:", pkg, 2_000_000);
+    const roomy = reviewText(pkg, 2_000_000);
     assert.doesNotMatch(roomy, /Cut to fit/);
     assert.match(roomy, /h-0179/);
     // 200,000 characters: the items to decide come before past research, so that is cut.
-    const tight = researchPrompt("P:", pkg, undefined);
+    const tight = reviewText(pkg, undefined);
     assert.match(
       tight,
       /\[Cut to fit: 200,000 of [\d,]+ characters\. The items to decide come first/,

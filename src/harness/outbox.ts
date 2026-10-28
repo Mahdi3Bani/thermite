@@ -9,11 +9,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { canonicalJson } from "../core/canonical.ts";
 import { patchBytes } from "./git.ts";
 import { knowledgePart } from "./kb-part.ts";
 import type { Ledger } from "./ledger/index.ts";
 import { championFiles } from "./propagation.ts";
+
+/** Where an export keeps the prompts sent (goal 166). */
+export const PROMPTS_FILE = "prompts.jsonl.gz";
 
 /** Whether an event is a run's (goal 170): the run the ledger recorded with it. */
 export function runEvents(run: string): (e: { run: string | null }) => boolean {
@@ -24,15 +28,15 @@ export function runEvents(run: string): (e: { run: string | null }) => boolean {
  * Outbox export. The harness has no git credentials and no remote access: it writes exports
  * into the shared outbox, and the supervisor pushes them to the results repository as packed
  * commits. An export holds patches and manifests for attempts recorded since the last export,
- * the events since then, the runs' field notes, research notes and briefings since then, the
- * runs' part of their campaigns' folders in the knowledge base that changed since then, a
+ * the events since then, the runs' field notes, research notes, briefings and prompts sent since
+ * then, the runs' part of their campaigns' folders in the knowledge base that changed since then, a
  * consistent ledger snapshot, each new run champion as a patch against its seed (what other rigs
  * need to judge it themselves), and the research folder of each run that finished. A full export
  * also holds the research archive and the research folder of every run, finished or not.
  *
  * A run's export (goal 103: Export on a run's page) holds that run alone, from its start: its
- * events, attempts, field notes, research notes, briefing and part of its campaign's folder, its
- * research folder as it stands and the pages it fetched. It holds no ledger snapshot (the ledger is
+ * events, attempts, field notes, research notes, briefing, prompts sent and part of its campaign's
+ * folder, its research folder as it stands and the pages it fetched. It holds no ledger snapshot (the ledger is
  * every run's) and publishes no champion, and it stays outside the rig's chain of exports: the
  * next export still starts where the last one of the chain ended, and a full reset never takes it.
  */
@@ -170,6 +174,16 @@ export async function writeExport(input: {
     if (briefing.length) {
       writeFileSync(join(tmp, "briefing.jsonl"), jsonl(briefing));
       notesRel.push("briefing.jsonl");
+    }
+    // The whole text of each prompt the runs' agents were sent since then (goal 166), its
+    // sections and their sources, one JSON line each, compressed (prompts.jsonl.gz).
+    const prompts = ids("agent_prompt", "id").flatMap((id) => {
+      const p = ledger.prompts.get(id);
+      return p ? [p] : [];
+    });
+    if (prompts.length) {
+      writeFileSync(join(tmp, PROMPTS_FILE), gzipSync(jsonl(prompts)));
+      notesRel.push(PROMPTS_FILE);
     }
     // The runs' part of their campaigns' folders (knowledge.jsonl): each item that an event
     // since the last export added or changed, as it stands now, with its origin, read as

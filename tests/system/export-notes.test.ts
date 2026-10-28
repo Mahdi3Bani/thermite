@@ -126,6 +126,15 @@ describe("a run's export holds its journal, its research notes and its briefing"
         updated_at: "2026-10-16T00:00:00.000Z",
       },
     ]);
+    // A prompt a lane's worker was sent (goal 166): kept with the run, and pushed compressed.
+    s.ledger.prompts.record("harness", RUN, {
+      role: "worker",
+      program: "pi",
+      lane: "lane-1",
+      trial: "t-1",
+      call: null,
+      sections: [{ id: "brief", source: "assignment", part: "message", text: "Make it faster." }],
+    });
     s.ledger.runs.setStatus(RUN, "closed", "done", "test");
     const exp = await s.export("test");
     const files = Object.keys(manifestOf(exp.dir).files);
@@ -160,6 +169,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
       `research-notes/${name}.jsonl`,
       `briefing/${name}.jsonl`,
       `knowledge/${name}.jsonl`,
+      `prompts/${name}.jsonl.gz`,
       `research/${RUN}/folder/INDEX.md`,
     ])
       assert.ok(pushed.includes(f), `${f} in ${pushed.join(", ")}`);

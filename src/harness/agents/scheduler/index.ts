@@ -1,5 +1,7 @@
+import type { Prompt } from "../../../agents/prompt.ts";
 import type { Contract } from "../../../core/contract.ts";
 import { baselineState } from "../../judge/index.ts";
+import type { PreviewAsk } from "../../prompts.ts";
 import { type Coordinator, keepsWorking } from "../coordinator.ts";
 import type { Registry } from "../registry.ts";
 import {
@@ -14,6 +16,7 @@ import { budgetSpent, laneWaitMs, openAttempts, waitingForMcp } from "./gates.ts
 import { awaitingGoalReport, waitingForConfirmation } from "./goal.ts";
 import { maybeForkRound, updateLaneBests } from "./lanes.ts";
 import { planEpoch } from "./plan.ts";
+import { previewPrompt } from "./preview.ts";
 import { type AgentsStopped, agentsStopped, stopAgents, waitingForLimit } from "./provider.ts";
 import { finishClosedResearch, finishEndedResearch, researchTick } from "./research/index.ts";
 import { lanesInRound, roundOver, waitsForJudge } from "./rounds.ts";
@@ -81,6 +84,11 @@ export class Scheduler {
   /** The harness is stopping (goal 079): scheduler/watch.ts says what stops. */
   async shutdown(reason: string): Promise<void> {
     await shutdown(this.sched, reason);
+  }
+
+  /** A role's next prompt in a run, with no side effect (goal 166): scheduler/preview.ts. */
+  preview(run: string, ask: PreviewAsk): Prompt {
+    return previewPrompt(this.sched, run, ask);
   }
 
   /** Trials running now (for a drain's report). */
