@@ -9,7 +9,6 @@ import { type KeptAt, keptLine } from "../cli-compaction.ts";
 import { claudeOwn } from "../cli-conversation.ts";
 import { claudeMcpConfig } from "../mcp-tools.ts";
 import type { ModelConfig } from "../model.ts";
-import { OPENCODE_MEMORY } from "../opencode/program.ts";
 import { type ClaudeTally, closeClaudeRun, newClaudeTally, readClaudeEvents } from "./events.ts";
 import {
   CLAUDE_BASE_ENV,
@@ -166,6 +165,12 @@ export function claudeArgs(
  * cut short that keeps its usage, and the subscription's usage windows, a full one of which ends
  * the trial.
  */
+/**
+ * What Claude Code itself uses, as its limits note says: measured in the real Claude Code
+ * acceptance (2026-10-28: 343 MiB at its trial's peak, with the commands it ran).
+ */
+export const CLAUDE_CODE_MEMORY = "about 350 MiB";
+
 export const claudeProgram: CliProgram<ClaudeTally> = {
   id: "claude-code",
   name: "Claude Code",
@@ -173,7 +178,7 @@ export const claudeProgram: CliProgram<ClaudeTally> = {
   eventsVar: "THERMITE_CLAUDE_EVENTS",
   system: WORKER_CLAUDE_CODE_SYSTEM,
   turnWords: "each model reply is one",
-  memory: OPENCODE_MEMORY,
+  memory: CLAUDE_CODE_MEMORY,
   bin: claudeBin,
   exe: claudeExe,
   // The MCP servers the run's kit gives its workers (goal 068), at the harness's gateway with the

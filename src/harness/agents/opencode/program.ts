@@ -116,7 +116,7 @@ export function opencodeConfig(
   return config;
 }
 
-/** What OpenCode itself uses, as its limits note says (Claude Code's says the same, unmeasured). */
+/** What OpenCode itself uses, as its limits note says. */
 export const OPENCODE_MEMORY = "about 500 MiB";
 
 /** The environment of an OpenCode run: its home, Thermite's command and how to reach the API. */
