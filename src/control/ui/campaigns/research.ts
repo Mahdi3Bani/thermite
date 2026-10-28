@@ -1,4 +1,4 @@
-import { questionName, RESEARCH_REVIEW } from "../../../core/research-check.ts";
+import { questionName, RESEARCH_REVIEW, SATURATION_TASKS } from "../../../core/research-check.ts";
 import type { MessageView, RigView, RunView } from "../../views/index.ts";
 import {
   type HypothesisView,
@@ -7,7 +7,6 @@ import {
   questionYield,
   type ReviewItemView,
   recentShares,
-  SATURATION_TASKS,
   type StandingView,
   type TaskYieldView,
 } from "../../views/research.ts";

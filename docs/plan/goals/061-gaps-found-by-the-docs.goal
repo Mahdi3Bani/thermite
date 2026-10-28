@@ -118,13 +118,13 @@ The writers and verifiers of the documentation site (goal [060](_completed/060-d
 
 ### Contracts and kits
 
-- [ ] A `kit.json` that a run's start refuses is reported as a raw JSON dump, not in sentences (`src/harness/kit.ts`, `src/control/command-progress.ts`, `src/control/ui/words/rig.ts`).
+- [ ] A `kit.json` that a run's start refuses is reported as a raw JSON dump, not in sentences (`src/core/kit.ts`, `src/control/command-progress.ts`, `src/control/ui/words/rig.ts`).
 - [ ] An uploaded kit archive made with a Mac's `tar` is refused (`the archive has no kit.json at its top`) because of the `._` files it adds; control could skip them (`src/control/kits/upload.ts`).
 - [ ] The smoke kit reaches a rig only through **Judge smoke**: assigning a contract that names the smoke kit's commit to a fresh or reset rig fails with `kit commit … is not in kit smoke-cpu-kit; import its bundle first` until the check has run there.
 - [ ] Contract fields that are accepted but not used: `target.class`, `search_policy.allowed_purposes`, `min_duration` and `max_duration` outside research, `objective.policy`, `objective.secondary`, `monitor_only`, a hard constraint of kind `check`, the goal fields `independence_epochs`, `min_live_families`, `priority` and `parent`, and the research fields `scope.source_types`, `scope.languages` and `report_cadence.report_hours`. Build each one or remove it (`src/core/contract.ts`).
 - [ ] `project.repo` and `project.kit.repo` accept any text, but an import needs a lowercase id of 64 characters at most, so a contract that validates can be refused at assignment (`src/core/contract.ts`, `src/core/commands.ts`).
-- [ ] A goal's hidden tests (`held_out_cells`) are not checked against the kit at assignment, as a hill climb's are; an unknown cell fails only when the goal is verified (`src/harness/kit.ts`).
-- [ ] The judge can read a goal's threshold from a field that a check prints, but the assignment check refuses any name that is not a kit metric (`src/harness/kit.ts`, `src/harness/judge/goals.ts`).
+- [ ] A goal's hidden tests (`held_out_cells`) are not checked against the kit at assignment, as a hill climb's are; an unknown cell fails only when the goal is verified (`src/core/kit.ts`).
+- [ ] The judge can read a goal's threshold from a field that a check prints, but the assignment check refuses any name that is not a kit metric (`src/core/kit.ts`, `src/harness/judge/goals.ts`).
 - [ ] A goal's threshold is an absolute number: a goal cannot ask for a gain over the seed's own measurement, so no goal on the smoke kit fits every machine (`src/core/contract.ts`).
 - [ ] `notes` reach only hill-climb and goal workers; research workers and the research plan never read them (`src/harness/agents/scheduler/briefs.ts`).
 - [ ] A research `scope` domain with capital letters never matches, because only the fetched host is lowercased (`src/harness/research/fetcher.ts`).

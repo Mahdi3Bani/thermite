@@ -1,10 +1,11 @@
 import type { Hardware } from "../../core/hardware.ts";
+import type { RigSettings } from "../../core/rig-settings.ts";
 import type { MetricValues } from "../metric-values.ts";
 import type { RunpodRigView } from "../runpod/rig-view.ts";
 import type { RigVersions } from "../versions.ts";
 import type { RigCheckView } from "./fold/checks.ts";
 import type { GoalChecks, GoalValues } from "./fold/goals.ts";
-import type { ReportingState, RigModelView, RigSettingsView } from "./report.ts";
+import type { ReportingState, RigModelView } from "./report.ts";
 import type {
   HypothesisView,
   ItemDecisionView,
@@ -58,7 +59,7 @@ export interface RigView {
   /** Which model route its agents use, from its signed report (older harnesses send none). */
   model: RigModelView | null;
   /** The rig's own settings (Edit rig), from its signed report; null from an older harness. */
-  settings: RigSettingsView | null;
+  settings: RigSettings | null;
   /** A rig whose GPU split control may change (its GPU set and the judge's share now). */
   gpu_split: { set: number; judge: number } | null;
   /** A rig the owner launched on a GPU cloud: its pod, its price and what it has cost so far. */

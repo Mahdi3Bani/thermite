@@ -1,12 +1,12 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
+import { buildInfo } from "../common/build-info.ts";
 import { busUrl, natsBus, reloadBus } from "../common/bus.ts";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { startLogging } from "../common/log.ts";
 import { readNumber } from "../common/settings.ts";
 import { generateSigningKeys } from "../core/commands.ts";
-import { buildInfo } from "../core/version.ts";
 import { createControlApi } from "./api/index.ts";
 import { BUS_USERS_SYNC_MS, BusUsers, busUsersFile } from "./bus/users.ts";
 import { Credential } from "./credential.ts";

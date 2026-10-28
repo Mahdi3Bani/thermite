@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { signEnvelope } from "../../src/core/commands.ts";
-import { type RigSettings, RigSettingsStore } from "../../src/harness/rig-settings.ts";
+import type { RigSettings } from "../../src/core/rig-settings.ts";
+import { RigSettingsStore } from "../../src/harness/rig-settings.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 const defaults: RigSettings = {

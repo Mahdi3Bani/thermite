@@ -1,4 +1,4 @@
-import type { GoalCheck, GoalCheckCell, GoalChecks } from "../../../harness/goal-checks.ts";
+import type { GoalCheck, GoalCheckCell, GoalChecks } from "../../../core/goal/index.ts";
 import { esc } from "../components/index.ts";
 
 /**

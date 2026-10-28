@@ -4,7 +4,7 @@ import { errorText } from "../../common/errors.ts";
 import { ISSUE, UNTRIED } from "../../core/api/control/owner.ts";
 import { briefChange } from "../../core/brief.ts";
 import type { CommandKind } from "../../core/commands.ts";
-import { CommitSchema, parseContract } from "../../core/contract.ts";
+import { CommitSchema, ID_PATTERN, parseContract } from "../../core/contract.ts";
 import { controlAt, orFail } from "../calls.ts";
 import { briefFromFlags, contextFromFlags, fail } from "./shared.ts";
 import { USAGE } from "./usage.ts";
@@ -240,7 +240,7 @@ export async function thermiteAssign(rest: string[]): Promise<void> {
       if (!kit) fail("--kit given, but the contract names no project.kit");
       // A kit control keeps (goal 096): fetched from control, as this rig.
       const kept = /^control:(.*)$/.exec(values.kit)?.[1];
-      if (kept !== undefined && !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(kept))
+      if (kept !== undefined && !ID_PATTERN.test(kept))
         fail(`--kit control:NAME names a kit control keeps: ${JSON.stringify(kept)} is not one`);
       imports.push({
         kind: "kit_bundle",

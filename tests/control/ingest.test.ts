@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { buildInfo } from "../../src/common/build-info.ts";
 import type { Bus, BusMessage } from "../../src/common/bus.ts";
 import { foldReport, followReports, type Intake } from "../../src/control/ingest.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
 import { REPORT_CONSUMER, REPORT_STREAM, reportSubject } from "../../src/core/link/report.ts";
-import { buildHeaders, buildInfo } from "../../src/core/version.ts";
+import { buildHeaders } from "../../src/core/version.ts";
 import { makeHarnessEnv } from "../helpers/harness-env.ts";
 import { appendOther } from "../helpers/kinds.ts";
 
@@ -18,7 +19,7 @@ function intake(): Intake {
 let seq = 0;
 /** A report as it comes off the bus: on `subject`, with the supervisor's build in its headers. */
 function message(report: unknown, subject = reportSubject("rig-a")): BusMessage {
-  const h = buildHeaders();
+  const h = buildHeaders(buildInfo());
   return {
     subject,
     seq: ++seq,

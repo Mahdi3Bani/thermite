@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { errorText } from "../../common/errors.ts";
+import { CHATGPT_API } from "../../core/agents.ts";
 import type { SecretBox } from "../secrets.ts";
 import type { ControlStore, ModelProvider, ProviderModel } from "../store/index.ts";
 import { CHATGPT_USAGE_URL, chatgptWindows, type PlanUsage } from "./plan-usage.ts";
@@ -14,7 +15,6 @@ import { CHATGPT_USAGE_URL, chatgptWindows, type PlanUsage } from "./plan-usage.
  * refresh token at each renewal. Rigs get the one-hour access token with their route.
  */
 
-export const CHATGPT_API = "https://api.openai.com/v1";
 const AUTH = "https://auth.openai.com";
 const AUTHORIZE_URL = `${AUTH}/api/accounts/authorize`;
 const TOKEN_URL = `${AUTH}/api/accounts/oauth/token`;

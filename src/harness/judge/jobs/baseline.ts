@@ -1,5 +1,5 @@
 import type { HillClimbContract } from "../../../core/contract.ts";
-import type { Kit } from "../../kit.ts";
+import type { Kit } from "../../../core/kit.ts";
 import type { JobRow } from "../../ledger/index.ts";
 import {
   BASELINE_BLOCKS,

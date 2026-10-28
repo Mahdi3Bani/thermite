@@ -1,3 +1,5 @@
+import type { Harness } from "../../core/agents.ts";
+import type { RigSettings } from "../../core/rig-settings.ts";
 import type { ControlStore } from "../store/index.ts";
 import type { RigView } from "./types.ts";
 
@@ -6,27 +8,8 @@ import type { RigView } from "./types.ts";
  * settings, its GPU split and its model route; and whether it still reports, by when it last did.
  */
 
-/** The rig's own settings as its harness reports them. */
-export interface RigSettingsView {
-  judge: boolean;
-  workers: boolean;
-  lanes: number;
-  planner: boolean;
-  auditor: boolean;
-  teachers: boolean;
-  review: boolean;
-  exports: boolean;
-  /** A trial's length when its contract sets none; null: none (goal 079). */
-  trial_minutes: number | null;
-  max_turns: number | null;
-  /** After how many minutes without a line a trial asks the owner (goal 143); null: never. */
-  quiet_minutes: number | null;
-  promotion: "auto" | "owner_approval";
-  /** The judge's share of a rig's GPU set, if set on the rig; null: its default. */
-  judge_gpus: number | null;
-}
-
-export function readSettings(v: unknown): RigSettingsView | null {
+/** The rig's own settings as its harness reports them, read loosely. */
+export function readSettings(v: unknown): RigSettings | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   const b = (k: string) => o[k] !== false;
@@ -97,7 +80,7 @@ export interface RigModelView {
   base_url: string | null;
   key_hint: string | null;
   /** The harness its agents run in. */
-  harness: "pi" | "opencode" | "claude-code" | "codex";
+  harness: Harness;
 }
 
 /** Reads a report's model route loosely: anything malformed is dropped, never trusted. */

@@ -19,7 +19,6 @@ export {
   OFFLINE_AFTER_MS,
   type ReportingState,
   type RigModelView,
-  type RigSettingsView,
   readModelInfo,
   reportingState,
   rigSettingsOf,

@@ -1,3 +1,4 @@
+import { CHATGPT_API } from "../../core/agents.ts";
 import { CONTEXT_WINDOW_MAX, CONTEXT_WINDOW_MIN } from "../../core/compaction.ts";
 import type { ModelPrice } from "../../core/usage.ts";
 import type { ProviderModel, ProviderType } from "../store/index.ts";
@@ -101,7 +102,7 @@ export function providerBase(type: ProviderType, base: string): string {
   // A Claude subscription has no endpoint of its own here: Claude Code knows where it goes.
   if (type === "claude") return ANTHROPIC_BASE;
   // A ChatGPT sign-in reaches only OpenAI's Responses API.
-  if (type === "chatgpt") return "https://api.openai.com/v1";
+  if (type === "chatgpt") return CHATGPT_API;
   if (type === "opencode") return b || OPENCODE_BASE;
   return b;
 }

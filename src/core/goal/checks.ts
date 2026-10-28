@@ -1,5 +1,5 @@
-import type { GoalContract } from "../core/contract.ts";
-import { type CellParams, cellParams, cellTimeoutS, type Kit, paramsText } from "./kit.ts";
+import type { GoalContract } from "../contract.ts";
+import { type CellParams, cellParams, cellTimeoutS, type Kit, paramsText } from "../kit.ts";
 
 /**
  * How each goal of a goal campaign is really checked (goal 082): its kit verifier or its metric

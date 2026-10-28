@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { buildInfo } from "../../../src/common/build-info.ts";
 import { foldReport } from "../../../src/control/ingest.ts";
 import { fingerprint } from "../../../src/control/store/index.ts";
 import { REPORT_STREAM_CONFIG } from "../../../src/core/link/report.ts";
-import { buildInfo } from "../../../src/core/version.ts";
 import { healCursor, type RelayState, relayOnce } from "../../../src/supervisor/relay/index.ts";
 import { controlStack, RIG_TOKEN } from "../../helpers/control-stack.ts";
 import { asMessage, FakeBus } from "../../helpers/fake-bus.ts";

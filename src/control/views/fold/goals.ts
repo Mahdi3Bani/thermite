@@ -1,9 +1,10 @@
-import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
-import { type GoalChecks, parseGoalChecks } from "../../../harness/goal-checks.ts";
 import {
+  type GoalChecks,
   type GoalCellValues as GoalValues,
   parseGoalValues as goalValuesOf,
-} from "../../../harness/judge/goal-values.ts";
+  parseGoalChecks,
+} from "../../../core/goal/index.ts";
+import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
 import { newReviewFigures, panelFigures } from "../research.ts";
 import type { Handler, Handlers } from "./index.ts";
 

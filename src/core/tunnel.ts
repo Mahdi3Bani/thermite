@@ -11,10 +11,10 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { join } from "node:path";
 import { z } from "zod";
 import { canonicalJson } from "./canonical.ts";
 import { signJson, verifyJson } from "./commands.ts";
+import { joinPath } from "./paths.ts";
 
 /**
  * The tunnel between control and a rig in pull mode: a rig control connects to, through a public
@@ -358,7 +358,7 @@ export function podTunnelDirs(
   home: string,
 ): { dir: string; enrolledDir: string } {
   return {
-    dir: env.THERMITE_TUNNEL_DIR || join(home, "tunnel"),
-    enrolledDir: env.THERMITE_TUNNEL_ENROLLED_DIR || join(home, "enrolled"),
+    dir: env.THERMITE_TUNNEL_DIR || joinPath(home, "tunnel"),
+    enrolledDir: env.THERMITE_TUNNEL_ENROLLED_DIR || joinPath(home, "enrolled"),
   };
 }

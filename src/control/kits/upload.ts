@@ -13,8 +13,8 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
+import { type Kit, KitSchema } from "../../core/kit.ts";
 import type { McpUse } from "../../core/mcp.ts";
-import { type Kit, KitSchema } from "../../harness/kit.ts";
 
 const run = promisify(execFile);
 

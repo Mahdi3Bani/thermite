@@ -62,7 +62,7 @@ export {
   PROPOSED_MAX,
 } from "./package.ts";
 export type { PaperFigures } from "./request.ts";
-export { paperSha, steProblems } from "./ste.ts";
+export { steProblems } from "./ste.ts";
 
 /**
  * A run's research papers: asked for once its review's pass is accepted, listed for the final

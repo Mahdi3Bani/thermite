@@ -1,10 +1,10 @@
 import { ADVISOR_ROLES, type AdvisorRole } from "../core/agents.ts";
 import { type Contract, MAX_LANES } from "../core/contract.ts";
 import type { LiveLog } from "../core/live.ts";
+import type { RigSettings } from "../core/rig-settings.ts";
 import { lanesAtWork } from "./agents/coordinator.ts";
 import { type Ledger, LedgerError } from "./ledger/index.ts";
 import type { MessageRow } from "./ledger/messages.ts";
-import type { RigSettings } from "./rig-settings.ts";
 
 /**
  * The owner's messages to a run's agents (message_agent), with who read each one and when.

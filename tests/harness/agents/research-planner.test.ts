@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { StoredRule } from "../../../src/core/commands.ts";
-import { MEASURES_NOTHING, questionLabel } from "../../../src/core/research-check.ts";
+import { GAP_LINE, MEASURES_NOTHING, questionLabel } from "../../../src/core/research-check.ts";
 import {
   PLANNER_PROMOTIONS_MAX,
   type PlannerHypotheses,
@@ -12,11 +12,7 @@ import {
   validateResearchPlan,
 } from "../../../src/harness/agents/research-planner.ts";
 import type { QueueBrief } from "../../../src/harness/queue.ts";
-import {
-  GAP_LINE,
-  type QuestionState,
-  type ResearchState,
-} from "../../../src/harness/research/shares.ts";
+import type { QuestionState, ResearchState } from "../../../src/harness/research/shares.ts";
 
 /**
  * Goals 047 and 117: code checks every task of the research planner's answer, at the scale of a

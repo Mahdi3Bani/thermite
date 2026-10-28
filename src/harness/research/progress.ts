@@ -1,3 +1,4 @@
+import { PROGRESS_SHARE, SATURATION_TASKS } from "../../core/research-check.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { TaskYield } from "../queue.ts";
 
@@ -5,14 +6,8 @@ import type { TaskYield } from "../queue.ts";
  * Where a research run stands with its items (goal 117): the panel's standing decision on each
  * question and each required hypothesis, whether each question is saturated, and when the run
  * last improved. The review (part B2), the plan (part B1) and the end rules read these; nothing
- * here writes.
+ * here writes. The rule's limits are in core/research-check.ts.
  */
-
-/** A question's last tasks that show it saturated: this many in a row that added nothing new. */
-export const SATURATION_TASKS = 4;
-
-/** The progress rule (the owner, 2026-10-24): no improvement for this share of the running time. */
-export const PROGRESS_SHARE = 0.25;
 
 /**
  * How good a decision is, to tell an improvement: for a question, open 0, insufficient 1,

@@ -2,17 +2,14 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
+import { sha256Hex } from "../../src/core/canonical.ts";
 import type { ResearchTrialSpec } from "../../src/harness/agents/research-worker.ts";
 import { Scheduler } from "../../src/harness/agents/scheduler/index.ts";
 import { createHarnessApi } from "../../src/harness/api/index.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
 import { knowledgePart } from "../../src/harness/kb-part.ts";
 import { NEXT_EXPERIMENTS_FILE, PAPER_FILE } from "../../src/harness/research/folder.ts";
-import {
-  PAPER_PACKAGE_MAX,
-  type PaperProblem,
-  paperSha,
-} from "../../src/harness/research/paper/index.ts";
+import { PAPER_PACKAGE_MAX, type PaperProblem } from "../../src/harness/research/paper/index.ts";
 import type { Research } from "../../src/harness/research/research/index.ts";
 import { ANSWERED } from "../../src/harness/research/review/index.ts";
 import { answeredResearchRun, goodPaper, NO_STE } from "../helpers/research-paper.ts";
@@ -440,7 +437,7 @@ describe("a research run whose questions are answered waits for its paper (goal 
     const paper = goodPaper(s.ids);
     const ste = {
       checked: true,
-      sha256: paperSha(paper),
+      sha256: sha256Hex(paper),
       version: "1.0.0",
       issue: "9",
       counts: { error: 1, warning: 2, info: 0 },

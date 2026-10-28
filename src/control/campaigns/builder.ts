@@ -11,8 +11,8 @@ import {
   parseContract,
 } from "../../core/contract.ts";
 import { CampaignId } from "../../core/ids.ts";
+import { KitSchema, kitProblems } from "../../core/kit.ts";
 import { type McpUse, McpUses } from "../../core/mcp.ts";
-import { KitSchema, kitProblems } from "../../harness/kit.ts";
 
 /**
  * The new-campaign page's answers, turned into a contract and, for a kit described on the

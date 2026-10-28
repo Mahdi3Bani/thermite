@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTROL_CALL_TIMEOUT_MS, controlClient } from "../../../src/common/api/control.ts";
+import { buildInfo } from "../../../src/common/build-info.ts";
 import { KB } from "../../../src/core/api/control/rigs.ts";
-import { BUILD_HEADERS, buildInfo } from "../../../src/core/version.ts";
+import { BUILD_HEADERS } from "../../../src/core/version.ts";
 
 /** A fake fetch that answers `{}`-shaped JSON and keeps each call's address and headers. */
 function recording(answer: unknown) {

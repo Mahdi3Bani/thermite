@@ -174,6 +174,7 @@ const SteFinding = z.object({
 export const SteResult = z.discriminatedUnion("checked", [
   z.strictObject({
     checked: z.literal(true),
+    /** The SHA-256 of the paper's text that the checker read (`sha256Hex`, as hex). */
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
     version: z.string().max(100).nullable().default(null),
     issue: z.string().max(100).nullable().default(null),

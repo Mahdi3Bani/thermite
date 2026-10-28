@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { type GoalCellValues, parseGoalValues } from "../../../src/core/goal/index.ts";
 import { Registry } from "../../../src/harness/agents/registry.ts";
 import { goalReport } from "../../../src/harness/agents/scheduler/goal.ts";
 import {
   CHECK_NUMBERS_MAX,
-  type GoalCellValues,
-  parseGoalValues,
   runValues,
   valuesText,
 } from "../../../src/harness/judge/goal-values.ts";

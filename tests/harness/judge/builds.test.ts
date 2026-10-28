@@ -11,10 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { KitSchema } from "../../../src/core/kit.ts";
 import { LocalRunner } from "../../../src/harness/broker/runner.ts";
 import { BuildStore, toolchainOf } from "../../../src/harness/judge/builds.ts";
 import { outputProblems } from "../../../src/harness/judge/measure.ts";
-import { KitSchema } from "../../../src/harness/kit.ts";
 import { Ledger } from "../../../src/harness/ledger/index.ts";
 
 function setup(buildScript: string, outputs: string[], timeoutS = 30) {

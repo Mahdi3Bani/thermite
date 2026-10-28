@@ -1,11 +1,11 @@
 import type { Hono } from "hono";
 import { errorText } from "../../../common/errors.ts";
+import { CHATGPT_API } from "../../../core/agents.ts";
 import { inspectKubeconfig, KUBE_NAME } from "../../clusters/kubectl.ts";
 import { checkClusterNow, NS } from "../../clusters/rigs.ts";
 import { modelFollowUrl, modelProgress, notSent } from "../../command-progress.ts";
 import { makeDeployKey } from "../../git-keys.ts";
 import { ADDRESS, USER } from "../../machines/ssh.ts";
-import { CHATGPT_API } from "../../providers/chatgpt.ts";
 import { CLAUDE_MODELS, listModels, providerBase } from "../../providers/models.ts";
 import { probeRepository } from "../../repo-probe.ts";
 import { clearRigModel, giveRigModel } from "../../rigs/agent-models.ts";

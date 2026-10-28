@@ -1,8 +1,4 @@
-import { SATURATION_TASKS } from "../../harness/research/progress.ts";
 import type { ExperimentView, RunView, StoredEvent } from "./index.ts";
-
-/** A question's last tasks that show it saturated (the harness's rule), for the dashboard's words. */
-export { SATURATION_TASKS };
 
 /**
  * A research run's items as control keeps them (goals 116 and 117), from the rig's events: its

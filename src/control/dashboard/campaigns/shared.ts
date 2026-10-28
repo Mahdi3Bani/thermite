@@ -1,6 +1,6 @@
 import { parseContract } from "../../../core/contract.ts";
-import { type GoalChecks, goalChecks } from "../../../harness/goal-checks.ts";
-import { KitSchema } from "../../../harness/kit.ts";
+import { type GoalChecks, goalChecks } from "../../../core/goal/index.ts";
+import { KitSchema } from "../../../core/kit.ts";
 import { type KbKind, PICKABLE } from "../../kb.ts";
 import type { ChecksSource } from "../../ui/campaigns/goal-checks.ts";
 import { isRigCheck, workCard } from "../../ui/campaigns/list.ts";

@@ -1,12 +1,15 @@
 import type { AdvisorRole, Harness } from "../agents.ts";
 import type { Mode } from "../contract.ts";
+import type { GoalCellValues, GoalCheck } from "../goal/index.ts";
+import type { HeldOutCell } from "../held-out.ts";
+import type { RigSettings } from "../rig-settings.ts";
 import type { EventKind } from "./kinds.ts";
 
 /**
  * Each event kind's body, as a ledger records it (goal 125, T1): the writer must give this shape,
  * and the compiler checks it (the owner's answer to the guide's question 5: compile time first,
  * control's intake later). A field whose shape only the harness defines yet, such as a baseline's
- * cells or a goal's values, is `unknown` here until its words move to core.
+ * cells or a review's items, is `unknown` here until its words move to core.
  */
 export interface EventBodies {
   // ---------------------------------------------------------------- runs and contracts
@@ -113,7 +116,7 @@ export interface EventBodies {
     job: number;
     champion_seq?: number | undefined;
     pass: boolean;
-    cells: unknown[];
+    cells: HeldOutCell[];
     cells_total: number;
   };
   parent_screened: {
@@ -126,7 +129,7 @@ export interface EventBodies {
     kit: { name: string; repo: string; commit: string } | null;
     run_command: string[] | null;
     timeout_s: number | null;
-    goals: unknown[];
+    goals: GoalCheck[];
   };
   goal_report: {
     run: string;
@@ -136,7 +139,7 @@ export interface EventBodies {
       description: string | null;
       status: "met" | "unmet" | "inconclusive" | "not_runnable";
       reasons: string;
-      values?: unknown[] | undefined;
+      values?: GoalCellValues[] | undefined;
     }[];
     complete: boolean;
     confirming?: boolean | undefined;
@@ -450,7 +453,7 @@ export interface EventBodies {
     judge_jobs?: number | undefined;
     draining?: unknown;
   };
-  rig_settings_changed: { change: Record<string, unknown>; settings: unknown };
+  rig_settings_changed: { change: Record<string, unknown>; settings: RigSettings };
 
   // ---------------------------------------------------------------- research
   source_fetched: {

@@ -1,5 +1,6 @@
 import type { AnswerOf, Route } from "../../core/api/route.ts";
 import { buildHeaders } from "../../core/version.ts";
+import { buildInfo } from "../build-info.ts";
 import { type ApiTarget, type CallInput, callRoute } from "./call.ts";
 
 /**
@@ -31,7 +32,7 @@ export function controlClient(o: {
     whose: "control's",
     url: o.url.replace(/\/$/, ""),
     token: o.token,
-    headers: buildHeaders(),
+    headers: buildHeaders(buildInfo()),
     params: o.rig !== undefined ? { rig: o.rig } : undefined,
     timeoutMs: o.timeoutMs ?? CONTROL_CALL_TIMEOUT_MS,
     fetchImpl: o.fetchImpl,

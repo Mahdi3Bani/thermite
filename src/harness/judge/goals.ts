@@ -1,11 +1,12 @@
 import type { GoalContract } from "../../core/contract.ts";
+import { GOAL_VALUES_CELLS, type GoalCellValues } from "../../core/goal/index.ts";
 import { meanInterval } from "../../core/stats.ts";
 import { patchBetween } from "../git.ts";
 import type { JobRow } from "../ledger/index.ts";
 import { Reviews } from "../reviews.ts";
 import type { JudgeContext } from "./context.ts";
 import { decideThresholdGoal, type GoalStatus } from "./decide.ts";
-import { GOAL_VALUES_CELLS, type GoalCellValues, runValues, valuesText } from "./goal-values.ts";
+import { runValues, valuesText } from "./goal-values.ts";
 import {
   type HeldOutCell,
   type HeldOutResult,

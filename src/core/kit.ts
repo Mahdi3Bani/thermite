@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join, posix } from "node:path";
 import { z } from "zod";
-import type { Contract } from "../core/contract.ts";
-import { McpUses } from "../core/mcp.ts";
-import { MAX_RUN_MS } from "./broker/runner.ts";
+import { type Contract, ID_PATTERN } from "./contract.ts";
+import { McpUses } from "./mcp.ts";
+import { normalizePath } from "./paths.ts";
 
 /**
  * A project kit: the judge-side recipe for building and measuring one project on one target
@@ -17,7 +15,16 @@ import { MAX_RUN_MS } from "./broker/runner.ts";
  *   {out}    the run's output directory
  *   {models} the imported models, one read-only file per sha256: `{models:<sha256>}` (run and
  *            check only; the contract's `models` list names them)
+ *
+ * This is the kit's schema and its checks, which control and the harness share. The judge reads a
+ * kit from its folder and fills these placeholders in harness/judge/kits.ts.
  */
+
+/**
+ * The longest time limit a run may have, a day: the broker starts no run with a longer one, and a
+ * kit's time limits are held to it too.
+ */
+export const MAX_RUN_MS = 24 * 3_600_000;
 
 const Argv = z.array(z.string().min(1)).min(1);
 const Mib = z.number().int().positive();
@@ -50,13 +57,13 @@ const KitPath = z
       !p.startsWith("/") &&
       !p.endsWith("/") &&
       !p.split("/").includes("..") &&
-      posix.normalize(p) === p,
+      normalizePath(p) === p,
     "a kit path is relative, normalized and inside the kit",
   );
 
 const KitFields = z.strictObject({
   schema_version: z.literal(1),
-  name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
+  name: z.string().regex(ID_PATTERN),
   /** The target driver type this kit measures on (cpu, cuda-gpu, ...). */
   target: z.string().min(1),
   build: z.strictObject({
@@ -182,7 +189,7 @@ export const KitSchema = KitFields.superRefine((kit, ctx) => {
   // A run reaches only the kit paths it copies.
   for (const arg of kit.run.command) {
     for (const m of arg.matchAll(/\{kit(?::([^}]+))?\}/g)) {
-      const sub = m[1] === undefined ? undefined : posix.normalize(m[1]);
+      const sub = m[1] === undefined ? undefined : normalizePath(m[1]);
       const covered =
         sub === undefined
           ? kit.run.copy.length > 0
@@ -198,10 +205,6 @@ export const KitSchema = KitFields.superRefine((kit, ctx) => {
   }
 });
 export type Kit = z.infer<typeof KitSchema>;
-
-export function loadKit(dir: string): Kit {
-  return KitSchema.parse(JSON.parse(readFileSync(join(dir, "kit.json"), "utf8")));
-}
 
 /** A cell as the kit gives it, in either form. */
 type KitCell = Kit["cells"][string];
@@ -221,16 +224,6 @@ export function cellParams(kit: Kit, cell: string): CellParams | undefined {
 export function cellTimeoutS(kit: Kit, cell: string): number {
   const c = Object.hasOwn(kit.cells, cell) ? kit.cells[cell] : undefined;
   return (c && wrapped(c) ? c.timeout_s : undefined) ?? kit.run.timeout_s;
-}
-
-export function expandArgv(argv: readonly string[], vars: Record<string, string>): string[] {
-  return argv.map((a) =>
-    a.replace(/\{([a-z_]+)(?::([^}]+))?\}/g, (whole, name: string, rest?: string) => {
-      const v = vars[name];
-      if (v === undefined) throw new Error(`unknown placeholder ${whole}`);
-      return rest ? join(v, rest) : v;
-    }),
-  );
 }
 
 /** Cell parameters as key=value lines (easy to read from any language). */

@@ -1,4 +1,5 @@
-import { KitSchema } from "../../harness/kit.ts";
+import { ID_PATTERN } from "../../core/contract.ts";
+import { KitSchema } from "../../core/kit.ts";
 import type { ControlStore } from "../store/index.ts";
 import { type KitAdded, KitRefused, type KitRepos } from "./repos.ts";
 import { kitSummary } from "./upload.ts";
@@ -104,7 +105,7 @@ export function kitsAnswer(kits: KitRepos) {
 
 /** One kit control keeps: its head, its kit.json at the head in short, and its newest commits. */
 export function kitAnswer(kits: KitRepos, name: string): KitOutcome<unknown> {
-  const head = /^[a-z0-9][a-z0-9._-]{0,63}$/.test(name) ? kits.head(name) : undefined;
+  const head = ID_PATTERN.test(name) ? kits.head(name) : undefined;
   if (!head) return { ok: false, error: `control keeps no kit ${name}`, status: 404 };
   const m = manifestAt(kits, name, head);
   return {

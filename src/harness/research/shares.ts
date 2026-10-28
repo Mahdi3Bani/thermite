@@ -1,16 +1,11 @@
 import type { Certainty } from "../../core/api/harness/research.ts";
 import { EXPERIMENT_DETAILS } from "../../core/commands.ts";
 import type { ResearchContract } from "../../core/contract.ts";
-import { questionLabel } from "../../core/research-check.ts";
+import { GAP_LINE, questionLabel, SATURATION_TASKS } from "../../core/research-check.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { TaskYield } from "../queue.ts";
 import { cardsOf, rubricOf } from "./cards.ts";
-import {
-  questionEnded,
-  questionSaturated,
-  SATURATION_TASKS,
-  standingDecisions,
-} from "./progress.ts";
+import { questionEnded, questionSaturated, standingDecisions } from "./progress.ts";
 
 /**
  * Where each question of a research run stands for the plan (goal 117): its answer card's
@@ -31,8 +26,6 @@ import {
  * another weighed question has open evidence gaps: the ceiling.
  */
 
-/** A gap's line in a research task's details: the plan and the planner name the gap there. */
-export const GAP_LINE = "Evidence gap to close: ";
 /** A question with no card yet: the gap its task closes. */
 export const NO_CARD_GAP =
   "No answer card yet: find and archive sources that answer the question directly, and record verified claims from them";

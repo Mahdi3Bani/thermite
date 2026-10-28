@@ -20,7 +20,7 @@ import {
 } from "../../src/control/campaigns/builder.ts";
 import { inFolder, suggestions } from "../../src/control/repo-probe.ts";
 import { parseContract } from "../../src/core/contract.ts";
-import { KitSchema, paramsText } from "../../src/harness/kit.ts";
+import { KitSchema, paramsText } from "../../src/core/kit.ts";
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 const here = {

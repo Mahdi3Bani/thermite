@@ -1,6 +1,7 @@
 /**
  * The kinds of held-out failure and their words (goal 082), for the judge, the agents and the
- * owner's screens alike (goal 125, T1). A closed list: nothing a run printed becomes a kind.
+ * owner's screens alike (goal 125, T1). A closed list: nothing a run printed becomes a kind. And
+ * one held-out cell's result, as the judge's `held_out_checked` event gives it to control.
  */
 
 /** How one held-out cell failed. A closed list: nothing a run printed becomes a kind. */
@@ -41,4 +42,41 @@ export const HELD_OUT_OWNER_WORDS: Record<HeldOutKind, string> = {
  */
 export function heldOutWords(kinds: readonly HeldOutKind[]): string {
   return kinds.length ? kinds.map((k) => HELD_OUT_WORDS[k]).join("; ") : "a held-out check failed";
+}
+
+/** One held-out cell's result, as the owner sees it. */
+export interface HeldOutCell {
+  cell: string;
+  /** Goal campaigns: the threshold goal it was checked for, or the kit's verifier it ran in. */
+  goal?: string | undefined;
+  verifier?: string | undefined;
+  ok: boolean;
+  /** How it failed, when it did. */
+  kind?: HeldOutKind | undefined;
+  /**
+   * The measured value and the threshold it is held to, where the check gives one: a goal's
+   * metric threshold (its mean, and its interval), or a hill climb's ratio to the champion.
+   */
+  value?: number | undefined;
+  low?: number | undefined;
+  high?: number | undefined;
+  threshold?: number | undefined;
+  op?: ">=" | ">" | "<=" | "<" | undefined;
+  /** What the value measures, in words, and its unit. */
+  measure?: string | undefined;
+  unit?: string | undefined;
+}
+
+/** The most held-out cells one event names; the held_out table keeps them all. */
+export const HELD_OUT_EVENT_CELLS = 50;
+
+/**
+ * The kinds of failure among some cells, each once, in the list's order: a record's, or the
+ * cells control read from an event.
+ */
+export function heldOutKinds(
+  cells: readonly { ok: boolean; kind?: string | null | undefined }[],
+): HeldOutKind[] {
+  const found = new Set(cells.filter((c) => !c.ok && c.kind).map((c) => c.kind));
+  return HELD_OUT_KINDS.filter((k) => found.has(k));
 }

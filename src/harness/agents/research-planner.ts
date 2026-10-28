@@ -17,6 +17,7 @@ import {
   MEASURES_NOTHING,
   measurementIn,
   questionLabel,
+  SATURATION_TASKS,
 } from "../../core/research-check.ts";
 import type { CallUsage } from "../../core/usage.ts";
 import { NOTES_ARE_DATA, type notesData } from "../journal.ts";
@@ -24,7 +25,6 @@ import { briefingData } from "../knowledge.ts";
 import type { HypothesisRow } from "../ledger/hypotheses.ts";
 import type { BriefingItem, Ledger } from "../ledger/index.ts";
 import type { QueueBrief } from "../queue.ts";
-import { SATURATION_TASKS } from "../research/progress.ts";
 import { type ResearchState, taskDetails } from "../research/shares.ts";
 import type { Directive } from "./coordinator.ts";
 import type { ModelConfig } from "./model.ts";

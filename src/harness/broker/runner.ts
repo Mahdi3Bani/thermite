@@ -2,6 +2,7 @@ import { chmodSync, lstatSync, readdirSync, realpathSync, rmSync } from "node:fs
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { MAX_LANES } from "../../core/contract.ts";
+import { MAX_RUN_MS } from "../../core/kit.ts";
 import { killScope, runSupervised, type SupervisedResult, type SupervisedRun } from "./process.ts";
 
 /**
@@ -84,9 +85,6 @@ export function roleIds(role: Role): { uid: number; gid: number } {
     ? { uid: IDS.laneDevBase + n, gid: IDS.gpuGroup }
     : { uid: IDS.laneBase + n, gid: IDS.laneBase + n };
 }
-
-/** The longest time limit a run may have: a day. A kit's time limits are held to it too. */
-export const MAX_RUN_MS = 24 * 3_600_000;
 
 export const RunRequest = z.object({
   role: RoleSchema,

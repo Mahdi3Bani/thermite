@@ -346,7 +346,7 @@ function checkSettings(page, texts) {
 // Example files are parsed with the real schemas. A title with "(part)" marks a fragment.
 const schemas = {
   contract: (await import("../../src/core/contract.ts")).ContractSchema,
-  kit: (await import("../../src/harness/kit.ts")).KitSchema,
+  kit: (await import("../../src/core/kit.ts")).KitSchema,
   advisors: (await import("../../src/supervisor/advisors/index.ts")).AdvisorsConfig,
 };
 function exampleKind(title) {

@@ -1,3 +1,4 @@
+import { HELD_OUT_EVENT_CELLS } from "../../../core/held-out.ts";
 import { clip } from "../../../core/kb-index.ts";
 import { metricValuesOf } from "../../metric-values.ts";
 import { frozen } from "../sharing.ts";
@@ -10,7 +11,8 @@ import type { Handlers } from "./index.ts";
 function heldOutView(at: string, b: Record<string, unknown>): HeldOutView {
   const txt = (v: unknown, n = 200) => (typeof v === "string" ? clip(v, n) : null);
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
-  const cells = (Array.isArray(b.cells) ? b.cells : []).slice(0, 50).flatMap((x) => {
+  const listed = Array.isArray(b.cells) ? b.cells.slice(0, HELD_OUT_EVENT_CELLS) : [];
+  const cells = listed.flatMap((x) => {
     const c = (x ?? {}) as Record<string, unknown>;
     if (typeof c.cell !== "string") return [];
     return [

@@ -1,5 +1,6 @@
+import { buildInfo } from "../../common/build-info.ts";
 import { readHardware } from "../../core/hardware.ts";
-import { type BuildInfo, buildInfo } from "../../core/version.ts";
+import type { BuildInfo } from "../../core/version.ts";
 import { type RunpodRigView, runpodRigView } from "../runpod/rig-view.ts";
 import type { ControlStore } from "../store/index.ts";
 import { type RigVersions, rigVersions } from "../versions.ts";

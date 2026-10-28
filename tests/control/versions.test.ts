@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { buildInfo } from "../../src/common/build-info.ts";
 import { ControlStore } from "../../src/control/store/index.ts";
 import type { RigVersions } from "../../src/control/versions.ts";
 import { reportingState, rigView } from "../../src/control/views/index.ts";
@@ -12,7 +13,6 @@ import {
   BUILD_HEADERS,
   type BuildInfo,
   buildHeaders,
-  buildInfo,
   OLDEST_PROTOCOL,
   PROTOCOL,
 } from "../../src/core/version.ts";
@@ -231,7 +231,7 @@ describe("versions between control and its rigs", () => {
     assert.equal(s.store.builds.ofRig("rig-a", "harness")?.protocol, 70);
     // Its commands wait on the harness too: the supervisor's own build is not enough.
     const pending = await s.api.request("/v1/rigs/rig-a/commands/pending", {
-      headers: { authorization: "Bearer rig-token-abcdef", ...buildHeaders() },
+      headers: { authorization: "Bearer rig-token-abcdef", ...buildHeaders(buildInfo()) },
     });
     assert.equal(pending.status, 409);
     s.env.service.build = own;

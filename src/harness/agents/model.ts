@@ -4,6 +4,7 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { readNumber } from "../../common/settings.ts";
 import {
+  type Effort,
   HARNESSES,
   type Harness,
   PROVIDER_TYPES,
@@ -22,8 +23,6 @@ import { logStall, modelStallMs, stallGuard } from "./model-stall.ts";
 
 export type ReasoningEffort = "off" | "low" | "medium" | "high";
 
-/** Where a ChatGPT sign-in's access token is used: OpenAI's Responses API (and its model list). */
-export const CHATGPT_API = "https://api.openai.com/v1";
 /** OpenAI's code when a ChatGPT plan's usage is full. Its reset time is not given. */
 export const CHATGPT_LIMIT_CODE = "subscription_sharing_usage_limit_exceeded";
 /** How long agents wait before they try a full ChatGPT plan again (OpenAI gives no reset time). */
@@ -75,7 +74,7 @@ export interface ModelConfig {
    */
   reasoning?: ReasoningEffort | undefined;
   /** Claude Code's effort level, for a Claude subscription (--effort). */
-  effort?: "low" | "medium" | "high" | "xhigh" | "max" | undefined;
+  effort?: Effort | undefined;
   /** The key at the time of each call, when it is renewed while the route stays (a ChatGPT sign-in). */
   keyNow?: (() => string) | undefined;
 }

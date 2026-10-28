@@ -8,25 +8,11 @@
     "src/harness/selftest/index.ts"
   ],
   "src/cli/thermite/runpod.ts": ["src/control/runpod/rig-view.ts"],
-  "src/control/views/agent.ts": ["src/harness/goal-checks.ts"],
   "src/control/api/index.ts": ["src/control/dashboard/index.ts"],
-  "src/control/campaigns/builder.ts": ["src/harness/kit.ts"],
   "src/control/campaigns/context.ts": ["src/control/ui/campaigns/list.ts"],
   "src/control/command-progress.ts": ["src/control/ui/exports.ts"],
   "src/control/campaigns/copy.ts": ["src/control/ui/campaigns/list.ts"],
-  "src/control/dashboard/campaigns/shared.ts": ["src/harness/goal-checks.ts", "src/harness/kit.ts"],
-  "src/control/kits/add.ts": ["src/harness/kit.ts"],
-  "src/control/kits/repos.ts": ["src/harness/kit.ts"],
-  "src/control/kits/upload.ts": ["src/harness/kit.ts"],
   "src/control/providers/plan-usage.ts": ["src/control/ui/components/index.ts"],
-  "src/control/views/research.ts": ["src/harness/research/progress.ts"],
-  "src/control/ui/campaigns/goal-checks.ts": ["src/harness/goal-checks.ts"],
-  "src/control/views/fold/goals.ts": [
-    "src/harness/goal-checks.ts",
-    "src/harness/judge/goal-values.ts"
-  ],
-  "src/core/tunnel.ts": ["node:path"],
-  "src/core/version.ts": ["node:fs"],
   "src/supervisor/advise/context.ts": ["src/harness/mcp-gateway.ts"],
   "src/supervisor/advise/state.ts": ["src/harness/mcp-gateway.ts"],
   "src/supervisor/advisor-cli.ts": [
@@ -65,10 +51,6 @@
     "src/harness/agents/model.ts",
     "src/harness/agents/usage-meter.ts"
   ],
-  "src/supervisor/advisors/teachers/answers.ts": [
-    "src/harness/agents/notes-tool.ts",
-    "src/harness/research/shares.ts"
-  ],
-  "src/supervisor/main.ts": ["src/harness/agents/model-stall.ts", "src/harness/mcp-gateway.ts"],
-  "src/supervisor/ste-checker.ts": ["src/harness/research/paper/index.ts"]
+  "src/supervisor/advisors/teachers/answers.ts": ["src/harness/agents/notes-tool.ts"],
+  "src/supervisor/main.ts": ["src/harness/agents/model-stall.ts", "src/harness/mcp-gateway.ts"]
 }

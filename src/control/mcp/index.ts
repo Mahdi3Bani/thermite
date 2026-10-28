@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { Hono } from "hono";
-import { buildInfo } from "../../core/version.ts";
+import { buildInfo } from "../../common/build-info.ts";
 import type { ControlStore } from "../store/index.ts";
 import { registerCampaignSettings, registerRunStarts } from "./campaigns.ts";
 import { registerAddClusterRig, registerClusterRigs } from "./clusters.ts";

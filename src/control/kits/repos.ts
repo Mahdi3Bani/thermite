@@ -14,7 +14,8 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { gitSync, gitText } from "../../common/git.ts";
 import { KIT_BUNDLE_MAX } from "../../core/api/control/owner.ts";
-import { KitSchema } from "../../harness/kit.ts";
+import { ID_PATTERN } from "../../core/contract.ts";
+import { KitSchema } from "../../core/kit.ts";
 
 /**
  * Kits control keeps (described on the new-campaign page, uploaded, or added as a git bundle of a
@@ -24,7 +25,8 @@ import { KitSchema } from "../../harness/kit.ts";
  * it does any import. A kit's head is its `main` branch.
  */
 
-const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+/** A kit's name, as the kit's schema takes it. */
+const NAME = ID_PATTERN;
 
 /** The largest kit bundle control takes (its home: core/api/control/owner.ts). */
 export { KIT_BUNDLE_MAX };

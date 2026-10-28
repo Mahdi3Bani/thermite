@@ -1,5 +1,5 @@
-import { HELD_OUT_KINDS, type HeldOutKind, heldOutWords } from "../../core/held-out.ts";
-import { type GoalChecks, parseGoalChecks } from "../../harness/goal-checks.ts";
+import { type GoalChecks, parseGoalChecks } from "../../core/goal/index.ts";
+import { type HeldOutKind, heldOutKinds, heldOutWords } from "../../core/held-out.ts";
 import type { AttemptView, HeldOutView, RunView, StoredEvent } from "./index.ts";
 
 /**
@@ -19,14 +19,8 @@ export interface AgentHeldOut {
   words: string | null;
 }
 
-/** The kinds of failure among some cells, each once, in the closed list's order. */
-function kindsOf(cells: readonly { ok: boolean; kind: string | null }[]): HeldOutKind[] {
-  const found = new Set(cells.filter((c) => !c.ok && c.kind).map((c) => c.kind));
-  return HELD_OUT_KINDS.filter((k) => found.has(k));
-}
-
 export function agentHeldOut(h: HeldOutView): AgentHeldOut {
-  const kinds = kindsOf(h.cells);
+  const kinds = heldOutKinds(h.cells);
   return { at: h.at, pass: h.pass, kinds, words: h.pass ? null : heldOutWords(kinds) };
 }
 
@@ -50,7 +44,7 @@ export function agentEvent(e: StoredEvent): StoredEvent {
   if (e.kind === "held_out_checked") {
     const b = e.body;
     const pass = b.pass === true;
-    const kinds = kindsOf(
+    const kinds = heldOutKinds(
       (Array.isArray(b.cells) ? b.cells : []).map((x) => {
         const c = (x ?? {}) as Record<string, unknown>;
         return { ok: c.ok === true, kind: typeof c.kind === "string" ? c.kind : null };

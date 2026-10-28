@@ -3,9 +3,8 @@ import { z } from "zod";
 import { ExperimentId, QueuePosition } from "../../../core/commands.ts";
 import { RESEARCH_TASK_KINDS } from "../../../core/directions.ts";
 import { LenientNotes } from "../../../core/journal.ts";
-import { labelledQuestion, questionLabel } from "../../../core/research-check.ts";
+import { GAP_LINE, labelledQuestion, questionLabel } from "../../../core/research-check.ts";
 import { JOURNAL_FIELD } from "../../../harness/agents/notes-tool.ts";
-import { GAP_LINE } from "../../../harness/research/shares.ts";
 import { OwnerAnswers, OwnerAnswersSchema } from "../owner-answers.ts";
 
 /** How an advisor's answer schema describes a rule's direction (goal 066). */

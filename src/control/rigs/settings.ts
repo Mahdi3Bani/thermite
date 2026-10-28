@@ -2,9 +2,10 @@ import { z } from "zod";
 import { errorText } from "../../common/errors.ts";
 import { CommandPayloads } from "../../core/commands.ts";
 import { MAX_LANES } from "../../core/contract.ts";
+import type { RigSettings, RigSettingsChange } from "../../core/rig-settings.ts";
 import { issueCommand } from "../issue/index.ts";
 import type { ControlStore } from "../store/index.ts";
-import { type RigSettingsView, rigSettingsOf } from "../views/index.ts";
+import { rigSettingsOf } from "../views/index.ts";
 
 /**
  * A rig's own settings from outside the dashboard (goal 029): REST's `POST /v1/rigs/<rig>/settings`
@@ -34,9 +35,6 @@ export interface GpuSplit {
   set: number;
   judge: number;
 }
-
-/** The rig_settings payload: only the fields that change. */
-export type RigSettingsChange = z.infer<(typeof CommandPayloads)["rig_settings"]>;
 
 /**
  * What a caller asks for, field by field; left out (undefined): as the rig has it. Values are as
@@ -84,7 +82,7 @@ export const settingsCount = (n: number): string => `${n} setting${n === 1 ? "" 
  */
 export function rigSettingsChange(
   rig: string,
-  now: RigSettingsView,
+  now: RigSettings,
   split: GpuSplit | null,
   want: RigSettingsWanted,
 ): { change: RigSettingsChange | undefined } | { error: string } {

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { ApiError } from "../../common/api/call.ts";
 import { controlClient } from "../../common/api/control.ts";
 import { harnessClient } from "../../common/api/harness.ts";
+import { buildInfo } from "../../common/build-info.ts";
 import type { Bus } from "../../common/bus.ts";
 import { log } from "../../common/env.ts";
 import { ACK, CursorElsewhere, INGEST, PENDING_COMMANDS } from "../../core/api/control/rigs.ts";
@@ -185,7 +186,7 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
         const id = reportMessageId(snap);
         const ack = await cfg.bus.publish(reportSubject(cfg.rig), body, {
           id,
-          headers: buildHeaders(),
+          headers: buildHeaders(buildInfo()),
         });
         if (ack.duplicate) log("supervisor", "the bus had this report already", { id });
       } else if (control) {

@@ -1,6 +1,7 @@
 import type { Hono, MiddlewareHandler } from "hono";
+import { buildInfo } from "../../common/build-info.ts";
 import { sameSecret } from "../../common/secrets.ts";
-import { type BuildInfo, buildFromHeaders, buildInfo } from "../../core/version.ts";
+import { type BuildInfo, buildFromHeaders } from "../../core/version.ts";
 import type { BusUsers } from "../bus/users.ts";
 import type { ClusterKubectl } from "../clusters/kubectl.ts";
 import { Credential } from "../credential.ts";

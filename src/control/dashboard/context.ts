@@ -1,8 +1,9 @@
 import { createHash, createHmac } from "node:crypto";
 import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
+import { buildInfo } from "../../common/build-info.ts";
 import { sameSecret } from "../../common/secrets.ts";
-import { type BuildInfo, buildInfo } from "../../core/version.ts";
+import type { BuildInfo } from "../../core/version.ts";
 import type { Credential } from "../credential.ts";
 import type { ExportFiles } from "../exports.ts";
 import type { KitRepos } from "../kits/repos.ts";

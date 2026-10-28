@@ -1,12 +1,9 @@
-import { createHash } from "node:crypto";
 import type { SteResult } from "../../../core/api/harness/research.ts";
+import { sha256Hex } from "../../../core/canonical.ts";
 import type { PaperProblem } from "./check.ts";
 import { clip } from "./markdown.ts";
 
 /** The STE checker's result on a paper, as the supervisor ran it on the paper's text. */
-
-/** The SHA-256 of a paper's text, as the supervisor names the text its STE checker read. */
-export const paperSha = (text: string) => createHash("sha256").update(text).digest("hex");
 
 /**
  * The STE checker's result held to the paper: it is of this text, and it found no error. A paper
@@ -14,7 +11,7 @@ export const paperSha = (text: string) => createHash("sha256").update(text).dige
  */
 export function steProblems(ste: SteResult, paper: string): PaperProblem[] {
   if (!ste.checked) return [];
-  if (ste.sha256 !== paperSha(paper))
+  if (ste.sha256 !== sha256Hex(paper))
     return [{ line: null, problem: "the STE checker's result is not of this paper's text" }];
   if (ste.counts.error === 0) return [];
   const errors = ste.findings.filter((f) => f.severity === "error");

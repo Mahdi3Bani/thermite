@@ -4,8 +4,8 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, test } from "node:test";
+import { MAX_RUN_MS } from "../../../src/core/kit.ts";
 import { BrokerClient } from "../../../src/harness/broker/client.ts";
-import { MAX_RUN_MS } from "../../../src/harness/broker/runner.ts";
 import { startBrokerServer } from "../../../src/harness/broker/server.ts";
 
 // Refused requests never reach the privileged handler, so this runs as any user.

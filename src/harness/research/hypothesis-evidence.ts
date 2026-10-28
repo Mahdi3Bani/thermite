@@ -1,9 +1,14 @@
 import { EXPERIMENT_DETAILS } from "../../core/commands.ts";
-import { questionLabel, REQUIRED_HYPOTHESES } from "../../core/research-check.ts";
+import {
+  GAP_LINE,
+  questionLabel,
+  REQUIRED_HYPOTHESES,
+  SATURATION_TASKS,
+} from "../../core/research-check.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Experiment, ExperimentQueue } from "../queue.ts";
-import { SATURATION_TASKS, type StandingDecision, standingDecisions } from "./progress.ts";
-import { GAP_LINE, gapOf, taskDetails } from "./shares.ts";
+import { type StandingDecision, standingDecisions } from "./progress.ts";
+import { gapOf, taskDetails } from "./shares.ts";
 
 /**
  * Evidence for or against a research run's required hypotheses (goal 117): the author's and the

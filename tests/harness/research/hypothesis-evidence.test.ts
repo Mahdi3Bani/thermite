@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { SATURATION_TASKS } from "../../../src/core/research-check.ts";
 import type { Ledger } from "../../../src/harness/ledger/index.ts";
 import {
   hypothesisEvidence,
@@ -7,7 +8,7 @@ import {
   hypothesisTasksDone,
   unevidencedHypotheses,
 } from "../../../src/harness/research/hypothesis-evidence.ts";
-import { SATURATION_TASKS, standingDecisions } from "../../../src/harness/research/progress.ts";
+import { standingDecisions } from "../../../src/harness/research/progress.ts";
 import {
   itemsState,
   type ResearchPackage,

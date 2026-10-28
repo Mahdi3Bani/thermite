@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { KitRepos } from "../../src/control/kits/repos.ts";
 import { type GoalContract, parseContract } from "../../src/core/contract.ts";
-import { goalChecks } from "../../src/harness/goal-checks.ts";
-import { KitSchema } from "../../src/harness/kit.ts";
+import { goalChecks } from "../../src/core/goal/index.ts";
+import { KitSchema } from "../../src/core/kit.ts";
 import { seedDemo } from "../helpers/control-demo.ts";
 import { ADMIN, controlOnly, mcpClient, signIn } from "../helpers/control-stack.ts";
 

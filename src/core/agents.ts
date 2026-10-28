@@ -22,6 +22,9 @@ export type Effort = (typeof EFFORTS)[number];
 export const PROVIDER_TYPES = ["openai", "anthropic", "opencode", "claude", "chatgpt"] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 
+/** Where a ChatGPT sign-in's access token is used: OpenAI's Responses API (and its model list). */
+export const CHATGPT_API = "https://api.openai.com/v1";
+
 /** The kinds reached with an API key; the others are subscriptions, reached with a sign-in. */
 export const KEY_PROVIDER_TYPES: readonly ProviderType[] = ["openai", "anthropic", "opencode"];
 export const PLAN_PROVIDER_TYPES: readonly ProviderType[] = ["claude", "chatgpt"];

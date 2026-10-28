@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { CHATGPT_API } from "../../src/core/agents.ts";
 import {
   buildModel,
-  CHATGPT_API,
   CHATGPT_LIMIT_WAIT_MS,
   usageLimitRetry,
 } from "../../src/harness/agents/model.ts";

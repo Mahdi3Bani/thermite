@@ -6,6 +6,7 @@ import {
   compactAtRefusal,
 } from "../../../core/compaction.ts";
 import { MAX_LANES } from "../../../core/contract.ts";
+import type { RigSettingsChange } from "../../../core/rig-settings.ts";
 import type { ClusterFacts } from "../../clusters/facts.ts";
 import { prepareResize } from "../../clusters/resize.ts";
 import { asksNothing, type ClusterResourcesRequest } from "../../clusters/resources.ts";
@@ -24,7 +25,6 @@ import {
   QUIET_TIP,
   quietField,
   type RigPart,
-  type RigSettingsChange,
   rigSettingsChange,
   SPLIT_RESTARTS,
   settingsCount,

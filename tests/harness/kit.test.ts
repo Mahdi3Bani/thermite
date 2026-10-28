@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { parseContract } from "../../src/core/contract.ts";
-import {
-  cellParams,
-  cellTimeoutS,
-  expandArgv,
-  KitSchema,
-  kitProblems,
-} from "../../src/harness/kit.ts";
+import { cellParams, cellTimeoutS, KitSchema, kitProblems } from "../../src/core/kit.ts";
+import { expandArgv } from "../../src/harness/judge/kits.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 const base = {

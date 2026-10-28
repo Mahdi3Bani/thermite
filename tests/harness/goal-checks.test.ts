@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type GoalContract, parseContract } from "../../src/core/contract.ts";
-import { goalChecks, parseGoalChecks } from "../../src/harness/goal-checks.ts";
-import { KitSchema } from "../../src/harness/kit.ts";
+import { goalChecks, parseGoalChecks } from "../../src/core/goal/index.ts";
+import { KitSchema } from "../../src/core/kit.ts";
 import { makeJudgeEnv } from "../helpers/judge-env.ts";
 
 /** Goal 082: each goal's real check, from the contract and the kit. */

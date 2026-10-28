@@ -1,8 +1,8 @@
 import type { Hono } from "hono";
+import { CHATGPT_API } from "../../core/agents.ts";
 import { ADVISOR_ROUTES, MODEL_ROUTE } from "../../core/api/control/rigs.ts";
 import type { ControlRoute } from "../../core/api/model-route.ts";
 import { sha256Hex } from "../../core/canonical.ts";
-import { CHATGPT_API } from "../providers/chatgpt.ts";
 import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "../providers/models.ts";
 import { neededHarness } from "../rigs/model.ts";
 import {

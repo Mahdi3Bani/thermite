@@ -1,4 +1,5 @@
 import { errorText } from "../common/errors.ts";
+import type { Harness } from "../core/agents.ts";
 import { COMPACTIONS_DIR, compactionFile } from "../core/compaction.ts";
 import { KB_BODY_MAX } from "../core/kb-index.ts";
 import type { LiveLog } from "../core/live.ts";
@@ -34,8 +35,6 @@ export const compactionOf = (t: { id: string; run: string; lane: string }): Comp
   source: `trial:${t.id}`,
 });
 
-export type CompactionHarness = "pi" | "opencode" | "codex" | "claude-code";
-
 /** How the conversation was compacted: Pi's summary or its fallback, or the harness's own. */
 export type CompactionHow = "summary" | "trimmed" | "harness";
 
@@ -45,14 +44,14 @@ export interface CompactionRecord {
   tokensBefore: number | null;
   tokensAfter: number | null;
   how: CompactionHow;
-  harness: CompactionHarness;
+  harness: Harness;
   summary?: string | undefined;
   error?: string | undefined;
   /** Whether the conversation was kept (by `keep`, under the same number). */
   kept: boolean;
 }
 
-const HARNESS: Record<CompactionHarness, string> = {
+const HARNESS: Record<Harness, string> = {
   pi: "The harness",
   opencode: "OpenCode",
   codex: "Codex",
@@ -181,7 +180,7 @@ export class Compactions {
    */
   fromHarness(
     of: CompactionOf,
-    harness: Exclude<CompactionHarness, "pi">,
+    harness: Exclude<Harness, "pi">,
     c: Pick<CliCompacted, "number" | "tokensBefore" | "tokensAfter" | "markdown" | "summary">,
   ): void {
     let kept = false;
