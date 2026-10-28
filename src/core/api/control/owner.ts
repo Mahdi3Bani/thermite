@@ -8,7 +8,7 @@ import type { Route } from "../route.ts";
  * Control's API as the command line calls it, with the owner's token (src/control/api/ and the
  * modules it mounts answer it): rigs, their enrollment and tokens, RunPod's rigs, full resets,
  * commands, runs and campaigns, kits and MCP servers. Where REST and MCP share a request's fields
- * (start-run.ts, copy-campaign.ts, campaign-context.ts and mcp-server-routes.ts in src/control/),
+ * (campaigns/start-run.ts, campaigns/copy.ts, campaigns/context.ts and mcp-servers/routes.ts in src/control/),
  * control checks the body with them, and the route here takes an object.
  */
 
@@ -28,7 +28,7 @@ export type ListedBuild = z.input<typeof ListedBuild>;
 
 /**
  * Every rig control knows, with its state and builds, the rigs it enrolled, and the rigs in pull
- * mode and on RunPod (control/runpod-rig-view.ts has a RunPod rig's view). An older control sends
+ * mode and on RunPod (core/api/control/runpod.ts has a RunPod rig's view). An older control sends
  * no versions.
  */
 export const RigList = z.looseObject({
@@ -133,7 +133,7 @@ export const RESET_CANCEL = {
   answer: z.unknown(),
 } as const satisfies Route;
 
-/** A rig on RunPod, as control shows it (control/runpod-rig-view.ts); 404 for any other rig. */
+/** A rig on RunPod, as control shows it (runpod.ts's RunpodRigView); 404 for any other rig. */
 export const RUNPOD_RIG = {
   method: "GET",
   path: "/v1/rigs/:rig/runpod",

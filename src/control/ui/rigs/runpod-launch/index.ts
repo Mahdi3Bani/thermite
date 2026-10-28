@@ -5,7 +5,7 @@ import { ago, esc, icon } from "../../components/index.ts";
 /**
  * Launch on RunPod (goal 022): the owner picks a GPU from RunPod's list with its price, a count,
  * a data center, the volume, the image, a spend limit and an idle stop, and a name. The price
- * follows every choice (runpod-launch-client.ts), and choices that cannot apply are hidden: GPU
+ * follows every choice (runpod-launch/client.ts), and choices that cannot apply are hidden: GPU
  * types with no stock on Secure cloud, the judge's share for one GPU, your own image's name while
  * control's image is chosen. Without the script the form still works: the server checks it all.
  */

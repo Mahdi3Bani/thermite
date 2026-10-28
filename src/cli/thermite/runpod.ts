@@ -1,6 +1,5 @@
 import { parseArgs } from "node:util";
 import { errorText } from "../../common/errors.ts";
-import type { RunpodRigView } from "../../control/runpod/rig-view.ts";
 import {
   CLOUD_LAUNCH,
   CLOUD_RIGS,
@@ -16,6 +15,7 @@ import {
   RUNPOD_STOP,
   RUNPOD_TERMINATE,
 } from "../../core/api/control/owner.ts";
+import type { RunpodRigView } from "../../core/api/control/runpod.ts";
 import { controlAt, orFail } from "../calls.ts";
 import { fail } from "./shared.ts";
 import { USAGE } from "./usage.ts";

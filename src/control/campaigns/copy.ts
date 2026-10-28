@@ -124,7 +124,7 @@ export const CopyCampaignBody = z.strictObject(copyCampaignFields);
 
 /**
  * The fields of an assignment that belong to one run, not to the campaign: a copy leaves them
- * out, as does a new version saved for a campaign's own context settings (campaign-context.ts).
+ * out, as does a new version saved for a campaign's own context settings (campaigns/context.ts).
  */
 export const RUN_FIELDS = new Set([
   "run",

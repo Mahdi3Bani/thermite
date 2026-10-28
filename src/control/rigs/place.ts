@@ -9,7 +9,7 @@ export type PlaceParts = Pick<ControlParts, "store" | "secrets" | "machineSsh" |
 
 /**
  * Checks where a rig control set up runs (Check again on its page, and control by itself when the
- * rig turns stale and offline: rig-watch.ts): over SSH on a machine, through the cluster's API on
+ * rig turns stale and offline: rigs/watch.ts): over SSH on a machine, through the cluster's API on
  * a cluster. What it found is a step in the rig's history. Null when control can't reach it: it
  * set the rig up nowhere it knows (RunPod, a place the owner joined it, compose), or that machine
  * or cluster is no longer in Providers.

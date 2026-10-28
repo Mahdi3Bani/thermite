@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { newToken } from "../../control/credential.ts";
+import { newToken } from "../../common/secrets.ts";
 import { generateSigningKeys } from "../../core/commands.ts";
 import { parseContract } from "../../core/contract.ts";
 import {

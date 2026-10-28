@@ -1,11 +1,11 @@
 import { type Row, StorePart } from "./part.ts";
 
 /**
- * Rigs and test pods on GPU clouds (goal 125, T6), with their state as runpod-rigs.ts and
- * runpod-tests.ts keep it.
+ * Rigs and test pods on GPU clouds (goal 125, T6), with their state as runpod/rigs.ts and
+ * runpod/tests.ts keep it.
  */
 
-/** A rig launched on a GPU cloud, as kept: its state is runpod-rigs.ts's RigState. */
+/** A rig launched on a GPU cloud, as kept: its state is runpod/rigs.ts's RigState. */
 export interface StoredRunpodRig {
   rig: string;
   cloud: string;
@@ -27,7 +27,7 @@ const runpodRigOf = (r: Row): StoredRunpodRig => ({
   created_by: String(r.created_by),
 });
 
-/** A test pod as kept: its state is runpod-tests.ts's TestState. */
+/** A test pod as kept: its state is runpod/tests.ts's TestState. */
 export interface StoredRunpodTest {
   id: string;
   cloud: string;

@@ -7,7 +7,7 @@ import { esc, infoLabel } from "../../components/index.ts";
  * 2026-10-21): two fields, Context window and Compact at, and one help line, in four places. New
  * campaign's step 4, the Copy panel and the campaign's page show the fields; the campaign's page
  * adds "What applies on each rig", one row for each rig that can run it; Start a run says what
- * the chosen rig's workers get. The page's script (campaign-context-client.ts) checks the fields
+ * the chosen rig's workers get. The page's script (context/client.ts) checks the fields
  * as you type, in control's words, and keeps the rows and lines in step.
  */
 

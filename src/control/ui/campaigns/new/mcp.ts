@@ -9,7 +9,7 @@ import { esc } from "../../components/index.ts";
  * under each server, closed until opened, gives each kind of agent its own ticks per tool, with
  * the tools that write marked. kit.json follows the choices (`tools` only when narrowed). For a
  * kit in a repository the list comes from its kit.json, read only. The page's script
- * (new-campaign-client.ts) keeps the summary and kit.json in step. The Copy panel on a research
+ * (new/client.ts) keeps the summary and kit.json in step. The Copy panel on a research
  * campaign's page (goal 069) uses the same rows, for the workers and the advisors only, ticked as
  * the source has them and named, so that its form posts them without a script.
  */

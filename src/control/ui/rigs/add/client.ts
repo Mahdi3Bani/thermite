@@ -7,7 +7,7 @@ import { judgeGpusByDefault } from "../../../../core/hardware.ts";
  */
 /**
  * The judge's share of n GPUs as the form's number gives it, as browser code: the rule of
- * judgeShareOf (cluster-resources.ts), which control applies when the form is sent, so the preview
+ * judgeShareOf (clusters/resources.ts), which control applies when the form is sent, so the preview
  * refuses what control refuses. Undefined below 2 GPUs; the share; or why not, in words.
  */
 export const JUDGE_SHARE_JS = `(n, typed) => {

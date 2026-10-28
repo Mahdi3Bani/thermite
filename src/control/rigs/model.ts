@@ -27,7 +27,7 @@ import {
  * `POST /v1/rigs/<rig>/model` and MCP's `set_rig_model` set one agent's model, or clear it, as a
  * row of Edit rig's section "2 · The agents" does; `GET /v1/rigs/<rig>/model` and MCP's
  * `rig_models` read them all. Both call Edit rig's own code (setRigModel and rigModels in
- * agent-models.ts), so Edit rig and its twins check and refuse alike. This module holds what the
+ * rigs/agent-models.ts), so Edit rig and its twins check and refuse alike. This module holds what the
  * twins share: the request's fields, its checks of shape, and the answer.
  *
  * The agents (goal 074): the work, the workers and the planner; the advisors, the teachers, the

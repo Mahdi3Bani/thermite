@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { redact } from "../../common/env.ts";
 import { shellQuote } from "../../common/exec.ts";
-import { judgeGpusByDefault } from "../../core/hardware.ts";
+import { gpuSplit, MAX_RIG_GPUS } from "../../core/hardware.ts";
 import { RIG_ID, RIG_ID_WORDS } from "../../core/ids.ts";
 
 /**
@@ -37,32 +37,8 @@ export interface RigSecrets {
   harnessSupervisorToken: string;
 }
 
-/** At most 8 judge GPUs and 8 for the agents (the harness image has users for that many). */
-export const MAX_RIG_GPUS = 16;
-
-/**
- * The harness's GPU settings for a rig with `n` GPUs, as the container numbers them (0 to n-1,
- * in the order given): none, one shared, or the GPU set with the judge's share to start with (the
- * first `judge` for the judge, the rest for the agents' dev runs; default half, rounded up). A
- * campaign deployed on the rig, or Edit rig, may change the share later (the rig's settings).
- */
-export function gpuSplit(
-  n: number,
-  judge?: number | undefined,
-): { THERMITE_GPU_INDEX?: string; THERMITE_GPUS?: string; THERMITE_JUDGE_GPUS?: string } {
-  if (n > MAX_RIG_GPUS) throw new Error(`a rig takes at most ${MAX_RIG_GPUS} GPUs`);
-  if (n === 0) return {};
-  if (n === 1) return { THERMITE_GPU_INDEX: "0" };
-  const j = judge ?? judgeGpusByDefault(n);
-  if (!Number.isInteger(j) || j < 1 || j > n - 1 || j > 8 || n - j > 8)
-    throw new Error(
-      `with ${n} GPUs the judge takes 1 to ${Math.min(8, n - 1)} of them, and the agents at most 8`,
-    );
-  return {
-    THERMITE_GPUS: Array.from({ length: n }, (_, i) => i).join(","),
-    THERMITE_JUDGE_GPUS: String(j),
-  };
-}
+// A rig's GPUs and their split, as control and the command line give them (core/hardware.ts).
+export { gpuSplit, MAX_RIG_GPUS };
 
 /** Where the rig's files and units live on the machine. */
 export function rigPaths(p: Pick<RigPlan, "rig" | "root">) {

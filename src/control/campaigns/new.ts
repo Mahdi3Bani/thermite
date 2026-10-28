@@ -23,7 +23,7 @@ import { buildCampaign } from "./builder.ts";
  */
 
 export interface StartInput {
-  /** The page's answers (see campaign-builder.ts); the target comes from the rig. */
+  /** The page's answers (see campaigns/builder.ts); the target comes from the rig. */
   draft: Record<string, unknown>;
   rig: string;
   /** The rig's measurement target, from its reported hardware. */

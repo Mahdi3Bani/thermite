@@ -20,7 +20,7 @@ import { type RigView, rigView } from "./views/index.ts";
  *   list and delete in the rig's namespace, nothing else); the Deployment recreates them.
  * - Compose: the container engine's API (Docker or Podman) restarts the rig's containers.
  * - RunPod: for the rigs control launched on RunPod, whatever THERMITE_LIFECYCLE says, RunPod's
- *   API stops, starts, restarts and terminates the rig's pod (RunpodDriver; runpod-lifecycle.ts).
+ *   API stops, starts, restarts and terminates the rig's pod (RunpodDriver; runpod/lifecycle.ts).
  *
  * A full reset: pause the rig's running runs, export, wait until that export has left the rig
  * (the supervisor reports it pushed to the results repository, or control holds all of it), then
@@ -214,10 +214,10 @@ export class ComposeDriver implements DeploymentDriver {
 }
 
 /**
- * Rigs control launched on RunPod (runpod-rigs.ts): one container per pod, driven through RunPod's
+ * Rigs control launched on RunPod (runpod/rigs.ts): one container per pod, driven through RunPod's
  * API. It serves only those rigs, beside the driver THERMITE_LIFECYCLE names for the others, and
  * needs no setting: control holds the RunPod key in Providers. Each change goes through the
- * rig's results first (runpod-lifecycle.ts) and is a step in the rig's history.
+ * rig's results first (runpod/lifecycle.ts) and is a step in the rig's history.
  */
 export class RunpodDriver implements DeploymentDriver {
   readonly kind = "runpod";

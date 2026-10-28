@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { newToken } from "../control/credential.ts";
+import { newToken } from "../common/secrets.ts";
 import type { ENROLL, ListedBuild, RigList } from "../core/api/control/owner.ts";
 import type { AnswerOf } from "../core/api/route.ts";
 

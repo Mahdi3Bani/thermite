@@ -21,7 +21,7 @@ import { AGENT_WORDS, serverRow } from "../new/mcp.ts";
  * run's planner takes no servers). A hill-climb or goal campaign's servers are in its kit's kit.json, which a
  * copy does not change: the panel lists them, read only. Then the copy's Agents' context (goal
  * 070): its context window and compaction point, as the source has them. Its form posts without
- * the page's script (/ui/assets/copy.js, copy-campaign-client.ts), which checks the name and the
+ * the page's script (/ui/assets/copy.js, copy/client.ts), which checks the name and the
  * numbers and keeps the summary, the request over REST and the command line, and the Copy button
  * in step.
  */

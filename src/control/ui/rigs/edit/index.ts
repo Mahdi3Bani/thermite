@@ -20,7 +20,7 @@ import { esc } from "../../components/index.ts";
  * "rig's file". The greyed Runs in and Context cells show the file's harness and window.
  *
  * Every field has a form name, so the form posts without the page's script
- * (/ui/assets/edit-rig.js, edit-rig-client.ts): the workers' `choice`, `effort`, `harness`,
+ * (/ui/assets/edit-rig.js, edit/client.ts): the workers' `choice`, `effort`, `harness`,
  * `context_workers` and `compact_workers`; every other line's `role_<id>`, `effort_<id>`,
  * `harness_<id>`, `context_<id>` and `compact_<id>`, by the role it sets. The Context panel is a
  * details element, so it opens without the script too. "+ second teacher" and × are links to the

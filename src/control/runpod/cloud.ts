@@ -3,8 +3,8 @@
  * with RunPod's REST API v2, the GPU types with their prices and stock, the data centers, the
  * network volumes, the account's pods and, when asked, a pod's log (podLogs: what a pod that
  * never enrolls printed). Reading spends nothing. Control starts pods only when
- * asked: a test pod, by the owner or an operator (runpod-tests.ts), and a rig, by the owner alone
- * (runpod-rigs.ts).
+ * asked: a test pod, by the owner or an operator (runpod/tests.ts), and a rig, by the owner alone
+ * (runpod/rigs.ts).
  */
 
 import { redact } from "../../common/env.ts";

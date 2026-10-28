@@ -33,7 +33,7 @@ import type { ControlTunnels } from "./tunnel.ts";
  * so far. It stops the pod when the owner asks, or when the owner set a spend limit or an idle
  * stop and the pod reached it; nothing else stops it: no limit is set for the owner. The idle
  * stop counts the time no run is at work on the rig (lastWork). The owner also starts, restarts
- * and terminates it (goal 023): runpod-lifecycle.ts, through which every stop, the limits'
+ * and terminates it (goal 023): runpod/lifecycle.ts, through which every stop, the limits'
  * included, sends the rig's results out first. Assigning or resuming a run on a stopped pod starts
  * it first (wake; issue.ts's issueWaking).
  */

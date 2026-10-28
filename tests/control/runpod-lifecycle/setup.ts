@@ -10,7 +10,7 @@ import { FAKE_RUNPOD_KEY, fakeRunpod } from "../../helpers/fake-runpod.ts";
 import { supervisorReports } from "../../helpers/rig-results.ts";
 
 /**
- * What the tests of RunPod rigs' lifecycle (runpod-lifecycle.ts) share: control with one RunPod
+ * What the tests of RunPod rigs' lifecycle (runpod/lifecycle.ts) share: control with one RunPod
  * account on the fake RunPod API, a clock the test moves, and a rig on it that reports a run.
  */
 

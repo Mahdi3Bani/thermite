@@ -5,7 +5,7 @@
  * - `ccRead(windowText, pointText)`: the two fields as typed, `{cw, at, errs}` (null: empty), with
  *   control's words for a value it refuses (agentsContextRefusal);
  * - `ccApply(own, c)`: what a rig's workers get with the numbers, and the model that refuses a
- *   run there, as campaign-context.ts's rigContext says it;
+ *   run there, as campaigns/context.ts's rigContext says it;
  * - `ccShort(c)`: the numbers in a few words, such as "131,072 tokens at 70%".
  *
  * CAMPAIGN_CONTEXT_JS is the campaign page's script (/ui/assets/campaign-context.js): it checks the

@@ -1,4 +1,4 @@
-import { gpuSplit, MAX_RIG_GPUS } from "../control/machines/deploy.ts";
+import { gpuSplit, MAX_RIG_GPUS } from "../core/hardware.ts";
 import type { Probes, RunResult } from "./doctor/index.ts";
 
 /**

@@ -51,7 +51,7 @@ export class CampaignFolders extends StorePart {
     this.db.prepare("update campaign_folder set name = ? where id = ?").run(name, id);
   }
 
-  /** Deletes a folder (campaign-folders.ts deletes only an empty one). */
+  /** Deletes a folder (campaigns/folders.ts deletes only an empty one). */
   delete(id: number): void {
     this.db.prepare("delete from campaign_in_folder where folder = ?").run(id);
     this.db.prepare("delete from campaign_folder where id = ?").run(id);

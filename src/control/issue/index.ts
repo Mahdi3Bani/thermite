@@ -325,7 +325,7 @@ export const WAKING_KINDS: readonly CommandKind[] = ["assign_campaign", "resume_
 /** A command refused because its rig's pod on RunPod could not be started for it (a conflict). */
 export class WakeRefused extends Error {}
 
-/** What issueWaking needs of the rigs on RunPod (RunpodRigs, runpod-rigs.ts). */
+/** What issueWaking needs of the rigs on RunPod (RunpodRigs, runpod/rigs.ts). */
 export interface PodWaker {
   /** The rig's pod as control follows it, when the rig is one launched on RunPod. */
   view(rig: string): { active: boolean; status: string; op?: { kind: string } | null } | undefined;

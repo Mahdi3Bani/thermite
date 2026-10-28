@@ -241,7 +241,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
 
   // ---------------------------------------------------------------- a campaign's agents' context
   // Goal 070: a campaign's own context window and compaction point for all its runs' agents, kept
-  // in its contract (campaign-context.ts). Its page shows the two fields and what applies on each
+  // in its contract (campaigns/context.ts). Its page shows the two fields and what applies on each
   // rig that can run it; Save makes a new version, as set_campaign_context does.
   /** The rigs that can run a campaign, each with its agents' own models and what applies there. */
   const contextRigs = (

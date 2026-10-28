@@ -93,7 +93,7 @@ const KitRepo = z.strictObject({
   held_out: z.array(IdSchema).default([]),
 });
 
-/** A kit uploaded on the page (kit-upload.ts), by its archive's sha256, with the cases to use. */
+/** A kit uploaded on the page (kits/upload.ts), by its archive's sha256, with the cases to use. */
 const KitUploaded = z.strictObject({
   source: z.literal("upload"),
   upload: z.string().regex(/^[0-9a-f]{64}$/, "an uploaded kit's id"),

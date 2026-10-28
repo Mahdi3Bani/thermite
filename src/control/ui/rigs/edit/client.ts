@@ -147,7 +147,7 @@ export const EDIT_RIG_JS = `
   };
   nameTeachers();
 
-  // Runs in: what each harness can run, in control's words (rig-model.ts's harnessRefusal).
+  // Runs in: what each harness can run, in control's words (rigs/model.ts's harnessRefusal).
   const harnessErr = (opt, h, r) => {
     const kind = opt.dataset.kind, codex = !!opt.dataset.codex;
     if (kind === "claude" && h !== "claude-code") return "A Claude subscription runs only in Claude Code: choose Claude Code for " + r.who + ", or another model.";

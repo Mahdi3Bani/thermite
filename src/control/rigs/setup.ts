@@ -60,7 +60,7 @@ export const rigTaken = (parts: ControlParts, rig: string) =>
   Boolean(parts.store.joinedRigs.get(rig)) ||
   parts.views().some((u) => u.id === rig);
 
-// The judge's share as typed in a form, by the one rule of cluster-resources.ts.
+// The judge's share as typed in a form, by the one rule of clusters/resources.ts.
 export const judgeShare = (raw: string, n: number) =>
   judgeShareOf(raw ? Number(raw) : undefined, n);
 

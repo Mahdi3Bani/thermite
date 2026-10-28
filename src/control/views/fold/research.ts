@@ -19,7 +19,7 @@ const digest: Handler = (f, e, b) => {
   });
 };
 
-/** One of a research run's items: research-view.ts folds it. */
+/** One of a research run's items: views/research.ts folds it. */
 const item: Handler = (f, e) => {
   researchEvent(f.run(String(e.subject)), e);
 };

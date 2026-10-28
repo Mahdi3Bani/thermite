@@ -478,7 +478,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     }
 
     // The harness's settings: only what changed, checked here (as REST's and MCP's twins check
-    // them: rig-settings.ts) and sent below as one signed command. An empty Workers at a time
+    // them: rigs/settings.ts) and sent below as one signed command. An empty Workers at a time
     // keeps what the rig has; an empty One trial lasts or Turns per trial is no limit.
     const s = u.settings;
     let settings: RigSettingsChange | undefined;

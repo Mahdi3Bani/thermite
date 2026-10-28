@@ -1,5 +1,6 @@
 import { log, redact } from "../../common/env.ts";
 import { errorText } from "../../common/errors.ts";
+import type { OpKind, OpPhase, RigOp, StopWhy } from "../../core/api/control/runpod.ts";
 import { harnessConfirmed, issueCommand } from "../issue/index.ts";
 import { exportLeft, resultsLeft } from "../results-left.ts";
 import type { ControlStore, StoredRunpodRig } from "../store/index.ts";
@@ -9,7 +10,7 @@ import { type RigState, spentBy } from "./rig-view.ts";
 
 /**
  * The lifecycle of a rig on RunPod (goal 023): stop, start, restart and terminate, mapped to
- * RunPod's API, with the rig's results first. RunpodRigs (runpod-rigs.ts) starts each one when
+ * RunPod's API, with the rig's results first. RunpodRigs (runpod/rigs.ts) starts each one when
  * the owner asks, or when a limit the owner set is reached, and moves it on in control's loop;
  * lifecycle.ts's RunpodDriver offers them beside the compose and Kubernetes drivers, and its full
  * reset keeps the pod.
@@ -27,28 +28,7 @@ import { type RigState, spentBy } from "./rig-view.ts";
  * Each change is a step in the rig's history (rig_setup_event) and in control's audit log.
  */
 
-export type OpKind = "stop" | "start" | "restart" | "terminate";
-export type OpPhase = "quiescing" | "exporting" | "leaving" | "stopping" | "starting";
-/** Why control stops a pod: a limit the owner set, or the owner (or a restart) asked. */
-export type StopWhy = "spend_limit" | "idle_stop" | "owner";
-
-/** A change under way on a RunPod rig. */
-export interface RigOp {
-  kind: OpKind;
-  /** Who asked: the owner's channel (owner:api, owner:mcp), or control for a limit. */
-  by: string;
-  why: StopWhy | null;
-  phase: OpPhase;
-  at: string;
-  phase_at: string;
-  /** The export_now command it issued, and the export that came of it. */
-  command: string | null;
-  export: string | null;
-  /** The runs it paused. */
-  paused: string[];
-  /** What a start is for, in words, when a run's assignment started it ("to assign run x"). */
-  note?: string | null | undefined;
-}
+export type { OpKind, OpPhase, RigOp, StopWhy };
 
 /** A stop waits this long at most for the results to leave; the volume keeps the rest. */
 export const STOP_WAIT_MS = 15 * 60_000;

@@ -15,7 +15,7 @@ import { rigSettingsOf } from "../views/index.ts";
  * its twins build the change here (rigSettingsChange): only what differs from what the rig
  * reports, checked against the rig's GPU split and the rig_settings payload, refused in the same
  * words. The change goes to the rig as one signed owner command, rig_settings, which the rig's
- * harness takes only from an `owner:` issuer. The agents' models are rig-model.ts's.
+ * harness takes only from an `owner:` issuer. The agents' models are rigs/model.ts's.
  */
 
 /** The parts of a rig that switch on and off, in Edit rig's order. */

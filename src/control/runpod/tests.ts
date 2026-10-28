@@ -17,7 +17,7 @@ import { PROBE_CMD, PROBE_PORT, probeEnv } from "./probe.ts";
 
 /**
  * Test pods on RunPod, started by the owner or an operator (dashboard, REST or MCP): one pod of
- * Thermite's harness image with the probe (runpod-probe.ts) in place of the broker. Control
+ * Thermite's harness image with the probe (runpod/probe.ts) in place of the broker. Control
  * follows it in steps (`advance`, every few seconds): it waits for the pod to run, reads the
  * probe's report through RunPod's HTTP proxy, optionally stops the pod and starts it again (does
  * it get its GPU back?), and then removes it. Control removes the pod at the end of every path,

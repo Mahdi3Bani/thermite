@@ -519,7 +519,7 @@ export interface NavCampaigns {
   current?: string | undefined;
 }
 
-/** A folder's name in the navigation, at most this long (campaign-folders.ts checks it too). */
+/** A folder's name in the navigation, at most this long (campaigns/folders.ts checks it too). */
 const FOLDER_NAME_MAX = 40;
 const FOLDER_TIP =
   "A folder groups campaigns in this navigation, and nothing else: a campaign's runs, results and folder in the knowledge base stay as they are. Up to 40 characters; each name once.";

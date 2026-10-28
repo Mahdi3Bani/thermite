@@ -26,7 +26,7 @@ const fixName = (v) => {
   const f = String(v).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 64);
   return NAME_RX.test(f) ? f : "";
 };
-// Control's own checks, in its order and its words (copy-campaign.ts).
+// Control's own checks, in its order and its words (campaigns/copy.ts).
 const nameCheck = (value, taken, folderOnly) => {
   const v = String(value).trim();
   if (!v) return { ok: false, cls: "", say: "Write a name for the copy.", fix: "" };

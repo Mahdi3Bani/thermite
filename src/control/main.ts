@@ -206,7 +206,7 @@ async function main(): Promise<void> {
   void followPods();
   const launched = setInterval(followPods, 30_000);
   // Rigs control set up that stopped reporting: their containers checked once when they turn
-  // stale, and once more when they turn offline (rig-watch.ts).
+  // stale, and once more when they turn offline (rigs/watch.ts).
   let watching = false;
   const quiet = setInterval(() => {
     if (watching) return;

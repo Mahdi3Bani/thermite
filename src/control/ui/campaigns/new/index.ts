@@ -30,11 +30,11 @@ export const MIN_VERIFIED_CLAIMS_TIP =
  * The new-campaign page: a campaign from nothing
  * in six steps (aim, the brief, project, how to measure, where, review), with every setting
  * beyond the simple ones folded under Advanced and a description behind every label's info icon.
- * Step 2 holds the campaign's brief for every mode (goal 078, campaign-brief.ts), with a research
+ * Step 2 holds the campaign's brief for every mode (goal 078, campaigns/brief.ts), with a research
  * campaign's topic, questions and starting links; a research campaign's step 4 is how long it
  * runs and its MCP servers. The
  * page's script (/ui/assets/new-campaign.js) gathers the answers into one draft; control
- * checks and builds it (campaign-builder.ts) and starts the first run (new-campaign.ts).
+ * checks and builds it (campaigns/builder.ts) and starts the first run (campaigns/new.ts).
  */
 
 export interface NewCampaignPage {
@@ -109,7 +109,7 @@ export function newCampaignBody(p: NewCampaignPage): string {
 
   // Rigs that can run a campaign on the kit's target. A rig with no hardware report shows, and
   // its target is whatever it reports later (control refuses a mismatch at assignment). A stopped
-  // RunPod pod may be chosen: the first run starts it (new-campaign.ts, issue.ts's wake).
+  // RunPod pod may be chosen: the first run starts it (campaigns/new.ts, issue/index.ts's wake).
   const rigChoices = p.rigs
     .map((u, i) => {
       const t = u.hardware?.target;

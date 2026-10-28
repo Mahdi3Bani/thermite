@@ -9,7 +9,7 @@ import {
 import type { ToolContext } from "./context.ts";
 
 /**
- * The rest of Edit rig (goal 029), beside each agent's model (mcp-rig-models.ts): the settings a
+ * The rest of Edit rig (goal 029), beside each agent's model (mcp/rig-models.ts): the settings a
  * rig reports, and their changes.
  */
 export function registerRigSettings(tools: ToolContext): void {

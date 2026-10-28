@@ -40,7 +40,7 @@ export function campaignRoutes(app: Hono, api: ApiContext): void {
   const { store, viewOpts, parts, admin } = api;
 
   // Start a run of a campaign control keeps (goal 029): the twin of a campaign page's Start a
-  // run (start-run.ts), with its refusals in words. The owner's token, as on the dashboard; MCP's
+  // run (campaigns/start-run.ts), with its refusals in words. The owner's token, as on the dashboard; MCP's
   // start_run takes an operator's too.
   app.post(START_RUN.path, admin, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
     const campaign = c.req.param("campaign");

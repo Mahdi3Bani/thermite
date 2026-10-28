@@ -1,11 +1,3 @@
 {
-  "src/cli/machine.ts": ["src/control/machines/deploy.ts"],
-  "src/cli/rig.ts": ["src/control/credential.ts"],
-  "src/cli/runpod.ts": ["src/control/runpod/rig-view.ts"],
-  "src/cli/thermite/local.ts": [
-    "src/control/credential.ts",
-    "src/harness/broker/devices.ts",
-    "src/harness/selftest/index.ts"
-  ],
-  "src/cli/thermite/runpod.ts": ["src/control/runpod/rig-view.ts"]
+  "src/cli/thermite/local.ts": ["src/harness/broker/devices.ts", "src/harness/selftest/index.ts"]
 }

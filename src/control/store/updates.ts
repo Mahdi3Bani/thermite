@@ -3,7 +3,7 @@ import { StorePart } from "./part.ts";
 /**
  * The updates of rigs to control's version under way (goal 165; goal 125, T6): each one's step and
  * the runs it paused, so that a control restarted in the middle of one ends it and resumes those
- * runs (rig-update.ts).
+ * runs (rigs/update.ts).
  */
 
 export class RigUpdates extends StorePart {

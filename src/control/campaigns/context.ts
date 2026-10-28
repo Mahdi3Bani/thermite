@@ -425,7 +425,7 @@ export function ownModels(store: ControlStore, rig: string, mode?: unknown): Own
  * and where it comes from (the campaign's, the rig's, or none control knows), their point, and the
  * model that refuses the run (campaignContextRefusal: a campaign window above what a provider
  * lists for one of the agents' models). The page's script does the same as you type
- * (campaign-context-client.ts).
+ * (context/client.ts).
  */
 export interface RigContext {
   window: number | null;

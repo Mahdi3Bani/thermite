@@ -60,7 +60,7 @@ function opSteps(v: RunpodRigView): string {
       { text: "Ask RunPod to stop the pod." },
       { text: "Wait for the pod to stop.", phase: "stopping" },
       { text: "Ask RunPod to start it again, and wait for it to run.", phase: "starting" },
-      // A restart pauses no run (runpod-lifecycle.ts): the harness starts again with them.
+      // A restart pauses no run (runpod/lifecycle.ts): the harness starts again with them.
       { text: "The harness starts again: a trial that was in progress is planned again." },
     ],
   };

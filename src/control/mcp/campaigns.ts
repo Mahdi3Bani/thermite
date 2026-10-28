@@ -41,7 +41,7 @@ import type { ToolContext } from "./context.ts";
 export function registerRunStarts(tools: ToolContext): void {
   const { server, opts, actor, role, canCommand, audited } = tools;
 
-  // Start a run, as a campaign page's Start a run does (start-run.ts): the owner's token and an
+  // Start a run, as a campaign page's Start a run does (campaigns/start-run.ts): the owner's token and an
   // operator's, which may assign runs with issue_command too.
   if (canCommand) {
     server.registerTool(

@@ -1,6 +1,6 @@
 import type { z } from "zod";
-import type { RunpodRigView } from "../control/runpod/rig-view.ts";
 import type { LaunchBody, LimitsBody } from "../core/api/control/owner.ts";
+import type { RunpodRigView } from "../core/api/control/runpod.ts";
 
 /**
  * `thermite runpod`: rigs on a GPU cloud, through control's REST API with the owner's token.
