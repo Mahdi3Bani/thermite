@@ -71,12 +71,6 @@
     },
     "src/harness/service.ts": {
       "lines": 2830
-    },
-    "src/supervisor/advise.ts": {
-      "lines": 1320
-    },
-    "src/supervisor/advisors.ts": {
-      "lines": 2724
     }
   }
 }
