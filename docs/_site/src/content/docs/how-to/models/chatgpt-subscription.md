@@ -82,6 +82,8 @@ Control asks ChatGPT's usage endpoint for them, the one the Codex CLI reads for 
 
 When the plan is full, the agents on the subscription wait and try again every 15 minutes. No new trial (a worker's session) or plan starts on that rig while they wait. Nothing pays for more.
 
+A trial at work waits in its own conversation, in OpenCode v2 and Codex as in Pi, and goes on after the wait. Its **Live** says `waiting until 03:14:20 UTC: the provider's rate limit (…). The trial goes on in the same conversation.`
+
 ## Sign out
 
 Open the subscription's row and press **Sign out and delete**. Control ends the login at OpenAI and deletes the subscription. The page says `"chatgpt-pro" deleted. OpenAI confirmed the sign-out.`

@@ -5,7 +5,20 @@ import type { Role, Runner, RunOutcome } from "../../broker/runner.ts";
 
 /** OpenCode's binary: THERMITE_OPENCODE_BIN, else `opencode` on the PATH (read when used). */
 export const opencodeBin = () => process.env.THERMITE_OPENCODE_BIN ?? "opencode";
-export const OPENCODE_BIN = opencodeBin();
+
+/** What to say when the image has no OpenCode: an image other than the published ones. */
+export const NO_OPENCODE =
+  "this rig's harness image has no OpenCode binary: use a harness image that has it, as the published images do, or give the rig another harness on Edit rig";
+
+/** Why OpenCode exited, in words. A missing program says so, rather than the shell's note. */
+export function opencodeExitWords(code: number | string | null, note: string): string {
+  if (
+    (code === 126 || code === 127) &&
+    /opencode: (No such file or directory|not found)/.test(note)
+  )
+    return NO_OPENCODE;
+  return `OpenCode exited ${code}: ${note}`;
+}
 
 /** OpenCode's executable as an absolute path (found on PATH), or undefined if it is not there. */
 export function opencodeExe(): string | undefined {
@@ -28,6 +41,7 @@ export function startInArea(
   args: string[],
   o: { remaining: number; limits: LaneLimitValues; prompt: string },
 ): Promise<RunOutcome> {
+  const exe = opencodeExe();
   return runner.run({
     role,
     // The prompt on stdin, which `opencode run` reads when it is not a terminal: one argument
@@ -40,7 +54,7 @@ export function startInArea(
       'exec "$@" >> "$THERMITE_OPENCODE_EVENTS" 2>&1',
       "sh",
       // By its full path, so the broker knows OpenCode's processes from its commands'.
-      opencodeExe() ?? OPENCODE_BIN,
+      exe ?? opencodeBin(),
       ...args,
     ],
     cwd,
@@ -50,7 +64,7 @@ export function startInArea(
     rssLimitBytes: o.limits.runRssMib * 1024 * 1024,
     // Over the memory limit, OpenCode's commands are killed and OpenCode carries on, as a
     // lane command under Pi would be; the trial ends only if OpenCode alone is over.
-    ...(opencodeExe() ? { spareExe: opencodeExe() } : {}),
+    ...(exe ? { spareExe: exe } : {}),
     disk: { path: area, limitBytes: o.limits.workspaceMib * 1024 * 1024 },
     nproc: o.limits.processes,
     captureBytes: 4096,

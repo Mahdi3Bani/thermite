@@ -1,7 +1,7 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { errorText } from "../common/errors.ts";
-import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./agents/model.ts";
+import type { ModelConfig } from "./agents/model.ts";
 import { DataSeen, ModelStreamSilent, modelStallMs, stallWords } from "./agents/model-stall.ts";
 import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
 
@@ -50,10 +50,10 @@ export interface ForwardStall {
 }
 
 /**
- * Forwards one call to the provider. `onUsageLimit`: OpenAI said a ChatGPT plan's usage is full,
- * which a program that keeps only an error's message (the Codex CLI) would lose. `onError`: any
- * error answer, with its status, headers and body, for the harness to tell a rate limit's time,
- * no credits or a refused key from the rest (goal 079).
+ * Forwards one call to the provider. `onError`: any error answer, with its status, headers and
+ * body, for the harness to tell a rate limit's time, no credits or a refused key from the rest
+ * (goal 079), and a full ChatGPT plan by OpenAI's code, which a program that keeps only an
+ * error's message (the Codex CLI) would lose.
  *
  * A call whose stream sends no data for THERMITE_MODEL_STALL_SECONDS (model-stall.ts; `stall`
  * gives another time) is broken off: with no answer yet, the proxy answers 504 with the words, as
@@ -64,7 +64,6 @@ export interface ForwardStall {
 export async function forwardToProvider(
   call: ForwardCall,
   target: ForwardTarget,
-  onUsageLimit?: (() => void) | undefined,
   onError?: ((a: ProviderErrorAnswer) => void) | undefined,
   stall: ForwardStall = { ms: modelStallMs() },
 ): Promise<Response> {
@@ -141,7 +140,6 @@ export async function forwardToProvider(
           quiet();
           const all = Buffer.concat(parts);
           const text = all.toString("utf8");
-          if (chatgpt && text.includes(CHATGPT_LIMIT_CODE)) onUsageLimit?.();
           const headers: Record<string, string> = {};
           for (const [k, v] of Object.entries(res.headers))
             if (typeof v === "string") headers[k.toLowerCase()] = v;

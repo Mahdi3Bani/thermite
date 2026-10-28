@@ -3,6 +3,8 @@ import type { LaneLimitValues } from "../../../core/contract.ts";
 import type { CallUsage } from "../../../core/usage.ts";
 import type { Role, RunOutcome } from "../../broker/runner.ts";
 import type { MessageInbox } from "../live-session.ts";
+import type { ProgramStep } from "../provider-errors.ts";
+import type { TrialResult } from "../worker.ts";
 
 /**
  * What the trial loops of the agent programs that run as command-line programs (OpenCode,
@@ -31,6 +33,22 @@ export function breachError(
   if (o.killedFor === "disk")
     return `stopped by the lane's disk limit: the trial's directory reached ${mib(o.peakDiskBytes)} MiB in ${o.peakEntries ?? 0} files, over ${limits.workspaceMib} MiB (lanes.limits.workspace_mib) or 50,000 files`;
   return undefined;
+}
+
+/** Whether a trial used its turns: a cap set by Turns per trial (none unless configured). */
+export const turnsUp = (spec: { maxTurns?: number | undefined }, tally: { turns: number }) =>
+  spec.maxTurns !== undefined && tally.turns >= spec.maxTurns;
+
+/**
+ * How a trial ends when the step after a provider's error (afterProgramFailure) does not go on:
+ * stopped, out of time, or ended by the error's kind or the campaign's limit.
+ */
+export function trialEnd(
+  step: Exclude<ProgramStep, { goOn: string }>,
+): Pick<TrialResult, "stopped" | "error" | "errorKind"> {
+  if ("interrupted" in step) return { stopped: "interrupted" };
+  if ("wall" in step) return { stopped: "wall" };
+  return { stopped: "error", error: step.end.error, errorKind: step.end.kind };
 }
 
 /**

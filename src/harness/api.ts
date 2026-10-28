@@ -168,7 +168,6 @@ export function createHarnessApi(
             : Buffer.from(await c.req.arrayBuffer()),
       },
       { api: m.api, baseUrl: m.baseUrl, key: m.keyNow?.() ?? m.apiKey },
-      () => service.noteUsageLimit(),
       // Each error answer, for the trial (or the check or plan) to tell its kind (goal 079).
       (a) => service.noteProviderAnswer(trialId ?? "proxy", a),
       // A stream that goes silent is broken off, logged and said in the trial's Live (goal 079).

@@ -17,6 +17,8 @@ import {
   NUDGE,
   ownerLines,
   takeUsage,
+  trialEnd,
+  turnsUp,
 } from "./cli/common.ts";
 import {
   CliCompactions,
@@ -31,7 +33,7 @@ import {
 import { codexOwn } from "./cli-conversation.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { gatewayUrl, type McpAccess, mcpLine } from "./mcp-tools.ts";
-import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./model.ts";
+import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import { type OpencodeOnceDeps, readNew } from "./opencode.ts";
 import {
@@ -481,11 +483,6 @@ export interface CodexTrialDeps extends ProviderLink {
    * agent starts on that prompt.
    */
   messages?: MessageInbox | undefined;
-  /**
-   * When the agents may try a ChatGPT plan again, if the model proxy saw OpenAI say its usage is
-   * full at or after the time given (ms); undefined if it did not.
-   */
-  usageLimitSince?: ((since: number) => string | undefined) | undefined;
   env?: Record<string, string> | undefined;
   signal?: AbortSignal | undefined;
   pollMs?: number | undefined;
@@ -636,7 +633,6 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
       done = true;
     });
     let submittedAt: number | undefined;
-    let capped = false;
     while (!done) {
       await new Promise((r) => setTimeout(r, deps.pollMs ?? 1000));
       pump();
@@ -649,9 +645,9 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
         submittedAt ??= Date.now();
         if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
           await deps.runner.killRole(spec.lane).catch(() => 0);
-      } else if (maxTurns !== undefined && tally.turns >= maxTurns && !capped) {
-        capped = true;
+      } else if (turnsUp(spec, tally)) {
         await deps.runner.killRole(spec.lane).catch(() => 0);
+        break;
       }
     }
     const outcome = await running;
@@ -666,18 +662,9 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     // After a submission the trial is over: messages still waiting go to the lane's next trial,
     // which can act on them.
     if (deps.submitted()) break;
-    if (capped) {
+    if (turnsUp(spec, tally)) {
       result.stopped = "turns";
       result.error = `the trial reached its limit of ${maxTurns} turns before a submission`;
-      break;
-    }
-    // A full ChatGPT plan: the trial ends, and the lane waits a while (never paid credits).
-    const until = deps.usageLimitSince?.(runStarted);
-    if (until) {
-      result.stopped = "error";
-      result.errorKind = "rate_limit";
-      result.retryAfter = until;
-      result.error = `the ChatGPT plan's usage is full (${CHATGPT_LIMIT_CODE}): the agents try again after ${until}`;
       break;
     }
     const breach = breachError(outcome, limits, "Codex");
@@ -705,18 +692,8 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
         waiting: deps.waiting,
         pauseMs: deps.pauseMs,
       });
-      if ("interrupted" in step) {
-        result.stopped = "interrupted";
-        break;
-      }
-      if ("wall" in step) {
-        result.stopped = "wall";
-        break;
-      }
-      if ("end" in step) {
-        result.stopped = "error";
-        result.error = step.end.error;
-        result.errorKind = step.end.kind;
+      if (!("goOn" in step)) {
+        Object.assign(result, trialEnd(step));
         break;
       }
       nudges--;
@@ -811,6 +788,8 @@ export async function codexOnce(
       tally.errors.push(`could not set Codex up: ${setup.stderr.slice(-300)}`);
       return tally;
     }
+    // A call stopped before its run starts nothing, and answers with nothing.
+    if (o.signal?.aborted) return tally;
     const r = await deps.runner.run({
       role: o.role,
       argv: [codexExe() ?? codexBin(), ...codexArgs(model)],

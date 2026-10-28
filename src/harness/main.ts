@@ -574,8 +574,6 @@ async function main(): Promise<void> {
           progress: (progress) => service.trialReport(trialOf(spec), { progress }),
           submitted: () => service.trialSubmission(spec.trialId),
           messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
-          // A full ChatGPT plan, as the model proxy saw OpenAI say it.
-          usageLimitSince: (since) => service.usageLimitSince(since),
           compacted: compactedIn(spec, "codex"),
           keptAt: keptAtFor(spec),
           modelUsage: workerUsage(spec, m),

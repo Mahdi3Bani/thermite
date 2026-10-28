@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
@@ -22,6 +22,7 @@ import { modelConfigFromEnv } from "../../../src/harness/agents/model.ts";
 import { ControlRoute } from "../../../src/harness/agents/model-source.ts";
 import type { TrialSpec } from "../../../src/harness/agents/worker.ts";
 import type { Runner, RunOutcome, RunRequest } from "../../../src/harness/broker/runner.ts";
+import { fakeProgramRunner } from "../../helpers/fake-program.ts";
 
 const RESET = 1_800_000_000;
 const TOKEN = "sk-ant-oat01-test-token"; // public-check: allow (a made-up token shape for tests)
@@ -232,27 +233,8 @@ describe("Claude Code", () => {
     ...over,
   });
   /** A stand-in runner: setup succeeds; the Claude Code run appends `lines` to its events file. */
-  const fakeRunner = (lines: string[], o: { submit?: boolean } = {}) => {
-    const runs: RunRequest[] = [];
-    const killed: string[] = [];
-    let submitted = false;
-    const runner = {
-      run: async (req: RunRequest): Promise<RunOutcome> => {
-        runs.push(req);
-        if (req.argv.includes("-p")) {
-          appendFileSync(String(req.env?.THERMITE_CLAUDE_EVENTS), `${lines.join("\n")}\n`);
-          await new Promise((r) => setTimeout(r, 30));
-          if (o.submit) submitted = true;
-        }
-        return { exitCode: 0, signal: null, killedFor: null, stdout: "", stderr: "" } as RunOutcome;
-      },
-      killRole: async (role: string) => {
-        killed.push(role);
-        return 0;
-      },
-    } as unknown as Runner;
-    return { runner, runs, killed, submitted: () => submitted };
-  };
+  const fakeRunner = (lines: string[], o: { submit?: boolean } = {}) =>
+    fakeProgramRunner("claude-code", lines, o);
   const area = () => {
     const a = mkdtempSync(join(tmpdir(), "thermite-cc-"));
     mkdirSync(join(a, "repo"));

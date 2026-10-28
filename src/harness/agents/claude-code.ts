@@ -28,6 +28,8 @@ import {
   NUDGE,
   ownerLines,
   takeUsage,
+  trialEnd,
+  turnsUp,
 } from "./cli/common.ts";
 import {
   CliCompactions,
@@ -680,7 +682,6 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       done = true;
     });
     let submittedAt: number | undefined;
-    let capped = false;
     while (!done) {
       await new Promise((r) => setTimeout(r, deps.pollMs ?? 1000));
       pump();
@@ -693,9 +694,9 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
         submittedAt ??= Date.now();
         if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
           await deps.runner.killRole(spec.lane).catch(() => 0);
-      } else if (maxTurns !== undefined && tally.turns >= maxTurns && !capped) {
-        capped = true;
+      } else if (turnsUp(spec, tally)) {
         await deps.runner.killRole(spec.lane).catch(() => 0);
+        break;
       }
     }
     const outcome = await running;
@@ -713,7 +714,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     // After a submission the trial is over: messages still waiting go to the lane's next trial,
     // which can act on them.
     if (deps.submitted()) break;
-    if (capped) {
+    if (turnsUp(spec, tally)) {
       result.stopped = "turns";
       result.error = `the trial reached its limit of ${maxTurns} turns before a submission`;
       break;
@@ -751,18 +752,8 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
         waiting: deps.waiting,
         pauseMs: deps.pauseMs,
       });
-      if ("interrupted" in step) {
-        result.stopped = "interrupted";
-        break;
-      }
-      if ("wall" in step) {
-        result.stopped = "wall";
-        break;
-      }
-      if ("end" in step) {
-        result.stopped = "error";
-        result.error = step.end.error;
-        result.errorKind = step.end.kind;
+      if (!("goOn" in step)) {
+        Object.assign(result, trialEnd(step));
         break;
       }
       nudges--;
@@ -869,6 +860,8 @@ export async function claudeOnce(
       tally.errors.push(`could not set Claude Code up: ${setup.stderr.slice(-300)}`);
       return tally;
     }
+    // A call stopped before its run starts nothing, and answers with nothing.
+    if (o.signal?.aborted) return tally;
     const r = await deps.runner.run({
       role,
       argv: claudeShell([

@@ -37,7 +37,7 @@ import {
 } from "../core/research-check.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { handedOut, rulesInForce } from "./agents/coordinator.ts";
-import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
+import type { ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
 import { logStall, modelStallMs, stalledFor, stallWords } from "./agents/model-stall.ts";
@@ -353,17 +353,6 @@ export class HarnessService {
         at: string;
       }
     | undefined;
-  /**
-   * When the model proxy last saw OpenAI say the ChatGPT plan's usage is full (ms). A program that
-   * keeps only an error's message (the Codex CLI) loses OpenAI's code; the proxy sees the answer.
-   */
-  private usageLimitAt: number | undefined;
-
-  /** The proxy saw OpenAI's answer that the ChatGPT plan's usage is full. */
-  noteUsageLimit(now = Date.now()): void {
-    this.usageLimitAt = now;
-  }
-
   /** The newest error answer the model proxy saw for each trial (or "proxy"): goal 079. */
   private readonly providerAnswers = new Map<string, ProviderErrorAnswer & { at: number }>();
 
@@ -405,17 +394,6 @@ export class HarnessService {
   providerAnswerSince(who: string, since: number): ProviderErrorAnswer | undefined {
     const a = this.providerAnswers.get(who);
     return a && a.at >= since ? { status: a.status, headers: a.headers, body: a.body } : undefined;
-  }
-
-  /**
-   * When agents may try the ChatGPT plan again, if the proxy saw it full at or after `since` (ms):
-   * OpenAI gives no reset time, so a fixed wait (CHATGPT_LIMIT_WAIT_MS). Undefined: it did not.
-   */
-  usageLimitSince(since: number): string | undefined {
-    const at = this.usageLimitAt;
-    return at !== undefined && at >= since
-      ? new Date(at + CHATGPT_LIMIT_WAIT_MS).toISOString()
-      : undefined;
   }
 
   /** A research run's folder as files, for its export (main.ts sets it). */

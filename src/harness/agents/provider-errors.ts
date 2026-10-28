@@ -350,6 +350,13 @@ export function nextStep(
   };
 }
 
+/** What a trial in a program of its own does after a provider's error (afterProgramFailure). */
+export type ProgramStep =
+  | { end: { error: string; kind: ProviderErrorKind } }
+  | { goOn: string }
+  | { interrupted: true }
+  | { wall: true };
+
 /**
  * A trial in a program of its own (OpenCode, Codex, Claude Code) ended a run with an error (goal
  * 079): its kind, from the program's words and the error answer the harness's model proxy saw.
@@ -369,12 +376,7 @@ export async function afterProgramFailure(input: {
   waiting?: ((w: { until: string; kind: ProviderErrorKind; words: string }) => void) | undefined;
   /** How long a wait really lasts (tests shorten it). */
   pauseMs?: ((ms: number) => number) | undefined;
-}): Promise<
-  | { end: { error: string; kind: ProviderErrorKind } }
-  | { goOn: string }
-  | { interrupted: true }
-  | { wall: true }
-> {
+}): Promise<ProgramStep> {
   const text = input.answer?.body ? `${input.error} (${input.answer.body})` : input.error;
   const e = classifyProviderError(text, input.answer);
   // A program compacts its own conversation: a context error here is the model's refusal.

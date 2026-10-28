@@ -37,13 +37,13 @@
       "lines": 2191
     },
     "src/harness/agents/claude-code.ts": {
-      "lines": 985
+      "lines": 978
     },
     "src/harness/agents/codex.ts": {
-      "lines": 905
+      "lines": 884
     },
     "src/harness/agents/opencode.ts": {
-      "lines": 927
+      "lines": 918
     },
     "src/harness/agents/planner.ts": {
       "lines": 1277
@@ -55,7 +55,7 @@
       "lines": 832
     },
     "src/harness/api.ts": {
-      "lines": 1007
+      "lines": 1006
     },
     "src/harness/broker.ts": {
       "lines": 1203
@@ -67,7 +67,7 @@
       "lines": 2002
     },
     "src/harness/main.ts": {
-      "lines": 880
+      "lines": 878
     },
     "src/harness/research/paper.ts": {
       "lines": 1178
@@ -88,7 +88,7 @@
       "lines": 1023
     },
     "src/harness/service.ts": {
-      "lines": 2903
+      "lines": 2881
     },
     "src/supervisor/advise.ts": {
       "lines": 1366

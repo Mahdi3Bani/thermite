@@ -27,6 +27,8 @@ import {
   ownerLines,
   PLANNER_ROLE,
   takeUsage,
+  trialEnd,
+  turnsUp,
 } from "./cli/common.ts";
 import {
   CliCompactions,
@@ -44,9 +46,9 @@ import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import { newTally, type OpencodeTally, readNew, readOpencodeEvents } from "./opencode/events.ts";
-import { OPENCODE_BIN, startInArea } from "./opencode/run.ts";
+import { opencodeBin, opencodeExe, opencodeExitWords, startInArea } from "./opencode/run.ts";
 
-export { OPENCODE_BIN, opencodeBin, opencodeExe } from "./opencode/run.ts";
+export { NO_OPENCODE, opencodeBin, opencodeExe, opencodeExitWords } from "./opencode/run.ts";
 
 import {
   afterProgramFailure,
@@ -189,10 +191,6 @@ export {
 /** What OpenCode itself uses, as its limits note says (Claude Code's says the same, unmeasured). */
 export const OPENCODE_MEMORY = "about 500 MiB";
 
-/** Whether a trial used its turns: a cap set by Turns per trial (none unless configured). */
-const turnsUp = (spec: { maxTurns?: number | undefined }, tally: OpencodeTally) =>
-  spec.maxTurns !== undefined && tally.turns >= spec.maxTurns;
-
 export interface OpencodeTrialDeps extends ProviderLink {
   runner: Runner;
   model: ModelConfig;
@@ -332,7 +330,7 @@ export async function runOpencodeTrial(
   const started = Date.now(); // the trial's length only when one is set (goal 079)
   const deadline = spec.wallMs !== undefined ? started + spec.wallMs : Number.POSITIVE_INFINITY;
   const minutes = spec.wallMs !== undefined ? Math.round(spec.wallMs / 60_000) : undefined;
-  let message = `${WORKER_OPENCODE_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits, "OpenCode", OPENCODE_MEMORY)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, undefined, "", deadline)}`;
+  let message = `${WORKER_OPENCODE_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits, "OpenCode", OPENCODE_MEMORY)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. ${trialBudget(minutes, spec.maxTurns, "each model reply is one", deadline)}`;
   // Failed model calls in a row, rate limits in a row, and since when the calls fail (goal 079).
   const count: FailureCount = { failures: 0, rateWaits: 0 };
   let offset = 0;
@@ -386,16 +384,19 @@ export async function runOpencodeTrial(
     while (!done) {
       await new Promise((r) => setTimeout(r, deps.pollMs ?? 1000));
       pump();
-      // A stop, or the trial's turns used up (goal 163: code trials keep the cap too), ends it.
-      if (deps.signal?.aborted || turnsUp(spec, tally)) {
+      if (deps.signal?.aborted) {
         await deps.runner.killRole(spec.lane).catch(() => 0);
         break;
       }
       // A submission ends the trial: its command finishes, and the agent's next reply is not waited for.
+      // Without one, the trial's turns used up end it (goal 163: code trials keep the cap too).
       if (deps.submitted()) {
         submittedAt ??= Date.now();
         if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
           await deps.runner.killRole(spec.lane).catch(() => 0);
+      } else if (turnsUp(spec, tally)) {
+        await deps.runner.killRole(spec.lane).catch(() => 0);
+        break;
       }
     }
     const outcome = await running;
@@ -412,6 +413,7 @@ export async function runOpencodeTrial(
     if (deps.submitted()) break;
     if (turnsUp(spec, tally)) {
       result.stopped = "turns";
+      result.error = `the trial reached its limit of ${spec.maxTurns} turns before a submission`;
       break;
     }
     // A memory or disk limit ends OpenCode with everything it ran: say which, with the figures.
@@ -441,18 +443,8 @@ export async function runOpencodeTrial(
         waiting: deps.waiting,
         pauseMs: deps.pauseMs,
       });
-      if ("interrupted" in step) {
-        result.stopped = "interrupted";
-        break;
-      }
-      if ("wall" in step) {
-        result.stopped = "wall";
-        break;
-      }
-      if ("end" in step) {
-        result.stopped = "error";
-        result.error = step.end.error;
-        result.errorKind = step.end.kind;
+      if (!("goOn" in step)) {
+        Object.assign(result, trialEnd(step));
         break;
       }
       nudges--;
@@ -461,7 +453,10 @@ export async function runOpencodeTrial(
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
-      result.error = `OpenCode exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
+      result.error = opencodeExitWords(
+        outcome.exitCode ?? outcome.signal,
+        tally.notes.at(-1) ?? "no output",
+      );
       break;
     }
     // Continued to get a submission (goal 079) for as long as the agent keeps working (a tool
@@ -663,6 +658,7 @@ export async function runOpencodeResearchTrial(
     }
     if (capped()) {
       result.stopped = "turns";
+      result.error = `the trial reached its limit of ${spec.maxTurns} turns`;
       break;
     }
     const breach = breachError(outcome, limits, "OpenCode");
@@ -691,18 +687,8 @@ export async function runOpencodeResearchTrial(
         waiting: deps.waiting,
         pauseMs: deps.pauseMs,
       });
-      if ("interrupted" in step) {
-        result.stopped = "interrupted";
-        break;
-      }
-      if ("wall" in step) {
-        result.stopped = "wall";
-        break;
-      }
-      if ("end" in step) {
-        result.stopped = "error";
-        result.error = step.end.error;
-        result.errorKind = step.end.kind;
+      if (!("goOn" in step)) {
+        Object.assign(result, trialEnd(step));
         break;
       }
       message = [step.goOn, ...ownerLines(carried.take(tally))].join("\n\n");
@@ -710,7 +696,10 @@ export async function runOpencodeResearchTrial(
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
-      result.error = `OpenCode exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
+      result.error = opencodeExitWords(
+        outcome.exitCode ?? outcome.signal,
+        tally.notes.at(-1) ?? "no output",
+      );
       break;
     }
     // Continued for as long as the owner's messages wait and the agent keeps working. Messages
@@ -762,31 +751,33 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
     // Thermite's compaction plugin, when the call's conversation is kept (goal 070).
     ...(keeping ? opencodeKeepEnv(join(deps.dir, "compactions"), keeping.keptAt) : {}),
   };
-  const setup = await deps.runner.run({
-    role: deps.role,
-    argv: [
-      "sh",
-      "-c",
-      `mkdir -p home/.config/opencode tmp && umask 077 && cat > home/.config/opencode/opencode.jsonc${keeping ? ` && mkdir -p home/.config/opencode/plugins compactions && ln -sf "$1" home/${OPENCODE_PLUGIN_LINK}` : ""}`,
-      ...(keeping ? ["sh", OPENCODE_PLUGIN] : []),
-    ],
-    cwd: deps.dir,
-    timeoutMs: 30_000,
-    stdin: JSON.stringify(opencodeConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`, deps.mcp)),
-    captureBytes: 4096,
-  });
   const tally = newTally();
-  if (setup.exitCode !== 0) {
-    tally.errors.push(`could not set OpenCode up: ${setup.stderr.slice(-300)}`);
-    return tally;
-  }
   const kill = () => void deps.runner.killRole(deps.role).catch(() => 0);
   deps.signal?.addEventListener("abort", kill, { once: true });
   try {
+    const setup = await deps.runner.run({
+      role: deps.role,
+      argv: [
+        "sh",
+        "-c",
+        `mkdir -p home/.config/opencode tmp && umask 077 && cat > home/.config/opencode/opencode.jsonc${keeping ? ` && mkdir -p home/.config/opencode/plugins compactions && ln -sf "$1" home/${OPENCODE_PLUGIN_LINK}` : ""}`,
+        ...(keeping ? ["sh", OPENCODE_PLUGIN] : []),
+      ],
+      cwd: deps.dir,
+      timeoutMs: 30_000,
+      stdin: JSON.stringify(opencodeConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`, deps.mcp)),
+      captureBytes: 4096,
+    });
+    if (setup.exitCode !== 0) {
+      tally.errors.push(`could not set OpenCode up: ${setup.stderr.slice(-300)}`);
+      return tally;
+    }
+    // A call stopped before its run starts nothing, and answers with nothing.
+    if (deps.signal?.aborted) return tally;
     const r = await deps.runner.run({
       role: deps.role,
       argv: [
-        OPENCODE_BIN,
+        opencodeExe() ?? opencodeBin(),
         "run",
         "--standalone",
         "--auto",
@@ -823,7 +814,7 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
       tally.errors.push(`no answer in ${Math.round((deps.timeoutMs ?? 0) / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
       tally.errors.push(
-        `OpenCode exited ${r.exitCode ?? r.signal}: ${tally.notes.at(-1) ?? r.stderr.slice(-300)}`,
+        opencodeExitWords(r.exitCode ?? r.signal, tally.notes.at(-1) ?? r.stderr.slice(-300)),
       );
   } finally {
     deps.signal?.removeEventListener("abort", kill);

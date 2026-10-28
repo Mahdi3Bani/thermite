@@ -27,6 +27,7 @@ import {
   type RunOutcome,
   type RunRequest,
 } from "../../../src/harness/broker/runner.ts";
+import { fakeProgramRunner } from "../../helpers/fake-program.ts";
 import { makeJudgeEnv } from "../../helpers/judge-env.ts";
 
 const ACCESS = "chatgpt-access-token-for-tests";
@@ -242,33 +243,8 @@ describe("the Codex CLI", () => {
     ...over,
   });
   /** A stand-in runner: setup succeeds; each Codex run appends `lines` to its events file. */
-  const fakeRunner = (lines: string[], o: { submit?: boolean } = {}) => {
-    const runs: RunRequest[] = [];
-    const killed: string[] = [];
-    let submitted = false;
-    const runner = {
-      run: async (req: RunRequest): Promise<RunOutcome> => {
-        runs.push(req);
-        if (req.argv.includes("exec")) {
-          appendFileSync(String(req.env?.THERMITE_CODEX_EVENTS), `${lines.join("\n")}\n`);
-          await new Promise((r) => setTimeout(r, 30));
-          if (o.submit) submitted = true;
-        }
-        return { exitCode: 0, signal: null, killedFor: null, stdout: "", stderr: "" } as RunOutcome;
-      },
-      killRole: async (role: string) => {
-        killed.push(role);
-        return 0;
-      },
-    } as unknown as Runner;
-    return {
-      runner,
-      runs,
-      killed,
-      submitted: () => submitted,
-      codexRuns: () => runs.filter((x) => x.argv.includes("exec")),
-    };
-  };
+  const fakeRunner = (lines: string[], o: { submit?: boolean } = {}) =>
+    fakeProgramRunner("codex", lines, o);
   const area = () => {
     const a = mkdtempSync(join(tmpdir(), "thermite-codex-"));
     mkdirSync(join(a, "repo"));
@@ -297,7 +273,7 @@ describe("the Codex CLI", () => {
     assert.equal(setup.cwd, a);
     assert.match(String(setup.argv[2]), /cat > codex-home\/\.codex\/config\.toml/);
     assert.match(String(setup.stdin), /base_url = "http:\/\/127\.0\.0\.1:8700\/v1\/model-proxy"/);
-    const run = f.codexRuns()[0] as RunRequest;
+    const run = f.programRuns()[0] as RunRequest;
     assert.equal(run.cwd, join(a, "repo"));
     assert.equal(run.env?.HOME, join(a, "codex-home"));
     assert.equal(run.env?.CODEX_HOME, join(a, "codex-home", ".codex"));
@@ -337,7 +313,7 @@ describe("the Codex CLI", () => {
           messages: { waiting: owner.waiting, given: owner.given_ },
         },
       );
-      const runs = f.codexRuns();
+      const runs = f.programRuns();
       return { r, runs, prompts: runs.map((x) => String(x.stdin)), given: owner.given };
     };
     const open = await run({ submit: false });
@@ -352,22 +328,7 @@ describe("the Codex CLI", () => {
     assert.deepEqual(done.given, [], "it stays waiting for the lane's next trial");
   });
 
-  test("a full ChatGPT plan, as the proxy saw it, ends the trial until a later time; a turn cap stops it; a failed run waits and resumes its thread; no credits ends it", async () => {
-    const a = area();
-    const limited = fakeRunner(events({ failed: "exceeded retry limit, last status: 429" }));
-    const until = "2030-01-01T00:15:00.000Z";
-    const asked: number[] = [];
-    const r = await runCodexTrial(spec(a, join(a, "repo")), {
-      ...deps(limited),
-      usageLimitSince: (since) => {
-        asked.push(since);
-        return until;
-      },
-    });
-    assert.equal(r.stopped, "error");
-    assert.equal(r.retryAfter, until);
-    assert.match(r.error ?? "", /subscription_sharing_usage_limit_exceeded/);
-    assert.ok(asked.length === 1 && asked[0] !== undefined && asked[0] <= Date.now());
+  test("a turn cap stops a trial; a failed run waits and resumes its thread; no credits ends it", async () => {
     const b = area();
     const capped = fakeRunner(events());
     const c = await runCodexTrial(spec(b, join(b, "repo"), { maxTurns: 1 }), deps(capped));
@@ -388,9 +349,9 @@ describe("the Codex CLI", () => {
     );
     assert.equal(e.stopped, "error");
     assert.match(e.error ?? "", /failed 2 times in a row .*stream disconnected/);
-    assert.equal(broken.codexRuns().length, 2, "resumed once");
+    assert.equal(broken.programRuns().length, 2, "resumed once");
     assert.ok(
-      broken.codexRuns()[1]?.argv.join(" ").includes(`resume ${THREAD} -`),
+      broken.programRuns()[1]?.argv.join(" ").includes(`resume ${THREAD} -`),
       "in the same thread",
     );
     // No credits: the trial ends at once, with its kind, for the scheduler to stop the agents.
@@ -401,7 +362,7 @@ describe("the Codex CLI", () => {
     ]);
     const h = await runCodexTrial(spec(g, join(g, "repo")), { ...deps(broke), pauseMs: () => 5 });
     assert.deepEqual([h.stopped, h.errorKind], ["error", "credits"]);
-    assert.equal(broke.codexRuns().length, 1);
+    assert.equal(broke.programRuns().length, 1);
   });
 
   test("an image without the Codex CLI says so in words: in a trial and in the model check", async () => {
