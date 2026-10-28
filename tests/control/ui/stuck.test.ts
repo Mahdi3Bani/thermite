@@ -121,7 +121,7 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
     );
     assert.match(
       needs,
-      /action="\/ui\/trials\/leave">[\s\S]*?name="trial" value="t-1"[\s\S]*?name="kind" value="repeating"/,
+      /action="\/ui\/campaigns\/survey\/runs\/s-1\/trials\/t-1\/leave">[\s\S]*?name="kind" value="repeating"/,
     );
     // A lane that works gets no card.
     assert.doesNotMatch(needs, /lane-3/);
@@ -151,10 +151,12 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
 
   test("Leave it running: the card goes away until the trial is stuck again", async () => {
     const c = await stuckRun();
-    const left = await c.post("/ui/trials/leave", {
-      rig: "rig-a",
-      run: "s-1",
-      trial: "t-2",
+    // Addressed through its run (goal 170): its form names no rig.
+    assert.match(
+      needsOf(await c.page(RUN)),
+      /action="\/ui\/campaigns\/survey\/runs\/s-1\/trials\/t-2\/leave"/,
+    );
+    const left = await c.post(`${RUN}/trials/t-2/leave`, {
       kind: "quiet",
       since: QUIET.last_line_at,
       back: RUN,
@@ -168,9 +170,7 @@ describe("a stuck trial asks under Needs you (goal 143)", () => {
     c.report({ ...QUIET, last_line_at: ago(45) });
     assert.match(needsOf(await c.page(RUN)), /lane-2(&#39;|')s trial has sent nothing for 45 min/);
     // A form that is not a stuck trial's card is refused.
-    const bad = await c.post("/ui/trials/leave", {
-      rig: "rig-a",
-      trial: "t-2",
+    const bad = await c.post(`${RUN}/trials/t-2/leave`, {
       kind: "bored",
       since: "x",
     });
@@ -268,10 +268,7 @@ test("a trial that asks again and again for a refused page is stuck too (goals 1
     /f3 <a class="chip warn" href="[^"]*#needs"[^>]*>repeats a refused request<\/a>/,
   );
   // Leave it running, for that page: the card stays away while it is the same page.
-  const left = await c.post("/ui/trials/leave", {
-    rig: "rig-a",
-    run: "s-1",
-    trial: "t-3",
+  const left = await c.post(`${RUN}/trials/t-3/leave`, {
     kind: "refused",
     since: refused(12).url,
     back: RUN,

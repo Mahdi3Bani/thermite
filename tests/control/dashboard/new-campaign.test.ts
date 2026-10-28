@@ -122,10 +122,7 @@ describe("the new-campaign page", () => {
       start_value: "start",
     });
     assert.equal(res.status, 303);
-    assert.equal(
-      res.headers.get("location"),
-      "/ui/campaigns/matmul-speed?run=rig-a%2Fmatmul-speed-1",
-    );
+    assert.equal(res.headers.get("location"), "/ui/campaigns/matmul-speed/runs/matmul-speed-1");
     assert.ok(s.probes.includes("https://git.example.com/team/fastmat.git@main"));
     const [v] = s.store.campaigns.versions("matmul-speed");
     const contract = v?.contract as { target: unknown; project: { kit: { commit: string } } };
@@ -285,18 +282,19 @@ describe("the new-campaign page", () => {
       start_value: "try",
     });
     assert.equal(res.status, 303);
-    assert.equal(
-      res.headers.get("location"),
-      "/ui/campaigns/matmul-speed?run=rig-a%2Fmatmul-speed-try-1",
-    );
-    // Before the rig reports the run: the saved campaign, waiting, with a way to start a run.
+    assert.equal(res.headers.get("location"), "/ui/campaigns/matmul-speed/runs/matmul-speed-try-1");
+    // Before the rig reports the run: its page waits, and the saved campaign's page has a way to
+    // start a run.
     const waiting = await (
-      await s.get("/ui/campaigns/matmul-speed?run=rig-a%2Fmatmul-speed-try-1")
+      await s.get("/ui/campaigns/matmul-speed/runs/matmul-speed-try-1")
     ).text();
-    assert.match(waiting, /Starting rig-a\/matmul-speed-try-1/);
+    assert.match(waiting, /Starting matmul-speed-try-1 on rig-a/);
     assert.ok(!waiting.includes("data-refresh"), "pages never reload by themselves");
     assert.match(waiting, /page from \d\d:\d\d:\d\d UTC<\/span><a href="" /);
-    assert.match(waiting, /action="\/ui\/campaigns\/matmul-speed\/runs"/);
+    assert.match(
+      await (await s.get("/ui/campaigns/matmul-speed")).text(),
+      /action="\/ui\/campaigns\/matmul-speed\/runs"/,
+    );
     const started = await s.post("/ui/campaigns/matmul-speed/runs", {
       csrf: s.csrf,
       rig: "rig-a",
@@ -304,7 +302,10 @@ describe("the new-campaign page", () => {
       promotion: "",
     });
     assert.equal(started.status, 303);
-    assert.match(String(started.headers.get("location")), /run=rig-a%2Fmatmul-speed-1$/);
+    assert.match(
+      String(started.headers.get("location")),
+      /\/ui\/campaigns\/matmul-speed\/runs\/matmul-speed-1$/,
+    );
     const kinds = s.store.commands.list(10).map((c) => c.kind);
     assert.deepEqual(kinds, ["assign_campaign", "assign_campaign"]);
     const bad = await s.post("/ui/campaigns/matmul-speed/runs", { csrf: s.csrf, rig: "nope" });
@@ -545,7 +546,7 @@ describe("the new-campaign page", () => {
       draft: JSON.stringify(draft({ campaign: "matmul-try" })),
       start_value: "try",
     });
-    assert.match(String(tried.headers.get("location")), /\?run=rig-a%2Fmatmul-try-try-/);
+    assert.match(String(tried.headers.get("location")), /\/runs\/matmul-try-try-/);
     const another = async (agents: string) =>
       decodeURIComponent(
         String(
@@ -557,7 +558,7 @@ describe("the new-campaign page", () => {
     assert.match(await another("on"), /error=rig-a has no model for its agents/);
     const without = await another("off");
     assert.doesNotMatch(without, /error=/);
-    assert.match(without, /\?run=rig-a\/matmul-try-/);
+    assert.match(without, /\/runs\/matmul-try-/);
     // OpenCode's free models work only inside OpenCode: research workers in Pi can't use them.
     const researchDraft = draft({
       mode: "research",
@@ -608,7 +609,7 @@ describe("the new-campaign page", () => {
       start_value: "start",
       agents_model: "zen|glm-5.3-flash-free",
     });
-    assert.match(String(started.headers.get("location")), /\?run=rig-a%2Fmatmul-speed-2-/);
+    assert.match(String(started.headers.get("location")), /\/runs\/matmul-speed-2-/);
     // In OpenCode they can: a research run on the same model starts.
     const inOpencode = await s.post("/ui/campaigns/new", {
       csrf: s.csrf,
@@ -617,7 +618,7 @@ describe("the new-campaign page", () => {
       start_value: "start",
       agents_model: "zen|glm-5.3-flash-free",
     });
-    assert.match(String(inOpencode.headers.get("location")), /\?run=rig-a%2Frl-research-/);
+    assert.match(String(inOpencode.headers.get("location")), /\/runs\/rl-research-/);
     // The agents in the Codex CLI: only with a provider OpenAI's Responses API reaches.
     const codexRefused = await (
       await send({

@@ -134,7 +134,7 @@ On **6 Review and start**, a sentence sums up the campaign. It starts with `matm
 
 Press **Start the campaign**. Control keeps the kit, saves the campaign, and sends its first **run** to `local-1`: this campaign at work on that rig.
 
-The campaign's page opens and says `Starting local-1/matmul-agents-1.`, then `Sent to local-1 at`, the time, and `Waiting for the rig to take it.` The rig fetches Thermite's repository from GitHub and the kit from control, and checks both. Stay on the page: once the rig reports the run, usually within a minute, the page opens the run's own page by itself, at the same address. The line at the top reads `Campaigns › matmul-agents › matmul-agents-1`, then `on local-1 · hill climb · Running`.
+The run's own page opens and says `Starting matmul-agents-1 on local-1.`, then `Sent to local-1 at`, the time, and `Waiting for the rig to take it.` The rig fetches Thermite's repository from GitHub and the kit from control, and checks both. Stay on the page: once the rig reports the run, usually within a minute, the page shows the run by itself, at the same address. The line at the top reads `Campaigns › matmul-agents › matmul-agents-1`, then `on local-1 · hill climb · Running`.
 
 Open **Campaigns** in the sidebar. Under **At work now**, a card shows `matmul-agents › matmul-agents-1`, on `local-1`: the campaign, then its run. Under **All campaigns**, the row `matmul-agents` shows your title, `Make the sample's matrix multiply faster`, and `1 at work` under **Runs**.
 

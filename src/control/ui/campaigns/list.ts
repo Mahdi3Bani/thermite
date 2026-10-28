@@ -1,5 +1,11 @@
 import { isRigCheck } from "../../../core/ids.ts";
-import { type CampaignView, newestRun, type RigView, type RunView } from "../../views/index.ts";
+import {
+  type CampaignView,
+  type Earlier,
+  newestRun,
+  type RigView,
+  type RunView,
+} from "../../views/index.ts";
 import {
   ago,
   esc,
@@ -8,9 +14,10 @@ import {
   modeAvatar,
   modeName,
   runCompleted,
-  runHref,
 } from "../components/index.ts";
 import { runProgress, waitingOn } from "../operator/index.ts";
+import { runHref } from "../urls.ts";
+import { earlierWords } from "../words/index.ts";
 import { infoLabel } from "./new/index.ts";
 
 // The smoke checks control runs on each new rig make campaigns of their own: hidden by default.
@@ -124,7 +131,7 @@ export function campaignsListBody(o: CampaignsListInput): string {
     ? `<div class="block"><div class="head"><h2>Waiting for you</h2><span class="n">${o.waiting.reduce((a, w) => a + w.n, 0)}</span></div>${o.waiting
         .map(
           (w) =>
-            `<div class="kneed">${icon.warn}<span class="grow"><b>${esc(w.run.campaign || w.run.id)} › ${esc(w.run.id)}</b> on ${esc(w.rig.id)}: ${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`,
+            `<div class="kneed">${icon.warn}<span class="grow"><b>${esc(w.run.campaign || w.run.id)} › ${esc(w.run.id)}</b> on ${esc(w.rig.id)}: ${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you.</span><a class="btn sm" href="${runHref(w.run)}#needs">Review</a></div>`,
         )
         .join("")}</div>`
     : "";
@@ -181,7 +188,7 @@ export function startDrawer(o: {
   from: string;
   /** Runs of the campaign with experiments not tried yet, to copy into the new run's queue. */
   copyFrom?: { key: string; label: string }[] | undefined;
-  /** The run to copy from, chosen first (`rig/run`): a judge-only run's link here (goal 099). */
+  /** The run to copy from, chosen first (its name): a judge-only run's link here (goal 099). */
   copyPick?: string | undefined;
   /** "From past research" (goal 065): a search of the folders the campaign may read. */
   past?: string | undefined;
@@ -241,23 +248,35 @@ ${
 
 /** A campaign's earlier runs (paused, completed and finished), newest first, in one table. */
 export function earlierRuns(
-  /** `result`: more for the result cell (cross-verification); `action`: the row's button. */
-  rows: { rig: RigView; run: RunView; result: string; action: string }[],
+  /**
+   * `result`: more for the result cell (cross-verification); `action`: the row's button;
+   * `earlier`: a run of a retired rig or from before its rig's full reset (goal 170), marked so.
+   */
+  rows: {
+    rig: RigView;
+    run: RunView;
+    earlier?: Earlier | null | undefined;
+    result: string;
+    action: string;
+  }[],
   now: number,
 ): string {
   if (!rows.length) return "";
   const row = (x: (typeof rows)[number]) => {
+    // An earlier run that was not closed was left as it stood: it runs no more.
     const st =
-      x.run.status === "paused"
-        ? `<span class="kst pause">Paused</span>`
-        : x.run.status === "closed"
-          ? runCompleted(x.run)
-            ? `<span class="kst ok">Completed</span>`
-            : `<span class="kst done">Finished</span>`
-          : `<span class="kst done">${esc(x.run.status)}</span>`;
+      x.earlier && x.run.status !== "closed"
+        ? `<span class="kst done">Stopped</span>`
+        : x.run.status === "paused"
+          ? `<span class="kst pause">Paused</span>`
+          : x.run.status === "closed"
+            ? runCompleted(x.run)
+              ? `<span class="kst ok">Completed</span>`
+              : `<span class="kst done">Finished</span>`
+            : `<span class="kst done">${esc(x.run.status)}</span>`;
     const last = lastActivity(x.run);
     const n = waitingOn(x.run, x.rig);
-    return `<tr><td>${st}</td><td><a href="${runHref(x.rig.id, x.run)}"><b>${esc(x.run.id)}</b></a>${judgeOnlyMark(x.run)}${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.rig.id)}</td><td>${runProgress(x.run)}${x.result}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
+    return `<tr><td>${st}</td><td><a href="${runHref(x.run)}"><b>${esc(x.run.id)}</b></a>${judgeOnlyMark(x.run)}${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.earlier ? earlierWords(x.rig.id, x.earlier) : x.rig.id)}</td><td>${runProgress(x.run)}${x.result}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
   };
   const head = `<thead><tr><th style="width:90px">State</th><th>Run</th><th>Rig</th><th>Result</th><th>Why it stopped</th><th>Last activity</th><th></th></tr></thead>`;
   const shown = rows.slice(0, 8).map(row).join("");

@@ -17,7 +17,7 @@ import {
   type MachineRig,
   type TunnelRig,
 } from "../../store/index.ts";
-import { ago, esc, hardwareCard, icon, num, runHref } from "../../ui/components/index.ts";
+import { ago, esc, hardwareCard, icon, num } from "../../ui/components/index.ts";
 import { exportMenu, exportsHref } from "../../ui/exports.ts";
 import {
   cap,
@@ -39,6 +39,7 @@ import {
   readySteps,
 } from "../../ui/rigs/runpod.ts";
 import { stateBanners, stateRows, stateSummary, versionFact } from "../../ui/rigs/states.ts";
+import { runHref } from "../../ui/urls.ts";
 import { span } from "../../ui/words/index.ts";
 import { type RigView, runCampaign } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
@@ -248,7 +249,7 @@ export function rigPageRoutes(app: Hono, dash: Dashboard): void {
             : `${esc(u.id)} is live; it reported ${esc(ago(u.last_seen, now))} ago.`,
       drain?.said ?? "",
       live.length
-        ? `It runs ${live.map((i) => `<a href="${runHref(u.id, i)}">${esc(runCampaign(i))} › ${esc(i.id)}</a>`).join(" and ")}.`
+        ? `It runs ${live.map((i) => `<a href="${runHref(i)}">${esc(runCampaign(i))} › ${esc(i.id)}</a>`).join(" and ")}.`
         : u.runs.length
           ? "No run is at work on it."
           : "No campaign is assigned to it.",
@@ -412,7 +413,7 @@ export function rigPageRoutes(app: Hono, dash: Dashboard): void {
 <div class="row"><code>${esc(fingerprint(key.pending))}</code><span class="grow"></span><form class="inline" method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/key/accept"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="fingerprint" value="${esc(fingerprint(key.pending))}"><button class="primary">Accept this key</button></form></div></div>`
       : "";
     const retireForm = `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/retire" class="stack" style="gap:8px"><input type="hidden" name="csrf" value="${t}">
-<div class="small"><b>Retire it.</b> <span class="muted">For a rig that is gone: it leaves the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay, and you can bring it back. It stops nothing where the rig runs.</span>${rp?.active ? ` <b class="warn">Its pod keeps running at RunPod, and costs money: terminate it instead, under The pod.</b>` : ""}</div>
+<div class="small"><b>Retire it.</b> <span class="muted">For a rig that is gone: it leaves the rig lists and Needs you, and control refuses its reports. Its runs stay on their campaigns' pages, under Earlier runs. Its records stay, and you can bring it back. It stops nothing where the rig runs.</span>${rp?.active ? ` <b class="warn">Its pod keeps running at RunPod, and costs money: terminate it instead, under The pod.</b>` : ""}</div>
 <input name="confirm" placeholder="type: retire ${esc(u.id)}" data-confirm="retire ${esc(u.id)}" aria-label="Type retire ${esc(u.id)} to confirm"><button class="danger" style="justify-content:center">Retire it</button></form>`;
     const actions = `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Edit rig</a><a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/live">${icon.terminal}Live</a>
 ${exportMenu({ csrf: t, rig: u.id, back })}

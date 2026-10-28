@@ -52,7 +52,7 @@ describe("a research run's page (goals 116 and 117)", () => {
     assert.match(block, /<b>Hypotheses:<\/b> 3 need a verdict, 2 decided · 1 in the pool\./);
     assert.match(
       block,
-      /href="\/ui\/campaigns\/survey\?run=rig-a%2Fs-1&amp;view=hypotheses"|href="\/ui\/campaigns\/survey\?run=rig-a%2Fs-1&view=hypotheses"/,
+      /href="\/ui\/campaigns\/survey\/runs\/s-1\/hypotheses"|href="\/ui\/campaigns\/survey\/runs\/s-1\/hypotheses"/,
     );
 
     const q1 = part(block, 'data-q="0"', 'data-q="1"');
@@ -115,7 +115,7 @@ describe("a research run's page (goals 116 and 117)", () => {
     const c = await researchControl();
     c.ingest(researchRunEvents());
     reviewLiveLines(c.store);
-    const html = await c.page(`${RUN}&view=reviews`);
+    const html = await c.page(`${RUN}/reviews`);
     // Newest first.
     const order = [3, 2, 1].map((n) => html.indexOf(`data-k="review-rig-a-s-1-${n}"`));
     assert.ok(order[0] !== undefined && order[0] > 0, String(order));
@@ -188,7 +188,7 @@ describe("a research run's page (goals 116 and 117)", () => {
     // The reviewers' field notes that came with it, on the Journal; none came with review 2.
     assert.match(
       r1,
-      /A field note of the reviewers came with it: on the run's <a href="\/ui\/campaigns\/survey\?run=rig-a%2Fs-1&view=journal">Journal<\/a>, under <b>Review panel<\/b>\./,
+      /A field note of the reviewers came with it: on the run's <a href="\/ui\/campaigns\/survey\/runs\/s-1\/journal">Journal<\/a>, under <b>Review panel<\/b>\./,
     );
     assert.doesNotMatch(r2, /field notes? of the reviewers/);
 
@@ -268,7 +268,7 @@ describe("a research run's page (goals 116 and 117)", () => {
     const hill = await c.page("/ui/campaigns/speed?view=reviews");
     assert.doesNotMatch(hill, /<nav class="tabs">|Reviews <span/);
     assert.doesNotMatch(
-      await c.page("/ui/campaigns/speed?run=rig-a%2Fhc-1"),
+      await c.page("/ui/campaigns/speed/runs/hc-1"),
       /view=reviews|view=hypotheses/,
     );
   });
@@ -276,7 +276,7 @@ describe("a research run's page (goals 116 and 117)", () => {
   test("the Hypotheses tab: by status with questions and verdicts; Promote, Return to pool and Retire send hypothesis_status with why", async () => {
     const c = await researchControl();
     c.ingest(researchRunEvents());
-    const html = await c.page(`${RUN}&view=hypotheses`);
+    const html = await c.page(`${RUN}/hypotheses`);
     const need = part(html, "<h2>Need a verdict</h2>", "<h2>The pool</h2>");
     // The author's (one from before the pool), then the promoted one; no moves on the author's.
     assert.match(need, /data-h="h-a1"[\s\S]*data-h="h-a2"[\s\S]*data-h="h-p2"/);
@@ -338,7 +338,7 @@ describe("a research run's page (goals 116 and 117)", () => {
       id: "h-p1",
       status: "promoted",
       reason: "The questions turn on it.",
-      back: `${RUN}&view=hypotheses`,
+      back: `${RUN}/hypotheses`,
     });
     assert.equal(sent.status, 200, JSON.stringify(sent.answer));
     assert.match(String(sent.answer.follow), /^\/ui\/commands\//);
@@ -362,18 +362,15 @@ describe("a research run's page (goals 116 and 117)", () => {
     assert.match(String(refused.answer.said), /write why you change the hypothesis first/i);
     // A closed run's hypotheses have no moves.
     c.ingest([ev("run_status", { status: "closed", reason: "closed by the owner" })]);
-    assert.doesNotMatch(
-      await c.page(`${RUN}&view=hypotheses`),
-      /name="kind" value="hypothesis_status"/,
-    );
+    assert.doesNotMatch(await c.page(`${RUN}/hypotheses`), /name="kind" value="hypothesis_status"/);
   });
 
   test("the Tasks tab shows each research task's question and yield; a task that added nothing is not drawn as a gain", async () => {
     const c = await researchControl();
     c.ingest(researchRunEvents());
-    const html = await c.page(`${RUN}&view=experiments`);
+    const html = await c.page(`${RUN}/experiments`);
     // A research run's queue is called Tasks, and its parts are named for tasks.
-    assert.match(html, /view=experiments">Tasks <span class="muted">/);
+    assert.match(html, /\/experiments">Tasks <span class="muted">/);
     assert.doesNotMatch(html, />Experiments <span class="muted">|Add an experiment/);
     assert.match(html, /<span class="lb">Add a task<i class="ii"/);
     assert.match(html, /<thead><tr><th>Task<\/th><th>Kind of task<\/th><th>Added by<\/th>/);
@@ -464,8 +461,8 @@ describe("a research run's page (goals 116 and 117)", () => {
     }
     c.ingest(events);
     const started = performance.now();
-    const hypotheses = await c.page(`${RUN}&view=hypotheses`);
-    const reviews = await c.page(`${RUN}&view=reviews`);
+    const hypotheses = await c.page(`${RUN}/hypotheses`);
+    const reviews = await c.page(`${RUN}/reviews`);
     const ms = performance.now() - started;
     assert.match(hypotheses, /The first 150 of 301\. MCP's get_run lists them all\./);
     assert.equal(hypotheses.match(/class="qrule hy"/g)?.length, 3 + 150 + 2);

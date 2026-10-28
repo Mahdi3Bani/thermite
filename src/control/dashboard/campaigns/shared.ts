@@ -4,8 +4,9 @@ import { KitSchema } from "../../../core/kit.ts";
 import { type KbKind, PICKABLE } from "../../kb.ts";
 import type { ChecksSource } from "../../ui/campaigns/goal-checks.ts";
 import { isRigCheck, workCard } from "../../ui/campaigns/list.ts";
-import { bestGainWords, icon, modeName, num, pct, runLiveHref } from "../../ui/components/index.ts";
+import { bestGainWords, icon, modeName, num, pct } from "../../ui/components/index.ts";
 import { runBrief } from "../../ui/operator/index.ts";
+import { runLiveHref } from "../../ui/urls.ts";
 import {
   type CampaignView,
   currentChampion,
@@ -72,7 +73,7 @@ export function campaignHelpers(dash: Dashboard) {
     workCard(
       runBrief(store, u, r, now, { heading: true }),
       // A run without agents (a try, a rig check) has no one to message.
-      `<a class="btn sm" href="${runLiveHref(u.id, r.id)}">${icon.terminal}Live</a>${r.has_agents === false ? "" : `<a class="btn sm" href="${runLiveHref(u.id, r.id, "&compose=1")}">Message</a>`}${pauseMenu(c, u.id, r.id, back, "sm ghost")}`,
+      `<a class="btn sm" href="${runLiveHref(r)}">${icon.terminal}Live</a>${r.has_agents === false ? "" : `<a class="btn sm" href="${runLiveHref(r, { compose: true })}">Message</a>`}${pauseMenu(c, u.id, r.id, back, "sm ghost")}`,
       waiting,
     );
 

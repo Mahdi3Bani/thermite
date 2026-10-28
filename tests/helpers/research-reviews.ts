@@ -14,7 +14,7 @@ import { ADMIN, controlOnly, mcpClient, signIn } from "./control-stack.ts";
 
 export { ADMIN };
 export const RIG_TOKEN = "t-a-abcdef";
-export const RUN = "/ui/campaigns/survey?run=rig-a%2Fs-1";
+export const RUN = "/ui/campaigns/survey/runs/s-1";
 const t0 = Date.now() - 10 * 3_600_000;
 export const at = (h: number) => new Date(t0 + h * 3_600_000).toISOString();
 export type Ev = { kind: string; subject: string; body: Record<string, unknown>; at?: string };

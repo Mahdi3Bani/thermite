@@ -16,10 +16,12 @@ import { campaignContextRefusal } from "../campaigns/index.ts";
 import { mcpRefusal } from "../mcp-servers/index.ts";
 import { usedRunRefusal } from "../run-names.ts";
 import type { ControlStore } from "../store/index.ts";
-import { currentChampion, type RigView, type RunView, rigView } from "../views/index.ts";
+import { currentChampion, findRun, type RigView, type RunView, rigView } from "../views/index.ts";
 import { publishCommand, unpublishCommand } from "./bus.ts";
+import { commandRig } from "./rig.ts";
 
 export { sendCommandsOn } from "./bus.ts";
+export { commandRig } from "./rig.ts";
 
 /** Each advisor's name in a sentence (goal 074), and its verb. */
 const ROLE_NAME: Record<AdvisorRole, { name: string; is: string }> = {
@@ -283,9 +285,12 @@ export function harnessConfirmed(outcome: unknown): boolean {
   return (outcome as { source?: string } | null)?.source === "harness";
 }
 
-/** What a command is issued with: the rig, its kind and payload, how long it lives, who asks. */
+/**
+ * What a command is issued with: the rig, its kind and payload, how long it lives, who asks. A
+ * kind about one run may leave out the rig: control sends it to the run's (issue/rig.ts).
+ */
 export interface IssueInput {
-  rig: string;
+  rig?: string | undefined;
   kind: CommandKind;
   payload: unknown;
   ttlMinutes?: number | undefined;
@@ -350,12 +355,13 @@ export async function issueWaking(
   input: IssueInput & { owner: boolean },
 ): Promise<{ id: string; woke: string | null }> {
   const signed = prepareCommand(store, privateKeyPem, input);
+  const rig = signed.envelope.rig;
   let woke: string | null = null;
   if (pods && WAKING_KINDS.includes(input.kind)) {
-    const pod = pods.view(input.rig);
+    const pod = pods.view(rig);
     if (pod?.active && pod.status === "EXITED" && !pod.op && !input.owner)
       throw new WakeRefused(
-        `${input.rig}'s pod on RunPod is stopped, and only the owner can start it: start the pod from the rig's page, or start the run with the owner's token`,
+        `${rig}'s pod on RunPod is stopped, and only the owner can start it: start the pod from the rig's page, or start the run with the owner's token`,
       );
     const run = (input.payload as { run?: unknown } | null)?.run;
     const why =
@@ -363,10 +369,10 @@ export async function issueWaking(
         ? `to ${input.kind === "assign_campaign" ? "assign" : "resume"} run ${run}`
         : undefined;
     try {
-      woke = await pods.wake(input.rig, input.issuedBy, why);
+      woke = await pods.wake(rig, input.issuedBy, why);
     } catch (err) {
       throw new WakeRefused(
-        `Not sent: control could not start ${input.rig}'s pod on RunPod for it. ${errorText(err)}`,
+        `Not sent: control could not start ${rig}'s pod on RunPod for it. ${errorText(err)}`,
       );
     }
   }
@@ -385,30 +391,29 @@ export function prepareCommand(
   privateKeyPem: string,
   input: IssueInput,
 ): SignedCommand {
-  if (
-    !store.reportedRigs.list().some((u) => u.id === input.rig) &&
-    !store.enrollments.knownRig(input.rig)
-  ) {
-    throw new Error(`unknown rig ${input.rig}`);
+  // A kind about one run goes to the run's rig, which the caller may leave out (goal 170).
+  const rig = commandRig(store, input.kind, input.rig, input.payload);
+  if (!store.reportedRigs.list().some((u) => u.id === rig) && !store.enrollments.knownRig(rig)) {
+    throw new Error(`unknown rig ${rig}`);
   }
   // A rig control refuses would never fetch it: say why now, not when it expires.
-  const refused = store.refusals.get(input.rig);
-  if (refused) throw new Error(`Control sends no commands to ${input.rig}. ${refused.reason}`);
+  const refused = store.refusals.get(rig);
+  if (refused) throw new Error(`Control sends no commands to ${rig}. ${refused.reason}`);
   const unrunnable = input.kind === "assign_campaign" ? assignRefusal(input.payload) : "";
   if (unrunnable) throw new Error(unrunnable);
-  const shelved = archivedRefusal(store, input.rig, input.kind, input.payload);
+  const shelved = archivedRefusal(store, rig, input.kind, input.payload);
   if (shelved) throw new Error(shelved);
   // A campaign's own context window above what a provider lists for one of the rig's agents'
   // models (goal 070): refused before signing, on every path that starts a run. A try has no agents.
   const assigned = input.payload as { contract?: unknown; agents?: unknown } | null;
   const tooWide =
     input.kind === "assign_campaign" && assigned?.agents !== false
-      ? campaignContextRefusal(store, input.rig, assigned?.contract)
+      ? campaignContextRefusal(store, rig, assigned?.contract)
       : "";
   if (tooWide) throw new Error(tooWide);
   const parsed = CommandPayloads[input.kind].safeParse(
     input.kind === "message_agent"
-      ? checkedMessage(store, input.rig, input.payload)
+      ? checkedMessage(store, rig, input.payload)
       : input.kind === "assign_campaign"
         ? withMcpServers(store, input.payload)
         : input.payload,
@@ -421,9 +426,9 @@ export function prepareCommand(
   const payload = parsed.data;
   const ruled =
     input.kind === "redirect"
-      ? redirectRefusal(store, input.rig, payload)
+      ? redirectRefusal(store, rig, payload)
       : input.kind === "hypothesis_status"
-        ? hypothesisStatusRefusal(store, input.rig, payload)
+        ? hypothesisStatusRefusal(store, rig, payload)
         : input.kind === "assign_campaign"
           ? usedRunRefusal(store, payload as { run: string })
           : "";
@@ -433,7 +438,7 @@ export function prepareCommand(
     {
       v: 1,
       id: randomUUID(),
-      rig: input.rig,
+      rig,
       kind: input.kind,
       issued_by: input.issuedBy,
       issued_at: new Date(now).toISOString(),
@@ -449,27 +454,26 @@ export function prepareCommand(
 }
 
 /**
- * Propagates one rig's published champion to another rig's run of the same campaign.
- * The command carries the patch's sha256 and the tree, from the source's own signed report, so
- * the receiving harness can check what the supervisors transport. The receiving rig's judge
- * decides; a win there marks the source champion cross-verified.
+ * Propagates one run's published champion to another run of the same campaign, on another rig;
+ * each run is named alone, and control knows the rig each ran on (goal 170). The command carries
+ * the patch's sha256 and the tree, from the source's own signed report, so the receiving harness
+ * can check what the supervisors transport. The receiving rig's judge decides; a win there marks
+ * the source champion cross-verified.
  */
 export function propagateChampion(
   store: ControlStore,
   privateKeyPem: string,
-  input: {
-    fromRig: string;
-    run: string;
-    toRig: string;
-    toRun: string;
-    issuedBy: string;
-    staleAfterMs: number;
-  },
+  input: { run: string; toRun: string; issuedBy: string; staleAfterMs: number },
 ): { id: string; seq: number } {
-  if (input.fromRig === input.toRig) throw new Refusal("propagate between two different rigs");
-  const from = rigView(store, input.fromRig, { staleAfterMs: input.staleAfterMs });
-  const src = from?.runs.find((i) => i.id === input.run);
-  if (!src) throw new Refusal(`no run ${input.run} on ${input.fromRig}`);
+  const opts = { staleAfterMs: input.staleAfterMs };
+  const from = findRun(store, input.run, opts);
+  const src = from?.run;
+  if (!from || !src) throw new Refusal(`no run ${input.run}`);
+  const to = findRun(store, input.toRun, opts);
+  const dst = to?.run;
+  if (!to || !dst) throw new Refusal(`no run ${input.toRun}`);
+  if (to.rig.id === from.rig.id)
+    throw new Refusal(`${input.run} and ${input.toRun} are on one rig: propagate between two rigs`);
   const champ = currentChampion(src);
   const pub = src.published;
   if (!champ || champ.seq <= 1) throw new Refusal("the source run has no champion beyond its seed");
@@ -478,26 +482,24 @@ export function propagateChampion(
       `champion seq ${champ.seq} is not published yet (it is published with the rig's next export)`,
     );
   }
-  const to = rigView(store, input.toRig, { staleAfterMs: input.staleAfterMs });
-  const dst = to?.runs.find((i) => i.id === input.toRun);
-  if (!dst) throw new Refusal(`no run ${input.toRun} on ${input.toRig}`);
   if (dst.campaign !== src.campaign) {
     throw new Refusal(`${input.toRun} runs ${dst.campaign}, not ${src.campaign}`);
   }
   if (!pub.repo || dst.seed_repo !== pub.repo) {
     throw new Refusal(`the target works on ${dst.seed_repo}, the champion is in ${pub.repo}`);
   }
+  // The receiving supervisor fetches the patch from the source rig's results: where it ran.
   const { id } = issueCommand(store, privateKeyPem, {
-    rig: input.toRig,
+    rig: to.rig.id,
     kind: "propagate",
     payload: {
       run: input.toRun,
-      source_rig: input.fromRig,
+      source_rig: from.rig.id,
       source_run: input.run,
       source_seq: pub.seq,
       import: {
         kind: "champion_patch",
-        path: `propagate/${input.fromRig}/${input.run}/${pub.seq}.patch`,
+        path: `propagate/${from.rig.id}/${input.run}/${pub.seq}.patch`,
         repo: pub.repo,
         base_commit: pub.base_commit,
         tree: pub.tree,

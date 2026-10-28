@@ -1,6 +1,7 @@
 import type { RigView, RunView } from "../../views/index.ts";
+import { runHref } from "../urls.ts";
 import { span } from "../words/index.ts";
-import { esc, runHref } from "./index.ts";
+import { esc } from "./index.ts";
 
 /**
  * A decision as one row that reads at a glance: what it is about, why it waits for the owner,
@@ -32,7 +33,7 @@ export function card(o: {
   decided?: { sent: boolean; html: string } | undefined;
 }): { html: string; box: string; decided: boolean } {
   const where = o.r
-    ? `<a href="${runHref(o.u.id, o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> · ${esc(o.u.id)}${o.lane ? ` · ${esc(o.lane)}` : ""}`
+    ? `<a href="${runHref(o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> · ${esc(o.u.id)}${o.lane ? ` · ${esc(o.lane)}` : ""}`
     : `rig <a href="/ui/rigs/${encodeURIComponent(o.u.id)}">${esc(o.u.id)}</a>`;
   // Once the owner has chosen, the row says so instead of offering the buttons again; a choice
   // the rig refused says why, and the buttons come back.

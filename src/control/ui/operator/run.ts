@@ -6,17 +6,9 @@ import {
   type RunView,
   runCampaign,
 } from "../../views/index.ts";
-import {
-  ago,
-  attemptHref,
-  esc,
-  gainChip,
-  icon,
-  reportingTag,
-  runHref,
-  sparkline,
-} from "../components/index.ts";
-import { attemptState, clip, findAttempt, jobText, signed } from "../words/index.ts";
+import { ago, esc, gainChip, icon, reportingTag, sparkline } from "../components/index.ts";
+import { attemptHref, runHref } from "../urls.ts";
+import { attemptState, clip, jobText, runOfAttempt, signed } from "../words/index.ts";
 import { cap } from "./change.ts";
 import { hasAdvisors, outcome } from "./outcome.ts";
 
@@ -157,7 +149,7 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
     name === "campaign"
       ? `${esc(runCampaign(r))} › ${esc(r.id)}`
       : `${esc(r.id)} <span class="muted small">on ${esc(u.id)}${reportingTag(u)}</span>`;
-  return `<a class="rr" href="${runHref(u.id, r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
+  return `<a class="rr" href="${runHref(r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
 }
 
 /** Attempts as rows: the outcome word, the change, where it stands, its effect, lane and age. */
@@ -177,19 +169,20 @@ export function attemptRows(u: RigView, r: RunView, xs: AttemptView[], now: numb
             : "";
       const where =
         o.word === "Blocked" ? "the judge measured it; the auditor blocked it" : attemptState(a);
-      return `<a class="ar" href="${attemptHref(u.id, a.id)}"><span class="chip ${o.tone} ar-out">${esc(o.word)}</span><span class="ar-main"><b>${esc(clip(a.hypothesis ?? a.id, 160))}</b><span class="muted small">${esc(where)}${a.known_flaws.length ? ` · ${a.known_flaws.length} declared flaw${a.known_flaws.length === 1 ? "" : "s"}` : ""}</span></span><span class="ar-effect">${effect}</span><span class="ar-lane">${esc(a.lane ?? "by hand")}</span><span class="ar-age">${esc(ago(a.updated_at, now))}</span></a>`;
+      return `<a class="ar" href="${attemptHref(r, a.id)}"><span class="chip ${o.tone} ar-out">${esc(o.word)}</span><span class="ar-main"><b>${esc(clip(a.hypothesis ?? a.id, 160))}</b><span class="muted small">${esc(where)}${a.known_flaws.length ? ` · ${a.known_flaws.length} declared flaw${a.known_flaws.length === 1 ? "" : "s"}` : ""}</span></span><span class="ar-effect">${effect}</span><span class="ar-lane">${esc(a.lane ?? "by hand")}</span><span class="ar-age">${esc(ago(a.updated_at, now))}</span></a>`;
     })
     .join("")}</div>`;
 }
 
 /** A judge job in words, its attempt named by what it does and linked. */
 export function jobHtml(u: RigView, j: JudgeJob): string {
-  const a = j.attempt ? findAttempt(u, j.attempt) : undefined;
+  const r = j.attempt ? runOfAttempt(u, j.attempt) : undefined;
+  const a = r?.attempts.find((x) => x.id === j.attempt);
   const html = esc(jobText(j, a?.lane));
-  if (!j.attempt) return html;
+  if (!j.attempt || !r) return html;
   const id = esc(j.attempt);
   return html.replace(
     id,
-    `<a href="${attemptHref(u.id, j.attempt)}" title="${id}">${a?.hypothesis ? `“${esc(clip(a.hypothesis, 70))}”` : id}</a>`,
+    `<a href="${attemptHref(r, j.attempt)}" title="${id}">${a?.hypothesis ? `“${esc(clip(a.hypothesis, 70))}”` : id}</a>`,
   );
 }

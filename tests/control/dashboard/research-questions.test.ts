@@ -29,7 +29,7 @@ async function control() {
   return { page, ingest };
 }
 
-const RUN = "/ui/campaigns/survey?run=rig-a%2Fs-1";
+const RUN = "/ui/campaigns/survey/runs/s-1";
 
 describe("a research run's questions on its Overview", () => {
   test("each bar names its question and counts its verified claims", async () => {

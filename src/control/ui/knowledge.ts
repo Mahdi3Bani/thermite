@@ -1,8 +1,9 @@
 import type { KbFolder, KbItem, KbKind } from "../kb.ts";
 import { JOURNAL_KINDS } from "../kb.ts";
-import type { JournalNoteView, RigView, RunView } from "../views/index.ts";
+import type { JournalNoteView, RunView } from "../views/index.ts";
 import { infoLabel } from "./campaigns/new/index.ts";
-import { ago, attemptHref, campaignHref, esc, fmtInt, runHref } from "./components/index.ts";
+import { ago, esc, fmtInt } from "./components/index.ts";
+import { attemptHref, campaignHref, runHref } from "./urls.ts";
 import { clip } from "./words/index.ts";
 
 /**
@@ -115,19 +116,19 @@ const WRITER_WORD: Record<string, string> = {
  * What a note is about, linked to the experiment or the attempt where the page has it. A note
  * about the run itself (what a note that names nothing is about) needs no line on its run's page.
  */
-function aboutHtml(u: RigView, r: RunView, n: JournalNoteView): string {
+function aboutHtml(r: RunView, n: JournalNoteView): string {
   const parts: string[] = [];
   const a = n.about;
   if (a && !(a.type === "run" && a.id === r.id)) {
     if (a.type === "experiment") {
       const x = r.queue.find((q) => q.id === a.id);
       parts.push(
-        `<a href="${runHref(u.id, r, "experiments")}">${esc(x ? clip(x.title, 120) : `experiment ${a.id}`)}</a>`,
+        `<a href="${runHref(r, "experiments")}">${esc(x ? clip(x.title, 120) : `experiment ${a.id}`)}</a>`,
       );
     } else if (a.type === "attempt") {
       const x = r.attempts.find((y) => y.id === a.id);
       parts.push(
-        `<a href="${attemptHref(u.id, a.id)}"><code>${esc(a.id)}</code></a>${x?.hypothesis ? ` ${esc(clip(x.hypothesis, 100))}` : ""}`,
+        `<a href="${attemptHref(r, a.id)}"><code>${esc(a.id)}</code></a>${x?.hypothesis ? ` ${esc(clip(x.hypothesis, 100))}` : ""}`,
       );
     } else if (a.type === "message") {
       const m = r.messages.find((y) => String(y.id) === a.id);
@@ -140,9 +141,9 @@ function aboutHtml(u: RigView, r: RunView, n: JournalNoteView): string {
 }
 
 /** One note as the Journal shows it: who, its kind, when, its words and what it is about. */
-function noteHtml(u: RigView, r: RunView, n: JournalNoteView): string {
+function noteHtml(r: RunView, n: JournalNoteView): string {
   const w = writer(n.by);
-  const ctx = aboutHtml(u, r, n);
+  const ctx = aboutHtml(r, n);
   return `<div class="jnote" data-who="${esc(w.key)}" data-kind="${esc(n.kind)}"><div class="jhead"><span class="qsrc ${w.cls}" title="${esc(n.by)}">${esc(w.text)}</span><span class="jk ${JK[n.kind] ?? ""}">${esc(n.kind)}</span><span title="${esc(n.at)}">${esc(n.at.slice(5, 10))} ${esc(n.at.slice(11, 16))}</span></div><div class="jtext">${esc(n.text)}</div>${ctx ? `<div class="jctx">${ctx}</div>` : ""}</div>`;
 }
 
@@ -151,7 +152,6 @@ const JOURNAL_SHOWN = 500;
 
 /** The Journal tab: the agents' field notes, newest first, filtered by writer and by kind. */
 export function journalTab(o: {
-  u: RigView;
   r: RunView;
   now: number;
   /** The run's items in the knowledge base, by kind. */
@@ -159,7 +159,7 @@ export function journalTab(o: {
   /** The other folders the run's campaign reads. */
   reads: string[];
 }): string {
-  const { u, r } = o;
+  const { r } = o;
   // Field notes have the ledger's ids; research notes negative ones (views.ts), whatever the kind.
   const field = r.journal.filter((n) => n.id > 0).reverse();
   const notes = r.journal.filter((n) => n.id < 0).reverse();
@@ -189,14 +189,14 @@ export function journalTab(o: {
   const noteRow = (n: JournalNoteView) =>
     `<div class="jsnote"><span>${esc(n.text)}</span><span class="muted xs">${esc(writer(n.by).text)} · ${esc(ago(n.at, o.now))} ago${n.about && !(n.about.type === "run" && n.about.id === r.id) ? ` · ${esc(n.about.type)} ${esc(n.about.id)}` : ""}</span></div>`;
   return `<div class="jcols"><div>
-<div class="small muted" style="margin-bottom:10px">Field notes the agents keep as they work: what they observe, the decisions they make and why, what surprised them, open questions and lessons. What was tried, and its result, is in <a href="${runHref(u.id, r, "experiments")}">Experiments</a>.</div>
+<div class="small muted" style="margin-bottom:10px">Field notes the agents keep as they work: what they observe, the decisions they make and why, what surprised them, open questions and lessons. What was tried, and its result, is in <a href="${runHref(r, "experiments")}">Experiments</a>.</div>
 ${
   field.length
     ? `<div class="ktools" id="jf">${chip("data-jw", "all", "Everyone", true)}${writers.map((w) => chip("data-jw", w.key, WRITER_WORD[w.key] ?? w.text)).join("")}<input class="jsearch" type="search" placeholder="Search the journal" aria-label="Search the journal"></div>
 <div class="ktools" id="jk">${chip("data-jk", "all", "Every kind", true)}${kinds.map((k) => chip("data-jk", k, kindWord(k))).join("")}</div>
 <div id="jl">${field
         .slice(0, JOURNAL_SHOWN)
-        .map((n) => noteHtml(u, r, n))
+        .map((n) => noteHtml(r, n))
         .join(
           "",
         )}</div>${field.length > JOURNAL_SHOWN ? `<div class="muted small" style="margin-top:8px">The newest ${JOURNAL_SHOWN} of ${field.length}. All of them are in the campaign's folder on <a href="/ui/knowledge?folder=${encodeURIComponent(r.campaign ?? "")}&amp;kind=note">Knowledge</a> and in the run's export.</div>` : ""}`
@@ -218,12 +218,12 @@ ${
 }
 
 // ---------------------------------------------------------------- search results, with their origin
-/** Where a run's page is, if control has the run on a rig now. */
-export type RunLink = (rig: string, run: string) => string | undefined;
+/** Where a run's page is, wherever the run ran (goal 170); none for a run no rig created. */
+export type RunLink = (run: string) => string | undefined;
 
 /** One item with its origin (campaign, run, who, when), its result, and its text on demand. */
 function resultHtml(x: KbItem, now: number, link: RunLink, result: string | null): string {
-  const href = link(x.rig, x.run);
+  const href = link(x.run);
   const run = href ? `<a href="${esc(href)}">${esc(x.run)}</a>` : esc(x.run);
   const kind =
     x.kind === "note" && x.sub && x.sub !== "note" ? `Field note (${x.sub})` : KIND_WORD[x.kind][0];

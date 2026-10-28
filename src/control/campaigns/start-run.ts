@@ -45,8 +45,11 @@ export interface StartRunRequest {
   askOwner?: AskOwner | undefined;
   /** How many of the rig's GPUs the judge measures on; empty: the rig's current split. */
   judgeGpus?: string | number | undefined;
-  /** A run of the campaign whose untried experiments start the new run's queue. */
-  queueFrom?: { rig: string; run: string } | undefined;
+  /**
+   * A run of the campaign, by name, whose untried experiments start the new run's queue: any run
+   * of it, an earlier one too (goal 170).
+   */
+  queueFrom?: string | undefined;
   /** Items of Thermite's knowledge base, by id: experiments join the queue, the rest the briefing. */
   past?: number[] | undefined;
 }
@@ -106,10 +109,12 @@ export const startRunFields = {
       "For a rig with several GPUs: how many the judge measures on; the rest are the agents'. It changes the rig's split for every run on it, and the rig's harness restarts to apply it",
     ),
   queue_from: z
-    .strictObject({ rig: z.string().min(1), run: z.string().min(1) })
+    .string()
+    .min(1)
+    .max(100)
     .optional()
     .describe(
-      "Another run of the campaign: its untried experiments (up next in order, then its lanes' ideas, at most 500) start the new run's queue",
+      "Another run of the campaign, by name: its untried experiments (up next in order, then its lanes' ideas, at most 500) start the new run's queue. Any run of it, one of a retired rig or from before a full reset too",
     ),
   past: z
     .array(z.number().int())
@@ -280,18 +285,13 @@ export async function startARun(
   const notes: string[] = [];
   let copied: QueueSeed[] = [];
   if (req.queueFrom) {
-    const { rig: on, run } = req.queueFrom;
-    const from = vs
-      .find((u) => u.id === on)
-      ?.runs.find((r) => r.id === run && r.campaign === campaign);
-    if (!from)
-      return refuse(
-        `${on} has no run ${run} of ${campaign}: copy from a run of this campaign.`,
-        404,
-      );
+    const run = req.queueFrom;
+    const from = parts.run(run)?.run;
+    if (from?.campaign !== campaign)
+      return refuse(`${campaign} has no run ${run}: copy from a run of this campaign.`, 404);
     copied = untriedOf(from);
     if (!copied.length)
-      notes.push(`${run} on ${on} has no untried experiments: the new run's queue starts empty.`);
+      notes.push(`${run} has no untried experiments: the new run's queue starts empty.`);
   }
   const busy = rig.runs.find((r) => r.status === "running");
   let r: Awaited<ReturnType<typeof startRun>>;

@@ -222,7 +222,7 @@ describe("a goal report keeps what it measured (goal 086)", () => {
         ["speedy", ["small", "quick"]],
       ],
     );
-    const runPage = await env.page("/ui/campaigns/js-goal?run=rig-a%2Fjs-1");
+    const runPage = await env.page("/ui/campaigns/js-goal/runs/js-1");
     assert.doesNotMatch(runPage, HIDDEN_SUM);
     assert.match(
       runPage,

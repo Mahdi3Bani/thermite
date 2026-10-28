@@ -1,6 +1,7 @@
 import { SCREENED_VERDICTS, WON_VERDICTS } from "../../../core/verdicts.ts";
 import { type AttemptView, type RigView, type RunView, runCampaign } from "../../views/index.ts";
-import { ago, esc, liveHref, moreText, runHref } from "../components/index.ts";
+import { ago, esc, moreText } from "../components/index.ts";
+import { liveHref, runHref } from "../urls.ts";
 import { auditReason, verdictText } from "../words/index.ts";
 import { cap, evidence, short } from "./change.ts";
 import { heldOutBlock } from "./held-out.ts";
@@ -162,10 +163,7 @@ export function attemptDetail(
     : `<div class="empty">The rig did not report its files (an older harness).</div>`;
 
   const facts = [
-    [
-      "Run",
-      `<a href="${runHref(u.id, r)}">${esc(runCampaign(r))} › ${esc(r.id)}</a> on ${esc(u.id)}`,
-    ],
+    ["Run", `<a href="${runHref(r)}">${esc(runCampaign(r))} › ${esc(r.id)}</a> on ${esc(u.id)}`],
     ["Lane", esc(a.lane ?? "none: submitted by hand")],
     ...(a.family ? [["Direction", esc(a.family)]] : []),
     [

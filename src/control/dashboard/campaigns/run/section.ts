@@ -1,16 +1,15 @@
-import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
-import { sumUsage } from "../../../core/usage.ts";
-import { howCheckedDetails } from "../../ui/campaigns/goal-checks.ts";
-import { experimentsTab, plannerTab } from "../../ui/campaigns/queue/index.ts";
+import { RESEARCH_REVIEW } from "../../../../core/research-check.ts";
+import { sumUsage } from "../../../../core/usage.ts";
+import { howCheckedDetails } from "../../../ui/campaigns/goal-checks.ts";
+import { experimentsTab, plannerTab } from "../../../ui/campaigns/queue/index.ts";
 import {
   hypothesesTab,
   type ReviewSources,
   researchBlock,
   reviewsTab,
-} from "../../ui/campaigns/research.ts";
+} from "../../../ui/campaigns/research.ts";
 import {
   ago,
-  attemptHref,
   championCard,
   deltaCell,
   esc,
@@ -20,13 +19,10 @@ import {
   kpi,
   moreText,
   num,
-  type RunTab,
-  runHref,
-  runKey,
   stackBar,
   startWords,
-} from "../../ui/components/index.ts";
-import { journalTab } from "../../ui/knowledge.ts";
+} from "../../../ui/components/index.ts";
+import { journalTab } from "../../../ui/knowledge.ts";
 import {
   attemptRows,
   baselineBlock,
@@ -37,19 +33,21 @@ import {
   leftByClose,
   runBrief,
   timeline,
-} from "../../ui/operator/index.ts";
-import { type RunUsage, runStatsTab, runUsageTop } from "../../ui/usage.ts";
-import { auditReason, clip, jobText, runStatusText, signed } from "../../ui/words/index.ts";
-import { pricingOf, usageData } from "../../usage.ts";
+} from "../../../ui/operator/index.ts";
+import { attemptHref, championPatchHref, type RunTab, runHref } from "../../../ui/urls.ts";
+import { type RunUsage, runStatsTab, runUsageTop } from "../../../ui/usage.ts";
+import { auditReason, clip, jobText, runStatusText, signed } from "../../../ui/words/index.ts";
+import { pricingOf, usageData } from "../../../usage.ts";
 import {
   championsInForce,
   currentChampion,
   type RigView,
+  type RunOnRig,
   type RunView,
   runCampaign,
-} from "../../views/index.ts";
-import type { Ctx, Dashboard } from "../context.ts";
-import { campaignHelpers } from "./shared.ts";
+} from "../../../views/index.ts";
+import type { Ctx, Dashboard } from "../../context.ts";
+import { campaignHelpers } from "../shared.ts";
 
 export type RunViewName = RunTab;
 
@@ -68,7 +66,7 @@ export function runHelpers(dash: Dashboard) {
    * rig's settings tell which. None: a run with no agents (a try of a kit) and nothing spent.
    */
   const runUsage = (u: RigView, i: RunView, now: number): RunUsage | undefined => {
-    const d = usageData(store, { run: i.id, rig: u.id });
+    const d = usageData(store, { run: i.id });
     if (!i.has_agents && !d.report.total.records && d.report.total.cost.pod_usd === null)
       return undefined;
     const roles = store.agentModels.byRole(u.id);
@@ -128,25 +126,20 @@ export function runHelpers(dash: Dashboard) {
   };
 
   /**
-   * One run on its campaign's page, one view at a time: its overview (what waits for the owner,
-   * what it is doing now, goals, what happened, latest attempts), all its attempts, its history
-   * in words, or its steering. Command forms return to the same view.
+   * One run's page, one view at a time: its overview (what waits for the owner, what it is doing
+   * now, goals, what happened, latest attempts), all its attempts, its history in words, or its
+   * steering. Command forms return to the same view. An earlier run (goal 170) takes no commands:
+   * nothing of it waits for the owner, and its champion goes to no other rig.
    */
-  const runSection = (
-    c: Ctx,
-    u: RigView,
-    i: RunView,
-    vs: RigView[],
-    now: number,
-    view: RunViewName,
-  ) => {
+  const runSection = (c: Ctx, x: RunOnRig, vs: RigView[], now: number, view: RunViewName) => {
+    const { rig: u, run: i, earlier } = x;
     const t = csrf(c);
-    const back = runHref(u.id, i, view);
-    const others = vs.filter((x) => x.id !== u.id);
+    const back = runHref(i, view);
+    const others = earlier ? [] : vs.filter((o) => o.id !== u.id);
     // A research run's page has its Reviews and Hypotheses tabs (goals 116 and 117).
     const researchRun = i.mode === "research";
     const usage = runUsage(u, i, now);
-    const decisions = needs(c, [u], now, back).filter((n) => n.run === i.id);
+    const decisions = earlier ? [] : needs(c, [u], now, back).filter((n) => n.run === i.id);
     // How each goal is really checked (goal 082): as this run's rig reported its kit, else as
     // control can read the campaign's kit or contract.
     const how = i.mode === "goal" ? goalChecksFor(runCampaign(i), vs, u.id, i) : undefined;
@@ -207,21 +200,18 @@ export function runHelpers(dash: Dashboard) {
           .join("")}</tbody></table></div>`
       : "";
     const sub = (v: RunViewName, label: string, extra = "") =>
-      `<a class="${view === v ? "on" : ""}" href="${runHref(u.id, i, v)}">${label}${extra}</a>`;
+      `<a class="${view === v ? "on" : ""}" href="${runHref(i, v)}">${label}${extra}</a>`;
     // Steering: each control says what it does.
     const ctl = (button: string, does: string) =>
       `<div class="choice"><div class="btns">${button}</div><div class="does">${does}</div></div>`;
     const propagate =
       i.published && others.length
         ? ctl(
-            `<form class="inline" method="post" action="/ui/propagate"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(i.id)}"><select name="target">${others
+            `<form class="inline" method="post" action="/ui/propagate"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="run" value="${esc(i.id)}"><select name="to_run">${others
               .flatMap((o) =>
                 o.runs
                   .filter((x) => x.campaign === i.campaign)
-                  .map(
-                    (x) =>
-                      `<option value="${esc(`${o.id}|${x.id}`)}">${esc(o.id)} / ${esc(x.id)}</option>`,
-                  ),
+                  .map((x) => `<option value="${esc(x.id)}">${esc(x.id)} on ${esc(o.id)}</option>`),
               )
               .join("")}</select><button>Send champion #${i.published.seq}</button></form>`,
             `Another rig's run of this campaign imports this run's champion, and its own judge tests it there. If it holds up, it counts as cross-verified.`,
@@ -233,7 +223,7 @@ export function runHelpers(dash: Dashboard) {
         ? `<div class="block"><div class="head"><h2>Audits</h2></div><div class="card flat"><table><thead><tr><th>Attempt</th><th>Why it was audited</th><th>Outcome</th></tr></thead><tbody>${audits
             .map(
               (x) =>
-                `<tr><td><a href="${attemptHref(u.id, x.attempt)}"><code>${esc(x.attempt)}</code></a></td><td>${esc(auditReason(x.reason))}</td><td class="${x.decision === "block" ? "bad" : x.decision ? "ok" : "warn"}">${esc(x.decision === null ? (u.supervisor && (u.supervisor as { advisors?: unknown }).advisors ? "waiting for the auditor" : "waiting for you (no auditor configured)") : x.decision === "block" ? "blocked by the auditor" : x.decision === "clear" ? "cleared by the auditor" : x.decision === "needs_owner" ? "passed to you" : x.decision)}${x.reasons ? `<div class="muted xs">${esc(clip(x.reasons, 200))}</div>` : ""}</td></tr>`,
+                `<tr><td><a href="${attemptHref(i, x.attempt)}"><code>${esc(x.attempt)}</code></a></td><td>${esc(auditReason(x.reason))}</td><td class="${x.decision === "block" ? "bad" : x.decision ? "ok" : "warn"}">${esc(x.decision === null ? (u.supervisor && (u.supervisor as { advisors?: unknown }).advisors ? "waiting for the auditor" : "waiting for you (no auditor configured)") : x.decision === "block" ? "blocked by the auditor" : x.decision === "clear" ? "cleared by the auditor" : x.decision === "needs_owner" ? "passed to you" : x.decision)}${x.reasons ? `<div class="muted xs">${esc(clip(x.reasons, 200))}</div>` : ""}</td></tr>`,
             )
             .join("")}</tbody></table></div></div>`
         : "",
@@ -256,7 +246,7 @@ export function runHelpers(dash: Dashboard) {
             .reverse()
             .map(
               (p) =>
-                `<tr><td>${esc(p.source_rig)} / ${esc(p.source_run)} champion #${p.source_seq}</td><td>${p.attempt ? `<a href="${attemptHref(u.id, p.attempt)}"><code>${esc(p.attempt)}</code></a>` : ""}</td><td class="${p.result === "accepted" ? "ok" : p.result.startsWith("rejected") ? "bad" : "muted"}">${esc(p.result)}</td></tr>`,
+                `<tr><td>${esc(p.source_rig)} / ${esc(p.source_run)} champion #${p.source_seq}</td><td>${p.attempt ? `<a href="${attemptHref(i, p.attempt)}"><code>${esc(p.attempt)}</code></a>` : ""}</td><td class="${p.result === "accepted" ? "ok" : p.result.startsWith("rejected") ? "bad" : "muted"}">${esc(p.result)}</td></tr>`,
             )
             .join("")}</tbody></table></div></div>`
         : "",
@@ -331,7 +321,7 @@ export function runHelpers(dash: Dashboard) {
       : `applies to ${esc(i.published?.base_commit.slice(0, 8) ?? "")}`;
     const patch =
       i.published && store.championPatches.get(u.id, i.id, i.published.seq)
-        ? `<a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(i.id)}/champions/${i.published.seq}.patch">download champion #${i.published.seq} as a patch</a> <span class="muted small">(${appliesTo})</span>`
+        ? `<a href="${championPatchHref(i, i.published.seq)}">download champion #${i.published.seq} as a patch</a> <span class="muted small">(${appliesTo})</span>`
         : "";
     // The champions, newest first: what each one changed and what it gained.
     const ladder =
@@ -343,7 +333,7 @@ export function runHelpers(dash: Dashboard) {
             .slice(0, 12)
             .map((x) => {
               const a = x.attempt ? i.attempts.find((y) => y.id === x.attempt) : undefined;
-              return `<div class="lad"><span class="lad-n">#${x.seq}</span><span class="lad-main">${x.attempt ? `<a href="${attemptHref(u.id, x.attempt)}">${esc(clip(a?.hypothesis ?? x.attempt, 140))}</a>` : `<span class="muted">the starting point</span>`}</span><span>${x.attempt ? gainChip(i, { delta: x.delta, values: a?.values }, "ok") : esc(startWords(i))}</span><b class="fig">${esc(signed(x.cumulative - 1))}</b><span class="lad-age">${esc(ago(x.at, now))}</span></div>`;
+              return `<div class="lad"><span class="lad-n">#${x.seq}</span><span class="lad-main">${x.attempt ? `<a href="${attemptHref(i, x.attempt)}">${esc(clip(a?.hypothesis ?? x.attempt, 140))}</a>` : `<span class="muted">the starting point</span>`}</span><span>${x.attempt ? gainChip(i, { delta: x.delta, values: a?.values }, "ok") : esc(startWords(i))}</span><b class="fig">${esc(signed(x.cumulative - 1))}</b><span class="lad-age">${esc(ago(x.at, now))}</span></div>`;
             })
             .join("")}</div></div>`
         : "";
@@ -434,7 +424,6 @@ export function runHelpers(dash: Dashboard) {
               })
             : view === "journal"
               ? journalTab({
-                  u,
                   r: i,
                   now,
                   counts: u.ledger_id ? store.kb().runCounts(u.id, u.ledger_id, i.id) : {},
@@ -467,14 +456,14 @@ export function runHelpers(dash: Dashboard) {
                       : `<p class="run-said" data-part="run-said">${said}</p>
 <div data-part="run-needs">${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}</div>
 <div class="cols run-cols"><div>
-${goals}${championHeldOutBlock(i, now)}${research}${baselineBlock(i, u, now)}${ladder}
-<div class="block" data-part="attempts"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
+${goals}${championHeldOutBlock(i, now)}${research}${baselineBlock(i, now)}${ladder}
+<div class="block" data-part="attempts"><div class="head"><h2>Attempts</h2><span class="n">${i.attempts.length}</span><span class="right"><a href="${runHref(i, "attempts")}">All ${i.attempts.length}</a></span></div>${attemptRows(u, i, newest.slice(0, 8), now)}</div>
 </div><div class="side">
 <div class="block" data-part="now"><div class="head"><h2>Now</h2></div>${now_}</div>
 <div class="block" data-part="facts"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
-<div class="block" data-part="recent"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
+<div class="block" data-part="recent"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
-    return `${usage ? runUsageTop(usage) : ""}<section class="block" id="${esc(runKey(u.id, i.id))}">
+    return `${usage ? runUsageTop(usage) : ""}<section class="block" id="run-${esc(i.id)}">
 <nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", researchRun ? "Tasks" : "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${researchRun ? `${sub("reviews", "Reviews", ` <span class="muted">${i.reviews.filter((r) => r.goal === RESEARCH_REVIEW).length}</span>`)}${sub("hypotheses", "Hypotheses", ` <span class="muted">${i.hypotheses.length}</span>`)}` : ""}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}${usage ? sub("stats", "Stats") : ""}</nav>
 ${body}
 </section>`;

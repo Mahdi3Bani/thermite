@@ -198,18 +198,19 @@ describe("Start a run over REST (goal 029)", () => {
       ["ask_above_gain", "15"],
       ["ask_declared_flaws", "1"],
       ["copy_queue", "1"],
-      ["copy_from", "rig-a/gs-3"],
+      ["copy_from", "gs-3"],
       ["past", String(s.exp.id)],
       ["past", String(s.finding.id)],
     ]);
     assert.equal(fromPanel.status, 303);
-    assert.match(String(fromPanel.headers.get("location")), /run=rig-a%2Fgemv-speed-1$/);
+    // The new run's page, under its campaign (goal 170).
+    assert.equal(fromPanel.headers.get("location"), "/ui/campaigns/gemv-speed/runs/gemv-speed-1");
     // Over REST: the same fields.
     const r = await s.rest("gemv-speed", {
       rig: "rig-a",
       promotion: "owner_approval",
       ask_owner: { above_gain: 0.15, declared_flaws: true },
-      queue_from: { rig: "rig-a", run: "gs-3" },
+      queue_from: "gs-3",
       past: [s.exp.id, s.finding.id],
     });
     assert.equal(r.status, 201);
@@ -299,15 +300,15 @@ describe("Start a run over REST (goal 029)", () => {
     );
     await refused(
       "gemv-speed",
-      { rig: "rig-a", agents: false, queue_from: { rig: "rig-a", run: "gs-3" } },
+      { rig: "rig-a", agents: false, queue_from: "gs-3" },
       400,
       "A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.",
     );
     await refused(
       "gemv-speed",
-      { rig: "rig-a", queue_from: { rig: "rig-b", run: "sv-2" } },
+      { rig: "rig-a", queue_from: "sv-2" },
       404,
-      "rig-b has no run sv-2 of gemv-speed: copy from a run of this campaign.",
+      "gemv-speed has no run sv-2: copy from a run of this campaign.",
     );
     await refused(
       "gemv-speed",
@@ -512,7 +513,7 @@ describe("Start a run over MCP (goal 029)", () => {
           arguments: {
             campaign: "gemv-speed",
             rig: "rig-a",
-            queue_from: { rig: "rig-a", run: "gs-3" },
+            queue_from: "gs-3",
           },
         }),
       ),

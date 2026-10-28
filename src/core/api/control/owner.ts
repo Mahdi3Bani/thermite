@@ -207,9 +207,12 @@ export const CLOUD_LAUNCH = {
 /** The longest life of a command control issues, in minutes: a week. */
 export const COMMAND_TTL_MAX_MINUTES = 7 * 24 * 60;
 
-/** A signed command for a rig, which control makes and keeps until the rig takes it. */
+/**
+ * A signed command for a rig, which control makes and keeps until the rig takes it. A kind about
+ * one run (RUN_KINDS) may leave out the rig: control knows the rig the run is on (goal 170).
+ */
 export const IssueBody = z.object({
-  rig: z.string().min(1),
+  rig: z.string().min(1).optional(),
   kind: z.enum(COMMAND_KINDS as [CommandKind, ...CommandKind[]]),
   payload: z.unknown(),
   ttl_minutes: z.number().int().positive().max(COMMAND_TTL_MAX_MINUTES).default(60),
@@ -222,11 +225,54 @@ export const ISSUE = {
   answer: z.looseObject({ woke: z.string().optional() }),
 } as const satisfies Route;
 
+/**
+ * A run (goal 170), addressed by its name alone, which is unique on control, wherever it ran: its
+ * rig's current ledger, an earlier ledger or a retired rig. What hangs from it is addressed
+ * under it. Control answers 404 for a run no rig created.
+ */
+export const RUN = {
+  method: "GET",
+  path: "/v1/runs/:run",
+  answer: z.looseObject({ id: z.string() }),
+} as const satisfies Route;
+
 /** A run's untried experiments, as a new run of its campaign takes them into its queue. */
 export const UNTRIED = {
   method: "GET",
-  path: "/v1/rigs/:rig/runs/:run/untried",
+  path: "/v1/runs/:run/untried",
   answer: z.looseObject({ queue: z.array(z.unknown()) }),
+} as const satisfies Route;
+
+/** A run's directions (goal 066), each with its counts and the rules naming it. */
+export const RUN_DIRECTIONS = {
+  method: "GET",
+  path: "/v1/runs/:run/directions",
+  answer: z.looseObject({ directions: z.array(z.unknown()) }),
+} as const satisfies Route;
+
+/** One attempt of a run: its record as the run's view has it, and the rig it ran on. */
+export const RUN_ATTEMPT = {
+  method: "GET",
+  path: "/v1/runs/:run/attempts/:attempt",
+  answer: z.looseObject({ run: z.string(), attempt: z.looseObject({ id: z.string() }) }),
+} as const satisfies Route;
+
+/**
+ * One of a run's champions as a patch file (the body's bytes), once its rig has published it. The
+ * rig's own upload of it stays the rig's (core/api/control/rigs.ts's CHAMPION_PATCH).
+ */
+export const RUN_CHAMPION_PATCH = {
+  method: "GET",
+  path: "/v1/runs/:run/champions/:seq/patch",
+  answer: z.unknown(),
+} as const satisfies Route;
+
+/** One run's published champion sent to another run of its campaign, on another rig. */
+export const PROPAGATE = {
+  method: "POST",
+  path: "/v1/propagate",
+  body: z.strictObject({ run: z.string().min(1), to_run: z.string().min(1) }),
+  answer: z.looseObject({ id: z.string(), seq: z.number() }),
 } as const satisfies Route;
 
 /** Start a run of a campaign control keeps (control/start-run.ts checks the request). */

@@ -23,6 +23,7 @@ const PARAMS = {
   rig: "rig-a",
   id: "c-1",
   run: "r-1",
+  attempt: "a-1",
   seq: 3,
   name: "20261020T120000Z-0123abcd",
   campaign: "sort-speed",

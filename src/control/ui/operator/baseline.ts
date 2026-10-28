@@ -1,5 +1,6 @@
-import type { RigView, RunView } from "../../views/index.ts";
-import { ago, attemptHref, esc } from "../components/index.ts";
+import type { RunView } from "../../views/index.ts";
+import { ago, esc } from "../components/index.ts";
+import { attemptHref } from "../urls.ts";
 import { clip } from "../words/index.ts";
 import { figure } from "./held-out.ts";
 
@@ -9,7 +10,7 @@ import { figure } from "./held-out.ts";
  * median absolute deviation as a share of it), what the kit's check kept, and the rig's noise.
  * While the judge measures it, or could not, the block says so instead.
  */
-export function baselineBlock(r: RunView, u: RigView, now: number): string {
+export function baselineBlock(r: RunView, now: number): string {
   if (r.mode !== "hill_climb") return "";
   const head = (right: string) =>
     `<div class="head"><h2>Where the run started</h2><span class="right">${right}</span></div>`;
@@ -53,7 +54,7 @@ export function baselineBlock(r: RunView, u: RigView, now: number): string {
     .map((c) => `<tr><td>${esc(c.cell)}</td>${metrics.map((m) => cell(c, m)).join("")}</tr>`)
     .join(
       "",
-    )}</tbody></table><div class="muted small" style="padding:8px 12px">Champion #${b.champion_seq} (<code>${esc(b.commit.slice(0, 8))}</code>)${b.attempt ? `, the setup change <a href="${attemptHref(u.id, b.attempt)}"><code>${esc(b.attempt)}</code></a>,` : ""} measured alone: the median of ${b.blocks} blocks, each of ${b.runs_per_cell} run${b.runs_per_cell === 1 ? "" : "s"} a case; ± is their median absolute deviation. Each guard's total allowance holds against these values.${noise}${files}${others.size ? ` ${others.size} more metric${others.size === 1 ? "" : "s"} in get_run.` : ""}</div></div></div>`;
+    )}</tbody></table><div class="muted small" style="padding:8px 12px">Champion #${b.champion_seq} (<code>${esc(b.commit.slice(0, 8))}</code>)${b.attempt ? `, the setup change <a href="${attemptHref(r, b.attempt)}"><code>${esc(b.attempt)}</code></a>,` : ""} measured alone: the median of ${b.blocks} blocks, each of ${b.runs_per_cell} run${b.runs_per_cell === 1 ? "" : "s"} a case; ± is their median absolute deviation. Each guard's total allowance holds against these values.${noise}${files}${others.size ? ` ${others.size} more metric${others.size === 1 ? "" : "s"} in get_run.` : ""}</div></div></div>`;
 }
 
 type BaselineCell = NonNullable<RunView["baseline"]>["cells"][number];

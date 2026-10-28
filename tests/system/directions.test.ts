@@ -96,7 +96,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
       assert.match(((await r.json()) as { error: string }).error, why);
     }
     // The run's directions, as a picker reads them, with the rules in force.
-    const got = await s.api("GET", "/v1/rigs/rig-a/runs/js-1/directions");
+    const got = await s.api("GET", "/v1/runs/js-1/directions");
     assert.equal(got.status, 200);
     const body = (await got.json()) as {
       run: string;
@@ -117,10 +117,10 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
         ["timer-code", false],
       ],
     );
-    assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/nope/directions")).status, 404);
+    assert.equal((await s.api("GET", "/v1/runs/nope/directions")).status, 404);
     // The run itself over REST, as MCP's get_run gives it (goal 128): each list cut to its newest
     // entries, with what was cut said; one list on its own, paged; a wrong argument refused.
-    const run = (await (await s.api("GET", "/v1/rigs/rig-a/runs/js-1?limit=1")).json()) as {
+    const run = (await (await s.api("GET", "/v1/runs/js-1?limit=1")).json()) as {
       id: string;
       rules: unknown[];
       cut: string[];
@@ -133,7 +133,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
       ),
     );
     const page = (await (
-      await s.api("GET", "/v1/rigs/rig-a/runs/js-1?list=rules&limit=1&offset=1")
+      await s.api("GET", "/v1/runs/js-1?list=rules&limit=1&offset=1")
     ).json()) as {
       total: number;
       from: number;
@@ -144,9 +144,9 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
       [page.total, page.from, page.to, page.entries.map((r) => r.body.family)],
       [2, 0, 1, ["shared-memory-tiling"]],
     );
-    assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/js-1?limit=0")).status, 400);
-    assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/js-1?list=nope")).status, 400);
-    assert.equal((await s.api("GET", "/v1/rigs/rig-a/runs/nope")).status, 404);
+    assert.equal((await s.api("GET", "/v1/runs/js-1?limit=0")).status, 400);
+    assert.equal((await s.api("GET", "/v1/runs/js-1?list=nope")).status, 400);
+    assert.equal((await s.api("GET", "/v1/runs/nope")).status, 404);
   });
 
   test("MCP: issue_command takes :name: and refuses words; run_queue lists the run's directions", async () => {
@@ -173,7 +173,7 @@ describe("rules name directions over REST, MCP and the command line (goal 066)",
     assert.match(words.content[0]?.text ?? "", /a rule no longer takes match/);
     await s.relay();
     const queue = JSON.parse(
-      (await call("run_queue", { rig: "rig-a", run: "js-1" })).content[0]?.text ?? "{}",
+      (await call("run_queue", { run: "js-1" })).content[0]?.text ?? "{}",
     ) as {
       directions: DirectionView[];
     };

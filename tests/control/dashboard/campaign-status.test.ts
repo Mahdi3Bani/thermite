@@ -108,11 +108,11 @@ describe("status words of runs and campaigns, and judge-only runs (goal 099)", (
     assert.doesNotMatch(await c.page("/ui/campaigns"), /<b>quality<\/b>/);
     // The run's page, and Earlier runs on the campaign's page.
     assert.match(
-      await c.page("/ui/campaigns/quality?run=rig-a%2Fq-2"),
+      await c.page("/ui/campaigns/quality/runs/q-2"),
       /· goal · <span class="label ok"><svg[^>]*>[\s\S]*?<\/svg>Completed<\/span>/,
     );
     assert.match(
-      await c.page("/ui/campaigns/other?run=rig-a%2Fo-1"),
+      await c.page("/ui/campaigns/other/runs/o-1"),
       /· goal · <span class="label muted"><svg[^>]*>[\s\S]*?<\/svg>Finished<\/span>/,
     );
     const camp = await c.page("/ui/campaigns/quality");
@@ -145,7 +145,7 @@ describe("status words of runs and campaigns, and judge-only runs (goal 099)", (
         body: { id: "x-000000000001", title: "tile the loop", by: "teacher" },
       },
     ]);
-    const run = await c.page("/ui/campaigns/quality?run=rig-a%2Fj-1");
+    const run = await c.page("/ui/campaigns/quality/runs/j-1");
     assert.match(
       run,
       /<b>Judge only:<\/b> No workers run\. The judge checks the champion; the advisors' ideas wait in the queue for a run with workers\./,
@@ -155,10 +155,10 @@ describe("status words of runs and campaigns, and judge-only runs (goal 099)", (
       run,
       /<dt>Agents<\/dt><dd>None: judge only\. No workers run; changes come from people<\/dd>/,
     );
-    const exp = await c.page("/ui/campaigns/quality?run=rig-a%2Fj-1&view=experiments");
+    const exp = await c.page("/ui/campaigns/quality/runs/j-1/experiments");
     assert.match(
       exp,
-      /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/quality\?start=1&amp;copy=rig-a%2Fj-1">Start a run<\/a> of the campaign with <b>Copy the untried experiments of<\/b> j-1 ticked\./,
+      /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/quality\?start=1&amp;copy=j-1">Start a run<\/a> of the campaign with <b>Copy the untried experiments of<\/b> j-1 ticked\./,
     );
     // The at-work card marks it too.
     assert.match(
@@ -175,9 +175,9 @@ describe("status words of runs and campaigns, and judge-only runs (goal 099)", (
         body: { id: "x-000000000002", title: "unroll", by: "teacher" },
       },
     ]);
-    assert.doesNotMatch(await c.page("/ui/campaigns/with-workers?run=rig-a%2Fw-1"), /judge only/i);
+    assert.doesNotMatch(await c.page("/ui/campaigns/with-workers/runs/w-1"), /judge only/i);
     assert.doesNotMatch(
-      await c.page("/ui/campaigns/with-workers?run=rig-a%2Fw-1&view=experiments"),
+      await c.page("/ui/campaigns/with-workers/runs/w-1/experiments"),
       /Judge only/,
     );
   });

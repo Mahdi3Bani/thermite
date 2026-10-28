@@ -85,11 +85,11 @@ describe("a refused change's violations on control (goal 082)", () => {
         },
       },
     ]);
-    const page = await c.page("/ui/rigs/rig-a/attempts/a-0000000000000001");
+    const page = await c.page("/ui/campaigns/sum-speed/runs/sum-1/attempts/a-0000000000000001");
     assert.match(page, /<h2>Refused before building<\/h2><span class="n">23<\/span>/);
     assert.match(page, /<div class="fw">binary change: assets\/table\.bin<\/div>/);
     assert.match(page, /and 3 more: the rig's record of the attempt keeps them all/);
-    const history = await c.page("/ui/campaigns/sum-speed?run=rig-a%2Fsum-1&view=history");
+    const history = await c.page("/ui/campaigns/sum-speed/runs/sum-1/history");
     assert.match(
       history,
       /The static checks refused it: binary change: assets\/table\.bin, and 22 more\./,
@@ -99,7 +99,7 @@ describe("a refused change's violations on control (goal 082)", () => {
     };
     assert.deepEqual(view.runs[0]?.attempts[0]?.violations, violations);
     assert.equal(view.runs[0]?.attempts[0]?.violations_total, 23);
-    const run = await c.mcp("get_run", { rig: "rig-a", run: "sum-1" });
+    const run = await c.mcp("get_run", { run: "sum-1" });
     assert.deepEqual(run.attempts[0].violations, violations);
     assert.equal(run.attempts[0].violations_total, 23);
   });
@@ -114,9 +114,9 @@ describe("a refused change's violations on control (goal 082)", () => {
         body: { run: "sum-1", lane: "lane-1", lifecycle: "rejected_v0", hypothesis: "old" },
       },
     ]);
-    const page = await c.page("/ui/rigs/rig-a/attempts/a-0000000000000002");
+    const page = await c.page("/ui/campaigns/sum-speed/runs/sum-1/attempts/a-0000000000000002");
     assert.doesNotMatch(page, /Refused before building/);
-    const run = await c.mcp("get_run", { rig: "rig-a", run: "sum-1" });
+    const run = await c.mcp("get_run", { run: "sum-1" });
     assert.deepEqual(run.attempts[0].violations, []);
     assert.equal(run.attempts[0].violations_total, 0);
   });
@@ -194,7 +194,7 @@ describe("each goal's real check on control (goal 082)", () => {
       { kind: "goal_checks", subject: "sum-1", body: checks as unknown as Record<string, unknown> },
     ]);
     // Before the judge checked any goal, the goals and their checks show.
-    const before = await c.page("/ui/campaigns/sum-goals?run=rig-a%2Fsum-1");
+    const before = await c.page("/ui/campaigns/sum-goals/runs/sum-1");
     assert.match(before, /The judge has not checked the goals yet\./);
     assert.match(before, /<summary>How it is checked<\/summary>/);
     c.ingest([
@@ -212,7 +212,7 @@ describe("each goal's real check on control (goal 082)", () => {
         },
       },
     ]);
-    const run = await c.page("/ui/campaigns/sum-goals?run=rig-a%2Fsum-1");
+    const run = await c.page("/ui/campaigns/sum-goals/runs/sum-1");
     assert.equal((run.match(/<summary>How it is checked<\/summary>/g) ?? []).length, 2);
     assert.match(
       run,
@@ -238,7 +238,7 @@ describe("each goal's real check on control (goal 082)", () => {
     );
     assert.ok(!run.includes("HIDDEN-INPUT"), "a held-out case's input is never shown");
     // Over MCP and REST too, with the held-out case by name only.
-    const viaMcp = await c.mcp("get_run", { rig: "rig-a", run: "sum-1" });
+    const viaMcp = await c.mcp("get_run", { run: "sum-1" });
     assert.equal(viaMcp.goal_checks.goals[0].cells[2].name, "hidden");
     assert.equal(viaMcp.goal_checks.goals[0].cells[2].params, undefined);
     assert.ok(!JSON.stringify(await c.rest("/v1/rigs/rig-a/view")).includes("HIDDEN-INPUT"));
@@ -307,7 +307,7 @@ describe("the dashboard demo's goal checks (goal 082)", () => {
   test("a goal run reported by its rig: its Goals block and its campaign's page show how each goal is checked", async () => {
     const c = await control();
     seedDemo(c.store);
-    const run = await c.page("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2");
+    const run = await c.page("/ui/campaigns/opus-simd/runs/dec-2");
     assert.match(run, /<summary>How it is checked<\/summary>/);
     assert.match(
       run,

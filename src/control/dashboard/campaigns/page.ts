@@ -17,7 +17,6 @@ import {
   setCampaignContext,
   startARun,
 } from "../../campaigns/index.ts";
-import { commandFollowUrl, commandProgress } from "../../command-progress.ts";
 import { campaignBriefBlock } from "../../ui/campaigns/brief.ts";
 import {
   CAMPAIGN_CONTEXT_JS,
@@ -30,22 +29,16 @@ import { earlierRuns, isRigCheck, lastActivity } from "../../ui/campaigns/list.t
 import { infoLabel, QUEUE_TARGET_TIP } from "../../ui/campaigns/new/index.ts";
 import { campaignReviewsTab } from "../../ui/campaigns/research.ts";
 import {
-  campaignHref,
   esc,
   icon,
-  JUDGE_ONLY_WORDS,
   modeName,
   moreText,
-  reportingTag,
   runCompleted,
-  runHref,
-  runKey,
-  runLiveHref,
   runState,
 } from "../../ui/components/index.ts";
-import { exportMenu } from "../../ui/exports.ts";
 import { campaignKnowledge } from "../../ui/knowledge.ts";
 import { goalState } from "../../ui/operator/index.ts";
+import { campaignHref, runHref } from "../../ui/urls.ts";
 import { campaignUsageBlock, runStateWord } from "../../ui/usage.ts";
 import { listText } from "../../ui/words/index.ts";
 import { usageData } from "../../usage.ts";
@@ -59,16 +52,16 @@ import {
 } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { type CopyTry, campaignPanels } from "./panels.ts";
-import { type RunViewName, runHelpers } from "./run.ts";
+import { runHelpers } from "./run/section.ts";
 import { campaignHelpers, headline, modeWords } from "./shared.ts";
 
 /**
- * A campaign's page, one of its runs at a time (campaigns/run.ts), and its forms: another run of
- * the campaign and a copy of it (campaigns/panels.ts), and its agents' context.
+ * A campaign's page: its runs from control's run registry, wherever they ran, with the earlier
+ * ones (goal 170); and its forms: another run of the campaign and a copy of it
+ * (campaigns/panels.ts), and its agents' context. A run's own page is campaigns/run/page.ts.
  */
 export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
-  const { cmdForm, csrf, mcpServers, moreMenu, needs, opts, page, parts, pauseMenu, store, views } =
-    dash;
+  const { cmdForm, csrf, mcpServers, needs, opts, page, parts, store, views } = dash;
   const {
     archivedLine,
     campaignActions,
@@ -80,7 +73,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
     startRigs,
   } = campaignPanels(dash);
   const { aboutOf, goalChecksFor, workCardFor } = campaignHelpers(dash);
-  const { reviewSources, runSection } = runHelpers(dash);
+  const { reviewSources } = runHelpers(dash);
 
   /** A campaign's model use and cost over all its runs on every rig (goal 075), for its sidebar. */
   const campaignUsage = (k: CampaignView) =>
@@ -90,13 +83,16 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
         const x = k.runs.find((y) => y.rig.id === rig && y.run.id === run);
         return x
           ? {
-              href: runHref(rig, x.run),
+              href: runHref(x.run),
               state: runCompleted(x.run) ? "completed" : runStateWord(x.run.status),
             }
           : undefined;
       },
     });
-  const rigList = (k: CampaignView) => [...new Set(k.runs.map((x) => x.rig.id))];
+  /** The rigs a campaign's runs are on now: an earlier run's rig is not one. */
+  const rigList = (k: CampaignView) => [
+    ...new Set(k.runs.filter((x) => !x.earlier).map((x) => x.rig.id)),
+  ];
 
   // ---------------------------------------------------------------- another run of a campaign
   // The Copy panel's form: the copy's page, or the panel again with control's words.
@@ -175,8 +171,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
         model = { provider: "", model: "" };
       }
     }
-    const key = String(f.copy_from ?? "");
-    const slash = key.indexOf("/");
+    const copyFrom = String(f.copy_from ?? "");
     const pastIds = [(await c.req.parseBody({ all: true })).past ?? []].flat().map(Number);
     const out = await startARun(
       parts,
@@ -190,10 +185,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
         promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
         askOwner,
         judgeGpus: String(f.judge_gpus ?? ""),
-        queueFrom:
-          agents && String(f.copy_queue ?? "") === "1" && slash > 0
-            ? { rig: key.slice(0, slash), run: key.slice(slash + 1) }
-            : undefined,
+        queueFrom: agents && String(f.copy_queue ?? "") === "1" && copyFrom ? copyFrom : undefined,
         past: agents ? pastIds : undefined,
       },
       "owner:ui",
@@ -212,11 +204,9 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
         ? "A try (agents off) takes no experiments and no background: what you ticked was left out."
         : "",
     ].filter(Boolean);
-    const leftOut = notes.length ? `&ok=${encodeURIComponent(notes.join(" "))}` : "";
-    return c.redirect(
-      `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(out.rig, out.run))}${leftOut}`,
-      303,
-    );
+    // The new run's page, which follows its start until the rig reports it.
+    const leftOut = notes.length ? `?ok=${encodeURIComponent(notes.join(" "))}` : "";
+    return c.redirect(`${runHref({ id: out.run, campaign })}${leftOut}`, 303);
   });
 
   // ---------------------------------------------------------------- the knowledge base (goal 065)
@@ -354,14 +344,19 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
 
   /**
    * A campaign's page: what it is for, its runs, its Knowledge section, and the Start a run and
-   * Copy panels; or one run's page. `tried`: a Copy that control refused, to show in the panel.
+   * Copy panels. `tried`: a Copy that control refused, to show in the panel.
    */
   const campaignPage = (c: Ctx, tried?: CopyTry) => {
     const now = Date.now();
     const vs = views();
     // Its own route's, or the Copy panel's form's (/ui/campaigns/:campaign/copy).
     const name = String(c.req.param("campaign") ?? "");
-    const k = campaignViews(vs).find((x) => x.name === name);
+    // Its runs from control's run registry (goal 170), wherever they ran: a retired rig's and
+    // those from before a full reset too, under Earlier runs.
+    const runs = parts.campaignRuns(name);
+    const k: CampaignView | undefined = runs.length
+      ? { name, mode: runs[0]?.run.mode ?? null, runs }
+      : undefined;
     // A refused grant shows in the Knowledge section, not as a run that did not start.
     const kbFailed = c.req.query("on") === "kb" ? c.req.query("error") : undefined;
     // So does what the Agents' context's Save did, in its own block.
@@ -383,32 +378,6 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
     const canStart = Boolean(startFrom(name)) && !store.archive.get(name);
     const buttons = campaignActions(c, name);
     const drawer = `${startPanel(c, name, vs, c.req.query("start") === "1")}${copyPanel(c, name, vs, tried)}`;
-    // A run just started (Start a run sends here with ?run=), until its rig reports it.
-    // The card follows the run's command (goal 080): how the start goes, in words, and the run's
-    // own page once the rig reports the run. A start that the rig refused says why.
-    const startingCmd = (key: string) => {
-      const slash = key.indexOf("/");
-      const run = key.slice(slash + 1);
-      return slash > 0
-        ? store.commands
-            .latest(key.slice(0, slash), "assign_campaign")
-            .find(
-              (x) =>
-                x.payload.run === run &&
-                (x.payload.contract as { campaign?: unknown } | undefined)?.campaign === name,
-            )
-        : undefined;
-    };
-    const startingCard = (key: string) => {
-      const cmd = startingCmd(key);
-      const p = cmd ? commandProgress(cmd, Date.now()) : undefined;
-      const failed = p?.state === "refused" || p?.state === "expired";
-      const follow =
-        cmd && p && !p.final
-          ? ` data-follow="${esc(commandFollowUrl(cmd.id))}" data-follow-state="${p.state}"`
-          : "";
-      return `<div class="card" style="margin-bottom:16px" data-part="starting"${follow}><b${failed ? ` class="bad"` : ""}>${failed ? "Not started:" : "Starting"} ${esc(key)}.</b>${p ? ` <span class="${p.tone}">${esc(p.said)}</span>` : ""}${failed ? "" : ` <span class="muted">The rig fetches the project and the kit, and checks both. The run's page opens here when the rig reports the run, usually within a minute.</span>`}</div>`;
-    };
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaigns.versions(name);
@@ -423,7 +392,6 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
           `<div class="card"><div class="empty">No such campaign.</div></div>`,
           vs,
         );
-      const waiting = c.req.query("run");
       // A goal campaign's goals, each with how it is checked (goal 082), before any run.
       const how = goalChecksFor(name, vs);
       const savedGoals = how?.checks.goals.length
@@ -443,11 +411,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
           active: "campaigns",
           actions: buttons,
         },
-        `${note}${copiedLine(name)}${
-          waiting
-            ? startingCard(waiting)
-            : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>`
-        }${savedGoals}${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+        `${note}${copiedLine(name)}<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>${savedGoals}${brief()}${context()}${queueTargetSection(name)}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -456,81 +420,11 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
     const waitingFor = (u: RigView, r: RunView) =>
       feed.filter((n) => n.rig === u.id && n.run === r.id).length;
 
-    // ---------------------------------------- one run's page
-    const wanted = c.req.query("run");
-    const sel = wanted ? k.runs.find((x) => runKey(x.rig.id, x.run.id) === wanted) : undefined;
-    if (sel) {
-      const qv = c.req.query("view");
-      const view: RunViewName =
-        qv === "attempts" ||
-        qv === "history" ||
-        qv === "experiments" ||
-        qv === "journal" ||
-        qv === "stats" ||
-        qv === "reviews" ||
-        qv === "hypotheses"
-          ? qv
-          : qv === "planner" || qv === "steering"
-            ? "planner"
-            : "overview";
-      const st = runState(sel.run);
-      const back = runHref(sel.rig.id, sel.run, view);
-      const quick =
-        sel.run.status === "paused"
-          ? cmdForm(c, {
-              rig: sel.rig.id,
-              kind: "resume_run",
-              fields: { run: sel.run.id },
-              label: "Resume",
-              back,
-            })
-          : sel.run.status === "running"
-            ? pauseMenu(c, sel.rig.id, sel.run.id, back)
-            : "";
-      // A run without agents (a try, a rig check) has no one to message and no lanes to restart.
-      const agents = sel.run.has_agents !== false;
-      const more = moreMenu(c, sel.rig.id, sel.run, back, "", true);
-      return page(
-        c,
-        {
-          title: sel.run.id,
-          crumbs: [
-            { href: "/ui/campaigns", text: "Campaigns" },
-            { href: campaignHref(name), text: name },
-          ],
-          summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${reportingTag(sel.rig)} · ${esc(modeName(sel.run.mode))}${agents ? "" : " · judge only"} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
-          active: "campaigns",
-          actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a>${agents ? `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>` : ""}${quick}${exportMenu({ csrf: csrf(c), rig: sel.rig.id, run: sel.run.id, back })}${more}`,
-        },
-        `${note}${
-          /-try-\d+$/.test(sel.run.id)
-            ? `<div class="card hl" style="margin-bottom:12px"><b>A try of the kit.</b> No agents work on this run: the judge builds the starting point and runs every case on its own. When the results look right, <a href="${campaignHref(name)}?start=1">start the campaign</a>.</div>`
-            : agents || isRigCheck(name)
-              ? ""
-              : // Any other run started with its agents off (goal 099): say so plainly. A rig
-                // check's smoke run is the rig page's to explain.
-                `<div class="card hl" style="margin-bottom:12px"><b>Judge only:</b> ${esc(JUDGE_ONLY_WORDS)}</div>`
-        }${runSection(c, sel.rig, sel.run, vs, now, view)}`,
-        vs,
-      );
-    }
-
-    // ---------------------------------------- the campaign
-    // A new run of a campaign that has runs: Starting until its rig reports it (only the newest
-    // assignment, so an old link to a run that never came says nothing).
-    // An old link to a run that never came says nothing, unless the rig refused its start.
-    const latest = wanted ? store.commands.latestAssignments().get(name) : undefined;
-    const startCmd = wanted ? startingCmd(wanted) : undefined;
-    const starting =
-      wanted &&
-      ((latest && runKey(latest.rig, latest.run) === wanted) ||
-        startCmd?.status === "failed" ||
-        startCmd?.status === "rejected")
-        ? startingCard(wanted)
-        : "";
-    const running = k.runs.filter((x) => x.run.status === "running");
+    // An earlier run (goal 170) is never at work, whatever its last state: its rig is retired, or
+    // the rig's full reset left it behind.
+    const running = k.runs.filter((x) => !x.earlier && x.run.status === "running");
     const earlier = k.runs
-      .filter((x) => x.run.status !== "running")
+      .filter((x) => x.earlier || x.run.status !== "running")
       .sort((a, b) => lastActivity(b.run).localeCompare(lastActivity(a.run)));
     const waitingRuns = k.runs
       .map((x) => ({ ...x, n: waitingFor(x.rig, x.run) }))
@@ -571,7 +465,7 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
         : "";
     const verifiedBy = new Map(
       (leaderboard(store, { staleAfterMs: opts.staleAfterMs })[k.name] ?? []).map((r) => [
-        runKey(r.rig, r.run),
+        `${r.rig}\n${r.run}`,
         r.verified_by,
       ]),
     );
@@ -584,9 +478,9 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
         active: "campaigns",
         actions: buttons,
       },
-      `${note}${starting}${copiedLine(k.name)}${
+      `${note}${copiedLine(k.name)}${
         about || goals
-          ? `<div class="card khead"><div>${about ? `<div class="small muted">What it is for</div>` : `<div class="small muted">Goals of its best run</div>`}${about ? `<div class="kabout-big">${esc(about)}</div>` : ""}${goals}</div><div class="small muted right">on ${esc(rigs.join(", "))}${bestRun ? `<br>best: ${esc(bestRun.id)}, ${esc(h.value)} ${esc(h.sub)}` : ""}</div></div>`
+          ? `<div class="card khead"><div>${about ? `<div class="small muted">What it is for</div>` : `<div class="small muted">Goals of its best run</div>`}${about ? `<div class="kabout-big">${esc(about)}</div>` : ""}${goals}</div><div class="small muted right">${rigs.length ? `on ${esc(rigs.join(", "))}` : ""}${bestRun ? `<br>best: ${esc(bestRun.id)}, ${esc(h.value)} ${esc(h.sub)}` : ""}</div></div>`
           : ""
       }${campaignTabs}${
         campaignView === "reviews"
@@ -608,21 +502,21 @@ export function campaignPageRoutes(app: Hono, dash: Dashboard): void {
                 ? `<div class="kwork one">${running.map((x) => workCardFor(c, x.rig, x.run, now, waitingFor(x.rig, x.run), campaignHref(name))).join("")}</div>`
                 : `<div class="card"><div class="empty">No run is at work.${canStart ? ` <a href="${campaignHref(name)}?start=1" data-open="#start">Start one.</a>` : ""}</div></div>`
             }</div>
-${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`).join("")}
+${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.run)}#needs">Review</a></div>`).join("")}
 <div data-part="earlier">${
               earlier.length
-                ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused, completed and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
+                ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused, completed and finished, and those of a retired rig or from before a full reset, newest first; open one for its attempts and history</span></div>${earlierRuns(
                     earlier.map((x) => ({
                       ...x,
                       // A hill climb's champion that other rigs confirmed (cross-verified).
                       result: (() => {
-                        const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
+                        const v = verifiedBy.get(`${x.rig.id}\n${x.run.id}`) ?? [];
                         return v.length
                           ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
                           : "";
                       })(),
                       action:
-                        x.run.status === "paused"
+                        x.run.status === "paused" && !x.earlier
                           ? cmdForm(c, {
                               rig: x.rig.id,
                               kind: "resume_run",

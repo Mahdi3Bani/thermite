@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { z } from "zod";
 import { jsonBody } from "../../common/errors.ts";
+import { PROPAGATE } from "../../core/api/control/owner.ts";
 import { CHAMPION_PATCH, KB, KB_NOT_ASSIGNED, REPORTS } from "../../core/api/control/rigs.ts";
 import { type ExportFiles, mountExports } from "../exports.ts";
 import { propagateChampion } from "../issue/index.ts";
@@ -11,7 +11,8 @@ import { type ApiContext, clampLimit } from "./context.ts";
 
 /**
  * What rigs' runs produce, and the owner reads: the knowledge base's items for a run's agents,
- * champions' patches, exports (`exportFiles`: where control keeps them; none, it takes none),
+ * champions' patches as the rigs upload them (the owner reads them under the run: api/runs.ts),
+ * exports (`exportFiles`: where control keeps them; none, it takes none),
  * daily reports, the leaderboard, and a champion propagated to another rig.
  */
 export function resultRoutes(
@@ -62,19 +63,6 @@ export function resultRoutes(
       return c.json({ stored: true }, 201);
     },
   );
-  app.get("/v1/rigs/:rig/champions/:run/:seq/patch", admin, (c) => {
-    const p = store.championPatches.get(
-      c.req.param("rig"),
-      c.req.param("run"),
-      Number(c.req.param("seq")),
-    );
-    if (!p) return c.json({ error: "no patch for that champion" }, 404);
-    return c.body(new Uint8Array(p.patch), 200, {
-      "content-type": "text/x-diff",
-      "x-thermite-base-commit": p.base_commit,
-      "x-thermite-sha256": p.sha256,
-    });
-  });
 
   // Exports a rig without a results repository sends to control, and the owner reads back.
   mountExports(app, {
@@ -106,19 +94,11 @@ export function resultRoutes(
     c.json({ campaigns: leaderboard(store, { staleAfterMs: opts.staleAfterMs }) }),
   );
 
-  app.post("/v1/propagate", admin, async (c) => {
-    const body = z
-      .object({
-        from_rig: z.string().min(1),
-        run: z.string().min(1),
-        to_rig: z.string().min(1),
-        to_run: z.string().min(1),
-      })
-      .parse(await jsonBody(c.req));
+  // One run's published champion to another run of its campaign, each named alone (goal 170).
+  app.post(PROPAGATE.path, admin, async (c) => {
+    const body = PROPAGATE.body.parse(await jsonBody(c.req));
     const r = propagateChampion(store, privateKeyPem, {
-      fromRig: body.from_rig,
       run: body.run,
-      toRig: body.to_rig,
       toRun: body.to_run,
       issuedBy: "owner:api",
       staleAfterMs: opts.staleAfterMs,

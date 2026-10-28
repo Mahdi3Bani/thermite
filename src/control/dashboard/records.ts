@@ -2,17 +2,9 @@ import type { Hono } from "hono";
 import { archiveResponse } from "../exports.ts";
 import { cursorOf } from "../store/index.ts";
 import { commandRow } from "../ui/commands/index.ts";
-import {
-  ago,
-  avatar,
-  esc,
-  icon,
-  meter,
-  pct,
-  runHref,
-  valuesPairWords,
-} from "../ui/components/index.ts";
+import { ago, avatar, esc, icon, meter, pct, valuesPairWords } from "../ui/components/index.ts";
 import { exportsBody } from "../ui/exports.ts";
+import { runHref } from "../ui/urls.ts";
 import { leaderboard } from "../views/index.ts";
 import type { Dashboard } from "./context.ts";
 
@@ -72,7 +64,7 @@ export function recordRoutes(app: Hono, dash: Dashboard): void {
         return `<div class="block"><div class="head"><h2>${esc(campaign)}</h2><span class="n">${rows.length} rig${rows.length > 1 ? "s" : ""}</span></div><div class="card flat"><table><thead><tr><th style="width:40px">#</th><th>Rig / run</th><th>Champion</th><th style="width:40%">Gain over its baseline</th><th>Cross-verified</th></tr></thead><tbody>${rows
           .map(
             (r, n) =>
-              `<tr><td class="muted">${n + 1}</td><td>${avatar(r.rig)} <a href="${runHref(r.rig, { id: r.run, campaign })}"><b>${esc(r.rig)}</b> / ${esc(r.run)}</a></td><td class="muted">seq ${r.champion_seq}</td><td>${meter("", pct(r.gain, 2), r.gain / best, "primary")}${r.values ? `<div class="muted small">${esc(valuesPairWords(r.values))}</div>` : ""}</td>
+              `<tr><td class="muted">${n + 1}</td><td>${avatar(r.rig)} <a href="${runHref({ id: r.run, campaign })}"><b>${esc(r.rig)}</b> / ${esc(r.run)}</a></td><td class="muted">seq ${r.champion_seq}</td><td>${meter("", pct(r.gain, 2), r.gain / best, "primary")}${r.values ? `<div class="muted small">${esc(valuesPairWords(r.values))}</div>` : ""}</td>
 <td>${r.verified_by.length ? `<span class="pill ok">${icon.check}by ${esc(r.verified_by.join(", "))}</span>` : `<span class="muted small">not yet</span>`}</td></tr>`,
           )
           .join("")}</tbody></table></div></div>`;

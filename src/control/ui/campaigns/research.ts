@@ -20,11 +20,9 @@ import {
   meter,
   moreText,
   num,
-  paperHref,
   researchCheckWords,
-  runHref,
-  runLiveHref,
 } from "../components/index.ts";
+import { paperHref, runHref, runLiveHref } from "../urls.ts";
 import { clip, decisionTone, decisionWords, itemName } from "../words/index.ts";
 import type { CmdForm } from "./queue/index.ts";
 
@@ -218,12 +216,12 @@ export function researchBlock(u: RigView, r: RunView, now: number): string {
   ).length;
   const pool = r.hypotheses.filter((h) => h.status === "pool").length;
   const hyp = r.hypotheses.length
-    ? `<div class="small"><b>Hypotheses:</b> ${plural(need.length, "needs a verdict", "need a verdict")}, ${decidedH} decided · ${pool} in the pool. <a href="${runHref(u.id, r, "hypotheses")}">Hypotheses</a></div>`
+    ? `<div class="small"><b>Hypotheses:</b> ${plural(need.length, "needs a verdict", "need a verdict")}, ${decidedH} decided · ${pool} in the pool. <a href="${runHref(r, "hypotheses")}">Hypotheses</a></div>`
     : "";
   const research = r.reviews.filter((x) => x.goal === RESEARCH_REVIEW);
   const newest = research.at(-1);
   const reviews = research.length
-    ? `<div class="small"><b>Reviews:</b> ${research.length}${newest ? `, the newest ${newest.posted_at ? `posted ${esc(ago(newest.posted_at, now))} ago` : `asked ${esc(ago(newest.requested_at, now))} ago, not posted yet`}` : ""}. <a href="${runHref(u.id, r, "reviews")}">Reviews</a></div>`
+    ? `<div class="small"><b>Reviews:</b> ${research.length}${newest ? `, the newest ${newest.posted_at ? `posted ${esc(ago(newest.posted_at, now))} ago` : `asked ${esc(ago(newest.requested_at, now))} ago, not posted yet`}` : ""}. <a href="${runHref(r, "reviews")}">Reviews</a></div>`
     : "";
 
   const rows = Array.from({ length: n }, (_, q) => {
@@ -267,7 +265,7 @@ export function researchBlock(u: RigView, r: RunView, now: number): string {
   // paper itself beside the latest report.
   const paper = r.paper?.state === "in" && r.paper.text ? r.paper : undefined;
   const paperLine = paper
-    ? `<div class="small"><b>Research paper:</b> by the final writer${paper.writer ? ` ${esc(paper.writer)}` : ""}, ${paper.ste_checked ? "checked against the rig's STE checker" : "not checked for STE"}; ${paper.experiments} next ${paper.experiments === 1 ? "experiment" : "experiments"} kept in the knowledge base. <a href="${esc(paperHref(u.id, r.id))}">paper.md</a></div>`
+    ? `<div class="small"><b>Research paper:</b> by the final writer${paper.writer ? ` ${esc(paper.writer)}` : ""}, ${paper.ste_checked ? "checked against the rig's STE checker" : "not checked for STE"}; ${paper.experiments} next ${paper.experiments === 1 ? "experiment" : "experiments"} kept in the knowledge base. <a href="${esc(paperHref(r))}">paper.md</a></div>`
     : "";
   const paperText = paper
     ? `<details data-k="paper-${esc(r.id)}"><summary class="small muted" style="cursor:pointer">Research paper</summary><pre class="report" style="margin-top:8px">${esc(String(paper.text))}</pre></details>`
@@ -471,7 +469,7 @@ function reviewRow(
     ["Tries", triesHtml ?? esc(tries)],
     [
       "Outcome",
-      `${esc(o.pill.replace(/^./, (c) => c.toUpperCase()))}${rv.counts.decided !== null ? `: ${plural(rv.counts.decided, "item")} decided` : ""}${rv.counts.open !== null ? `, ${rv.counts.open} still open` : ""}.${rv.owner_at ? ` You ${esc(rv.owner ?? "")} it ${esc(ago(rv.owner_at, now))} ago${rv.owner_note ? `: “${esc(rv.owner_note)}”` : ""}.` : rv.panel === "review_passed" && !rv.owner && r.ask_owner.reviews ? ` It waits for your acceptance in <a href="${runHref(u.id, r)}#needs">Needs you</a>.` : ""}`,
+      `${esc(o.pill.replace(/^./, (c) => c.toUpperCase()))}${rv.counts.decided !== null ? `: ${plural(rv.counts.decided, "item")} decided` : ""}${rv.counts.open !== null ? `, ${rv.counts.open} still open` : ""}.${rv.owner_at ? ` You ${esc(rv.owner ?? "")} it ${esc(ago(rv.owner_at, now))} ago${rv.owner_note ? `: “${esc(rv.owner_note)}”` : ""}.` : rv.panel === "review_passed" && !rv.owner && r.ask_owner.reviews ? ` It waits for your acceptance in <a href="${runHref(r)}#needs">Needs you</a>.` : ""}`,
     ],
     [
       "Cost",
@@ -521,7 +519,7 @@ function reviewRow(
       ).length
     : 0;
   const notes = panelNotes
-    ? `<div class="small">${panelNotes === 1 ? "A field note" : `${panelNotes} field notes`} of the reviewers came with it: on the run's <a href="${runHref(u.id, r, "journal")}">Journal</a>, under <b>Review panel</b>.</div>`
+    ? `<div class="small">${panelNotes === 1 ? "A field note" : `${panelNotes} field notes`} of the reviewers came with it: on the run's <a href="${runHref(r, "journal")}">Journal</a>, under <b>Review panel</b>.</div>`
     : "";
   const messages = msgs.length
     ? `<div class="small"><b>Your messages to the review panel</b></div>${msgs
@@ -550,7 +548,7 @@ function reviewRow(
     : "";
   return `<details class="dq dq-${o.tone}" data-k="review-${esc(u.id)}-${esc(r.id)}-${rv.review}"><summary>
 <span class="dq-kind">${o.icon}Review ${rv.review}</span>
-<span class="dq-main"><span class="dq-head">${esc(headline)}</span><span class="dq-why">${why}</span><span class="dq-sub">${where ? `<span class="dq-where"><a href="${runHref(u.id, r, "reviews")}">${esc(r.id)}</a> · ${esc(u.id)}</span>` : ""}${chips}</span></span>
+<span class="dq-main"><span class="dq-head">${esc(headline)}</span><span class="dq-why">${why}</span><span class="dq-sub">${where ? `<span class="dq-where"><a href="${runHref(r, "reviews")}">${esc(r.id)}</a> · ${esc(u.id)}</span>` : ""}${chips}</span></span>
 <span class="dq-side"><span class="dq-age">${rv.posted_at ? `posted ${esc(ago(rv.posted_at, now))} ago` : `waiting ${esc(ago(rv.requested_at, now))}`}</span><span class="label ${o.tone}">${esc(o.word)}</span></span>
 </summary><div class="dq-body"><dl class="dc-facts">${facts}</dl>${decisions}${reviewers}${gaps}${notes}${messages}${live}</div></details>`;
 }
@@ -579,8 +577,8 @@ function trailCard(r: RunView): string {
 }
 
 /** The side of a Reviews tab: how reviews work, and where to write to the review panel. */
-function howCard(u: RigView, r: RunView): string {
-  return `<div class="card qcard"><h3>How the review panel decides</h3><div class="small">The review panel reviews each question's answer card and each hypothesis that needs a verdict, as items. Each reviewer answers each item; code checks each answer (every claim it cites is a verified claim of the run, every number is in them). An item's decision is the verdict of more than half of the reviewers whose answer passed; without such a majority it stays open, and dissent is kept. A question ends when it is decided answered, or the best that sources allow.</div><div class="small">To tell the review panel something, write to it from <a href="${runLiveHref(u.id, r.id, "&compose=1")}">Live</a> (To: the review panel). It reads your message with its next review, and its answer shows here.</div></div>`;
+function howCard(r: RunView): string {
+  return `<div class="card qcard"><h3>How the review panel decides</h3><div class="small">The review panel reviews each question's answer card and each hypothesis that needs a verdict, as items. Each reviewer answers each item; code checks each answer (every claim it cites is a verified claim of the run, every number is in them). An item's decision is the verdict of more than half of the reviewers whose answer passed; without such a majority it stays open, and dissent is kept. A question ends when it is decided answered, or the best that sources allow.</div><div class="small">To tell the review panel something, write to it from <a href="${runLiveHref(r, { compose: true })}">Live</a> (To: the review panel). It reads your message with its next review, and its answer shows here.</div></div>`;
 }
 
 /** A research run's Reviews tab (goal 116): every review, newest first, each opening to its detail. */
@@ -594,7 +592,7 @@ export function reviewsTab(o: { u: RigView; r: RunView; now: number } & ReviewSo
   return `<div class="qcols"><div>
 <div class="head"><h2>Reviews</h2><span class="n">${research.length}</span><span class="right">newest first; open one for what it saw, each reviewer's answers and what it decided</span></div>
 ${list ? `<div class="dqs" data-part="reviews">${list}</div>` : `<div class="card"><div class="empty">No review yet. After the run's minimum running time, the harness asks the review panel at a digest when the evidence changed.</div></div>`}
-</div><div class="qside">${trailCard(r)}${howCard(u, r)}</div></div>`;
+</div><div class="qside">${trailCard(r)}${howCard(r)}</div></div>`;
 }
 
 /** A research campaign's Reviews tab (goal 116): every review of each of its runs, by run. */
@@ -610,7 +608,7 @@ export function campaignReviewsTab(o: {
     .map(({ u, r, state }) => {
       const research = r.reviews.filter((x) => x.goal === RESEARCH_REVIEW);
       const src = o.sources(u, r);
-      return `<div class="block"><div class="head"><h2><a href="${runHref(u.id, r, "reviews")}">${esc(r.id)}</a></h2><span class="n">${plural(research.length, "review")}</span><span class="right">on ${esc(u.id)} · ${state}</span></div><div class="dqs">${[
+      return `<div class="block"><div class="head"><h2><a href="${runHref(r, "reviews")}">${esc(r.id)}</a></h2><span class="n">${plural(research.length, "review")}</span><span class="right">on ${esc(u.id)} · ${state}</span></div><div class="dqs">${[
         ...research,
       ]
         .reverse()

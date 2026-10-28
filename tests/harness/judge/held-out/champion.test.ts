@@ -238,16 +238,16 @@ describe("the champion's held-out check (goal 086)", () => {
       [[HIDDEN, "correctness", "check_failed"]],
     );
     for (const [tool, args] of [
-      ["get_run", { rig: "rig-a", run: "js-1" }],
+      ["get_run", { run: "js-1" }],
       ["recent_events", { rig: "rig-a", limit: 500 }],
     ] as const) {
       const text = await env.mcp(tool, args, AGENT_TOKEN);
       noContent(text, `the agent's ${tool}`);
       assert.ok(!text.includes(HIDDEN), `the agent's ${tool} names the hidden case`);
     }
-    const agentRun = JSON.parse(
-      await env.mcp("get_run", { rig: "rig-a", run: "js-1" }, AGENT_TOKEN),
-    ) as { champion_held_out: Record<string, unknown> };
+    const agentRun = JSON.parse(await env.mcp("get_run", { run: "js-1" }, AGENT_TOKEN)) as {
+      champion_held_out: Record<string, unknown>;
+    };
     assert.deepEqual(
       { ...agentRun.champion_held_out, at: "" },
       {
@@ -258,7 +258,7 @@ describe("the champion's held-out check (goal 086)", () => {
         champion_seq: 2,
       },
     );
-    const runPage = await env.page("/ui/campaigns/js-goal?run=rig-a%2Fjs-1");
+    const runPage = await env.page("/ui/campaigns/js-goal/runs/js-1");
     noContent(runPage, "the run's page");
     assert.match(
       runPage,
@@ -270,7 +270,7 @@ describe("the champion's held-out check (goal 086)", () => {
         `<td><code>${HIDDEN}</code></td><td>verifier <b>correctness</b></td><td><span class="chip bad">failed the kit's check</span></td>`,
       ),
     );
-    const history = await env.page("/ui/campaigns/js-goal?run=rig-a%2Fjs-1&view=history");
+    const history = await env.page("/ui/campaigns/js-goal/runs/js-1/history");
     assert.match(
       history,
       new RegExp(

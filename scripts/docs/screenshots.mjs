@@ -121,6 +121,12 @@ try {
         `.find(h => h && h.startsWith(${JSON.stringify(prefix)}) && h !== ${JSON.stringify(prefix)}` +
         ` && !${JSON.stringify(skip)}.includes(h))`,
     );
+  /** The first link whose address the pattern matches whole. */
+  const firstMatch = (pattern) =>
+    evaluate(
+      `[...document.querySelectorAll('a')].map(a => a.getAttribute('href'))` +
+        `.find(h => h && new RegExp(${JSON.stringify(pattern)}).test(h))`,
+    );
   // A hill climb shows the most: its champion chart, decisions and lanes.
   await go(`${values.demo}/ui/campaigns`);
   const campaign =
@@ -129,8 +135,9 @@ try {
         `.find(h => h === '/ui/campaigns/decode-speed')`,
     )) ?? (await firstLink("/ui/campaigns/"));
   await go(`${values.demo}${campaign}`);
-  const run = await firstLink(`${campaign}?run=`);
-  const live = await firstLink("/ui/live?run=");
+  // A run's page and its Live, under the campaign (goal 170).
+  const run = await firstMatch(`^${campaign}/runs/[^/?#]+$`);
+  const live = await firstMatch(`^${campaign}/runs/[^/?#]+/live$`);
   await go(`${values.demo}/ui/rigs`);
   // A rig's own page, not Add a rig, which comes first on the Rigs page.
   const rig = await firstLink("/ui/rigs/", ["/ui/rigs/add"]);
@@ -139,8 +146,8 @@ try {
     ["overview", "/ui"],
     ["campaigns", "/ui/campaigns"],
     ["run", run],
-    ["experiments", run && `${run}&view=experiments`],
-    ["journal", run && `${run}&view=journal`],
+    ["experiments", run && `${run}/experiments`],
+    ["journal", run && `${run}/journal`],
     ["live", live],
     ["knowledge", "/ui/knowledge"],
     ["rig", rig],

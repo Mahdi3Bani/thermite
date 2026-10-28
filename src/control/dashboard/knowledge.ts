@@ -1,8 +1,8 @@
 import type { Hono } from "hono";
 import { PICKABLE } from "../kb.ts";
-import { runHref, runKey } from "../ui/components/index.ts";
 import { knowledgePage, pastWords, SEARCH_KINDS } from "../ui/knowledge.ts";
-import { campaignModes, type RigView } from "../views/index.ts";
+import { runHref } from "../ui/urls.ts";
+import { campaignModes } from "../views/index.ts";
 import { campaignHelpers, modeWords } from "./campaigns/shared.ts";
 import type { Dashboard } from "./context.ts";
 
@@ -11,12 +11,13 @@ export function knowledgeRoutes(app: Hono, dash: Dashboard): void {
   const { page, store, views } = dash;
   const { pastResults } = campaignHelpers(dash);
 
-  /** A run's page, when a rig reports the run now (an item's run may be gone after a reset). */
-  const runLinks = (vs: RigView[]) => {
-    const live = new Map(
-      vs.flatMap((u) => u.runs.map((r) => [runKey(u.id, r.id), runHref(u.id, r)] as const)),
-    );
-    return (rig: string, run: string) => live.get(runKey(rig, run));
+  /**
+   * An item's run's page, wherever the run ran (goal 170): a run of a retired rig, or from before
+   * a full reset, has one too. None for a run no rig created.
+   */
+  const runLink = (run: string) => {
+    const r = store.runRegistry.created(run);
+    return r ? runHref({ id: run, campaign: r.campaign }) : undefined;
   };
 
   // ---------------------------------------------------------------- the Knowledge page (goal 065)
@@ -48,7 +49,7 @@ export function knowledgeRoutes(app: Hono, dash: Dashboard): void {
         results,
         limit,
         now: Date.now(),
-        link: runLinks(vs),
+        link: runLink,
         result: (x) => kb.resultOf(x),
       }),
       vs,

@@ -12,8 +12,10 @@ import { startLine, startNote } from "../../ui/campaigns/context/index.ts";
 import { copyDrawer, suggestCopyName } from "../../ui/campaigns/copy/index.ts";
 import { isRigCheck, lastActivity, type StartRig, startDrawer } from "../../ui/campaigns/list.ts";
 import { infoLabel } from "../../ui/campaigns/new/index.ts";
-import { ago, campaignHref, esc, hardwareLine, icon, runKey } from "../../ui/components/index.ts";
+import { ago, esc, hardwareLine, icon } from "../../ui/components/index.ts";
 import { pastSection } from "../../ui/knowledge.ts";
+import { campaignHref } from "../../ui/urls.ts";
+import { earlierWords } from "../../ui/words/index.ts";
 import { campaignModes, campaignViews, podStopped, type RigView } from "../../views/index.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { modelPrefix } from "../settings/shared.ts";
@@ -33,7 +35,7 @@ export interface CopyTry {
  * lines and actions beside them.
  */
 export function campaignPanels(dash: Dashboard) {
-  const { csrf, mcpServers, opts, store } = dash;
+  const { csrf, mcpServers, opts, parts, store } = dash;
   const { pastResults } = campaignHelpers(dash);
 
   /** Rigs for the Start a run panel: hardware, whether the campaign's kit fits, busy, the model. */
@@ -131,9 +133,10 @@ export function campaignPanels(dash: Dashboard) {
           })),
         })),
       from,
-      copyFrom: campaignViews(vs)
-        .find((k) => k.name === campaign)
-        ?.runs.map((x) => {
+      // Every run of the campaign, earlier ones too (goal 170): their queues are in control's records.
+      copyFrom: parts
+        .campaignRuns(campaign)
+        .map((x) => {
           const up = x.run.queue.filter((q) => q.state === "queued").length;
           const ideas = x.run.queue.filter((q) => q.state === "proposed").length;
           return { x, up, ideas };
@@ -141,8 +144,8 @@ export function campaignPanels(dash: Dashboard) {
         .filter((y) => y.up + y.ideas > 0)
         .sort((a, b) => lastActivity(b.x.run).localeCompare(lastActivity(a.x.run)))
         .map(({ x, up, ideas }) => ({
-          key: runKey(x.rig.id, x.run.id),
-          label: `${x.run.id} (${up} up next${ideas ? `, ${ideas} lane idea${ideas === 1 ? "" : "s"}` : ""})`,
+          key: x.run.id,
+          label: `${x.run.id} (${x.earlier ? `${earlierWords(x.rig.id, x.earlier)}, ` : ""}${up} up next${ideas ? `, ${ideas} lane idea${ideas === 1 ? "" : "s"}` : ""})`,
         })),
       // A judge-only run's queue links here with itself chosen (goal 099).
       copyPick: c.req.query("copy"),

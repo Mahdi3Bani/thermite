@@ -51,15 +51,16 @@ describe("control dashboard", () => {
     // The rig-wide view sends you to each run's own Live to message its agents.
     assert.match(
       await (await s.get("/ui/rigs/rig-a/live?source=judge")).text(),
-      /To message an agent, open its run's Live: <a href="\/ui\/live\?run=rig-a%2Fjs-1">js-1<\/a>/,
+      /To message an agent, open its run's Live: <a href="\/ui\/campaigns\/js-sum\/runs\/js-1\/live">js-1<\/a>/,
     );
-    // The older message route still takes a signed message (its form now lives on a run's Live).
-    const sent = await s.post("/ui/rigs/rig-a/message", {
-      csrf: s.csrfFrom(await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text()),
-      run: "js-1",
+    // A message goes to the run's own address (goal 170): the rig's old route for it is gone.
+    const csrf = s.csrfFrom(await (await s.get("/ui/campaigns/js-sum/runs/js-1/live")).text());
+    const old = await s.post("/ui/rigs/rig-a/message", { csrf, run: "js-1", to: "lane-1" });
+    assert.equal(old.status, 404);
+    const sent = await s.post("/ui/campaigns/js-sum/runs/js-1/message", {
+      csrf,
       to: "lane-1",
       text: "try the closed form",
-      source: "trial:t-0123456789abcdef",
     });
     assert.equal(sent.status, 303);
     await s.relay();
@@ -76,18 +77,16 @@ describe("control dashboard", () => {
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
     // The owner's message, sent from the box: a signed command, back to the same filter.
-    const first = await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text();
-    const sent = await s.post("/ui/live/message", {
+    const first = await (await s.get("/ui/campaigns/js-sum/runs/js-1/live")).text();
+    const sent = await s.post("/ui/campaigns/js-sum/runs/js-1/message", {
       csrf: s.csrfFrom(first),
-      rig: "rig-a",
-      run: "js-1",
       to: "lane-1",
       text: "keep it simple",
       keep: "1",
       w: "lane-1",
     });
     assert.equal(sent.status, 303);
-    assert.equal(sent.headers.get("location"), "/ui/live?run=rig-a%2Fjs-1&w=lane-1");
+    assert.equal(sent.headers.get("location"), "/ui/campaigns/js-sum/runs/js-1/live?w=lane-1");
     const cmd = s.store.commands.list(5).find((c) => c.kind === "message_agent");
     assert.equal(cmd?.issued_by, "owner:ui");
     await s.relay();
@@ -212,7 +211,7 @@ describe("control dashboard", () => {
       ],
       true,
     );
-    const html = await (await s.get("/ui/live?run=rig-a%2Fjs-1&w=lane-1")).text();
+    const html = await (await s.get("/ui/campaigns/js-sum/runs/js-1/live?w=lane-1")).text();
     // Only this run's lines; a trial's start reads as a divider; the agent's text as paragraphs.
     assert.doesNotMatch(html, /another run's line/);
     assert.match(html, /<b>lane-1<\/b> · trial started · closed-form, try the closed form/);
@@ -254,7 +253,9 @@ describe("control dashboard", () => {
     );
     assert.match(html, /<optgroup label="Advisors">/);
     // The feed for this run only, each line tagged.
-    const json = (await (await s.get("/ui/live.json?run=rig-a/js-1&after=0")).json()) as {
+    const json = (await (
+      await s.get("/ui/campaigns/js-sum/runs/js-1/live.json?after=0")
+    ).json()) as {
       entries: { src: string; html: string }[];
     };
     assert.ok(json.entries.length >= 12);
@@ -278,7 +279,7 @@ describe("control dashboard", () => {
       }),
     });
     assert.equal(sup.status, 200, await sup.clone().text());
-    const live = await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text();
+    const live = await (await s.get("/ui/campaigns/js-sum/runs/js-1/live")).text();
     // Live greys them with the words control refuses with.
     assert.match(
       live,
@@ -291,10 +292,8 @@ describe("control dashboard", () => {
     assert.match(live, /<textarea name="text" rows="1" required data-words/);
     const csrf = s.csrfFrom(live);
     const send = (to: string, text: string, back?: string) =>
-      s.post("/ui/live/message", {
+      s.post("/ui/campaigns/js-sum/runs/js-1/message", {
         csrf,
-        rig: "rig-a",
-        run: "js-1",
         to,
         text,
         ...(back ? { back } : {}),
@@ -311,7 +310,7 @@ describe("control dashboard", () => {
     );
     assert.match(await where(send("lane-1", "   \n ")), /msgerror=Write a message first\.$/);
     // The planner off (Edit rig): the Planner tab says so, and a message to it is refused plainly.
-    const tab = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner";
+    const tab = "/ui/campaigns/js-sum/runs/js-1/planner";
     const planner = await (await s.get(tab)).text();
     assert.match(planner, /The planner is off on this rig, so it reads no messages/);
     assert.doesNotMatch(planner, /Send to the planner/);
@@ -323,7 +322,10 @@ describe("control dashboard", () => {
     assert.doesNotMatch(refused, /Sent to the rig/);
     assert.equal(s.store.commands.list(20).filter((c) => c.kind === "message_agent").length, 0);
     // A lane reads its message: that one goes, trimmed.
-    assert.equal(await where(send("lane-1", "  keep it simple  ")), "/ui/live?run=rig-a/js-1");
+    assert.equal(
+      await where(send("lane-1", "  keep it simple  ")),
+      "/ui/campaigns/js-sum/runs/js-1/live",
+    );
     const sent = s.store.db
       .prepare("select signed from command where kind = 'message_agent'")
       .all() as { signed: string }[];

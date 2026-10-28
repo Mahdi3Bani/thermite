@@ -258,7 +258,7 @@ const unesc = (s: string) => s.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 describe("model use on the screens (goal 075)", () => {
   test("a run's page: one line and two cards above the tabs, on every tab; its Stats tab has the calls and the table by agent and model", async () => {
     const s = await stack();
-    const html = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1");
+    const html = await s.page("/ui/campaigns/matmul/runs/r-1");
     const block = from(html, '<div class="block" id="model-use">', '<nav class="tabs">');
     assert.ok(
       html.indexOf('id="model-use"') < html.indexOf('<nav class="tabs">'),
@@ -288,10 +288,10 @@ describe("model use on the screens (goal 075)", () => {
     // The Stats tab, last, after Planner.
     assert.match(
       html,
-      /Planner<\/a><a class="" href="\/ui\/campaigns\/matmul\?run=rig-a%2Fr-1&view=stats">Stats<\/a><\/nav>/,
+      /Planner<\/a><a class="" href="\/ui\/campaigns\/matmul\/runs\/r-1\/stats">Stats<\/a><\/nav>/,
     );
-    const stats = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1&view=stats");
-    assert.match(stats, /<a class="on" href="[^"]*&view=stats">Stats<\/a>/);
+    const stats = await s.page("/ui/campaigns/matmul/runs/r-1/stats");
+    assert.match(stats, /<a class="on" href="[^"]*\/stats">Stats<\/a>/);
     assert.match(stats, /id="model-use"/, "the top is there too");
     const tab = from(stats, '<div id="run-stats">', "</table>");
     // Nine calls; the workers made 4 in 2 trials; the first token's median.
@@ -351,11 +351,7 @@ describe("model use on the screens (goal 075)", () => {
     assert.match(tokens, /not reported by OpenCode v2/);
     // On every tab.
     for (const view of ["history", "attempts", "planner"])
-      assert.match(
-        await s.page(`/ui/campaigns/matmul?run=rig-a%2Fr-1&view=${view}`),
-        /id="model-use"/,
-        view,
-      );
+      assert.match(await s.page(`/ui/campaigns/matmul/runs/r-1/${view}`), /id="model-use"/, view);
   });
 
   test("a RunPod rig's run: its pod's spend is a line of its own, with its time at the pod's price", async () => {
@@ -368,7 +364,7 @@ describe("model use on the screens (goal 075)", () => {
       by: "t",
     });
     s.store.runpod.saveRig("rig-a", { spent_usd: 1.65, price_per_hr: 1.65 }, true);
-    const html = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1&view=stats");
+    const html = await s.page("/ui/campaigns/matmul/runs/r-1/stats");
     const gpu = rowWith(html, "<b>GPU time on RunPod</b>");
     assert.match(gpu, /1 h 0 m at \$1\.65\/h/);
     assert.match(gpu, /\$1\.65<\/td>/);
@@ -390,14 +386,14 @@ describe("model use on the screens (goal 075)", () => {
       ],
       12,
     );
-    const fresh = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-3");
+    const fresh = await s.page("/ui/campaigns/matmul/runs/r-3");
     assert.match(
       from(fresh, '<div class="block" id="model-use">', '<nav class="tabs">'),
       /<span>0 trials · 0 rounds · \d+ s · no model call yet<\/span>/,
     );
     assert.doesNotMatch(fresh, /<div class="u-two">/);
     assert.match(
-      await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-3&view=stats"),
+      await s.page("/ui/campaigns/matmul/runs/r-3/stats"),
       /No model call recorded yet\. Code counts each call of the agents when it ends\./,
     );
     ingest(
@@ -412,9 +408,9 @@ describe("model use on the screens (goal 075)", () => {
       ],
       13,
     );
-    const tried = await s.page("/ui/campaigns/matmul?run=rig-a%2Fmatmul-try-1");
+    const tried = await s.page("/ui/campaigns/matmul/runs/matmul-try-1");
     assert.doesNotMatch(tried, /id="model-use"/);
-    assert.doesNotMatch(tried, /view=stats/);
+    assert.doesNotMatch(tried, /\/stats"/);
   });
 
   test("a campaign's page: its model use in the sidebar, over all its runs, each run linked", async () => {
@@ -428,7 +424,7 @@ describe("model use on the screens (goal 075)", () => {
     assert.match(side, /1 run<\/span>/);
     assert.match(
       side,
-      /<a href="\/ui\/campaigns\/matmul\?run=rig-a%2Fr-1"><b>r-1<\/b><\/a><span class="us">at work · rig-a<\/span>/,
+      /<a href="\/ui\/campaigns\/matmul\/runs\/r-1"><b>r-1<\/b><\/a><span class="us">at work · rig-a<\/span>/,
     );
     for (const label of ["Cost", "Tokens in", "Tokens out", "Calls", "Output speed", "In", "Out"])
       assert.match(side, new RegExp(`<span class="lb">${label}<i class="ii"`), label);
@@ -615,7 +611,7 @@ describe("model use on the screens (goal 075)", () => {
     // The page's own note at the top stays empty: the flash is in Model prices.
     assert.doesNotMatch(html, /<div class="card" style="margin-bottom:16px"><b class="ok">saved/);
     // Every call of the model, the earlier ones too, is costed at it.
-    const run = await s.page("/ui/campaigns/matmul?run=rig-a%2Fr-1&view=stats");
+    const run = await s.page("/ui/campaigns/matmul/runs/r-1/stats");
     assert.doesNotMatch(rowWith(run, "<b>Planner</b>"), /no price/);
     // The same again changes nothing; refusals in words, and nothing changes.
     assert.equal(

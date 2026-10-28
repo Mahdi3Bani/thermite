@@ -67,7 +67,9 @@ describe("control dashboard", () => {
     assert.doesNotMatch(home2, /Make this change the new champion\?/);
     assert.doesNotMatch(home2, /name="kind" value="approve_promotion"/);
     assert.doesNotMatch(home2, /class="item warn" href="\/ui">[^<]*<\/svg>Needs you/);
-    const own = await (await s.get(`/ui/rigs/rig-a/attempts/${encodeURIComponent(id)}`)).text();
+    const own = await (
+      await s.get(`/ui/campaigns/js-sum/runs/js-1/attempts/${encodeURIComponent(id)}`)
+    ).text();
     assert.match(
       own,
       /You selected <b>Make it the champion<\/b> [^<]* ago\. Control sent it to the rig\./,
@@ -77,24 +79,21 @@ describe("control dashboard", () => {
     await s.relay(); // reports the promotion back
     // Campaigns first: the run's chart and attempts are on its campaign's page, linked from the rig.
     const rig = await (await s.get("/ui/rigs/rig-a")).text();
-    assert.match(rig, /href="\/ui\/campaigns\/js-sum\?run=rig-a%2Fjs-1"/);
-    const campaign = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1")).text();
+    assert.match(rig, /href="\/ui\/campaigns\/js-sum\/runs\/js-1"/);
+    const campaign = await (await s.get("/ui/campaigns/js-sum/runs/js-1")).text();
     assert.match(campaign, /<svg class="chart"/);
     assert.match(campaign, /drop the waste/);
-    assert.match(campaign, /id="rig-a\/js-1"/);
+    assert.match(campaign, /id="run-js-1"/);
     // One run's views: its attempts, and its steering.
-    const all = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=attempts")).text();
+    const all = await (await s.get("/ui/campaigns/js-sum/runs/js-1/attempts")).text();
     assert.match(all, /drop the waste/);
     assert.doesNotMatch(all, /<svg class="chart"/);
-    // The rules for the plan are on the run's Planner tab (old steering links land there too).
+    // The rules for the plan are on the run's Planner tab; a tab by an old name is no address.
     assert.match(
-      await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner")).text(),
+      await (await s.get("/ui/campaigns/js-sum/runs/js-1/planner")).text(),
       /<h2>Rules<\/h2>/,
     );
-    assert.match(
-      await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=steering")).text(),
-      /<h2>Rules<\/h2>/,
-    );
+    assert.equal((await s.get("/ui/campaigns/js-sum/runs/js-1/steering")).status, 404);
     assert.match(await (await s.get("/ui/campaigns")).text(), /js-sum/);
     const after = await (await s.get("/ui")).text();
     assert.doesNotMatch(after, /Make this change the new champion\?/);

@@ -10,7 +10,7 @@ import { controlOnly, signIn } from "../../helpers/control-stack.ts";
  * next experiments are past research a new run can take into its queue.
  */
 
-const PAGE = "/ui/campaigns/survey?run=rig-a%2Fs-1";
+const PAGE = "/ui/campaigns/survey/runs/s-1";
 
 async function control() {
   const { store, control: api } = controlOnly({ tokens: { rigs: { "rig-a": "t-a-abcdef" } } });
@@ -113,14 +113,14 @@ describe("a research run's paper on control (goal 112)", () => {
       await c.line(),
       "Answered: the review panel found every question answered (review 4). The final writer is writing the paper; the harness refused its last draft (line 3: no claim c-7). The run ends once the paper is in and its running trials end.",
     );
-    const history = await c.page(`${PAGE}&view=history`);
+    const history = await c.page(`${PAGE}/history`);
     assert.match(history, /The final writer was asked to write the research paper\./);
     assert.match(
       history,
       /The harness refused the final writer's paper: 2 problems, the first: line 3: no claim c-7\./,
     );
     // No link while there is no paper.
-    assert.equal((await c.get("/ui/rigs/rig-a/runs/s-1/paper.md")).status, 404);
+    assert.equal((await c.get("/ui/campaigns/survey/runs/s-1/paper.md")).status, 404);
     c.ingest({
       kind: "research_paper_accepted",
       subject: "s-1",
@@ -142,19 +142,19 @@ describe("a research run's paper on control (goal 112)", () => {
     assert.doesNotMatch(run, /the final writer is writing the paper/);
     assert.match(
       run,
-      /<b>Research paper:<\/b> by the final writer teacher-1, checked against the rig's STE checker; 1 next experiment kept in the knowledge base\. <a href="\/ui\/rigs\/rig-a\/runs\/s-1\/paper\.md">paper\.md<\/a>/,
+      /<b>Research paper:<\/b> by the final writer teacher-1, checked against the rig's STE checker; 1 next experiment kept in the knowledge base\. <a href="\/ui\/campaigns\/survey\/runs\/s-1\/paper\.md">paper\.md<\/a>/,
     );
     // The paper itself beside the latest report, as text.
     assert.match(
       run,
       /<summary[^>]*>Research paper<\/summary><pre class="report"[^>]*># What the runs show\n\n## Summary\n\nThe first run kept &lt;b&gt;42&lt;\/b&gt; pages \[c-1\]\.\n<\/pre>/,
     );
-    const file = await c.get("/ui/rigs/rig-a/runs/s-1/paper.md");
+    const file = await c.get("/ui/campaigns/survey/runs/s-1/paper.md");
     assert.equal(file.status, 200);
     assert.equal(file.headers.get("content-type"), "text/plain; charset=utf-8");
     assert.equal(await file.text(), PAPER);
     assert.match(
-      await c.page(`${PAGE}&view=history`),
+      await c.page(`${PAGE}/history`),
       /The research paper passed the harness's checks and the rig's STE checker\. It cites 1 claims, and 1 next experiment went to the knowledge base\./,
     );
     // Closed: the final report starts with the paper.

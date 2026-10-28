@@ -28,7 +28,7 @@ describe("Live's message box", () => {
     env.service.trialReport(t1, { entries: [{ kind: "text", text: "Profiling first." }] });
     env.service.trialReport(t2, { entries: [{ kind: "text", text: "Reading the kernel." }] });
     await s.sync();
-    const LIVE = "/ui/live?run=rig-a%2Fjs-1";
+    const LIVE = "/ui/campaigns/js-sum/runs/js-1/live";
     let live = await s.get(LIVE);
 
     // Who a message can go to: everyone working (chosen first), each lane, the planner and the
@@ -73,7 +73,7 @@ describe("Live's message box", () => {
     );
     // The lane you watch is the one you write to; the judge takes no messages.
     const watching = async (w: string) => {
-      const page = await s.get(`${LIVE}&w=${w}`);
+      const page = await s.get(`${LIVE}?w=${w}`);
       return { page, to: recipients(page).find((o) => o.chosen)?.to };
     };
     const lane2 = await watching("lane-2");
@@ -87,11 +87,11 @@ describe("Live's message box", () => {
     const send = (page: string, set: Record<string, string>) => s.submit(form(page, "Send"), set);
     assert.equal(
       await send(live, { text: "  Keep the public API unchanged.  ", keep: "1" }),
-      "/ui/live?run=rig-a/js-1",
+      "/ui/campaigns/js-sum/runs/js-1/live",
     );
     assert.equal(
       await send(lane2.page, { text: "Look at the cache misses first." }),
-      "/ui/live?run=rig-a/js-1&w=lane-2",
+      "/ui/campaigns/js-sum/runs/js-1/live?w=lane-2",
     );
     // Only a message to everyone working or to a lane stays in force: 📌 here is ignored.
     await send(live, { to: "planner", text: "Spread the lanes wider.", keep: "1" });
@@ -279,7 +279,7 @@ describe("Live's message box", () => {
     });
     assert.equal(assigned.status, 201, await assigned.clone().text());
     await s.sync();
-    const LIVE = "/ui/live?run=rig-a%2Fr-1";
+    const LIVE = "/ui/campaigns/topic-survey/runs/r-1/live";
     let live = await s.get(LIVE);
     const to = recipients(live);
     assert.deepEqual(
@@ -302,7 +302,7 @@ describe("Live's message box", () => {
     for (const [who, why] of [["auditor", "A research run has no attempts to audit."]] as const)
       assert.ok(
         (await s.submit(form(live, "Send"), { to: who, text: "Hello." })).endsWith(
-          `&msgerror=${why}`,
+          `?msgerror=${why}`,
         ),
       );
     assert.deepEqual(s.signed("message_agent"), []);

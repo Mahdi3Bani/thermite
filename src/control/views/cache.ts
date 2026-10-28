@@ -1,8 +1,8 @@
 import { logDebug } from "../../common/log.ts";
-import type { ControlStore } from "../store/index.ts";
+import type { ControlStore, RegisteredRun } from "../store/index.ts";
 import { RigFold } from "./fold/index.ts";
 import { eachEvent, type RigRow, readRig, rigInputs, type ViewOptions } from "./rig.ts";
-import type { RigView } from "./types.ts";
+import type { RigView, RunOnRig } from "./types.ts";
 
 /**
  * The folds control keeps (goal 168): one for each rig, of its current ledger's events, so a view
@@ -11,18 +11,27 @@ import type { RigView } from "./types.ts";
  * starts a new fold; a rig no longer listed (retired) loses its fold. Control never deletes or
  * rewrites an event it holds (ControlStore.ingest only adds them), so a fold is never built again
  * for its own ledger; code that ever removes a rig's events must drop its fold too.
+ *
+ * A run is read wherever it ran (goal 170), from control's run registry: its rig and its ledger.
+ * A run of an earlier ledger, or of a retired rig, is read from a fold of that ledger's events,
+ * kept as the rigs' are, for the EARLIER_FOLDS ledgers read last.
  */
 
-/** One rig's kept fold: its ledger, and the newest seq of the rig's events it has seen. */
+/** One kept fold: its ledger, and the newest seq of the rig's events it has seen. */
 interface Kept {
   ledger: string | null;
   fold: RigFold;
   seq: number;
 }
 
+/** How many folds of earlier ledgers and retired rigs are kept; the one read longest ago goes. */
+export const EARLIER_FOLDS = 16;
+
 export class FoldCache {
   private readonly store: ControlStore;
   private readonly kept = new Map<string, Kept>();
+  /** The earlier ledgers' and retired rigs' folds, by rig and ledger, the one read last at the end. */
+  private readonly earlier = new Map<string, Kept>();
 
   constructor(store: ControlStore) {
     this.store = store;
@@ -46,9 +55,28 @@ export class FoldCache {
     return rows.map((u) => this.read(u, opts));
   }
 
+  /** A run's view wherever it ran, read now; undefined for a run no rig created. */
+  run(id: string, opts: ViewOptions): RunOnRig | undefined {
+    const r = this.store.runRegistry.created(id);
+    return r ? this.place([r], opts)[0] : undefined;
+  }
+
+  /** Every run of a campaign a rig created, newest first, earlier ones too, read now. */
+  campaignRuns(campaign: string, opts: ViewOptions): RunOnRig[] {
+    return this.place(this.store.runRegistry.ofCampaign(campaign), opts);
+  }
+
   /** The folds kept: each rig's ledger and the newest seq of its events seen. */
   held(): { rig: string; ledger: string | null; seq: number }[] {
     return [...this.kept].map(([rig, k]) => ({ rig, ledger: k.ledger, seq: k.seq }));
+  }
+
+  /** The earlier ledgers' and retired rigs' folds kept, the one read last at the end. */
+  heldEarlier(): { rig: string; ledger: string | null }[] {
+    return [...this.earlier].map(([key, k]) => ({
+      rig: key.split("\n")[0] ?? "",
+      ledger: k.ledger,
+    }));
   }
 
   /** A rig control no longer lists (retired, or never reported): its fold goes. */
@@ -60,20 +88,67 @@ export class FoldCache {
     return readRig(this.upToDate(row).state(), rigInputs(this.store, row, opts));
   }
 
+  /**
+   * Each registered run with the view of its rig as of its ledger: the rig's own view for a listed
+   * rig's current ledger, else the view of an earlier fold. A rig is read once for all its runs.
+   */
+  private place(runs: RegisteredRun[], opts: ViewOptions): RunOnRig[] {
+    const rows = new Map(this.store.reportedRigs.list({ withRetired: true }).map((u) => [u.id, u]));
+    const read = new Map<string, RigView | undefined>();
+    const out: RunOnRig[] = [];
+    for (const r of runs) {
+      const row = rows.get(r.rig);
+      if (!row) continue;
+      const retired = this.store.retired.get(r.rig) !== undefined;
+      const current = !retired && row.ledger_id === r.ledger_id;
+      const key = `${r.rig}\n${r.ledger_id}`;
+      if (!read.has(key))
+        read.set(key, current ? this.view(r.rig, opts) : this.earlierView(row, r.ledger_id, opts));
+      const rig = read.get(key);
+      const run = rig?.runs.find((x) => x.id === r.run);
+      if (rig && run)
+        out.push({ rig, run, earlier: retired ? "retired" : current ? null : "reset" });
+    }
+    return out;
+  }
+
+  /**
+   * A view of one ledger of a rig that is not the rig's current view: an earlier ledger, or a
+   * retired rig's. Its report is the rig's last one for its own ledger, and none for another.
+   */
+  private earlierView(row: RigRow, ledger: string, opts: ViewOptions): RigView {
+    const key = `${row.id}\n${ledger}`;
+    const k = this.earlier.get(key) ?? { ledger, fold: new RigFold(), seq: 0 };
+    // The one read last goes at the end; past EARLIER_FOLDS, the one read longest ago goes.
+    this.earlier.delete(key);
+    this.earlier.set(key, k);
+    for (const old of this.earlier.keys()) {
+      if (this.earlier.size <= EARLIER_FOLDS) break;
+      this.earlier.delete(old);
+    }
+    if (k.seq === 0)
+      logDebug("control", "an earlier ledger's events folded", { rig: row.id, ledger });
+    const newest = this.store.rigEvents.newestSeq(row.id, k.seq);
+    if (newest !== null) this.foldFrom(row.id, k, newest, () => this.earlier.delete(key));
+    const own = row.ledger_id === ledger;
+    const at = { ...row, ledger_id: ledger, summary: own ? row.summary : {} };
+    return readRig(k.fold.state(), rigInputs(this.store, at, opts));
+  }
+
   /** The rig's fold with every event of its current ledger folded. */
   private upToDate(row: RigRow): RigFold {
     const k = this.kept.get(row.id);
     if (k && k.ledger === row.ledger_id) {
       // Most reads find nothing new: a look at the newest seq first costs next to nothing.
       const newest = this.store.rigEvents.newestSeq(row.id, k.seq);
-      if (newest !== null) this.foldFrom(row, k, newest);
+      if (newest !== null) this.foldFrom(row.id, k, newest, () => this.kept.delete(row.id));
       return k.fold;
     }
     // The rig's first read, or its new ledger after a full reset: a new fold, page by page.
     const fresh: Kept = { ledger: row.ledger_id, fold: new RigFold(), seq: 0 };
     this.kept.set(row.id, fresh);
     const started = performance.now();
-    this.foldFrom(row, fresh, 0);
+    this.foldFrom(row.id, fresh, 0, () => this.kept.delete(row.id));
     const ms = Math.round(performance.now() - started);
     logDebug("control", "a rig's events folded for its view", {
       rig: row.id,
@@ -84,16 +159,17 @@ export class FoldCache {
   }
 
   /**
-   * Folds the rig's events after the kept seq, as rigEvents reads them, and keeps `newest`: the
-   * events the read leaves out (another ledger's, model calls) are not looked at again. A fold
-   * that fails part way is dropped: the next read builds it again, so none folds an event twice.
+   * Folds the rig's events after the kept seq, in the fold's ledger, as rigEvents reads them, and
+   * keeps `newest`: the events the read leaves out (another ledger's, model calls) are not looked
+   * at again. A fold that fails part way is dropped (`drop`): the next read builds it again, so
+   * none folds an event twice.
    */
-  private foldFrom(row: RigRow, k: Kept, newest: number): void {
+  private foldFrom(rig: string, k: Kept, newest: number, drop: () => void): void {
     try {
-      const last = eachEvent(this.store, row.id, row.ledger_id, k.seq, (e) => k.fold.apply(e));
+      const last = eachEvent(this.store, rig, k.ledger, k.seq, (e) => k.fold.apply(e));
       k.seq = Math.max(last, newest);
     } catch (err) {
-      this.kept.delete(row.id);
+      drop();
       throw err;
     }
   }
@@ -112,6 +188,11 @@ export function keepFolds(store: ControlStore): FoldCache {
   return c;
 }
 
+/** The folds control keeps for the store, or, for a store without them (a test's), new ones. */
+const foldsOf = (store: ControlStore) => CACHES.get(store) ?? new FoldCache(store);
+
+const DEFAULT_VIEW: ViewOptions = { staleAfterMs: 180_000 };
+
 /**
  * A rig's view from its events (only the current ledger's, after a reset): through the folds
  * control keeps for the store, or, for a store without them (a test's, a script's), a fold of its
@@ -120,7 +201,25 @@ export function keepFolds(store: ControlStore): FoldCache {
 export function rigView(
   store: ControlStore,
   rig: string,
-  opts: ViewOptions = { staleAfterMs: 180_000 },
+  opts: ViewOptions = DEFAULT_VIEW,
 ): RigView | undefined {
-  return (CACHES.get(store) ?? new FoldCache(store)).view(rig, opts);
+  return foldsOf(store).view(rig, opts);
+}
+
+/** A run's view wherever it ran (goal 170), as rigView reads a rig's: undefined when none. */
+export function findRun(
+  store: ControlStore,
+  run: string,
+  opts: ViewOptions = DEFAULT_VIEW,
+): RunOnRig | undefined {
+  return foldsOf(store).run(run, opts);
+}
+
+/** Every run of a campaign a rig created, newest first, earlier ones too, as findRun reads one. */
+export function campaignRuns(
+  store: ControlStore,
+  campaign: string,
+  opts: ViewOptions = DEFAULT_VIEW,
+): RunOnRig[] {
+  return foldsOf(store).campaignRuns(campaign, opts);
 }

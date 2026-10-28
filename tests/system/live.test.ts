@@ -120,7 +120,7 @@ describe("the owner's messages to agents", () => {
     });
     assert.equal(toLane.status, 201);
     assert.equal(toPlanner.status, 201);
-    // Refusals are the client's to fix: 400 with why (404 for an unknown rig), never 500.
+    // Refusals are the client's to fix: 400 with why, never 500.
     const toPanel = await issue({
       rig: "rig-a",
       kind: "message_agent",
@@ -137,12 +137,17 @@ describe("the owner's messages to agents", () => {
       payload: { run: "smoke-1", to: "lane-1", text: "   " },
     });
     assert.equal(empty.status, 400);
+    // A message goes to the rig its run is on (goal 170): another rig is refused in words.
     const nowhere = await issue({
       rig: "rig-z",
       kind: "message_agent",
       payload: { run: "smoke-1", to: "lane-1", text: "x" },
     });
-    assert.equal(nowhere.status, 404);
+    assert.equal(nowhere.status, 400);
+    assert.equal(
+      ((await nowhere.json()) as { error: string }).error,
+      "Run smoke-1 is on rig-a, not on rig-z.",
+    );
     // Each refusal is in the audit log, as the dashboard's and MCP's are.
     assert.equal(
       s.store.auditLog.list(50).filter((a) => a.action === "refused" && a.actor === "owner:api")

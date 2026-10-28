@@ -90,7 +90,8 @@ describe("champion patches reach control", () => {
       body: new Uint8Array(Buffer.from("something else")),
     });
     assert.equal(wrong.status, 422);
-    const got = await control.request("/v1/rigs/rig-a/champions/r-1/2/patch", {
+    // The owner reads it under the run (goal 170); the rig's upload stays the rig's own.
+    const got = await control.request("/v1/runs/r-1/champions/2/patch", {
       headers: { authorization: `Bearer ${ADMIN}` },
     });
     assert.equal(got.status, 200);
@@ -98,7 +99,7 @@ describe("champion patches reach control", () => {
     assert.equal(got.headers.get("x-thermite-base-commit"), "b".repeat(40));
     // And from the dashboard, as a file to save.
     const ui = await signIn(control);
-    const file = await ui.get("/ui/rigs/rig-a/runs/r-1/champions/2.patch");
+    const file = await ui.get("/ui/campaigns/c/runs/r-1/champions/2.patch");
     assert.equal(file.status, 200);
     assert.match(
       file.headers.get("content-disposition") ?? "",
@@ -106,10 +107,10 @@ describe("champion patches reach control", () => {
     );
     assert.deepEqual(Buffer.from(await file.arrayBuffer()), patch);
     // The run's page links it, with the commit it applies to.
-    const run = await ui.page("/ui/campaigns/c?run=rig-a%2Fr-1");
+    const run = await ui.page("/ui/campaigns/c/runs/r-1");
     assert.match(
       run,
-      /href="\/ui\/rigs\/rig-a\/runs\/r-1\/champions\/2\.patch">download champion #2 as a patch<\/a> <span class="muted small">\(applies to bbbbbbbb\)/,
+      /href="\/ui\/campaigns\/c\/runs\/r-1\/champions\/2\.patch">download champion #2 as a patch<\/a> <span class="muted small">\(applies to bbbbbbbb\)/,
     );
   });
 
@@ -158,7 +159,7 @@ describe("champion patches reach control", () => {
     });
     assert.equal(sent.status, 201, await sent.clone().text());
     const ui = await signIn(control);
-    const run = await ui.page("/ui/campaigns/c?run=rig-a%2Fr-1");
+    const run = await ui.page("/ui/campaigns/c/runs/r-1");
     assert.match(
       run,
       /download champion #2 as a patch<\/a> <span class="muted small">\(applies to the folder examples\/matmul-cpu\/project at cccccccc: git apply --directory=examples\/matmul-cpu\/project\)/,
@@ -168,7 +169,7 @@ describe("champion patches reach control", () => {
       /started from the folder examples\/matmul-cpu\/project of proj at cccccccc\./,
     );
     // The file is named after the repository's commit, the one its owner has.
-    const file = await ui.get("/ui/rigs/rig-a/runs/r-1/champions/2.patch");
+    const file = await ui.get("/ui/campaigns/c/runs/r-1/champions/2.patch");
     assert.match(
       file.headers.get("content-disposition") ?? "",
       /r-1-champion-2-on-cccccccc\.patch/,

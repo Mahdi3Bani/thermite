@@ -1,5 +1,5 @@
 import type { ControlStore } from "../../../src/control/store/index.ts";
-import { iso, type Rig } from "./shared.ts";
+import { iso, Rig } from "./shared.ts";
 
 // Synthetic hardware, shaped like what a harness reports (no real host data).
 const card = (role: "judge" | "dev" | "shared", n: number) => ({
@@ -54,6 +54,18 @@ export function reportRigs(
     });
   };
   report(g1, { queued: 1, leased: 1, done: 214 }, hardware([card("shared", 1)], 6, 16_384));
+  // gpu-2's ledger from before its full reset (goal 170): its run is under decode-speed's
+  // Earlier runs, and opens like any run.
+  const before = earlierRun();
+  store.rigEvents.ingest({
+    rig: "gpu-2",
+    ledger_id: "ledger-gpu-2-before-reset",
+    cursor: 0,
+    next: before.events.length,
+    events: before.events,
+    summary: {},
+    generated_at: iso(40),
+  });
   report(g2, { queued: 0, leased: 1, done: 162 }, hardware([card("shared", 2)], 8, 24_576));
   report(
     g3,
@@ -104,4 +116,34 @@ export function reportRigs(
     });
   }
   store.reportedRigs.setSupervisor("cpu-1", { export: { exports: 10, remote: false } });
+}
+
+/** A run of decode-speed on gpu-2 before the rig's full reset: two attempts, one a champion. */
+function earlierRun(): Rig {
+  const u = new Rig("gpu-2");
+  const run = "decode-0";
+  u.ev(52, "run_created", run, {
+    campaign: "decode-speed",
+    version: 1,
+    mode: "hill_climb",
+    seed: { repo: "inference-engine", commit: "a1b2c3d4e5f6" },
+  });
+  u.ev(51, "run_status", run, { status: "running", reason: null });
+  const attempts = [
+    ["a-0e0e0001", "Batch the token decode loop by four", "win_confirmed", 0.06],
+    ["a-0e0e0002", "Cache the rope tables per layer", "regress", -0.02],
+  ] as const;
+  attempts.forEach(([id, hypothesis, verdict, delta], i) => {
+    const at = 50 - i * 2;
+    u.ev(at, "attempt_recorded", id, {
+      run,
+      lane: `lane-${i + 1}`,
+      lifecycle: "queued",
+      hypothesis,
+    });
+    u.ev(at - 0.5, "verdict", id, { verdict, delta });
+  });
+  u.ev(49, "champion_promoted", run, { seq: 2, attempt: "a-0e0e0001", commit: "0e0e0e0e0e0e" });
+  u.ev(42, "run_status", run, { status: "paused", reason: "the owner's full reset of gpu-2" });
+  return u;
 }

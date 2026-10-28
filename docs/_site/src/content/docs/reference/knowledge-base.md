@@ -117,7 +117,7 @@ Search results and **From past research** show an experiment's result as `tried:
 
 - **Every word must match.** Each word of 2 or more characters, up to the first 8, must be in the item's title or text, ignoring case. A word may be part of a longer one. No words: the newest items.
 - **Newest change first.**
-- **What a result shows on the Knowledge page:** its kind ("Field note (decision)", "Run", "Trial", "Experiment", "Document", "Claim", …), its title, its campaign, its run, who wrote it, an experiment's result or a claim's `verified` or `draft`, and how long ago it changed. It opens to show its text and its link.
+- **What a result shows on the Knowledge page:** its kind ("Field note (decision)", "Run", "Trial", "Experiment", "Document", "Claim", …), its title, its campaign, its run (linked to the run's page, wherever the run ran: one of a retired rig or from before a full reset too), who wrote it, an experiment's result or a claim's `verified` or `draft`, and how long ago it changed. It opens to show its text and its link.
 - **What a result shows in From past research:** a checkbox, its label ("Past experiment", "Finding", "Claim", "Note", "Report", or a field note's kind, such as "Decision"), its title, its run, an experiment's result or a claim's `verified` or `draft`, who wrote it, and its campaign.
 
 ## Grants
@@ -351,7 +351,7 @@ Who wrote a note comes from how it arrived, never from the note itself. The plan
 | **Live** | `noted (<kind>): <text>`, cut to 300 characters; an advisor's line starts with who wrote it, such as `teachers:teacher-a noted (lesson): …` |
 | **Live**, for the planner's and the advisors' notes it could not keep | `field notes: <problems>` (the planner) or `the field notes of <name>: <problems>` (an advisor) |
 | The run page's **Journal** tab | The field notes, newest first, with filters by writer and by kind; the research notes are in its **Notes** card. It shows the newest 500 |
-| MCP [`get_run`](mcp-tools.md#get_run) and REST `GET /v1/rigs/<rig>/view` | The run's `journal`: every note, oldest first |
+| MCP [`get_run`](mcp-tools.md#get_run) and REST `GET /v1/runs/<run>` | The run's `journal`: every note, oldest first |
 | The run's export | `journal.jsonl` |
 | The campaign's folder | One item of kind `note` for each |
 

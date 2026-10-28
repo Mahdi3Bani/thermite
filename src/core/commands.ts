@@ -562,6 +562,34 @@ export const OWNER_ONLY_KINDS: ReadonlySet<string> = new Set<CommandKind>([
   "stop_trial",
 ]);
 
+/**
+ * The kinds about one run, which its payload's `run` names (goal 170): control sends each to the
+ * rig the run is on, so a caller may name the run alone. An assignment names the rig it starts a
+ * new run on, and every other kind is about the rig itself.
+ */
+export const RUN_KINDS: ReadonlySet<CommandKind> = new Set<CommandKind>([
+  "pause_run",
+  "resume_run",
+  "close_run",
+  "redirect",
+  "reset_workers",
+  "message_agent",
+  "unkeep_message",
+  "queue_add",
+  "queue_move",
+  "queue_edit",
+  "queue_drop",
+  "queue_accept",
+  "drop_directive",
+  "hypothesis_status",
+  "propagate",
+  "stop_trial",
+  "approve_promotion",
+  "decline_promotion",
+  "accept_review",
+  "conclude",
+]);
+
 export const Envelope = z.object({
   v: z.literal(1),
   id: z.uuid(),

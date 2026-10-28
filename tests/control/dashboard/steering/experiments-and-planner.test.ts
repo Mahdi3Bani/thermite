@@ -27,9 +27,9 @@ describe("the run page's Experiments and Planner tabs", () => {
     });
     assert.equal(assigned.status, 201, await assigned.clone().text());
     await s.sync();
-    const EXP = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=experiments";
-    const PLAN = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner";
-    const HISTORY = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=history";
+    const EXP = "/ui/campaigns/js-sum/runs/js-1/experiments";
+    const PLAN = "/ui/campaigns/js-sum/runs/js-1/planner";
+    const HISTORY = "/ui/campaigns/js-sum/runs/js-1/history";
     const q = '(?:"|&quot;)';
     let exp = await s.get(EXP);
     let plan = await s.get(PLAN);
@@ -260,17 +260,17 @@ describe("the run page's Experiments and Planner tabs", () => {
 
     // Tell the planner refuses a message of only spaces, on the tab.
     const blank = await s.submit(form(plan, "Send to the planner"), { text: "  \n " });
-    assert.ok(blank.endsWith("&msgerror=Write a message first."), blank);
+    assert.ok(blank.endsWith("/planner?msgerror=Write a message first."), blank);
     assert.match(
-      await s.get(`${PLAN}&msgerror=${encodeURIComponent("Write a message first.")}`),
+      await s.get(`${PLAN}?msgerror=${encodeURIComponent("Write a message first.")}`),
       /<h3>Tell the planner<\/h3><div class="lnotice">[\s\S]*?<b>Not sent\.<\/b> Write a message first\./,
     );
     // Plain words: back on the tab, which says the message went.
     const told = await s.submit(form(plan, "Send to the planner"), {
       text: "Never touch the timer code.",
     });
-    assert.ok(told.startsWith(`${decodeURIComponent(PLAN)}&sent=`), told);
-    const back = await s.get(`${PLAN}&sent=${encodeURIComponent(told.split("&sent=")[1] ?? "")}`);
+    assert.ok(told.startsWith(`${decodeURIComponent(PLAN)}?sent=`), told);
+    const back = await s.get(`${PLAN}?sent=${encodeURIComponent(told.split("?sent=")[1] ?? "")}`);
     assert.match(
       back,
       /Sent to the rig\. The planner reads it when it next gives out work; Commands shows whether the rig took it\./,
@@ -439,7 +439,7 @@ describe("the run page's Experiments and Planner tabs", () => {
       ),
     );
     assert.ok(
-      yours(await s.get("/ui/live?run=rig-a%2Fjs-1")).includes(
+      yours(await s.get("/ui/campaigns/js-sum/runs/js-1/live")).includes(
         "✓ planner read your message: “Never touch the timer code.”",
       ),
     );
@@ -533,7 +533,7 @@ describe("the run page's Experiments and Planner tabs", () => {
       assert.match(history, new RegExp(line));
 
     // Live is for watching and writing: no queue and no rules there.
-    const live = await s.get("/ui/live?run=rig-a%2Fjs-1");
+    const live = await s.get("/ui/campaigns/js-sum/runs/js-1/live");
     assert.doesNotMatch(live, /id="qlist"|class="qrule"|Add a rule|Up next/);
 
     // Start a run from the campaign's page: the rig is busy with js-1, and the new run starts
@@ -546,11 +546,11 @@ describe("the run page's Experiments and Planner tabs", () => {
     const go = form(start, "Start the run");
     assert.deepEqual(
       [go.fields.rig, go.fields.agents, go.fields.copy_queue, go.fields.copy_from],
-      ["rig-a", "on", "1", "rig-a/js-1"],
+      ["rig-a", "on", "1", "js-1"],
     );
-    assert.match(start, /<option value="rig-a\/js-1">js-1 \(1 up next\)<\/option>/);
+    assert.match(start, /<option value="js-1">js-1 \(1 up next\)<\/option>/);
     const started = await s.submit(go);
-    const next = /run=rig-a\/([^&]+)/.exec(started)?.[1] ?? "";
+    const next = /\/runs\/([^/?&]+)/.exec(started)?.[1] ?? "";
     assert.ok(next && next !== "js-1", started);
     const copied = s.signed("assign_campaign").at(-1);
     assert.equal(copied?.run, next);
@@ -564,7 +564,7 @@ describe("the run page's Experiments and Planner tabs", () => {
       },
     ]);
     await s.sync();
-    const fresh = await s.get(`/ui/campaigns/js-sum?run=rig-a%2F${next}&view=experiments`);
+    const fresh = await s.get(`/ui/campaigns/js-sum/runs/${next}/experiments`);
     assert.deepEqual(
       upNext(fresh).map((x) => x.title),
       ["fuse the two loops"],
@@ -574,7 +574,7 @@ describe("the run page's Experiments and Planner tabs", () => {
       /<div class="qt">fuse the two loops<\/div><div class="qwhy">one pass over memory<\/div><div class="qmeta"><span class="qsrc lane">lane-1's idea<\/span><span class="muted xs">from js-1<\/span>/,
     );
     assert.match(
-      await s.get(`/ui/campaigns/js-sum?run=rig-a%2F${next}&view=history`),
+      await s.get(`/ui/campaigns/js-sum/runs/${next}/history`),
       new RegExp(`${q}fuse the two loops${q} was copied into the queue from run js-1\\.`),
     );
   });

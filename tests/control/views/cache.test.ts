@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { ControlStore } from "../../../src/control/store/index.ts";
-import { FoldCache, keepFolds, rigView } from "../../../src/control/views/index.ts";
+import {
+  campaignRuns,
+  EARLIER_FOLDS,
+  FoldCache,
+  findRun,
+  keepFolds,
+  rigView,
+} from "../../../src/control/views/index.ts";
 import { controlOnly } from "../../helpers/control-stack.ts";
 import { uniforms } from "../../helpers/property.ts";
 import {
@@ -280,5 +287,98 @@ describe("a view is its caller's own", () => {
     assert.deepStrictEqual(held, before);
     assert.notDeepStrictEqual(after, before);
     assert.deepStrictEqual(after, fresh(store, "rig-h"));
+  });
+});
+
+describe("a run is read wherever it ran (goal 170)", () => {
+  /** Events as the set gives them, an hour later than its own times: a later ledger's. */
+  const later = (events: SetEvent[], hours: number): SetEvent[] =>
+    events.map((e, i) => ({
+      ...e,
+      at: new Date(VIEW_NOW - 24 * 3_600_000 + hours * 3_600_000 + i * 1000).toISOString(),
+    }));
+  const ids = (xs: { run: { id: string }; earlier: string | null }[]) =>
+    xs.map((x) => [x.run.id, x.earlier]);
+
+  test("from control's run registry: the rig's current ledger, an earlier one after a full reset, a retired rig's", () => {
+    const store = new ControlStore(":memory:");
+    const folds = keepFolds(store);
+    report(store, "rig-a", "ledger-1", hillClimbEvents("r-1"));
+    report(store, "rig-b", "ledger-b", goalEvents("g-1"));
+    const now = findRun(store, "r-1", OPTS);
+    assert.ok(now);
+    assert.deepEqual([now.rig.id, now.rig.ledger_id, now.earlier], ["rig-a", "ledger-1", null]);
+    const before = rigView(store, "rig-a", OPTS)?.runs.find((r) => r.id === "r-1");
+    assert.deepStrictEqual(now.run, before);
+    assert.equal(findRun(store, "nope", OPTS), undefined);
+
+    // A full reset: the rig reports a new ledger. Its view has the new ledger's runs alone; the
+    // old run is read from a fold of its own ledger, as it stood.
+    report(store, "rig-a", "ledger-2", later(goalEvents("g-2"), 1));
+    assert.deepEqual(
+      rigView(store, "rig-a", OPTS)?.runs.map((r) => r.id),
+      ["g-2"],
+    );
+    const reset = findRun(store, "r-1", OPTS);
+    assert.ok(reset);
+    assert.deepEqual(
+      [reset.rig.id, reset.rig.ledger_id, reset.earlier],
+      ["rig-a", "ledger-1", "reset"],
+    );
+    assert.deepStrictEqual(reset.run, before);
+    // No report of the rig is the earlier ledger's: its view has none of the newer one's.
+    assert.deepEqual(reset.rig.summary, {});
+    assert.deepEqual(folds.heldEarlier(), [{ rig: "rig-a", ledger: "ledger-1" }]);
+    // The rig's own fold is its current ledger's, as before.
+    assert.deepEqual(
+      folds.held().map((h) => [h.rig, h.ledger]),
+      [["rig-a", "ledger-2"]],
+    );
+
+    // A retired rig: its runs stay readable, as they stood.
+    const g1 = findRun(store, "g-1", OPTS);
+    store.retired.add("rig-b", "owner:ui");
+    assert.equal(rigView(store, "rig-b", OPTS), undefined);
+    const retired = findRun(store, "g-1", OPTS);
+    assert.ok(retired && g1);
+    assert.deepEqual([retired.rig.id, retired.earlier], ["rig-b", "retired"]);
+    assert.deepStrictEqual(retired.run, g1.run);
+
+    // A campaign's runs, newest first, wherever they ran; a fresh fold reads the same.
+    assert.deepEqual(ids(campaignRuns(store, "speed", OPTS)), [
+      ["r-1", "reset"],
+      ["h-0", "reset"],
+    ]);
+    assert.deepEqual(ids(campaignRuns(store, "decoder", OPTS)), [
+      ["g-2", null],
+      ["g-1", "retired"],
+    ]);
+    const fresh = new FoldCache(store);
+    assert.deepStrictEqual(
+      fresh.campaignRuns("decoder", OPTS),
+      campaignRuns(store, "decoder", OPTS),
+    );
+    assert.deepStrictEqual(fresh.run("r-1", OPTS), reset);
+  });
+
+  test(`control keeps the folds of the ${EARLIER_FOLDS} earlier ledgers read last; one read before them is built again`, () => {
+    const store = new ControlStore(":memory:");
+    const folds = keepFolds(store);
+    const n = EARLIER_FOLDS + 2;
+    for (let i = 1; i <= n; i++)
+      report(store, "rig-a", `ledger-${i}`, later(goalEvents(`g-${i}`).slice(0, 4), i));
+    // Each run before the newest ledger's is an earlier one.
+    for (let i = 1; i < n; i++) assert.equal(findRun(store, `g-${i}`, OPTS)?.earlier, "reset");
+    const kept = folds.heldEarlier();
+    assert.equal(kept.length, EARLIER_FOLDS);
+    assert.deepEqual(
+      kept.map((k) => k.ledger),
+      Array.from({ length: EARLIER_FOLDS }, (_, i) => `ledger-${n - EARLIER_FOLDS + i}`),
+    );
+    // The first, read longest ago, is built again when it is read, and goes to the end.
+    const first = findRun(store, "g-1", OPTS);
+    assert.deepStrictEqual(first, new FoldCache(store).run("g-1", OPTS));
+    assert.equal(folds.heldEarlier().at(-1)?.ledger, "ledger-1");
+    assert.equal(folds.heldEarlier().length, EARLIER_FOLDS);
   });
 });

@@ -163,20 +163,15 @@ export async function thermiteAssign(rest: string[]): Promise<void> {
   }
   if (!values.print && (!values.control || !values["token-file"] || !values.rig))
     fail("give --control, --token-file and --rig to issue it, or --print to show it");
-  // A past run's untried experiments (goal 067), from control's records of that run.
-  const queueFrom = values["queue-from"];
-  let past: { rig: string; run: string } | undefined;
-  if (queueFrom !== undefined) {
+  // A past run's untried experiments (goal 067), from control's records of that run, which
+  // control finds by its name alone (goal 170).
+  const past = values["queue-from"];
+  if (past !== undefined) {
     // As the harness refuses it: nothing would take the experiments of a run without agents.
     if (values.agents === "off") fail("a run without agents has no queue: leave out --queue-from");
     if (!values.control || !values["token-file"])
       fail("--queue-from reads the past run from control: give --control and --token-file");
-    const slash = queueFrom.indexOf("/");
-    const run = queueFrom.slice(slash + 1);
-    const rig = slash >= 0 ? queueFrom.slice(0, slash) : values.rig;
-    if (!run || (slash >= 0 && !rig)) fail("--queue-from names a run: RUN or RIG/RUN");
-    if (!rig) fail("--queue-from RUN is a run on --rig: give --rig, or RIG/RUN");
-    past = { rig, run };
+    if (!past) fail("--queue-from names a run");
   }
   const fromFile = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
   if (!fromFile.ok) fail(fromFile.errors.join("\n"));
@@ -270,15 +265,12 @@ export async function thermiteAssign(rest: string[]): Promise<void> {
   if (past) {
     const control = controlAt(values.control as string, values["token-file"] as string);
     const from = await orFail(
-      control.call(UNTRIED, {
-        params: { rig: past.rig, run: past.run },
-        query: { campaign: contract.campaign },
-      }),
+      control.call(UNTRIED, { params: { run: past }, query: { campaign: contract.campaign } }),
     );
     queue = from.queue;
     if (!queue.length)
       process.stderr.write(
-        `${past.run} on ${past.rig} has no untried experiments: the new run's queue starts empty\n`,
+        `${past} has no untried experiments: the new run's queue starts empty\n`,
       );
   }
   const payload = {
@@ -330,12 +322,12 @@ export async function thermiteCommand(rest: string[]): Promise<void> {
       ttl: { type: "string" },
     },
   });
-  if (!values.control || !values["token-file"] || !values.rig || !values.kind || !values.payload)
-    fail(USAGE);
+  // A kind about one run may leave out --rig: control sends it to the run's rig (goal 170).
+  if (!values.control || !values["token-file"] || !values.kind || !values.payload) fail(USAGE);
   const out = await orFail(
     controlAt(values.control, values["token-file"]).call(ISSUE, {
       body: {
-        rig: values.rig,
+        ...(values.rig ? { rig: values.rig } : {}),
         // Control checks the kind, and refuses one it does not know in words.
         kind: values.kind as CommandKind,
         payload: readJsonArg(values.payload),

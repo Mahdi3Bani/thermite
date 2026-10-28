@@ -12,7 +12,13 @@ import type { ControlStore } from "../store/index.ts";
 import { infoLabel } from "../ui/campaigns/new/index.ts";
 import { esc, type Shell, shell } from "../ui/components/index.ts";
 import { type Forms, type Need, needs as operatorNeeds } from "../ui/operator/index.ts";
-import { OFFLINE_AFTER_MS, type RigView, type RunView, runCampaign } from "../views/index.ts";
+import {
+  OFFLINE_AFTER_MS,
+  type RigView,
+  type RunOnRig,
+  type RunView,
+  runCampaign,
+} from "../views/index.ts";
 
 const DAY_MS = 24 * 3_600_000;
 /** What Close run does, in its ⋯ menu on a run's page (goal 087). */
@@ -105,6 +111,14 @@ export function dashboardContext(store: ControlStore, opts: DashboardOptions) {
   const csrf = (c: Ctx) => csrfOf(sessionOf(c) ?? "");
   const parts = opts.parts;
   const views = parts.views;
+  /**
+   * A run of a campaign wherever it ran (goal 170), earlier runs too: undefined for a run no rig
+   * created, or one of another campaign.
+   */
+  const runOf = (campaign: string, run: string): RunOnRig | undefined => {
+    const x = parts.run(run);
+    return x && runCampaign(x.run) === campaign ? x : undefined;
+  };
   /** A form that issues a command; `back` is where the owner lands afterwards. */
   const cmdForm = (
     c: Ctx,
@@ -230,6 +244,7 @@ export function dashboardContext(store: ControlStore, opts: DashboardOptions) {
     csrf,
     parts,
     views,
+    runOf,
     cmdForm,
     pauseMenu,
     moreMenu,

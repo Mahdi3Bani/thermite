@@ -99,7 +99,7 @@ const baseline = {
       "tok_per_s wiki 4512 ±0.20%, code 4000 ±0.51% (median of 3 blocks; the check kept 1 file)",
   },
 };
-const RUN = "/ui/campaigns/speed?run=rig-a%2Fs-1";
+const RUN = "/ui/campaigns/speed/runs/s-1";
 
 describe("a hill climb's baseline on control (goal 115)", () => {
   test("waiting: the status line and Overview say the judge measures the starting point first", async () => {
@@ -114,7 +114,7 @@ describe("a hill climb's baseline on control (goal 115)", () => {
       html,
       /<h2>Where the run started<\/h2><span class="right">waiting for the judge<\/span>/,
     );
-    const run = await c.mcp("get_run", { rig: "rig-a", run: "s-1" });
+    const run = await c.mcp("get_run", { run: "s-1" });
     assert.equal(run.baseline_waiting, true);
     assert.equal(run.baseline, null);
     assert.equal(run.setup, null);
@@ -147,7 +147,7 @@ describe("a hill climb's baseline on control (goal 115)", () => {
     );
     assert.match(html, /<span class="right">the run is in setup<\/span>/);
     assert.match(html, /cell small: exit 3: Error: no kernel yet/);
-    const history = await c.page(`${RUN}&view=history`);
+    const history = await c.page(`${RUN}/history`);
     assert.match(
       history,
       /The judge could not measure the starting point, champion #1: cell small: exit 3: Error: no kernel yet\. The run is in setup: the lanes work to make it build and run its cases\./,
@@ -156,7 +156,7 @@ describe("a hill climb's baseline on control (goal 115)", () => {
       history,
       /Round 1 is a setup round: lane-1 works to make the starting point build and run its cases\./,
     );
-    const run = await c.mcp("get_run", { rig: "rig-a", run: "s-1" });
+    const run = await c.mcp("get_run", { run: "s-1" });
     assert.equal(run.baseline_waiting, false);
     assert.equal(run.setup.champion_seq, 1);
     assert.equal(run.setup.reasons, "cell small: exit 3: Error: no kernel yet");
@@ -224,7 +224,7 @@ describe("a hill climb's baseline on control (goal 115)", () => {
     );
     assert.match(block, /kept 1 file \(2\.0 KiB\) in the baseline/);
     assert.match(block, /1 more metric in get_run\./);
-    const history = await c.page(`${RUN}&view=history`);
+    const history = await c.page(`${RUN}/history`);
     assert.match(
       history,
       /a-fix<\/a> became champion #2, the run(&#39;|')s new starting point: the judge could measure it\. The gain counts from here\./,
@@ -233,7 +233,7 @@ describe("a hill climb's baseline on control (goal 115)", () => {
       history,
       /The judge measured the starting point, champion #2 \(setup change <a [^>]*>a-fix<\/a>\), on every case: tok_per_s wiki 4512 ±0\.20%/,
     );
-    const run = await c.mcp("get_run", { rig: "rig-a", run: "s-1" });
+    const run = await c.mcp("get_run", { run: "s-1" });
     assert.equal(run.setup, null);
     assert.equal(run.baseline.champion_seq, 2);
     assert.equal(run.baseline.attempt, "a-fix");

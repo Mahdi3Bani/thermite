@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { RunView } from "./views/index.ts";
+import { agentRun, type RunOnRig, type RunView } from "./views/index.ts";
 
 /**
  * A run's detail of a size an agent can read (goal 128), for MCP's get_run and REST's
- * GET /v1/rigs/<rig>/runs/<run>. A run's view holds lists that grow with the run, such as its
+ * GET /v1/runs/<run>, and one of its attempts (goal 170). A run's view holds lists that grow with the run, such as its
  * journal and timeline: a research run of a day gave 3.2 million characters. Each list is cut to
  * its newest entries (the views keep them oldest first), and the research report to its first
  * characters. Nothing is cut without a word: `cut` says what was left out and how to read it, and
@@ -24,7 +24,6 @@ const TEXT_STEPS = [2000, 1000, 500, 250, 120];
 
 /** The arguments, as MCP's schema; REST reads the same from its query. */
 export const RUN_DETAIL_INPUT = {
-  rig: z.string().min(1),
   run: z.string().min(1),
   attempts: z.number().int().min(1).max(500).default(50),
   limit: z.number().int().min(1).max(500).default(RUN_LIST_LIMIT),
@@ -170,4 +169,29 @@ export function runQueue(r: RunView, tried: number): Record<string, unknown> {
     },
     'get_run with list "queue" gives the queue whole',
   );
+}
+
+/**
+ * One attempt of a run (goal 170), as REST's GET /v1/runs/<run>/attempts/<attempt> and MCP's
+ * get_attempt give it: the attempt as the run's view has it, the rig it ran on (whether the run
+ * is an earlier one, and why), and the champion it became, if any. `agent`: as the agent token
+ * reads it, a held-out check as its kinds alone (goal 082).
+ */
+export function attemptRead(
+  x: RunOnRig,
+  attempt: string,
+  agent = false,
+): Record<string, unknown> | { error: string } {
+  const r = agent ? agentRun(x.run) : x.run;
+  const a = r.attempts.find((y) => y.id === attempt);
+  if (!a) return { error: `run ${x.run.id} has no attempt ${attempt}` };
+  const champion = x.run.champion.find((c) => c.attempt === attempt && !c.reopened);
+  return {
+    run: x.run.id,
+    campaign: x.run.campaign,
+    rig: x.rig.id,
+    earlier: x.earlier,
+    champion_seq: champion?.seq ?? null,
+    attempt: a,
+  };
 }

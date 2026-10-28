@@ -9,7 +9,7 @@ import { controlOnly, signIn } from "../../helpers/control-stack.ts";
  * Completed.
  */
 
-const PAGE = "/ui/campaigns/survey?run=rig-a%2Fs-1";
+const PAGE = "/ui/campaigns/survey/runs/s-1";
 
 async function control() {
   const { store, control: api } = controlOnly({ tokens: { rigs: { "rig-a": "t-a-abcdef" } } });
@@ -150,7 +150,7 @@ describe("a research run's answer check on control (goal 112)", () => {
     );
     assert.match(run, /name="kind" value="accept_review"/);
     // Not a goal's review: the attempts tab lists none as one.
-    assert.doesNotMatch(await c.page(`${PAGE}&view=attempts`), /Reviews of subjective goals/);
+    assert.doesNotMatch(await c.page(`${PAGE}/attempts`), /Reviews of subjective goals/);
     assert.match(run, /<span class="label violet"><svg[^>]*>[\s\S]*?<\/svg>Review<\/span>/);
     c.ingest({
       kind: "review_decided",

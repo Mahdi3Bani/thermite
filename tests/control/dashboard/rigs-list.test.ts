@@ -230,7 +230,7 @@ describe("the Rigs list", () => {
     assert.match(live, /<span class="muted">0\.1\.0<\/span>/);
     assert.match(
       live,
-      /<a class="nowrap" href="\/ui\/campaigns\/q4-gemv\?run=gpu-1%2Fq4-gemv-3">q4-gemv-3<\/a><span class="rsub">q4-gemv · last attempt 4 min ago<\/span>/,
+      /<a class="nowrap" href="\/ui\/campaigns\/q4-gemv\/runs\/q4-gemv-3">q4-gemv-3<\/a><span class="rsub">q4-gemv · last attempt 4 min ago<\/span>/,
     );
     assert.match(live, /<b class="fig">\+0\.0%<\/b>/);
     assert.doesNotMatch(live, /vchip/);

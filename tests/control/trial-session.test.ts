@@ -7,6 +7,17 @@ import type { LiveEntry } from "../../src/core/live.ts";
 
 const at = (i: number) => new Date(Date.UTC(2026, 9, 25, 8, 0, i)).toISOString();
 
+/** The runs rig-a created, as its reports put them in control's run registry. */
+function runsOn(store: ControlStore, ...runs: string[]): void {
+  for (const run of runs)
+    store.runRegistry.registerRunCreated("rig-a", "l-1", {
+      kind: "run_created",
+      subject: run,
+      body: { campaign: "c" },
+      at: at(0),
+    });
+}
+
 /** Two trials on lane-1 and lane-2 of r-1, one on r-2, and the judge's lines between them. */
 function rigWithTrials(): ControlStore {
   const store = new ControlStore(":memory:");
@@ -44,21 +55,27 @@ function rigWithTrials(): ControlStore {
   add("trial:t-a", "status", "trial ended: submitted a-1", "lane-1", "r-1");
   add("trial:t-c", "status", "trial on lane-1: other run", "lane-1", "r-2");
   store.liveLines.add("rig-a", "log-1", lines, true);
+  runsOn(store, "r-1", "r-2");
   return store;
 }
-const base = { rig: "rig-a", after: 0, limit: SESSION_LINES };
+const base = { run: "r-1", after: 0, limit: SESSION_LINES };
 
-test("trial_session lists the trials' sessions newest first, and one run's (goal 139)", () => {
+test("trial_session lists one run's trials' sessions newest first, by the run alone (goals 139 and 170)", () => {
   const store = rigWithTrials();
-  const all = trialSession(store, base) as { total: number; sessions: Record<string, unknown>[] };
+  const all = trialSession(store, base) as {
+    run: string;
+    rig: string;
+    total: number;
+    sessions: Record<string, unknown>[];
+  };
+  assert.equal(all.rig, "rig-a", "the rig the run ran on, which control knows");
   assert.deepEqual(
     all.sessions.map((s) => s.trial),
-    ["t-c", "t-a", "t-b"],
+    ["t-a", "t-b"],
   );
-  assert.deepEqual(all.sessions[1], {
+  assert.deepEqual(all.sessions[0], {
     trial: "t-a",
     lane: "lane-1",
-    run: "r-1",
     started_at: at(0),
     last_at: at(908),
     asked: "trial on lane-1: shared staging, stage the activations",
@@ -68,13 +85,14 @@ test("trial_session lists the trials' sessions newest first, and one run's (goal
     lines: 3,
   });
   // A session still at work, or cut off, has not ended.
-  assert.equal(all.sessions[2]?.ended, null);
-  assert.equal(all.sessions[2]?.lines, 901);
+  assert.equal(all.sessions[1]?.ended, null);
+  assert.equal(all.sessions[1]?.lines, 901);
   const one = trialSession(store, { ...base, run: "r-2" }) as { sessions: { trial: string }[] };
   assert.deepEqual(
     one.sessions.map((s) => s.trial),
     ["t-c"],
   );
+  assert.throws(() => trialSession(store, { ...base, run: "r-9" }), /^Error: no run r-9$/);
 });
 
 test("one session's lines, oldest first, paged forward to its newest; the judge's lines are not in it", () => {
@@ -115,6 +133,7 @@ test("a long session's answer keeps to the budget and says how to read its lines
     })),
     true,
   );
+  runsOn(store, "r-1");
   const page = trialSession(store, { ...base, trial: "t-d" }) as {
     lines: { text: string }[];
     cut: string[];
@@ -130,7 +149,7 @@ test("a long session's answer keeps to the budget and says how to read its lines
   assert.equal(whole.cut, undefined);
   assert.throws(
     () => trialSession(store, { ...base, trial: "t-nope" }),
-    /^Error: control has no lines of trial t-nope on rig-a: it keeps a rig's newest 20,000 lines, and trial_session with no trial lists the sessions it has$/,
+    /^Error: control has no lines of trial t-nope in run r-1: it keeps a rig's newest 20,000 lines, and trial_session with no trial lists the run's sessions it has$/,
   );
 });
 

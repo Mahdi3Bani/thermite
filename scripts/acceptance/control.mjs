@@ -78,8 +78,15 @@ async function dashboard() {
   };
   /** A command form, such as Pause. */
   const post = (form) => send("/ui/commands", form);
-  /** A message from a message box, such as Tell the planner on a run's Planner tab. */
-  const message = (form) => send("/ui/live/message", form);
+  /**
+   * A message from a message box, such as Tell the planner on a run's Planner tab: to the run's
+   * own address, under its campaign (goal 170).
+   */
+  const message = async ({ rig, run, ...form }) => {
+    const campaign = (await view(rig)).runs?.find((i) => i.id === run)?.campaign ?? run;
+    const at = `/ui/campaigns/${encodeURIComponent(campaign)}/runs/${encodeURIComponent(run)}`;
+    return send(`${at}/message`, { rig, ...form });
+  };
   return { page, post, message };
 }
 

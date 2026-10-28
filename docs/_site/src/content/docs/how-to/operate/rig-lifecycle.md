@@ -206,7 +206,7 @@ Control refuses the remove while any result waits on the rig: the page says `rig
 
 ## Retire and bring back
 
-Retire a rig that is gone. It leaves the rig lists, its campaigns' pages and **Needs you** (on **Overview**, the first page in the sidebar), and control refuses its reports. Its records stay. **Retiring stops nothing on the machine.**
+Retire a rig that is gone. It leaves the rig lists and **Needs you** (on **Overview**, the first page in the sidebar), and control refuses its reports. Its records stay: its runs stay on their campaigns' pages, under **Earlier runs**, marked `on <rig>, retired`, and each opens like any run. **Retiring stops nothing on the machine.**
 
 1. On the rig's page, open the **⋯** menu. A rig control refuses, or one that is offline, also has **Retire it** in its banner.
 2. Under **Retire it**, type `retire rig-1` and press **Retire it**.
@@ -264,7 +264,7 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
 
 4. Press **Confirm the wipe**, on **Reports** or in the **Wipe** item of **Needs you**. To stop instead, press **Cancel** on **Reports** or **Cancel the reset** in **Needs you**. You can cancel until the wipe starts.
 
-5. When the reset is `done`, the rig starts again with an empty ledger. Its old runs no longer show on its page or on the leaderboard: they are in the results repository, or on control. Start new campaigns on it as usual, and check **Edit rig**: the choices made there are wiped, and the rig is back to its defaults.
+5. When the reset is `done`, the rig starts again with an empty ledger. Its old runs no longer show on its page or on the leaderboard. They stay on their campaigns' pages, under **Earlier runs**, marked `before <rig>'s full reset`: each opens like any run, with its attempts, its history and its champions' patches, from the events control keeps. They take no more commands. Start new campaigns on it as usual, and check **Edit rig**: the choices made there are wiped, and the rig is back to its defaults.
 
 If the reset fails or is cancelled, nothing is wiped and the runs stay paused. The **Detail** says why, for example `the rig has no results repository, and its supervisor does not send exports to control (an older version): its export cannot be verified` or `timed out while quiescing`.
 
@@ -276,7 +276,7 @@ Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"c
 | --- | --- |
 | The harness's state: its ledger, git mirrors, kits, imports, models, builds, research archive and research folders with their copies of past research (`knowledge/`), the **Edit rig** settings and the model route it was handed | The rig's signing key, so control still trusts it (no key to accept) |
 | Its scratch space and outbox | Everything in the results repository or on control, with the full export |
-| The supervisor's state: its copy of the results, its fetch caches, its known hosts for Git access, its advisors' records, the day's spending and where each run's past research sync had got to | Control's records: the rig's past events, its commands, champion patches and daily reports. The dashboard shows only what the rig records after the reset |
+| The supervisor's state: its copy of the results, its fetch caches, its known hosts for Git access, its advisors' records, the day's spending and where each run's past research sync had got to | Control's records: the rig's past events, its commands, champion patches and daily reports. The rig's page shows only what the rig records after the reset; its earlier runs are under their campaigns' **Earlier runs** |
 | | Control's [knowledge base](../../reference/knowledge-base.md): the items of the rig's earlier runs stay in their campaigns' folders |
 | | Files outside the rig's state: the advisors file, its tokens, and its environment settings |
 

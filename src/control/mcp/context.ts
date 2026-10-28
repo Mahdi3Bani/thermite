@@ -16,7 +16,7 @@ import type { ControlParts } from "../parts.ts";
 import type { RunpodRigs, RunpodTests } from "../runpod/index.ts";
 import { keyHint } from "../secrets.ts";
 import type { ControlStore } from "../store/index.ts";
-import { type RigView, rigView } from "../views/index.ts";
+import { findRun, type RigView, type RunOnRig, rigView } from "../views/index.ts";
 
 /**
  * What MCP's tools share: control's options for MCP, the caller's role, and the context built once
@@ -80,6 +80,8 @@ export interface ToolContext {
   ) => (args: A) => Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }>;
   /** A rig's view, or an error that names it. */
   view: (rig: string) => RigView;
+  /** A run wherever it ran (goal 170), with its rig's view, or an error that names it. */
+  run: (run: string) => RunOnRig;
 }
 
 export function toolContext(
@@ -109,14 +111,20 @@ export function toolContext(
       }
     };
   };
+  const viewOpts = {
+    staleAfterMs: opts.staleAfterMs,
+    offlineAfterMs: opts.offlineAfterMs,
+    control: opts.control,
+  };
   const view = (rig: string) => {
-    const v = rigView(store, rig, {
-      staleAfterMs: opts.staleAfterMs,
-      offlineAfterMs: opts.offlineAfterMs,
-      control: opts.control,
-    });
+    const v = rigView(store, rig, viewOpts);
     if (!v) throw new Error(`no rig ${rig}`);
     return v;
   };
-  return { server, store, opts, actor, role, canCommand, kinds, audited, view };
+  const run = (id: string) => {
+    const x = findRun(store, id, viewOpts);
+    if (!x) throw new Error(`no run ${id}`);
+    return x;
+  };
+  return { server, store, opts, actor, role, canCommand, kinds, audited, view, run };
 }

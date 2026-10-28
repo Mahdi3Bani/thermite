@@ -65,6 +65,23 @@ export interface RigView {
   runpod?: RunpodRigView | undefined;
 }
 
+/**
+ * Why a run is an earlier one (goal 170): its rig was retired, or it ran before its rig's full
+ * reset. Control keeps its events; the run takes no more commands.
+ */
+export type Earlier = "retired" | "reset";
+
+/**
+ * A run with the view of the rig it ran on, as of the ledger it ran in: the rig's own view for its
+ * current ledger, else a view of that ledger's events alone.
+ */
+export interface RunOnRig {
+  rig: RigView;
+  run: RunView;
+  /** Null for a run of a rig's current ledger, the rig not retired. */
+  earlier: Earlier | null;
+}
+
 export interface AttemptView {
   id: string;
   run: string;

@@ -12,9 +12,6 @@ import {
   modeName,
   num,
   runCompleted,
-  runHref,
-  runKey,
-  runLiveHref,
   runState,
 } from "../ui/components/index.ts";
 import {
@@ -25,47 +22,64 @@ import {
   runLinesHtml,
 } from "../ui/live.ts";
 import { waitingOn } from "../ui/operator/index.ts";
-import { clip, signed } from "../ui/words/index.ts";
+import {
+  liveHref,
+  RUN_ROUTES,
+  rigHref,
+  rigLiveLinesHref,
+  runHref,
+  runLiveHref,
+  runLiveLinesHref,
+  runMessageHref,
+} from "../ui/urls.ts";
+import { clip, earlierWords, signed } from "../ui/words/index.ts";
 import {
   currentChampion,
   podStopped,
   type RigView,
+  type RunOnRig,
   type RunView,
   runCampaign,
 } from "../views/index.ts";
-import { type Dashboard, wantsJson } from "./context.ts";
+import { type Ctx, type Dashboard, wantsJson } from "./context.ts";
 
 /**
- * Live, one run at a time (goal 063), and one rig's sessions over every run, with the owner's
- * messages to them.
+ * Live, one run at a time (goal 063), under the run's address, with the owner's messages to its
+ * agents; and one rig's sessions over every run.
  */
 export function liveRoutes(app: Hono, dash: Dashboard): void {
-  const { cmdForm, csrf, moreMenu, opts, page, pauseMenu, store, views } = dash;
+  const { cmdForm, csrf, moreMenu, opts, page, pauseMenu, runOf, store, views } = dash;
+  /** The run a route names, under the campaign it names (goal 170). */
+  const named = (c: Ctx) => runOf(c.req.param("campaign") ?? "", c.req.param("run") ?? "");
 
   // ---------------------------------------------------------------- live, one run at a time (goal 063)
   /**
    * Live: the runs at work on the left; one run's stream in the middle, with filters for each
    * lane, the planner, the judge, the advisors and the owner's own messages; under it, one
-   * message box that writes to the lane being watched.
+   * message box that writes to the lane being watched. `chosen`: the run the address names,
+   * wherever it ran (an earlier run takes no messages); none, the first run at work.
    */
-  app.get("/ui/live", (c) => {
+  const livePage = (c: Ctx, chosen?: RunOnRig) => {
     const vs = views();
     const now = Date.now();
     const all = vs.flatMap((u) => u.runs.map((r) => ({ u, r })));
     const atWork = all.filter((x) => x.r.status === "running");
-    const wanted = c.req.query("run");
-    const sel =
-      (wanted ? all.find((x) => runKey(x.u.id, x.r.id) === wanted) : undefined) ?? atWork[0];
+    const first = atWork[0];
+    const sel = chosen
+      ? { u: chosen.rig, r: chosen.run, earlier: chosen.earlier }
+      : first
+        ? { ...first, earlier: null }
+        : undefined;
     const day = now - 24 * 3600_000;
     const ended = all
       .filter((x) => x.r.status !== "running" && Date.parse(lastActivity(x.r)) > day)
       .sort((a, b) => lastActivity(b.r).localeCompare(lastActivity(a.r)));
     const idle = vs.filter((u) => !u.runs.some((r) => r.status === "running"));
     const runLink = (x: { u: RigView; r: RunView }, sub: string, cls = "") =>
-      `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.u.id, x.r.id)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
+      `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.r)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
     const nav = `<nav class="lruns" aria-label="Runs" data-part="lruns">
 <div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r, x.u) ? ` · <span class="warn">${waitingOn(x.r, x.u)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
-${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
+${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="${rigHref(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
 ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${runCompleted(x.r) ? "completed" : x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
 </nav>`;
     if (!sel)
@@ -90,7 +104,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const w = c.req.query("w") || "all";
     // The filters: everyone, each lane (working or not), the planner, the judge, the advisors, you.
     const chip = (key: string, label: string, title = "", working = false) =>
-      `<a class="lchip${w === key ? " on" : ""}" data-w="${esc(key)}" href="${runLiveHref(u.id, r.id, key === "all" ? "" : `&w=${encodeURIComponent(key)}`)}"${title ? ` title="${esc(title)}"` : ""}>${working ? `<span class="dot ok"></span>` : ""}${esc(label)}</a>`;
+      `<a class="lchip${w === key ? " on" : ""}" data-w="${esc(key)}" href="${runLiveHref(r, { w: key })}"${title ? ` title="${esc(title)}"` : ""}>${working ? `<span class="dot ok"></span>` : ""}${esc(label)}</a>`;
     const chips = [
       chip("all", "Everyone"),
       ...lanes.map((l) => {
@@ -112,7 +126,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       ? `<details class="lkept"><summary class="lchip" title="Your messages kept in force">📌 ${kept.length} kept</summary><div class="menu-pop"><div class="muted small">Every new trial gets these, until you remove them.</div>${kept
           .map(
             (m) =>
-              `<div class="krow"><span class="small"><b>To ${esc(m.to === "all" ? "everyone" : m.to)}:</b> ${esc(clip(m.text, 200))}</span>${cmdForm(c, { rig: u.id, kind: "unkeep_message", fields: { run: r.id, message: String(m.id) }, label: "Remove", cls: "sm ghost", back: runLiveHref(u.id, r.id) })}</div>`,
+              `<div class="krow"><span class="small"><b>To ${esc(m.to === "all" ? "everyone" : m.to)}:</b> ${esc(clip(m.text, 200))}</span>${cmdForm(c, { rig: u.id, kind: "unkeep_message", fields: { run: r.id, message: String(m.id) }, label: "Remove", cls: "sm ghost", back: runLiveHref(r) })}</div>`,
           )
           .join("")}</div></details>`
       : "";
@@ -164,10 +178,11 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       refused || rigRefused
         ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(refused || `The rig refused your last message: ${rigRefused}`)}</span></div>`
         : "";
-    const box =
-      r.status === "closed"
+    const box = sel.earlier
+      ? `<div class="lcomposer off">This is an earlier run (${esc(earlierWords(u.id, sel.earlier))}): its agents take no more messages.</div>`
+      : r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
-        : `<form class="lcomposer" method="post" action="/ui/live/message" data-act><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
+        : `<form class="lcomposer" method="post" action="${esc(runMessageHref(r))}" data-act><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="w" value="${esc(w)}">
 <select name="to" aria-label="To" class="lto">${opt("all", "To everyone working", off("all"))}${lanes.map((l) => opt(l, `To ${l}`, off(l))).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("review_panel", "To the review panel", off("review_panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
 <textarea name="text" rows="1" required data-words maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
@@ -181,26 +196,31 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
           ? `${r.goals.filter((g) => g.status === "met").length} of ${r.goals.length} goals met`
           : signed((currentChampion(r)?.cumulative ?? 1) - 1),
       waitingOn(r, u)
-        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r, u)} wait${waitingOn(r, u) === 1 ? "s" : ""} for you</a>`
+        ? `<a class="warn" href="${runHref(r)}#needs">${waitingOn(r, u)} wait${waitingOn(r, u) === 1 ? "s" : ""} for you</a>`
         : "",
     ]
       .filter(Boolean)
       .join(" · ");
-    const st = runState(r);
-    const head = `<div data-part="lhead"><div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
-      r.status === "running"
-        ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm") +
-          moreMenu(c, u.id, r, runLiveHref(u.id, r.id), "sm")
-        : r.status === "paused"
-          ? cmdForm(c, {
-              rig: u.id,
-              kind: "resume_run",
-              fields: { run: r.id },
-              label: "Resume",
-              cls: "sm",
-              back: runLiveHref(u.id, r.id),
-            })
-          : ""
+    const st =
+      sel.earlier && r.status !== "closed"
+        ? { text: "Stopped", cls: "muted", icon: "" }
+        : runState(r);
+    const head = `<div data-part="lhead"><div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(r)}">Open the run</a>${
+      sel.earlier
+        ? ""
+        : r.status === "running"
+          ? pauseMenu(c, u.id, r.id, runLiveHref(r), "sm") +
+            moreMenu(c, u.id, r, runLiveHref(r), "sm")
+          : r.status === "paused"
+            ? cmdForm(c, {
+                rig: u.id,
+                kind: "resume_run",
+                fields: { run: r.id },
+                label: "Resume",
+                cls: "sm",
+                back: runLiveHref(r),
+              })
+            : ""
     }</div></div>`;
     return page(
       c,
@@ -211,16 +231,29 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         flush: true,
       },
       `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div data-fw-top></div><div class="lchips">${chips}<span class="grow"></span><span data-part="lkept">${keptBox}</span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
-<div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.rigEvents.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
+<div class="transcript lstream" id="transcript" data-poll="${esc(runLiveLinesHref(r))}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.rigEvents.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
 <div data-part="lnotice">${notice}</div>${box}</section></div>`,
       vs,
     );
+  };
+  app.get("/ui/live", (c) => livePage(c));
+  app.get(RUN_ROUTES.live, (c) => {
+    const x = named(c);
+    if (x) return livePage(c, x);
+    c.status(404);
+    return page(
+      c,
+      { title: "Not found", active: "live" },
+      `<div class="card"><div class="empty">No such run in this campaign.</div></div>`,
+    );
   });
 
-  app.get("/ui/live.json", (c) => {
+  app.get(RUN_ROUTES.liveLines, (c) => {
     const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
-    const [rig, run] = String(c.req.query("run") ?? "").split("/");
-    if (!rig || !run) return c.json({ entries: [] });
+    const x = named(c);
+    if (!x) return c.json({ error: "no such run in this campaign" }, 404);
+    const rig = x.rig.id;
+    const run = x.run.id;
     const now = Date.now();
     const messages = store.rigEvents.runMessages(rig, run);
     const entries = store.liveLines.ofRun(rig, run, after, 500).map((e) => ({
@@ -240,27 +273,26 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       ? store.liveLines
           .ofRun(rig, run, 0, 50, ids)
           .map((e) => ({ id: e.id, html: runEntryHtml(e, now, messages) }))
-          .filter((x) => !x.html.includes('data-recheck="1"'))
+          .filter((y) => !y.html.includes('data-recheck="1"'))
       : [];
     return c.json({ entries, redrawn });
   });
 
-  app.post("/ui/live/message", async (c) => {
+  // The owner's message to a run's agents, from its Live and its Planner tab: a signed command
+  // to the rig the run is on.
+  app.post(RUN_ROUTES.message, async (c) => {
     const f = await c.req.parseBody();
-    const rig = String(f.rig ?? "");
-    const run = String(f.run ?? "");
+    const x = named(c);
+    if (!x) return c.text("No such run in this campaign.", 404);
     const w = String(f.w ?? "");
     // From the Planner tab, back there; from Live, to the same filter.
     const from = String(f.back ?? "");
+    const live = runLiveHref(x.run, { w });
     const back = (more = "") =>
       c.redirect(
         from.startsWith("/ui/")
-          ? `${from}${from.includes("?") ? "&" : "?"}${more ? more.slice(1) : `sent=${encodeURIComponent("Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.")}`}`
-          : runLiveHref(
-              rig,
-              run,
-              `${w && w !== "all" ? `&w=${encodeURIComponent(w)}` : ""}${more}`,
-            ),
+          ? `${from}${from.includes("?") ? "&" : "?"}${more || `sent=${encodeURIComponent("Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.")}`}`
+          : `${live}${more ? `${live.includes("?") ? "&" : "?"}${more}` : ""}`,
         303,
       );
     const to = String(f.to ?? "all");
@@ -270,14 +302,19 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     let id: string;
     try {
       ({ id } = issueCommand(store, opts.privateKeyPem, {
-        rig,
+        rig: x.rig.id,
         kind: "message_agent",
-        payload: { run, to, text: String(f.text ?? "").trim(), ...(keep ? { keep: true } : {}) },
+        payload: {
+          run: x.run.id,
+          to,
+          text: String(f.text ?? "").trim(),
+          ...(keep ? { keep: true } : {}),
+        },
         issuedBy: "owner:ui",
       }));
     } catch (err) {
       const why = errorText(err);
-      return json ? c.json(notSent(why), 400) : back(`&msgerror=${encodeURIComponent(why)}`);
+      return json ? c.json(notSent(why), 400) : back(`msgerror=${encodeURIComponent(why)}`);
     }
     const cmd = json ? store.commands.row(id) : undefined;
     if (cmd) return c.json({ ...commandProgress(cmd, Date.now()), follow: commandFollowUrl(id) });
@@ -330,10 +367,10 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     );
     const ended = new Map(sources.map((x) => [x.source, x.ended || !atWork.has(x.source)]));
     const list = [
-      `<a class="side-row${source ? "" : " on"}" href="/ui/rigs/${encodeURIComponent(u.id)}/live">${icon.live}<span class="two"><span class="name"><b>Everything</b></span><span class="muted xs">all sessions, interleaved</span></span></a>`,
+      `<a class="side-row${source ? "" : " on"}" href="${liveHref(u.id)}">${icon.live}<span class="two"><span class="name"><b>Everything</b></span><span class="muted xs">all sessions, interleaved</span></span></a>`,
       ...sources.map(
         (s) =>
-          `<a class="side-row${s.source === source ? " on" : ""}" href="/ui/rigs/${encodeURIComponent(u.id)}/live?source=${encodeURIComponent(s.source)}">${sourceAvatar(s.source)}<span class="two"><span class="name"><b>${esc(sourceName(s.source, s.lane))}</b></span><span class="muted xs clip">${esc([intros.get(s.source) || (s.source.startsWith("trial:") ? s.source.slice(6) : (s.run ?? "")), `${ago(s.last_at, now)} ago`].filter(Boolean).join(" · "))}</span></span>${s.source.startsWith("trial:") ? `<span class="right">${ended.get(s.source) ? `<span class="muted xs">ended</span>` : `<span class="label info xs"><span class="dot info pulse"></span>working</span>`}</span>` : ""}</a>`,
+          `<a class="side-row${s.source === source ? " on" : ""}" href="${liveHref(u.id, s.source)}">${sourceAvatar(s.source)}<span class="two"><span class="name"><b>${esc(sourceName(s.source, s.lane))}</b></span><span class="muted xs clip">${esc([intros.get(s.source) || (s.source.startsWith("trial:") ? s.source.slice(6) : (s.run ?? "")), `${ago(s.last_at, now)} ago`].filter(Boolean).join(" · "))}</span></span>${s.source.startsWith("trial:") ? `<span class="right">${ended.get(s.source) ? `<span class="muted xs">ended</span>` : `<span class="label info xs"><span class="dot info pulse"></span>working</span>`}</span>` : ""}</a>`,
       ),
     ].join("");
     // Lines with their times, formatted once (ui/live.ts); the script adds new ones the same way.
@@ -360,7 +397,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const composer = u.runs.filter((x) => x.status !== "closed").length
       ? `<div class="composer off">To message an agent, open its run's Live: ${u.runs
           .filter((x) => x.status !== "closed")
-          .map((x) => `<a href="${runLiveHref(u.id, x.id)}">${esc(x.id)}</a>`)
+          .map((x) => `<a href="${runLiveHref(x)}">${esc(x.id)}</a>`)
           .join(", ")}.</div>`
       : `<div class="composer off">No run on this rig to message.</div>`;
     const title = source ? sourceName(source, sel?.lane) : "Everything";
@@ -370,7 +407,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         title,
         crumbs: [
           { href: "/ui/live", text: "Live" },
-          { href: `/ui/rigs/${encodeURIComponent(u.id)}`, text: u.id },
+          { href: rigHref(u.id), text: u.id },
         ],
         summary: source.startsWith("trial:")
           ? (() => {
@@ -378,7 +415,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
               const run = sel?.run ? u.runs.find((i) => i.id === sel.run) : undefined;
               return [
                 run
-                  ? `<a href="${runHref(u.id, run)}">${esc(runCampaign(run))} › ${esc(run.id)}</a>`
+                  ? `<a href="${runHref(run)}">${esc(runCampaign(run))} › ${esc(run.id)}</a>`
                   : esc(sel?.run ?? ""),
                 esc(sel?.lane ?? ""),
                 esc(source.slice(6)),
@@ -393,7 +430,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         flush: true,
       },
       `<aside class="sessions"><div class="section" style="margin-top:4px">Sessions</div>${list}</aside>
-<div class="transcript-wrap">${head}<div class="transcript" id="transcript" data-rig="${esc(u.id)}" data-source="${esc(source)}" data-after="${after}">${out.join("") || `<div class="empty">No live lines yet. They appear here as the rig's agents and judge work.</div>`}</div>${composer}</div>`,
+<div class="transcript-wrap">${head}<div class="transcript" id="transcript" data-poll="${esc(rigLiveLinesHref(u.id))}" data-source="${esc(source)}" data-after="${after}">${out.join("") || `<div class="empty">No live lines yet. They appear here as the rig's agents and judge work.</div>`}</div>${composer}</div>`,
       vs,
     );
   });
@@ -410,29 +447,5 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
     }));
     return c.json({ entries });
-  });
-
-  app.post("/ui/rigs/:rig/message", async (c) => {
-    const rig = c.req.param("rig");
-    const f = await c.req.parseBody();
-    const source = String(f.source ?? "");
-    try {
-      issueCommand(store, opts.privateKeyPem, {
-        rig,
-        kind: "message_agent",
-        payload: {
-          run: String(f.run ?? ""),
-          to: String(f.to ?? ""),
-          text: String(f.text ?? "").trim(),
-        },
-        issuedBy: "owner:ui",
-      });
-    } catch (err) {
-      return c.text(`refused: ${errorText(err)}`, 400);
-    }
-    return c.redirect(
-      `/ui/rigs/${encodeURIComponent(rig)}/live${source ? `?source=${encodeURIComponent(source)}` : ""}`,
-      303,
-    );
   });
 }

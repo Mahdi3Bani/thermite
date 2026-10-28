@@ -1,5 +1,6 @@
-import type { AttemptView, RigView, RunView } from "../../views/index.ts";
-import { ago, attemptHref, esc, gainChip, measuredWords } from "../components/index.ts";
+import type { AttemptView, RunView } from "../../views/index.ts";
+import { ago, esc, gainChip, measuredWords } from "../components/index.ts";
+import { attemptHref } from "../urls.ts";
 import { clip, listText, runStatusText, signed, verdictText } from "../words/index.ts";
 
 /**
@@ -44,12 +45,7 @@ export function evidence(r: RunView, a: AttemptView): string {
 export const cap = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
 
 /** "The change" for a decision: hypothesis, who made it, on what. */
-export function changeFacts(
-  u: RigView,
-  r: RunView,
-  a: AttemptView | undefined,
-  id: string,
-): string {
+export function changeFacts(r: RunView, a: AttemptView | undefined, id: string): string {
   if (!a)
     return `<dt>The change</dt><dd><code>${esc(id)}</code> <span class="muted">(no details reported)</span></dd>`;
   const who = [
@@ -79,7 +75,7 @@ export function changeFacts(
     : "";
   // The row says what the change does in plain words; the agent's own account is quoted here.
   const own = a.hypothesis ? `<div class="quote">${esc(a.hypothesis)}</div>` : "";
-  return `<dt>What the agent says that it did</dt><dd>${own}<div class="small">${who} · <a href="${attemptHref(u.id, a.id)}">${esc(a.id)}</a></div></dd>${files}
+  return `<dt>What the agent says that it did</dt><dd>${own}<div class="small">${who} · <a href="${attemptHref(r, a.id)}">${esc(a.id)}</a></div></dd>${files}
 <dt>What the judge found</dt><dd>${esc(evidence(r, a))}${reasons}</dd>${flaws}${
     r.status === "running"
       ? ""

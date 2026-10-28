@@ -10,7 +10,8 @@ export const CLIENT_JS = `
   // ------------------------------------------------ the live view
   const tr = $("#transcript");
   if (tr) {
-    const rig = tr.dataset.rig, source = tr.dataset.source || "", run = tr.dataset.run || "";
+    // Where the page's lines come from (control's address for them), and whose they are.
+    const lines = tr.dataset.poll || "", source = tr.dataset.source || "", run = tr.dataset.run || "";
     let after = Number(tr.dataset.after || "0");
     let follow = true;
     const near = () => tr.scrollHeight - tr.scrollTop - tr.clientHeight < 120;
@@ -64,13 +65,11 @@ export const CLIENT_JS = `
       if (document.visibilityState !== "visible") return;
       try {
         const q = new URLSearchParams({ after: String(after) });
-        let url;
         // Lines waiting for their event, to be drawn again once control has it.
         const waiting = run ? [...tr.querySelectorAll("[data-recheck]")].map((el) => el.dataset.id).filter(Boolean).slice(-50) : [];
         if (waiting.length) q.set("recheck", waiting.join(","));
-        if (run) { q.set("run", rig + "/" + run); url = "/ui/live.json?" + q; }
-        else { if (source) q.set("source", source); url = "/ui/rigs/" + encodeURIComponent(rig) + "/live.json?" + q; }
-        const res = await fetch(url, { credentials: "same-origin" });
+        if (!run && source) q.set("source", source);
+        const res = await fetch(lines + "?" + q, { credentials: "same-origin" });
         if (!res.ok) return;
         const body = await res.json();
         const stick = follow && near();

@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { copiedFromRecords, untriedOf } from "../campaigns/index.ts";
 import { cursorOf } from "../store/index.ts";
-import { rigView } from "../views/index.ts";
+import { findRun, rigView } from "../views/index.ts";
 import { type ApiContext, clampLimit } from "./context.ts";
 import { runRoutes } from "./runs.ts";
 
@@ -41,7 +41,7 @@ export function rigRecordRoutes(app: Hono, api: ApiContext): void {
   });
 }
 
-/** Control's audit log, a page at a time; a rig's view; and one run of it (api/runs.ts). */
+/** Control's audit log, a page at a time; a rig's view; and one run by its name (api/runs.ts). */
 export function recordRoutes(app: Hono, api: ApiContext): void {
   const { store, viewOpts, admin } = api;
 
@@ -67,14 +67,12 @@ export function recordRoutes(app: Hono, api: ApiContext): void {
     return v ? c.json(v) : c.json({ error: "not found" }, 404);
   });
 
-  // One run: the run itself, of a size an agent can read, its untried experiments and its
-  // directions (src/control/api/runs.ts).
+  // One run by its name, wherever it ran: the run itself, of a size an agent can read, one of
+  // its attempts, its untried experiments, its directions and its champions' patches
+  // (src/control/api/runs.ts).
   runRoutes(app, admin, {
-    find: (rig, run) => {
-      const v = rigView(store, rig, viewOpts);
-      const r = v?.runs.find((x) => x.id === run);
-      return r ? { run: r } : { error: v ? `no run ${run} on ${rig}` : `no rig ${rig}` };
-    },
+    store,
+    find: (run) => findRun(store, run, viewOpts),
     untried: (r, campaign) => copiedFromRecords(store, campaign, untriedOf(r).slice(0, 500)),
   });
 }

@@ -184,7 +184,7 @@ describe("model usage sums", () => {
         row({ agent: "workers", harness: "codex", model: "m-1" }),
         row({ agent: "workers", model: "m-1", tokens_in: 9000 }),
       ],
-      { kind: "run", run: "run-1", rig: null },
+      { kind: "run", run: "run-1" },
       "all",
       null,
     );

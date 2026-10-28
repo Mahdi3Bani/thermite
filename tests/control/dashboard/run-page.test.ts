@@ -12,8 +12,8 @@ describe("control dashboard", () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
-    const tab = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=experiments";
-    const plan = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner";
+    const tab = "/ui/campaigns/js-sum/runs/js-1/experiments";
+    const plan = "/ui/campaigns/js-sum/runs/js-1/planner";
     const send = async (form: Record<string, string>) => {
       const r = await s.post("/ui/commands", {
         rig: "rig-a",
@@ -124,9 +124,9 @@ describe("control dashboard", () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
-    const page = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1")).text();
+    const page = await (await s.get("/ui/campaigns/js-sum/runs/js-1")).text();
     assert.match(page, /<dt>Agents<\/dt><dd>On: they start work at the first round<\/dd>/);
-    assert.match(page, /&compose=1">Message<\/a>/);
+    assert.match(page, /\/live\?compose=1">Message<\/a>/);
     assert.match(page, /Restart the lanes/);
     // Restart the lanes, and a change on Edit rig, each leave a line in the run's History.
     const csrf = s.csrfFrom(page);
@@ -138,13 +138,11 @@ describe("control dashboard", () => {
     await s.post("/ui/rigs/rig-a/edit", form);
     await s.relay();
     await s.relay();
-    const history = await (
-      await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=history")
-    ).text();
+    const history = await (await s.get("/ui/campaigns/js-sum/runs/js-1/history")).text();
     assert.match(history, /You restarted the lanes: their trials ended/);
     assert.match(history, /You changed the rig's settings: [^<]*the planner off/);
-    // Another run assigned through control: the campaign's page says it is starting until the
-    // rig reports it; a link to a run control never assigned says nothing.
+    // Another run assigned through control: its own page (goal 170) says it is starting until
+    // the rig reports it; a link to a run control never assigned finds no run.
     const payload = (s.env.assign as { envelope: { payload: Record<string, unknown> } }).envelope
       .payload;
     const r = await s.control.request("/v1/commands", {
@@ -157,18 +155,19 @@ describe("control dashboard", () => {
       }),
     });
     assert.equal(r.status, 201, await r.clone().text());
-    const starting = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-2")).text();
-    assert.match(starting, /<b>Starting rig-a\/js-2\.<\/b>/);
-    assert.match(starting, /<h2>At work now<\/h2>/);
-    const stale = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-9")).text();
-    assert.doesNotMatch(stale, /Starting/);
+    const starting = await (await s.get("/ui/campaigns/js-sum/runs/js-2")).text();
+    assert.match(starting, /<b>Starting js-2 on rig-a\.<\/b>/);
+    assert.match(await (await s.get("/ui/campaigns/js-sum")).text(), /<h2>At work now<\/h2>/);
+    const stale = await s.get("/ui/campaigns/js-sum/runs/js-9");
+    assert.equal(stale.status, 404);
+    assert.doesNotMatch(await stale.text(), /Starting/);
   });
 
   test("a run without agents: no Message and no Restart the lanes on its page", async () => {
     const s = await stack("owner_approval", { agents: false });
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
-    const page = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1")).text();
+    const page = await (await s.get("/ui/campaigns/js-sum/runs/js-1")).text();
     assert.match(
       page,
       /<dt>Agents<\/dt><dd>None: judge only\. No workers run; changes come from people<\/dd>/,
@@ -176,11 +175,11 @@ describe("control dashboard", () => {
     // It says plainly that it is judge only (goal 099).
     assert.match(page, /<b>Judge only:<\/b> No workers run\./);
     assert.match(page, / · judge only · /);
-    assert.match(page, /<a class="btn" href="\/ui\/live\?run=rig-a%2Fjs-1">/);
+    assert.match(page, /<a class="btn" href="\/ui\/campaigns\/js-sum\/runs\/js-1\/live">/);
     assert.doesNotMatch(page, />Message<\/a>/);
     assert.doesNotMatch(page, /Restart the lanes/);
     // An experiment in its queue waits for a run with workers; the queue says how to carry it.
-    const tab = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=experiments";
+    const tab = "/ui/campaigns/js-sum/runs/js-1/experiments";
     assert.doesNotMatch(await (await s.get(tab)).text(), /no worker takes these experiments/);
     const added = await s.post("/ui/commands", {
       rig: "rig-a",
@@ -195,10 +194,10 @@ describe("control dashboard", () => {
     await s.relay();
     assert.match(
       await (await s.get(tab)).text(),
-      /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/js-sum\?start=1&amp;copy=rig-a%2Fjs-1">Start a run<\/a>/,
+      /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/js-sum\?start=1&amp;copy=js-1">Start a run<\/a>/,
     );
     // Its Live: everyone working and the lanes are greyed out, and the box starts elsewhere.
-    const live = await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text();
+    const live = await (await s.get("/ui/campaigns/js-sum/runs/js-1/live")).text();
     assert.match(
       live,
       /<option value="all" data-hint="[^"]*" disabled title="This run has no agents[^"]*">To everyone working<\/option>/,

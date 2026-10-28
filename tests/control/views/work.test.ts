@@ -69,7 +69,7 @@ describe("what each lane's trial is doing, in at_work (goal 143)", () => {
         },
       },
     });
-    const run = (await c.mcp("get_run", { rig: "rig-a", run: "s-1" })) as {
+    const run = (await c.mcp("get_run", { run: "s-1" })) as {
       at_work: Record<string, Record<string, unknown>>;
     };
     assert.deepEqual(run.at_work["lane-2"], {
@@ -81,7 +81,7 @@ describe("what each lane's trial is doing, in at_work (goal 143)", () => {
       refused_again: null,
     });
     assert.deepEqual(run.at_work["lane-1"]?.repeating, LOOP.repeating);
-    const queue = (await c.mcp("run_queue", { rig: "rig-a", run: "s-1" })) as {
+    const queue = (await c.mcp("run_queue", { run: "s-1" })) as {
       at_work: Record<string, Record<string, unknown>>;
     };
     assert.deepEqual(queue.at_work["lane-2"]?.reply, QUIET.reply);

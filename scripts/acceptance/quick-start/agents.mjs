@@ -196,7 +196,7 @@ export async function handToAgents({ served, gitDir, gitPort, modelUrl }) {
   );
   check(
     "Start the campaign takes it and starts its first run",
-    started.status === 303 && started.location.includes("?run="),
+    started.status === 303 && started.location.includes("/runs/"),
     {
       status: started.status,
       location: started.location,
@@ -204,11 +204,11 @@ export async function handToAgents({ served, gitDir, gitPort, modelUrl }) {
     },
   );
   check(
-    "the campaign's page says what the page quotes",
+    "the run's page says what the page quotes",
     (await words(started.location.replace(control, ""))).includes(plan.agents.starting),
     plan.agents.starting,
   );
-  const run = /Starting [^/]+\/(\S+)\.$/.exec(plan.agents.starting)?.[1];
+  const run = /^Starting (\S+) on \S+\.$/.exec(plan.agents.starting)?.[1];
   const created = await until(
     "the run starts on the rig",
     async () => (await events()).find((e) => e.kind === "run_created" && e.subject === run),
@@ -248,7 +248,7 @@ export async function handToAgents({ served, gitDir, gitPort, modelUrl }) {
   });
 
   section("Hand the work to agents, 11: pause the campaign");
-  const runPath = `/ui/campaigns/${encodeURIComponent(plan.agents.campaign)}?run=${encodeURIComponent(`${rig}/${run}`)}`;
+  const runPath = `/ui/campaigns/${encodeURIComponent(plan.agents.campaign)}/runs/${encodeURIComponent(run)}`;
   const runPage = await page(runPath);
   const paused = await press(runPage.html, plan.agents.pause, `value="${run}"`, {
     reason: plan.agents.pauseReason,

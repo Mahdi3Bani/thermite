@@ -56,16 +56,9 @@ export function runStartBody(o: RunStartOptions): Record<string, unknown> {
       "--provider and --model go together: the agents' model is one of a provider's models",
     );
   const ask = askOwnerOption(o.ask);
-  let queueFrom: { rig: string; run: string } | undefined;
-  const from = o["queue-from"];
-  if (from !== undefined) {
-    // RUN alone is a run on --rig, as for thermite assign --queue-from.
-    const slash = from.indexOf("/");
-    const run = from.slice(slash + 1);
-    const rig = slash >= 0 ? from.slice(0, slash) : o.rig;
-    if (!run || !rig) throw new Error("--queue-from names a run: RUN or RIG/RUN");
-    queueFrom = { rig, run };
-  }
+  // A run by its name alone, wherever it ran (goal 170), as for thermite assign --queue-from.
+  const queueFrom = o["queue-from"];
+  if (queueFrom === "") throw new Error("--queue-from names a run");
   return {
     rig: o.rig,
     ...(o.agents === "off" ? { agents: false } : {}),

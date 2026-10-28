@@ -33,23 +33,23 @@ test("a judge-only run's queue says no worker takes it, and how to carry it to a
       at_work: {},
     } as Partial<RunView>);
   const LINE =
-    /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/quality\?start=1&amp;copy=rig-a%2Fq-1">Start a run<\/a> of the campaign with <b>Copy the untried experiments of<\/b> q-1 ticked\./;
+    /<b>Judge only:<\/b> no worker takes these experiments, so they wait for a run with workers\. To carry them over, <a href="\/ui\/campaigns\/quality\?start=1&amp;copy=q-1">Start a run<\/a> of the campaign with <b>Copy the untried experiments of<\/b> q-1 ticked\./;
   const tab = (r: RunView) =>
     experimentsTab({
       u: rig,
       r,
       now: Date.parse("2026-10-22T00:00:00Z"),
       csrf: "c",
-      back: "/ui/campaigns/quality?run=rig-a%2Fq-1&view=experiments",
+      back: "/ui/campaigns/quality/runs/q-1/experiments",
       cmd: () => "",
       families: [],
     });
   assert.match(tab(run(false, waiting("queued"))), LINE);
-  assert.match(judgeOnlyQueueLine(rig, run(false, waiting("proposed"))), LINE);
+  assert.match(judgeOnlyQueueLine(run(false, waiting("proposed"))), LINE);
   // A run with workers, or nothing waiting: no line.
   assert.doesNotMatch(tab(run(true, waiting("queued"))), /Judge only/);
-  assert.equal(judgeOnlyQueueLine(rig, run(false, [])), "");
-  assert.equal(judgeOnlyQueueLine(rig, run(false, waiting("done"))), "");
+  assert.equal(judgeOnlyQueueLine(run(false, [])), "");
+  assert.equal(judgeOnlyQueueLine(run(false, waiting("done"))), "");
 });
 
 test("the Planner tab counts rounds, and says plainly when the planner is off", async () => {
@@ -69,7 +69,7 @@ test("the Planner tab counts rounds, and says plainly when the planner is off", 
       } as unknown as RunView,
       now: Date.parse("2026-10-20T01:00:00Z"),
       csrf: "c",
-      back: "/ui/campaigns/x?run=rig-a%2Fr-1&view=planner",
+      back: "/ui/campaigns/x/runs/r-1/planner",
       cmd: () => "",
       model: "m",
       figures: "",

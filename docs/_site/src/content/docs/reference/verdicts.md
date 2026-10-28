@@ -194,7 +194,7 @@ The violations go everywhere the change is looked at, not only to the trial that
 - **The submitting trial** gets them all in its answer (`violations`).
 - **The attempt's event**, `attempt_recorded`, has the first 20, each cut to 300 characters, in `violations`, and how many there were in `violations_total`. Control reads them from there.
 - **On the dashboard**, the attempt's page lists them under **Refused before building**, with `and <n> more` past the first 20, and the run's **History** says `The static checks refused it: <the first one>, and <n> more.`
-- **Over REST and MCP**, each attempt in [`get_run`](mcp-tools.md#get_run) and in `GET /v1/rigs/<rig>/view` has `violations` and `violations_total`.
+- **Over REST and MCP**, each attempt in [`get_run`](mcp-tools.md#get_run), [`get_attempt`](mcp-tools.md#get_attempt), `GET /v1/runs/<run>` and `GET /v1/rigs/<rig>/view` has `violations` and `violations_total`.
 - **In the knowledge base**, the attempt's item says `Refused before building: …` ([Knowledge base](knowledge-base.md)).
 - **The agents** see them too: a lane's brief lists its recent attempts, a refused one with `Refused before building: …` (the first 20); the planner's and the teachers' evidence give each refused attempt's first 5 under `refused`, with `total`; and a worker's `status` of any attempt of its campaign answers with all of them.
 
@@ -283,7 +283,7 @@ A run's page and its **Live** header show the run with one label: the first that
 
 What waits in a paused run still shows in **Needs you**, as for a running one. What waited in a closed run does not.
 
-A campaign's page lists its paused and closed runs under **Earlier runs**, with the state **Paused**, **Completed** or **Finished** and, under **Why it stopped**, the reason the run recorded.
+A campaign's page lists its paused and closed runs under **Earlier runs**, with the state **Paused**, **Completed** or **Finished** and, under **Why it stopped**, the reason the run recorded. A run of a retired rig, or from before its rig's full reset, is there too, with its rig marked `on <rig>, retired` or `before <rig>'s full reset`; one that was not closed has the state **Stopped**, since it runs no more.
 
 ### Judge-only runs
 

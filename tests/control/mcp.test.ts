@@ -43,9 +43,7 @@ describe("control over MCP", () => {
     assert.ok(readerTools.includes("list_rigs"));
     assert.ok(readerTools.includes("rig_setup") && readerTools.includes("trial_session"));
     // A reader sees a run's queue, its rules, hand-outs and messages (goal 064).
-    const queue = text(
-      await reader.callTool({ name: "run_queue", arguments: { rig: "rig-a", run: "js-1" } }),
-    );
+    const queue = text(await reader.callTool({ name: "run_queue", arguments: { run: "js-1" } }));
     assert.equal(queue.run, "js-1");
     assert.deepEqual(queue.up_next, []);
     assert.ok(Array.isArray(queue.rules));

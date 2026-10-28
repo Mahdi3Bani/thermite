@@ -1,12 +1,16 @@
 import type { ControlStore } from "../store/index.ts";
 import { runCampaign } from "./facts.ts";
-import type { RigView, RunView } from "./types.ts";
+import type { Earlier, RigView, RunView } from "./types.ts";
 
-/** A campaign and its runs on every rig: the dashboard's first level. */
+/**
+ * A campaign and its runs on every rig: the dashboard's first level. A run is `earlier` (goal 170)
+ * on a campaign's page, which reads its runs from control's run registry; the lists made from the
+ * rigs' views have only their current runs.
+ */
 export interface CampaignView {
   name: string;
   mode: string | null;
-  runs: { rig: RigView; run: RunView }[];
+  runs: { rig: RigView; run: RunView; earlier?: Earlier | null }[];
 }
 
 /**

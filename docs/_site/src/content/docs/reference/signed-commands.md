@@ -32,7 +32,7 @@ Commands come from the dashboard, the [REST API](rest-api.md), the [command line
 | --- | --- | --- |
 | `envelope.v` | `1` | The format's version |
 | `envelope.id` | UUID | The command's id. Control makes it |
-| `envelope.rig` | text | The one rig that may apply it |
+| `envelope.rig` | text | The one rig that may apply it. For a kind about one run, control sets it to the rig the run is on: see [A command about one run](#a-command-about-one-run) |
 | `envelope.kind` | text | One of the [kinds](#every-kind) below |
 | `envelope.issued_by` | text | Who issued it, as control knows them: `owner:ui`, `owner:api`, `owner:mcp`, `owner:operator`, `agent:mcp`, or the owner's actor for a full reset's steps. See [Tokens and roles](tokens.md#in-the-audit-log). The caller cannot choose it |
 | `envelope.issued_at` | ISO 8601 time | When control signed it, by control's clock |
@@ -46,7 +46,7 @@ Control's key pair is `control-signing.key` and `control-signing.pub` in control
 
 | Step | Where | What happens |
 | --- | --- | --- |
-| 1. Issue | Control | Control checks that it knows the rig (it has reported and is not retired, is enrolled, or is in the rig tokens file), checks the payload against the kind's schema, signs the envelope and stores the command as `pending`. For a `message_agent`, it first trims the text and refuses a message that nothing on the rig would read (see [`message_agent`](#message_agent)). A signed command larger than 3.5 MiB is refused: `the <kind> command is too large to deliver` |
+| 1. Issue | Control | For a kind about one run, control finds the rig the run is on ([below](#a-command-about-one-run)). Control checks that it knows the rig (it has reported and is not retired, is enrolled, or is in the rig tokens file), checks the payload against the kind's schema, signs the envelope and stores the command as `pending`. For a `message_agent`, it first trims the text and refuses a message that nothing on the rig would read (see [`message_agent`](#message_agent)). A signed command larger than 3.5 MiB is refused: `the <kind> command is too large to deliver` |
 | 2. Fetch | Supervisor | The supervisor asks control for its rig's pending commands, oldest first, every `THERMITE_COMMAND_POLL_SECONDS` seconds (default 5). With the [message bus](../explanation/how-the-parts-talk.md#commands-over-the-message-bus), control also publishes the command to the rig's subject, and the supervisor takes it from there at once; it then asks control only every 3 minutes |
 | 3. Stage | Supervisor | If the command names content to fetch (a project, a kit, a model or another rig's champion), the supervisor fetches it into the rig's inbox first. The command stays `pending` while it waits |
 | 4. Apply | Harness | The supervisor posts the command to the harness, which checks it and applies it once |
@@ -54,6 +54,20 @@ Control's key pair is `control-signing.key` and `control-signing.pub` in control
 | 6. Confirm | Control | The harness records each command it applied in its ledger. When the rig's next signed report brings that record, control takes the status and outcome from it, in place of the supervisor's |
 
 `GET /v1/commands/<id>`, the MCP tool `command_status` and the dashboard's **Commands** page, which lists the newest 200 commands, show a command's status and outcome.
+
+### A command about one run
+
+A kind whose payload names a `run` is about that run, except `assign_campaign`, which starts a new run on the rig it names: `pause_run`, `resume_run`, `close_run`, `redirect`, `reset_workers`, `message_agent`, `unkeep_message`, `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept`, `drop_directive`, `hypothesis_status`, `propagate`, `stop_trial`, `approve_promotion`, `decline_promotion`, `accept_review` and `conclude`. A run's name is used once on control, so control knows the rig the run is on, and signs the command for that rig. `POST /v1/commands`, MCP's `issue_command` and `thermite command` may leave the rig out for these kinds; a rig given must be one the run's name is used on. Every other kind names its rig.
+
+Control refuses, before it signs:
+
+| Words | When |
+| --- | --- |
+| `Run <run> is on <rig>, not on <rig>.` | The rig given is not the run's |
+| `Control knows no run <run>: name a run a rig reported.` | No rig given, and no rig created the run or has its assignment on the way |
+| `Run <run> is an earlier run: <rig> is retired, so it takes no commands.` | The run's rig is retired |
+| `Run <run> is an earlier run: it ran on <rig> before the rig's full reset, so it takes no commands.` | The run is of a ledger the rig's full reset left behind |
+| `A <kind> command names its rig: give the rig.` | Any other kind, with no rig |
 
 ### On the dashboard
 
@@ -543,7 +557,7 @@ Another rig's published champion, sent as a candidate for this rig's judge. Cont
 | `source_seq` | positive whole number | The champion's number in that run |
 | `import` | a `champion_patch` [import](#imports) | The champion as a patch, with its path `propagate/<rig>/<run>/<seq>.patch` |
 
-Control refuses to build one: `propagate between two different rigs`, `no run <run> on <rig>`, `the source run has no champion beyond its seed`, `champion seq <n> is not published yet (it is published with the rig's next export)`, `<run> runs <campaign>, not <campaign>`, `the target works on <repo>, the champion is in <repo>`.
+Control builds it from two runs, each named alone: the run whose champion goes and the run that tests it (`{run, to_run}` over REST and MCP); it knows the rig each ran on, and fills in `source_rig`. Control refuses to build one: `no run <run>`, `<run> and <to_run> are on one rig: propagate between two rigs`, `the source run has no champion beyond its seed`, `champion seq <n> is not published yet (it is published with the rig's next export)`, `<run> runs <campaign>, not <campaign>`, `the target works on <repo>, the champion is in <repo>`.
 
 The supervisor takes the patch from the [results repository](../how-to/operate/results-repository.md), and waits while it is not there yet. The harness then refuses: `research campaigns do not take propagations`, `propagate takes a champion_patch import (a published champion)`, `the champion is in <repo>; this run works on <repo>`, `base commit <commit> is not in this rig's repository`, `the champion patch does not apply to the base: …`, `tree mismatch: the signed tree is <tree>, the patch gives <tree>`. If this rig's champion already has the same files, the result is `{"identical": true, "note": "this rig's champion already has the same tree"}`. Otherwise the patch becomes an attempt that this rig's judge measures against its own champion. Result: `{"attempt", "lifecycle", "tree"}`.
 

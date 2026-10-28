@@ -156,12 +156,12 @@ async function stack() {
 
 test("a run's Journal tab: field notes newest first, by writer and kind, linked to what they are about", async () => {
   const s = await stack();
-  const page = await (await s.get("/ui/campaigns/gemv-speed?run=rig-a%2Fgs-3&view=journal")).text();
+  const page = await (await s.get("/ui/campaigns/gemv-speed/runs/gs-3/journal")).text();
   assert.match(
     page,
-    /<a class="on" href="[^"]*view=journal">Journal <span class="muted">3 notes<\/span>/,
+    /<a class="on" href="[^"]*\/journal">Journal <span class="muted">3 notes<\/span>/,
   );
-  assert.match(page, /view=experiments">Experiments/, "the other tabs are still there");
+  assert.match(page, /\/experiments">Experiments/, "the other tabs are still there");
   // Newest first: the teachers' lesson, the planner's observation, then lane-1's decision.
   const list = page.slice(page.indexOf('id="jl"'));
   const order = ["Tiling helps only above", "Nothing queued uses the L2", "Kept the old path"].map(
@@ -176,8 +176,11 @@ test("a run's Journal tab: field notes newest first, by writer and kind, linked 
   assert.match(page, /Kept the old path below n = 4096 &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.ok(!page.includes("<script>alert(1)</script>"));
   // What a note is about: the attempt, and the experiment by its title.
-  assert.match(page, /href="\/ui\/rigs\/rig-a\/attempts\/a-1"><code>a-1<\/code><\/a> vector loads/);
-  assert.match(page, /view=experiments">Tile the vector in shared memory<\/a>/);
+  assert.match(
+    page,
+    /href="\/ui\/campaigns\/gemv-speed\/runs\/gs-3\/attempts\/a-1"><code>a-1<\/code><\/a> vector loads/,
+  );
+  assert.match(page, /\/experiments">Tile the vector in shared memory<\/a>/);
   // Filters by writer and by kind.
   for (const w of ["all", "lane-1", "planner", "teachers"])
     assert.match(page, new RegExp(`data-jw="${w}"`));
@@ -259,9 +262,7 @@ test("a campaign's read grants: forms with the form token, refused for itself, a
   assert.match(other, /Who reads survey-study&#39;s folder|Who reads survey-study's folder/);
   assert.match(other, /#knowledge"><b>gemv-speed<\/b><\/a>/);
   // The Journal's folder card follows the grant.
-  const journal = await (
-    await s.get("/ui/campaigns/gemv-speed?run=rig-a%2Fgs-3&view=journal")
-  ).text();
+  const journal = await (await s.get("/ui/campaigns/gemv-speed/runs/gs-3/journal")).text();
   assert.match(journal, /Its agents also read: <b>survey-study<\/b>/);
   // Removing it: audited too.
   const rm = await s.post("/ui/campaigns/gemv-speed/kb/revoke", {
@@ -297,7 +298,7 @@ test("the Knowledge page: every folder with its counts and grants, and a search 
   assert.match(found, /<b>Finding<\/b> · Self-training helps only where a verifier exists/);
   assert.match(
     found,
-    /<a href="\/ui\/campaigns\/survey-study">survey-study<\/a> · <a href="\/ui\/campaigns\/survey-study\?run=rig-b%2Fsv-2">sv-2<\/a> · by lane-2/,
+    /<a href="\/ui\/campaigns\/survey-study">survey-study<\/a> · <a href="\/ui\/campaigns\/survey-study\/runs\/sv-2">sv-2<\/a> · by lane-2/,
   );
   // By folder, and by kind.
   assert.match(
@@ -380,7 +381,7 @@ test("Start a run from past research: the search reads only granted folders; tic
     ["past", String(finding.id)],
   ]);
   assert.equal(started.status, 303, s.where(started));
-  assert.match(s.where(started), /run=rig-a\/gemv-speed-1$/);
+  assert.match(s.where(started), /\/ui\/campaigns\/gemv-speed\/runs\/gemv-speed-1$/);
   const payload = (
     s.store.db.prepare("select signed from command where kind = 'assign_campaign'").all() as {
       signed: string;
@@ -433,7 +434,7 @@ test("Start a run from past research: the search reads only granted folders; tic
     ["copy_from", "rig-a/gs-3"],
   ]);
   assert.equal(tried.status, 303, s.where(tried));
-  assert.match(s.where(tried), /\?run=rig-a\/gemv-speed-try-\d+$/, "started, with no note");
+  assert.match(s.where(tried), /\/runs\/gemv-speed-try-\d+$/, "started, with no note");
   const ticked = await s.post("/ui/campaigns/gemv-speed/runs", [
     ["csrf", s.csrf],
     ["rig", "rig-a"],

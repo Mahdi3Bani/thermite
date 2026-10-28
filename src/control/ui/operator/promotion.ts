@@ -5,7 +5,8 @@ import {
   type RigView,
   type RunView,
 } from "../../views/index.ts";
-import { attemptHref, card, esc, icon } from "../components/index.ts";
+import { card, esc, icon } from "../components/index.ts";
+import { attemptHref } from "../urls.ts";
 import { clip } from "../words/index.ts";
 import { cap, changeChips, changeFacts, changeHeadline } from "./change.ts";
 import { decidedState } from "./decided.ts";
@@ -95,7 +96,7 @@ export function promotionNeeds(c: NeedsContext, u: RigView, r: RunView): Need[] 
         lane: a?.lane,
         since: w?.at ?? a?.updated_at,
         now,
-        facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${waitWhy(w?.reason)}</dd>`,
+        facts: `${CHAMPION_IS}${changeFacts(r, a, id)}<dt>Why this waits for you</dt><dd>${waitWhy(w?.reason)}</dd>`,
         choices: [
           {
             button: f.cmd({
@@ -122,7 +123,7 @@ export function promotionNeeds(c: NeedsContext, u: RigView, r: RunView): Need[] 
           },
           { label: "Do nothing", does: "Nothing changes. The change stays in this list." },
         ],
-        more: `<a href="${attemptHref(u.id, id)}">Everything about this change (${esc(id)}) →</a>`,
+        more: `<a href="${attemptHref(r, id)}">Everything about this change (${esc(id)}) →</a>`,
         decided: decidedState(
           ds,
           { rig: u.id, run: r.id, attempt: id },
@@ -173,7 +174,7 @@ export function auditNeeds(c: NeedsContext, u: RigView, r: RunView): Need[] {
         lane: a?.lane,
         since: au.at,
         now,
-        facts: `${CHAMPION_IS}${changeFacts(u, r, a, au.attempt)}<dt>Why this waits for you</dt><dd>${
+        facts: `${CHAMPION_IS}${changeFacts(r, a, au.attempt)}<dt>Why this waits for you</dt><dd>${
           blocked
             ? `The auditor stopped this change. Its cause: <span class="quote inline">${esc(au.reasons ?? "the auditor gave none")}</span> <span class="muted">(The audit started because ${esc(auditWhy(au.reason, a))})</span>`
             : `A change must have an audit before it becomes the champion when ${esc(auditWhy(au.reason, a).replace(/^The /, "the ").replace(/\.$/, ""))}. ${
@@ -215,7 +216,7 @@ export function auditNeeds(c: NeedsContext, u: RigView, r: RunView): Need[] {
                 : "The change stays in this list. No auditor will make the decision for you. The agents continue from the current champion.",
           },
         ],
-        more: `<a href="${attemptHref(u.id, au.attempt)}">Everything about this change (${esc(au.attempt)}) →</a>`,
+        more: `<a href="${attemptHref(r, au.attempt)}">Everything about this change (${esc(au.attempt)}) →</a>`,
         decided: decidedState(
           ds,
           { rig: u.id, run: r.id, attempt: au.attempt },

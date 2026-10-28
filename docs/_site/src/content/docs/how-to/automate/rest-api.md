@@ -134,7 +134,7 @@ A run's champion is a patch from the run's starting commit. It reaches control w
 
 ```sh
 curl -sS -H "$AUTH" -D headers.txt -o run-1-champion-2.patch \
-  "$CONTROL/v1/rigs/rig-1/champions/run-1/2/patch"
+  "$CONTROL/v1/runs/run-1/champions/2/patch"
 grep -i '^x-thermite' headers.txt
 ```
 

@@ -11,9 +11,9 @@ import {
   podStopped,
   type RigView,
   type RunView,
-  runCampaign,
 } from "../../views/index.ts";
 import { STYLE } from "../style/index.ts";
+import { campaignHref } from "../urls.ts";
 import { ICON_LINKS } from "./icons.ts";
 
 export {
@@ -202,10 +202,6 @@ function noReviewPanel(u: Pick<RigView, "supervisor" | "settings">): string {
     : "";
 }
 
-/** A research run's paper as a Markdown file (goal 112), from its rig's report. */
-export const paperHref = (rig: string, run: string) =>
-  `/ui/rigs/${encodeURIComponent(rig)}/runs/${encodeURIComponent(run)}/paper.md`;
-
 /**
  * Where a research run's answer check stands (goal 112), in one line for its Overview: before
  * the minimum running time, waiting for verified claims, the review panel checking, not yet (with
@@ -305,7 +301,6 @@ export function campaignState(k: CampaignView): { text: string; cls: string; ico
   return live ?? (newest ? runState(newest.run) : { text: "Idle", cls: "muted", icon: "" });
 }
 
-export const campaignHref = (name: string) => `/ui/campaigns/${encodeURIComponent(name)}`;
 /**
  * After a rig's name, when it does not report: a RunPod pod that is stopped can't report, which
  * is expected, so it says so; any other rig is not reporting.
@@ -316,37 +311,6 @@ export const reportingTag = (u: Pick<RigView, "stale" | "runpod">): string =>
     : u.stale
       ? ` <span class="bad">(not reporting)</span>`
       : "";
-/** A run's key on its campaign's page (run ids are unique per rig only). */
-export const runKey = (rig: string, run: string) => `${rig}/${run}`;
-/**
- * A run page's tabs. Stats: its model use in detail (goal 075), for a run with agents or spend.
- * Reviews and Hypotheses: a research run's (goals 116 and 117).
- */
-export type RunTab =
-  | "overview"
-  | "experiments"
-  | "journal"
-  | "reviews"
-  | "hypotheses"
-  | "attempts"
-  | "history"
-  | "planner"
-  | "stats";
-/** A run's page (on its campaign's page), and one of its tabs. */
-export const runHref = (
-  rig: string,
-  i: Pick<RunView, "id" | "campaign">,
-  view: RunTab = "overview",
-) =>
-  `${campaignHref(runCampaign(i))}?run=${encodeURIComponent(runKey(rig, i.id))}${view === "overview" ? "" : `&view=${view}`}`;
-export const attemptHref = (rig: string, attempt: string) =>
-  `/ui/rigs/${encodeURIComponent(rig)}/attempts/${encodeURIComponent(attempt)}`;
-export const liveHref = (rig: string, source?: string) =>
-  `/ui/rigs/${encodeURIComponent(rig)}/live${source ? `?source=${encodeURIComponent(source)}` : ""}`;
-/** Live for one run: its lanes, judge, planner and advisors, and the message box. */
-export const runLiveHref = (rig: string, run: string, more = "") =>
-  `/ui/live?run=${encodeURIComponent(`${rig}/${run}`)}${more}`;
-
 export function label(text: string, cls: string, ic = ""): string {
   return `<span class="label ${cls}">${ic}${esc(text)}</span>`;
 }

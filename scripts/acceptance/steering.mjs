@@ -305,12 +305,7 @@ try {
     async () => {
       const r = await api("/v1/propagate", {
         method: "POST",
-        body: JSON.stringify({
-          from_rig: "local-1",
-          run: "smoke-1",
-          to_rig: "local-2",
-          to_run: "smoke-2",
-        }),
+        body: JSON.stringify({ run: "smoke-1", to_run: "smoke-2" }),
       });
       return r.status === 201 ? r.body : undefined;
     },

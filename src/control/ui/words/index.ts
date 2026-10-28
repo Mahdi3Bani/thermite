@@ -12,7 +12,14 @@ export { jobText } from "./jobs.ts";
 export { auditReason } from "./judge.ts";
 export { decisionTone, decisionWords, itemName } from "./reviews.ts";
 export { checkName, commandText } from "./rig.ts";
-export { clip, findAttempt, runStatusText, span } from "./shared.ts";
+export {
+  clip,
+  earlierWords,
+  findAttempt,
+  runOfAttempt,
+  runStatusText,
+  span,
+} from "./shared.ts";
 export { attemptState, signed, verdictText } from "./verdicts.ts";
 
 /**

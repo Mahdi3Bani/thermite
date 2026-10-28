@@ -20,8 +20,8 @@ import {
 import { COPY_JS } from "../../ui/campaigns/copy/index.ts";
 import { NEW_CAMPAIGN_JS, newCampaignBody } from "../../ui/campaigns/new/index.ts";
 import { PLANNER_JS } from "../../ui/campaigns/queue/index.ts";
-import { campaignHref, runKey } from "../../ui/components/index.ts";
 import { PROVIDERS_JS } from "../../ui/providers/client.ts";
+import { campaignHref, runHref } from "../../ui/urls.ts";
 import type { Ctx, Dashboard } from "../context.ts";
 import { modelPrefix, settingsHelpers } from "../settings/shared.ts";
 
@@ -298,7 +298,7 @@ export function newCampaignRoutes(app: Hono, dash: Dashboard): void {
     if (r.run && split !== undefined) sendSplit(store, opts.privateKeyPem, rig.id, split);
     return c.redirect(
       r.run
-        ? `${campaignHref(r.campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}${r.woke ? `&ok=${encodeURIComponent(r.woke)}` : ""}`
+        ? `${runHref({ id: r.run, campaign: r.campaign })}${r.woke ? `?ok=${encodeURIComponent(r.woke)}` : ""}`
         : modelNote
           ? `${campaignHref(r.campaign)}?ok=${encodeURIComponent(`Saved. ${modelNote}`)}`
           : campaignHref(r.campaign),

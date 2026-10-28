@@ -87,6 +87,8 @@ Until version 1.0, a new version may change settings, commands, routes, files an
 
 Before you move to a new version, make sure that what you want to keep is in your results repository, and download the champions that you want ([Take the result](../how-to/campaigns/take-the-result.md)).
 
+Since v0.1.1, a run is addressed by its name alone, which control uses once. Two runs that shared a name before v0.1.1, on two rigs or again after a full reset, show as one: the newest of them, on its campaign's page and at its address. The older one's events stay on control, in its rig's exports and in the knowledge base.
+
 **Removed by:** no goal yet. The [roadmap](../project/roadmap.md#later-versions) says how versions count up.
 
 ## More that is not built yet

@@ -145,7 +145,7 @@ describe("control dashboard for an operator", () => {
     );
     assert.match(
       home,
-      /vectorize the filter bank so a frame fits its time budget <a class="small" href="\/ui\/live\?run=rig-b%2Fdec-2&w=lane-1">watch<\/a><\/span><span class="br-when">1 h 3 min</,
+      /vectorize the filter bank so a frame fits its time budget <a class="small" href="\/ui\/campaigns\/opus-simd\/runs\/dec-2\/live\?w=lane-1">watch<\/a><\/span><span class="br-when">1 h 3 min</,
     );
     assert.match(home, /4\/8 goals/);
     // Campaigns: what is at work now first, then what waits, then one row per campaign.
@@ -157,10 +157,7 @@ describe("control dashboard for an operator", () => {
       campaigns,
       /<b>opus-simd<\/b>[\s\S]*?<span class="kdot run">1 at work<\/span><span class="kdot pause">1 paused<\/span>/,
     );
-    assert.match(
-      campaigns,
-      /href="\/ui\/live\?run=rig-b%2Fdec-2&amp;compose=1"|href="\/ui\/live\?run=rig-b%2Fdec-2&compose=1"/,
-    );
+    assert.match(campaigns, /href="\/ui\/campaigns\/opus-simd\/runs\/dec-2\/live\?compose=1"/);
     // Filters and search are links and a plain form: they work without the script.
     const paused = await get("/ui/campaigns?f=paused");
     assert.doesNotMatch(paused, /<b>sum-speed<\/b>/);
@@ -173,7 +170,7 @@ describe("control dashboard for an operator", () => {
     assert.match(rigsList, /<span class="summary">3 rigs · /);
     assert.match(
       rigsList,
-      /<a class="nowrap" href="\/ui\/campaigns\/opus-simd\?run=rig-b%2Fdec-2">dec-2<\/a><span class="rsub">opus-simd · /,
+      /<a class="nowrap" href="\/ui\/campaigns\/opus-simd\/runs\/dec-2">dec-2<\/a><span class="rsub">opus-simd · /,
     );
     assert.doesNotMatch(rigsList, /The judge is|model route/);
     const rigPages = (
@@ -184,7 +181,7 @@ describe("control dashboard for an operator", () => {
       /The judge is measuring the rig's own noise \(the champion against itself\)\./,
     );
     // The run's page adds each lane's last step.
-    const run = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2");
+    const run = await get("/ui/campaigns/opus-simd/runs/dec-2");
     assert.match(run, /last: <code>run timeout 270 make -C build bench-decode/);
     // What happened is sentences, not event kinds and IDs.
     assert.match(home, /Run dec-1 paused: moved to rig-b as dec-2\./);
@@ -195,7 +192,7 @@ describe("control dashboard for an operator", () => {
 
   test("an attempt has a page with the change, the judge's findings and its history", async () => {
     const { get } = await demo();
-    const page = await get("/ui/rigs/rig-a/attempts/a-7e1a0001");
+    const page = await get("/ui/campaigns/opus-simd/runs/dec-1/attempts/a-7e1a0001");
     assert.match(page, /3c0ffee100112233445566778899aabbccddeeff/);
     assert.match(page, /Only x86 SIMD is covered/);
     assert.match(page, /looked like goal progress; being confirmed on fresh runs/);
@@ -207,7 +204,7 @@ describe("control dashboard for an operator", () => {
     );
     assert.match(
       page,
-      /lane-1 submitted <a href="\/ui\/rigs\/rig-a\/attempts\/a-7e1a0001" title="a-7e1a0001">“Add a dispatch/,
+      /lane-1 submitted <a href="\/ui\/campaigns\/opus-simd\/runs\/dec-1\/attempts\/a-7e1a0001" title="a-7e1a0001">“Add a dispatch/,
     );
     // It opens with what it does and where it stands, in a sentence.
     assert.match(page, /<h1 class="att-title">Add a dispatch table that picks SIMD routines/);
@@ -227,7 +224,10 @@ describe("control dashboard for an operator", () => {
     assert.match(page, /<div class="decide decide-warn">/);
     assert.match(page, /Make it the champion/);
     assert.doesNotMatch(page, /Everything about this change/);
-    assert.match(await get("/ui/rigs/rig-a/attempts/a-nope"), /No such attempt on this rig/);
+    assert.match(
+      await get("/ui/campaigns/opus-simd/runs/dec-1/attempts/a-nope"),
+      /No such attempt in this run/,
+    );
   });
 
   test("a campaign and its run's views: at work, earlier runs, overview, history, planner", async () => {
@@ -240,36 +240,36 @@ describe("control dashboard for an operator", () => {
     assert.match(camp, /moved to rig-b as dec-2/);
     assert.doesNotMatch(camp, /<nav class="tabs"><a class="on"/);
     // A run's own page: its tabs, and Restart the lanes under its menu.
-    const run = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2");
-    assert.match(run, /id="rig-b\/dec-2"/);
+    const run = await get("/ui/campaigns/opus-simd/runs/dec-2");
+    assert.match(run, /id="run-dec-2"/);
     assert.match(run, /the judge's check of champion #1/);
     assert.match(run, /waiting on another goal/);
     assert.match(run, /Restart the lanes/);
     assert.match(run, /every lane starts again from the champion/);
-    const history = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2&view=history");
+    const history = await get("/ui/campaigns/opus-simd/runs/dec-2/history");
     assert.match(
       history,
       /The planner planned round 1: lane-1 on filter-bank; lane-2 on range-decoder\./,
     );
-    const experiments = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=experiments");
+    const experiments = await get("/ui/campaigns/sum-speed/runs/sum-1/experiments");
     assert.match(experiments, /<h2>Up next<\/h2>/);
     assert.match(experiments, /Add an experiment/);
-    const planner = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=planner");
+    const planner = await get("/ui/campaigns/sum-speed/runs/sum-1/planner");
     assert.match(planner, /<h2>Rules<\/h2>/);
     assert.match(planner, /Agent figures/);
-    const attempts = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=attempts");
+    const attempts = await get("/ui/campaigns/sum-speed/runs/sum-1/attempts");
     assert.match(attempts, /blocked by the auditor/);
     assert.match(attempts, /waiting for your approval/);
-    assert.match(attempts, /href="\/ui\/rigs\/rig-c\/attempts\/a-5b5b0001"/);
+    assert.match(attempts, /href="\/ui\/campaigns\/sum-speed\/runs\/sum-1\/attempts\/a-5b5b0001"/);
     // The Journal: the agents' field notes, newest first; the research note beside them.
-    const journal = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=journal");
+    const journal = await get("/ui/campaigns/sum-speed/runs/sum-1/journal");
     assert.match(journal, /Journal <span class="muted">4 notes<\/span>/);
     assert.ok(journal.indexOf("A gain far above") < journal.indexOf("Unrolling past 8"));
-    assert.match(journal, /href="\/ui\/rigs\/rig-c\/attempts\/a-9c9c0001"/);
+    assert.match(journal, /href="\/ui\/campaigns\/sum-speed\/runs\/sum-1\/attempts\/a-9c9c0001"/);
     assert.match(journal, /The benchmark reads 64 MB per call/);
     // History tells what happened; the notes are not in it.
     assert.doesNotMatch(
-      await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=history"),
+      await get("/ui/campaigns/sum-speed/runs/sum-1/history"),
       /Unrolling past 8/,
     );
     // The campaign's folder on the Knowledge page.
@@ -315,7 +315,11 @@ describe("control dashboard for an operator", () => {
       ],
       summary: {},
     });
-    for (const path of ["/ui", "/ui/rigs/rig-a/attempts/a-evil0001", "/ui/rigs/rig-a"]) {
+    for (const path of [
+      "/ui",
+      "/ui/campaigns/opus-simd/runs/dec-1/attempts/a-evil0001",
+      "/ui/rigs/rig-a",
+    ]) {
       const html = await get(path);
       assert.ok(!html.includes("<img src=x"), path);
       assert.ok(!html.includes("<script>alert(2)"), path);

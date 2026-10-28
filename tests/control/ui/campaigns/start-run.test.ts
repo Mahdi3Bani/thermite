@@ -14,16 +14,13 @@ test("Start a run chooses the run to copy from that the link names (goal 099)", 
       models: [],
       from: "Control assigns the campaign again.",
       copyFrom: [
-        { key: "rig-a/q-2", label: "q-2 (3 up next)" },
-        { key: "rig-a/q-1", label: "q-1 (1 up next)" },
+        { key: "q-2", label: "q-2 (3 up next)" },
+        { key: "q-1", label: "q-1 (1 up next)" },
       ],
       copyPick,
     });
-  assert.match(
-    html("rig-a/q-1"),
-    /<option value="rig-a\/q-1" selected>q-1 \(1 up next\)<\/option>/,
-  );
-  assert.doesNotMatch(html("rig-a/q-1"), /value="rig-a\/q-2" selected/);
+  assert.match(html("q-1"), /<option value="q-1" selected>q-1 \(1 up next\)<\/option>/);
+  assert.doesNotMatch(html("q-1"), /value="q-2" selected/);
   assert.doesNotMatch(html(), / selected>/);
 });
 

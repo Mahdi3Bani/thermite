@@ -3,8 +3,9 @@ import { rigVersionWords } from "../../rigs/index.ts";
 import type { RunpodRigView } from "../../runpod/index.ts";
 import { type RigView, runCampaign } from "../../views/index.ts";
 import { infoLabel } from "../campaigns/new/index.ts";
-import { esc, hardwareLine, runHref } from "../components/index.ts";
+import { esc, hardwareLine } from "../components/index.ts";
 import { runFigure } from "../operator/index.ts";
+import { runHref } from "../urls.ts";
 import { span } from "../words/index.ts";
 import { podRuns } from "./runpod.ts";
 
@@ -188,7 +189,7 @@ function runCells(r: RigsListRow, st: StateKey, now: number): [string, string] {
         ? `<b class="fig">${esc(fig)}</b>`
         : `<span class="muted">${esc(fig)}</span>`;
   return [
-    `<a class="nowrap${live ? "" : " muted"}" href="${runHref(u.id, run)}">${esc(run.id)}</a>${sub(`${esc(runCampaign(run))} · ${esc(line)}${more}`)}`,
+    `<a class="nowrap${live ? "" : " muted"}" href="${runHref(run)}">${esc(run.id)}</a>${sub(`${esc(runCampaign(run))} · ${esc(line)}${more}`)}`,
     prog,
   ];
 }

@@ -140,7 +140,7 @@ describe("model usage on control (goal 075)", () => {
   test("a run's usage: its records only, by agent and by model; a figure none reports is null", () => {
     const s = stack();
     const r = modelUsage(s.store, { run: "r-1" });
-    assert.deepEqual(r.scope, { kind: "run", run: "r-1", rig: null });
+    assert.deepEqual(r.scope, { kind: "run", run: "r-1" });
     assert.equal(r.total.records, 3);
     assert.equal(r.total.calls, 3);
     assert.equal(r.total.tokens_in, 2500);
@@ -204,8 +204,8 @@ describe("model usage on control (goal 075)", () => {
       ["model_call", "r-9", call({ at: ago(1), tokensIn: 10, tokensOut: 1 })],
     ]);
     assert.equal(modelUsage(s.store, { campaign: "matmul" }).total.records, 5);
-    assert.equal(modelUsage(s.store, { run: "r-1", rig: "rig-a" }).total.records, 3);
-    assert.equal(modelUsage(s.store, { run: "r-1", rig: "rig-b" }).total.records, 0);
+    // A run is named alone (goal 170): its records wherever it ran.
+    assert.equal(modelUsage(s.store, { run: "r-1" }).total.records, 3);
   });
 
   test("the pages built from every event leave the calls out; the rig's event list keeps them", () => {
@@ -243,8 +243,9 @@ describe("model usage on control (goal 075)", () => {
     };
     await refused("?run=r-1&campaign=matmul", /^Give a run or a campaign, not both\.$/);
     await refused("?period=month", /^The period is today, 7d or all\.$/);
-    await refused("?rig=rig-a", /^A rig goes with a run/);
-    await refused("?model=x", /^It takes run, rig, campaign, period and tz, not model\.$/);
+    // A run is named alone (goal 170): a rig is no part of its query.
+    await refused("?run=r-1&rig=rig-a", /^It takes run, campaign, period and tz, not rig\.$/);
+    await refused("?model=x", /^It takes run, campaign, period and tz, not model\.$/);
     await refused("?tz=Nowhere%2FTown", /^The time zone is a name such as Europe\/Paris/);
     await refused(`?run=${"x".repeat(101)}`, /^A run is 1 to 100 characters\.$/);
     assert.equal((await s.api.request("/v1/usage")).status, 401);

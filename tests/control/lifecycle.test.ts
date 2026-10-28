@@ -269,6 +269,7 @@ describe("leaderboard and propagation", () => {
         }),
       ],
     });
+    // Rig b's own run of the campaign: a run's name is used once on control (goal 170).
     store.rigEvents.ingest({
       rig: "rig-b",
       ledger_id: "lb",
@@ -276,19 +277,19 @@ describe("leaderboard and propagation", () => {
       next: 3,
       summary: {},
       events: [
-        ev(1, "run_created", "c-1", {
+        ev(1, "run_created", "c-1b", {
           campaign: "camp",
           mode: "hill_climb",
           seed: { repo: "proj", commit: "s" },
         }),
-        ev(2, "propagation_received", "c-1", {
+        ev(2, "propagation_received", "c-1b", {
           tree: "b".repeat(40),
           attempt: "p-1",
           source_rig: "rig-a",
           source_run: "c-1",
           source_seq: 2,
         }),
-        ev(3, "propagation_accepted", "c-1", {
+        ev(3, "propagation_accepted", "c-1b", {
           attempt: "p-1",
           source_rig: "rig-a",
           source_run: "c-1",
@@ -304,10 +305,8 @@ describe("leaderboard and propagation", () => {
     // propagateChampion builds the content-addressed command from the published champion.
     const keys = generateSigningKeys();
     const { id, seq } = propagateChampion(store, keys.privateKeyPem, {
-      fromRig: "rig-a",
       run: "c-1",
-      toRig: "rig-b",
-      toRun: "c-1",
+      toRun: "c-1b",
       issuedBy: "owner",
       staleAfterMs: 180_000,
     });
@@ -325,9 +324,7 @@ describe("leaderboard and propagation", () => {
     assert.throws(
       () =>
         propagateChampion(store, keys.privateKeyPem, {
-          fromRig: "rig-b",
-          run: "c-1",
-          toRig: "rig-a",
+          run: "c-1b",
           toRun: "c-1",
           issuedBy: "owner",
           staleAfterMs: 180_000,

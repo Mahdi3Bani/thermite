@@ -514,9 +514,9 @@ export function sumUsage(rows: readonly UsageRow[], pods: readonly PodSpendRow[]
   };
 }
 
-/** Which records a report sums: a run (on one rig, or on any), a campaign's runs, or all. */
+/** Which records a report sums: a run, by its name alone (goal 170), a campaign's runs, or all. */
 export type UsageScope =
-  | { kind: "run"; run: string; rig: string | null }
+  | { kind: "run"; run: string }
   | { kind: "campaign"; campaign: string }
   | { kind: "system" };
 

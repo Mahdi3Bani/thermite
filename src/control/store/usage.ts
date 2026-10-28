@@ -53,10 +53,6 @@ export class UsageRecords extends StorePart {
     if (scope.kind === "run") {
       where.push("run = ?");
       args.push(scope.run);
-      if (scope.rig) {
-        where.push("rig = ?");
-        args.push(scope.rig);
-      }
     }
     if (scope.kind === "campaign") {
       where.push("campaign = ?");
@@ -168,10 +164,6 @@ export class UsageRecords extends StorePart {
     if (scope.kind === "run") {
       where.push("run = ?");
       args.push(scope.run);
-      if (scope.rig) {
-        where.push("rig = ?");
-        args.push(scope.rig);
-      }
     }
     if (scope.kind === "campaign") {
       where.push("campaign = ?");

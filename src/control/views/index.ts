@@ -5,12 +5,13 @@
  *
  * Its parts are in views/: the view's types, the fold of a rig's events (fold/, one module for
  * each area of events), the read of a rig's view (rig.ts) with what the rig's report says
- * (report.ts), the folds control keeps up to date as events arrive (cache.ts), and the views
- * made from rigs' views: the leaderboard, the campaigns and a run's directions.
+ * (report.ts), the folds control keeps up to date as events arrive and a run's view wherever it
+ * ran (cache.ts), and the views made from rigs' views: the leaderboard, the campaigns and a run's
+ * directions.
  */
 
 export { agentEvent, agentRun } from "./agent.ts";
-export { FoldCache, keepFolds, rigView } from "./cache.ts";
+export { campaignRuns, EARLIER_FOLDS, FoldCache, findRun, keepFolds, rigView } from "./cache.ts";
 export { type CampaignView, campaignModes, campaignViews, newestRun } from "./campaigns.ts";
 export { runDirections } from "./directions.ts";
 export { championsInForce, currentChampion, runCampaign } from "./facts.ts";
@@ -51,12 +52,14 @@ export type {
   ChampionHeldOutView,
   ChampionStep,
   DirectionView,
+  Earlier,
   ExperimentView,
   HeldOutView,
   JournalNoteView,
   JudgeJob,
   MessageView,
   RigView,
+  RunOnRig,
   RunView,
   SetupView,
   StoredEvent,

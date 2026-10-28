@@ -4,8 +4,7 @@ import { checkProgress, checkRows, commandProgress, modelProgress } from "../com
 import { propagateChampion } from "../issue/index.ts";
 import { advanceResets, cancelReset, confirmReset } from "../lifecycle.ts";
 import { runpodResetRefusal } from "../runpod/index.ts";
-import { RIG_ID } from "../store/index.ts";
-import { runHref } from "../ui/components/index.ts";
+import { RUN_ROUTES, runHref } from "../ui/urls.ts";
 import { backTo, type Dashboard } from "./context.ts";
 
 /**
@@ -14,7 +13,7 @@ import { backTo, type Dashboard } from "./context.ts";
  * restart or reset a rig).
  */
 export function actionRoutes(app: Hono, dash: Dashboard): void {
-  const { opts, store, views } = dash;
+  const { opts, parts, runOf, store } = dash;
 
   // ---------------------------------------------------------------- following an action (goal 080)
   // The page's script sends an action's form with fetch, asking for JSON, then follows it on these
@@ -65,30 +64,27 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
   });
 
   // A stuck trial the owner leaves running (goal 143): its card stays away until it is stuck again.
-  app.post("/ui/trials/leave", async (c) => {
+  // The trial is addressed through its run (goal 170); control keeps its lines by the run's rig.
+  app.post(RUN_ROUTES.leaveTrial, async (c) => {
     const f = await c.req.parseBody();
-    const [rig, trial, kind, since] = ["rig", "trial", "kind", "since"].map((k) =>
-      String(f[k] ?? ""),
-    );
+    const x = runOf(c.req.param("campaign"), c.req.param("run"));
+    if (!x) return c.text("No such run in this campaign.", 404);
+    const rig = x.rig.id;
+    const trial = c.req.param("trial");
+    const kind = String(f.kind ?? "");
+    const since = String(f.since ?? "");
     if (
-      !RIG_ID.test(rig ?? "") ||
-      !/^[A-Za-z0-9_-]{1,64}$/.test(trial ?? "") ||
+      !/^[A-Za-z0-9_-]{1,64}$/.test(trial) ||
       // A quiet or repeating spell is known by a time; a refused page's by its address.
       !(kind === "refused"
-        ? (since ?? "").length >= 1 && (since ?? "").length <= 2000
-        : (kind === "quiet" || kind === "repeating") && !Number.isNaN(Date.parse(since ?? "")))
+        ? since.length >= 1 && since.length <= 2000
+        : (kind === "quiet" || kind === "repeating") && !Number.isNaN(Date.parse(since)))
     )
       return c.text("refused: that is not a stuck trial's card", 400);
-    store.liveLines.leaveTrial({
-      rig: String(rig),
-      trial: String(trial),
-      kind: String(kind),
-      since: String(since),
-      by: "owner:ui",
-    });
+    store.liveLines.leaveTrial({ rig, trial, kind, since, by: "owner:ui" });
     store.auditLog.add("owner:ui", "trial_left", {
       rig,
-      run: String(f.run ?? ""),
+      run: x.run.id,
       trial,
       kind,
       since,
@@ -98,26 +94,20 @@ export function actionRoutes(app: Hono, dash: Dashboard): void {
 
   app.post("/ui/propagate", async (c) => {
     const f = await c.req.parseBody();
-    const [toRig, toRun] = String(f.target ?? "").split("|");
+    const toRun = String(f.to_run ?? "");
     try {
       propagateChampion(store, opts.privateKeyPem, {
-        fromRig: String(f.rig),
-        run: String(f.run),
-        toRig: String(toRig),
-        toRun: String(toRun),
+        run: String(f.run ?? ""),
+        toRun,
         issuedBy: "owner:ui",
         staleAfterMs: opts.staleAfterMs,
       });
     } catch (err) {
       return c.text(`refused: ${errorText(err)}`, 400);
     }
-    const target = views()
-      .find((x) => x.id === toRig)
-      ?.runs.find((x) => x.id === toRun);
-    return c.redirect(
-      target ? runHref(String(toRig), target) : `/ui/rigs/${encodeURIComponent(String(toRig))}`,
-      303,
-    );
+    // The target's page, where its judge's test of the champion shows.
+    const target = parts.run(toRun)?.run;
+    return c.redirect(target ? runHref(target) : "/ui/campaigns", 303);
   });
 
   app.post("/ui/rigs/:rig/restart", async (c) => {

@@ -613,7 +613,7 @@ describe("a stopped RunPod pod elsewhere on the dashboard", () => {
       await s.page("/ui/live"),
       /<span class="t">rp-test-1<\/span><span class="s">no run at work · its pod is stopped<\/span>/,
     );
-    const run = await s.page(`/ui/campaigns/camp?run=${encodeURIComponent("rp-test-1/run-1")}`);
+    const run = await s.page("/ui/campaigns/camp/runs/run-1");
     assert.match(run, /rp-test-1<\/a> <span class="muted">\(its pod is stopped\)<\/span>/);
     assert.doesNotMatch(run, /\(not reporting\)/);
   });
@@ -692,7 +692,7 @@ describe("a stopped RunPod pod elsewhere on the dashboard", () => {
     });
     assert.match(
       to,
-      /^\/ui\/campaigns\/matmul-speed\?run=rp-test-1\/matmul-speed-1&ok=rp-test-1's pod was stopped: control started it\. The run starts once the pod runs\.$/,
+      /^\/ui\/campaigns\/matmul-speed\/runs\/matmul-speed-1\?ok=rp-test-1's pod was stopped: control started it\. The run starts once the pod runs\.$/,
     );
     assert.deepEqual(
       s.cloud.actions().filter((a) => a.action === "start"),

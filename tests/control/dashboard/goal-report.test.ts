@@ -77,7 +77,7 @@ const report = (o: { complete: boolean; confirming?: boolean }) => ({
   },
 });
 
-const RUN = "/ui/campaigns/quality?run=rig-a%2Fq-1";
+const RUN = "/ui/campaigns/quality/runs/q-1";
 const WAIT =
   /Champion #2 met every required goal, and the judge is checking it a second time: no new trial starts until that check is done\. If it agrees, the run closes; if not, the lanes go on\./;
 
@@ -104,7 +104,7 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
       ["fast", null],
     ]);
     assert.equal(r?.goals_confirming, false);
-    const viaMcp = (await c.mcp("get_run", { rig: "rig-a", run: "q-1" })) as {
+    const viaMcp = (await c.mcp("get_run", { run: "q-1" })) as {
       goals: { values: { metrics: Record<string, number> }[] | null }[];
     };
     assert.equal(viaMcp.goals[0]?.values?.[0]?.metrics.ppl_ratio, 1.00213);
@@ -116,14 +116,14 @@ describe("a goal report's values and its confirmation on control (goal 086)", ()
     const waiting = await c.page(RUN);
     assert.match(waiting, WAIT);
     assert.match(
-      await c.page(`${RUN}&view=history`),
+      await c.page(`${RUN}/history`),
       /The judge checked champion #2: 2 of 2 goals met, every required goal\. It checks the champion a second time before the run closes; no new trial starts until then\./,
     );
     const view = (await c.rest("/v1/rigs/rig-a/view")) as {
       runs: { id: string; goals_confirming: boolean }[];
     };
     assert.equal(view.runs.find((x) => x.id === "q-1")?.goals_confirming, true);
-    const viaMcp = (await c.mcp("get_run", { rig: "rig-a", run: "q-1" })) as {
+    const viaMcp = (await c.mcp("get_run", { run: "q-1" })) as {
       goals_confirming: boolean;
     };
     assert.equal(viaMcp.goals_confirming, true);

@@ -41,15 +41,33 @@ describe("refusals over REST are answered as refusals, never as server errors (g
   });
 
   test("propagate's refusals are 409s with their words", async () => {
-    const { post } = control();
-    const body = { from_rig: "rig-a", run: "r-1", to_rig: "rig-a", to_run: "r-2" };
+    const { store, post } = control();
+    const body = { run: "r-1", to_run: "r-2" };
     assert.deepEqual(await post("/v1/propagate", JSON.stringify(body)), {
       status: 409,
-      error: "propagate between two different rigs",
+      error: "no run r-1",
     });
-    assert.deepEqual(await post("/v1/propagate", JSON.stringify({ ...body, to_rig: "rig-b" })), {
+    // Two runs of one rig: control knows where each ran (goal 170).
+    const created = (run: string, at: string) => ({
+      id: Number(run.slice(2)),
+      at,
+      actor: "harness",
+      kind: "run_created",
+      subject: run,
+      body: { campaign: "c", mode: "hill_climb", seed: { repo: "p", commit: "s" } },
+    });
+    const at = new Date().toISOString();
+    store.rigEvents.ingest({
+      rig: "rig-a",
+      ledger_id: "l-a",
+      cursor: 0,
+      next: 2,
+      summary: {},
+      events: [created("r-1", at), created("r-2", at)],
+    });
+    assert.deepEqual(await post("/v1/propagate", JSON.stringify(body)), {
       status: 409,
-      error: "no run r-1 on rig-a",
+      error: "r-1 and r-2 are on one rig: propagate between two rigs",
     });
   });
 

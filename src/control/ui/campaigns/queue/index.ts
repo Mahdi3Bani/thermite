@@ -8,8 +8,9 @@ import {
   type RunView,
   runCampaign,
 } from "../../../views/index.ts";
-import { ago, campaignHref, esc, icon, runKey } from "../../components/index.ts";
+import { ago, esc, icon } from "../../components/index.ts";
 import { outcome } from "../../operator/index.ts";
+import { campaignHref, runMessageHref } from "../../urls.ts";
 import { clip } from "../../words/index.ts";
 import { infoLabel } from "../new/index.ts";
 import { questionChip, yieldWords } from "../research.ts";
@@ -117,10 +118,10 @@ export function triedResult(
  * A judge-only run's line over its queue (goal 099): no worker takes its experiments, and how to
  * carry them to a run with workers. Empty for a run with workers, or with nothing waiting.
  */
-export function judgeOnlyQueueLine(u: Pick<RigView, "id">, r: RunView): string {
+export function judgeOnlyQueueLine(r: RunView): string {
   if (r.has_agents !== false) return "";
   if (!r.queue.some((x) => x.state === "queued" || x.state === "proposed")) return "";
-  const start = `${campaignHref(runCampaign(r))}?start=1&copy=${encodeURIComponent(runKey(u.id, r.id))}`;
+  const start = `${campaignHref(runCampaign(r))}?start=1&copy=${encodeURIComponent(r.id)}`;
   return `<div class="lnotice qjudge">${icon.warn}<span><b>Judge only:</b> no worker takes these experiments, so they wait for a run with workers. To carry them over, <a href="${esc(start)}">Start a run</a> of the campaign with <b>Copy the untried experiments of</b> ${esc(r.id)} ticked.</span></div>`;
 }
 
@@ -210,7 +211,7 @@ export function experimentsTab(o: {
   )}`;
   return `<div class="qcols"><div>
 <div class="head"><h2>Up next</h2><span class="n">${up.length}</span><span class="right">in order; the planner gives the top ones to free lanes, never the same one to two lanes</span></div>
-${judgeOnlyQueueLine(u, r)}${add}
+${judgeOnlyQueueLine(r)}${add}
 <div class="qlist" id="qlist" data-part="qlist">${up.map(item).join("") || `<div class="card"><div class="empty">Nothing queued. The planner adds ${thing}s as it plans; you can add one above.</div></div>`}</div>
 </div><div class="qside" data-part="qside">
 <div class="card qcard"><h3>In progress</h3>${working || `<div class="muted small">No lane is at work.</div>`}</div>
@@ -508,11 +509,11 @@ export function plannerTab(o: {
       `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3><div class="small">The planner is off on this rig, so it reads no messages. ${research ? "The gap-driven plan sets each round from the answer cards' gaps, and keeps to the rules." : "The lanes take the queue in order and keep to the rules."} <a href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Switch it on in Edit rig</a> to tell it something.</div></div>`
     : research
       ? // A research run's planner weighs a message in the tasks it gives out; it makes no rule of it.
-        `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message" class="qtell" data-act><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}">
+        `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="${esc(runMessageHref(r))}" class="qtell" data-act><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}">
 <label class="sfd">${infoLabel("Your message", "Say what you want, in plain words: a question to work on first, a gap to close, a kind of source to read. The planner reads your message when it next plans a round, and weighs it in the tasks it gives out. It makes no rule from it, and it gives no verdict: the review panel decides the questions.")}<textarea name="text" rows="3" required data-words maxlength="4000" spellcheck="false" placeholder="for example: work on question 2's gaps first, from the vendors' documentation" style="width:100%"></textarea></label>
 <div class="act"><button class="primary">Send to the planner</button><span class="muted small">It reads your message when it next plans a round: round ${nextRound}.</span></div></form>
 <div class="qthread">${turns}</div></div>`
-      : `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message" class="qtell" data-act><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}">
+      : `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="${esc(runMessageHref(r))}" class="qtell" data-act><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}">
 <label class="sfd">${infoLabel("Your message", "Say what you want, in plain words. To name a direction exactly, type : and pick it, or write :name:. Names may have spaces. The planner reads your message when it next gives out work. From it, it can add or drop experiments, reorder the queue and make rules. Each rule names a direction, so code keeps it. If no direction fits, the planner designs a new one and says what it means.")}<textarea name="text" rows="3" required data-words data-dpick data-dirs="${esc(JSON.stringify(pickData))}" maxlength="4000" spellcheck="false" placeholder="${esc(`for example: ${named.length >= 2 ? `stop :${named[1]}: and put :${named[0]}: first` : "stop :loop tiling: and put vector loads first"}`)}" style="width:100%"></textarea></label>
 <div class="ktools qex"><span class="muted small">Examples:</span>${examples.map((x) => `<button type="button" class="fchip" data-example="${esc(x)}">${esc(x)}</button>`).join("")}</div>
 <div class="nc-does" id="qmsg-prev">Write what you want in plain words, or type <code>:</code> to name a direction. The planner reads it when it next gives out work. It can add or drop experiments, reorder the queue and make rules. Each rule names a direction, so code keeps it.</div>

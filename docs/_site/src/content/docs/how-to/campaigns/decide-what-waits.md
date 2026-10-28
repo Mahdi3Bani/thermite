@@ -138,7 +138,7 @@ All of these take the owner's token, except `rig_check`, which every token but t
 | Accept a rig's key | `POST /v1/rigs/<rig>/key/accept?fingerprint=<fingerprint>` | no |
 | Check the model now, for a run whose agents are stopped | `POST /v1/commands`, kind `rig_check`, payload `{"check": "model"}` | `issue_command` |
 
-The `review` and `proposal` numbers are on the run, in `GET /v1/rigs/<rig>/view` or the MCP tool `get_run`: each item of its `reviews` has a `review`, and each item of its `conclusions` a `proposal`. A closed run's `pending_promotions` is empty, and the rig refuses `approve_promotion`, `decline_promotion`, `accept_review` and `conclude` for it, such as `run sort-speed-1 is closed: none of its changes can become the champion` ([Signed commands](../../reference/signed-commands.md#close_run) has each refusal). An attempt's id shows at the top of its page on the dashboard, after **attempt**, such as `a-0123456789abcdef`.
+The `review` and `proposal` numbers are on the run, in `GET /v1/runs/<run>` or the MCP tool `get_run`: each item of its `reviews` has a `review`, and each item of its `conclusions` a `proposal`. A closed run's `pending_promotions` is empty, and the rig refuses `approve_promotion`, `decline_promotion`, `accept_review` and `conclude` for it, such as `run sort-speed-1 is closed: none of its changes can become the champion` ([Signed commands](../../reference/signed-commands.md#close_run) has each refusal). An attempt's id shows at the top of its page on the dashboard, after **attempt**, such as `a-0123456789abcdef`.
 
 `thermite command` sends the same kinds. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)):
 

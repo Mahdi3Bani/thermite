@@ -4,13 +4,28 @@ import { updateRigImages } from "../../clusters/index.ts";
 import { notSent } from "../../command-progress.ts";
 import { tail, updateScript } from "../../machines/index.ts";
 import { checkRigPlace, controlImages } from "../../rigs/index.ts";
+import { rigHref } from "../../ui/urls.ts";
 import { type Dashboard, wantsJson } from "../context.ts";
 import { rigHelpers, updateFollowUrl } from "./shared.ts";
 
-/** A rig's state (goal 012): its update to control's version, and a check of where it runs. */
+/**
+ * A rig's state (goal 012): its update to control's version, and a check of where it runs; and the
+ * owner's acceptance of a rig's new report key.
+ */
 export function rigStateRoutes(app: Hono, dash: Dashboard): void {
   const { control, opts, parts, ssh, store, updates } = dash;
   const { placeOf, updateProgress } = rigHelpers(dash);
+
+  app.post("/ui/rigs/:rig/key/accept", async (c) => {
+    const f = await c.req.parseBody();
+    // Only the key whose fingerprint the owner saw: a key swapped in meanwhile is not accepted.
+    store.reportedRigs.acceptPendingKey(
+      c.req.param("rig"),
+      "owner:ui",
+      String(f.fingerprint ?? ""),
+    );
+    return c.redirect(rigHref(c.req.param("rig")), 303);
+  });
 
   // ---------------------------------------------------------------- a rig's state (goal 012)
   /** Moves a rig control set up on a machine onto control's images, over SSH; what changed. */

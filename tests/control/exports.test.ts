@@ -454,7 +454,7 @@ describe("Export and the Exports page (goal 103)", () => {
     });
     const { cookie, page, post } = await signIn(s.control, OWNER);
     // A run's page has Export too: the run alone first, and chosen; then the rig's (goal 103).
-    const run = await page(`/ui/campaigns/papers?run=${encodeURIComponent("rig-a/r-1")}`);
+    const run = await page("/ui/campaigns/papers/runs/r-1");
     const runForm =
       /<form method="post" action="\/ui\/commands" class="stack export-now">([\s\S]*?)<\/form>/.exec(
         run,

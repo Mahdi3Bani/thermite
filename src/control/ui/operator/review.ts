@@ -1,6 +1,7 @@
 import { RESEARCH_REVIEW } from "../../../core/research-check.ts";
 import type { RigView, RunView } from "../../views/index.ts";
-import { card, esc, icon, runHref } from "../components/index.ts";
+import { card, esc, icon } from "../components/index.ts";
+import { runHref } from "../urls.ts";
 import { clip } from "../words/index.ts";
 import { short } from "./change.ts";
 import { decidedState } from "./decided.ts";
@@ -50,7 +51,7 @@ export function reviewNeeds(c: NeedsContext, u: RigView, r: RunView): Need[] {
                   .join("")}</ol>`
               : "The final report holds them once the run ends."
           } Review ${rv.review}; the final report gives every answer whole, with the claims it cites.</dd>
-<dt>The review</dt><dd><a href="${runHref(u.id, r, "reviews")}">Review ${rv.review} on the run's Reviews tab</a>: each reviewer's answer on each question and hypothesis, the problems code found, and the decision on each item.</dd>`,
+<dt>The review</dt><dd><a href="${runHref(r, "reviews")}">Review ${rv.review} on the run's Reviews tab</a>: each reviewer's answer on each question and hypothesis, the problems code found, and the decision on each item.</dd>`,
           choices: [
             {
               button: f.cmd({

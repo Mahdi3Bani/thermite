@@ -56,7 +56,7 @@ describe("Live's lanes", () => {
           begun();
         }),
     });
-    const LIVE = "/ui/live?run=rig-a%2Fjs-1";
+    const LIVE = "/ui/campaigns/js-sum/runs/js-1/live";
     /** Whether Live's lane-1 filter marks the lane as working. */
     const working = (html: string) =>
       /data-w="lane-1"[^>]*>(<span class="dot ok"><\/span>)?lane-1</.exec(html)?.[1] !== undefined;
@@ -81,10 +81,12 @@ describe("Live's lanes", () => {
     const restart = form(live, "Restart the lanes", '<div class="lhead">');
     assert.deepEqual(
       [restart.fields.kind, restart.fields.run, restart.fields.back],
-      ["reset_workers", "js-1", "/ui/live?run=rig-a%2Fjs-1"],
+      ["reset_workers", "js-1", "/ui/campaigns/js-sum/runs/js-1/live"],
     );
     assert.ok(
-      (await s.submit(restart)).startsWith("/ui/live?run=rig-a/js-1&sent=Sent to rig-a at "),
+      (await s.submit(restart)).startsWith(
+        "/ui/campaigns/js-sum/runs/js-1/live?sent=Sent to rig-a at ",
+      ),
     );
     began = new Promise<void>((r) => {
       begun = r;
@@ -99,7 +101,7 @@ describe("Live's lanes", () => {
     live = await s.get(LIVE);
     assert.equal(live.match(/<b>lane-1<\/b> · trial ended/g)?.length, 1);
     assert.match(
-      await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=history"),
+      await s.get("/ui/campaigns/js-sum/runs/js-1/history"),
       /You restarted the lanes: their trials ended, and every lane starts again from the champion\./,
     );
 
@@ -149,7 +151,7 @@ describe("Live's lanes", () => {
         maxTokens: 2000,
       });
       await s.sync();
-      const to = recipients(await s.get("/ui/live?run=rig-a%2Fjs-1"));
+      const to = recipients(await s.get("/ui/campaigns/js-sum/runs/js-1/live"));
       return [to.find((o) => o.to === "all")?.hint, to.find((o) => o.to === "lane-1")?.hint];
     };
     assert.deepEqual(await hints("pi"), [

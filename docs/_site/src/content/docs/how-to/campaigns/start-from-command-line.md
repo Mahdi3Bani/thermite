@@ -58,7 +58,7 @@ Run `thermite assign` as in the example at the top. Control signs the command an
 | `--model NAME=URL` | A [model file](../../reference/glossary.md) the contract lists under `models`: a data file your project loads, such as a model's weights, with the address to fetch it from. Only a file with the contract's sha256 reaches the harness. Repeat for each model. For a large file, give the assignment time with `--ttl`: see [Bring a model's weights to a run](model-weights.md) |
 | `--agents off` | A run with no agents: only the judge works. See [Test a kit with known candidates](test-a-kit.md) |
 | `--promotion auto` or `owner` | `auto`: a confirmed win becomes the champion at once. `owner`: it waits for you. Unset: the rig's default |
-| `--queue-from RUN` | Start the new run's queue with the untried experiments of an earlier run on the same rig, or `RIG/RUN` on another rig. Off unless you give it. See [Start further runs](#start-further-runs) |
+| `--queue-from RUN` | Start the new run's queue with the untried experiments of an earlier run, by its name, on any rig. Off unless you give it. See [Start further runs](#start-further-runs) |
 | `--mcp-servers JSON` or `@file` | The MCP servers the kit's `kit.json` names, as it names them. Needed when it names some: the rig refuses a run whose list differs. See [Give agents MCP tools](give-agents-mcp-tools.md#3-start-the-run) |
 | `--control URL`, `--token-file F`, `--rig R` | Control's address, the owner's token file and the rig |
 | `--ttl MIN` | How long the command may wait to be delivered, in minutes: 60 unless set, at most 10080 |
@@ -89,7 +89,7 @@ npx thermite assign --contract contract.json --run sort-speed-2 \
   --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token --rig local-1
 ```
 
-The new run's queue starts with `sort-speed-1`'s experiments up next, in their order, then its lanes' ideas, at most 500, as **Start a run** copies them. The command reads them from control, with each one's words and author from control's records, so it needs `--control` and `--token-file` even with `--print`. For a run on another rig, write `rig-2/sort-speed-1`. A run without agents (`--agents off`) can't take them. Without `--queue-from`, the new run's queue starts empty and the planner fills it.
+The new run's queue starts with `sort-speed-1`'s experiments up next, in their order, then its lanes' ideas, at most 500, as **Start a run** copies them. The command reads them from control, with each one's words and author from control's records, so it needs `--control` and `--token-file` even with `--print`. Control knows the run by its name wherever it ran: on another rig, on a retired rig or before a full reset. A run without agents (`--agents off`) can't take them. Without `--queue-from`, the new run's queue starts empty and the planner fills it.
 
 Or let control assign it again, as **Start a run** on the campaign's page does, with `thermite run start`:
 
@@ -173,7 +173,7 @@ The command line itself prints a refusal from its own checks or from control. A 
 | `the seed commit must be a full commit id (40 or 64 hexadecimal characters)` | The terminal | Give the whole commit after `@` |
 | `--kit given, but the contract names no project.kit` | The terminal | Add `project.kit` to the contract |
 | `a run without agents has no queue: leave out --queue-from` | The terminal | Leave out `--queue-from`, or `--agents off` |
-| `-> 404 {"error":"no run sort-speed-1 on local-1"}` | The terminal | Check the run's name and its rig on the campaign's page, and write `RIG/RUN` for a run on another rig |
+| `-> 404 {"error":"no run sort-speed-1"}` | The terminal | Check the run's name on the campaign's page |
 | `-> 401 {"error":"unauthorized"}` | The terminal | Use the owner's token |
 | `bad assign_campaign payload: seed.repo: lowercase id` | The terminal | Make the contract's `project.repo` a lowercase name, such as `my-project` |
 | `-> 400 {"error":"The kit names the MCP server paper-search, and Settings has no server of that name. …"}` | The terminal | Add the server in **Settings › Providers**, or take it out of the kit |

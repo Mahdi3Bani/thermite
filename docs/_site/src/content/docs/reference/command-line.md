@@ -49,7 +49,7 @@ usage: thermite <command> [options]
          [--kit GIT_URL | --kit control:NAME]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
-         [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
+         [--queue-from RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
          [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
@@ -61,8 +61,9 @@ usage: thermite <command> [options]
                                       the kit NAME that control keeps (kit add, or one the New
                                       campaign page wrote). --queue-from starts the new
                                       run's queue with a past run's untried experiments, read
-                                      from control (on --rig unless RIG/ is given; it needs
-                                      --control and --token-file, with --print too).
+                                      from control, which knows the run by its name wherever it
+                                      ran (it needs --control and --token-file, with --print
+                                      too).
                                       --mcp-servers gives the MCP servers the kit's kit.json
                                       names, as in kit.json; the rig refuses a run whose list
                                       differs. --note keeps a text with the run (--direction,
@@ -132,15 +133,15 @@ usage: thermite <command> [options]
                                       cancel the rig's full reset before its wipe (owner's token)
   run start CAMPAIGN --rig R [--agents off] [--provider P --model M] [--promotion auto|owner]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
-         [--judge-gpus N] [--queue-from [RIG/]RUN] [--past ID ...] --control URL --token-file F
+         [--judge-gpus N] [--queue-from RUN] [--past ID ...] --control URL --token-file F
                                       start a run of a campaign control keeps (owner's token), as
                                       Start a run on the campaign's page does, with its checks and
                                       refusals: a campaign saved on the New campaign page or
                                       assigned before. --provider and --model give the rig's
                                       agents that model first: the run does not start, and the
                                       command exits 1; run it again once the rig has the model.
-                                      --queue-from starts the queue with a run's untried
-                                      experiments (on --rig unless RIG/ is given); --past adds
+                                      --queue-from starts the queue with the untried experiments
+                                      of a run of the campaign, by its name; --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
   campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
@@ -200,10 +201,12 @@ usage: thermite <command> [options]
   mcp delete NAME --control URL --token-file F
                                       forget a server and its secrets; refused while a kit
                                       names it
-  command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
-                                      issue a signed command through control (admin token).
-                                      assign_campaign and resume_run on a RunPod rig whose pod
-                                      is stopped start the pod first, and say so
+  command --control URL --token-file F [--rig U] --kind K --payload JSON|@file [--ttl MIN]
+                                      issue a signed command through control (admin token). A
+                                      kind about one run (its payload's run) goes to the rig the
+                                      run is on, so --rig may be left out; every other kind
+                                      needs it. assign_campaign and resume_run on a RunPod rig
+                                      whose pod is stopped start the pod first, and say so
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
@@ -338,7 +341,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--agents on\|off` | No | `on` | `off` starts a judge-only run: no worker agents, the judge still works |
 | `--promotion auto\|owner` | No | The rig's own setting | The run's promotion rule. `owner` is sent as `owner_approval`: every confirmed win waits for the owner |
 | `--ask WHAT` | No, repeatable | Nothing: the run is hands-off | What else the run asks the owner about, sent as the command's `ask_owner`: `gain:PERCENT`, a confirmed gain above it (`gain:15` is 15%); `flaws`, a win whose worker declared flaws; `reviews`, a review panel's pass of a goal or of a research run's answers; `not-possible`, a "not possible" ending of a goal campaign. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) |
-| `--queue-from [RIG/]RUN` | No | Off: the new run's queue starts empty | A past run whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). `RUN` alone is a run on `--rig`; `RIG/RUN` names its rig. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
+| `--queue-from RUN` | No | Off: the new run's queue starts empty | A past run, by its name, whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). Control knows the run by its name, wherever it ran. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
 | `--mcp-servers JSON\|@file` | When the kit names MCP servers | None | The MCP servers the kit's `kit.json` names, as it names them ([`mcp_servers`](kit-manifest.md#mcp-servers)): the JSON list itself, or `@` and a file that holds it. Sent as the command's `mcp_servers`. Control refuses a server **Settings** lacks, and the rig refuses the run when the list differs from `kit.json`'s. A research contract's own `mcp_servers` are sent without it |
 | `--context-window TOKENS` | No | The contract's | The campaign's own context window for the run's agents: the contract's [`agents_context.context_window`](contract.md#agents-context), over the file's. 4,096 to 100,000,000. Each agent works with the lower of it and its own window. The contract sent, and its hash, change with it |
 | `--compact-at PERCENT` | No | The contract's | The campaign's own compaction point: the contract's `agents_context.compact_at`, over the file's. 50 to 95. It replaces the rig's point for every agent of the run |
@@ -360,7 +363,7 @@ A `--context-window` or `--compact-at` out of range ends the command before anyt
 
 #### Copy a past run's untried experiments
 
-`--queue-from` puts the same experiments in the payload's `queue` as **Copy the untried experiments of** in a campaign's **Start a run** panel: the past run's experiments up next, in their order, then its lanes' ideas, at most 500. The tried and dropped ones stay with their run. The command reads them from control (`GET /v1/rigs/<rig>/runs/<run>/untried`, see [the REST API](rest-api.md#rigs-and-their-history)) before it sends or prints anything. Control takes each one's title, details, direction, why and author from its own records of the past run, with every edit, as for a copied experiment over MCP. That holds for a run of the contract's campaign, or of a campaign whose folder it may read; any other run's experiments keep their words, with the author `copied`. Each one names where it came from, as `from: {run, id}`.
+`--queue-from` puts the same experiments in the payload's `queue` as **Copy the untried experiments of** in a campaign's **Start a run** panel: the past run's experiments up next, in their order, then its lanes' ideas, at most 500. The tried and dropped ones stay with their run. The command reads them from control (`GET /v1/runs/<run>/untried`, see [the REST API](rest-api.md#runs)) before it sends or prints anything. Control takes each one's title, details, direction, why and author from its own records of the past run, with every edit, as for a copied experiment over MCP. That holds for a run of the contract's campaign, or of a campaign whose folder it may read; any other run's experiments keep their words, with the author `copied`. Each one names where it came from, as `from: {run, id}`.
 
 ```sh
 npx thermite assign --contract contract.json --run sort-speed-3 --seed-commit 0123456789abcdef0123456789abcdef01234567 \
@@ -368,7 +371,7 @@ npx thermite assign --contract contract.json --run sort-speed-3 --seed-commit 01
   --control https://control.example.com --token-file ~/thermite-owner-token --rig rig-1
 ```
 
-A past run with nothing untried leaves the queue empty: the command says `<run> on <rig> has no untried experiments: the new run's queue starts empty` on standard error, sends no `queue`, and goes on.
+A past run with nothing untried leaves the queue empty: the command says `<run> has no untried experiments: the new run's queue starts empty` on standard error, sends no `queue`, and goes on.
 
 The imports it adds to the payload:
 
@@ -394,9 +397,8 @@ Sent, it prints control's answer on one line, such as `{"id":"<command id>","sta
 | `--ask is gain:PERCENT, flaws, reviews or not-possible` | Another value |
 | `a run without agents has no queue: leave out --queue-from` | `--queue-from` with `--agents off`. The harness refuses such a payload the same way |
 | `--queue-from reads the past run from control: give --control and --token-file` | `--queue-from` without either |
-| `--queue-from RUN is a run on --rig: give --rig, or RIG/RUN` | `--queue-from` with a run alone and no `--rig` |
-| `--queue-from names a run: RUN or RIG/RUN` | An empty run or rig name, such as `rig-1/` |
-| `<url> -> 404 {"error":"no run <run> on <rig>"}` | Control has no such run on that rig; `no rig <rig>` for a rig it does not know |
+| `--queue-from names a run` | An empty run name |
+| `<url> -> 404 {"error":"no run <run>"}` | Control has no run of that name |
 
 ### `assign-payload`
 
@@ -569,12 +571,12 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `--promotion auto\|owner` | No | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
 | `--ask WHAT` | No, repeatable | nothing | **Ask me first about**: `gain:PERCENT`, `flaws`, `reviews` or `not-possible`, as for `assign` |
 | `--judge-gpus N` | No | the rig's current split | For a rig with several GPUs: how many the judge measures on. The rig's harness restarts to apply a new split |
-| `--queue-from [RIG/]RUN` | No | | Another run of this campaign, on `--rig` unless `RIG/` is given: its untried experiments start the new run's queue |
+| `--queue-from RUN` | No | | Another run of this campaign, by its name (one of a retired rig or from before a full reset too): its untried experiments start the new run's queue |
 | `--past ID` | No | | An item of Thermite's knowledge base, by the id MCP's `kb_search` gives; give it again for more. Experiments join the queue; findings, claims, notes and reports go to every agent's brief |
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
 
-Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--ask is gain:PERCENT, flaws, reviews or not-possible`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too. With `--agents off`, control refuses `--provider`, `--queue-from` and `--past`: `-> 400 {"error":"A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents."}`.
+Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--ask is gain:PERCENT, flaws, reviews or not-possible`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too. With `--agents off`, control refuses `--provider`, `--queue-from` and `--past`: `-> 400 {"error":"A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents."}`.
 
 ### `campaign copy`
 
@@ -705,7 +707,7 @@ A refused request ends the command with the route's answer, such as `… -> 409 
 | --- | --- | --- | --- |
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
-| `--rig U` | Yes | | The rig |
+| `--rig U` | For a kind about the rig | The run's rig | The rig. A kind about one run (its payload's `run`, every kind but `assign_campaign`, `rig_check`, `export_now`, `drain_rig`, `rig_settings` and `wipe_state`) goes to the rig the run is on: leave it out, or give that rig. Control refuses another, and a run that is an earlier one, in words: [Signed commands](rest-api.md#signed-commands) lists them |
 | `--kind K` | Yes | | The command's kind, such as `pause_run`, `rig_check` or `queue_add` |
 | `--payload JSON\|@file` | Yes | | The payload as JSON, or `@` and a file that holds it |
 | `--ttl MIN` | No | `60` | Minutes before it expires: 1 to 10080 |
@@ -714,7 +716,7 @@ It takes every kind but `wipe_state`, the owner's commands for a run's experimen
 
 ```sh
 npx thermite command --control https://control.example.com --token-file ~/thermite-owner-token \
-  --rig rig-1 --kind queue_add \
+  --kind queue_add \
   --payload '{"run":"run-1","title":"unroll the inner loop by 4","why":"the profile shows loop overhead","position":"top"}'
 ```
 
@@ -722,7 +724,7 @@ A run you no longer want is closed for good with `close_run`, as **Close run** o
 
 ```sh
 npx thermite command --control https://control.example.com --token-file ~/thermite-owner-token \
-  --rig rig-1 --kind close_run --payload '{"run":"run-1","reason":"another run finished the work"}'
+  --kind close_run --payload '{"run":"run-1","reason":"another run finished the work"}'
 ```
 
 Control refuses `wipe_state` with `400 {"error":"wipe_state is issued only by a full reset"}`, and a payload that does not fit its kind with `400 {"error":"bad <kind> payload: …"}` (an unknown rig: `404`). `GET /v1/commands/<id>` and the dashboard's **Commands** page show the command's status. A command the rig refuses, such as a `queue_move` for an experiment that is no longer queued, shows there as `failed`, with the reason.

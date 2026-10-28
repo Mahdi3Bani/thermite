@@ -62,7 +62,7 @@ export function registerRetire(tools: ToolContext): void {
       {
         title: "Retire a rig",
         description:
-          "For a rig that is gone: it leaves the rig lists, its campaigns' views and the owner's queue, and control refuses its reports until it is brought back. A token control made for it ends. Its records stay. It stops nothing on the machine. The owner's token only.",
+          "For a rig that is gone: it leaves the rig lists and the owner's queue, and control refuses its reports until it is brought back. Its runs stay readable by their names, as earlier runs (get_run reads them). A token control made for it ends. Its records stay. It stops nothing on the machine. The owner's token only.",
         inputSchema: {
           rig: z.string().min(1),
           confirm: z.string().describe('"retire <rig>", as on the dashboard'),

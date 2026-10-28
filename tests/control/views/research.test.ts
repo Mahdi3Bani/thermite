@@ -15,7 +15,7 @@ describe("a research run's items on control (goals 116 and 117)", () => {
   test("get_run and run_queue carry the decisions, each review's items, the progress rule, the hypotheses and each task's question and yield", async () => {
     const c = await researchControl();
     c.ingest(researchRunEvents());
-    const run = await c.mcp("get_run", { rig: "rig-a", run: "s-1" });
+    const run = await c.mcp("get_run", { run: "s-1" });
     assert.deepEqual(
       run.standing.map((s: Record<string, unknown>) => [
         s.kind,
@@ -94,7 +94,7 @@ describe("a research run's items on control (goals 116 and 117)", () => {
         at: undefined,
       },
     );
-    const queue = await c.mcp("run_queue", { rig: "rig-a", run: "s-1" });
+    const queue = await c.mcp("run_queue", { run: "s-1" });
     const x1 = queue.tried.find((x: { id: string }) => x.id === "x-1");
     assert.equal(x1.question, 0);
     assert.deepEqual(x1.yield.by_question, [

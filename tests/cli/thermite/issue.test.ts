@@ -144,7 +144,7 @@ describe("thermite assign --queue-from (goal 067)", () => {
         COMMIT,
       ];
       const at = ["--control", control, "--token-file", owner];
-      const printed = await cli(...base, ...at, "--queue-from", `rig-a/${past}`, "--print");
+      const printed = await cli(...base, ...at, "--queue-from", past, "--print");
       assert.equal(printed.code, 0, printed.stderr);
       const from = (id: string) => ({ run: past, id });
       // Up next in its order, then the lanes' ideas; the tried and the dropped stay with their run.
@@ -177,44 +177,31 @@ describe("thermite assign --queue-from (goal 067)", () => {
       assert.equal(plain.code, 0, plain.stderr);
       assert.equal(JSON.parse(plain.stdout).queue, undefined);
       // Another campaign's run, which smoke-cpu may not read: as over MCP, its author is "copied".
-      const other = await cli(...base, ...at, "--queue-from", "rig-a/other-1", "--print");
+      const other = await cli(...base, ...at, "--queue-from", "other-1", "--print");
       assert.deepEqual(
         JSON.parse(other.stdout).queue.map((x: { by: string; title: string }) => [x.by, x.title]),
         [["copied", "other words"]],
       );
-      // Refusals: a run without agents, no control to read from, no rig for the run, no such run.
-      const tryRun = await cli(
-        ...base,
-        ...at,
-        "--agents",
-        "off",
-        "--queue-from",
-        `rig-a/${past}`,
-        "--print",
-      );
+      // Refusals: a run without agents, no control to read from, no run named, no such run.
+      const tryRun = await cli(...base, ...at, "--agents", "off", "--queue-from", past, "--print");
       assert.deepEqual(
         [tryRun.code, tryRun.stderr.trim()],
         [2, "a run without agents has no queue: leave out --queue-from"],
       );
-      const noControl = await cli(...base, "--queue-from", `rig-a/${past}`, "--print");
+      const noControl = await cli(...base, "--queue-from", past, "--print");
       assert.deepEqual(
         [noControl.code, noControl.stderr.trim()],
         [2, "--queue-from reads the past run from control: give --control and --token-file"],
       );
-      const noRig = await cli(...base, ...at, "--queue-from", past, "--print");
-      assert.deepEqual(
-        [noRig.code, noRig.stderr.trim()],
-        [2, "--queue-from RUN is a run on --rig: give --rig, or RIG/RUN"],
-      );
-      const noRun = await cli(...base, ...at, "--queue-from", "rig-a/", "--print");
-      assert.deepEqual(
-        [noRun.code, noRun.stderr.trim()],
-        [2, "--queue-from names a run: RUN or RIG/RUN"],
-      );
-      const missing = await cli(...base, ...at, "--queue-from", "rig-a/nope", "--print");
-      assert.equal(missing.code, 2);
-      assert.match(missing.stderr, /-> 404 \{"error":"no run nope on rig-a"\}/);
-      // Sent: RUN alone is a run on --rig, and the signed command carries the same queue.
+      const noRun = await cli(...base, ...at, "--queue-from", "", "--print");
+      assert.deepEqual([noRun.code, noRun.stderr.trim()], [2, "--queue-from names a run"]);
+      // The run is found by its name alone (goal 170): a rig's name with it is no run's.
+      for (const name of ["nope", `rig-a/${past}`]) {
+        const missing = await cli(...base, ...at, "--queue-from", name, "--print");
+        assert.equal(missing.code, 2);
+        assert.match(missing.stderr, /-> 404 \{"error":"no run [^"]+"\}/);
+      }
+      // Sent: the signed command carries the same queue.
       const sent = await cli(...base, ...at, "--rig", "rig-a", "--queue-from", past);
       assert.equal(sent.code, 0, sent.stderr);
       const signed = store.db
@@ -226,12 +213,12 @@ describe("thermite assign --queue-from (goal 067)", () => {
         .envelope.payload;
       assert.deepEqual(payload.queue, JSON.parse(printed.stdout).queue);
       // A run with nothing untried: the queue starts empty, and the command says so.
-      const empty = await cli(...base, ...at, "--queue-from", "rig-a/bare-1", "--print");
+      const empty = await cli(...base, ...at, "--queue-from", "bare-1", "--print");
       assert.equal(empty.code, 0, empty.stderr);
       assert.equal(JSON.parse(empty.stdout).queue, undefined);
       assert.equal(
         empty.stderr.trim(),
-        "bare-1 on rig-a has no untried experiments: the new run's queue starts empty",
+        "bare-1 has no untried experiments: the new run's queue starts empty",
       );
     } finally {
       server.close();

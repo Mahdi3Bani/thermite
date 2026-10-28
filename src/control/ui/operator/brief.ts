@@ -1,8 +1,9 @@
 import type { ControlStore } from "../../store/index.ts";
 import { currentChampion, type RigView, type RunView, runCampaign } from "../../views/index.ts";
-import { ago, esc, judgeOnlyMark, modeAvatar, runHref, runLiveHref } from "../components/index.ts";
+import { ago, esc, judgeOnlyMark, modeAvatar } from "../components/index.ts";
 import type { LaneExtra } from "../rigs/drain.ts";
 import { stuckChip, stuckTrials } from "../stuck.ts";
+import { runHref, runLiveHref } from "../urls.ts";
 import { clip, span } from "../words/index.ts";
 import { jobHtml, runProgress } from "./run.ts";
 
@@ -64,10 +65,10 @@ export function runBrief(
         lane,
         `${esc(clip(what, 200))}${extra?.mark ?? ""}${stuck
           .filter((s) => s.lane === lane)
-          .map((s) => stuckChip(s, u, r, now))
+          .map((s) => stuckChip(s, r, now))
           .join(
             "",
-          )}${t ? ` <a class="small" href="${runLiveHref(u.id, r.id, `&w=${encodeURIComponent(lane)}`)}">watch</a>` : ""}${last}`,
+          )}${t ? ` <a class="small" href="${runLiveHref(r, { w: lane })}">watch</a>` : ""}${last}`,
         esc(span(work?.since ?? t?.started_at ?? null, now)),
       );
     } else {
@@ -133,7 +134,7 @@ export function runBrief(
     );
   const champ = currentChampion(r);
   const head = opts.heading
-    ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(u.id, r)}">${esc(runCampaign(r))} › ${esc(r.id)}</a>${judgeOnlyMark(r)}<span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
+    ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(r)}">${esc(runCampaign(r))} › ${esc(r.id)}</a>${judgeOnlyMark(r)}<span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
     : "";
   return `<section class="brief">${head}${rows.join("")}</section>`;
 }

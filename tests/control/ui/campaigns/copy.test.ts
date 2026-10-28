@@ -311,7 +311,7 @@ describe("Copy on a campaign's page (goal 069)", () => {
     assert.equal(run.status, 303, await run.clone().text());
     assert.match(
       decodeURIComponent(run.headers.get("location") ?? ""),
-      /\?run=rig-a\/matmul-speed-b-try-1/,
+      /\/ui\/campaigns\/matmul-speed-b\/runs\/matmul-speed-b-try-1$/,
     );
     const signed = s.store.db
       .prepare("select signed from command where kind = 'assign_campaign'")

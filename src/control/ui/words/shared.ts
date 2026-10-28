@@ -1,14 +1,19 @@
-import type { AttemptView, RigView, RunView } from "../../views/index.ts";
+import type { AttemptView, Earlier, RigView, RunView } from "../../views/index.ts";
 
 /** Plain words the dashboard's pages share, and an attempt found on its rig. */
 
-export function findAttempt(u: RigView, id: string): AttemptView | undefined {
-  for (const r of u.runs) {
-    const a = r.attempts.find((x) => x.id === id);
-    if (a) return a;
-  }
-  return undefined;
+/** The run of the rig's view that has an attempt, which its page's address hangs from. */
+export function runOfAttempt(u: RigView, id: string): RunView | undefined {
+  return u.runs.find((r) => r.attempts.some((x) => x.id === id));
 }
+
+export function findAttempt(u: RigView, id: string): AttemptView | undefined {
+  return runOfAttempt(u, id)?.attempts.find((x) => x.id === id);
+}
+
+/** Where an earlier run ran (goal 170), in words: "on rig-a, retired". */
+export const earlierWords = (rig: string, earlier: Earlier): string =>
+  earlier === "retired" ? `on ${rig}, retired` : `before ${rig}'s full reset`;
 
 export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 

@@ -10,7 +10,7 @@ import type { RigImages } from "./rigs/index.ts";
 import { ControlTunnels, RunpodRigs, RunpodTests } from "./runpod/index.ts";
 import { SecretBox } from "./secrets.ts";
 import type { ControlStore } from "./store/index.ts";
-import { keepFolds, type RigView } from "./views/index.ts";
+import { keepFolds, type RigView, type RunOnRig } from "./views/index.ts";
 
 /**
  * What control is made of, built once in createControlApi (goal 125, T5): the dashboard, REST
@@ -51,6 +51,10 @@ export interface ControlParts {
   runpodDriver: RunpodDriver;
   /** Every rig as control sees it now (views.ts), through the folds control keeps. */
   views(): RigView[];
+  /** A run wherever it ran (goal 170), read now; undefined for a run no rig created. */
+  run(id: string): RunOnRig | undefined;
+  /** Every run of a campaign a rig created, newest first, earlier ones too (goal 170). */
+  campaignRuns(campaign: string): RunOnRig[];
 }
 
 /** What controlParts takes from control's options; tests give their own of each. */
@@ -119,5 +123,7 @@ export function controlParts(
     runpodRigs,
     runpodDriver: new RunpodDriver(runpodRigs),
     views: () => folds.views(viewOpts),
+    run: (id) => folds.run(id, viewOpts),
+    campaignRuns: (campaign) => folds.campaignRuns(campaign, viewOpts),
   };
 }

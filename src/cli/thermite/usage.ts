@@ -19,7 +19,7 @@ export const USAGE = `usage: thermite <command> [options]
          [--kit GIT_URL | --kit control:NAME]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
-         [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
+         [--queue-from RUN] [--mcp-servers JSON|@file]
          [--context-window TOKENS] [--compact-at PERCENT]
          [--info-file F] [--link URL ...] [--idea TEXT ...] [--hypothesis TEXT ...]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
@@ -31,8 +31,9 @@ export const USAGE = `usage: thermite <command> [options]
                                       the kit NAME that control keeps (kit add, or one the New
                                       campaign page wrote). --queue-from starts the new
                                       run's queue with a past run's untried experiments, read
-                                      from control (on --rig unless RIG/ is given; it needs
-                                      --control and --token-file, with --print too).
+                                      from control, which knows the run by its name wherever it
+                                      ran (it needs --control and --token-file, with --print
+                                      too).
                                       --mcp-servers gives the MCP servers the kit's kit.json
                                       names, as in kit.json; the rig refuses a run whose list
                                       differs. --note keeps a text with the run (--direction,
@@ -102,15 +103,15 @@ export const USAGE = `usage: thermite <command> [options]
                                       cancel the rig's full reset before its wipe (owner's token)
   run start CAMPAIGN --rig R [--agents off] [--provider P --model M] [--promotion auto|owner]
          [--ask gain:PERCENT|flaws|reviews|not-possible ...]
-         [--judge-gpus N] [--queue-from [RIG/]RUN] [--past ID ...] --control URL --token-file F
+         [--judge-gpus N] [--queue-from RUN] [--past ID ...] --control URL --token-file F
                                       start a run of a campaign control keeps (owner's token), as
                                       Start a run on the campaign's page does, with its checks and
                                       refusals: a campaign saved on the New campaign page or
                                       assigned before. --provider and --model give the rig's
                                       agents that model first: the run does not start, and the
                                       command exits 1; run it again once the rig has the model.
-                                      --queue-from starts the queue with a run's untried
-                                      experiments (on --rig unless RIG/ is given); --past adds
+                                      --queue-from starts the queue with the untried experiments
+                                      of a run of the campaign, by its name; --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
   campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
@@ -170,10 +171,12 @@ export const USAGE = `usage: thermite <command> [options]
   mcp delete NAME --control URL --token-file F
                                       forget a server and its secrets; refused while a kit
                                       names it
-  command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
-                                      issue a signed command through control (admin token).
-                                      assign_campaign and resume_run on a RunPod rig whose pod
-                                      is stopped start the pod first, and say so
+  command --control URL --token-file F [--rig U] --kind K --payload JSON|@file [--ttl MIN]
+                                      issue a signed command through control (admin token). A
+                                      kind about one run (its payload's run) goes to the rig the
+                                      run is on, so --rig may be left out; every other kind
+                                      needs it. assign_campaign and resume_run on a RunPod rig
+                                      whose pod is stopped start the pod first, and say so
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID

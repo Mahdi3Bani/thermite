@@ -338,9 +338,7 @@ describe("every button that sends a command (goal 080)", () => {
 
   test("a message to the run's agents: followed until the rig took it; one with no words is refused", async () => {
     const s = await stack();
-    const empty = await s.send("/ui/live/message", {
-      rig: "rig-a",
-      run: "js-1",
+    const empty = await s.send("/ui/campaigns/js-sum/runs/js-1/message", {
       to: "all",
       text: " ",
     });
@@ -348,9 +346,7 @@ describe("every button that sends a command (goal 080)", () => {
     assert.equal((JSON.parse(empty.text) as Answer).said, "Not sent: Write a message first.");
     const sent = JSON.parse(
       (
-        await s.send("/ui/live/message", {
-          rig: "rig-a",
-          run: "js-1",
+        await s.send("/ui/campaigns/js-sum/runs/js-1/message", {
           to: "all",
           text: "try loop tiling",
         })
@@ -362,8 +358,8 @@ describe("every button that sends a command (goal 080)", () => {
     assert.equal((await s.follow(sent.follow ?? "")).state, "done");
     // Live's composer and the Planner tab's form are sent by the script.
     assert.match(
-      await s.page("/ui/live?run=rig-a%2Fjs-1"),
-      /<form class="lcomposer" method="post" action="\/ui\/live\/message" data-act>/,
+      await s.page("/ui/campaigns/js-sum/runs/js-1/live"),
+      /<form class="lcomposer" method="post" action="\/ui\/campaigns\/js-sum\/runs\/js-1\/message" data-act>/,
     );
   });
 
@@ -377,12 +373,13 @@ describe("every button that sends a command (goal 080)", () => {
       issuedBy: "owner:ui",
     });
     const campaign = String((assign.contract as { campaign: string }).campaign);
-    const at = `/ui/campaigns/${campaign}?run=rig-a%2Fjs-2`;
+    // The new run's own page (goal 170), which waits as Starting until the rig reports the run.
+    const at = `/ui/campaigns/${campaign}/runs/js-2`;
     let html = await s.page(at);
     assert.match(
       html,
       new RegExp(
-        `<div class="card" style="margin-bottom:16px" data-part="starting" data-follow="/ui/commands/${id}\\.json" data-follow-state="sent"><b>Starting rig-a/js-2\\.</b> <span class="">Sent to rig-a at \\d\\d:\\d\\d UTC\\. Waiting for the rig to take it\\.</span>`,
+        `<div class="card" style="margin-bottom:16px" data-part="starting" data-follow="/ui/commands/${id}\\.json" data-follow-state="sent"><b>Starting js-2 on rig-a\\.</b> <span class="">Sent to rig-a at \\d\\d:\\d\\d UTC\\. Waiting for the rig to take it\\.</span>`,
       ),
     );
     await s.relay();
@@ -392,7 +389,7 @@ describe("every button that sends a command (goal 080)", () => {
     assert.deepEqual([done.state, done.final, done.reload], ["done", true, true]);
     assert.ok(core.fwStep(null, done).reload, "the page loads again: the run's own page");
     html = await s.page(at);
-    assert.match(html, /id="rig-a\/js-2"/);
+    assert.match(html, /id="run-js-2"/);
     assert.doesNotMatch(html, /data-part="starting"/);
   });
 

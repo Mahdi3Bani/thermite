@@ -1,6 +1,7 @@
 import type { RigView, StoredEvent } from "../../views/index.ts";
-import { ago, attemptHref, esc } from "../components/index.ts";
-import { clip, findAttempt, type Sentence, sentence } from "../words/index.ts";
+import { ago, esc } from "../components/index.ts";
+import { attemptHref } from "../urls.ts";
+import { clip, runOfAttempt, type Sentence, sentence } from "../words/index.ts";
 
 /** What happened: one sentence a row, newest first, each linking the attempt it is about. */
 
@@ -9,11 +10,13 @@ export function sentenceHtml(u: RigView, s: Sentence): string {
   let html = esc(s.text);
   if (s.attempt) {
     const id = esc(s.attempt);
-    const hyp = findAttempt(u, s.attempt)?.hypothesis;
-    html = html.replace(
-      id,
-      `<a href="${attemptHref(u.id, s.attempt)}" title="${id}">${hyp ? `“${esc(clip(hyp, 70))}”` : id}</a>`,
-    );
+    const r = runOfAttempt(u, s.attempt);
+    const hyp = r?.attempts.find((x) => x.id === s.attempt)?.hypothesis;
+    if (r)
+      html = html.replace(
+        id,
+        `<a href="${attemptHref(r, s.attempt)}" title="${id}">${hyp ? `“${esc(clip(hyp, 70))}”` : id}</a>`,
+      );
   }
   return html;
 }

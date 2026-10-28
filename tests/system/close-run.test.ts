@@ -48,7 +48,7 @@ async function stack() {
   return { env, store, control, relay, page, post, send, follow };
 }
 
-const RUN_PAGE = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1";
+const RUN_PAGE = "/ui/campaigns/js-sum/runs/js-1";
 /** The run page's header: the title bar with its buttons. */
 const headerOf = (html: string) =>
   /<header class="topbar">[\s\S]*?<\/header>/.exec(html)?.[0] ?? "";
@@ -125,7 +125,7 @@ describe("Close run on a run's page (goal 087)", () => {
     assert.match(headerOf(after), /Finished/);
     assert.doesNotMatch(headerOf(after), /Pause|Resume|Close run|title="More"/);
     assert.match(after, new RegExp(`This run is <b>closed: ${why}</b>\\. It is finished\\.`));
-    const history = await s.page(`${RUN_PAGE}&view=history`);
+    const history = await s.page(`${RUN_PAGE}/history`);
     assert.match(history, new RegExp(`Run js-1 closed: ${why}\\.`));
   });
 
@@ -245,7 +245,7 @@ describe("A closed run's waiting decisions (goal 087; the owner, 2026-10-22)", (
       reason: "you asked to decide every change (promotion: owner approval)",
     });
     await s.relay();
-    const ATTEMPT_PAGE = `/ui/rigs/rig-a/attempts/${attempt}`;
+    const ATTEMPT_PAGE = `/ui/campaigns/js-sum/runs/js-1/attempts/${attempt}`;
     const approveButton = /name="kind" value="approve_promotion"/;
     const declineButton = /name="kind" value="decline_promotion"/;
     const waiting = await s.page("/ui");
