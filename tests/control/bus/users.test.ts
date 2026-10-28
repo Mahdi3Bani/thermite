@@ -222,9 +222,12 @@ describe("each rig's key on the message bus", () => {
       rows.map((r) => r.name),
       ["control", "system"],
     );
+    // Sealed: control's seed is in no row as it is (a seed's text starts "SU" and is 58 long).
+    const seed = new TextDecoder().decode(first.users.controlSeed);
+    assert.match(seed, /^SU[A-Z2-7]{56}$/);
     for (const r of rows) {
       assert.match(String(r.seed_sealed), /^s1:/);
-      assert.ok(!String(r.seed_sealed).includes("SU"));
+      assert.ok(!String(r.seed_sealed).includes(seed));
     }
     first.store.db.close();
     const again = setup({ secrets, store: new ControlStore(path) });
