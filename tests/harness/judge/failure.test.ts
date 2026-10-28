@@ -22,7 +22,7 @@ describe("the judge's failures (goal 163)", () => {
     // read of the job succeeds, so nothing but that read can stop it.
     const real = env.service.contractFor.bind(env.service);
     env.service.contractFor = (run: string) => {
-      if (/at Judge\.context /.test(new Error().stack ?? ""))
+      if (/at JudgeContext\.context /.test(new Error().stack ?? ""))
         throw new Error("the contract could not be read");
       return real(run);
     };

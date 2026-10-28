@@ -2,18 +2,6 @@
   "files": {
     "src/control/store.ts": {
       "lines": 3672
-    },
-    "src/harness/broker.ts": {
-      "lines": 1203
-    },
-    "src/harness/broker/snapshot.ts": {
-      "lines": 1241
-    },
-    "src/harness/judge/judge.ts": {
-      "lines": 2002
-    },
-    "src/harness/selftest.ts": {
-      "lines": 1023
     }
   }
 }

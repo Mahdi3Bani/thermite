@@ -8,6 +8,8 @@ import { parseContract } from "../../src/core/contract.ts";
 import { Scheduler } from "../../src/harness/agents/scheduler.ts";
 import { Audits } from "../../src/harness/audits.ts";
 import { LocalRunner } from "../../src/harness/broker/runner.ts";
+import type { Finish, JudgeContext } from "../../src/harness/judge/context.ts";
+import { promotion } from "../../src/harness/judge/jobs/confirm.ts";
 import { Research } from "../../src/harness/research/research.ts";
 import { startFakeModel } from "../helpers/fake-model.ts";
 import { researchFixture } from "../helpers/fixtures.ts";
@@ -278,17 +280,10 @@ describe("close_run (goal 087)", () => {
       env.sign("close_run", { run: "js-1", reason: "done elsewhere" }),
     );
     // The judge's job on it was under way when the run closed: its confirmation now ends.
-    const judge = env.judge as unknown as {
-      promotion(
-        fin: unknown,
-        attempt: string,
-        run: string,
-        seq: number,
-        row: Record<string, unknown>,
-      ): { promote?: unknown; lifecycle?: string; result: unknown };
-    };
-    const out = judge.promotion(
-      { result: {}, verdict: { verdict: "win_confirmed", delta: 0.5 } },
+    const judge = (env.judge as unknown as { judge: JudgeContext }).judge;
+    const out = promotion(
+      judge,
+      { result: {}, verdict: { verdict: "win_confirmed", delta: 0.5 } } as unknown as Finish,
       sub.attempt,
       "js-1",
       1,

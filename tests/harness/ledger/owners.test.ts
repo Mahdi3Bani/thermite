@@ -14,8 +14,8 @@ const ROOT = join(import.meta.dirname, "..", "..", "..");
 const HARNESS = join(ROOT, "src", "harness");
 const OWN_FILE = new Set([
   "src/harness/schema/since-rename.ts",
-  "src/harness/selftest.ts",
-  "src/harness/broker/snapshot.ts",
+  "src/harness/selftest/busy.ts",
+  "src/harness/broker/snapshot/take.ts",
 ]);
 
 function files(dir: string): string[] {

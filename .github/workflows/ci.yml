@@ -211,7 +211,7 @@ jobs:
             ^package(-lock)?\.json$
             ^src/harness/broker(\.ts|/)
             ^tests/harness/broker/
-            ^src/harness/selftest\.ts$
+            ^src/harness/selftest(\.ts|/)
             ^src/(core|control)/tunnel\.ts$
             ^scripts/rig-image-acceptance\.mjs$
             ^scripts/lib/
