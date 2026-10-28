@@ -33,15 +33,6 @@
     "src/control/views.ts": {
       "lines": 2191
     },
-    "src/harness/agents/planner.ts": {
-      "lines": 1277
-    },
-    "src/harness/agents/scheduler.ts": {
-      "lines": 2869
-    },
-    "src/harness/agents/worker.ts": {
-      "lines": 832
-    },
     "src/harness/api.ts": {
       "lines": 914
     },

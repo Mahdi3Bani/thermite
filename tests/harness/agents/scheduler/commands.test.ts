@@ -71,8 +71,8 @@ describe("agent scheduler", () => {
     assert.equal(epochs.length, 2);
     assert.ok(epochs[0]?.ended_at);
     for (const a of (
-      scheduler as unknown as { aborts: Map<string, AbortController> }
-    ).aborts.values())
+      scheduler as unknown as { sched: { aborts: Map<string, AbortController> } }
+    ).sched.aborts.values())
       a.abort();
     await scheduler.idle();
   });

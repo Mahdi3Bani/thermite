@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type Prompt, promptText } from "../../../../src/agents/prompt.ts";
+import { brief as workerBrief } from "../../../../src/harness/agents/scheduler/briefs.ts";
+import type { SchedulerContext } from "../../../../src/harness/agents/scheduler/context.ts";
+import {
+  goalReport as agentsGoalReport,
+  waitingForConfirmation,
+} from "../../../../src/harness/agents/scheduler/goal.ts";
 import { Scheduler } from "../../../../src/harness/agents/scheduler.ts";
 import { LocalRunner } from "../../../../src/harness/broker/runner.ts";
 import { heldOutCellsOf } from "../../../../src/harness/judge/held-out.ts";
@@ -98,10 +104,11 @@ describe("the champion's held-out check (goal 086)", () => {
         tokensOut: 0,
       }),
     });
-    const inside = scheduler as unknown as {
-      waitingForConfirmation(run: string): boolean;
-      goalReport(run: string, seq: number): unknown;
-      brief(...args: unknown[]): Prompt;
+    const { sched } = scheduler as unknown as { sched: SchedulerContext };
+    const inside = {
+      waitingForConfirmation: (run: string) => waitingForConfirmation(sched, run),
+      goalReport: (run: string, seq: number) => agentsGoalReport(env.ledger, run, seq),
+      brief: (...args: unknown[]) => (workerBrief as (...a: unknown[]) => Prompt)(sched, ...args),
     };
     assert.equal(inside.waitingForConfirmation("js-1"), true);
     await env.drain();

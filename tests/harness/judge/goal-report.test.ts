@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { Registry } from "../../../src/harness/agents/registry.ts";
-import { Scheduler } from "../../../src/harness/agents/scheduler.ts";
-import { LocalRunner } from "../../../src/harness/broker/runner.ts";
+import { goalReport } from "../../../src/harness/agents/scheduler/goal.ts";
 import {
   CHECK_NUMBERS_MAX,
   type GoalCellValues,
@@ -190,22 +189,8 @@ describe("a goal report keeps what it measured (goal 086)", () => {
       assert.doesNotMatch(c.detail, HIDDEN_SUM);
       assert.ok(!c.detail.includes(HIDDEN), `a goal check names the held-out case: ${c.detail}`);
     }
-    const scheduler = new Scheduler({
-      service: env.service,
-      runner: new LocalRunner(env.paths.scratchDir),
-      owner: "s0",
-      runTrial: async () => ({
-        stopped: "error",
-        turns: 0,
-        toolCalls: 0,
-        tokensIn: 0,
-        tokensOut: 0,
-      }),
-    });
     // What the planner and the workers get of the goal report: public values, never held-out.
-    const forAgents = (
-      scheduler as unknown as { goalReport(run: string, seq: number): unknown }
-    ).goalReport("js-1", env.ledger.champions.current("js-1").seq);
+    const forAgents = goalReport(env.ledger, "js-1", env.ledger.champions.current("js-1").seq);
     const agentViews = {
       goal_report: JSON.stringify(forAgents),
       evidence: JSON.stringify(new Registry(env.ledger).evidence("js-1")),
